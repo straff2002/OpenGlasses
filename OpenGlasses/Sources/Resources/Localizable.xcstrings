@@ -3446,6 +3446,264 @@
         }
       }
     },
+    "%@ didn't accept the key" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل %@ المفتاح"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no aceptó la clave"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n’a pas accepté la clé"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nem fogadta el a kulcsot"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non ha accettato la chiave"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@がキーを受け付けませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 키를 받아들이지 않았습니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ heeft de sleutel niet geaccepteerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não aceitou a chave"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ не принял ключ"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ نے کلید قبول نہیں کی"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未接受密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 未接受金鑰"
+          }
+        }
+      }
+    },
+    "%@ didn't accept the key, so replies use another voice. Check the key on your %@ model in Settings › %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل %1$@ المفتاح، لذا تستخدم الردود صوتًا آخر. تحقق من مفتاح نموذج %2$@ لديك في الإعدادات › %3$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ didn't accept the key, so replies use another voice. Check the key on your %2$@ model in Settings › %3$@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ no aceptó la clave, así que las respuestas usan otra voz. Revisa la clave de tu modelo de %2$@ en Configuración › %3$@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ n’a pas accepté la clé, donc les réponses utilisent une autre voix. Vérifiez la clé de votre modèle %2$@ dans Réglages › %3$@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %1$@ nem fogadta el a kulcsot, ezért a válaszok másik hangot használnak. Ellenőrizze a(z) %2$@-modell kulcsát itt: Beállítások › %3$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ non ha accettato la chiave, quindi per le risposte viene utilizzata un’altra voce. Controlla la chiave del tuo modello %2$@ in Impostazioni › %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@がキーを受け付けなかったため、返信は別の音声を使用します。設定 › %3$@で%2$@モデルのキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@에서 키를 받아들이지 않아 답변에 다른 음성이 사용됩니다. 설정 › %3$@에서 %2$@ 모델의 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ heeft de sleutel niet geaccepteerd, dus antwoorden gebruiken een andere stem. Controleer de sleutel van uw %2$@-model in Instellingen › %3$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ não aceitou a chave, então as respostas usam outra voz. Verifique a chave do seu modelo %2$@ em Configurações › %3$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ не принял ключ, поэтому ответы звучат другим голосом. Проверьте ключ вашей модели %2$@ в разделе «Настройки › %3$@»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ نے کلید قبول نہیں کی، اس لیے جوابات کسی دوسری آواز میں ہیں۔ اپنے %2$@ ماڈل کی کلید ترتیبات › %3$@ میں چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 未接受密钥，因此回复使用其他语音。请在设置 › %3$@ 中检查你的 %2$@ 模型的密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 未接受金鑰，因此回覆會使用其他語音。請在 設定 › %3$@ 中檢查你的 %2$@ 模型的金鑰。"
+          }
+        }
+      }
+    },
+    "%@ didn't accept the key, so replies use the built-in voice. Check the key on your %@ model in Settings › %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل %1$@ المفتاح، لذا تستخدم الردود الصوت المدمج. تحقق من مفتاح نموذج %2$@ لديك في الإعدادات › %3$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ didn't accept the key, so replies use the built-in voice. Check the key on your %2$@ model in Settings › %3$@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ no aceptó la clave, así que las respuestas usan la voz integrada. Revisa la clave de tu modelo de %2$@ en Configuración › %3$@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ n’a pas accepté la clé, donc les réponses utilisent la voix intégrée. Vérifiez la clé de votre modèle %2$@ dans Réglages › %3$@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %1$@ nem fogadta el a kulcsot, ezért a válaszok a beépített hangot használják. Ellenőrizze a(z) %2$@-modell kulcsát itt: Beállítások › %3$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ non ha accettato la chiave, quindi per le risposte viene utilizzata la voce integrata. Controlla la chiave del tuo modello %2$@ in Impostazioni › %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@がキーを受け付けなかったため、返信は組み込みの音声を使用します。設定 › %3$@で%2$@モデルのキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@에서 키를 받아들이지 않아 답변에 내장 음성이 사용됩니다. 설정 › %3$@에서 %2$@ 모델의 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ heeft de sleutel niet geaccepteerd, dus antwoorden gebruiken de ingebouwde stem. Controleer de sleutel van uw %2$@-model in Instellingen › %3$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ não aceitou a chave, então as respostas usam a voz integrada. Verifique a chave do seu modelo %2$@ em Configurações › %3$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ не принял ключ, поэтому ответы звучат встроенным голосом. Проверьте ключ вашей модели %2$@ в разделе «Настройки › %3$@»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ نے کلید قبول نہیں کی، اس لیے جوابات بلٹ اِن آواز میں ہیں۔ اپنے %2$@ ماڈل کی کلید ترتیبات › %3$@ میں چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 未接受密钥，因此回复使用内置语音。请在设置 › %3$@ 中检查你的 %2$@ 模型的密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 未接受金鑰，因此回覆會使用內建語音。請在 設定 › %3$@ 中檢查你的 %2$@ 模型的金鑰。"
+          }
+        }
+      }
+    },
     "%@ doesn't require an access key." : {
       "comment" : "A description of a subscription provider that doesn't require an API key.",
       "isCommentAutoGenerated" : true,
@@ -32125,6 +32383,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增工作即可立即開始，或排定稍後進行。你也可以直接說「開始工作」。"
+          }
+        }
+      }
+    },
+    "Add a key for %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أضف مفتاحًا لـ %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agrega una clave para %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter une clé pour %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kulcs hozzáadása: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi una chiave per %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のキーを追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 키 추가"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voeg een sleutel toe voor %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicione uma chave para %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить ключ для %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ کے لیے کلید شامل کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 %@ 的密钥"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 %@ 的金鑰"
           }
         }
       }
@@ -67236,6 +67576,182 @@
         }
       }
     },
+    "By the way, %@ didn't accept the key, so I'm using another voice. Check the key on your %@ model in the app's Settings, under %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بالمناسبة، لم يقبل %1$@ المفتاح، لذلك أستخدم صوتًا آخر. تحقق من مفتاح نموذج %2$@ لديك في إعدادات التطبيق، ضمن %3$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "By the way, %1$@ didn't accept the key, so I'm using another voice. Check the key on your %2$@ model in the app's Settings, under %3$@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por cierto, %1$@ no aceptó la clave, así que estoy usando otra voz. Revisa la clave de tu modelo de %2$@ en la Configuración de la app, en %3$@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Au fait, %1$@ n’a pas accepté la clé, donc j’utilise une autre voix. Vérifiez la clé de votre modèle %2$@ dans les Réglages de l’application, sous %3$@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyébként a(z) %1$@ nem fogadta el a kulcsot, így egy másik hangot használok. Ellenőrizze a(z) %2$@-modell kulcsát az alkalmazás beállításaiban, itt: %3$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A proposito, %1$@ non ha accettato la chiave, quindi sto usando un’altra voce. Controlla la chiave del tuo modello %2$@ nelle Impostazioni dell’app, in %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ちなみに、%1$@がキーを受け付けなかったため、別の音声を使用しています。アプリの設定の「%3$@」で、%2$@モデルのキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참고로 %1$@에서 키를 받아들이지 않아 다른 음성을 사용하고 있습니다. 앱 설정의 %3$@에서 %2$@ 모델의 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouwens, %1$@ heeft de sleutel niet geaccepteerd, dus ik gebruik een andere stem. Controleer de sleutel van uw %2$@-model in de instellingen van de app, onder %3$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A propósito, %1$@ não aceitou a chave, então estou usando outra voz. Verifique a chave do seu modelo %2$@ nas Configurações do aplicativo, em %3$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кстати, %1$@ не принял ключ, поэтому я использую другой голос. Проверьте ключ вашей модели %2$@ в Настройках приложения, в разделе «%3$@»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویسے، %1$@ نے کلید قبول نہیں کی، اس لیے میں دوسری آواز استعمال کر رہا ہوں۔ ایپ کی ترتیبات میں %3$@ کے تحت اپنے %2$@ ماڈل کی کلید چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便说一下，%1$@ 未接受密钥，所以我使用其他语音。请在 App 的设置中进入“%3$@”，检查你的 %2$@ 模型的密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順便說一下，%1$@ 未接受金鑰，所以我使用其他語音。請在 App 的設定中前往「%3$@」，檢查你的 %2$@ 模型的金鑰。"
+          }
+        }
+      }
+    },
+    "By the way, %@ didn't accept the key, so I'm using the built-in voice. Check the key on your %@ model in the app's Settings, under %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بالمناسبة، لم يقبل %1$@ المفتاح، لذلك أستخدم الصوت المدمج. تحقق من مفتاح نموذج %2$@ لديك في إعدادات التطبيق، ضمن %3$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "By the way, %1$@ didn't accept the key, so I'm using the built-in voice. Check the key on your %2$@ model in the app's Settings, under %3$@."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por cierto, %1$@ no aceptó la clave, así que estoy usando la voz integrada. Revisa la clave de tu modelo de %2$@ en la Configuración de la app, en %3$@."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Au fait, %1$@ n’a pas accepté la clé, donc j’utilise la voix intégrée. Vérifiez la clé de votre modèle %2$@ dans les Réglages de l’application, sous %3$@."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyébként a(z) %1$@ nem fogadta el a kulcsot, így a beépített hangot használom. Ellenőrizze a(z) %2$@-modell kulcsát az alkalmazás beállításaiban, itt: %3$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A proposito, %1$@ non ha accettato la chiave, quindi sto usando la voce integrata. Controlla la chiave del tuo modello %2$@ nelle Impostazioni dell’app, in %3$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ちなみに、%1$@がキーを受け付けなかったため、組み込み音声を使用しています。アプリの設定の「%3$@」で、%2$@モデルのキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참고로 %1$@에서 키를 받아들이지 않아 내장 음성을 사용하고 있습니다. 앱 설정의 %3$@에서 %2$@ 모델의 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouwens, %1$@ heeft de sleutel niet geaccepteerd, dus ik gebruik de ingebouwde stem. Controleer de sleutel van uw %2$@-model in de instellingen van de app, onder %3$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A propósito, %1$@ não aceitou a chave, então estou usando a voz integrada. Verifique a chave do seu modelo %2$@ nas Configurações do aplicativo, em %3$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кстати, %1$@ не принял ключ, поэтому я использую встроенный голос. Проверьте ключ вашей модели %2$@ в Настройках приложения, в разделе «%3$@»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویسے، %1$@ نے کلید قبول نہیں کی، اس لیے میں بلٹ اِن آواز استعمال کر رہا ہوں۔ ایپ کی ترتیبات میں %3$@ کے تحت اپنے %2$@ ماڈل کی کلید چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便说一下，%1$@ 未接受密钥，所以我使用内置语音。请在 App 的设置中进入“%3$@”，检查你的 %2$@ 模型的密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順便說一下，%1$@ 未接受金鑰，所以我使用內建語音。請在 App 的設定中前往「%3$@」，檢查你的 %2$@ 模型的金鑰。"
+          }
+        }
+      }
+    },
     "By the way, %@ no longer offers the voice model I was using, so I'm using another voice. You can choose another voice in the app's Settings, under Connections, then Services and Integrations." : {
       "localizations" : {
         "ar" : {
@@ -67560,6 +68076,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "順便說一下，%@ 拒絕了語音請求，所以我使用內建語音。請在 App 的設定中檢查金鑰和語音，路徑為「連線」>「服務與整合」。"
+          }
+        }
+      }
+    },
+    "By the way, ElevenLabs didn't accept the key, so I'm using another voice. Check the key in the app's Settings, under Connections, then Services and Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بالمناسبة، لم يقبل ElevenLabs المفتاح، لذلك أستخدم صوتًا آخر. تحقق من المفتاح في إعدادات التطبيق، ضمن الاتصالات، ثم الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por cierto, ElevenLabs no aceptó la clave, así que estoy usando otra voz. Revisa la clave en la Configuración de la app, en Conexiones y luego en Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Au fait, ElevenLabs n’a pas accepté la clé, donc j’utilise une autre voix. Vérifiez la clé dans les Réglages de l’application, sous Connexions, puis Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyébként az ElevenLabs nem fogadta el a kulcsot, így egy másik hangot használok. Ellenőrizze a kulcsot az alkalmazás beállításaiban, a Kapcsolatok, majd a Szolgáltatások és integrációk alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A proposito, ElevenLabs non ha accettato la chiave, quindi sto usando un’altra voce. Controlla la chiave nelle Impostazioni dell’app, in Connessioni, quindi Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ちなみに、ElevenLabsがキーを受け付けなかったため、別の音声を使用しています。アプリの設定で、接続の「サービスと連携」にあるキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참고로 ElevenLabs에서 키를 받아들이지 않아 다른 음성을 사용하고 있습니다. 앱 설정의 연결, 서비스 및 연동에서 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouwens, ElevenLabs heeft de sleutel niet geaccepteerd, dus ik gebruik een andere stem. Controleer de sleutel in de instellingen van de app, onder Verbindingen en vervolgens Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A propósito, o ElevenLabs não aceitou a chave, então estou usando outra voz. Verifique a chave nas Configurações do aplicativo, em Conexões, depois em Serviços e Integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кстати, ElevenLabs не принял ключ, поэтому я использую другой голос. Проверьте ключ в Настройках приложения: «Подключения», затем «Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویسے، ElevenLabs نے کلید قبول نہیں کی، اس لیے میں دوسری آواز استعمال کر رہا ہوں۔ ایپ کی ترتیبات میں کنکشنز، پھر سروسز اور انٹیگریشنز کے تحت کلید چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便说一下，ElevenLabs 未接受密钥，所以我使用其他语音。请在 App 的设置中检查密钥，进入“连接”，然后是“服务与集成”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順便說一下，ElevenLabs 未接受金鑰，所以我使用其他語音。請在 App 的設定中檢查金鑰，路徑為「連線」>「服務與整合」。"
+          }
+        }
+      }
+    },
+    "By the way, ElevenLabs didn't accept the key, so I'm using the built-in voice. Check the key in the app's Settings, under Connections, then Services and Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بالمناسبة، لم يقبل ElevenLabs المفتاح، لذلك أستخدم الصوت المدمج. تحقق من المفتاح في إعدادات التطبيق، ضمن الاتصالات، ثم الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por cierto, ElevenLabs no aceptó la clave, así que estoy usando la voz integrada. Revisa la clave en la Configuración de la app, en Conexiones y luego en Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Au fait, ElevenLabs n’a pas accepté la clé, donc j’utilise la voix intégrée. Vérifiez la clé dans les Réglages de l’application, sous Connexions, puis Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egyébként az ElevenLabs nem fogadta el a kulcsot, így a beépített hangot használom. Ellenőrizze a kulcsot az alkalmazás beállításaiban, a Kapcsolatok, majd a Szolgáltatások és integrációk alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A proposito, ElevenLabs non ha accettato la chiave, quindi sto usando la voce integrata. Controlla la chiave nelle Impostazioni dell’app, in Connessioni, quindi Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ちなみに、ElevenLabsがキーを受け付けなかったため、組み込み音声を使用しています。アプリの設定で、接続の「サービスと連携」にあるキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "참고로 ElevenLabs에서 키를 받아들이지 않아 내장 음성을 사용하고 있습니다. 앱 설정의 연결, 서비스 및 연동에서 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouwens, ElevenLabs heeft de sleutel niet geaccepteerd, dus ik gebruik de ingebouwde stem. Controleer de sleutel in de instellingen van de app, onder Verbindingen en vervolgens Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A propósito, o ElevenLabs não aceitou a chave, então estou usando a voz integrada. Verifique a chave nas Configurações do aplicativo, em Conexões, depois em Serviços e Integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кстати, ElevenLabs не принял ключ, поэтому я использую встроенный голос. Проверьте ключ в Настройках приложения: «Подключения», затем «Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویسے، ElevenLabs نے کلید قبول نہیں کی، اس لیے میں بلٹ اِن آواز استعمال کر رہا ہوں۔ ایپ کی ترتیبات میں کنکشنز، پھر سروسز اور انٹیگریشنز کے تحت کلید چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便说一下，ElevenLabs 未接受密钥，所以我使用内置语音。请在 App 的设置中检查密钥，进入“连接”，然后是“服务与集成”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "順便說一下，ElevenLabs 未接受金鑰，所以我使用內建語音。請在 App 的設定中檢查金鑰，路徑為「連線」>「服務與整合」。"
           }
         }
       }
@@ -126363,6 +127043,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ElevenLabs API 金鑰"
+          }
+        }
+      }
+    },
+    "ElevenLabs didn't accept the key, so replies use another voice. Check the key in Settings › Connections › Services & Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل ElevenLabs المفتاح، لذا تستخدم الردود صوتًا آخر. تحقق من المفتاح في الإعدادات › الاتصالات › الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs no aceptó la clave, así que las respuestas usan otra voz. Revisa la clave en Configuración › Conexiones › Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs n’a pas accepté la clé, donc les réponses utilisent une autre voix. Vérifiez la clé dans Réglages › Connexions › Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az ElevenLabs nem fogadta el a kulcsot, ezért a válaszok másik hangot használnak. Ellenőrizze a kulcsot itt: Beállítások › Kapcsolatok › Szolgáltatások és integrációk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs non ha accettato la chiave, quindi per le risposte viene utilizzata un’altra voce. Controlla la chiave in Impostazioni › Connessioni › Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabsがキーを受け付けなかったため、返信は別の音声を使用します。設定 › 接続 › サービスと連携でキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs에서 키를 받아들이지 않아 답변에 다른 음성이 사용됩니다. 설정 › 연결 › 서비스 및 연동에서 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs heeft de sleutel niet geaccepteerd, dus antwoorden gebruiken een andere stem. Controleer de sleutel in Instellingen › Verbindingen › Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O ElevenLabs não aceitou a chave, então as respostas usam outra voz. Verifique a chave em Configurações › Conexões › Serviços e integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs не принял ключ, поэтому ответы звучат другим голосом. Проверьте ключ в разделе «Настройки › Подключения › Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs نے کلید قبول نہیں کی، اس لیے جوابات کسی دوسری آواز میں ہیں۔ کلید ترتیبات › کنکشنز › سروسز اور انٹیگریشنز میں چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs 未接受密钥，因此回复使用其他语音。请在设置 › 连接 › 服务与集成中检查密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs 未接受金鑰，因此回覆會使用其他語音。請在 設定 › 連線 › 服務與整合 中檢查金鑰。"
+          }
+        }
+      }
+    },
+    "ElevenLabs didn't accept the key, so replies use the built-in voice. Check the key in Settings › Connections › Services & Integrations." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل ElevenLabs المفتاح، لذا تستخدم الردود الصوت المدمج. تحقق من المفتاح في الإعدادات › الاتصالات › الخدمات والتكاملات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs no aceptó la clave, así que las respuestas usan la voz integrada. Revisa la clave en Configuración › Conexiones › Servicios e integraciones."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs n’a pas accepté la clé, donc les réponses utilisent la voix intégrée. Vérifiez la clé dans Réglages › Connexions › Services et intégrations."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az ElevenLabs nem fogadta el a kulcsot, ezért a válaszok a beépített hangot használják. Ellenőrizze a kulcsot itt: Beállítások › Kapcsolatok › Szolgáltatások és integrációk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs non ha accettato la chiave, quindi per le risposte viene utilizzata la voce integrata. Controlla la chiave in Impostazioni › Connessioni › Servizi e integrazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabsがキーを受け付けなかったため、返信は組み込みの音声を使用します。設定 › 接続 › サービスと連携でキーを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs에서 키를 받아들이지 않아 답변에 내장 음성이 사용됩니다. 설정 › 연결 › 서비스 및 연동에서 키를 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs heeft de sleutel niet geaccepteerd, dus antwoorden gebruiken de ingebouwde stem. Controleer de sleutel in Instellingen › Verbindingen › Diensten en integraties."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O ElevenLabs não aceitou a chave, então as respostas usam a voz integrada. Verifique a chave em Configurações › Conexões › Serviços e integrações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs не принял ключ, поэтому ответы звучат встроенным голосом. Проверьте ключ в разделе «Настройки › Подключения › Сервисы и интеграции»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs نے کلید قبول نہیں کی، اس لیے جوابات بلٹ اِن آواز میں ہیں۔ کلید ترتیبات › کنکشنز › سروسز اور انٹیگریشنز میں چیک کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs 未接受密钥，因此回复使用内置语音。请在设置 › 连接 › 服务与集成中检查密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ElevenLabs 未接受金鑰，因此回覆會使用內建語音。請在 設定 › 連線 › 服務與整合 中檢查金鑰。"
           }
         }
       }
@@ -249754,6 +250598,88 @@
         }
       }
     },
+    "Opens the AI model settings" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يفتح إعدادات نماذج الذكاء الاصطناعي"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre la configuración de los modelos de IA"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre les réglages des modèles IA"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megnyitja az AI modellek beállításait"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre le impostazioni dei modelli di IA"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AIモデルの設定を開きます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 모델 설정을 엽니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opent de instellingen voor AI-modellen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre as configurações dos modelos de IA"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает настройки моделей ИИ"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI ماڈلز کی ترتیبات کھولتا ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 AI 模型设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟 AI 模型設定"
+          }
+        }
+      }
+    },
     "Opens the attachment." : {
       "comment" : "A hint for a button that opens a file.",
       "isCommentAutoGenerated" : true,
@@ -334725,6 +335651,88 @@
         }
       }
     },
+    "Sign in to %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تسجيل الدخول إلى %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia sesión en %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se connecter à %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bejelentkezés: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accedi a %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@にサインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 로그인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inloggen bij %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faça login em %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войти в %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ میں سائن اِن کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入 %@"
+          }
+        }
+      }
+    },
     "Sign in with ChatGPT" : {
       "localizations" : {
         "ar" : {
@@ -376229,6 +377237,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "片段已停止，但無法儲存任何內容。"
+          }
+        }
+      }
+    },
+    "The cloud voice" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الصوت السحابي"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voz en la nube"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voix cloud"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A felhőalapú hang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voce cloud"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クラウド音声"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클라우드 음성"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De cloudstem"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A voz na nuvem"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Облачный голос"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کلاؤڈ آواز"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "云端语音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "雲端語音"
           }
         }
       }
