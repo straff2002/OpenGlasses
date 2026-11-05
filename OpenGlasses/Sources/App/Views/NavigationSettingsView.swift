@@ -1,9 +1,21 @@
 import SwiftUI
 
-/// Settings for turn-by-turn walking navigation (Plan CA).
+/// Settings for turn-by-turn walking navigation (Plan CA). The footers name only the surfaces a
+/// turn really reaches (`WalkingTurnSurfaces`), so glasses-free use never reads as a lens promise.
 struct NavigationSettingsView: View {
+    @ObservedObject var glassesDisplay: GlassesDisplayService
     @State private var units = Config.navigationUnits
     @State private var voiceCues = Config.navigationVoiceCues
+
+    private var turnSurfaces: WalkingTurnSurfaces {
+        #if AVENKIN_PHONE_ONLY
+        let inLens = false
+        #else
+        let inLens = Config.glassesDisplayEnabled
+            && (glassesDisplay.hasDisplayCapability || Config.hudMirrorEnabled)
+        #endif
+        return WalkingTurnSurfaces(voiceCues: voiceCues, inLens: inLens)
+    }
 
     var body: some View {
         Form {
@@ -21,11 +33,7 @@ struct NavigationSettingsView: View {
                         Config.navigationVoiceCues = newValue
                     }
             } footer: {
-                #if AVENKIN_PHONE_ONLY
-                Text("Say \u{201C}navigate to \u{2026}\u{201D} to start walking directions — each turn is spoken as you approach it. Walking routes only; driving stays with CarPlay. Routing needs a network connection.")
-                #else
-                Text("Say \u{201C}navigate to \u{2026}\u{201D} to start walking directions — each turn shows in-lens and is spoken as you approach it. Walking routes only; driving stays with CarPlay. Routing needs a network connection.")
-                #endif
+                Text(turnSurfaces.footer)
             }
 
             Section {
@@ -43,12 +51,13 @@ struct NavigationSettingsView: View {
             } header: {
                 Text("Recent Destinations")
             } footer: {
-                #if !AVENKIN_PHONE_ONLY
-                Text("Recents also appear in the glasses menu under Navigate.")
-                #endif
+                if let recentsFooter = turnSurfaces.recentsFooter {
+                    Text(recentsFooter)
+                }
             }
         }
         .navigationTitle("Navigation")
+        .onAppear { glassesDisplay.deviceSupportsDisplay() }
         .ogFormStyle()
     }
 }

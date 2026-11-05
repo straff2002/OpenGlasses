@@ -8,7 +8,9 @@ struct NavigateTool: NativeTool {
     #if AVENKIN_PHONE_ONLY
     private static let turnDelivery = "is spoken at the right moment"
     #else
-    private static let turnDelivery = "appears on the glasses display and is spoken at the right moment"
+    // Most wearers have no display (and many use no glasses): a turn is spoken, and also shown
+    // in-lens only when a glasses display is connected — never promise the lens.
+    private static let turnDelivery = "is spoken at the right moment, and also shown in-lens when a glasses display is connected"
     #endif
     let description = """
         Start turn-by-turn WALKING directions to a place — each turn \(Self.turnDelivery). Use for "navigate to / take me to / walk me \
