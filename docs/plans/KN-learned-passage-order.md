@@ -1,6 +1,6 @@
 # Plan KN — A Learned Order for Manual Passages (the signals already measured, weighed by the answer keys)
 
-**Status:** 📋 P0 run 2026-11-05 (local): the bar is met, 331 scored questions and 107 out of scope across 9 vaults and four manual types, with today's numbers on both Mac embedders; P1 next, nothing implemented. Drafted 2026-11-05 from the owner's question. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
+**Status:** 🚧 P1 built 2026-11-05 (headless): `RankingFeatures` (schema 1, 25 numbers and flags per candidate) computed inside `VaultRetriever` on the eval path only, and written by the Mac runner as JSON lines to a file outside the repository (`RETRIEVAL_EVAL_FEATURES`); the app's order and outcome are unchanged. P0 run 2026-11-05 (local): the bar is met, 331 scored questions and 107 out of scope across 9 vaults and four manual types, with today's numbers on both Mac embedders. P2 next. Drafted 2026-11-05 from the owner's question. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
 manual types, P2 holds out a whole type, and P3 applies only to the types it measured. The question was whether a small
 model should do part of the manuals work. The answer drafted here: one small model, for ranking only, and only
 if it beats the rules on manuals it was not fitted on. The answer keys come before the model, and P0 decides
@@ -213,6 +213,41 @@ written on, outside every repository.
   number and the embedder. No strings from the vault.
 - Tests: features are identical across runs; the order is unchanged with the export on; and a guard test that
   the exported line for an invented manual contains none of its words.
+
+**P1 as built (2026-11-05).** Headless; nothing in the app's ranking changed.
+
+- `RankingFeatures` lives in `VaultRetriever.swift`, beside the sort it reads, so the runner's and the contract
+  check's fixed file lists did not change. It is `Equatable` and `Codable`, numbers and flags only, with
+  `schemaVersion` 1. Per candidate:
+  - the similarity's place among the question's candidates (0 the best, ties share a place) and its gap to
+    the best;
+  - the value the sort compared the words by (`lexical`), with a flag saying whether it was BM25F or the
+    shared-term count, and the shared-term count and share of the question's terms;
+  - whether the section heading holds a question term;
+  - the matched codes, the matched models and the model penalty;
+  - the kind as a code (0 prose, 1 table row, 2 diagram);
+  - recognised from a scan, manual or team learning, vector pending;
+  - assigned to the unit, read from the scope's assigned documents, which `retrieve` already holds;
+  - the table match, the clause match's raw value (0 for none) and the ranking group;
+  - the length in characters;
+  - one flag per route that found the candidate (meaning, token, clause, table, words) and their count. The
+    routes are recorded in a dictionary keyed like the merge, inside `retrieve`; `Passage` gained no field.
+- `retrieve` and `retrieveWithFeatures` share one private ranking pass and one gate step. With no features
+  asked for, the pass records no routes and computes nothing more than before. `rankedCandidates` returns
+  the order before the gate.
+- The runner writes one line per candidate for every scored and out-of-scope question, from the ungated
+  retriever read 30 deep, the candidates the miss classes read. A line holds the question's line number,
+  the rank, the label (`null` out of scope), the family number (`RETRIEVAL_EVAL_FAMILY`), the embedder id,
+  the schema, the document's place in the manifest and its chunk number, and the features. The embedder id
+  is its only string. The run refuses a path inside the repository or any other git working tree.
+- On the example vault's calibration key (sentence model, Mac runner) the summary line is unchanged and the
+  file held 1,080 lines for 36 questions, 133 of them labelled as holding the answer.
+- `RankingFeaturesTests` (9 tests, an invented manual) checks that the features are identical across runs,
+  that the order and the outcome are the same with and without the features for a code, a prose question, a
+  bare model and an out-of-scope question, the route flags for a passage found by meaning, by token and by
+  both, and that an exported line holds no string beyond its fixed keys and none of the manual's words.
+- Left out: the clause offset (step 3 of the chain). It decides inside the clause tier, which the learned
+  score leaves alone, so P2 has no use for it.
 
 ### P2 — fit, hold out, compare (local, Mac)
 
