@@ -388,6 +388,81 @@ enum RetrievalEval {
         return false
     }
 
+    // MARK: - Ranking features (Plan KN P1)
+
+    /// One candidate of one question, as the runner writes it to `RETRIEVAL_EVAL_FEATURES`: numbers
+    /// and flags, and the embedder's model id. **No string from the vault or the answer key**: the
+    /// question is its line number in the key, the document its place in the manifest.
+    struct FeatureLine: Encodable, Equatable {
+        /// The keys a line carries besides the features. `embedder` is the only string.
+        static let fixedKeys = ["q", "rank", "label", "oos", "family", "embedder", "schema", "doc", "chunk"]
+
+        /// The question's 1-based line number among the key's questions.
+        let q: Int
+        /// The candidate's 0-based place in today's order.
+        let rank: Int
+        /// 1 when the passage holds the answer (`holds`), else 0; nil (written null) out of scope.
+        let label: Int?
+        let oos: Bool
+        /// The manual family's number (`RETRIEVAL_EVAL_FAMILY`), 0 when not given.
+        let family: Int
+        /// The embedder's model id, from the app (`Embedder.modelId`), never the vault.
+        let embedder: String
+        let schema: Int
+        /// The passage's document's 1-based place in the vault manifest, 0 when not found there.
+        let doc: Int
+        let chunk: Int
+        let features: RankingFeatures
+
+        private enum Key: String, CodingKey { case q, rank, label, oos, family, embedder, schema, doc, chunk }
+
+        /// The fixed keys and the features in one flat object.
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: Key.self)
+            try c.encode(q, forKey: .q)
+            try c.encode(rank, forKey: .rank)
+            if let label { try c.encode(label, forKey: .label) } else { try c.encodeNil(forKey: .label) }
+            try c.encode(oos, forKey: .oos)
+            try c.encode(family, forKey: .family)
+            try c.encode(embedder, forKey: .embedder)
+            try c.encode(schema, forKey: .schema)
+            try c.encode(doc, forKey: .doc)
+            try c.encode(chunk, forKey: .chunk)
+            try features.encode(to: encoder)
+        }
+
+        /// One JSON line, keys sorted.
+        func encoded() throws -> String {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            return String(decoding: try encoder.encode(self), as: UTF8.self)
+        }
+    }
+
+    /// Every candidate of every scored and out-of-scope question, from the ungated retriever read
+    /// 30 deep — the candidates `classify` reads — each with its features and its label.
+    /// `documentIndex` maps a document id to its 1-based place in the manifest.
+    @MainActor
+    static func featureLines(_ questions: [Question], openFor: (String) -> VaultRetriever, family: Int,
+                             embedder: String, documentIndex: (String) -> Int?) -> [FeatureLine] {
+        var lines: [FeatureLine] = []
+        for (index, q) in questions.enumerated() {
+            let oos = q.outOfScope == true
+            guard oos || q.isScorable else { continue }
+            let (outcome, candidates) = openFor(q.q).retrieveWithFeatures(.init(turn: q.q, limit: 30))
+            let features = Dictionary(candidates.map { (Key($0.passage), $0.features) }, uniquingKeysWith: { first, _ in first })
+            for (rank, passage) in outcome.passages.prefix(30).enumerated() {
+                guard let f = features[Key(passage)] else { continue }
+                lines.append(FeatureLine(q: index + 1, rank: rank, label: oos ? nil : (holds(passage, q) ? 1 : 0),
+                                         oos: oos, family: family, embedder: embedder,
+                                         schema: RankingFeatures.schemaVersion,
+                                         doc: documentIndex(passage.documentId) ?? 0, chunk: passage.chunkIndex,
+                                         features: f))
+            }
+        }
+        return lines
+    }
+
     /// Two passages from different documents sharing most of their words — the same table printed
     /// in two manuals, the same rule in two editions.
     static func nearDuplicate(_ a: VaultRetriever.Passage, _ b: VaultRetriever.Passage) -> Bool {

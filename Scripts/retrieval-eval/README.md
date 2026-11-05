@@ -135,6 +135,32 @@ Scripts/retrieval-eval/run.sh
   that moves only citations or sections is measured on the same index and vectors; the summary
   counts the documents whose text no longer chunks the same.
 
+- **Ranking features (Plan KN P1).** `RETRIEVAL_EVAL_FEATURES=/path/outside/the/repo/features.jsonl`
+  writes one JSON line for every candidate of every scored and out-of-scope question: the ungated
+  retriever's candidates read 30 deep, the ones the miss classes read, in today's order. The run
+  refuses a path inside this repository or any other git working tree, and the file's folder must
+  exist. `RETRIEVAL_EVAL_FAMILY=<number>` stamps each line with a manual family's number (0 when
+  not set). A line holds:
+  - `q`, the question's line number among the key's questions (from 1), never its text;
+  - `rank`, the candidate's place in today's order (from 0);
+  - `label`, 1 when the passage holds the answer and 0 when it doesn't, `null` for an out-of-scope
+    question, and `oos`;
+  - `family`, `embedder` (the model id, the line's only string), `schema` (the feature schema's
+    version, `RankingFeatures.schemaVersion`);
+  - `doc`, the passage's document by its place in the manifest (from 1), and `chunk`, its chunk
+    number; never the document's id or title;
+  - the features, `RankingFeatures` in `VaultRetriever.swift`: the similarity's place among the
+    question's candidates and its gap to the best, the BM25F or shared-term value the sort compared
+    (`lexical`, `lexicalWeighed`), the shared-term count and share, whether the heading holds a
+    question term, the matched codes and models, the model penalty, the passage kind (0 prose, 1
+    table row, 2 diagram), recognised from a scan, manual or team learning (`isReference`), vector
+    pending, assigned to the unit, table and clause match, the ranking group, the length in
+    characters, and one flag per route that found it (`byMeaning`, `byToken`, `byClause`,
+    `byTable`, `byWords`) with their count.
+
+  The summary line counts the lines and the ones holding the answer. Like the index, the file is
+  per-question results: keep it out of every repository and delete it when you're done.
+
 Every run prints in-scope refusals beside the hits, because a gate that refuses more out-of-scope
 questions usually refuses some in-scope ones too, and both numbers decide a gate.
 

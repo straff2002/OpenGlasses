@@ -18,6 +18,13 @@ struct RetrievalEvalMain {
         guard let keyText = try? String(contentsOfFile: keyPath, encoding: .utf8) else { fail("can't read the answer key") }
         let questions = RetrievalEval.loadAnswerKey(keyText)
         guard !questions.isEmpty else { fail("the answer key has no questions") }
+        // Plan KN P1: RETRIEVAL_EVAL_FEATURES=<path> writes every candidate's ranking features, one
+        // JSON line each, to a file outside the repository. Checked before anything is indexed.
+        let featuresFile = env["RETRIEVAL_EVAL_FEATURES"].map(featuresDestination)
+        let family: Int = env["RETRIEVAL_EVAL_FAMILY"].map { value in
+            guard let number = Int(value), number >= 0 else { fail("RETRIEVAL_EVAL_FAMILY is a whole number") }
+            return number
+        } ?? 0
 
         // Plan IV P5: estimate how often one guided retry (the book's index, or the nearest
         // headings) would find what a missed question was after.
@@ -156,8 +163,50 @@ struct RetrievalEvalMain {
                       + (outcome.isSufficient ? "answered" : "refused") + (hit ? " hit" : ""))
             }
         }
+        if let featuresFile {
+            let index = Dictionary(documents.enumerated().compactMap { offset, document in
+                store.document(named: document.title).map { ($0.id, offset + 1) }
+            }, uniquingKeysWith: min)
+            let lines = RetrievalEval.featureLines(
+                questions, openFor: { RetrievalEval.retriever(over: store, policy: open, editions: editions, turn: $0) },
+                family: family, embedder: embedder.modelId, documentIndex: { index[$0] })
+            do {
+                let text = try lines.map { try $0.encoded() }.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
+                try text.write(to: featuresFile, atomically: true, encoding: .utf8)
+            } catch {
+                fail("can't write the features file")
+            }
+            print("[EVAL]   features: \(lines.count) candidate lines, \(lines.filter { $0.label == 1 }.count) holding the answer, "
+                  + "\(Set(lines.map(\.q)).count) questions, schema \(RankingFeatures.schemaVersion)")
+        }
         if relocate { print("[EVAL]   relocated \(relocated), not relocated (text changed) \(notRelocated)") }
         print("[EVAL]   documents: " + profiles.sorted { $0.key < $1.key }.map { "\($0.key) ×\($0.value)" }.joined(separator: ", "))
+    }
+
+    /// Where `RETRIEVAL_EVAL_FEATURES` writes, refused inside this repository or any other git
+    /// working tree: the lines are numbers, but a features file is per-question results, which
+    /// never go in a repository. The folder must exist; links in it are resolved before the check.
+    static func featuresDestination(_ path: String) -> URL {
+        let given = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
+        let folder = given.deletingLastPathComponent().resolvingSymlinksInPath()
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
+            fail("RETRIEVAL_EVAL_FEATURES: its folder does not exist")
+        }
+        let file = folder.appendingPathComponent(given.lastPathComponent)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().resolvingSymlinksInPath()
+        if file.pathComponents.starts(with: root.pathComponents) {
+            fail("RETRIEVAL_EVAL_FEATURES must name a file outside the repository")
+        }
+        var ancestor = folder
+        while ancestor.pathComponents.count > 1 {
+            if FileManager.default.fileExists(atPath: ancestor.appendingPathComponent(".git").path) {
+                fail("RETRIEVAL_EVAL_FEATURES must name a file outside every git working tree")
+            }
+            ancestor.deleteLastPathComponent()
+        }
+        return file
     }
 
     struct Document { let title: String; let url: URL; let kind: String?; let edition: String?; let source: URL? }
