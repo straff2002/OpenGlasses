@@ -3,12 +3,20 @@
 <!--
   Privacy manifest for the OpenGlassesWatch watchOS app.
 
-  This app transmits NOTHING off the device. It talks to the paired iPhone over
-  WatchConnectivity (WCSession) — a local device-to-device link between the user's
-  own devices, which is not "collection" in Apple's sense — and reads shared state
-  from the app-group UserDefaults suite ("group.com.openglasses.app"). No direct
-  network, health, location, contacts, or camera access. Hence
-  NSPrivacyCollectedDataTypes is empty and tracking is false.
+  The app's own code transmits nothing off the device. It talks to the paired iPhone
+  over WatchConnectivity (WCSession) — a local device-to-device link between the
+  user's own devices, which is not "collection" in Apple's sense — and reads shared
+  state from the app-group UserDefaults suite ("group.com.openglasses.app").
+
+  The one network request is Apple's, not ours: a map card (Plan GM — "how far is
+  that tower?", "where am I?", nearby places) draws a SwiftUI MapKit `Map`, and
+  MapKit fetches the map tiles for the area shown from Apple Maps. The points on the
+  map come from the phone; the watch reads no location of its own (no CoreLocation,
+  no usage string), and no health, contacts or camera access. With Medical Local
+  Only on, the phone marks the card so the watch draws no map at all. Map tiles
+  fetched by Apple's framework are Apple's processing under its own terms, not data
+  this app collects, so NSPrivacyCollectedDataTypes stays empty and tracking is
+  false.
 
   The only required-reason API is app-group UserDefaults access
   (WatchConnectivityService.swift), covered by 1C8F.1 (data shared within the

@@ -29,6 +29,13 @@ class WatchConnectivityService: NSObject, ObservableObject {
     /// nothing to press, because starting, closing and answering are all decisions that belong
     /// where the question can actually be put.
     @Published var job: JobInfo?
+    /// The map card the phone is showing on the wrist, and the live route (Plan GM). Nil when the
+    /// phone sent none — an absent key clears it, as for `job`.
+    @Published var surfaces: GlanceSurfaceSet?
+    /// Bumped when a card the wearer asked to see arrives, for one tap on the wrist.
+    @Published var surfaceTaps: Int = 0
+    /// The card the last tap was for, so a repeat of the same context does not tap again.
+    private var tappedSurfaceId: String?
 
     // Debounce: false→true immediately, true→false after 2 s
     private var reachabilityDebounceTask: Task<Void, Never>?
@@ -189,6 +196,32 @@ class WatchConnectivityService: NSObject, ObservableObject {
     }
 }
 
+// MARK: - Map cards (Plan GM)
+
+extension WatchConnectivityService {
+    /// Take the phone's `surfaces` value: decoded, with anything already expired dropped. Main
+    /// queue only.
+    fileprivate func applySurfaces(_ data: Data?) {
+        guard let data, let decoded = GlanceSurfaceCodec.decode(data) else {
+            surfaces = nil
+            return
+        }
+        let live = decoded.live(at: Date())
+        surfaces = live.isEmpty ? nil : live
+        if live.playsTap, let id = live.current?.id, id != tappedSurfaceId {
+            tappedSurfaceId = id
+            surfaceTaps += 1
+        }
+    }
+
+    /// **Go** on a card: the phone starts walking directions to the place (or the row's place).
+    func startGuidance(surfaceId: String, placeId: String?, completion: @escaping (String?) -> Void) {
+        var extra: [String: Any] = [GlanceWire.surfaceIdKey: surfaceId]
+        if let placeId { extra[GlanceWire.placeIdKey] = placeId }
+        sendCommand(GlanceWire.startGuidanceCommand, extra: extra, completion: completion)
+    }
+}
+
 // MARK: - WCSessionDelegate
 
 extension WatchConnectivityService: WCSessionDelegate {
@@ -297,6 +330,7 @@ extension WatchConnectivityService: WCSessionDelegate {
         } else {
             self.job = nil
         }
+        applySurfaces(applicationContext[GlanceWire.contextKey] as? Data)
         // Persist to app group for complications
         self.persistSharedState()
     }

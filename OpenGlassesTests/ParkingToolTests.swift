@@ -86,6 +86,33 @@ final class ParkingToolTests: XCTestCase {
         XCTAssertEqual(pins.last?.hasPrefix("Car · L2 · 41"), true, pins.description)
     }
 
+    /// Plan GM P1a: the parked car is a place card on the wrist, measured from the same fix.
+    func testRecallPublishesTheCarAsAPlaceCard() async throws {
+        var published: [GlanceSurface] = []
+        var seams = ParkingTool.Seams(
+            store: { [unowned self] in self.store },
+            currentLocation: { [unowned self] in self.location },
+            metric: { true },
+            now: { [unowned self] in self.now },
+            keepHistory: { false })
+        seams.publishSurface = { published.append($0) }
+        seams.mapAllowed = { false }
+        let tool = ParkingTool(seams: seams)
+        _ = try await tool.execute(args: ["action": "save", "details": "level 2 space 41"])
+        XCTAssertTrue(published.isEmpty, "saving is not a spatial answer")
+
+        location = CLLocation(coordinate: .init(latitude: -36.852, longitude: 174.76), altitude: 0,
+                              horizontalAccuracy: 8, verticalAccuracy: -1, timestamp: now)
+        _ = try await tool.execute(args: ["action": "where"])
+        let surface = try XCTUnwrap(published.last)
+        guard case .place(let card) = surface.kind else { return XCTFail() }
+        XCTAssertEqual(card.name, "Your car")
+        XCTAssertEqual(card.subtitle, "on level 2, space 41")
+        XCTAssertEqual(card.coordinate, GlancePoint(latitude: -36.85, longitude: 174.76))
+        XCTAssertEqual(card.straightLineMeters, 222, accuracy: 2)
+        XCTAssertFalse(surface.mapAllowed)
+    }
+
     func testDirectionsWalkToTheSavedCoordinate() async throws {
         let tool = makeTool()
         _ = try await tool.execute(args: ["action": "save", "details": "level 2"])

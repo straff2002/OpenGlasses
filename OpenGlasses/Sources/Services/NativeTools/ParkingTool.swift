@@ -59,6 +59,9 @@ final class ParkingTool: NativeTool {
         /// has asked for the spot to be forgotten when it is replaced, and a copy in the graph
         /// would be a history by the back door.
         var ingest: ((String) -> Void)?
+        /// Plan GM P1a: the car as a place card on the wrist. Nil in tests that do not look.
+        var publishSurface: ((GlanceSurface) -> Void)?
+        var mapAllowed: () -> Bool = { GlanceSurfacePolicy.mapAllowed(MedicalEgressGuard.currentMode()) }
     }
 
     private let seams: Seams
@@ -78,7 +81,8 @@ final class ParkingTool: NativeTool {
                 return try await appState.walkingRoute.start(to: coordinate, label: label)
             },
             showPin: { line in AppStateProvider.shared?.glassesDisplay.showNavigation(line) },
-            ingest: { text in BrainStore.shared.ingest(text: text, sourceRef: "parking", sourceKind: "place", origin: .toldMe) }
+            ingest: { text in BrainStore.shared.ingest(text: text, sourceRef: "parking", sourceKind: "place", origin: .toldMe) },
+            publishSurface: { surface in AppStateProvider.shared?.glanceSurfaces.publish(surface) }
         ))
     }
 
@@ -191,9 +195,23 @@ final class ParkingTool: NativeTool {
         guard let spot = seams.store().active else {
             return "I don't have a parking spot saved. Say \u{201C}I parked on level 2, space 41\u{201D} and I'll remember it."
         }
-        let current = await seams.currentLocation()?.coordinate
+        let fix = await seams.currentLocation()
+        let current = fix?.coordinate
         seams.showPin?(ParkingRecallPhraser.hudLine(spot, from: current, metric: seams.metric()))
+        publishCar(spot, from: fix)
         return ParkingRecallPhraser.spoken(spot, from: current, now: seams.now(), metric: seams.metric())
+    }
+
+    /// The parked car is a `place`: its details as the subtitle, the wearer from the same fix the
+    /// spoken answer measured from. A spot saved without a map position has nothing to draw.
+    private func publishCar(_ spot: ParkingSpot, from fix: CLLocation?) {
+        guard let publish = seams.publishSurface, let coordinate = spot.coordinate else { return }
+        publish(GlanceSurfaceBuilder.place(
+            name: String(localized: "Your car"),
+            subtitle: ParkingRecallPhraser.detailPhrase(spot),
+            coordinate: GlanceSurfaceBuilder.point(coordinate),
+            wearer: fix.map(GlanceSurfaceBuilder.wearer),
+            mapAllowed: seams.mapAllowed(), now: seams.now()))
     }
 
     private func directions() async -> String {
