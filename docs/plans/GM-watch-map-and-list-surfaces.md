@@ -115,7 +115,8 @@ What exists now:
   `GlanceSurfaceBuilder`, `WatchSurfacePublisher` over `WatchSessioning`, `WatchStartGuidance`. The
   `distance_to` action is `find_nearby` with `nearest: true` (decision 8); `where_am_i` and
   `find_nearby` take `show_on_watch` for the "only when I ask" setting and the one tap. Parking's
-  "where" publishes the car. Settings › Devices & Privacy › Apple Watch (shown only with the watch
+  "where" publishes the car. Since 2026-11-05 `find_nearby` puts its results closest first (Apple's
+  search ranks by relevance), so the spoken list, the card's rows and a `limit` all mean nearest. Settings › Devices & Privacy › Apple Watch (shown only with the watch
   app installed) holds "Maps on Your Watch". A refused surface logs `surfaceRefused` with the
   codec's reason and the byte count, nothing about the card.
 - **Watch** (`WatchGlanceViews.swift`): a "Now showing" row under the status, the place card (map
