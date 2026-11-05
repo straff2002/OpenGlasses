@@ -1,6 +1,7 @@
 # Plan KN — A Learned Order for Manual Passages (the signals already measured, weighed by the answer keys)
 
-**Status:** 📝 Drafted 2026-11-05 from the owner's question; nothing implemented. The owner took all five decisions as recommended the same day. The question was whether a small
+**Status:** 📝 Drafted 2026-11-05 from the owner's question; nothing implemented. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
+manual types, P2 holds out a whole type, and P3 applies only to the types it measured. The question was whether a small
 model should do part of the manuals work. The answer drafted here: one small model, for ranking only, and only
 if it beats the rules on manuals it was not fitted on. The answer keys come before the model, and P0 decides
 whether there are enough of them.
@@ -97,9 +98,14 @@ reads a manual. It reads numbers about candidates the retriever has already gath
 - Inventory every answer key that still exists locally: its family, its number of questions and its
   out-of-scope questions. Counts go in this plan; the keys stay where they are.
 - Set the bar to start P2: **at least 150 scored questions across at least five manual families**, and at least
-  30 of them out of scope. If the inventory falls short, write keys for the families the pilots use, in the
+  30 of them out of scope. **The families must span at least three manual types**: service or diagnostic
+  manuals, owner or install manuals, and code books or standards, each with at least 30 questions. Five
+  families of one type would pass a count and say nothing about the next customer's manuals. IT, automotive
+  and other trades join when a pilot has those manuals. If the inventory falls short, write keys for the families the pilots use, in the
   existing format, as technicians would ask the questions. That is the work of this phase.
-- Record today's numbers, per family and per embedder (`nl-word` in the simulator, `nl-sentence` and contextual
+- Give every keyed document a manual type from a small fixed set, written into the vault manifest's existing
+  per-document `kind` (free text and informational today; see P3).
+- Record today's numbers, per family, per manual type and per embedder (`nl-word` in the simulator, `nl-sentence` and contextual
   on the Mac runner): hit@1, hit@4, as-sent, out-of-scope refused, and the ranking-miss share. These are the
   baseline P2 has to beat.
 - Nothing ships. If the keys cannot be written, the plan stops here and says so, and the keys written so far
@@ -135,12 +141,16 @@ reads a manual. It reads numbers about candidates the retriever has already gath
   2. a small network (one hidden layer of at most 16);
   3. weights written by a model from the feature descriptions alone, with no data.
 - Each arm is measured with one family left out at a time, against the P0 baseline and on the same candidates.
+  **It is then measured again with one whole manual type left out at a time**, which is the harder test and the one
+  that says whether the order carries over to a kind of manual it has never seen.
 - Measured twice: inside the groups (the default), and across them.
 - **The bar to ship:**
   - hit@4 up on the pooled held-out questions;
   - no family's hit@4 lower by more than one question;
   - hit@1 not lower;
-  - out-of-scope refusals not lower on any family.
+  - out-of-scope refusals not lower on any family;
+  - with a manual type held out, that type's hit@4 not lower by more than one question, and its out-of-scope
+    refusals not lower. A type that fails keeps the rules (P3), and the others can still ship.
 - This is measured per embedder; weights that pass on one embedder ship for that embedder only.
 - The outcome is written into this plan either way. "The rules are as good as a fitted order" is a finding: it
   closes the question and P3 is not built.
@@ -154,9 +164,14 @@ reads a manual. It reads numbers about candidates the retriever has already gath
   read both ways.
 - Applies only to term rules P2 measured (likely English first); every other language keeps the rules until a
   key in that language exists.
+- Applies only to manual types P2 measured, read from each document's manifest `kind`, normalised to the fixed
+  set. A group that holds a passage from a document of an unmeasured type, or with no `kind`, keeps the rules for
+  that question. Imported documents without a `kind` (most of a personal library today) therefore keep the
+  rules; whether import should guess a type is a later question, not this plan's.
 - Tests:
   - golden scores for invented candidates;
   - fallback on a stamp mismatch;
+  - fallback for a group holding a document of an unmeasured or missing type;
   - the calibration set under `nl-word` not worse with the flag on;
   - the gate's out-of-scope refusals on the calibration set unchanged.
 
