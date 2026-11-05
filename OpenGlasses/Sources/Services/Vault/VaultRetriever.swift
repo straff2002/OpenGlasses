@@ -351,10 +351,59 @@ struct VaultRetriever {
     }
 
     func retrieve(_ request: Request) -> RetrievalOutcome {
+        guard let ranking = ranking(request, withFeatures: false) else {
+            return .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence)
+        }
+        return decide(ranking, limit: request.limit)
+    }
+
+    /// One candidate in today's order, with the numbers it was ranked by (Plan KN P1).
+    struct RankedCandidate: Equatable {
+        let passage: Passage
+        let features: RankingFeatures
+    }
+
+    /// Every candidate `retrieve` considers, in the order it ranks them, before the evidence gate,
+    /// each with its `RankingFeatures` (Plan KN P1). The eval path's way out: the same code path as
+    /// `retrieve`, so the order is the order it ranks by; the features are read off it afterwards.
+    func rankedCandidates(_ request: Request) -> [RankedCandidate] {
+        retrieveWithFeatures(request).candidates
+    }
+
+    /// `retrieve`'s outcome, and every candidate before the gate with its features, from one pass.
+    /// The outcome is `retrieve(request)`'s; the features never change what it holds or in what order.
+    func retrieveWithFeatures(_ request: Request) -> (outcome: RetrievalOutcome, candidates: [RankedCandidate]) {
+        guard let ranking = ranking(request, withFeatures: true) else {
+            return (.insufficient(reason: RetrievalEvidencePolicy.insufficientSentence), [])
+        }
+        let candidates = zip(ranking.ranked, ranking.features ?? []).map { RankedCandidate(passage: $0, features: $1) }
+        return (decide(ranking, limit: request.limit), candidates)
+    }
+
+    /// The ranked candidates and what the gate compares them with. `features` only when asked for.
+    private struct Ranking {
+        let ranked: [Passage]
+        let gateQuestion: LexicalSupport.QueryTerms
+        let features: [RankingFeatures]?
+    }
+
+    private func decide(_ ranking: Ranking, limit: Int) -> RetrievalOutcome {
+        let ranked = ranking.ranked
+        let outcome = policy.decide(ranked, limit: limit, question: ranking.gateQuestion)
+        if case .insufficient = outcome, ranked.contains(where: { !$0.matchedModels.isEmpty && $0.source.isReference }) {
+            return .insufficient(reason: RetrievalEvidencePolicy.modelPageOnlySentence)
+        }
+        return outcome
+    }
+
+    /// Everything `retrieve` does before the gate. Nil for a request with nothing to search. With
+    /// `withFeatures` false it does exactly what `retrieve` always did, and no more: the routes are
+    /// not recorded and no feature is computed.
+    private func ranking(_ request: Request, withFeatures: Bool) -> Ranking? {
         let parts = [request.turn, request.ocrText, request.procedureStep, request.jobContext]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        guard !parts.isEmpty else { return .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence) }
+        guard !parts.isEmpty else { return nil }
 
         // Clause numbers the technician named ("clause 3.9.4.2", "rule 26-700") are matched whole
         // (Plan IN P3a); their pieces are kept out of the per-token boost, or "26-700" would boost
@@ -476,9 +525,13 @@ struct VaultRetriever {
         }
 
         var merged: [String: Passage] = [:]
-        func consider(_ raw: DocumentStore.Passage, foundForClause searched: String? = nil,
-                      foundForTable table: String? = nil) {
+        // The routes that reached each candidate (Plan KN P1), keyed like `merged`; recorded only
+        // for the features.
+        var routes: [String: RankingFeatures.Routes] = [:]
+        func consider(_ raw: DocumentStore.Passage, via route: RankingFeatures.Routes,
+                      foundForClause searched: String? = nil, foundForTable table: String? = nil) {
             let key = "\(raw.documentId)#\(raw.chunkIndex)"
+            if withFeatures { routes[key, default: []].insert(route) }
             var matched = boostTokens.filter { CodeTokenizer.contains(raw.text, token: $0) }
             var clauseMatch = raw.clauseMatch
             for clause in clauses {
@@ -521,14 +574,14 @@ struct VaultRetriever {
             merged[key] = candidate
         }
         for q in queries {
-            searchByMeaning(q).forEach { consider($0) }
+            searchByMeaning(q).forEach { consider($0, via: .meaning) }
         }
         for token in boostTokens {
-            tokenHits[token]?.prefix(searchLimit).forEach { consider($0) }
+            tokenHits[token]?.prefix(searchLimit).forEach { consider($0, via: .token) }
         }
         if let clauseSearch {
             for clause in clauses {
-                clauseSearch(clause, searchLimit).forEach { consider($0, foundForClause: clause) }
+                clauseSearch(clause, searchLimit).forEach { consider($0, via: .clause, foundForClause: clause) }
             }
         }
         // The table route (Plan JJ P1): the named table's passages, the rows sharing the most of
@@ -537,7 +590,7 @@ struct VaultRetriever {
         if let tableSearch {
             for label in tables {
                 Self.sharingMostWords(tableSearch(label), question: question, limit: searchLimit)
-                    .forEach { consider($0, foundForTable: label) }
+                    .forEach { consider($0, via: .table, foundForTable: label) }
             }
         }
         // The lexical route (field report, build 497). "How to test the flame sensor readings or
@@ -548,7 +601,7 @@ struct VaultRetriever {
         // unreachable unless something else proposes it; the question's own words do.
         if let termSearch, !question.isEmpty {
             for q in queries {
-                searchByWords(q, termSearch).forEach { consider($0) }
+                searchByWords(q, termSearch).forEach { consider($0, via: .words) }
             }
         }
 
@@ -621,11 +674,42 @@ struct VaultRetriever {
             let words = (lexical[Self.key(a)] ?? 0, lexical[Self.key(b)] ?? 0)
             return words.0 != words.1 ? words.0 > words.1 : precedes(a, b)
         }
-        let outcome = policy.decide(ranked, limit: request.limit, question: gateQuestion)
-        if case .insufficient = outcome, ranked.contains(where: { !$0.matchedModels.isEmpty && $0.source.isReference }) {
-            return .insufficient(reason: RetrievalEvidencePolicy.modelPageOnlySentence)
+        guard withFeatures else { return Ranking(ranked: ranked, gateQuestion: gateQuestion, features: nil) }
+
+        // The features (Plan KN P1), read off the order above and never fed back into it: what the
+        // sort compared, plus the counts it did not need. Only on the eval path.
+        let best = candidates.map(\.similarity).max() ?? 0
+        let similarities = candidates.map(\.similarity)
+        let assignedToUnit = modelScope?.assignedDocumentIds ?? []
+        let features = ranked.map { p -> RankingFeatures in
+            let key = Self.key(p)
+            let terms = question.terms(for: p.termRule)
+            let shared = statistics == nil ? Int(lexical[key] ?? 0)
+                : LexicalSupport.sharedTermCount(text: p.text, queryTerms: terms, rule: p.termRule)
+            let heading = p.section.map { LexicalSupport.contentTerms($0, rule: p.termRule) } ?? []
+            return RankingFeatures(
+                similarityRank: similarities.filter { $0 > p.similarity }.count,
+                similarityGap: Double(best - p.similarity),
+                lexical: lexical[key] ?? 0,
+                lexicalWeighed: statistics != nil,
+                sharedTerms: shared,
+                sharedFraction: terms.isEmpty ? 0 : Double(shared) / Double(terms.count),
+                headingHasQuestionTerm: !heading.isDisjoint(with: terms),
+                matchedTokens: p.matchedTokens.count,
+                matchedModels: p.matchedModels.count,
+                modelPenalty: Double(p.modelPenalty),
+                kind: RankingFeatures.code(for: p.kind),
+                recognisedFromScan: p.recognisedFromScan,
+                isReference: p.source.isReference,
+                vectorPending: p.vectorPending,
+                assignedToUnit: assignedToUnit.contains(p.documentId),
+                tableMatch: p.tableMatch,
+                clauseMatch: p.clauseMatch?.rawValue ?? 0,
+                group: group(p),
+                characters: p.text.count,
+                routes: routes[key] ?? [])
         }
-        return outcome
+        return Ranking(ranked: ranked, gateQuestion: gateQuestion, features: features)
     }
 
     private static func key(_ p: Passage) -> String { "\(p.documentId)#\(p.chunkIndex)" }
@@ -855,6 +939,165 @@ enum RetrievalOutcome: Equatable {
     var answers: Bool { isSufficient || isTeamLearningOnly }
     /// The team-learning passages in the outcome, in rank order.
     var teamLearningPassages: [VaultRetriever.Passage] { passages.filter { $0.source == .teamLearning } }
+}
+
+/// The numbers one candidate passage was ranked by (Plan KN P1): what `VaultRetriever.retrieve`
+/// already holds about it, written out for the local eval runner to fit an order against. Numbers
+/// and flags only: no text, heading, title or document id, so a line of them says nothing about
+/// the manual it came from. Computed only on the eval path (`retrieveWithFeatures`); the app's own
+/// retrieval never builds one.
+struct RankingFeatures: Equatable, Codable, Sendable {
+    /// Bumped whenever a feature is added, removed or changes meaning, so weights fitted on one
+    /// schema are never read against another (Plan KN P3).
+    static let schemaVersion = 1
+
+    /// The search routes that found a candidate. One chunk can be reached by several.
+    struct Routes: OptionSet, Hashable, Sendable {
+        let rawValue: Int
+        static let meaning = Routes(rawValue: 1 << 0)
+        static let token = Routes(rawValue: 1 << 1)
+        static let clause = Routes(rawValue: 1 << 2)
+        static let table = Routes(rawValue: 1 << 3)
+        static let words = Routes(rawValue: 1 << 4)
+        static let all: [Routes] = [.meaning, .token, .clause, .table, .words]
+    }
+
+    /// The similarity's place among this question's candidates, 0 the best; equal similarities
+    /// share a place. Raw similarity is flat across a manual and differs per embedder, so the
+    /// place and the gap are what carry over.
+    var similarityRank: Int
+    /// The best candidate's similarity less this one's.
+    var similarityGap: Double
+    /// What the sort compared the words by: BM25F when the corpus's term statistics were given
+    /// (`lexicalWeighed`), else the shared-term count.
+    var lexical: Double
+    var lexicalWeighed: Bool
+    /// The question's content terms the passage shares, under its document's rule, and their share
+    /// of the question's terms.
+    var sharedTerms: Int
+    var sharedFraction: Double
+    /// The passage's section heading holds one of the question's content terms.
+    var headingHasQuestionTerm: Bool
+    var matchedTokens: Int
+    var matchedModels: Int
+    var modelPenalty: Double
+    /// The passage kind as a code: `code(for:)`.
+    var kind: Int
+    var recognisedFromScan: Bool
+    /// A manual page (a vault's or a photographed one), not a team learning.
+    var isReference: Bool
+    var vectorPending: Bool
+    /// The passage's document is one the vault assigns the unit on the job (Plan KE P1, KG P4).
+    var assignedToUnit: Bool
+    var tableMatch: Bool
+    /// `ClauseReference.Match`'s raw value, 0 for none.
+    var clauseMatch: Int
+    /// The ranking group `retrieve` sorts by first.
+    var group: Int
+    /// The passage's length in characters.
+    var characters: Int
+    var routes: Routes
+
+    /// prose 0, table row 1, diagram (a figure or a table page) 2.
+    static func code(for kind: DocumentChunker.Kind) -> Int {
+        switch kind {
+        case .prose: return 0
+        case .tableRow: return 1
+        case .diagram: return 2
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case similarityRank, similarityGap, lexical, lexicalWeighed, sharedTerms, sharedFraction
+        case headingHasQuestionTerm, matchedTokens, matchedModels, modelPenalty, kind, recognisedFromScan
+        case isReference, vectorPending, assignedToUnit, tableMatch, clauseMatch, group, characters
+        case byMeaning, byToken, byClause, byTable, byWords, routeCount
+    }
+
+    private static let routeKeys: [(Routes, CodingKeys)] = [
+        (.meaning, .byMeaning), (.token, .byToken), (.clause, .byClause), (.table, .byTable), (.words, .byWords),
+    ]
+
+    init(similarityRank: Int, similarityGap: Double, lexical: Double, lexicalWeighed: Bool, sharedTerms: Int,
+         sharedFraction: Double, headingHasQuestionTerm: Bool, matchedTokens: Int, matchedModels: Int,
+         modelPenalty: Double, kind: Int, recognisedFromScan: Bool, isReference: Bool, vectorPending: Bool,
+         assignedToUnit: Bool, tableMatch: Bool, clauseMatch: Int, group: Int, characters: Int, routes: Routes) {
+        self.similarityRank = similarityRank
+        self.similarityGap = similarityGap
+        self.lexical = lexical
+        self.lexicalWeighed = lexicalWeighed
+        self.sharedTerms = sharedTerms
+        self.sharedFraction = sharedFraction
+        self.headingHasQuestionTerm = headingHasQuestionTerm
+        self.matchedTokens = matchedTokens
+        self.matchedModels = matchedModels
+        self.modelPenalty = modelPenalty
+        self.kind = kind
+        self.recognisedFromScan = recognisedFromScan
+        self.isReference = isReference
+        self.vectorPending = vectorPending
+        self.assignedToUnit = assignedToUnit
+        self.tableMatch = tableMatch
+        self.clauseMatch = clauseMatch
+        self.group = group
+        self.characters = characters
+        self.routes = routes
+    }
+
+    /// The routes as one flag each, and their count, so a line reads without decoding a mask.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(similarityRank, forKey: .similarityRank)
+        try c.encode(similarityGap, forKey: .similarityGap)
+        try c.encode(lexical, forKey: .lexical)
+        try c.encode(lexicalWeighed, forKey: .lexicalWeighed)
+        try c.encode(sharedTerms, forKey: .sharedTerms)
+        try c.encode(sharedFraction, forKey: .sharedFraction)
+        try c.encode(headingHasQuestionTerm, forKey: .headingHasQuestionTerm)
+        try c.encode(matchedTokens, forKey: .matchedTokens)
+        try c.encode(matchedModels, forKey: .matchedModels)
+        try c.encode(modelPenalty, forKey: .modelPenalty)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(recognisedFromScan, forKey: .recognisedFromScan)
+        try c.encode(isReference, forKey: .isReference)
+        try c.encode(vectorPending, forKey: .vectorPending)
+        try c.encode(assignedToUnit, forKey: .assignedToUnit)
+        try c.encode(tableMatch, forKey: .tableMatch)
+        try c.encode(clauseMatch, forKey: .clauseMatch)
+        try c.encode(group, forKey: .group)
+        try c.encode(characters, forKey: .characters)
+        for (route, key) in Self.routeKeys { try c.encode(routes.contains(route), forKey: key) }
+        try c.encode(Routes.all.filter(routes.contains).count, forKey: .routeCount)
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var routes: Routes = []
+        for (route, key) in Self.routeKeys where try c.decode(Bool.self, forKey: key) { routes.insert(route) }
+        self.init(similarityRank: try c.decode(Int.self, forKey: .similarityRank),
+                  similarityGap: try c.decode(Double.self, forKey: .similarityGap),
+                  lexical: try c.decode(Double.self, forKey: .lexical),
+                  lexicalWeighed: try c.decode(Bool.self, forKey: .lexicalWeighed),
+                  sharedTerms: try c.decode(Int.self, forKey: .sharedTerms),
+                  sharedFraction: try c.decode(Double.self, forKey: .sharedFraction),
+                  headingHasQuestionTerm: try c.decode(Bool.self, forKey: .headingHasQuestionTerm),
+                  matchedTokens: try c.decode(Int.self, forKey: .matchedTokens),
+                  matchedModels: try c.decode(Int.self, forKey: .matchedModels),
+                  modelPenalty: try c.decode(Double.self, forKey: .modelPenalty),
+                  kind: try c.decode(Int.self, forKey: .kind),
+                  recognisedFromScan: try c.decode(Bool.self, forKey: .recognisedFromScan),
+                  isReference: try c.decode(Bool.self, forKey: .isReference),
+                  vectorPending: try c.decode(Bool.self, forKey: .vectorPending),
+                  assignedToUnit: try c.decode(Bool.self, forKey: .assignedToUnit),
+                  tableMatch: try c.decode(Bool.self, forKey: .tableMatch),
+                  clauseMatch: try c.decode(Int.self, forKey: .clauseMatch),
+                  group: try c.decode(Int.self, forKey: .group),
+                  characters: try c.decode(Int.self, forKey: .characters),
+                  routes: routes)
+    }
+
+    /// The JSON keys a line of features carries, for a guard that nothing else is written.
+    static var keys: [String] { CodingKeys.allCases.map(\.stringValue) }
 }
 
 /// How a piece of text names models, for the gate (Plan KG P0). A spelling the vault prints with
