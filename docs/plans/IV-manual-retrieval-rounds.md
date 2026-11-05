@@ -9,7 +9,10 @@ what the index names; a clause-numbered document's answers carry six passages, p
 each ranking group the question's words are weighed by BM25F, a heading's words three times a
 body word's (P7). Section titles in the embedded text and cross-reference following were measured
 and shelved (P6); fusion, a rule-starts preference, a deeper pool and token max-sim were measured
-and rejected (P7). Phone runs owed for P4–P7 (listed in each); the table is under "Where the
+and rejected (P7). After the rounds (2026-11-06), the sentence model's gate gained a full-match floor: a passage
+that prints every word of a question of two or more content terms clears 0.10 rather than 0.30
+(hit@4 147 → 169 of 331 over the Lennox and Plan KN keys, in-scope refusals 67 → 46, out-of-scope
+refusals 74 → 72 of 107; see "After the rounds"). Phone runs owed for P4–P7 (listed in each); the table is under "Where the
 rounds ended".
 **Track:** Field Assist (B2B): every vault with manuals, and the regulations vertical in particular.
 **Related:** Plans [ED](ED-vault-manual-retrieval.md) / [EJ](EJ-manual-retrieval-fidelity.md)
@@ -849,6 +852,70 @@ answered somewhere in what the model is given: 0.57 on the default path (single-
 P7 moved the answering passage to the top, not into the set: on the rebuilt key, hit@1 0.35 →
 0.39 on the default path (0.32 → 0.38 on the sentence model) with "as sent" unchanged, and Lennox
 recall 0.94 → 1.00 with hit@1 0.67 → 0.83.
+
+## After the rounds: the sentence model's full-match floor (2026-11-06)
+
+The example vault's manual test found it (Plan KE, 2026-11-06). The simulator now runs the sentence model
+(`nl-sentence`) rather than the word-average fallback, and a phone runs it too until the contextual model's
+asset arrives. On this model, "high fire manifold pressure" was answered from the wrong pages. The passages
+that print every word of the question scored 0.18–0.25 and were refused by the 0.30 floor. Passages on
+another subject cleared it with three of the four words.
+
+- **The change.** `RetrievalEvidencePolicy` gains `fullMatchFloor` and `fullMatchMinTerms`. A passage
+  under the 0.30 floor is still evidence when the question has at least `fullMatchMinTerms` content terms,
+  the passage shares every one of them under its own term rule, and its similarity is at least
+  `fullMatchFloor`. `default(for:)` sets 0.10 and two terms for `nl-sentence` only. `nl-word` and
+  `nl-contextual` are unchanged. The lexical criterion is untouched, and with it off the rule never runs.
+  The Mac runner takes `RETRIEVAL_EVAL_FULL_MATCH="<floor>[,<terms>]"` or `off`.
+- **Measured.** Mac runner, sentence model, the Lennox key and the nine Plan KN keys: 331 scored and 107
+  out-of-scope questions over the same indexes as KN P0. The baseline reproduces KN P0 exactly.
+
+  | Gate (sentence model) | hit@1 | hit@4 | as sent | in-scope refused | out-of-scope refused |
+  |---|---|---|---|---|---|
+  | 0.30 floor, 3 terms at 0.75 (before) | 103 | 147 | 155 | 67 | 74 of 107 |
+  | + full match ≥ 0.10, four terms or more | 108 | 154 | 162 | 64 | 74 |
+  | + full match ≥ 0.10, three terms or more | — | 162 | — | 56 | 72 |
+  | + full match ≥ 0.15, three terms or more | — | 160 | — | 57 | 72 |
+  | + full match ≥ 0.20, two terms or more | — | 162 | — | 53 | 72 |
+  | + full match ≥ 0.15, two terms or more | — | 164 | — | 51 | 72 |
+  | **+ full match ≥ 0.10, two terms or more (shipped)** | **120** | **169** | **177** | **46** | **72** |
+  | + full match, any similarity, two terms or more | — | 170 | — | 45 | 72 |
+
+  Per key, shipped against before:
+
+  | Key | hit@4 | in-scope refused | out-of-scope refused |
+  |---|---|---|---|
+  | Furnace pair (Lennox) | 10 → 16 of 18 | 6 → 1 | 15 → 15 of 18 |
+  | Network switch | 8 → 9 | 5 → 5 | unchanged |
+  | Dangerous-goods regulation | 19 → 24 | 7 → 4 | **10 → 8 of 15** |
+  | EU regulation | 13 → 15 | 12 → 8 | unchanged |
+  | Programming tutorial | 8 → 16 | 23 → 14 | unchanged |
+  | Refrigerator (service, owner), heat pump, drive, code book | unchanged | unchanged | unchanged |
+
+  On Lennox both manifold-pressure questions (the short form and the sentence form) now reach an
+  answering page. The trade manuals other than Lennox barely move: their misses are ranking and recall
+  (Plan KN P0), which a gate cannot fix, and the refrigerator vault's weak out-of-scope refusal (2–3 of
+  10) is neither better nor worse. `RetrievalGateCalibrationTests` in the simulator, which now runs the
+  sentence model, gives the same Lennox numbers on the production path: recall@4 0.56 → 0.89, hit@1
+  0.56 → 0.83, insufficiency recall 0.83 before and after, and in-scope refusals 6 → 1.
+- **Why two terms (owner, 2026-11-06).** Four terms keeps every out-of-scope refusal but gives up 15 hit@4
+  and 18 more in-scope refusals. Three terms costs the same two refusals as two, for less. At every floor
+  from 0.20 down to none, the two-term rule answers the same two of the regulation's out-of-scope
+  questions, so similarity does not separate them. Both are three-term questions, and both machine-written
+  keys still owe a native check. They are answered from special provisions in that regulation that
+  mention the subject in passing, not from a rule that answers the question. That is a partial answer from
+  the right book, the smaller risk next to 18 more in-scope questions turned away. If the native check
+  finds those passages do answer, the rule costs nothing on these keys.
+- **Tests.** `VaultManualRetrievalTests` covers the per-backend defaults and a synthetic sentence-model case:
+  a passage with every word answers under the floor, three of four words does not, a three-term question
+  counts, a one-term question keeps the 0.30 floor, and the word model and an off lexical criterion are
+  unchanged. `RetrievalGateCalibrationTests` adds the rule without the floor and with four terms, and on
+  the sentence model asserts that the shipped default refuses no fewer Lennox out-of-scope questions and
+  recalls no fewer than the rule without it. `ExampleVaultLennoxTests`'s manifold anchor assertion is no
+  longer an expected failure.
+- **Owed.** A phone run on the sentence model (before the contextual asset arrives) with the example vault;
+  the native check of the regulation's two machine-written out-of-scope labels; and the contextual model
+  measured with the same knob before it is offered there.
 
 ## Not in this plan
 

@@ -402,23 +402,13 @@ final class ExampleVaultLennoxTests: XCTestCase {
         }
         let manifold = retriever.retrieve(.init(turn: "high fire manifold pressure", limit: 3))
         XCTAssertTrue(manifold.isSufficient, "\(manifold)")
-        // **A known gap on the sentence model, not a regression.** This was measured on the
-        // word-average embedder, which the simulator used to fall back to. The simulator now has
-        // the sentence model (as a phone without the contextual model's asset does), and there the
-        // passages that answer share every word of the question but score below the gate's 0.30
-        // similarity floor, while passages about something else clear it with three of the four
-        // words. The same happens before the page-span change. Expected to fail there until the gate is
-        // recalibrated for that backend; strict, so the fix says to remove this.
-        let assertAnchor = {
-            XCTAssertTrue(answersFromAnAnchorPage(manifold),
-                          "no citation on a page that answers it: \(manifold.passages.map(\.citation))")
-        }
-        if Embedder().usesSentenceModel {
-            XCTExpectFailure("sentence model: the answering passages fall below the similarity floor",
-                             strict: true, failingBlock: assertAnchor)
-        } else {
-            assertAnchor()
-        }
+        // On the sentence model, which the simulator now runs (as a phone without the contextual
+        // model's asset does), the passages that answer share every word of the question but score
+        // under the 0.30 similarity floor, while passages about something else clear it with three
+        // of the four words. The sentence model's full-match floor (`RetrievalEvidencePolicy.default(for:)`)
+        // is what lets the answering ones through there.
+        XCTAssertTrue(answersFromAnAnchorPage(manifold),
+                      "no citation on a page that answers it: \(manifold.passages.map(\.citation))")
         let sentenceForm = retriever.retrieve(.init(turn: "what is the manifold pressure on high fire", limit: 4))
         print("[LENNOX] sentence form reaches an anchor page: \(answersFromAnAnchorPage(sentenceForm)) "
               + "→ \(sentenceForm.passages.map(\.citation))")

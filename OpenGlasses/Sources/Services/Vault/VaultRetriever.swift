@@ -1181,6 +1181,14 @@ struct RetrievalEvidencePolicy: Equatable {
     var sharedFraction: Double = 0
     var tokenBoost: Float = 0.25
     var maxBoost: Float = 0.5
+    /// A lower similarity floor for a passage that shares **every** content term of the question,
+    /// counted under the passage's own rule. Nil switches it off, and so does `minSharedTerms` 0:
+    /// it lowers the floor for a passage that already meets the lexical criterion in full, and is
+    /// never a route around it. Measured for `nl-sentence` only; see `default(for:)`.
+    var fullMatchFloor: Float? = nil
+    /// The fewest content terms a question needs before `fullMatchFloor` applies. A one-term
+    /// question is matched in full by any passage that prints the word.
+    var fullMatchMinTerms: Int = 2
 
     /// One language group's lexical criterion (Plan JY P3): the count and the share of the
     /// question's own terms a passage of that group must share, read like `minSharedTerms` and
@@ -1286,6 +1294,15 @@ struct RetrievalEvidencePolicy: Equatable {
                              fraction: min(1, criterion.sharedFraction + increase))
     }
 
+    /// Whether a passage below `similarityFloor` still clears `fullMatchFloor`: the question has at
+    /// least `fullMatchMinTerms` content terms and the passage shares all of them. `shared` is only
+    /// counted when the similarity is in range.
+    private func clearsFullMatchFloor(similarity: Float, termCount: Int, shared: () -> Int) -> Bool {
+        guard let fullMatchFloor, minSharedTerms > 0, termCount >= max(1, fullMatchMinTerms),
+              similarity >= fullMatchFloor else { return false }
+        return shared() >= termCount
+    }
+
     /// The defaults measured for an embedding backend, chosen by [[Embedder]] `modelId` prefix.
     ///
     /// - `nl-word` — **measured** on the Lennox pair (see the type's doc comment). The floor stays
@@ -1316,6 +1333,20 @@ struct RetrievalEvidencePolicy: Equatable {
     ///   measured and buy back refusals only by answering out-of-scope questions again (one shared
     ///   term: 1 in-scope and 6 of 18 out-of-scope refused; 3 terms at 0.6: 4 and 14). The two
     ///   backends share one rule because the criterion reads words, not cosines.
+    ///   **Plus a full-match floor of 0.10 for questions of two or more content terms** (measured
+    ///   2026-11-06, Mac runner, the Lennox key and the nine Plan KN answer keys, 331 scored and 107
+    ///   out-of-scope questions). On this model a passage that prints every word of the question
+    ///   can score 0.18–0.25, under the 0.30 floor, while passages on another subject clear the
+    ///   floor with three of the four words: "high fire manifold pressure" was answered from the
+    ///   wrong pages. With the full-match floor, hit@4 rises 147 → 169, hit@1 103 → 120, in-scope
+    ///   refusals fall 67 → 46; on Lennox hit@4 is 10 → 16 of 18. The cost is two out-of-scope
+    ///   refusals of 107 (74 → 72), both three-term questions on one regulation answered from
+    ///   special provisions in that regulation that name the subject in passing. A four-term
+    ///   minimum keeps those two (hit@4 154, in-scope refusals 64); a three-term minimum costs the
+    ///   same two for less. Floors from 0.20 to 0 cost the same two, so the floor is set for the
+    ///   answers: 0.10 finds one fewer than no floor at all (169 against 170) and keeps a floor.
+    ///   Taken by the owner: an answer from the right book
+    ///   that is partial is the smaller risk next to 18 more in-scope questions turned away.
     /// - `nl-contextual` — **measured** (Plan IV P4, the device's framework model run on a Mac):
     ///   three shared terms, scaled 0.6. The bare floor refused none of the 18 out-of-scope Lennox
     ///   questions. Swept on both sets, 0.6 refuses 12 of them with no in-scope question refused
@@ -1324,8 +1355,14 @@ struct RetrievalEvidencePolicy: Equatable {
     ///   settings refuse 2–7. This model ranks the answering passage high enough that the stricter
     ///   rule only costs answers.
     static func `default`(for modelId: String) -> RetrievalEvidencePolicy {
-        if modelId.hasPrefix("nl-word") || modelId.hasPrefix("nl-sentence") {
+        if modelId.hasPrefix("nl-word") {
             return RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
+        }
+        if modelId.hasPrefix("nl-sentence") {
+            var policy = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
+            policy.fullMatchFloor = 0.10
+            policy.fullMatchMinTerms = 2
+            return policy
         }
         if modelId.hasPrefix("nl-contextual") {
             return RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.6)
@@ -1364,7 +1401,10 @@ struct RetrievalEvidencePolicy: Equatable {
         }
         // Reached by a model's number alone, it may never have been compared (Plan KG P0): its words decide.
         let byItsWords = !passage.matchedModels.isEmpty && minSharedTerms > 0
-        guard byItsWords || passage.similarity >= similarityFloor else { return false }
+        guard byItsWords || passage.similarity >= similarityFloor
+            || queryTerms.map({ terms in clearsFullMatchFloor(similarity: passage.similarity, termCount: terms.count) {
+                LexicalSupport.sharedTermCount(text: passage.text, queryTerms: terms) } }) == true
+        else { return false }
         if !byItsWords, let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
         if minSharedTerms > 0, let queryTerms {
             let required = requiredSharedTerms(queryTermCount: queryTerms.count)
@@ -1391,7 +1431,11 @@ struct RetrievalEvidencePolicy: Equatable {
             return LexicalSupport.sharedTermCount(text: passage.text, queryTerms: terms, rule: passage.termRule) >= required
         }
         let byItsWords = !passage.matchedModels.isEmpty && minSharedTerms > 0
-        guard byItsWords || passage.similarity >= similarityFloor else { return false }
+        guard byItsWords || passage.similarity >= similarityFloor
+            || clearsFullMatchFloor(similarity: passage.similarity, termCount: question.terms(for: passage.termRule).count, shared: {
+                LexicalSupport.sharedTermCount(text: passage.text, queryTerms: question.terms(for: passage.termRule),
+                                               rule: passage.termRule) })
+        else { return false }
         if !byItsWords, let bestSimilarity, margin.isFinite, passage.similarity < bestSimilarity - margin { return false }
         if minSharedTerms > 0 {
             let terms = question.terms(for: passage.termRule)

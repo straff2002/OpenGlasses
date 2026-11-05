@@ -124,6 +124,23 @@ struct RetrievalEvalMain {
                 fail("RETRIEVAL_EVAL_GATE is \"floor\" or \"<terms>,<fraction>\"")
             }
         }
+        // A candidate lower floor for a passage sharing every content term of the question:
+        // RETRIEVAL_EVAL_FULL_MATCH="<floor>[,<fewest question terms>]" (terms: the policy's, 2
+        // unless given), or "off". `RETRIEVAL_EVAL_GATE` builds a policy without one.
+        if let full = env["RETRIEVAL_EVAL_FULL_MATCH"] {
+            let parts = full.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+            if full == "off" {
+                policy.fullMatchFloor = nil
+            } else if let floor = Float(parts[0]), parts.count <= 2 {
+                policy.fullMatchFloor = floor
+                if parts.count == 2 {
+                    guard let terms = Int(parts[1]) else { fail("RETRIEVAL_EVAL_FULL_MATCH is \"<floor>[,<terms>]\" or \"off\"") }
+                    policy.fullMatchMinTerms = terms
+                }
+            } else {
+                fail("RETRIEVAL_EVAL_FULL_MATCH is \"<floor>[,<terms>]\" or \"off\"")
+            }
+        }
         // Plan JY P3: a language group's candidate criterion and pending-passage increase
         // (RETRIEVAL_EVAL_GATE_GROUP, RETRIEVAL_EVAL_PENDING), over whatever the gate above is.
         for (group, criterion) in RetrievalEvalTuning.groupCriteria { policy.groupCriteria[group] = criterion }
@@ -141,6 +158,7 @@ struct RetrievalEvalMain {
                                            // Plan JY P4: RETRIEVAL_EVAL_PROSE_PASSAGES=5 measures a prose budget.
                                            : ManualPassageLimit(prose: env["RETRIEVAL_EVAL_PROSE_PASSAGES"].flatMap(Int.init) ?? 4))
         let label = (env["RETRIEVAL_EVAL_LABEL"] ?? "local vault") + (env["RETRIEVAL_EVAL_GATE"].map { " gate=\($0)" } ?? "")
+            + (env["RETRIEVAL_EVAL_FULL_MATCH"].map { " full_match=\($0)" } ?? "")
             + (env["RETRIEVAL_EVAL_VECTORS"].map { " vectors=\($0)" } ?? "")
             + ["RETRIEVAL_EVAL_GATE_GROUP", "RETRIEVAL_EVAL_PENDING", "RETRIEVAL_EVAL_PREFIX", "RETRIEVAL_EVAL_MINLEN", "RETRIEVAL_EVAL_ENDINGS", "RETRIEVAL_EVAL_FOLD", "RETRIEVAL_EVAL_CJK",
                "RETRIEVAL_EVAL_CHUNK_SCALE", "RETRIEVAL_EVAL_P4_OFF", "RETRIEVAL_EVAL_PROSE_PASSAGES"]
