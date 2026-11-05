@@ -299,6 +299,17 @@ lines over phone numbers on the contact pages. Of the 41 left, about ten are sti
 a cell, some wrapped lines). Recall on the acceptance questions was not re-measured: the text and vectors are
 unchanged, so only a section's words could move it.
 
+**The example vault's manual tests, run with the manuals (2026-11-06).** They had skipped since P2. With the
+two manuals in place, `ExampleVaultLennoxTests` failed in two ways. The citation assertion still expected
+one page for every passage, and four passages that cross a break correctly cite their range: the test now
+expects `pages N–M` for a passage with a span and checks that its page is in that range. The in-scope
+question missed its anchor pages. That is not this plan's doing: it misses identically on the commit before
+P2. The simulator now runs the sentence model rather than the word-average fallback the test was measured on.
+On that model the answering passages share every word of the question but fall below the 0.30 similarity
+floor, while passages on another subject clear it with three of its four words. A phone runs that model
+until the contextual model's asset arrives. The test records this as a strict expected failure on the
+sentence model, and the gate's calibration for that backend is left open as a follow-up.
+
 The documents by model (P1) measured on the same vault, on the Mac with the contextual embedder, a side-by-side
 and a multi-door model active, top four passages, document scoping off then on (aggregates only):
 
