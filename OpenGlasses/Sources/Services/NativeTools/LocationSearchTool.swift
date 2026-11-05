@@ -4,14 +4,17 @@ import MapKit
 
 /// Searches for nearby places (restaurants, cafes, pharmacies, etc.) using Apple's MapKit.
 ///
+/// Results come closest first: Apple's search ranks by relevance, and "find a Thai restaurant" means
+/// the one nearest the wearer, not the best-known one across town.
+///
 /// Plan GM P1a: the results also go to `GlanceSurfaceBus` as a `places` card, in the order they
 /// are spoken; with `nearest: true` the tool answers "how far is that tower?" — the closest match,
 /// its straight-line distance and direction — and publishes a `place` card instead.
 final class LocationSearchTool: NativeTool, @unchecked Sendable {
     let name = "find_nearby"
     let description = """
-        Find nearby places like restaurants, cafes, gas stations, pharmacies, ATMs, etc. Uses the user's current location. \
-        Set nearest to true for "how far is <place>?" or "which way is <place>?": it answers with the closest match's \
+        Find nearby places like restaurants, cafes, gas stations, pharmacies, ATMs, etc. Uses the user's current location; \
+        results come closest first, with their distances. Set nearest to true for "how far is <place>?" or "which way is <place>?": it answers with the closest match's \
         straight-line distance and direction, without starting directions. Results also show as a map card on the \
         wearer's Apple Watch; set show_on_watch when they asked to see them there.
         """
@@ -90,7 +93,7 @@ final class LocationSearchTool: NativeTool, @unchecked Sendable {
             let found = try await seams.search(request)
             if nearest { return distanceTo(query: query, items: found, from: location, asked: asked) }
 
-            let items = Array(found.prefix(limit))
+            let items = Array(Self.closestFirst(found, from: location).prefix(limit))
 
             guard !items.isEmpty else {
                 return "No results found for '\(query)' near your location."
@@ -123,6 +126,15 @@ final class LocationSearchTool: NativeTool, @unchecked Sendable {
         } catch {
             return "Search failed: \(error.localizedDescription)"
         }
+    }
+
+    /// `items` by straight-line distance from `location`, nearest first; equal distances keep
+    /// the search's order.
+    nonisolated static func closestFirst(_ items: [MKMapItem], from location: CLLocation) -> [MKMapItem] {
+        items.enumerated()
+            .map { (index: $0.offset, item: $0.element, meters: location.distance(from: $0.element.location)) }
+            .sorted { ($0.meters, $0.index) < ($1.meters, $1.index) }
+            .map(\.item)
     }
 
     // MARK: - Surfaces
