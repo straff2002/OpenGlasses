@@ -36,7 +36,11 @@ electrical preset has no tiles yet (Plans IN and IR); the refrigerant log tile w
 and `domain_calc` (all three of its operations are refrigeration) are tagged refrigeration — the prompt's routing
 rules and the router answer a refrigeration request with a redirect to the setting, and Settings › Field Assist shows
 Refrigeration Units only with Refrigeration on; no trade set, or an empty choice, leaves every tool and section as it
-was, and the general job tools and tiles are never gated. A voice fallback rides
+was, and the general job tools and tiles are never gated. **Trade rows 2026-11-05:** Settings › Field Assist ›
+Trades is one collapsible row per trade, holding its switch, what it adds and its own settings (Refrigeration Units
+now sit inside the Refrigeration & HVAC row, under the same gate); the technician's trades — on in the selection, or
+declared by a vault they can open, the bundled refrigeration vault implying its trade for layout only — come first
+and open on arrival, the rest start collapsed (pure `FieldTradeAccordion`, `FieldTradeAccordionTests`). A voice fallback rides
 with it: the gauge reader's no-picture and unusable-reading lines offer to take the values by voice, and a spoken
 superheat or subcool in `domain_calc` gets the same per-refrigerant band check and is recorded on the open job.
 P2–P6 not started. Drafted 2026-10-17, P4–P6 added the same day. The EPA 608 reference was corrected

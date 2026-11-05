@@ -43,6 +43,9 @@ struct FieldAssistSettingsView: View {
     @State private var exportError: String?
     /// Whether the equipment row is showing its heading and provenance (Plan EL P2).
     @State private var equipmentExpanded = false
+    /// The trade rows the technician has opened or closed; nil until they touch one, when the
+    /// technician's own trades are open (`FieldTradeAccordion.initiallyExpanded`).
+    @State private var expandedTrades: Set<FieldTrade>?
     /// Where job reports may go, and to whom (Plan EM P2).
     @State private var delivery = DeliverySettings()
     /// The recipient fields as typed. Kept raw so the list is only parsed on the way out — a
@@ -286,12 +289,8 @@ struct FieldAssistSettingsView: View {
                     Text("Finds the right page in your manuals more often. Switching it on or off re-indexes your manuals once in the background, and search keeps using the current index until that finishes. The first time, your phone may download a language model from Apple.")
                 }
 
+                // One collapsible row per trade, holding its switch and its own settings.
                 tradeSection
-
-                // A refrigeration section: shown while Refrigeration is on, or no trade is set.
-                if FieldTradeGate.isAvailable(.refrigerationHVAC, activeTrades: tradesInForce.trades) {
-                    refrigerationUnitsSection
-                }
 
                 // ──────────────── Wake word
                 //
@@ -655,13 +654,47 @@ struct FieldAssistSettingsView: View {
             })
     }
 
+    /// The trades a vault this phone can open declares — for the rows' order and which open first.
+    private var ownedTrades: [FieldTrade] {
+        let registry = VaultRegistry.shared
+        return FieldTradeAccordion.ownedTrades(unlockedVaults: registry.allManifests
+            .filter { registry.isUnlocked($0) }
+            .map { (id: $0.id, trades: $0.trades) })
+    }
+
+    private func tradeExpandedBinding(_ trade: FieldTrade, defaults: Set<FieldTrade>) -> Binding<Bool> {
+        Binding(
+            get: { (expandedTrades ?? defaults).contains(trade) },
+            set: { open in
+                var expanded = expandedTrades ?? defaults
+                if open { expanded.insert(trade) } else { expanded.remove(trade) }
+                expandedTrades = expanded
+            })
+    }
+
     private var tradeSection: some View {
         let selection = tradesInForce
         let inherited = selection.source == .organization || selection.source == .vault
+        let rows = FieldTradeAccordion.rows(activeTrades: selection.trades, ownedTrades: ownedTrades)
+        let openByDefault = FieldTradeAccordion.initiallyExpanded(rows)
         return Section {
-            ForEach(FieldTrade.allCases) { trade in
-                Toggle(trade.title, isOn: tradeBinding(trade, in: selection))
-                    .disabled(inherited)
+            ForEach(rows) { row in
+                DisclosureGroup(isExpanded: tradeExpandedBinding(row.trade, defaults: openByDefault)) {
+                    Toggle("Use this trade", isOn: tradeBinding(row.trade, in: selection))
+                        .disabled(inherited)
+                        .accessibilityLabel(Text(verbatim: row.trade.title))
+                        .accessibilityIdentifier("fieldAssist.trade.\(row.trade.rawValue)")
+                    tradeSettings(row)
+                } label: {
+                    HStack {
+                        Text(verbatim: row.trade.title)
+                        Spacer()
+                        Text(row.isOn ? "On" : "Off")
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                .accessibilityIdentifier("fieldAssist.tradeGroup.\(row.trade.rawValue)")
             }
             if inherited {
                 Button("Use My Own Choice") { tradesStored = FieldTradeSetting.encode(selection.trades) }
@@ -676,7 +709,7 @@ struct FieldAssistSettingsView: View {
                 }
             }
         } header: {
-            Text("Trade")
+            Text("Trades")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 switch selection.source {
@@ -684,16 +717,38 @@ struct FieldAssistSettingsView: View {
                 case .vault: Text("From your vault.")
                 case .technician, .none: EmptyView()
                 }
-                Text("Each trade adds its tiles to the Field Assist grid, after the job tiles. While a trade is on, the tools and settings of the trades that are off are hidden. Refrigeration & HVAC adds Read Gauges and P-T Lookup; Electrical adds none yet.")
+                Text("Each trade adds its tiles to the Field Assist grid, after the job tiles. While a trade is on, the tools and settings of the trades that are off are hidden. Open a trade to see its settings.")
             }
         }
+    }
+
+    /// What a trade adds, and its own settings while they are offered.
+    @ViewBuilder
+    private func tradeSettings(_ row: FieldTradeAccordion.Row) -> some View {
+        switch row.trade {
+        case .refrigerationHVAC:
+            tradeNote("Adds Read Gauges and P-T Lookup to the Field Assist grid.")
+            if row.showsSettings {
+                refrigerationUnitsRows
+            } else {
+                tradeNote("Its settings show while this trade is on.")
+            }
+        case .electrical:
+            tradeNote("Adds no tiles or settings of its own yet.")
+        }
+    }
+
+    private func tradeNote(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
     }
 
     // ──────────────── Refrigeration units (Plan IS P1)
     //
     // Gauge, superheat and subcooling answers are rendered in these; readings in any unit are
     // still understood. Until the technician picks, the App Store region decides, and the
-    // footer says what that default is.
+    // note under the pickers says what that default is. They sit inside the trade's row.
     private var refrigerationUnitsInForce: RefrigerationUnits {
         RefrigerationUnits.effective(stored: refrigerationUnitsStored,
                                      storefront: MarketAvailability.shared.storefront)
@@ -711,31 +766,28 @@ struct FieldAssistSettingsView: View {
             })
     }
 
-    private var refrigerationUnitsSection: some View {
-        Section {
-            Picker("Pressure", selection: refrigerationUnitsBinding(\.pressure)) {
-                ForEach(RefrigerationUnits.Pressure.allCases) { unit in
-                    Text(verbatim: unit.gaugeLabel).tag(unit)
-                }
+    /// The units rows, inside the Refrigeration & HVAC trade's row.
+    @ViewBuilder
+    private var refrigerationUnitsRows: some View {
+        Picker("Pressure", selection: refrigerationUnitsBinding(\.pressure)) {
+            ForEach(RefrigerationUnits.Pressure.allCases) { unit in
+                Text(verbatim: unit.gaugeLabel).tag(unit)
             }
-            Picker("Temperature", selection: refrigerationUnitsBinding(\.temperature)) {
-                ForEach(RefrigerationUnits.Temperature.allCases) { unit in
-                    Text(verbatim: unit.label).tag(unit)
-                }
-            }
-            Picker("Refrigerant quantity", selection: refrigerationUnitsBinding(\.mass)) {
-                ForEach(RefrigerationUnits.Mass.allCases) { unit in
-                    Text(verbatim: unit.label).tag(unit)
-                }
-            }
-            if RefrigerationUnits(encoded: refrigerationUnitsStored) != nil {
-                Button("Use Region Defaults") { refrigerationUnitsStored = "" }
-            }
-        } header: {
-            Text("Refrigeration Units")
-        } footer: {
-            Text("Gauge readings, superheat and subcooling are answered in these units, and readings in any unit are still understood. Your region's default is \(RefrigerationUnitsSetting.regionDefault.spokenList).")
         }
+        Picker("Temperature", selection: refrigerationUnitsBinding(\.temperature)) {
+            ForEach(RefrigerationUnits.Temperature.allCases) { unit in
+                Text(verbatim: unit.label).tag(unit)
+            }
+        }
+        Picker("Refrigerant quantity", selection: refrigerationUnitsBinding(\.mass)) {
+            ForEach(RefrigerationUnits.Mass.allCases) { unit in
+                Text(verbatim: unit.label).tag(unit)
+            }
+        }
+        if RefrigerationUnits(encoded: refrigerationUnitsStored) != nil {
+            Button("Use Region Defaults") { refrigerationUnitsStored = "" }
+        }
+        tradeNote("Gauge readings, superheat and subcooling are answered in these units, and readings in any unit are still understood. Your region's default is \(RefrigerationUnitsSetting.regionDefault.spokenList).")
     }
 
     // MARK: - Job reports (where the finished record goes)
