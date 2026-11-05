@@ -1186,9 +1186,9 @@ struct RetrievalEvidencePolicy: Equatable {
     /// it lowers the floor for a passage that already meets the lexical criterion in full, and is
     /// never a route around it. Measured for `nl-sentence` only; see `default(for:)`.
     var fullMatchFloor: Float? = nil
-    /// The fewest content terms a question needs before `fullMatchFloor` applies. The fewer a
-    /// question has, the more passages print all of them in passing.
-    var fullMatchMinTerms: Int = 4
+    /// The fewest content terms a question needs before `fullMatchFloor` applies. A one-term
+    /// question is matched in full by any passage that prints the word.
+    var fullMatchMinTerms: Int = 2
 
     /// One language group's lexical criterion (Plan JY P3): the count and the share of the
     /// question's own terms a passage of that group must share, read like `minSharedTerms` and
@@ -1333,18 +1333,20 @@ struct RetrievalEvidencePolicy: Equatable {
     ///   measured and buy back refusals only by answering out-of-scope questions again (one shared
     ///   term: 1 in-scope and 6 of 18 out-of-scope refused; 3 terms at 0.6: 4 and 14). The two
     ///   backends share one rule because the criterion reads words, not cosines.
-    ///   **Plus a full-match floor of 0.10 for questions of four or more content terms** (measured
+    ///   **Plus a full-match floor of 0.10 for questions of two or more content terms** (measured
     ///   2026-11-06, Mac runner, the Lennox key and the nine Plan KN answer keys, 331 scored and 107
     ///   out-of-scope questions). On this model a passage that prints every word of the question
     ///   can score 0.18–0.25, under the 0.30 floor, while passages on another subject clear the
     ///   floor with three of the four words: "high fire manifold pressure" was answered from the
-    ///   wrong pages. With the full-match floor, hit@4 rises 147 → 154, hit@1 103 → 108, in-scope
-    ///   refusals fall 67 → 64, and out-of-scope refusals stay at 74 of 107; on Lennox hit@4 is
-    ///   10 → 12 of 18. Applied to questions of two or more terms, the rule finds more (hit@4 169,
-    ///   in-scope refusals 46) but answers two more out-of-scope questions, both three-term
-    ///   questions answered from a passage that names the subject in passing. A three-term
-    ///   minimum costs the same two. Floors from 0.20 to 0 cost the same two at a two-term
-    ///   minimum, so similarity does not separate them; the term count does.
+    ///   wrong pages. With the full-match floor, hit@4 rises 147 → 169, hit@1 103 → 120, in-scope
+    ///   refusals fall 67 → 46; on Lennox hit@4 is 10 → 16 of 18. The cost is two out-of-scope
+    ///   refusals of 107 (74 → 72), both three-term questions on one regulation answered from
+    ///   special provisions in that regulation that name the subject in passing. A four-term
+    ///   minimum keeps those two (hit@4 154, in-scope refusals 64); a three-term minimum costs the
+    ///   same two for less. Floors from 0.20 to 0 cost the same two, so the floor is set for the
+    ///   answers: 0.10 finds one fewer than no floor at all (169 against 170) and keeps a floor.
+    ///   Taken by the owner: an answer from the right book
+    ///   that is partial is the smaller risk next to 18 more in-scope questions turned away.
     /// - `nl-contextual` — **measured** (Plan IV P4, the device's framework model run on a Mac):
     ///   three shared terms, scaled 0.6. The bare floor refused none of the 18 out-of-scope Lennox
     ///   questions. Swept on both sets, 0.6 refuses 12 of them with no in-scope question refused
@@ -1359,7 +1361,7 @@ struct RetrievalEvidencePolicy: Equatable {
         if modelId.hasPrefix("nl-sentence") {
             var policy = RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
             policy.fullMatchFloor = 0.10
-            policy.fullMatchMinTerms = 4
+            policy.fullMatchMinTerms = 2
             return policy
         }
         if modelId.hasPrefix("nl-contextual") {

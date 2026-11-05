@@ -89,9 +89,9 @@ Scripts/retrieval-eval/run.sh
   evidence gate instead of the shipped one, to calibrate a gate against both sets. The output line
   names the gate.
 - `RETRIEVAL_EVAL_FULL_MATCH="<floor>[,<fewest question terms>]"` sets the lower similarity floor a
-  passage clears when it shares every content term of a question of at least that many terms (4
+  passage clears when it shares every content term of a question of at least that many terms (2
   when not given), over whatever the gate above is; `off` switches it off. The sentence model ships
-  0.10 for four terms or more, measured this way.
+  0.10 for two terms or more, measured this way.
 
 - `RETRIEVAL_EVAL_RECOGNISE=grid` (or `words`) reads the tables a PDF prints as pictures too, as
   an import on the phone does (Plan JN P1); `off`, the default, reads the text layer only. Give it

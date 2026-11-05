@@ -126,12 +126,12 @@ final class RetrievalGateCalibrationTests: XCTestCase {
         ("default(for: nl-word)", RetrievalEvidencePolicy.default(for: "nl-word.en")),
         ("default(for: nl-sentence)", RetrievalEvidencePolicy.default(for: "nl-sentence.en")),
         // The sentence model's full-match floor, against the same rule without it and with it
-        // applied to shorter questions too.
+        // kept to longer questions (the alternative measured on the Plan KN keys).
         ("nl-sentence without the full-match floor", sentenceRule(fullMatchFloor: nil)),
-        ("nl-sentence full match 0.10, two terms", sentenceRule(fullMatchFloor: 0.10, minTerms: 2)),
+        ("nl-sentence full match 0.10, four terms", sentenceRule(fullMatchFloor: 0.10, minTerms: 4)),
     ]
 
-    private static func sentenceRule(fullMatchFloor: Float?, minTerms: Int = 4) -> RetrievalEvidencePolicy {
+    private static func sentenceRule(fullMatchFloor: Float?, minTerms: Int = 2) -> RetrievalEvidencePolicy {
         var policy = RetrievalEvidencePolicy.default(for: "nl-sentence.en")
         policy.fullMatchFloor = fullMatchFloor
         policy.fullMatchMinTerms = minTerms
@@ -320,8 +320,9 @@ final class RetrievalGateCalibrationTests: XCTestCase {
             let device = try XCTUnwrap(scores["default(for: nl-sentence)"])
             XCTAssertGreaterThan(device.insufficiency, baseline.insufficiency,
                                  "the nl-sentence default must reject more than the floor alone")
-            // The full-match floor was taken because it costs no out-of-scope refusal; if a corpus
-            // makes it cost one here, this fails rather than quietly trading refusals for answers.
+            // On the wider keys the full-match floor costs two out-of-scope refusals of 107, both on
+            // one regulation; on this pair it costs none. If it starts costing one here, this fails
+            // rather than quietly trading refusals for answers.
             let withoutFullMatch = try XCTUnwrap(scores["nl-sentence without the full-match floor"])
             XCTAssertGreaterThanOrEqual(device.insufficiency, withoutFullMatch.insufficiency,
                                         "the full-match floor must not let an out-of-scope question through")

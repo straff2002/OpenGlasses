@@ -672,7 +672,7 @@ final class VaultManualRetrievalTests: XCTestCase {
         // not cosines, so it means the same on both), plus the measured full-match floor.
         var sentence = word
         sentence.fullMatchFloor = 0.10
-        sentence.fullMatchMinTerms = 4
+        sentence.fullMatchMinTerms = 2
         XCTAssertEqual(RetrievalEvidencePolicy.default(for: "nl-sentence.en"), sentence)
         // The contextual model, measured on both sets: the same three terms, scaled more gently.
         XCTAssertEqual(RetrievalEvidencePolicy.default(for: "nl-contextual.multi_v1"),
@@ -710,8 +710,7 @@ final class VaultManualRetrievalTests: XCTestCase {
     /// On the sentence model a passage that prints every word of the question can score under
     /// the 0.30 floor while passages on another subject clear it with three of the four words
     /// (the example vault's "high fire manifold pressure"). The measured full-match floor lets the
-    /// first through, and only for a question long enough that printing all its words means
-    /// something.
+    /// first through, for any question of two or more content terms.
     func testTheSentenceModelsGateTakesAPassageWithEveryWordOfTheQuestionBelowTheFloor() throws {
         let device = RetrievalEvidencePolicy.default(for: "nl-sentence.en")
         let floor = try XCTUnwrap(device.fullMatchFloor)
@@ -734,13 +733,16 @@ final class VaultManualRetrievalTests: XCTestCase {
         XCTAssertFalse(device.isEvidence(underBoth, queryTerms: terms), "and the full-match floor still holds")
         XCTAssertEqual(device.decide([threeOfFour, answering], limit: 4, queryTerms: terms), .sufficient([answering]))
 
-        // A shorter question is matched in full by too many passages that name it in passing: the
-        // floor stays 0.30 for it.
-        let short = "drop test packagings"
-        let shortTerms = LexicalSupport.contentTerms(short)
-        XCTAssertLessThan(shortTerms.count, device.fullMatchMinTerms, "\(shortTerms.sorted())")
-        let inPassing = passage(3, "Each of these packagings must survive a drop test before it ships.", 0.22)
-        XCTAssertFalse(device.isEvidence(inPassing, queryTerms: shortTerms))
+        // A short question counts too: "flame signal microamps" from a passage that prints all three.
+        let short = LexicalSupport.contentTerms("flame signal microamps")
+        XCTAssertGreaterThanOrEqual(short.count, device.fullMatchMinTerms, "\(short.sorted())")
+        let flame = passage(3, "Read the flame signal in microamps at the control board.", 0.22)
+        XCTAssertTrue(device.isEvidence(flame, queryTerms: short))
+        // A one-term question is matched in full by any passage that prints the word: the floor
+        // stays 0.30 for it.
+        let one = LexicalSupport.contentTerms("manifold")
+        XCTAssertLessThan(one.count, device.fullMatchMinTerms)
+        XCTAssertFalse(device.isEvidence(passage(4, "Check the manifold.", 0.22), queryTerms: one))
 
         // The other backends are unchanged, and the rule never runs with the lexical criterion off.
         XCTAssertFalse(RetrievalEvidencePolicy.default(for: "nl-word.en").isEvidence(answering, queryTerms: terms))

@@ -125,7 +125,7 @@ struct RetrievalEvalMain {
             }
         }
         // A candidate lower floor for a passage sharing every content term of the question:
-        // RETRIEVAL_EVAL_FULL_MATCH="<floor>[,<fewest question terms>]" (terms: the policy's, 4
+        // RETRIEVAL_EVAL_FULL_MATCH="<floor>[,<fewest question terms>]" (terms: the policy's, 2
         // unless given), or "off". `RETRIEVAL_EVAL_GATE` builds a policy without one.
         if let full = env["RETRIEVAL_EVAL_FULL_MATCH"] {
             let parts = full.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
