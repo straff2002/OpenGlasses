@@ -342,6 +342,9 @@ active index, remaining) for the builder; route surface on start / reroute; delt
 maneuver card, haptics, Always-On behaviour. Tests: `RouteSurfaceFeedTests` (fresh service instance
 with the existing `originFix` / `localSearch` / `directions` seams: snapshot on start, new snapshot
 on reroute, deltas rate-limited, cue carried once), `WatchHapticMappingTests` (pure cue → haptic).
+The Walking Navigation settings footer names only the surfaces a turn reaches
+(`WalkingTurnSurfaces`, built 2026-11-06: voice and the lens today, the silent case stated); P1b adds
+the watch to it, named only while the watch app is installed.
 *Why split:* P1a touches three tools and the transport and is verifiable in a simulator pair; P1b
 changes the guidance service and can only be judged on a real walk. Separate PRs keep the first
 reviewable and shippable while the second waits for a device pass. If the owner prefers one PR, the

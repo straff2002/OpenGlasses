@@ -259,7 +259,7 @@ struct EverydaySettingsScreen: View {
             }
         case .navigation:
             NavigationLink {
-                NavigationSettingsView()
+                NavigationSettingsView(glassesDisplay: appState.glassesDisplay)
             } label: {
                 Label("Walking Navigation", systemImage: "figure.walk")
             }
