@@ -36,6 +36,13 @@ enum RetrievalEvalTuning {
 
     private static let prefixes = perGroup("RETRIEVAL_EVAL_PREFIX") { Int($0) }
     private static let minimums = perGroup("RETRIEVAL_EVAL_MINLEN") { Int($0) }
+    /// Plan KO: RETRIEVAL_EVAL_CODE_LEAD="<places>" or "off" (the order before the code lead).
+    static let codeLeadPlaces: Int? = env["RETRIEVAL_EVAL_CODE_LEAD"].map { raw in
+        if raw == "off" { return .max }
+        guard let places = Int(raw), places >= 0 else { fatalError("RETRIEVAL_EVAL_CODE_LEAD is a number or off") }
+        return places
+    }
+
     /// A switch read as "1" or "0"; nil when unset.
     static func flag(_ name: String) -> Bool? { env[name].map { $0 == "1" } }
 
