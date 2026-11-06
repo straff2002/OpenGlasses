@@ -395,7 +395,7 @@ enum RetrievalEval {
     /// question is its line number in the key, the document its place in the manifest.
     struct FeatureLine: Encodable, Equatable {
         /// The keys a line carries besides the features. `embedder` is the only string.
-        static let fixedKeys = ["q", "rank", "label", "oos", "family", "embedder", "schema", "doc", "chunk"]
+        static let fixedKeys = ["q", "rank", "label", "oos", "evidence", "family", "embedder", "schema", "doc", "chunk"]
 
         /// The question's 1-based line number among the key's questions.
         let q: Int
@@ -404,6 +404,10 @@ enum RetrievalEval {
         /// 1 when the passage holds the answer (`holds`), else 0; nil (written null) out of scope.
         let label: Int?
         let oos: Bool
+        /// The exporting retriever's gate keeps the passage as evidence (Plan KN P2). Read with the
+        /// shipped gate (`RETRIEVAL_EVAL_FEATURES_FROM=shipped`), the first four such lines in any
+        /// order are the four passages that order hands the model, and a question with none is refused.
+        let evidence: Bool
         /// The manual family's number (`RETRIEVAL_EVAL_FAMILY`), 0 when not given.
         let family: Int
         /// The embedder's model id, from the app (`Embedder.modelId`), never the vault.
@@ -414,7 +418,7 @@ enum RetrievalEval {
         let chunk: Int
         let features: RankingFeatures
 
-        private enum Key: String, CodingKey { case q, rank, label, oos, family, embedder, schema, doc, chunk }
+        private enum Key: String, CodingKey { case q, rank, label, oos, evidence, family, embedder, schema, doc, chunk }
 
         /// The fixed keys and the features in one flat object.
         func encode(to encoder: Encoder) throws {
@@ -423,6 +427,7 @@ enum RetrievalEval {
             try c.encode(rank, forKey: .rank)
             if let label { try c.encode(label, forKey: .label) } else { try c.encodeNil(forKey: .label) }
             try c.encode(oos, forKey: .oos)
+            try c.encode(evidence, forKey: .evidence)
             try c.encode(family, forKey: .family)
             try c.encode(embedder, forKey: .embedder)
             try c.encode(schema, forKey: .schema)
@@ -439,25 +444,28 @@ enum RetrievalEval {
         }
     }
 
-    /// Every candidate of every scored and out-of-scope question, from the ungated retriever read
-    /// 30 deep — the candidates `classify` reads — each with its features and its label.
+    /// Every candidate of every scored and out-of-scope question, before the gate and in today's
+    /// order, each with its features, its label and the gate's verdict. By default (Plan KN P1) from
+    /// the ungated retriever asked for 30 and read 30 deep, the candidates `classify` reads. For the
+    /// fit (Plan KN P2) from the shipped retriever asked for the shipped 4 (`limit` 4, `depth` nil):
+    /// every candidate that request gathers, so the shipped hit@4 can be read back off the lines.
     /// `documentIndex` maps a document id to its 1-based place in the manifest.
     @MainActor
-    static func featureLines(_ questions: [Question], openFor: (String) -> VaultRetriever, family: Int,
-                             embedder: String, documentIndex: (String) -> Int?) -> [FeatureLine] {
+    static func featureLines(_ questions: [Question], retrieverFor: (String) -> VaultRetriever, limit: Int = 30,
+                             depth: Int? = 30, family: Int, embedder: String,
+                             documentIndex: (String) -> Int?) -> [FeatureLine] {
         var lines: [FeatureLine] = []
         for (index, q) in questions.enumerated() {
             let oos = q.outOfScope == true
             guard oos || q.isScorable else { continue }
-            let (outcome, candidates) = openFor(q.q).retrieveWithFeatures(.init(turn: q.q, limit: 30))
-            let features = Dictionary(candidates.map { (Key($0.passage), $0.features) }, uniquingKeysWith: { first, _ in first })
-            for (rank, passage) in outcome.passages.prefix(30).enumerated() {
-                guard let f = features[Key(passage)] else { continue }
+            let candidates = retrieverFor(q.q).rankedCandidates(.init(turn: q.q, limit: limit))
+            for (rank, candidate) in candidates.prefix(depth ?? candidates.count).enumerated() {
+                let passage = candidate.passage
                 lines.append(FeatureLine(q: index + 1, rank: rank, label: oos ? nil : (holds(passage, q) ? 1 : 0),
-                                         oos: oos, family: family, embedder: embedder,
+                                         oos: oos, evidence: candidate.isEvidence, family: family, embedder: embedder,
                                          schema: RankingFeatures.schemaVersion,
                                          doc: documentIndex(passage.documentId) ?? 0, chunk: passage.chunkIndex,
-                                         features: f))
+                                         features: candidate.features))
             }
         }
         return lines

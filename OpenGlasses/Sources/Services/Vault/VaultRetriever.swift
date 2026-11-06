@@ -361,6 +361,10 @@ struct VaultRetriever {
     struct RankedCandidate: Equatable {
         let passage: Passage
         let features: RankingFeatures
+        /// This retriever's gate keeps the passage as evidence: what `decide` filters by, judged the
+        /// same way. The outcome's passages are the first `limit` of these in this order, so any
+        /// other order can be read against the same gate (Plan KN P2).
+        let isEvidence: Bool
     }
 
     /// Every candidate `retrieve` considers, in the order it ranks them, before the evidence gate,
@@ -376,7 +380,11 @@ struct VaultRetriever {
         guard let ranking = ranking(request, withFeatures: true) else {
             return (.insufficient(reason: RetrievalEvidencePolicy.insufficientSentence), [])
         }
-        let candidates = zip(ranking.ranked, ranking.features ?? []).map { RankedCandidate(passage: $0, features: $1) }
+        let best = ranking.ranked.map(\.similarity).max()
+        let candidates = zip(ranking.ranked, ranking.features ?? []).map {
+            RankedCandidate(passage: $0, features: $1,
+                            isEvidence: policy.isEvidence($0, bestSimilarity: best, question: ranking.gateQuestion))
+        }
         return (decide(ranking, limit: request.limit), candidates)
     }
 

@@ -165,6 +165,29 @@ Scripts/retrieval-eval/run.sh
   The summary line counts the lines and the ones holding the answer. Like the index, the file is
   per-question results: keep it out of every repository and delete it when you're done.
 
+  Every line also carries `evidence`: whether the exporting retriever's gate keeps the passage.
+  `RETRIEVAL_EVAL_FEATURES_FROM=shipped` (Plan KN P2) exports the shipped request instead of the
+  30-deep ungated one: the shipped gate, asked for 4, and every candidate that request gathers.
+  Each route searches twice the request's limit, so the candidates of a 30-deep request are not the
+  ones the app ranks. Read from the shipped request, the first four lines with `evidence` in today's
+  order are the four passages `hit@4` scores, and a question with none is refused. Any other order
+  can then be measured against the same gate.
+
+- **Fitting an order (Plan KN P2).** `fit-order.py` reads shipped-request feature files, one per
+  answer key, each given with its manual type (`service`, `owner`, `code`, `software`). It measures
+  three orders against today's rules: logistic regression on pairs, a network with one hidden layer
+  of 16, and weights written from the feature descriptions alone. Each is held out one family and
+  then one manual type at a time, and checked against the plan's bar. Numpy only, and it prints
+  counts only. Two keys over one vault share a family number, so they are held out together.
+
+  ```
+  Scripts/retrieval-eval/fit-order.py --self-test
+  Scripts/retrieval-eval/fit-order.py [--across] sentence-furnace.jsonl:service sentence-code.jsonl:code …
+  ```
+
+  `--across` lets the score cross the ranking groups. Without it, the groups, a named table's rows
+  before its page, and the clause tier's order stay as shipped. Give one embedder's files per run.
+
 Every run prints in-scope refusals beside the hits, because a gate that refuses more out-of-scope
 questions usually refuses some in-scope ones too, and both numbers decide a gate.
 

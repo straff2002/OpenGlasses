@@ -177,7 +177,7 @@ final class RankingFeaturesTests: XCTestCase {
     }
 
     private func lines() -> [RetrievalEval.FeatureLine] {
-        RetrievalEval.featureLines(key, openFor: { _ in self.retriever(policy: self.noGate) }, family: 7,
+        RetrievalEval.featureLines(key, retrieverFor: { _ in self.retriever(policy: self.noGate) }, family: 7,
                                    embedder: embedderId, documentIndex: { $0 == "qx-guide" ? 1 : nil })
     }
 
@@ -191,6 +191,26 @@ final class RankingFeaturesTests: XCTestCase {
         XCTAssertEqual(lines.filter { $0.q == 2 && $0.label == 1 }.map(\.chunk), [1])
         XCTAssertTrue(lines.filter { $0.q == 4 }.allSatisfy { $0.label == nil && $0.oos })
         XCTAssertTrue(lines.allSatisfy { $0.family == 7 && $0.doc == 1 && $0.schema == RankingFeatures.schemaVersion })
+    }
+
+    /// Plan KN P2: exported from the shipped request, the first four lines its gate keeps are the
+    /// passages the outcome hands the model, every candidate the request gathered is written, and a
+    /// refused question has none kept, so any other order can be read against the same gate.
+    func testFromTheShippedRequestTheKeptLinesAreTheOutcome() {
+        let subject = retriever(policy: shippedGate)
+        let lines = RetrievalEval.featureLines(key, retrieverFor: { _ in subject }, limit: 4, depth: nil, family: 7,
+                                               embedder: embedderId, documentIndex: { $0 == "qx-guide" ? 1 : nil })
+        for (index, q) in key.enumerated() where q.outOfScope == true || q.isScorable {
+            let request = VaultRetriever.Request(turn: q.q, limit: 4)
+            let outcome = subject.retrieve(request)
+            let written = lines.filter { $0.q == index + 1 }
+            XCTAssertEqual(written.map(\.rank), Array(0..<subject.rankedCandidates(request).count), "every candidate, in order")
+            let kept = written.filter(\.evidence).prefix(4).map(\.chunk)
+            XCTAssertEqual(kept, outcome.isSufficient ? outcome.passages.map(\.chunkIndex) : [], "question \(index + 1)")
+        }
+        XCTAssertFalse(lines.filter { $0.q == 4 }.isEmpty, "the out-of-scope question has candidates")
+        XCTAssertTrue(lines.filter { $0.q == 4 }.allSatisfy { !$0.evidence }, "the shop's hours are refused")
+        XCTAssertTrue(lines.contains { $0.q == 1 && $0.evidence && $0.label == 1 })
     }
 
     func testALineHasNoStringBeyondItsFixedKeys() throws {
