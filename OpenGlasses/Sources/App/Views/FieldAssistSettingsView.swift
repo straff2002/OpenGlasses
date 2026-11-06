@@ -362,6 +362,17 @@ struct FieldAssistSettingsView: View {
                     }
                 }
 
+                // ──────────────── Named experts (Plan KM P0)
+                Section {
+                    NavigationLink {
+                        FieldAssistExpertsView()
+                    } label: {
+                        Label("Experts", systemImage: "person.2.badge.gearshape")
+                    }
+                } footer: {
+                    Text("The people \u{201C}get me a furnace expert\u{201D} and \u{201C}call Sam\u{201D} reach on a job. With none listed, asking for an expert notifies the expert pool.")
+                }
+
                 // ──────────────── Expert escalation
                 Section {
                     if Config.hipaaMode {

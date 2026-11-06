@@ -68,6 +68,8 @@ final class SessionLogger {
             case procedureCompleted = "procedure_completed"
             case escalationRequested = "escalation_requested"
             case escalationResolved = "escalation_resolved"
+            /// What the phone saw of a call to a named expert (Plan KM P0): started, connected, ended.
+            case expertCall = "expert_call"
             case citation = "citation"
             case safetyAssessment = "safety_assessment"
             case captureRecordSaved = "capture_record"

@@ -234,6 +234,17 @@ struct FieldSession: Codable, Identifiable, Equatable {
         let timestamp: Date
         let reason: String
         var resolvedAt: Date?
+        /// The expert called (Plan KM P0): id, name and kind, never a rate or a number. Nil for a
+        /// page to the pool, and on every escalation recorded before experts existed.
+        var expert: ExpertSnapshot? = nil
+        /// How the call went (`CallVia`'s raw value), when one was placed.
+        var callVia: String? = nil
+        /// What this phone saw of the call, from `CXCallObserver`: when it appeared, when it
+        /// connected (if it did), and when it ended. Observed, never reported by anyone; each is
+        /// nil until seen.
+        var callStartedAt: Date? = nil
+        var callConnectedAt: Date? = nil
+        var callEndedAt: Date? = nil
     }
 
     /// Computed: whether the session is currently accepting input.

@@ -1,8 +1,9 @@
 # Plan KM — An Expert on the Job (the job sent to a named expert, their advice walked through, their time on the record)
 
-**Status:** 📝 Drafted 2026-11-03 from the owner's question; nothing implemented. The owner took all
-ten decisions as recommended the same day. Revised the same day: the expert's side belongs to no organisation, so one expert
-can serve many.
+**Status:** 🚧 P0 built 2026-11-06 (headless; device checks owed): the expert list, the pick and the
+call by name or by specialty. P1–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
+took all ten decisions as recommended the same day. Revised the same day: the expert's side belongs to no
+organisation, so one expert can serve many.
 **Track:** Field Assist. Phone first: every part works without glasses, and the expert side needs no
 glasses at all.
 **Related:** Plan [IQ](IQ-closeout-unknown-units-and-calling-base.md) P3 (calling base, the help pack,
@@ -40,6 +41,7 @@ keeps. There is no marketplace, and the app never handles money.
 - **Calling a person is drafted, not built.** IQ P3 designs an org-owned contact list and a help pack
   sent before the call. JI §6 designs `CallRoute` (`tel:`, `facetime:`, `facetime-audio:`) and
   `CallPlacement`. Neither exists in code: `SettingKey` has no `organizationEscalationContacts`.
+  (*2026-11-06:* P0 built them; see "P0 as built" below.)
   `phone_call` (`PhoneCallTool`) resolves a name through Contacts and dials `tel://`.
 - **The pieces the handover needs already exist:**
   - The job's thread and `JobTranscriptExport`, which renders who said what for a job.
@@ -376,6 +378,34 @@ several companies, and nothing on the expert's side needs a company to own it.
 - **Tests:** specialty from words and from the job's equipment; on-call windows across time zones; rota
   rotation; no ranking input exists; a personal addition can't carry a rate; `CallRoute` refuses anything
   but a cleaned number or handle.
+
+**P0 as built (2026-11-06, headless).**
+
+- **Types** (`Services/FieldAssist/Experts/`): `EscalationContact` (kind, specialties, `OnCallWindow`s in
+  the expert's own zone, `Rate` for contracted only — the init drops a staff rate and decoding refuses
+  one), `PersonalExpert` (no kind, no rate field at all), `ExpertListStore` (the two sources merged and
+  marked, the rota position), `ExpertPicker` (words → equipment → on call → rota, one sentence that names
+  the expert), `ExpertNameMatch`, `NoAnswerOffer`, `CallRoute`/`CallVia`/`CallPlacing`, and
+  `ExpertCallMonitor` over a `CallObserving` seam on `CXCallObserver`.
+- **The CT key** `organizationExperts` is profile-owned and carries the list as one JSON string; one bad
+  entry drops the whole key by name. With no profile, the device owner writes the same key on the phone;
+  with a profile, only the profile's list counts and the owner's waits under it.
+- **The tool.** `escalate_to_expert` gains `call` and the `specialty`, `expert_name` and `via` parameters.
+  With experts listed, `request` calls nobody and returns the offer ("Two furnace experts. Sam is on call.
+  Call Sam?"); `call` by name never consults the picker. With none listed, `request` pages the pool as
+  before. The expert gate also passes "call Sam" and a yes to a question that named the expert. The
+  approval card reads "Call Sam".
+- **The record.** `FieldSession.Escalation` gains the expert snapshot (id, name, kind), the route, and the
+  observed call started, connected and ended times; older sessions decode unchanged. The job log gets an
+  `expert_call` line per change. While the observed call is up the voice loop is paused through
+  `ExpertCallAudioCoordinator`.
+- **Settings.** Field Assist › Experts: the organisation's rows read-only under a profile, the device
+  owner's list with kind, hours and rate without one, and the technician's own additions picked with
+  `CNContactPickerViewController` (no Contacts permission; a snapshot, not an identifier).
+- **Owed.** The P5 device check that a call placed by URL shows in `CXCallObserver` (and so the voice
+  pause and the no-answer offer); the no-answer offer is given when asked (`status`, a bare `call`) and
+  is not yet spoken unprompted; JI's CarPlay FaceTime refusal; the in-app privacy copy line comes with P1's
+  handover, since P0 sends nothing off the phone.
 
 ### P1 — the handover (headless core, then the sheet)
 

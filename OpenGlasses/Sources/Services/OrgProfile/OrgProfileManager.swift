@@ -954,6 +954,7 @@ extension SettingKey {
         case .technicianID: return "Your technician ID on internal reports"
         case .technicianDisplayName: return "Your name, as your team sees it"
         case .organizationToolDefinitionsMode: return "When the assistant looks up tool definitions on demand"
+        case .organizationExperts: return "The experts you can call for help on a job"
         default: return rawValue
         }
     }

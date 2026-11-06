@@ -224,6 +224,8 @@ JI only needs the certificate as a record with an expiry, which does not wait on
   its `Kind` is `profileOwned(ValueType)`, `ceiling(pinnedTo:)` or `startingValue(ValueType)`, with
   `ValueType` `bool`, `string` or `strings`. A structured key is carried as a JSON string with a
   strict decoder, as `capturedManualsPolicy` is.
+  *2026-11-06:* Plan [KM](KM-expert-on-the-job.md) P0 built `EscalationContact`, `CallRoute` and
+  `CallPlacement`, with the list as the profile-owned JSON string `organizationExperts`; JI reuses them.
 - **Who the technician is.** `Config.technicianDisplayName` (profile-owned when a profile sets it;
   `TechnicianName.clean`). CT's rule: identity is per person, policy is per device; the app has no
   user account.
@@ -610,7 +612,8 @@ to get signed this week."
 
 *Who signs: chosen from the organisation's staff, never typed.* Nothing on the phone lists an
 organisation's people today: `SettingKey` holds `technicianDisplayName` only, IQ's
-`organizationEscalationContacts` (name, role, phone, channel) is drafted and unbuilt, and HO's
+`organizationEscalationContacts` (name, role, phone, channel) is drafted and unbuilt (*2026-11-06:*
+KM P0 built it as `organizationExperts`), and HO's
 enrolments know phones, not people. JI proposes **one staff roster** that IQ's contacts and JI's
 journeyman both read:
 

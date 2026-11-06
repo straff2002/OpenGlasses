@@ -433,14 +433,36 @@ final class FieldSessionService: ObservableObject {
         return session
     }
 
-    /// Record an escalation request on the active session.
-    func recordEscalation(reason: String) {
+    /// Record an escalation request on the active session — to the pool, or (Plan KM P0) a call to
+    /// a named expert, whose snapshot the record keeps.
+    func recordEscalation(reason: String, expert: ExpertSnapshot? = nil, via: CallVia? = nil) {
         guard var session = activeSession, let logger else { return }
-        session.escalations.append(.init(timestamp: Date(), reason: reason, resolvedAt: nil))
+        session.escalations.append(.init(timestamp: Date(), reason: reason, resolvedAt: nil,
+                                         expert: expert, callVia: via?.rawValue))
         activeSession = session
         history = history.replacingFirst(matching: session.id, with: session)
         logger.updateSession { $0 = session }
         logger.append(.init(timestamp: Date(), kind: .escalationRequested, text: reason, payload: nil))
+    }
+
+    /// What this phone observed of a call to an expert (Plan KM P0), on the most recent escalation
+    /// to that expert. Each time is written once, the first time it is seen; the job log gets one
+    /// line per change.
+    func recordExpertCall(expertId: String, started: Date? = nil, connected: Date? = nil, ended: Date? = nil) {
+        guard var session = activeSession, let logger,
+              let index = session.escalations.lastIndex(where: { $0.expert?.id == expertId }) else { return }
+        var escalation = session.escalations[index]
+        var notes: [String] = []
+        if let started, escalation.callStartedAt == nil { escalation.callStartedAt = started; notes.append("call started") }
+        if let connected, escalation.callConnectedAt == nil { escalation.callConnectedAt = connected; notes.append("call connected") }
+        if let ended, escalation.callEndedAt == nil { escalation.callEndedAt = ended; notes.append("call ended") }
+        guard !notes.isEmpty else { return }
+        session.escalations[index] = escalation
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger.updateSession { $0 = session }
+        let who = escalation.expert?.name ?? "Expert"
+        logger.append(.init(timestamp: Date(), kind: .expertCall, text: "\(who): \(notes.joined(separator: ", "))", payload: nil))
     }
 
     /// Mark the most recent unresolved escalation as resolved and log it.

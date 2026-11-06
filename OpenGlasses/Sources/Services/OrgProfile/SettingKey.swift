@@ -37,6 +37,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// When tool definitions go on demand (Plan IU): `automatic`, `always` or `never`. Set and
     /// locked by the profile — the Settings row is then not the technician's to change.
     case organizationToolDefinitionsMode
+    /// The experts the organisation's technicians can call (Plan KM P0): a JSON array of
+    /// `EscalationContact`, carried as one string. Set by the profile and, with a profile, by nothing
+    /// else; with no profile the device owner sets the same key on the phone.
+    case organizationExperts
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
@@ -126,7 +130,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .workizReportFieldName: return .profileOwned(.string)
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
              .organizationReportTranscriptInternal, .organizationAccentColor, .technicianDisplayName, .capturedManualsPolicy,
-             .organizationToolDefinitionsMode, .technicianFullName, .technicianID:
+             .organizationToolDefinitionsMode, .technicianFullName, .technicianID, .organizationExperts:
             return .profileOwned(.string)
         case .organizationReportRecipients:
             return .profileOwned(.strings)
@@ -177,6 +181,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case (.organizationToolDefinitionsMode, .string(let raw)):
             // Deny by default: a mode this build does not know is a named drop, never a guess.
             return ToolDefinitionsMode(rawValue: raw) == nil ? "not one of automatic, always or never" : nil
+        case (.organizationExperts, .string(let text)):
+            // Deny by default: one entry this build cannot read refuses the list, never half of it.
+            if case .failure(let problem) = ExpertListCodec.decode(text) { return problem.message }
+            return nil
         case (.capturedManualsPolicy, .string(let raw)):
             return ["off", "jobOnly", "reviewToPool"].contains(raw) ? nil : "not a photographed-manual policy"
         case (.organizationReportTranscriptInternal, .string(let raw)):

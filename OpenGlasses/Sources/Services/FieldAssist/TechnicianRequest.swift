@@ -138,6 +138,33 @@ enum TechnicianRequest {
 
     private static let refusingWords: Set<String> = ["dont", "not", "never", "without", "wont", "doesnt"]
 
+    // MARK: - Calling a named expert (Plan KM P0)
+
+    /// Whether the words call `name` ("call Sam", "FaceTime Sam", "try Priya"): a calling word and
+    /// any word of the name, with no refusal before the calling word. By name always works.
+    static func asksToCall(name: String, _ said: String) -> Bool {
+        let words = self.words(said)
+        let nameWords = self.words(name)
+        guard !nameWords.isEmpty, nameWords.contains(where: words.contains),
+              let verb = words.firstIndex(where: callWords.contains) else { return false }
+        return !words[..<verb].contains(where: refusingWords.contains)
+    }
+
+    /// "Yes" to a question that named the expert: a short affirmative after a reply one of whose
+    /// questions names them ("… Sam is on call. Call Sam?", "Sam didn't answer. Try Priya?").
+    static func confirmsCallOffer(name: String, _ said: String, previousReply: String?) -> Bool {
+        guard isShortAffirmative(said), let previousReply else { return false }
+        let nameWords = self.words(name)
+        guard !nameWords.isEmpty else { return false }
+        return sentences(previousReply).contains { sentence in
+            sentence.asks && nameWords.contains(where: self.words(sentence.text).contains)
+        }
+    }
+
+    private static let callWords: Set<String> = [
+        "call", "ring", "phone", "facetime", "dial", "try", "get", "contact", "reach",
+    ]
+
     // MARK: - Running a rule chain
 
     /// Whether the words ask to run a chain without naming one: "chain" with a verb that runs it

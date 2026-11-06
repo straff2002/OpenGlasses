@@ -134,6 +134,10 @@ enum PromptInjectionPolicy {
             return "Send a \(channel) message\(to.map { " to \($0)" } ?? "")\(body.map { ": “\(preview($0))”" } ?? "")"
         case "phone_call":
             return "Call \(to ?? "a number")"
+        case "escalate_to_expert" where str("action")?.lowercased() == "call":
+            // A named expert (Plan KM P0): who, and how. The number is the list's, never the model's.
+            let how = CallVia(spoken: str("via")).map { $0 == .phone ? "" : " by FaceTime" } ?? ""
+            return "Call \(str("expert_name") ?? "the expert offered")\(how)"
         case "smart_home":
             return "Control smart home: \(compactArgs(args))"
         case "home_assistant":
