@@ -667,7 +667,8 @@ struct VaultRetriever {
                          heading: passage.section, rule: passage.termRule)
             } ?? Double(LexicalSupport.sharedTermCount(text: passage.text, question: question, rule: passage.termRule)))
         }, uniquingKeysWith: max)
-        let ranked = candidates.sorted { a, b in
+        // Today's chain, which the code lead below starts from.
+        func rulesOrder(_ a: Passage, _ b: Passage, group: (Passage) -> Int, wordsFirst: (Passage) -> Bool) -> Bool {
             if group(a) != group(b) { return group(a) > group(b) }
             // Inside a named table, its rows before its page: a row is the data the question asks
             // for, the page the picture it is printed in.
@@ -678,9 +679,33 @@ struct VaultRetriever {
                 if offsets.0 != offsets.1 { return offsets.0 < offsets.1 }
             }
             if (a.modelPenalty > 0) != (b.modelPenalty > 0) { return b.modelPenalty > 0 }
-            if a.matchedTokens.count != b.matchedTokens.count { return a.matchedTokens.count > b.matchedTokens.count }
             let words = (lexical[Self.key(a)] ?? 0, lexical[Self.key(b)] ?? 0)
+            if wordsFirst(a), words.0 != words.1 { return words.0 > words.1 }
+            if a.matchedTokens.count != b.matchedTokens.count { return a.matchedTokens.count > b.matchedTokens.count }
             return words.0 != words.1 ? words.0 > words.1 : precedes(a, b)
+        }
+        // A spoken code leads at most `codeLeadPlaces` passages (Plan KO). A question naming a cable
+        // type, a model or a part is often answered by a passage that never prints it, while lists,
+        // tables and specification rows that do print it held every place ahead of the answer: on
+        // the local answer keys 10 of the 11 answers a fitted order recovered were lost that way
+        // (Plan KN P2). So the first passages printing a spoken code, in today's order, keep the
+        // code's place, half as many as were asked for, rounded up (two of four). Every other passage outside
+        // a named table or clause, those printing the code too, is ranked by the question's words
+        // first and then the codes it prints. A named table and a clause keep their tiers, and the
+        // features' `group` stays the tier before the lead. Measured with the shipped request and gate
+        // (`Scripts/retrieval-eval`, Plan KO) on ten answer keys: hit@4 169 → 180 of 331 on the
+        // sentence model and 199 → 213 on the contextual model, as sent 177 → 187 and 211 → 224,
+        // hit@1 and every refusal unchanged, no key's hit@4 lower.
+        let today = candidates.sorted { rulesOrder($0, $1, group: group, wordsFirst: { _ in false }) }
+        // A question whose only codes are numbers keeps today's order: a number reaches the boost
+        // only when few passages print it (an overflowing one is dropped above), so it names its
+        // passage the way an error or identifier number does, and its passages are the answer.
+        let onlyNumbers = !boostTokens.isEmpty && boostTokens.allSatisfy(CodeTokenizer.isNumber)
+        let leadPlaces = onlyNumbers ? .max : Self.codeLeadPlaces(limit: request.limit)
+        let leaders = Set(today.lazy.filter { group($0) == 1 }.prefix(leadPlaces).map(Self.key))
+        let ranked = leadPlaces == .max ? today : candidates.sorted { a, b in
+            func tier(_ p: Passage) -> Int { group(p) == 1 && !leaders.contains(Self.key(p)) ? 0 : group(p) }
+            return rulesOrder(a, b, group: tier, wordsFirst: { tier($0) == 0 })
         }
         guard withFeatures else { return Ranking(ranked: ranked, gateQuestion: gateQuestion, features: nil) }
 
@@ -721,6 +746,18 @@ struct VaultRetriever {
     }
 
     private static func key(_ p: Passage) -> String { "\(p.documentId)#\(p.chunkIndex)" }
+
+    /// How many passages a spoken code alone can lead with (Plan KO): half of those asked for,
+    /// rounded up, so two of the four a prose manual is handed, three of the six a clause-numbered
+    /// one is, and two of a job brief's three;
+    /// `.max` is the order before it. The Mac runner measures another value with
+    /// `RETRIEVAL_EVAL_CODE_LEAD`.
+    static func codeLeadPlaces(limit: Int) -> Int {
+        #if RETRIEVAL_EVAL
+        if let places = RetrievalEvalTuning.codeLeadPlaces { return places }
+        #endif
+        return max(1, (limit + 1) / 2)
+    }
 
     /// The text prints the table's label as a whole ("Table 92", any case, any spacing; not
     /// "Table 921" or "Table 92A").
