@@ -1,9 +1,11 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 📝 Drafted 2026-11-06 from the owner's question; nothing built. Supersedes Plan
-[IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is folded in here as §1–§2 and P0–P1.
-The decisions below are recommendations until the owner takes them. Revised the same day: §8 and P1b
-cover what the wearer gets while another app has the Display.
+**Status:** 🚧 P0 built 2026-11-06 (headless): the pure core (`HUDAnswerPager` and `HUDAnswerPage`,
+`PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`) and its tests, nothing wired yet; P1 next. The
+owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
+the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
+folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
+another app has the Display.
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`; Even G2 through Plan AH's backend; the
 web mirror of Plan BP). Every phase except P6 is headless. Phone first still holds: everything a card
 offers is also on the phone.
@@ -284,7 +286,7 @@ Rule 2 holds either way: a session another app has interrupted is never started 
   and hazard lines**. Those are short by construction; a hazard that needs a second page is rewritten,
   not paged.
 
-## Decisions (recommendations, not yet taken)
+## Decisions (taken 2026-11-06: every recommendation below, "build out the plan")
 
 1. **Footer:** "1/3", which needs no translation, rather than "Page 1 of 3". *Recommended: "1/3".*
 2. **Page cap:** eight pages, then "… more on phone". *Recommended: eight now, and P6 decides whether
@@ -315,6 +317,30 @@ pages for both geometries; no split words; the sentence-end preference; the eigh
 unchanged), `PageTurnGateTests`, `HUDAnswerCardBuilderTests` (buttons per page per §3; Back only when
 paged; follow-ups only on the last page; the Actions screen), `FollowUpTailTests` (well-formed, missing,
 empty, malformed, too long, more than three, a tail mid-reply rather than at its end).
+
+*Built 2026-11-06.* What P1 and P2 build on:
+
+- **Streaming.** `HUDAnswerPager.pages(for:)` is stable on prefixes: when the answer grows by whole
+  sentences or words, the first `settledPageCount(_:)` pages keep their text (only `count` grows).
+  Every page but the last of a paged answer is settled, every page of a capped one, and never a single
+  page, since more text can turn it into a paged answer with a footer. So the card shows page 1 once it
+  is settled or the turn has ended.
+- **One page is today's text.** An answer that fits the geometry and the 120-character body limit is
+  one page whose `body` is `HUDTextShaper.condense(answer)`, shown as one line with no footer. A paged
+  page carries its wrapped `lines` (one `HUDLine` each) and a footer line.
+- **Long words.** A word longer than a line is hard-split as the teleprompter does, and moves whole to
+  the next page; it is split across pages only when it alone fills one.
+- **Card layout.** As §3's table, so a middle page has **Next ›** and **Actions** but no **‹ Back**;
+  Back is on the paged last page only. P6 may want Back on middle pages too. Presses arrive as a
+  `HUDAnswerAction`; ids are `kp.next`, `kp.back`, `kp.actions`, `kp.more`, `kp.repeat`, `kp.save`,
+  `kp.send`, `kp.close` and `kp.followup.0…2`.
+- **Follow-ups.** A question over six words or 40 characters (the HUD title limit, one Even line) is
+  dropped; then the first three are kept. A malformed tail gives no follow-ups and only tag text is
+  removed: a closed tail with a nested or doubled tag, or an unclosed `<next>` that begins a sentence
+  and runs to the end of the reply on one line (a tail cut short). A stray `</next>`, or an unclosed
+  `<next>` inside a sentence or followed by more lines, is left as written. For P2's streamer,
+  `FollowUpTail.beginsTail(_:)` says a streamed sentence starts the tail (hold it and everything after
+  it back), and `textBeforeTail(in:)` returns the speakable part of a chunk that carries both.
 
 ### P1 — the card on the glasses (headless, wired)
 
