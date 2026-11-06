@@ -359,16 +359,36 @@ final class CarPlayVoiceScreenTests: XCTestCase {
 
     func testCarDisconnectEndsOnlyTheConversationItWasShowing() {
         var shown = runningScreen()
-        XCTAssertEqual(shown.carDisconnected(), .init(hangUp: true, screen: .none))
+        XCTAssertEqual(shown.carDisconnected(),
+                       .init(hangUp: true, screen: .none, restorePhoneAudio: true))
         XCTAssertFalse(shown.isPresented)
-        XCTAssertTrue(shown.releaseFallbackDue(over))
+        // The phone's own end path hands the audio back; no CarPlay release is left owed.
+        XCTAssertFalse(shown.releaseFallbackDue(over))
 
         var ready = readyScreen()
-        XCTAssertEqual(ready.carDisconnected(), .nothing)
+        XCTAssertEqual(ready.carDisconnected(),
+                       .init(hangUp: false, screen: .none, restorePhoneAudio: true))
         XCTAssertFalse(ready.isPresented)
 
         var notShown = Screen(hasButtons: true)
-        XCTAssertEqual(notShown.carDisconnected(), .nothing)
+        XCTAssertFalse(notShown.carDisconnected().hangUp)
+    }
+
+    /// CarPlay's audio mode ends with the car, every time — whatever the screen was doing.
+    func testCarDisconnectAlwaysRestoresThePhonesAudio() {
+        var ended = runningScreen()
+        _ = ended.observe(over)
+        XCTAssertTrue(ended.releaseOwed)
+        XCTAssertTrue(ended.carDisconnected().restorePhoneAudio)
+        XCTAssertFalse(ended.releaseOwed)
+
+        for hasButtons in [true, false] {
+            var screen = Screen(hasButtons: hasButtons)
+            XCTAssertTrue(screen.carDisconnected().restorePhoneAudio)
+        }
+        // Nothing else ever leaves CarPlay's audio mode.
+        var screen = runningScreen()
+        XCTAssertFalse(screen.end(speaking).restorePhoneAudio)
     }
 
     // MARK: - Template depth

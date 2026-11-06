@@ -405,6 +405,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func beginConversation(_ appState: AppState) {
         voiceStartTask?.cancel()
         voiceStartTask = Task { @MainActor [weak self] in
+            // Cancelled before it ran (End, or the car going): leave the audio mode alone.
+            guard !Task.isCancelled else { return }
             appState.wakeWordService.carPlayMode = true
             await appState.wakeWordService.reconfigureAudioSession()
             guard !Task.isCancelled else { return }
@@ -610,12 +612,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         case .none, .show: break
         }
         if carDisconnected { takeDownVoiceTemplate() }
+        if effect.restorePhoneAudio { appState.wakeWordService.carPlayMode = false }
         guard effect.hangUp else { return }
         PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopVoice"))
         Task { @MainActor in
             await appState.hangUpConversation()
             // `hangUpConversation` ends in `returnToWakeWord`, whose last step released the audio
-            // through `appFinishedEndingConversation`; this covers a car that has gone since.
+            // through `appFinishedEndingConversation`; this is the backstop should that hook have
+            // missed. After a disconnect nothing is owed: the phone's own end path handed it back.
             if self.voiceScreen.releaseFallbackDue(Self.conversation(appState)) {
                 await self.releaseAudio(appState)
             }

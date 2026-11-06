@@ -347,6 +347,10 @@ struct CarPlayVoiceScreen: Equatable {
         var hangUp: Bool
         /// What the template does: back to ready, away, or nothing.
         var screen: UpdateEffect
+        /// Put the audio back on the phone's own rules (`WakeWordService.carPlayMode` off) before
+        /// anything else, so the end path hands the session back and re-arms the listener as it
+        /// does on the phone. Only when the car has gone.
+        var restorePhoneAudio = false
 
         static let nothing = EndEffect(hangUp: false, screen: .none)
     }
@@ -365,17 +369,19 @@ struct CarPlayVoiceScreen: Equatable {
         }
     }
 
-    /// The car went away. A conversation the car screen was showing ends with it and the audio is
-    /// released; a ready screen just goes. One the wake word opened with no screen up carries on on
-    /// the phone, as it did before.
+    /// The car went away. CarPlay's audio mode always ends with it — it used to outlive the car,
+    /// leaving the phone's later conversations skipping their own hand-back. A conversation the car
+    /// screen was showing ends too; its end path, now on the phone's rules, gives the audio back,
+    /// so no CarPlay release is owed. One the wake word opened with no screen up carries on on the
+    /// phone, as it did before.
     mutating func carDisconnected() -> EndEffect {
         defer { screen = .hidden }
+        releaseOwed = false
         switch screen {
         case .starting, .showing:
-            releaseOwed = true
-            return EndEffect(hangUp: true, screen: .none)
+            return EndEffect(hangUp: true, screen: .none, restorePhoneAudio: true)
         case .ready, .hidden:
-            return .nothing
+            return EndEffect(hangUp: false, screen: .none, restorePhoneAudio: true)
         }
     }
 
