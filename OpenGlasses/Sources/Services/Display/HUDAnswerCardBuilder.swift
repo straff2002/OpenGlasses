@@ -6,6 +6,8 @@ enum HUDAnswerAction: Equatable {
     case next
     case back
     case actions
+    /// From the Actions screen, back to the page the wearer was reading.
+    case answer
     case more
     case repeatAnswer
     case save
@@ -20,9 +22,13 @@ enum HUDAnswerAction: Equatable {
 ///
 /// | Page | Lines | Buttons |
 /// |---|---|---|
-/// | not the last | the page, footer "1/3" | Next › · Actions |
+/// | the first of several | the page, footer "1/3" | Next › · Actions |
+/// | a middle page | the page, footer "2/3" | Next › · Actions · ‹ Back |
 /// | the last (or only) | the page, footer when paged | up to two follow-ups · Actions · ‹ Back (paged only) |
-/// | Actions (pushed) | the answer's first line | third follow-up (if any) · More · Repeat · Save · Send · Close |
+/// | Actions (pushed) | the answer's first line | third follow-up (if any) · More · Repeat · Save · Send · ‹ Answer · Close |
+///
+/// P1 put ‹ Back on middle pages too (P0 had it on the paged last page only): with the band
+/// alone, a wearer two pages in had no way back but to read on to the end.
 enum HUDAnswerCardBuilder {
     /// Follow-ups shown beside Actions on the last page; a third goes on the Actions screen.
     static let followUpsOnLastPage = 2
@@ -34,6 +40,7 @@ enum HUDAnswerCardBuilder {
         static let next = "kp.next"
         static let back = "kp.back"
         static let actions = "kp.actions"
+        static let answer = "kp.answer"
         static let more = "kp.more"
         static let repeatAnswer = "kp.repeat"
         static let save = "kp.save"
@@ -73,12 +80,15 @@ enum HUDAnswerCardBuilder {
         } else {
             items.append(item(ItemID.next, String(localized: "Next ›"), .primary, .next, onAction))
             items.append(item(ItemID.actions, String(localized: "Actions"), .secondary, .actions, onAction))
+            if page.index > 0 {
+                items.append(item(ItemID.back, String(localized: "‹ Back"), .outline, .back, onAction))
+            }
         }
         return HUDScreen(title: nil, lines: lines, items: items)
     }
 
     /// The pushed Actions screen: the answer's first line as a reminder, the third follow-up if
-    /// there is one, then More, Repeat, Save, Send and Close.
+    /// there is one, then More, Repeat, Save, Send, ‹ Answer (back to the page) and Close.
     static func actions(_ pages: [HUDAnswerPage],
                         followUps: [String],
                         onAction: @escaping (HUDAnswerAction) -> Void) -> HUDScreen {
@@ -95,6 +105,7 @@ enum HUDAnswerCardBuilder {
         items.append(item(ItemID.repeatAnswer, String(localized: "Repeat"), .secondary, .repeatAnswer, onAction))
         items.append(item(ItemID.save, String(localized: "Save"), .secondary, .save, onAction))
         items.append(item(ItemID.send, String(localized: "Send"), .secondary, .send, onAction))
+        items.append(item(ItemID.answer, String(localized: "‹ Answer"), .outline, .answer, onAction))
         items.append(item(ItemID.close, String(localized: "Close"), .outline, .close, onAction))
         return HUDScreen(title: nil, lines: lines, items: items)
     }

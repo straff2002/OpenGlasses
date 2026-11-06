@@ -35,3 +35,34 @@ enum HUDVoiceCommand: Equatable {
         }
     }
 }
+
+/// The answer card's paging words (Plan KP §3, "Other input"). A separate parse from
+/// `HUDVoiceCommand`: `HUDRouter` consults it only while the frame on the glasses is an answer
+/// card, so "next" keeps meaning "step done" on a task card. Whole short utterances only — the
+/// same strict, filler-tolerant matching — so "next" inside a sentence is never taken.
+/// "Repeat", "save that" and "send that" are not here: they stay ordinary requests.
+enum HUDAnswerVoiceCommand: Equatable {
+    case next   // "next" / "next page"
+    case back   // "back" / "previous"
+    case close  // "close" / "clear"
+
+    static func parse(_ text: String) -> HUDAnswerVoiceCommand? {
+        let stripped = text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.union(.whitespaces).inverted)
+            .joined()
+        let words = stripped.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        let filler: Set<String> = ["ok", "okay", "hey", "please", "uh", "um", "yeah", "yep", "now"]
+        let core = words.drop(while: { filler.contains($0) }).joined(separator: " ")
+
+        switch core {
+        case "next", "next page":
+            return .next
+        case "back", "go back", "previous", "previous page":
+            return .back
+        case "close", "clear", "close that", "clear that", "close it", "dismiss":
+            return .close
+        default:
+            return nil
+        }
+    }
+}

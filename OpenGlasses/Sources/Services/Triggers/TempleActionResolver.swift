@@ -31,6 +31,8 @@ struct TempleContext: Equatable {
     var glassesCameraReady: Bool = false
     var digestEnabled: Bool = false
     var quickActionIDs: Set<String> = []
+    /// An answer card is on the glasses (Plan KP P1).
+    var answerCardShowing: Bool = false
 }
 
 /// The concrete thing to do for a resolved tap.
@@ -55,6 +57,8 @@ enum TempleEffect: Equatable {
     case musicPlayPause
     case askAgent
     case quickAction(String)
+    /// Turn the answer card a page: forward to the next page, back to the previous one.
+    case answerPage(forward: Bool)
 }
 
 enum TempleIgnoreReason: String, Equatable, CaseIterable {
@@ -67,12 +71,14 @@ enum TempleIgnoreReason: String, Equatable, CaseIterable {
     case noGlassesCamera
     case digestOff
     case quickActionMissing
+    /// A page-turn tap with no answer card on the glasses.
+    case noAnswerCard
 
     /// A short spoken line for refusals the wearer can act on. The rest are a soft tone only — a
     /// stray tap while already listening does not need a sentence.
     var spokenLine: String? {
         switch self {
-        case .unassigned, .nothingToEnd, .alreadyListening, .busy:
+        case .unassigned, .nothingToEnd, .alreadyListening, .busy, .noAnswerCard:
             return nil
         case .agentModeOff:
             return String(localized: "Agent Mode is off.")
@@ -167,6 +173,13 @@ enum TempleActionResolver {
             guard context.quickActionIDs.contains(id) else { return .ignored(.quickActionMissing) }
             guard activity == .standby else { return .ignored(.busy) }
             return .run(.quickAction(id))
+
+        case .answerNextPage, .answerPreviousPage:
+            // Reading a page doesn't fight the reply for the audio, so it works while the answer
+            // is still being spoken. Only another mode that owns the loop keeps it out.
+            guard activity != .busy else { return .ignored(.busy) }
+            guard context.answerCardShowing else { return .ignored(.noAnswerCard) }
+            return .run(.answerPage(forward: action == .answerNextPage))
         }
     }
 }
@@ -207,7 +220,7 @@ enum TempleEarcon: Equatable, CaseIterable {
             // end-of-conversation tone. A second sound on top would blur both.
             case .startListening, .askAgent, .endConversation: return .ownCue
             case .interruptAndListen, .photoDescribe, .photoToCameraRoll, .readDigest, .quickAction,
-                 .musicPlayPause:
+                 .musicPlayPause, .answerPage:
                 return .accepted
             case .endLiveSession: return .ended
             case .setMicMuted(let muted), .setLiveMicMuted(let muted): return muted ? .muted : .unmuted

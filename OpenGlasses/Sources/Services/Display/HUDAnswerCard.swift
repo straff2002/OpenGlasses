@@ -1,0 +1,344 @@
+import Foundation
+
+/// The answer card on the glasses (Plan KP P1): one turn's answer, a page at a time, with the
+/// actions under it.
+///
+/// **What becomes a card.** Only the assistant's answers: lines spoken as `SpeechSource.reply` or
+/// `.phoneAnswer` (`takesAnswers(from:)`), which `TextToSpeechService` hands to `absorb` instead
+/// of mirroring them a sentence at a time. Alerts, confirmations, notices, captions, agent
+/// narration, translations and fingerspelling keep today's `showText` path. Within a turn the
+/// Direct-mode loop opened (`beginTurn` / `finishTurn` / `endTurn`), streamed sentences collect into
+/// one card; a whole answer spoken outside a turn (a photo answer, a tier-0 answer, an agent's
+/// result) is a card of its own. A *streamed* line outside a turn (the gateway's partial results)
+/// keeps today's sentence-at-a-time line, because nothing says where that answer ends.
+///
+/// **When it shows.** Page 1 once it is settled (`HUDAnswerPager.settledPageCount > 0`) or the reply
+/// is final, whichever comes first. Later pages fill in behind it and only the footer's count
+/// grows; the wearer can turn only to settled pages, so the page being read never changes under
+/// them. A new answer replaces the card.
+///
+/// **Coexistence.** The card is an interactive screen, so ambient producers (captions) are
+/// suppressed while it is up and resume when it clears. Over a task card, a menu or a choice
+/// list an answer is not made a card: it flashes for five seconds, as before
+/// (`GlassesDisplayService.acceptsAnswerCard`). Notifications flash over the card and it comes
+/// back. Guidance and hazard lines are never paged, and take the HUD from a card.
+///
+/// **Lifetime.** Until Close, a new answer, or `idleLifetime` (60 s) with no press and no change to
+/// the answer — so a long answer still being spoken never clears under the wearer. In memory only.
+///
+/// **Stale presses.** Every press — band, voice or temple tap — is issued against the revision at
+/// which the card was last drawn (`GlassesDisplayService.heldScreenRevision`). A notification
+/// enqueued over the card since makes it stale, so the press is dropped rather than drawn over the
+/// notification (§2).
+@MainActor
+final class HUDAnswerCard {
+    /// Plan KP §3: a card with no press for this long clears.
+    static let defaultIdleLifetime: TimeInterval = 60
+
+    private let display: GlassesDisplayService
+
+    /// Test seam: the idle lifetime.
+    var idleLifetime: TimeInterval = HUDAnswerCard.defaultIdleLifetime
+    /// Test seam: run `fire` after `delay`. Production sleeps on the main actor; a test can
+    /// capture the timers and fire them in any order, so the lifetime rule is checked without
+    /// racing the clock.
+    var scheduleIdleTimer: (_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> Void = { delay, fire in
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            fire()
+        }
+    }
+    /// The page shape, from the active backend.
+    var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeGeometry
+
+    // MARK: Wiring (AppState)
+
+    /// Submit text as the wearer's next turn, through the same entry point a typed request uses.
+    var submitTurn: ((String) -> Void)?
+    /// Say the answer again, in the voice and route the app uses, without mirroring it.
+    var speakAgain: ((String) -> Void)?
+    /// Run `save_note` with a title and the answer through the tool router (and so the
+    /// authorization policy). True when it saved.
+    var saveNote: ((_ title: String, _ content: String) async -> Bool)?
+
+    // MARK: State
+
+    /// The turn collecting now, if one is open.
+    private var turn: HUDAnswerTurn?
+    /// The open turn's card has been shown (it replaced whatever card was up).
+    private var turnHasCard = false
+
+    /// The card's answer, pages and position.
+    private(set) var answer = ""
+    private(set) var pages: [HUDAnswerPage] = []
+    private(set) var pageIndex = 0
+    private(set) var isOnActions = false
+    /// The answer is final: every page may be read.
+    private var answerIsComplete = false
+    /// The screen last handed to the display, for routing a band press back by id.
+    private var shownScreen: HUDScreen?
+    private var idleGeneration = 0
+    /// Counts cards shown, so the web mirror can tell a new answer from more of the same one.
+    private var cardSerial = 0
+
+    init(display: GlassesDisplayService) {
+        self.display = display
+    }
+
+    /// The card is on the glasses (or held under a notification).
+    var isShowing: Bool { display.showsAnswerCard }
+    var isTurnOpen: Bool { turn != nil }
+
+    /// Pages the wearer may turn to: all of a final answer, the settled ones of a streaming one.
+    var visiblePageCount: Int {
+        answerIsComplete ? pages.count : HUDAnswerPager.settledPageCount(pages)
+    }
+
+    /// The speech sources that are answers.
+    static func takesAnswers(from source: SpeechSource) -> Bool {
+        source == .reply || source == .phoneAnswer
+    }
+
+    /// The pager geometry for the backend that shows the HUD. The web mirror is the Meta Display's
+    /// 600 × 600 shape, so mirror-only uses the Meta geometry.
+    static func activeGeometry() -> TeleprompterPaginator.Geometry {
+        #if !AVENKIN_PHONE_ONLY
+        return Config.displayBackend == .evenG2 ? .evenG2 : .raybanDisplay
+        #else
+        return .raybanDisplay
+        #endif
+    }
+
+    /// What More sends as the next turn.
+    static var moreRequest: String { String(localized: "Tell me more about that") }
+    /// What Send sends as the next turn. The assistant asks who to send it to, and `send_via`'s
+    /// bound approval holds the send until the wearer confirms: the press itself sends nothing.
+    static var sendRequest: String { String(localized: "Send your last answer to someone") }
+
+    /// Save's note title: the answer's first line, cut to a heading's length.
+    static func noteTitle(for answer: String) -> String {
+        let first = answer.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+        return HUDTextShaper.condense(first, max: HUDTextShaper.maxTitleLength)
+    }
+
+    // MARK: - The answer turn
+
+    /// A Direct-mode reply is starting. Nothing changes on the HUD until its card can show.
+    func beginTurn() {
+        turn = HUDAnswerTurn()
+        turnHasCard = false
+    }
+
+    /// The open turn's reply is final (a streamed reply's text is known before it has all been
+    /// said): the whole answer shows now.
+    func finishTurn(reply: String) {
+        guard var open = turn, !open.isFinished, display.acceptsAnswerCard else { return }
+        open.finish(reply: reply)
+        turn = open
+        update()
+    }
+
+    /// The turn is over. A turn that ended before its reply was final (an error, a barge-in) shows
+    /// what was said. The lifetime counts from here: the answer has finished being spoken.
+    func endTurn() {
+        guard var open = turn else { return }
+        if !open.isFinished, !open.isEmpty, display.acceptsAnswerCard {
+            open.seal()
+            turn = open
+            update()
+        }
+        if turnHasCard, isShowing { armIdleTimer() }
+        turn = nil
+    }
+
+    /// A line the speech service is about to say as an answer. True when the card took it (shown,
+    /// collected, or already on the card); false sends it down today's `showText` path.
+    @discardableResult
+    func absorb(_ text: String, streamed: Bool) -> Bool {
+        guard display.acceptsAnswerCard else { return false }
+        if var open = turn {
+            if open.isFinished { return true }      // already on the card
+            if streamed { open.append(text) } else { open.finish(reply: text) }
+            turn = open
+            update()
+            return true
+        }
+        guard !streamed else { return false }
+        beginTurn()
+        turn?.finish(reply: text)
+        update()
+        turn = nil
+        return true
+    }
+
+    private func update() {
+        guard let turn, !turn.isEmpty else { return }
+        let laid = HUDAnswerPager.pages(for: turn.text, geometry: geometry())
+        guard !laid.isEmpty else { return }
+        if !turnHasCard {
+            guard turn.isFinished || HUDAnswerPager.settledPageCount(laid) > 0 else { return }
+            answer = turn.text
+            pages = laid
+            answerIsComplete = turn.isFinished
+            pageIndex = 0
+            isOnActions = false
+            cardSerial += 1
+            let screen = currentScreen()
+            guard display.presentAnswerCard(screen, onSelect: selectionHandler) else { return }
+            shownScreen = screen
+            turnHasCard = true
+            armIdleTimer()
+        } else {
+            answer = turn.text
+            pages = laid
+            answerIsComplete = turn.isFinished
+            // The wearer closed it: more of the answer doesn't bring it back.
+            guard isShowing else { return }
+            let screen = currentScreen()
+            if display.presentAnswerCard(screen, onSelect: selectionHandler) {
+                shownScreen = screen
+                armIdleTimer()      // more of the answer is not idle
+            }
+        }
+    }
+
+    // MARK: - Presses
+
+    /// A press from voice or a temple tap, issued against the card as last drawn: while a
+    /// notification is over the card, it is stale and dropped (§2).
+    func press(_ action: HUDAnswerAction) {
+        handle(action, issuedAgainst: display.heldScreenRevision)
+    }
+
+    /// Whether a spoken paging word would move the card. "Next" on the last readable page or
+    /// "back" on the first has nothing to do, so `HUDRouter` leaves the utterance to the model
+    /// (it may mean the next track) instead of swallowing it.
+    func canTurn(_ action: HUDAnswerAction) -> Bool {
+        guard isShowing else { return false }
+        switch action {
+        case .next: return !isOnActions && pageIndex + 1 < visiblePageCount
+        case .back: return isOnActions || pageIndex > 0
+        default: return true
+        }
+    }
+
+    /// A press issued against `revision`. Dropped (and logged) when another frame has been
+    /// enqueued since, through `PageTurnGate`.
+    func handle(_ action: HUDAnswerAction, issuedAgainst revision: UInt64) {
+        guard display.acceptsCardPress(issuedAgainst: revision) else { return }
+        armIdleTimer()
+        switch action {
+        case .next:
+            guard !isOnActions, pageIndex + 1 < visiblePageCount else { return }
+            show(page: pageIndex + 1, actions: false, revision)
+        case .back:
+            if isOnActions {
+                show(page: pageIndex, actions: false, revision)
+            } else if pageIndex > 0 {
+                show(page: pageIndex - 1, actions: false, revision)
+            }
+        case .answer:
+            guard isOnActions else { return }
+            show(page: pageIndex, actions: false, revision)
+        case .actions:
+            guard !isOnActions else { return }
+            show(page: pageIndex, actions: true, revision)
+        case .more:
+            submitTurn?(Self.moreRequest)
+        case .repeatAnswer:
+            speakAgain?(answer)
+        case .save:
+            save()
+        case .send:
+            submitTurn?(Self.sendRequest)
+        case .close:
+            close()
+        case .followUp(_, let text):
+            submitTurn?(text)
+        }
+    }
+
+    /// Clear the card and leave interactive mode so ambient producers resume.
+    func close() {
+        idleGeneration += 1
+        let wasShowing = isShowing
+        answer = ""
+        pages = []
+        pageIndex = 0
+        isOnActions = false
+        answerIsComplete = false
+        shownScreen = nil
+        if wasShowing { display.endInteractive() }
+    }
+
+    private func show(page: Int, actions: Bool, _ revision: UInt64) {
+        let previous = (pageIndex, isOnActions)
+        pageIndex = page
+        isOnActions = actions
+        let screen = currentScreen()
+        if display.turnAnswerCard(to: screen, issuedAgainst: revision, onSelect: selectionHandler) {
+            shownScreen = screen
+        } else {
+            (pageIndex, isOnActions) = previous
+        }
+    }
+
+    private func save() {
+        let title = Self.noteTitle(for: answer)
+        let content = answer
+        guard !content.isEmpty, let saveNote else { return }
+        Task { @MainActor [weak self] in
+            let saved = await saveNote(title, content)
+            self?.display.flash(saved ? String(localized: "Saved") : String(localized: "Couldn't save that"),
+                                duration: 2)
+        }
+    }
+
+    /// Restart the lifetime. A timer armed earlier finds a newer generation and does nothing, so
+    /// an old timer never clears a newer card; nor does one clear a card that is no longer ours
+    /// (a task card or a menu took the HUD).
+    private func armIdleTimer() {
+        idleGeneration += 1
+        let generation = idleGeneration
+        scheduleIdleTimer(idleLifetime) { [weak self] in
+            guard let self, generation == self.idleGeneration, self.isShowing else { return }
+            self.close()
+        }
+    }
+
+    // MARK: - Screens
+
+    private var selectionHandler: (String) -> Void {
+        { [weak self] id in
+            guard let item = self?.shownScreen?.items.first(where: { $0.id == id }) else { return }
+            item.action()
+        }
+    }
+
+    /// A band press acts on the buttons of the card as last drawn.
+    private var onAction: (HUDAnswerAction) -> Void {
+        { [weak self] action in
+            guard let self else { return }
+            self.handle(action, issuedAgainst: self.display.heldScreenRevision)
+        }
+    }
+
+    /// The screen for the card's position: a page carrying every readable page (for the web
+    /// mirror), or the Actions screen.
+    private func currentScreen() -> HUDScreen {
+        let onAction = self.onAction
+        if isOnActions {
+            return HUDAnswerCardBuilder.actions(pages, followUps: [], onAction: onAction)
+        }
+        let readable = max(1, min(visiblePageCount, pages.count))
+        let screens = (0..<readable).compactMap {
+            HUDAnswerCardBuilder.page(pages, index: $0, followUps: [], onAction: onAction)
+        }
+        let index = min(pageIndex, readable - 1)
+        var screen = screens.indices.contains(index) ? screens[index] : HUDScreen()
+        screen.pageSet = HUDPageSet(pages: screens, index: index, card: cardSerial)
+        return screen
+    }
+}

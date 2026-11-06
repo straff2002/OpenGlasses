@@ -97,6 +97,12 @@ struct HUDScreen {
     let lines: [HUDLine]
     let items: [HUDItem]
 
+    /// Plan KP P1: on an answer card's page, every page the card can show, each as its own
+    /// screen, so a surface that turns pages by itself (the web mirror, which is read-only and
+    /// cannot send a press back) has them all. Nil on every other screen. Not part of
+    /// `renderKey`: the key is what this frame shows.
+    var pageSet: HUDPageSet?
+
     init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = []) {
         self.title = title
         self.lines = lines
@@ -111,4 +117,15 @@ struct HUDScreen {
         let acts = items.map { "\($0.id):\($0.style):\($0.icon):\($0.label)" }.joined(separator: "¦")
         return "\(head)|\(body)|\(acts)"
     }
+}
+
+/// The pages of an answer card (Plan KP P1), carried on the page being shown.
+struct HUDPageSet {
+    /// One screen per page the card can show, in order.
+    let pages: [HUDScreen]
+    /// The page being shown.
+    let index: Int
+    /// Which card this is: the same number while one answer grows, a new one for a new answer,
+    /// so a surface turning pages by itself keeps its place on the same card.
+    var card: Int = 0
 }

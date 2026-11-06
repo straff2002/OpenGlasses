@@ -9,6 +9,8 @@ import Foundation
 /// - Focus indicator is amber weight+outline — high contrast, deliberately NOT cyan
 ///   (house rule).
 /// - D-pad arrives as plain keyboard events (▲▼/Enter) — focus model is ordinary DOM nav.
+/// - Plan KP P1: an answer card carries all its readable pages; ◀▶ turn them and Escape hides
+///   the card until the next frame — on the page itself, since the mirror stays read-only.
 /// - Exactly one URL registers; the auth token rides the URL hash (`#t=<token>`), which
 ///   never appears in HTTP requests or server logs — the page JS forwards it as a query
 ///   parameter on `hud.json` fetches only.
@@ -25,6 +27,18 @@ enum WebHUDRenderer {
 
     /// The one render function. Both modes share the same client-side `render(payload)`,
     /// so the poll path adds no second layout implementation.
+    /// Plan KP P1: the pure paging rule the page runs on ◀/▶, kept apart so a test can run it
+    /// in JavaScriptCore without a DOM. Right turns forward, left back, both clamped; any other key
+    /// leaves the page where it is.
+    static let pagingScript = """
+    function pageAfterKey(key, index, count) {
+      if (count <= 0) { return 0; }
+      if (key === "ArrowRight") { return Math.min(count - 1, index + 1); }
+      if (key === "ArrowLeft") { return Math.max(0, index - 1); }
+      return Math.min(count - 1, Math.max(0, index));
+    }
+    """
+
     static func page(mode: Mode) -> String {
         let inlineJSON: String
         let pollInterval: Int
@@ -73,10 +87,39 @@ enum WebHUDRenderer {
           navigation: "\u{2192}", hazard: "[!]", calendar: "[\u{25A4}]", location: "[\u{2302}]",
           reminder: "[\u{2022}]", message: "[\u{2709}]" };
         let lastKey = null;
+        let current = null;      // the last payload from the phone
+        let localPage = 0;       // the answer page shown here (Plan KP)
+        let hidden = false;      // Escape hid the card until the next frame
+        \(pagingScript)
 
         function render(payload) {
           if (payload && payload.renderKey === lastKey) { return; }
           lastKey = payload ? payload.renderKey : null;
+          const previous = current;
+          current = payload;
+          // More of the same answer, with the phone still on the same page: keep the page turned
+          // to here, and keep it hidden if Escape hid it. Anything else follows the phone.
+          const sameCard = previous && previous.pages && payload && payload.pages &&
+            previous.card === payload.card && previous.pageIndex === payload.pageIndex;
+          if (sameCard) {
+            localPage = Math.min(localPage, payload.pages.length - 1);
+          } else {
+            localPage = payload && payload.pages ? (payload.pageIndex || 0) : 0;
+            hidden = false;
+          }
+          draw();
+        }
+
+        // What to draw: the payload, or the answer page turned to here.
+        function view() {
+          if (!current || hidden) { return null; }
+          if (!current.pages || current.pages.length === 0) { return current; }
+          const page = current.pages[Math.min(localPage, current.pages.length - 1)];
+          return { title: current.title, lines: page.lines, items: page.items };
+        }
+
+        function draw() {
+          const payload = view();
           const hud = document.getElementById("hud");
           hud.textContent = "";
           if (!payload || (!payload.title && payload.lines.length === 0 && payload.items.length === 0)) {
@@ -117,7 +160,21 @@ enum WebHUDRenderer {
         }
 
         // D-pad: arrows move focus across items; Enter is a read-only no-op in v1.
+        // Plan KP: on an answer card, right/left turn its pages and Escape hides it.
         document.addEventListener("keydown", (event) => {
+          if (current && current.pages && current.pages.length > 1 && !hidden &&
+              (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+            localPage = pageAfterKey(event.key, localPage, current.pages.length);
+            draw();
+            event.preventDefault();
+            return;
+          }
+          if (event.key === "Escape" && current && current.pages && !hidden) {
+            hidden = true;
+            draw();
+            event.preventDefault();
+            return;
+          }
           const items = Array.from(document.querySelectorAll(".item"));
           if (items.length === 0) { return; }
           const index = items.indexOf(document.activeElement);

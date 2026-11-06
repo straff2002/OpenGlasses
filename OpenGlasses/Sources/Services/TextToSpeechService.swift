@@ -339,6 +339,21 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// Display feature is on. The service no-ops on glasses without a display.
     weak var glassesDisplay: GlassesDisplayService?
 
+    /// Set by AppState (Plan KP P1) — answers (`HUDAnswerCard.takesAnswers(from:)`) are collected
+    /// into the answer card instead of being mirrored a sentence at a time.
+    weak var answerCard: HUDAnswerCard?
+
+    /// Mirror a line to the HUD: an answer to the answer card when it takes it, everything else
+    /// (and an answer it can't take, such as one over a task card) as today's line, which flashes
+    /// over a held screen.
+    private func mirrorToGlasses(_ text: String, source: SpeechSource, streamed: Bool) {
+        if HUDAnswerCard.takesAnswers(from: source),
+           answerCard?.absorb(text, streamed: streamed) == true {
+            return
+        }
+        glassesDisplay?.showText(text, flashWhileInteractive: true)
+    }
+
     /// Set by AppState — lets the engine selector know whether we're online, so a configured
     /// ElevenLabs key isn't preferred while offline. Nil (unwired) is treated as online, preserving
     /// the historical "just try ElevenLabs and fall back on network error" behaviour.
@@ -472,7 +487,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         // Mirror spoken text to the in-lens HUD (additive; no-op without a display).
         // Callers that render a richer HUD treatment themselves pass mirrorToHUD: false.
-        if mirrorToHUD { glassesDisplay?.showText(text, flashWhileInteractive: true) }
+        if mirrorToHUD { mirrorToGlasses(text, source: source, streamed: false) }
 
         // Withhold when the route says so. Reported rather than silently dropped: a suppressed
         // result is still owed to the wearer, and somebody has to be able to offer it again.
@@ -1909,7 +1924,7 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
     func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
                               source: SpeechSource) async -> SpeechDeliveryOutcome {
         lastSpokenText = text
-        glassesDisplay?.showText(text, flashWhileInteractive: true)
+        mirrorToGlasses(text, source: source, streamed: true)
         if let reason = currentSuppression() {
             PrivacyLog.tts(.suppressed, detail: PrivacyToken(reason.rawValue))
             return SpeechDeliveryLedger.outcome(for: .withheld(reason), teardownCause: nil)

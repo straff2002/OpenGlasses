@@ -28,13 +28,23 @@ final class HUDAnswerCardBuilderTests: XCTestCase {
 
     // MARK: - Pages
 
-    func testANotLastPageHasNextAndActions() throws {
+    func testTheFirstPageHasNextAndActions() throws {
         let pages = paged
         XCTAssertGreaterThan(pages.count, 2)
-        for index in 0..<(pages.count - 1) {
+        let screen = HUDAnswerCardBuilder.page(pages, index: 0, followUps: followUps) { _ in }
+        XCTAssertEqual(ids(screen), [ID.next, ID.actions])
+        XCTAssertEqual(labels(screen), ["Next ›", "Actions"])
+        XCTAssertEqual(screen?.items.first?.style, .primary)
+    }
+
+    /// P1: a middle page has ‹ Back as well, so the band alone can go back a page.
+    func testAMiddlePageHasNextActionsAndBack() throws {
+        let pages = paged
+        XCTAssertGreaterThan(pages.count, 2)
+        for index in 1..<(pages.count - 1) {
             let screen = HUDAnswerCardBuilder.page(pages, index: index, followUps: followUps) { _ in }
-            XCTAssertEqual(ids(screen), [ID.next, ID.actions], "page \(index)")
-            XCTAssertEqual(labels(screen), ["Next ›", "Actions"])
+            XCTAssertEqual(ids(screen), [ID.next, ID.actions, ID.back], "page \(index)")
+            XCTAssertEqual(labels(screen), ["Next ›", "Actions", "‹ Back"])
             XCTAssertEqual(screen?.items.first?.style, .primary)
         }
     }
@@ -113,13 +123,14 @@ final class HUDAnswerCardBuilderTests: XCTestCase {
         XCTAssertNil(screen.title)
         XCTAssertEqual(screen.lines.map(\.text), [pages[0].lines[0]])
         XCTAssertEqual(screen.lines.first?.emphasis, .secondary)
-        XCTAssertEqual(ids(screen), [ID.more, ID.repeatAnswer, ID.save, ID.send, ID.close])
-        XCTAssertEqual(labels(screen), ["More", "Repeat", "Save", "Send", "Close"])
+        XCTAssertEqual(ids(screen), [ID.more, ID.repeatAnswer, ID.save, ID.send, ID.answer, ID.close])
+        XCTAssertEqual(labels(screen), ["More", "Repeat", "Save", "Send", "‹ Answer", "Close"])
     }
 
     func testAThirdFollowUpShowsOnTheActionsScreen() {
         let screen = HUDAnswerCardBuilder.actions(paged, followUps: followUps + ["A fourth one?"]) { _ in }
-        XCTAssertEqual(ids(screen), [ID.followUp(2), ID.more, ID.repeatAnswer, ID.save, ID.send, ID.close])
+        XCTAssertEqual(ids(screen), [ID.followUp(2), ID.more, ID.repeatAnswer, ID.save, ID.send,
+                                     ID.answer, ID.close])
         XCTAssertEqual(screen.items.first?.label, followUps[2])
     }
 
@@ -151,7 +162,7 @@ final class HUDAnswerCardBuilderTests: XCTestCase {
         let actions = HUDAnswerCardBuilder.actions(pages, followUps: followUps, onAction: record)
         actions.items.forEach { $0.action() }
         XCTAssertEqual(pressed, [.followUp(index: 2, text: followUps[2]),
-                                 .more, .repeatAnswer, .save, .send, .close])
+                                 .more, .repeatAnswer, .save, .send, .answer, .close])
     }
 
     func testItemIdsAreStableAndUnique() {
@@ -167,6 +178,7 @@ final class HUDAnswerCardBuilderTests: XCTestCase {
         XCTAssertEqual(ID.save, "kp.save")
         XCTAssertEqual(ID.send, "kp.send")
         XCTAssertEqual(ID.close, "kp.close")
+        XCTAssertEqual(ID.answer, "kp.answer")
         XCTAssertEqual(ID.followUp(1), "kp.followup.1")
     }
 

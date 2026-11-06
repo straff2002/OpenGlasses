@@ -15,7 +15,8 @@ extension AppState: TempleActionPerforming {
             recording: videoRecorder.isRecording,
             glassesCameraReady: cameraService.activeCapabilities?.stillCapture == true,
             digestEnabled: Config.digestEnabled,
-            quickActionIDs: Set(Config.quickActions.map(\.id)))
+            quickActionIDs: Set(Config.quickActions.map(\.id)),
+            answerCardShowing: hudAnswerCard.isShowing)
     }
 
     private var templeActivity: TempleContext.Activity {
@@ -74,6 +75,9 @@ extension AppState: TempleActionPerforming {
         case .quickAction(let id):
             guard let action = Config.quickActions.first(where: { $0.id == id }) else { return }
             await executeQuickAction(action)
+        case .answerPage(let forward):
+            // The tap's earcon confirmed it; the page itself is the answer.
+            hudAnswerCard.press(forward ? .next : .back)
         case .musicPlayPause:
             // Same routing as "pause" by voice: the provider that is playing, else the default.
             // The earcon confirmed the tap; only an answer the wearer needs is spoken.

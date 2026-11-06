@@ -44,6 +44,38 @@ final class HUDPreviewSnapshotTests: XCTestCase {
                       "the preview should render visible text/buttons over the dark panel (after warm-up)")
     }
 
+    /// Plan KP P1: a paged answer card, cut for each backend's page shape, draws visible text and
+    /// buttons (its page, its footer, Next and Actions).
+    func testAPagedAnswerCardRendersForEachBackend() async throws {
+        let answer = """
+        Turn the isolator off before you open the panel. Check the capacitor with a meter, \
+        because it can hold a charge for minutes after the power is cut. If the reading is above \
+        five volts, discharge it with an insulated resistor. Then swap the contactor.
+        """
+        for geometry in [TeleprompterPaginator.Geometry.raybanDisplay, .evenG2] {
+            let pages = HUDAnswerPager.pages(for: answer, geometry: geometry)
+            XCTAssertGreaterThan(pages.count, 1, "paged for \(geometry.maxLines)×\(geometry.maxChars)")
+            let screen = try XCTUnwrap(HUDAnswerCardBuilder.page(pages, index: 0, followUps: []) { _ in })
+            XCTAssertEqual(screen.lines.last?.text, "1/\(pages.count)")
+            let fraction = try await renderedBrightFraction(screen)
+            XCTAssertTrue(fraction > 0.002, "the card should render visibly (\(geometry.maxChars) chars)")
+        }
+    }
+
+    private func renderedBrightFraction(_ screen: HUDScreen) async throws -> Double {
+        var fraction = 0.0
+        for attempt in 0..<12 {
+            let renderer = ImageRenderer(content: HUDPreviewView(screen: screen).frame(width: 320, height: 320))
+            renderer.scale = 2
+            if let rendered = renderer.uiImage {
+                fraction = Self.brightFraction(rendered)
+                if fraction > 0.002 { break }
+            }
+            if attempt < 11 { try await Task.sleep(nanoseconds: 400_000_000) }
+        }
+        return fraction
+    }
+
     /// Fraction of pixels noticeably brighter than the near-black panel.
     private static func brightFraction(_ image: UIImage) -> Double {
         guard let cg = image.cgImage else { return 0 }

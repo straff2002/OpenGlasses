@@ -1,4 +1,5 @@
 import XCTest
+import JavaScriptCore
 @testable import OpenGlasses
 
 /// Plan BP — the deterministic mirror: payload mapping, the single-file HTML renderer's
@@ -136,6 +137,83 @@ final class WebHUDMirrorTests: XCTestCase {
         XCTAssertEqual(WebHUDMirrorServer.queryToken(in: "/hud.json?t=a%2Bb"), "a+b")
         XCTAssertEqual(WebHUDMirrorServer.queryToken(in: "/hud.json?x=1&t=tok"), "tok")
         XCTAssertNil(WebHUDMirrorServer.queryToken(in: "/hud.json"))
+    }
+
+    // MARK: - Answer card pages (Plan KP P1)
+
+    private let longAnswer = """
+    Turn the isolator off before you open the panel. Check the capacitor with a meter, \
+    because it can hold a charge for minutes after the power is cut. If the reading is above \
+    five volts, discharge it with an insulated resistor. Then swap the contactor, refit the \
+    cover and restore the power.
+    """
+
+    /// An answer card, as the display service holds it and the mirror reads it.
+    private func answerCardScreen() async -> HUDScreen? {
+        let service = GlassesDisplayService()
+        service.testCapabilityOverride = true
+        service.testRenderSink = { _ in }
+        let card = HUDAnswerCard(display: service)
+        card.geometry = { .raybanDisplay }
+        card.absorb(longAnswer, streamed: false)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        return service.mirrorScreen
+    }
+
+    func testTheAnswerCardsPagesAndFootersReachTheMirror() async throws {
+        let wasEnabled = Config.glassesDisplayEnabled
+        Config.setGlassesDisplayEnabled(true)
+        defer { Config.setGlassesDisplayEnabled(wasEnabled) }
+
+        let held = await answerCardScreen()
+        let screen = try XCTUnwrap(held)
+        let payload = WebHUDPayload.from(screen: screen)
+        let pages = try XCTUnwrap(payload.pages)
+        XCTAssertGreaterThan(pages.count, 2)
+        XCTAssertEqual(payload.pageIndex, 0)
+        for (index, page) in pages.enumerated() {
+            XCTAssertEqual(page.lines.last?.text, "\(index + 1)/\(pages.count)", "the footer shows")
+            XCTAssertEqual(page.lines.last?.emphasis, "meta")
+        }
+        XCTAssertEqual(payload.lines, pages[0].lines, "the frame itself is page 1")
+        XCTAssertEqual(pages.last?.items.map(\.id), [HUDAnswerCardBuilder.ItemID.actions,
+                                                      HUDAnswerCardBuilder.ItemID.back])
+
+        // The page shown can stay the same while pages become readable behind it, so the key the
+        // page re-renders on names the card and its pages as well.
+        XCTAssertTrue(payload.renderKey.hasPrefix(screen.renderKey))
+        XCTAssertNotEqual(payload.renderKey, screen.renderKey)
+        XCTAssertNotNil(payload.card)
+
+        let decoded = try JSONDecoder().decode(WebHUDPayload.self, from: payload.jsonData())
+        XCTAssertEqual(decoded, payload)
+
+        // Every other frame carries no pages, so its JSON is unchanged.
+        XCTAssertNil(WebHUDPayload.from(screen: sampleScreen()).pages)
+        XCTAssertFalse(String(decoding: WebHUDPayload.from(screen: sampleScreen()).jsonData(),
+                              as: UTF8.self).contains("pages"))
+    }
+
+    func testTheArrowKeysTurnPagesAndEscapeCloses() {
+        let html = WebHUDRenderer.page(mode: .polling(intervalSeconds: 2))
+        XCTAssertTrue(html.contains(WebHUDRenderer.pagingScript))
+        XCTAssertTrue(html.contains("\"ArrowRight\""))
+        XCTAssertTrue(html.contains("\"ArrowLeft\""))
+        XCTAssertTrue(html.contains("\"Escape\""))
+        XCTAssertFalse(html.contains("method: \"POST\""), "paging stays on the page: the mirror is read-only")
+
+        // The paging rule itself, run as the page runs it.
+        guard let context = JSContext() else { return XCTFail("no JavaScript context") }
+        context.evaluateScript(WebHUDRenderer.pagingScript)
+        func page(_ key: String, _ index: Int, _ count: Int) -> Int32 {
+            context.evaluateScript("pageAfterKey(\"\(key)\", \(index), \(count))").toInt32()
+        }
+        XCTAssertEqual(page("ArrowRight", 0, 3), 1)
+        XCTAssertEqual(page("ArrowRight", 2, 3), 2, "clamped at the last page")
+        XCTAssertEqual(page("ArrowLeft", 2, 3), 1)
+        XCTAssertEqual(page("ArrowLeft", 0, 3), 0, "clamped at the first page")
+        XCTAssertEqual(page("ArrowDown", 1, 3), 1, "other keys leave the page")
+        XCTAssertEqual(page("ArrowRight", 0, 0), 0)
     }
 
     // MARK: - Mirror tap on the display service
