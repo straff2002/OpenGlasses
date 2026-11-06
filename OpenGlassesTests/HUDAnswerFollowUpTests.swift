@@ -1,3 +1,4 @@
+#if !AVENKIN_PHONE_ONLY  // The phone-only (store) build has no glasses display, so no answer card.
 import XCTest
 @testable import OpenGlasses
 
@@ -179,3 +180,4 @@ final class HUDAnswerFollowUpTests: XCTestCase {
         XCTAssertEqual(card.followUps, [])
     }
 }
+#endif
