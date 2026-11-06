@@ -164,7 +164,13 @@ final class FollowUpPromptTests: XCTestCase {
 
         Config.setGlassesDisplayEnabled(true)
         Config.hudMirrorEnabled = true
-        XCTAssertEqual(display.answerSurface, .display, "a display wins over the mirror")
+        // The phone-only (store) build supports no glasses, so it never has a display surface,
+        // whatever the test override says; there the mirror is all there is.
+        if GlassesSupportPolicy.isSupported {
+            XCTAssertEqual(display.answerSurface, .display, "a display wins over the mirror")
+        } else {
+            XCTAssertEqual(display.answerSurface, .mirrorOnly, "a phone-only build has no display")
+        }
 
         display.testCapabilityOverride = false
         XCTAssertEqual(display.answerSurface, .mirrorOnly)
