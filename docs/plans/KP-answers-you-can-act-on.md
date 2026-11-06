@@ -1,10 +1,11 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 🚧 P0 + P1 + P1b built (headless) 2026-11-06: the pure core (`HUDAnswerPager` and
+**Status:** 🚧 P0 + P1 + P1b + P2 built (headless) 2026-11-06: the pure core (`HUDAnswerPager` and
 `HUDAnswerPage`, `PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the
 glasses (`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's
 keys), then what the wearer gets while another app has the Display (`DisplayAvailability`, the held
-card, the busy hint); P2 next, P6 device pass owed. The
+card, the busy hint), then suggested follow-ups (`FollowUpPrompt`, the tail taken off everywhere, the
+streamer's hold); P3 next, P6 device pass owed. The
 owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
 the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
 folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
@@ -486,6 +487,42 @@ the mirror; the tail stripped before speech, the HUD body, the transcript and me
 back a `<next>` sentence; follow-up buttons send their text as the next turn. **Tests:** a tail is never
 spoken on any streaming provider path; never in the transcript; the clause is absent when no display is
 showing answers; a malformed tail leaves the answer untouched.
+
+*Built 2026-11-06.* What P3 and P6 need to know:
+
+- **The clause.** `FollowUpPrompt.clause`, added by `LLMService.buildSystemPrompt` in the volatile tail
+  (block "follow-ups"), so the cacheable head is the same with or without a display. Only the full cloud
+  prompt asks (`offersFollowUps`): not the on-device prompts (a 2B model's window and memory are already
+  tight), the one-line lean cloud prompt, the per-minute condensed prompt, or Gemini Live and OpenAI
+  Realtime (a source scrape holds that). Allowed under `hipaaMode`.
+- **When.** `FollowUpPrompt.currentSurface` reads `GlassesDisplayService.answerSurface`: `.display`
+  (the HUD on and the backend has a display, mirror or not), `.mirrorOnly` (the HUD on, no display,
+  the mirror on) or `.none`. Decision 5 is two settings: **Suggested follow-ups on the display**
+  (`followUpsOnDisplayEnabled`, default on) beside **Say when the display is busy** in the In-Lens
+  Display section, and **Suggested follow-ups on the mirror** (`followUpsOnMirrorEnabled`, default off)
+  in the Web HUD Mirror screen. While another app has the Display the clause stays: the card is held.
+- **Taken off everywhere.** `LLMService.takingFollowUpTail` is the chokepoint beside
+  `collapsingRepeatedReply`: every `sendMessage` reply (voice, typed, photo, scheduled agents,
+  notifications) loses its tail before the job's log, the transcript, memory, speech or the HUD see it,
+  and the last assistant history entry loses it too (plain text, or the last text part), so the model
+  never sees its own tags again and nothing restored or exported carries them. The questions are kept in
+  `replyFollowUps` (reset as each `sendMessage` starts) and handed to `HUDAnswerCard.offerFollowUps` by
+  the voice and typed turns, the only place they go. `ConversationTurnRunner` takes a tail off again,
+  before and after `postProcess`, for any other brain (the Hermes bridges, the local agent) and for a
+  tail a memory tag after it kept from the end; what it finds goes to `onFollowUps`. The Chat tab's live
+  bubble keeps the raw stream in `StreamingTurn.received` and shows `FollowUpTail.streamingVisible`.
+- **The streamer.** `StreamSpeechGate` hands the splitter only the text before the first `<next>`
+  (`FollowUpTail.streamingVisible`, anywhere and any case), holding a trailing "<", "<ne"… until the
+  next chunk; once the tag has arrived the iteration is held (`HoldReason.followUpTail`), and if the tag
+  begins a sentence the answer's last sentence is released at once (the splitter never cuts before
+  "<", so it would otherwise ride with the tail). The final reply has no tail, so the reconciliation
+  never says it either. Tested on Anthropic's turn, the OpenAI-compatible chat stream and the Responses
+  stream through the real parsers, the on-device token shape with a think block, and a reply said whole.
+- **The card.** Two follow-ups beside Actions on the last page, a third on the Actions screen. Only a
+  reply that came back whole carries them (`finishTurn`, or the whole answer reaching `absorb`); a turn
+  cut short, a new answer's card, a card outside a turn and a closed card have none.
+- **Owed to P6 (and a live model).** How reliably each model writes the tail, and whether it keeps it
+  last; whether six-word questions read well as buttons on the lens.
 
 ### P3 — the band check
 
