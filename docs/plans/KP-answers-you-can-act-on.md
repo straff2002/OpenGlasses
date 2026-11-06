@@ -1,9 +1,10 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 🚧 P0 + P1 built 2026-11-06 (headless): the pure core (`HUDAnswerPager` and `HUDAnswerPage`,
-`PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the glasses
-(`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's keys);
-P1b next, P6 device pass owed. The
+**Status:** 🚧 P0 + P1 + P1b built (headless) 2026-11-06: the pure core (`HUDAnswerPager` and
+`HUDAnswerPage`, `PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the
+glasses (`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's
+keys), then what the wearer gets while another app has the Display (`DisplayAvailability`, the held
+card, the busy hint); P2 next, P6 device pass owed. The
 owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
 the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
 folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
@@ -429,6 +430,54 @@ link, worn and folded); a paused session never gets `start()` (through the backe
 nothing queues while `.inUse`; the held card shows again inside its lifetime and not after; the hint
 plays once per stretch, never for an alert, never when `.off`, never while speech is suppressed, and
 not at all with the setting off.
+
+*Built 2026-11-06.* What P2 and P6 need to know:
+
+- **The reading.** `DisplayAvailability.read` (pure, `Services/Display/DisplayAvailability.swift`)
+  folds the display capability, the link (`GlassesConnectionService.isConnected`, fed by AppState with
+  `isWorn` into `GlassesDisplayService.updateGlassesLink`) and the session reading
+  (`DisplaySessionReading`: the app's own `DisplaySessionState` plus `startRefused`). `.inUse` is
+  connected, not definitely taken off (`isWorn == nil` counts as worn), and the session `paused` or a
+  start refused. **Folded is not an input:** the app deliberately doesn't read `hingeState`, and there
+  is no other hinge signal, so a folded pair reads as its link and worn state say. Published as
+  `GlassesDisplayService.displayAvailability`. Only the Meta backend reads it; Even G2 and the
+  phone-only build always read `.ours`, and the mirror never makes it `.inUse`.
+- **Never take it back.** `MetaDisplayBackend` drives the session through `DisplaySessionControl`
+  (`DATDisplaySession` wraps `DeviceSession`; tests pass a fake through `testMakeSession`). Its watcher
+  follows `stateStream()` for as long as it holds the session, so a pause is heard while nothing is
+  rendering. `prepareSession()` never calls `start()` on a `paused` session and throws
+  `GlassesDisplayError.displayInUse`; `resetAfterError()` leaves a paused session alone, and the
+  service treats `displayInUse` as a reading, not a render failure. Back at `started` the reading is
+  `.ours` by itself, and a display capability found `.stopped` is started again (device-only: whether
+  it stops with the session is unknown). A start that throws or settles anywhere but `started`/`paused`
+  is a *refused* start: the session is dropped and the reading is `.inUse` for 30 s
+  (`startRefusalExpiry`), then the next frame tries once more. A compatibility refusal
+  (`insufficientSDKVersion`) is thrown as itself. Turning the HUD off still tears a paused session down
+  (and skips the blanking, since the lens is the other app's).
+- **No backlog.** While `.inUse` nothing reaches the render queue (`enqueue` returns before bumping
+  `frameRevision`), so the session is never asked to start; ambient lines and notifications are dropped
+  at `present`. The web mirror holds its last frame meanwhile. The service keeps state only: the answer
+  card, or a task card or menu still running (the plan named only the card; a task card is current
+  state, not backlog, so it is drawn again too). Back to `.ours`, the lens gets one frame: the task card
+  as it now is, the answer card through `HUDAnswerCard.displayReturned()`, or a clear.
+- **The held card.** `HUDAnswerCard.answerMadeAt` is the answer's last change (made or grown); on return
+  the card shows on the page the wearer left if `now - answerMadeAt < 60 s`, else it closes. Its idle
+  timer keeps running while held, unchanged. While `.inUse` the paging words go to the model
+  (`canTurn` is false) and page taps are refused with the soft tone.
+- **The hint.** `TextToSpeechService` asks `GlassesDisplayService.claimBusyHint` after an answer
+  (`.reply`/`.phoneAnswer`) is heard to its end: in `speakReporting` on `.completed`, and in
+  `streamedReplyDidEnd` when the reply wasn't interrupted. `DisplayBusyHint` holds the
+  once-per-stretch rule; the line is spoken as `.statusNotice`, not mirrored. The setting is
+  `Config.displayBusyHintEnabled` (default on), **Say when the display is busy** in the In-Lens Display
+  section under Devices & Privacy (`DisplayHUDSections`, glasses builds only).
+- **Support report.** The phone section carries "Display reading now" and up to 20 changes
+  (`DisplayAvailabilityLog`), each with its local time and the session state behind it; the event log
+  carries `hud event=availabilityRead state=<reading> detail=<session>` and
+  `hud event=displaySessionRead state=<session state>` on every session change. P6 reads these to
+  learn what DAT reports when another app takes the Display.
+- **Owed to P6.** Whether DAT reports `paused` (or `stopped`, or an error) when another app takes the
+  Display; whether a paused session returns to `started` by itself; whether the display capability
+  survives the pause; whether the glasses play our speech, and the hint, over the other app.
 
 ### P2 — suggested follow-ups
 
