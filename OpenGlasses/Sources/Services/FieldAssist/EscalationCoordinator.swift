@@ -32,6 +32,18 @@ final class EscalationCoordinator: ObservableObject {
     /// The session service the coordinator logs against. Injectable for tests; defaults to shared.
     var sessionService: FieldSessionService = .shared
 
+    // MARK: Named experts (Plan KM P0)
+
+    /// The list of named experts. Empty means today's behaviour: a request pages the pool.
+    var expertList: ExpertListStore = .shared
+    /// Opens the call route. Injectable so tests never open a URL.
+    var placement: CallPlacing = SystemCallPlacement()
+    var now: () -> Date = Date.init
+    /// Watches the call placed and writes what it saw on the escalation record.
+    lazy var callMonitor = ExpertCallMonitor(record: { [weak self] seen in self?.recordSeen(seen) })
+    /// The order the last offer gave, for "Sam didn't answer. Try Priya?".
+    private(set) var lastPickOrder: [EscalationContact] = []
+
     init() {}
 
     var isEscalationActive: Bool {
@@ -73,6 +85,66 @@ final class EscalationCoordinator: ObservableObject {
         return state
     }
 
+    // MARK: - Named experts (Plan KM P0)
+
+    enum CallOutcome: Equatable {
+        case placed(EscalationContact, CallVia)
+        case refused(String)
+    }
+
+    /// Whether any named expert is listed. With none, a request pages the pool as it always has.
+    var hasNamedExperts: Bool { !expertList.contacts.isEmpty }
+
+    /// The offer for "get me a furnace expert": the picker over the list, by fixed rules. Nothing
+    /// is called and nothing recorded; the offer is a question. Nil with no experts listed.
+    func offerExpert(request: String, job: ExpertPicker.Job) -> ExpertPicker.Pick? {
+        let experts = expertList.contacts
+        guard !experts.isEmpty else { return nil }
+        let pick = ExpertPicker.pick(.init(request: request, job: job, experts: experts, now: now(),
+                                           lastCalledExpertId: expertList.lastCalledExpertId))
+        lastPickOrder = pick.ordered.map(\.contact)
+        callMonitor.clearOffer()
+        return pick
+    }
+
+    /// Call a named expert: open the route, then record the escalation with the expert on it and
+    /// move the rota on. The call is the system's — iOS asks the technician to tap Call — so the
+    /// outcome says only that the call was started, never that it connected.
+    ///
+    /// Entitlement is checked here, at the boundary, as `requestExpert` checks it.
+    func callExpert(_ contact: EscalationContact, via: CallVia, reason: String) async -> CallOutcome {
+        guard FieldAssistEntitlement.shared.has(.fieldWork) else {
+            return .refused("Field Assist isn't unlocked on this device.")
+        }
+        let name = ExpertPicker.spokenName(contact, among: expertList.contacts)
+        guard let route = CallRoute.make(contact, via: via) else {
+            return .refused(via == .phone
+                ? "\(name) has no number on the Experts list that can be dialled."
+                : "\(name) has no FaceTime handle or number on the Experts list.")
+        }
+        guard await placement.place(route) else {
+            return .refused("Your phone couldn't start the call to \(name).")
+        }
+        state = .awaitingExpert(reason: reason)
+        sessionService.recordEscalation(reason: reason, expert: contact.snapshot, via: via)
+        expertList.lastCalledExpertId = contact.id
+        let order = lastPickOrder.contains(where: { $0.id == contact.id }) ? lastPickOrder : [contact]
+        callMonitor.expect(contact, order: order)
+        return .placed(contact, via)
+    }
+
+    /// The offer a call that ended unanswered left, if any.
+    var noAnswerOffer: String? { callMonitor.noAnswerOffer }
+
+    /// Write what the monitor saw on the escalation record.
+    func recordSeen(_ seen: ExpertCallMonitor.Seen) {
+        switch seen.change {
+        case .started(let at): sessionService.recordExpertCall(expertId: seen.expertId, started: at)
+        case .connected(let at): sessionService.recordExpertCall(expertId: seen.expertId, connected: at)
+        case .ended(let at, _): sessionService.recordExpertCall(expertId: seen.expertId, ended: at)
+        }
+    }
+
     /// Mark that an expert has joined. Attempts to bring up the live media bridge; in Phase 3 the
     /// bridge is pending, so we still transition to `expertConnected` (the human can act on the
     /// audit record) and report whether live media actually came up.
@@ -112,6 +184,7 @@ final class EscalationCoordinator: ObservableObject {
     /// Reset to idle (e.g. when a new session starts).
     func reset() {
         state = .idle
+        lastPickOrder = []
     }
 
     // MARK: - Status

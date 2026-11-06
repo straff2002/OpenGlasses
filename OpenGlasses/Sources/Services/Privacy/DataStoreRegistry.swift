@@ -78,6 +78,7 @@ enum SensitiveStore: String, CaseIterable {
     case vaultLinkStaging
     case tableChecks
     case fieldDeliverySettings
+    case expertList
     case jobDeliveryQueue
     case upcomingJobs
     case workizConnection
@@ -617,6 +618,22 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "DeliverySettings",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/DeliverySettings.swift"],
                           location: "preferences key `fieldAssistDeliverySettings`; its token is in the Keychain")
+
+        case .expertList:
+            // The experts a technician can call (Plan KM P0): the device owner's list of the
+            // organisation's experts (with no profile in force), the technician's own additions,
+            // and the rota position. Names, numbers, FaceTime handles and specialty tags the wearer
+            // entered or picked from Contacts on purpose — working contacts, as the report
+            // recipients in `fieldDeliverySettings` are, not people observed — so the linkage is
+            // the wearer's. A contact is a snapshot, never a Contacts identifier. Each row is
+            // removed in Settings › Field Assist › Experts; a profile's list lives in the profile.
+            return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          deleteAll: .api("ExpertListStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ExpertListStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Experts/ExpertListStore.swift"],
+                          location: "preferences keys `organizationExperts`, `fieldAssistPersonalExperts`, `fieldAssistExpertRotaLastCalled`")
 
         case .jobDeliveryQueue:
             // Reports asked for by voice and waiting for a thumb (Plan FO P3b). It carries the

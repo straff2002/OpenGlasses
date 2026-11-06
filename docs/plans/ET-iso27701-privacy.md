@@ -79,6 +79,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | diagnosticExports | `DiagnosticExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | none — released on share, background and launch scavenge | n/a — no subject linkage |
 | erasureLedger | `ErasureLedger` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | cap 200 | `ErasureLedger.clear()` | none — the entry is what makes the erasure survive; removing it would let a restore bring the subject back |
 | evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | completeUntilFirstUserAuthentication | yes | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |
+| expertList | `ExpertListStore` | preference | wearer | platformDefault | no | none | `ExpertListStore.removeAll()` | n/a — no subject linkage |
 | faces | `FaceRecognitionService` | biometric | thirdPartySubject | complete | yes | none | `FaceRecognitionService.forgetAllFaces()` | `FaceRecognitionService.forgetFace(name:)` |
 | fieldDeliverySettings | `DeliverySettings` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
 | fieldSessionLogs | `SessionLogger` | operationalAudit | wearer | platformDefault | no | none | none — a session log is the engineer's compliance record | n/a — no subject linkage |

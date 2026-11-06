@@ -100,6 +100,8 @@ question, see "Not in this plan".
    with specialties, on-call hours and contracted rates, under the CT key `organizationExperts`. The owner
    took "both" for decision 6 there (2026-11-03): the organisation sets the list, and a technician
    may add unpaid colleagues.
+   *2026-11-06:* KM P0 built it: `EscalationContact`, `organizationExperts`, the personal additions,
+   `CallRoute` and `CallPlacement`. P3's `call_base` reuses them.
 
 ## Phases (one PR each)
 

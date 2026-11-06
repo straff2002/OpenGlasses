@@ -67,7 +67,7 @@ An organisation profile is a signed document we prepare with you. Each phone enr
 | No van stock kept on the phone | `organizationForbidsVanStock` | On only |
 | Tables read from a picture give no value until checked against the page | `organizationRequiresTableChecks` | On only |
 
-While it is in place the profile also sets your organisation's name, report recipients and channel, whether office reports carry the transcript, the key your job files are signed with, your colour, and whether the assistant looks up tool definitions on demand (`organizationToolDefinitionsMode`: automatic, always or never). It can name the AI provider and model, lock whole groups of settings and close tools in a Field Assist edition, and give starting values the technician may change later (Field Assist on, the default vault and mode, the support address).
+While it is in place the profile also sets your organisation's name, report recipients and channel, whether office reports carry the transcript, the key your job files are signed with, your colour, whether the assistant looks up tool definitions on demand (`organizationToolDefinitionsMode`: automatic, always or never), and the experts your technicians can call (`organizationExperts`: name, number or FaceTime handle, specialties, staff or contracted, on-call hours, and for a contracted expert the rate used on statements, never charged). It can name the AI provider and model, lock whole groups of settings and close tools in a Field Assist edition, and give starting values the technician may change later (Field Assist on, the default vault and mode, the support address).
 
 ## 6. What a technician can switch off themselves
 
