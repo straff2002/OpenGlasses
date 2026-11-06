@@ -271,6 +271,14 @@ struct DisplayHUDSections: View {
                 ),
                 info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
             )
+            InfoToggle(
+                title: "Say when the display is busy",
+                isOn: Binding(
+                    get: { Config.displayBusyHintEnabled },
+                    set: { Config.setDisplayBusyHintEnabled($0) }
+                ),
+                info: "While another app is using the in-lens display, answers can't be shown on it. The first answer you hear then is followed once by a short reminder that you can say \"repeat\", \"save that\" or \"tell me more\" instead. The app never takes the display back from the other app."
+            )
         } header: {
             Text("In-Lens Display")
         } footer: {

@@ -34,6 +34,60 @@ protocol GlassesDisplayBackend: AnyObject {
 }
 
 #if !AVENKIN_PHONE_ONLY
+/// Plan KP P1b: the part of a DAT `DeviceSession` the display backend drives, so the in-use rule
+/// (§8 rule 2: a paused session is never started again by us, nor torn down) is testable headless.
+/// `DATDisplaySession` is the one real implementation; tests hand the backend a fake through
+/// `MetaDisplayBackend.testMakeSession` and never touch `Wearables.shared`.
+@MainActor
+protocol DisplaySessionControl: AnyObject {
+    var sessionState: DisplaySessionState { get }
+    func start() throws
+    func stop()
+    /// The session's states as they change. Finishes once the session reaches `.stopped`
+    /// (`DeviceSession.stateStream()`'s contract since DAT 0.9.0).
+    func stateUpdates() -> AsyncStream<DisplaySessionState>
+    func addDisplay() throws -> Display
+}
+
+/// A real `DeviceSession` behind `DisplaySessionControl`.
+@MainActor
+final class DATDisplaySession: DisplaySessionControl {
+    private let session: DeviceSession
+
+    init(_ session: DeviceSession) {
+        self.session = session
+    }
+
+    var sessionState: DisplaySessionState { DisplaySessionState(session.state) }
+    func start() throws { try session.start() }   // synchronous; the state follows
+    func stop() { session.stop() }
+    func addDisplay() throws -> Display { try session.addDisplay() }
+
+    func stateUpdates() -> AsyncStream<DisplaySessionState> {
+        let states = session.stateStream()
+        return AsyncStream { continuation in
+            let relay = Task {
+                for await state in states { continuation.yield(DisplaySessionState(state)) }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in relay.cancel() }
+        }
+    }
+}
+
+extension DisplaySessionState {
+    init(_ state: DeviceSessionState) {
+        switch state {   // `DeviceSessionState` is @frozen
+        case .idle: self = .idle
+        case .starting: self = .starting
+        case .started: self = .started
+        case .paused: self = .paused
+        case .stopping: self = .stopping
+        case .stopped: self = .stopped
+        }
+    }
+}
+
 /// The Ray-Ban Display path (DAT `MWDATDisplay`) behind the seam — a pure extraction of what
 /// `GlassesDisplayService` did directly; no behavior change, existing HUD tests stay green
 /// (they capture above the backend via `testRenderSink`).
@@ -53,12 +107,44 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     /// Lazily initialized after `Wearables.configure()` has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
-    private var deviceSession: DeviceSession?
+    private var session: DisplaySessionControl?
     private var display: Display?
+    /// Follows the session's own states (`stateStream()`) for as long as we hold it.
+    private var sessionWatch: Task<Void, Never>?
+    /// Bumped whenever a refusal is set or cleared, so an older expiry never clears a newer one.
+    private var refusalGeneration = 0
+
+    // MARK: - When the Display is in use (Plan KP P1b)
+
+    /// What the session last said, for `DisplayAvailability`. Set on every state the session
+    /// reports and on a refused start; `onSessionReading` hears each change.
+    private(set) var sessionReading = DisplaySessionReading() {
+        didSet { if sessionReading != oldValue { onSessionReading?(sessionReading) } }
+    }
+    var onSessionReading: ((DisplaySessionReading) -> Void)?
+
+    /// A refused start reads as `.inUse` for this long, then the next frame may try once more. A
+    /// refusal is not an interruption: the session never had the Display, so trying again later
+    /// takes nothing back. Without the expiry a refusal would hold the HUD dark until relaunch,
+    /// because nothing renders while the reading is `.inUse`.
+    static let startRefusalExpiry: TimeInterval = 30
+
+    /// Test seams. `testIsAvailable` stands in for the SDK's device lookup and `testMakeSession`
+    /// for `Wearables.shared.createSession`, so a test drives the session rule with a fake.
+    /// `scheduleRefusalExpiry` runs `fire` after `delay` (production sleeps on the main actor).
+    var testIsAvailable: Bool?
+    var testMakeSession: (() throws -> DisplaySessionControl)?
+    var scheduleRefusalExpiry: (_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> Void = { delay, fire in
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            fire()
+        }
+    }
 
     // MARK: - GlassesDisplayBackend
 
     var isAvailable: Bool {
+        if let testIsAvailable { return testIsAvailable }
         // Single choke point for the HUD: renders gate on this, so an unconfigured SDK
         // reports "no display" instead of trapping on `deviceSelector`/`Wearables.shared`.
         guard WearablesBootstrap.ensureConfigured() else { return false }
@@ -124,21 +210,23 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             // stopping with content still up can surface the system home screen on the
             // lens instead of going dark (device-traced ordering; iOS DAT has no
             // `removeDisplay`, so clear → settle → stop is the whole discipline).
-            try? await display.clearDisplay()
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            // Plan KP §8: not while another app has the Display: the lens is theirs to blank.
+            if session?.sessionState != .paused {
+                try? await display.clearDisplay()
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
             display.stop()  // DAT 0.8.0: Display.stop() is synchronous
         }
-        display = nil
-        deviceSession?.stop()
-        deviceSession = nil
-        isDisplayActive = false
+        // The wearer turned the HUD off (or the app is going): a full teardown, paused or not.
+        dropSession()
+        clearStartRefusal()
     }
 
     func resetAfterError() {
-        display = nil
-        deviceSession?.stop()
-        deviceSession = nil
-        isDisplayActive = false
+        // Plan KP §8 rule 2: a session another app has interrupted is never torn down by a render
+        // error. It is followed back to `started` instead.
+        guard session?.sessionState != .paused else { return }
+        dropSession()
     }
 
     // MARK: - Screen tree
@@ -213,52 +301,140 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     // MARK: - Session lifecycle
 
     private func ensureDisplay() async throws -> Display {
-        // Reuse a live display/session.
-        if let display, deviceSession?.state == .started {
+        let session = try await prepareSession()
+        if let display {
+            // Reuse the live display. After a pause the capability may have stopped with the
+            // session; start it again only then (`Display.start()` is synchronous).
+            if display.state == .stopped { display.start() }
             return display
         }
-        // Drop stale references if the session died underneath us.
-        if deviceSession?.state == .stopped || deviceSession?.state == .idle {
-            display = nil
-            deviceSession = nil
-            isDisplayActive = false
-        }
-
-        guard isAvailable else { throw GlassesDisplayError.noDisplay }
-
-        let session: DeviceSession
-        if let existing = deviceSession {
-            session = existing
-        } else {
-            session = try Wearables.shared.createSession(deviceSelector: deviceSelector)
-            deviceSession = session
-        }
-
-        if session.state != .started {
-            try session.start()
-            let deadline = ContinuousClock.now + .seconds(10)
-            while ContinuousClock.now < deadline {
-                if session.state == .started || session.state == .stopped { break }
-                try await Task.sleep(nanoseconds: 200_000_000)
-            }
-        }
-        guard session.state == .started else { throw GlassesDisplayError.sessionUnavailable }
-
-        let display: Display
-        if let existing = self.display {
-            display = existing
-        } else {
-            // We exclusively own this session, so the display capability can't already
-            // be active. `addDisplay()` throws DeviceSessionError; surface failures via
-            // the render-error path (which tears down and rebuilds a fresh session).
-            display = try session.addDisplay()
-            self.display = display
-        }
-
+        // We exclusively own this session, so the display capability can't already be active.
+        // `addDisplay()` throws DeviceSessionError; surface failures via the render-error path
+        // (which tears down and rebuilds a fresh session).
+        let display = try session.addDisplay()
+        self.display = display
         display.start()  // DAT 0.8.0: Display.start() is synchronous
         isDisplayActive = true
         onDebugEvent?("HUD display started")
         return display
+    }
+
+    /// The session, started, or `GlassesDisplayError.displayInUse` when the Display is not ours.
+    ///
+    /// Plan KP §8 rule 2: a `paused` session (another app has the Display) is never started again
+    /// and never torn down; its watcher follows it back to `started`, and the reading returns to
+    /// `.ours` by itself. A start that does not reach `started` (it throws, or the session settles
+    /// anywhere else) is a refused start: the session is dropped and the reading is `.inUse` for
+    /// `startRefusalExpiry`. A compatibility refusal (the glasses refuse this build) is not that;
+    /// it is thrown as itself. Genuinely stopped or idle sessions are rebuilt, as before.
+    @discardableResult
+    func prepareSession() async throws -> DisplaySessionControl {
+        if let session {
+            switch session.sessionState {
+            case .started:
+                return session
+            case .paused:
+                noteSessionState(.paused)
+                throw GlassesDisplayError.displayInUse
+            case .stopped, .idle:
+                dropSession(stopping: false)   // died underneath us: rebuild from scratch
+            case .starting, .stopping:
+                break
+            }
+        }
+        if sessionReading.startRefused { throw GlassesDisplayError.displayInUse }
+
+        guard isAvailable else { throw GlassesDisplayError.noDisplay }
+
+        let session: DisplaySessionControl
+        if let existing = self.session {
+            session = existing
+        } else {
+            session = try makeSession()
+            self.session = session
+            watch(session)
+        }
+
+        if session.sessionState != .started {
+            do {
+                try session.start()
+            } catch {
+                if DATCompatibilityMessage.isSDKRefusal(error) { throw error }
+                refuseStart()
+                throw GlassesDisplayError.displayInUse
+            }
+            let deadline = ContinuousClock.now + .seconds(10)
+            while ContinuousClock.now < deadline {
+                let state = session.sessionState
+                if state == .started || state == .stopped || state == .paused { break }
+                try await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+        let state = session.sessionState
+        noteSessionState(state)
+        switch state {
+        case .started:
+            return session
+        case .paused:
+            throw GlassesDisplayError.displayInUse
+        default:
+            refuseStart()
+            throw GlassesDisplayError.displayInUse
+        }
+    }
+
+    private func makeSession() throws -> DisplaySessionControl {
+        if let testMakeSession { return try testMakeSession() }
+        return DATDisplaySession(try Wearables.shared.createSession(deviceSelector: deviceSelector))
+    }
+
+    /// Follow the session's own states for as long as we hold it. A pause that happens while
+    /// nothing is rendering is heard at once, so the reading is `.inUse` before the next answer;
+    /// `started` again brings it back to `.ours`. The stream finishes at `.stopped`.
+    private func watch(_ session: DisplaySessionControl) {
+        sessionWatch?.cancel()
+        let updates = session.stateUpdates()
+        sessionWatch = Task { @MainActor [weak self] in
+            for await state in updates {
+                guard let self, !Task.isCancelled, self.session === session else { return }
+                self.noteSessionState(state)
+            }
+        }
+    }
+
+    private func noteSessionState(_ state: DisplaySessionState?) {
+        guard sessionReading.state != state else { return }
+        if let state {
+            PrivacyLog.device(.hud, .displaySessionRead, state: PrivacyToken(state.rawValue))
+        }
+        sessionReading.state = state
+    }
+
+    private func refuseStart() {
+        dropSession()
+        refusalGeneration += 1
+        let generation = refusalGeneration
+        sessionReading.startRefused = true
+        onDebugEvent?("HUD display start refused")
+        scheduleRefusalExpiry(Self.startRefusalExpiry) { [weak self] in
+            guard let self, generation == self.refusalGeneration else { return }
+            self.clearStartRefusal()
+        }
+    }
+
+    private func clearStartRefusal() {
+        refusalGeneration += 1
+        sessionReading.startRefused = false
+    }
+
+    private func dropSession(stopping: Bool = true) {
+        sessionWatch?.cancel()
+        sessionWatch = nil
+        if stopping { session?.stop() }
+        session = nil
+        display = nil
+        isDisplayActive = false
+        noteSessionState(nil)
     }
 }
 

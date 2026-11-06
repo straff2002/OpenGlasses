@@ -2125,6 +2125,12 @@ enum PrivacyLog {
         /// notification, a clear) was enqueued after it was issued. `count` is how many frames
         /// came in between. Nothing about the card itself.
         case hudPageTurnStale
+        /// Plan KP §8. `displaySessionRead` is the Meta display session's own state each time it
+        /// changes (`state` = the app's case name: `paused`, `started`, …). `availabilityRead` is
+        /// whose the Display is each time that reading changes (`state` = `ours`, `inUse` or
+        /// `off`; `detail` = the session state behind it, `-refused` when a start was refused).
+        /// Case names only; nothing about what was, or was not, shown.
+        case displaySessionRead, availabilityRead
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

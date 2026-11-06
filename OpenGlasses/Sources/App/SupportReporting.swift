@@ -222,6 +222,10 @@ extension AppState {
             // permission, listed and out of reach. Case names and a count; no device is named.
             phone.append(glassesService.reachability.reportLine)
         }
+        // Plan KP §8: whose the in-lens Display was, each time that changed, with the session
+        // state behind it (case names and times; nothing that was shown). Connected or not: a
+        // report sent after the glasses dropped still says what happened while they were up.
+        phone += glassesDisplay.availabilityReportLines
         // Which radio link carried the glasses video, as far as the glasses software's own log
         // says, and what the stream delivered. Always present: "not known" is an answer too.
         // A level and three numbers; no device is named.

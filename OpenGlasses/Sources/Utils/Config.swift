@@ -3999,6 +3999,12 @@ struct Config {
 
     static func setGlassesDisplayEnabled(_ enabled: Bool) { glassesDisplayEnabled = enabled }
 
+    /// Plan KP §8 rule 5: while another app has the Display, the first answer spoken is followed
+    /// once by "Your display's busy…" (once per stretch). On by default (decision 9).
+    @UserDefaultsBacked("displayBusyHintEnabled", default: true) static var displayBusyHintEnabled: Bool
+
+    static func setDisplayBusyHintEnabled(_ enabled: Bool) { displayBusyHintEnabled = enabled }
+
     // MARK: - Memory loop (self-improving)
 
     /// When on, the assistant offers a spoken nudge after you state a durable fact or repeat a

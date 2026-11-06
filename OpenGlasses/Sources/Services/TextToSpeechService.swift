@@ -354,6 +354,21 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         glassesDisplay?.showText(text, flashWhileInteractive: true)
     }
 
+    /// Plan KP §8 rule 5: whether the busy hint is owed after a line from `source` was spoken: an
+    /// answer, while another app has the Display, with speech not being withheld, the setting on,
+    /// and not yet in this stretch. Taking it uses it up.
+    func takeDisplayBusyHint(afterLineFrom source: SpeechSource) -> Bool {
+        guard let glassesDisplay else { return false }
+        return glassesDisplay.claimBusyHint(afterLineFrom: source,
+                                            speechSuppressed: currentSuppression() != nil)
+    }
+
+    /// Say the busy hint after an answer, when it is owed. Not mirrored: the lens is not ours.
+    private func speakDisplayBusyHintIfOwed(afterLineFrom source: SpeechSource) async {
+        guard takeDisplayBusyHint(afterLineFrom: source) else { return }
+        await speak(DisplayBusyHint.line, source: .statusNotice, mirrorToHUD: false)
+    }
+
     /// Set by AppState — lets the engine selector know whether we're online, so a configured
     /// ElevenLabs key isn't preferred while offline. Nil (unwired) is treated as online, preserving
     /// the historical "just try ElevenLabs and fall back on network error" behaviour.
@@ -570,7 +585,13 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             ? .failed(reason: "no engine spoke it")
             : SpeechDeliveryLedger.outcome(for: .superseded,
                                            teardownCause: deliveryLedger.teardownCause)
-        return finishOutcome(for: gen, fallback: fallback)
+        let outcome = finishOutcome(for: gen, fallback: fallback)
+        // Plan KP §8 rule 5: an answer heard to its end while the display is busy is followed once
+        // by the hint. Not after one cut short: the wearer has moved on.
+        if outcome == .completed, gen == speechGeneration {
+            await speakDisplayBusyHintIfOwed(afterLineFrom: source)
+        }
+        return outcome
     }
 
     // MARK: - Delivery outcome bookkeeping (Plan FE P4)
@@ -1982,6 +2003,11 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
         isSpeaking = false
         await endPause()
         PrivacyLog.tts(.finished, detail: PrivacyToken("streamed"))
+        // Plan KP §8 rule 5: a streamed answer heard to its end is followed once by the hint, as a
+        // whole one is.
+        if record.interruption == nil, record.heardCount > 0 {
+            await speakDisplayBusyHintIfOwed(afterLineFrom: queue.source)
+        }
     }
 
     /// `DirectReplySpeechStream`'s reply, streamed or spoken whole: everything it speaks is the
