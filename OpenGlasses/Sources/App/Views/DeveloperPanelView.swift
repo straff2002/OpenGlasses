@@ -100,6 +100,19 @@ struct DeveloperPanelView: View {
                 .padding(12)
             }
 
+            // Plan KQ P0: the search-trained embedding model on this phone. Files copied in by hand.
+            OGSection(header: "Search Model") {
+                NavigationLink {
+                    SearchModelCheckView()
+                } label: {
+                    OGRow(
+                        "Search Model Check", icon: "gauge.with.dots.needle.67percent",
+                        subtitle: "Speed, memory and vector parity on this phone"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+
             OGSection(header: "Turn Latency") {
                 NavigationLink {
                     TurnTimelineDebugView(ledger: appState.turnLedger)

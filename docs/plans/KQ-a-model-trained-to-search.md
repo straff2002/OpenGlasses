@@ -1,8 +1,20 @@
 # Plan KQ — A Model Trained to Search (manual passages embedded by a retrieval model, measured before it answers)
 
-**Status:** 📝 Drafted 2026-11-07 from the owner's question: could a newer embedding model, or a learned
-sparse model, do better than the ones manual search uses today? Nothing built. P0 and P1 run on the Mac
-with no change to the app. The app changes only if P1 meets the bar below.
+**Status:** 🚧 P0 run 2026-11-07, on the Mac and on the owner's iPhone Air (iOS 27.2). The model goes on
+to P1, on the CPU only:
+- **Foreground:** a question embeds in 39 ms warm (p90 41 ms), the first text in 63 ms, and a 404-token
+  passage in 197 ms.
+- **Memory:** about 167 MB more with the model loaded.
+- **Tokenizer:** `swift-transformers` gives the reference's ids on all 329 test texts.
+- **Parity:** int8 weights stay within 0.9998 of the reference on the phone, with no NaN.
+- **fp16 fails:** no NaN, but every vector drifts (median cosine 0.978), so the Neural Engine is out.
+- **Locked, in the background:** five questions in a row took 118–155 ms each. One locked question, the
+  first after iOS had reclaimed the model's pages, took 4.7 s. P2 has to warm the model at the start of a
+  turn (see P0's findings).
+
+Drafted 2026-11-07 from the owner's question: could a newer embedding model, or a learned sparse model, do
+better than the ones manual search uses today? The app's search is unchanged. P0 added a developer check
+only. The app changes only if P1 meets the bar below.
 
 ## Why
 
@@ -57,10 +69,9 @@ These shape every phase. A design that breaks one is out, however well it scores
    forbids Metal in the background, and MLX's failure there is an uncatchable abort that kills the app (see
    `LocalLLMService`'s guards). The model runs through Core ML with compute units pinned to the CPU, or
    CPU and Neural Engine. It never runs on MLX and never on `.all`.
-2. **No fp16 unless measured safe.** The model card warns that float16 can give NaN or degraded vectors.
-   The Neural Engine computes in fp16. The default is int8 weights with fp32 activations on the CPU. The
-   Neural Engine is allowed only if P0 measures no NaN and vectors matching the fp32 reference (cosine
-   ≥ 0.999) over the whole eval corpus.
+2. **No fp16.** The model card says not to use float16. P0 measured it: no NaN, but every vector moved
+   (median cosine 0.978 against the reference, none above 0.999). The Neural Engine computes in fp16, so
+   the model runs with int8 weights and fp32 activations on the CPU, and only there.
 3. **Question and document are told apart.** Today `EmbeddingBackend.embed(_:)` has one entry. The new
    backend needs the query prefix on a question and the document prefix on a passage. Getting this wrong
    costs quality silently, so it is a type, not a convention.
@@ -109,6 +120,49 @@ If it misses the bar, the plan ends at P1 with the numbers written down, and not
   Only a compute-unit choice that meets the latency bar on the phone goes on to P1. If none does, the plan
   stops here.
 
+**Run 2026-11-07.** Built from `Scripts/kq-embedder` (`convert.py`, `parity.py`, invented sentences in
+`sentences.py`). The phone half is a developer check, `SearchModelPhoneCheck`, under Settings › Advanced ›
+Developer › Search Model Check. Its files are copied into the app's Documents by hand, and nothing
+downloads.
+- **The card, checked.**
+  - Apache 2.0 and ungated, as reported.
+  - The text model is 24 layers at width 512, with a 262,144-word vocabulary and a projection to 768.
+    Its int8 package is 261 MB.
+  - It reads 8K tokens, but the config's sliding window is 512 (the card's table says 1024). The package
+    takes up to 512 tokens, so every layer sees the whole input, and longer text is split as today.
+  - The prefixes are `task: search result | query: ` for a question and `title: none | text: ` for a
+    passage. Pooling is the mean over every token, prefix included, then normalised.
+- **The conversion.** The library's own forward doesn't trace, because its masks and reshapes come from
+  runtime shapes. `convert.py` reimplements it with the same weights and fixed head shapes. It equals the
+  library to cosine 1.000000 before any conversion. Parity on the Mac against the float32 reference, 329
+  texts (160 questions, 161 passages, 8 in other languages and scripts):
+
+  | Package | Compute | NaN | Min cosine 768 / 256 | Median 768 | Mac ms per text |
+  |---|---|---|---|---|---|
+  | fp32 | CPU | 0 | 1.00000 / 1.00000 | 1.00000 | 57 |
+  | int8 weights | CPU | 0 | 0.99977 / 0.99980 | 0.99987 | 55 |
+  | int8, fp16 compute | CPU or Neural Engine | 0 | 0.91516 / 0.92237 | 0.97792 | 24 |
+
+- **The phone (iPhone Air, iOS 27.2, Release build, CPU only).**
+  - Compile and load take 2.3 s, and the tokenizer loads in 1.2 s.
+  - Footprint is 99 → 266 MB after load, with a peak of 267 MB.
+  - The tokenizer matches on 329 of 329 texts.
+  - First text 63 ms. Warm median 40 ms, p90 42 ms, max 197 ms (the 404-token passage). Questions alone:
+    median 39 ms, p90 41 ms.
+  - Parity is identical to the Mac's int8 row.
+- **Locked.** These were two runs of the 15-second test with the phone locked, the app in the background
+  with a background task, and no audio session.
+  - **First run:** the model loaded and the phone was locked before its first prediction. The first
+    question took 4,741 ms, with protected data locked and parity 0.99990.
+  - **Second run:** with one warm-up in the foreground first, five questions took 119, 119, 145, 136 and
+    134 ms at user-initiated priority, and 155, 118, 136, 137 and 132 ms at background priority.
+  - During the sleep, iOS reclaimed about 90 MB of the model's pages (253 → 165 MB).
+
+  So the background CPU is about three times slower than the foreground, and still near the 150 ms bar.
+  The first question after the pages are reclaimed pays to read them back. P2 warms the model when a turn
+  starts (the wake word, or the first audio of a question), so that read happens while the wearer is still
+  speaking, and P3 measures the first question after a long lock with the glasses' audio session running.
+
 ### P1 — measure on the keys (Mac runner, on the phone's compute choice)
 
 The Mac runner reads the keys quickly. It embeds with the compute units and precision P0 chose for the
@@ -147,6 +201,11 @@ re-scored from vectors made on the phone.
   An organisation profile can pin the choice through a new profile key, added in the same PR. The current switch's
   stored value maps onto the first two options, so no install changes model on upgrade.
 - `RetrievalEvidencePolicy.default(for:)` gains the P1 entry.
+- A warm-up at the start of a turn, when the search-trained model is chosen and a vault is open: one tiny
+  prediction off the main thread when the wake word fires or a question's first audio arrives, so pages
+  iOS reclaimed in the background are read back while the wearer speaks (P0's 4.7 s first locked
+  question).
+- `SearchModelPhoneCheck` and its Developer row are replaced by the real backend's own check, or removed.
 - Tests:
   - the role reaches the prefix;
   - a missing or partial download falls back with no re-index;
@@ -158,7 +217,9 @@ re-scored from vectors made on the phone.
 
 ### P3 — the phone (device)
 
-- Question latency, peak memory and battery on the phone's CPU, and on the Neural Engine if P0 cleared it.
+- Question latency, peak memory and battery on the phone's CPU (P0 ruled out the Neural Engine).
+- The first question after the phone has been locked for 10 and 30 minutes, with the glasses connected and
+  the audio session running, with and without P2's warm-up.
 - Re-index time for the largest held vault, including one interrupted run that resumes.
 - A question asked with the phone locked and the glasses in use: it answers, and nothing touches the GPU.
 - Phone vectors against the Mac's on 50 passages: cosine ≥ 0.999.
