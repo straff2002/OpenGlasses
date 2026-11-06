@@ -52,6 +52,11 @@ final class StagedExportCoordinator {
     static let fieldSession = StagedExportCoordinator(
         channel: .fieldSessionExport, rootDirectoryName: "FieldSessionExports")
 
+    /// An expert's time reply to a handover (Plan KM P2): one small `.ogcase` file, staged for
+    /// the expert's own share and released when it ends.
+    static let assistingReply = StagedExportCoordinator(
+        channel: .assistingReply, rootDirectoryName: "AssistingReplyExports")
+
     private let channel: PrivacyLog.TransferChannel
     private let store: ProtectedExportFileStore
     private let clock: () -> Date
@@ -173,8 +178,8 @@ final class StagedExportCoordinator {
         return removed
     }
 
-    /// The three families, in one place so a caller that needs all of them cannot miss one.
-    static var allFamilies: [StagedExportCoordinator] { [agentArchive, safetyReport, fieldSession] }
+    /// The four families, in one place so a caller that needs all of them cannot miss one.
+    static var allFamilies: [StagedExportCoordinator] { [agentArchive, safetyReport, fieldSession, assistingReply] }
 
     /// Sweep every staged-export family. Called at launch and on backgrounding.
     @discardableResult

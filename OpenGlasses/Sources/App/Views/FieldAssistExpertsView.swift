@@ -1,6 +1,7 @@
 import SwiftUI
 import Contacts
 import ContactsUI
+import UniformTypeIdentifiers
 
 /// Settings › Field Assist › Experts (Plan KM P0): who "get me a furnace expert" and "call Sam" can
 /// reach.
@@ -21,6 +22,9 @@ struct FieldAssistExpertsView: View {
     @State private var managed = false
     @State private var pickingFor: ExpertListEntry.Source?
     @State private var problem: String?
+    @State private var importingCard = false
+    @State private var scanningCard = false
+    @ObservedObject private var cardInbox = ExpertCardInbox.shared
 
     var body: some View {
         Form {
@@ -32,6 +36,7 @@ struct FieldAssistExpertsView: View {
             if managed || !personal.isEmpty {
                 personalSection
             }
+            cardSection
             if let problem {
                 Section {
                     Label(problem, systemImage: "exclamationmark.triangle")
@@ -50,6 +55,41 @@ struct FieldAssistExpertsView: View {
         })
         .onAppear(perform: reload)
         .onReceive(NotificationCenter.default.publisher(for: .orgPolicyDidChange)) { _ in reload() }
+        // A card's review closed: what it added is on the list now.
+        .onChange(of: cardInbox.pending) { _, pending in if pending == nil { reload() } }
+        .fileImporter(isPresented: $importingCard,
+                      allowedContentTypes: [UTType(ExpertCard.utiIdentifier) ?? .json]) { result in
+            if case .success(let url) = result { problem = cardInbox.open(url) }
+        }
+        .sheet(isPresented: $scanningCard) {
+            OrgCodeScannerView(title: "Expert Card Code",
+                               prompt: "Point the camera at the code on the expert's phone.") { code in
+                problem = cardInbox.scanned(code)
+            }
+        }
+    }
+
+    /// An expert who uses Avenkin shares a card (Plan KM P2): imported, nothing is retyped, and
+    /// their replies match the entry exactly.
+    private var cardSection: some View {
+        Section {
+            Button {
+                importingCard = true
+            } label: {
+                Label("Import a Card File…", systemImage: "person.text.rectangle")
+            }
+            Button {
+                scanningCard = true
+            } label: {
+                Label("Scan a Card's Code", systemImage: "qrcode.viewfinder")
+            }
+        } header: {
+            Text("Expert cards")
+        } footer: {
+            Text(managed
+                 ? "A card adds the expert to your own list, as staff with no rate."
+                 : "A card fills in who they are and how to reach them. You set their kind, hours and any rate after.")
+        }
     }
 
     // MARK: - Sections

@@ -17,6 +17,9 @@ import Foundation
 /// path that tries to leave the package is a refusal, by name. The app writes this file, unlike
 /// `.ogjob`, which it only ever receives. It carries no signature: a handover is a document, not a
 /// key (§7), and opening one grants nothing.
+///
+/// The expert's time reply (Plan KM P2, `ExpertTimeReplyFile`) is the same family: the same zip
+/// and manifest name, kind `time`, read by its own reader. `received(_:)` reads the kind first.
 enum ExpertHandoverFile {
 
     static let fileExtension = "ogcase"
@@ -111,7 +114,7 @@ enum ExpertHandoverFile {
             return .failure(.missingManifest)
         }
         // The type and version first, so a newer file says so rather than "unreadable".
-        guard let header = try? decoder().decode(Header.self, from: json) else { return .failure(.unreadableManifest) }
+        guard let header = header(of: json) else { return .failure(.unreadableManifest) }
         guard header.type == ExpertHandover.typeIdentifier, header.kind == ExpertHandover.kind else {
             return .failure(.notAHandover)
         }
@@ -143,22 +146,48 @@ enum ExpertHandoverFile {
 
     // MARK: - Opening one on this phone
 
-    /// What opening a handover file says, until the expert's view exists (Plan KM P2): the file is
-    /// read and checked, the copy iOS put in the inbox is removed, and nothing from it is kept,
-    /// shown as a job or handed to the assistant.
-    static let notYetOpenedHere = "This is a job handover for an expert. Opening handovers isn't in this version of the app yet, so nothing from it was kept."
+    /// What an `.ogcase` handed to the app turned out to be (Plan KM P2). The family has two kinds
+    /// this version reads: a **handover**, which goes to Assisting mode, and an expert's **time
+    /// reply**, which goes to the job that sent the handover. The kind is read before anything else,
+    /// and each is then read by its own strict reader.
+    enum Received: Equatable {
+        case handover(Opened)
+        case timeReply(ExpertTimeReply)
+        /// Refused, in the words a notice shows.
+        case refused(String)
+    }
 
+    /// Read the file iOS handed over, remove the copy it put in the inbox, and say what it is.
+    /// Nothing is kept or applied here.
     @MainActor
-    static func intake(_ url: URL) -> String {
+    static func receive(_ url: URL) -> Received {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         defer { discardInboxCopy(url) }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-        guard size <= maximumBytes, let data = try? Data(contentsOf: url) else { return describe(.tooLarge) }
-        switch read(data) {
-        case .failure(let error): return describe(error)
-        case .success: return notYetOpenedHere
+        guard size <= maximumBytes, let data = try? Data(contentsOf: url) else { return .refused(describe(.tooLarge)) }
+        return received(data)
+    }
+
+    /// The same, over bytes. Pure.
+    static func received(_ data: Data) -> Received {
+        if kind(of: data) == ExpertTimeReply.kind {
+            switch ExpertTimeReplyFile.read(data) {
+            case .success(let reply): return .timeReply(reply)
+            case .failure(let error): return .refused(ExpertTimeReplyFile.describe(error))
+            }
         }
+        switch read(data) {
+        case .success(let opened): return .handover(opened)
+        case .failure(let error): return .refused(describe(error))
+        }
+    }
+
+    /// The manifest's kind, without reading the rest: nil when the bytes are not an `.ogcase`.
+    static func kind(of data: Data) -> String? {
+        guard data.count <= maximumBytes, let archive = ZipArchiveReader(data: data),
+              let json = archive.entryData(named: manifestName, maximumUncompressedSize: maximumBytes) else { return nil }
+        return header(of: json)?.kind
     }
 
     private static func discardInboxCopy(_ url: URL) {
@@ -169,10 +198,14 @@ enum ExpertHandoverFile {
     }
 
     /// The fields read before the whole value, so a version this build does not know is named.
-    private struct Header: Decodable {
+    struct Header: Decodable, Equatable {
         let type: String
         let version: Int
         let kind: String
+    }
+
+    static func header(of json: Data) -> Header? {
+        try? decoder().decode(Header.self, from: json)
     }
 
     /// Why a file was refused, in the words a notice shows. Never a path from the file.

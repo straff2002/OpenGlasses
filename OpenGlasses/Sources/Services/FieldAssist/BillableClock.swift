@@ -29,18 +29,33 @@ enum BillableClock {
     ///   - lastEvidenceOfLife: the newest timestamp in the job's `log.jsonl`, or nil for none.
     ///   - now: the relaunch.
     static func recover(session: FieldSession, lastEvidenceOfLife: Date?, now: Date) -> Recovery {
-        if let pausedAt = session.pausedAt {
+        recover(startedAt: session.startedAt, resumedAt: session.resumedAt, pausedAt: session.pausedAt,
+                checkpointAt: session.billableCheckpointAt, lastEvidenceOfLife: lastEvidenceOfLife, now: now)
+    }
+
+    /// The same recovery over the clock's own fields, for a clock that is not a job's: the expert's
+    /// clock in Assisting mode (Plan KM P2) keeps the same four instants and loses, as the job does,
+    /// only the time since the last sign of life.
+    ///
+    /// - Parameters:
+    ///   - startedAt: when the clock first ran.
+    ///   - resumedAt: the last resume, or nil for a clock never paused.
+    ///   - pausedAt: set while it is paused.
+    ///   - checkpointAt: everything before it is already in the total.
+    static func recover(startedAt: Date, resumedAt: Date?, pausedAt: Date?, checkpointAt: Date?,
+                        lastEvidenceOfLife: Date?, now: Date) -> Recovery {
+        if let pausedAt {
             return Recovery(creditedSeconds: 0, pausedAt: pausedAt, uncountedSeconds: 0, wasRunning: false)
         }
         // Counted from the later of the last resume (or the start, for a job never paused — which
         // is also every job recorded before `resumedAt` was kept) and the last checkpoint, because
         // a checkpoint has already added everything before it to the total.
-        let resumed = session.resumedAt ?? session.startedAt
-        let anchor = max(resumed, session.billableCheckpointAt ?? resumed)
+        let resumed = resumedAt ?? startedAt
+        let anchor = max(resumed, checkpointAt ?? resumed)
         // The last sign of life: the log's newest line or the checkpoint, never later than now and
         // never earlier than the anchor — a heartbeat before the anchor credits nothing rather than
         // something negative.
-        let seen = max(lastEvidenceOfLife ?? anchor, session.billableCheckpointAt ?? anchor)
+        let seen = max(lastEvidenceOfLife ?? anchor, checkpointAt ?? anchor)
         let heartbeat = min(max(seen, anchor), max(now, anchor))
         return Recovery(creditedSeconds: heartbeat.timeIntervalSince(anchor),
                         pausedAt: heartbeat,

@@ -7,6 +7,10 @@ import AVFoundation
 /// profile, and what happens next, is `OrgEnrolmentService`'s business — the scanner never fetches,
 /// verifies or applies anything, and it stops the camera the moment it has a code.
 struct OrgCodeScannerView: View {
+    /// The screen's title and the line under the camera. The defaults are the organisation code's;
+    /// the expert card (Plan KM P2) reads its own code with the same scanner.
+    var title: LocalizedStringKey = "Organisation Code"
+    var prompt: LocalizedStringKey = "Point the camera at the code on the office screen, or the one your organisation sent."
     let onCode: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @StateObject private var scanner = QRCodeScanController()
@@ -24,7 +28,7 @@ struct OrgCodeScannerView: View {
                         .accessibilityLabel(Text("Camera view"))
                     VStack {
                         Spacer()
-                        Text("Point the camera at the code on the office screen, or the one your organisation sent.")
+                        Text(prompt)
                             .font(.callout)
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -56,7 +60,7 @@ struct OrgCodeScannerView: View {
                         .padding()
                 }
             }
-            .navigationTitle("Organisation Code")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

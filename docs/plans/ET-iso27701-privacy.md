@@ -64,6 +64,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | agentDocuments | `AgentDocumentStore` | personalMemory | wearer | platformDefault | no | none | `AgentDocumentStore.save(_:content:) to default content` | `AgentDocumentStore.removeLines(containing:)` |
 | agentNotificationQueue | `AgentNotificationQueue` | personalMemory | wearer | platformDefault | no | none | none — entries are consumed as the agent triages them | n/a — no subject linkage |
 | agentSchedule | `AgentScheduler` | personalMemory | wearer | platformDefault | no | none | none — tasks are cancelled individually | n/a — no subject linkage |
+| assistingHandovers | `AssistingHandoverStore` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | each handover's own retention days after Done (30 at most); cap 200 | `AssistingHandoverStore.removeAll()` | `AssistingHandoverStore.deleteMatching(_:)` |
 | brainGraph | `BrainStore` | knowledgeGraph | thirdPartySubject | completeUntilFirstUserAuthentication | yes | none | none — no whole-graph clear; erasure is per entity | `BrainStore.forget(entityName:)` |
 | capturedManuals | `CapturedManualStore` | documentCorpus | thirdPartySubject | complete | yes | none | `CapturedManualStore.removeAll()` | `CapturedManualStore.deleteMatching(_:)` |
 | capturedPhotos | `AppState` | media | thirdPartySubject | platformDefault | no | none | none — photos are the wearer's media, managed in Photos | none — a photo is not indexed by who appears in it |
@@ -79,6 +80,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | diagnosticExports | `DiagnosticExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | none — released on share, background and launch scavenge | n/a — no subject linkage |
 | erasureLedger | `ErasureLedger` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | cap 200 | `ErasureLedger.clear()` | none — the entry is what makes the erasure survive; removing it would let a restore bring the subject back |
 | evolvedSkills | `EvolvedSkillStore` | skillDefinition | wearer | completeUntilFirstUserAuthentication | yes | none | `EvolvedSkillStore.deleteAll()` | `EvolvedSkillStore.deleteMatching(_:)` |
+| expertCard | `ExpertCardStore` | preference | wearer | platformDefault | no | none | `ExpertCardStore.remove()` | n/a — no subject linkage |
 | expertList | `ExpertListStore` | preference | wearer | platformDefault | no | none | `ExpertListStore.removeAll()` | n/a — no subject linkage |
 | faces | `FaceRecognitionService` | biometric | thirdPartySubject | complete | yes | none | `FaceRecognitionService.forgetAllFaces()` | `FaceRecognitionService.forgetFace(name:)` |
 | fieldDeliverySettings | `DeliverySettings` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |

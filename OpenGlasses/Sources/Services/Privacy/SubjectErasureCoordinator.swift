@@ -129,6 +129,8 @@ final class SubjectErasureCoordinator {
         var activity: ActivityStore?
         /// The phone's checks of pictured tables (Plan JN P3).
         var tableChecks: TableCheckStore?
+        /// Job handovers sent to this phone's owner as an expert (Plan KM P2).
+        var assistingHandovers: AssistingHandoverStore?
 
         init() {}
     }
@@ -162,6 +164,7 @@ final class SubjectErasureCoordinator {
         .recordedSessions,
         .learningCandidates,
         .learningEntries,
+        .assistingHandovers,
         .activityTrail,
         .goals,
         .recordings,
@@ -251,6 +254,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseLearningCandidates(subject)
             case .learningEntries:
                 receipt = eraseLearningEntries(subject)
+            case .assistingHandovers:
+                receipt = eraseAssistingHandovers(subject)
             case .activityTrail:
                 receipt = eraseActivityTrail(subject)
             case .goals:
@@ -694,6 +699,17 @@ final class SubjectErasureCoordinator {
     }
 
     /// Goals that name the person, whole (Plan IW P1).
+    /// A handover sent to this phone's owner as an expert that names the subject goes whole,
+    /// photos and clock included (Plan KM P2): it is another organisation's job, and half of it is
+    /// not kept.
+    private func eraseAssistingHandovers(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let handovers = stores.assistingHandovers else {
+            return .unsupported(.assistingHandovers, "no store of handovers sent to this expert was supplied")
+        }
+        guard case .person = subject else { return .complete(.assistingHandovers) }
+        return .complete(.assistingHandovers, removed: handovers.deleteMatching(subject.searchToken))
+    }
+
     private func eraseGoals(_ subject: ErasureSubject) -> ErasureReceipt {
         guard let goals = stores.goals else {
             return .unsupported(.goals, "no goal store was supplied")

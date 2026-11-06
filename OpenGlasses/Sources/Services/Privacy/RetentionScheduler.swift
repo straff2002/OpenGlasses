@@ -13,6 +13,8 @@ enum RetentionTargetID: String, CaseIterable, Codable, Sendable {
     case personalMemories
     case expiredMemories
     case erasureLedger
+    /// Job handovers sent to this phone's owner as an expert (Plan KM P2), each on its own period.
+    case assistingHandovers
 }
 
 /// Why a sweep could not do its work. None of these is a success, and none of them is a reason to
@@ -360,6 +362,9 @@ extension RetentionScheduler {
         /// The record of completed erasures. It has its own retention rule because it is the one
         /// place, besides a queued tombstone, where a forgotten name is still written down.
         var erasureLedger: ErasureLedger?
+        /// Handovers an expert was sent (Plan KM P2). Each carries its own retention period, set by
+        /// the organisation that sent it, so it is purged on that and not on a class policy.
+        var assistingHandovers: AssistingHandoverStore?
 
         init() {}
     }
@@ -413,6 +418,14 @@ extension RetentionScheduler {
                                 trigger: .maxAge(ErasureReplay.window),
                                 source: "the replay window: past it the entry can do nothing")) { cutoff in
                 ledger.purge(olderThan: cutoff)
+            })
+        }
+        if let handovers = sources.assistingHandovers {
+            made.append(.rows(.assistingHandovers, dataClass: .operationalAudit,
+                              policyOverride: RetentionPolicy(
+                                dataClass: .operationalAudit, trigger: .maxAge(0),
+                                source: "each handover's own retention days after Done")) { _ in
+                handovers.purgeExpired()
             })
         }
         made.append(.rows(.conversationThreads, dataClass: .conversationContent) { cutoff in
