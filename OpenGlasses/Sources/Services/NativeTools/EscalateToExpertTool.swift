@@ -20,7 +20,14 @@ final class EscalateToExpertTool: NativeTool {
     'cancel' (stand down). When the phone lists named experts, 'request' calls nobody: it returns one \
     sentence offering the best match by fixed rules; say it as written, and on a yes use 'call' with \
     that expert_name. 'call' starts the call and the phone asks the technician to tap Call; never say \
-    it connected. With no experts listed, 'request' logs the escalation and notifies the expert pool; \
+    it connected. 'send' puts the job as it stands on the phone's handover sheet for a named \
+    expert (the unit, the work, the readings, chosen photos with faces blurred, and the \
+    conversation where allowed) and sends nothing; pass the technician's question as said, \
+    and ruled_out only for what the technician said they have ruled out, in their words, never \
+    your own conclusion. 'send_it' is only for the technician saying "send it" to that sheet; \
+    the phone then opens the composer for their tap. "Send Sam the latest" is 'send' again: it \
+    makes the next update, which replaces the last one. To send the job and call, use 'send' \
+    first, then 'call': the call never waits for the handover. With no experts listed, 'request' logs the escalation and notifies the expert pool; \
     if the organisation has set up a live-view relay, the technician's camera view is shared with the \
     expert. The 'request' result says which happened — don't promise live video beyond it.
     """
@@ -29,7 +36,7 @@ final class EscalateToExpertTool: NativeTool {
         "properties": [
             "action": [
                 "type": "string",
-                "description": "'request', 'status', 'resolve', or 'cancel'."
+                "description": "'request', 'call', 'send', 'send_it', 'status', 'resolve', or 'cancel'."
             ],
             "reason": [
                 "type": "string",
@@ -50,6 +57,14 @@ final class EscalateToExpertTool: NativeTool {
             "via": [
                 "type": "string",
                 "description": "On 'call': 'phone' (default), 'facetime' or 'facetime_audio'."
+            ],
+            "question": [
+                "type": "string",
+                "description": "On 'send': what the technician wants help with, as they said it."
+            ],
+            "ruled_out": [
+                "type": "string",
+                "description": "On 'send': only what the technician said they have ruled out, in their words, one item per line. Omit when they said nothing."
             ]
         ],
         "required": ["action"]
@@ -61,13 +76,16 @@ final class EscalateToExpertTool: NativeTool {
     /// on a retrieval miss in six replays of six, the technician cancelled the card, and the
     /// diagnosis stopped there.
     nonisolated static let notRequested = "Not requested: name what the manuals do not cover and offer an expert."
+    /// What 'send_it' is told when the technician did not say "send it" (Plan KM P1).
+    nonisolated static let notConfirmedSend = "Not sent: only the technician saying \"send it\", or tapping Send on the sheet, sends a handover."
 
     /// Whether this call pages a person: this tool's `request`, or `field_session` `escalate`, the
     /// same coordinator by another door. The rest of this tool reports or stands down.
     nonisolated static func pagesAnExpert(tool: String, args: [String: Any]) -> Bool {
         let action = (args["action"] as? String)?.lowercased()
         switch tool {
-        case "escalate_to_expert": return action == "request" || action == "escalate" || action == "call"
+        case "escalate_to_expert":
+            return ["request", "escalate", "call", "send", "send_it"].contains(action ?? "")
         case "field_session": return action == "escalate"
         default: return false
         }
@@ -80,8 +98,18 @@ final class EscalateToExpertTool: NativeTool {
     ///
     /// A call to a named expert (Plan KM P0) also goes on when the words call that expert by name
     /// ("call Sam", "try Priya") or are a short yes to a question that named them ("… Call Sam?").
-    nonisolated static func refusal(said: String?, previousReply: String?, expertName: String? = nil) -> String? {
+    ///
+    /// A handover (Plan KM P1): `send` also goes on when the words send the job to that expert
+    /// ("send Sam the latest"), and `send_it` only when the words are "send it" — the spoken Send.
+    nonisolated static func refusal(said: String?, previousReply: String?, expertName: String? = nil,
+                                    action: String? = nil) -> String? {
         guard let said else { return nil }
+        if action?.lowercased() == "send_it" {
+            return SpokenSendPolicy.isSendConfirmation(said) ? nil : notConfirmedSend
+        }
+        if action?.lowercased() == "send", let expertName, TechnicianRequest.asksToSend(name: expertName, said) {
+            return nil
+        }
         if TechnicianRequest.asksForExpert(said)
             || TechnicianRequest.confirmsExpertOffer(said, previousReply: previousReply) { return nil }
         if let expertName,
@@ -118,6 +146,11 @@ final class EscalateToExpertTool: NativeTool {
             return "Escalation logged and the expert pool has been notified. \(coordinator.liveViewSummary()) \(coordinator.statusSummary())"
         case "call":
             return await call(args: args, coordinator: coordinator)
+        case "send":
+            return send(args: args, coordinator: coordinator)
+        case "send_it":
+            guard let sends = coordinator.sends else { return "This phone can't stage a handover right now." }
+            return sends.confirmHandover()
         case "status":
             if let offer = coordinator.noAnswerOffer { return "\(coordinator.statusSummary()) \(offer)" }
             return coordinator.statusSummary()
@@ -128,11 +161,43 @@ final class EscalateToExpertTool: NativeTool {
             await coordinator.cancel()
             return "Escalation cancelled."
         default:
-            return "Unknown action '\(action)'. Use 'request', 'call', 'status', 'resolve', or 'cancel'."
+            return "Unknown action '\(action)'. Use 'request', 'call', 'send', 'send_it', 'status', 'resolve', or 'cancel'."
         }
     }
 
     // MARK: - Named experts (Plan KM P0)
+
+    // MARK: - The handover (Plan KM P1)
+
+    /// "Send Sam the job": the job as it stands on the handover sheet, for that expert. Nothing
+    /// leaves: the sheet waits for "send it" or the tap. By name, or the expert offered.
+    private func send(args: [String: Any], coordinator: EscalationCoordinator) -> String {
+        let handovers = coordinator.handovers
+        if case .refused(let reason) = handovers.availability() { return reason }
+        guard let sends = coordinator.sends else { return "This phone can't stage a handover right now." }
+        let experts = coordinator.expertList.contacts
+        let contact: EscalationContact
+        if let name = (args["expert_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            switch ExpertNameMatch.resolve(name, in: experts) {
+            case .one(let match): contact = match
+            case .several(let matches):
+                return "More than one expert matches '\(name)': \(matches.map(\.name).joined(separator: ", ")). Ask which one."
+            case .none:
+                return "Nobody called '\(name)' is on the Experts list."
+            }
+        } else if let offered = coordinator.lastPickOrder.first {
+            contact = offered
+        } else {
+            return "Say which expert the job goes to."
+        }
+        let ruledOut = (args["ruled_out"] as? String).map { [$0] } ?? []
+        switch handovers.draft(for: contact, question: args["question"] as? String, ruledOut: ruledOut) {
+        case .failure(let refusal):
+            return refusal.message
+        case .success(let draft):
+            return sends.proposeHandover(draft)
+        }
+    }
 
     /// What the request names, for the picker: the specialty the model passed, then its reason.
     private static func requestWords(_ args: [String: Any]) -> String {
@@ -156,7 +221,7 @@ final class EscalateToExpertTool: NativeTool {
             "\(candidate.contact.name)\(candidate.isOnCall ? "" : " (not on call)")"
         }
         let rest = others.isEmpty ? "" : " Next in turn: \(others.joined(separator: ", "))."
-        return "\(pick.sentence) Nobody has been called yet. On a yes, use 'call' with expert_name '\(offered.name)'.\(rest)"
+        return "\(pick.sentence) Nobody has been called yet. On a yes, use 'call' with expert_name '\(offered.name)'; to send them the job first, use 'send' with that expert_name, then 'call'.\(rest)"
     }
 
     /// "Call Sam", or a yes to the offer. By name always works and skips the picker; without a

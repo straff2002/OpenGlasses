@@ -30,6 +30,10 @@ struct DeliveryRequest: Identifiable, Equatable {
         /// A vault's kept rule chains as a `chains.md` fragment (Plan JJ P3), for an organisation to
         /// review and paste into its vault by hand. Belongs to no job.
         case ruleChains(RuleChainShare)
+        /// A handover to an expert (Plan KM P1): the job as it stands, for one named person. What
+        /// it carries is the record kept when it goes — counts and photo ids, never pixels. Not the
+        /// job report: no report flag, send-queue entry or stock check follows it.
+        case expertHandover(ExpertHandoverSent, sessionId: String, jobReference: String?)
 
         /// The job session the delivery is audited against. A bundle belongs to no job, so it is
         /// filed under `LearningBundle.queueSessionID`, which no job's counts include.
@@ -40,6 +44,7 @@ struct DeliveryRequest: Identifiable, Equatable {
             case .capturedManual(let m): return m.sessionID
             case .partsOrder(let order): return order.sessionId
             case .ruleChains: return RuleChainShare.queueSessionID
+            case .expertHandover(_, let sessionId, _): return sessionId
             }
         }
 
@@ -50,6 +55,7 @@ struct DeliveryRequest: Identifiable, Equatable {
             case .capturedManual(let m): return m.jobReference.isEmpty ? nil : m.jobReference
             case .partsOrder(let order): return order.jobReference
             case .ruleChains: return nil
+            case .expertHandover(_, _, let reference): return reference
             }
         }
 
@@ -61,7 +67,7 @@ struct DeliveryRequest: Identifiable, Equatable {
             case .learningBundle: return []
             case .capturedManual: return []
             case .partsOrder(let order): return order.partsRequestIds
-            case .ruleChains: return []
+            case .ruleChains, .expertHandover: return []
             }
         }
 
@@ -74,6 +80,12 @@ struct DeliveryRequest: Identifiable, Equatable {
         /// The kept chains, when this is them.
         var ruleChains: RuleChainShare? {
             if case .ruleChains(let share) = self { return share }
+            return nil
+        }
+
+        /// The handover's record, when this is one.
+        var expertHandover: ExpertHandoverSent? {
+            if case .expertHandover(let sent, _, _) = self { return sent }
             return nil
         }
 
@@ -96,6 +108,8 @@ struct DeliveryRequest: Identifiable, Equatable {
             case .partsOrder: return nil
             // Kept chains go by the share sheet, by a person: never queued for an endpoint.
             case .ruleChains: return nil
+            // A handover goes to a person, by a person's tap: never to an endpoint.
+            case .expertHandover: return nil
             }
         }
     }
@@ -116,23 +130,31 @@ struct DeliveryRequest: Identifiable, Equatable {
             case capturedManualText = "captured_manual_text"
             /// Kept rule chains as a `chains.md` fragment (Plan JJ P3).
             case chainsMarkdown = "chains_markdown"
+            /// A handover to an expert (Plan KM P1): the `.ogcase` package, its PDF, its text.
+            case handoverPackage = "handover_package"
+            case handoverPDF = "handover_pdf"
+            case handoverText = "handover_text"
 
             var mimeType: String {
                 switch self {
-                case .pdf, .transcriptPDF, .capturedManualPDF: return "application/pdf"
+                case .pdf, .transcriptPDF, .capturedManualPDF, .handoverPDF: return "application/pdf"
                 case .capturedManualText, .chainsMarkdown: return "text/markdown"
                 case .json: return "application/json"
                 case .video: return "video/mp4"
+                case .handoverPackage: return ExpertHandoverFile.mimeType
+                case .handoverText: return "text/plain"
                 }
             }
 
             /// The UTI the Messages composer wants, which is not the MIME type.
             var uti: String {
                 switch self {
-                case .pdf, .transcriptPDF, .capturedManualPDF: return "com.adobe.pdf"
+                case .pdf, .transcriptPDF, .capturedManualPDF, .handoverPDF: return "com.adobe.pdf"
                 case .capturedManualText, .chainsMarkdown: return "net.daringfireball.markdown"
                 case .json: return "public.json"
                 case .video: return "public.mpeg-4"
+                case .handoverPackage: return ExpertHandoverFile.utiIdentifier
+                case .handoverText: return "public.plain-text"
                 }
             }
         }
@@ -230,7 +252,7 @@ struct DeliveryRequest: Identifiable, Equatable {
     var record: WorkRecord? {
         switch payload {
         case .workRecord(let record, _): return record
-        case .learningBundle, .capturedManual, .partsOrder, .ruleChains: return nil
+        case .learningBundle, .capturedManual, .partsOrder, .ruleChains, .expertHandover: return nil
         }
     }
 
@@ -318,8 +340,23 @@ struct DeliveryRequest: Identifiable, Equatable {
                         payload: .ruleChains(share))
     }
 
+    /// Build the request for a handover to an expert (Plan KM P1). The subject and bodies name the
+    /// job and the organisation and nothing of the customer; the text rendering rides in the mail
+    /// body, and the files go where the channel carries files.
+    static func make(expertHandover sent: ExpertHandoverSent, sessionId: String, jobReference: String?,
+                     channel: DeliveryChannel, recipients: [String], subject: String, body: String,
+                     shortBody: String, attachments: [Attachment]) -> DeliveryRequest {
+        DeliveryRequest(channel: channel, recipients: recipients, subject: subject, body: body,
+                        shortBody: shortBody,
+                        attachments: channel.carriesAttachments ? attachments : [],
+                        payload: .expertHandover(sent, sessionId: sessionId, jobReference: jobReference))
+    }
+
     /// What the technician is told is about to happen, before anybody taps anything.
     var confirmation: String {
+        if case .expertHandover(let sent, _, _) = payload {
+            return ExpertHandoverSendCopy.confirmation(sent: sent, channel: channel)
+        }
         if case .ruleChains(let share) = payload {
             return "\(share.names.count == 1 ? "The kept chain is" : "The \(share.names.count) kept chains are") ready "
                 + "to share as a chains.md file: pick where it goes on the phone. Nobody has reviewed "

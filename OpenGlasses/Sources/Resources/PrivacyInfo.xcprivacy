@@ -48,6 +48,13 @@
       Service). Coordinates rounded to ~1 km, or a named place geocoded on the
       phone, are sent to Apple. Declared under PreciseLocation, AppFunctionality,
       linked, not tracking. Blocked under Medical Local Only.
+    - A job handover to an expert (Field Assist, escalate_to_expert 'send' or the
+      job's "Send the job to an expert") sends the job's details, the photos the
+      technician picks with faces blurred, and the conversation where allowed, to
+      an expert the technician chooses, by the technician's own Messages, Mail or
+      share sheet. No new service or network route: the file goes the way any
+      attachment goes, and only on the technician's tap. Never in Medical
+      Compliance mode.
     - Keep these declarations aligned with App Store Connect and verified provider
       retention/use terms. Arbitrary user-configured recipients do not establish a
       blanket guarantee about third-party data handling.

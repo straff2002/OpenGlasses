@@ -270,6 +270,8 @@ struct MainView: View {
         .sheet(item: $appState.deliveryShareItem) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
         }
+        // A job handover to an expert (Plan KM P1), asked for by voice on any tab or from the job.
+        .modifier(ExpertHandoverSheetHost(sends: appState.jobSends))
         // The support report, read in full before it is sent (support ask 2026-09-26).
         .sheet(item: $appState.supportReportRequest) { request in
             SupportReportSheet(request: request)

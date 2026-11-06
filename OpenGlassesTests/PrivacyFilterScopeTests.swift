@@ -46,11 +46,15 @@ final class PrivacyFilterScopeTests: XCTestCase {
     }
 
     /// Plan HE, the blur pass. Where an organisation requires faces blurred before a recorded job
-    /// goes to its office, that is not the wearer's setting to turn off. Exactly one scope is
-    /// blurred whatever the setting says, and with the setting off it still refuses a frame it
+    /// goes to its office, that is not the wearer's setting to turn off. Plan KM P1 adds the one
+    /// other: every photo in a handover to an expert is blurred. Exactly those two scopes are
+    /// blurred whatever the setting says, and with the setting off they still refuse a frame they
     /// cannot process rather than handing it back.
     func testOnlyTheRecordedJobsBlurPassIsBlurredWhateverTheSettingSays() {
-        XCTAssertEqual(PrivacyFilterScope.allCases.filter(\.isMandatory), [.officeRecordingBlur])
+        XCTAssertEqual(PrivacyFilterScope.allCases.filter(\.isMandatory), [.officeRecordingBlur, .expertHandover])
+        XCTAssertTrue(PrivacyFilterScope.expertHandover.isFiltered)
+        XCTAssertTrue(PrivacyFilterScope.expertHandover.leavesTheDevice)
+        XCTAssertFalse(PrivacyFilterScope.expertHandover.usesOutboundRelay)
         XCTAssertTrue(PrivacyFilterScope.officeRecordingBlur.isFiltered)
         XCTAssertTrue(PrivacyFilterScope.officeRecordingBlur.leavesTheDevice)
         XCTAssertFalse(PrivacyFilterScope.officeRecordingBlur.usesOutboundRelay)
@@ -72,6 +76,7 @@ final class PrivacyFilterScopeTests: XCTestCase {
         XCTAssertIdentical(filter.filteredOrUnavailable(source, for: .toolPhotoCapture), source)
         XCTAssertIdentical(filter.filtered(source, for: .directModelTurn), source)
         XCTAssertNil(filter.filteredOrUnavailable(source, for: .officeRecordingBlur))
+        XCTAssertNil(filter.filteredOrUnavailable(source, for: .expertHandover))
         XCTAssertNotIdentical(filter.filtered(source, for: .officeRecordingBlur), source,
                               "the nonoptional form hands back an opaque frame, never the source")
 

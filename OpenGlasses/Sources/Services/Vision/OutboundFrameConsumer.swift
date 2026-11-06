@@ -142,6 +142,11 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// The same sign photo taken or picked on the phone, from the Parking card. Pixels that never
     /// came from `CameraService`, filtered at their own chokepoint before OCR or storage.
     case parkingPhonePhoto
+    /// The photos a technician chooses for a handover to an expert (Plan KM P1). Read from the
+    /// job's own `photos/` folder — files, not a camera tap — so the tap is a held image; each one
+    /// is put through the blur under the mandatory `expertHandover` scope before it is downscaled
+    /// into the `.ogcase` and the PDF, and one the blur cannot process is dropped and counted.
+    case expertHandoverPhotos
 
     // MARK: - On-device still readers (exempt, and asked to say so)
     //
@@ -322,6 +327,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .dwellCapture, .dwellCaptureSave: return "DwellCaptureService"
         case .jobPhoneEvidence: return "JobPhotoEvidenceService"
         case .parkingSignCapture, .parkingPhonePhoto: return "ParkingPhotoFlow"
+        case .expertHandoverPhotos: return "ExpertHandoverPhotos"
         case .structuredVisionAssessment: return "StructuredVisionService"
         case .refrigerantGaugeReading: return "RefrigerantGaugeTool"
         case .safetyAssessment: return "SafetyAssessmentService"
@@ -384,6 +390,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .fitnessPoseFrame: return .onDeviceVision
         case .jobRecordingCapture, .jobRecordingOfficeSync: return .officeRecording
         case .jobRecordingBlurPass: return .officeRecordingBlur
+        case .expertHandoverPhotos: return .expertHandover
         }
     }
 
@@ -402,7 +409,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .hermesAgentTurnAttachment, .sceneNarration, .fitnessPoseFrame: return .latestFrameStill
         case .hermesBridgePhotoRequest: return .filteredStill
         case .dwellCaptureSave: return .rawCameraPublisher
-        case .jobPhoneEvidence, .parkingPhonePhoto: return .heldImage
+        case .jobPhoneEvidence, .parkingPhonePhoto, .expertHandoverPhotos: return .heldImage
         case .structuredVisionAssessment, .safetyAssessment, .refrigerantGaugeReading,
              .assistiveGuidanceLoop,
              .navigationAssist, .liveCoach, .capturePhotoTool, .rememberSceneTool, .photoLogTool, .moneyIdentifierTool,
@@ -430,7 +437,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .navigationAssist, .liveCoach, .capturePhotoTool, .rememberSceneTool, .photoLogTool, .moneyIdentifierTool,
              .mcpFrameRequest, .dwellCaptureSave, .lookCloselyCapture,
              .jobPhoneEvidence, .parkingSignCapture, .parkingPhonePhoto,
-             .jobRecordingBlurPass: return .chokepoint
+             .jobRecordingBlurPass, .expertHandoverPhotos: return .chokepoint
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,

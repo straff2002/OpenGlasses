@@ -107,13 +107,22 @@ enum PrivacyFilterScope: String, CaseIterable {
     /// other people going to its office, so the wearer's setting has no say in it: with the
     /// setting off the blur still runs, and a frame it cannot process is still refused.
     case officeRecordingBlur
+    /// A job photo going to an expert in a handover (Plan KM P1): read from the job's own folder,
+    /// blurred, downscaled and packed into the `.ogcase`, the PDF and nothing else.
+    ///
+    /// **Filtered whatever the app-wide switch says** (`isMandatory`), like the recorded job's
+    /// blur pass and for a sharper reason: a handover goes to a person outside the job, often
+    /// outside the organisation, by a channel the app cannot see past, and the plan's promise is
+    /// that every photo in it is blurred. A stored photo kept while the switch was off is blurred
+    /// here; one the blur cannot process is left out and counted, never sent as it was.
+    case expertHandover
 
     /// Whether the bystander blur is applied to this consumer when the setting is on.
     var isFiltered: Bool {
         switch self {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
              .recording, .broadcast, .expertStream, .visionAssessment, .assistiveGuidance,
-             .toolPhotoCapture, .photoLibrary, .remoteFrameRequest, .officeRecordingBlur:
+             .toolPhotoCapture, .photoLibrary, .remoteFrameRequest, .officeRecordingBlur, .expertHandover:
             return true
         case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision, .officeRecording:
             return false
@@ -122,10 +131,11 @@ enum PrivacyFilterScope: String, CaseIterable {
 
     /// Whether the blur runs for this consumer even while the wearer's blur setting is off.
     ///
-    /// Only the recorded job's blur pass: there the blur is an organisation's requirement, not a
+    /// The recorded job's blur pass: there the blur is an organisation's requirement, not a
     /// preference, and "the setting was off" must never be how an unblurred frame got into a
-    /// bundle that says it is blurred.
-    var isMandatory: Bool { self == .officeRecordingBlur }
+    /// bundle that says it is blurred. And a handover to an expert (Plan KM P1), whose every
+    /// photo the plan promises is blurred.
+    var isMandatory: Bool { self == .officeRecordingBlur || self == .expertHandover }
 
     /// Whether pixels under this scope leave the device at all. Every filtered scope is an egress
     /// — that is why it is filtered. Of the unfiltered ones, only `officeRecording` is: its one
@@ -136,7 +146,7 @@ enum PrivacyFilterScope: String, CaseIterable {
             return false
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .recording, .broadcast,
              .expertStream, .visionAssessment, .assistiveGuidance, .toolPhotoCapture, .photoLibrary,
-             .remoteFrameRequest, .officeRecording, .officeRecordingBlur:
+             .remoteFrameRequest, .officeRecording, .officeRecordingBlur, .expertHandover:
             return true
         }
     }
@@ -150,7 +160,7 @@ enum PrivacyFilterScope: String, CaseIterable {
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
              .sceneNarration, .onDevicePreview, .onDeviceVision, .visionAssessment,
              .assistiveGuidance, .toolPhotoCapture, .photoLibrary, .remoteFrameRequest,
-             .officeRecording, .officeRecordingBlur: return false
+             .officeRecording, .officeRecordingBlur, .expertHandover: return false
         }
     }
 }

@@ -8,6 +8,10 @@ import Foundation
 enum ReportAudience: String, Codable, Equatable, Sendable {
     case office
     case customer
+    /// An expert the technician sends the job to (Plan KM P1). Not the office and not the
+    /// customer: a named person on the organisation's list, or one the technician added. Whether
+    /// the conversation goes is `ReportTranscriptPolicy.forExpert`'s decision, never `decide`'s.
+    case expert
 }
 
 /// Whether a job report carries what was said on the job, and in which file (Plan HD).
@@ -310,6 +314,78 @@ enum ReportTranscriptPolicy {
               trimmed.unicodeScalars.allSatisfy(phoneCharacters.contains),
               trimmed.contains(where: \.isNumber) else { return trimmed }
         return trimmed.filter(\.isNumber)
+    }
+}
+
+// MARK: - The expert audience (Plan KM P1)
+
+extension ReportTranscriptPolicy {
+
+    /// What an organisation says about the conversation in a handover to an expert
+    /// (`expertHandoverTranscript`, decision 3). Absent means the default: on for experts on the
+    /// organisation's list, off for the technician's own additions.
+    enum ExpertRule: String, Equatable, Sendable, CaseIterable {
+        /// On for experts on the organisation's list, and locked on. A personal addition still
+        /// gets it only when the technician turns it on for that send.
+        case include
+        /// Off until the technician turns it on, for every expert, every send.
+        case ask
+        /// Never, to anyone.
+        case never
+    }
+
+    /// Whether one handover carries the job's conversation.
+    struct ExpertDecision: Equatable, Sendable {
+        let audience: ReportAudience
+        /// "Include the conversation", as the handover sheet shows it.
+        let toggle: ToggleState
+
+        var includesTranscript: Bool { toggle.isOn }
+    }
+
+    static let expertNeverReason = "Your organisation keeps the conversation out of handovers to experts."
+    static let expertIncludeReason = "Your organisation sends the conversation to the experts on its list."
+    static let expertOrganisationNote = "On by default for the experts on your organisation's list."
+    static let expertPersonalNote = "Off unless you turn it on: this expert isn't on your organisation's list."
+    static let expertAskNote = "Your organisation asks you to choose each time."
+
+    /// The decision for one handover to one expert (decision 3). Pure.
+    ///
+    /// - Parameters:
+    ///   - onOrganisationList: whether the expert came from the organisation's list (the profile's,
+    ///     or the device owner's with no profile) rather than the technician's own additions.
+    ///   - rule: the organisation's `expertHandoverTranscript`, or nil when it says nothing.
+    ///   - technicianChoice: what the technician set on the sheet for this send, or nil when they
+    ///     have not touched it. A spoken send has no sheet and passes nil.
+    static func forExpert(onOrganisationList: Bool, rule: ExpertRule?,
+                          technicianChoice: Bool? = nil) -> ExpertDecision {
+        let toggle: ToggleState
+        switch (rule, onOrganisationList) {
+        case (.never?, _):
+            toggle = .lockedOff(reason: expertNeverReason)
+        case (.include?, true):
+            toggle = .lockedOn(reason: expertIncludeReason)
+        case (nil, true):
+            toggle = .available(on: technicianChoice ?? true)
+        case (.ask?, _):
+            toggle = .available(on: technicianChoice ?? false)
+        case (.include?, false), (nil, false):
+            // Deny by default for a personal addition: only the technician's own "on" for this
+            // send puts the conversation in front of someone the organisation never listed.
+            toggle = .available(on: technicianChoice ?? false)
+        }
+        return ExpertDecision(audience: .expert, toggle: toggle)
+    }
+
+    /// The line under the toggle on the handover sheet.
+    static func expertNote(_ decision: ExpertDecision, onOrganisationList: Bool, rule: ExpertRule?) -> String {
+        switch decision.toggle {
+        case .lockedOn(let reason), .lockedOff(let reason), .unavailable(let reason), .hidden(let reason):
+            return reason
+        case .available:
+            if rule == .ask { return expertAskNote }
+            return onOrganisationList ? expertOrganisationNote : expertPersonalNote
+        }
     }
 }
 

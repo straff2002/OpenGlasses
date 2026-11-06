@@ -41,6 +41,17 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// `EscalationContact`, carried as one string. Set by the profile and, with a profile, by nothing
     /// else; with no profile the device owner sets the same key on the phone.
     case organizationExperts
+    /// Whether a handover to an expert carries the job's conversation (Plan KM P1, decision 3):
+    /// `include`, `ask` or `never`. Absent: on for the organisation's experts, off for the
+    /// technician's own additions.
+    case expertHandoverTranscript
+    /// Whether a handover to one of the organisation's own staff experts carries the site's
+    /// address (Plan KM P1, decision 2). Never the customer's name or contact, never to a
+    /// contracted expert or a personal addition. Absent or false: the town only.
+    case expertHandoverIncludesAddress
+    /// How many days after Done the expert's app keeps a handover (Plan KM P1, §7): `1`–`30`,
+    /// written as digits. Absent: 30. A profile may shorten it, never lengthen it past 30.
+    case expertHandoverRetentionDays
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
@@ -130,8 +141,11 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .workizReportFieldName: return .profileOwned(.string)
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
              .organizationReportTranscriptInternal, .organizationAccentColor, .technicianDisplayName, .capturedManualsPolicy,
-             .organizationToolDefinitionsMode, .technicianFullName, .technicianID, .organizationExperts:
+             .organizationToolDefinitionsMode, .technicianFullName, .technicianID, .organizationExperts,
+             .expertHandoverTranscript, .expertHandoverRetentionDays:
             return .profileOwned(.string)
+        case .expertHandoverIncludesAddress:
+            return .profileOwned(.bool)
         case .organizationReportRecipients:
             return .profileOwned(.strings)
         case .organizationAllowsUnsignedVaults:
@@ -185,6 +199,12 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             // Deny by default: one entry this build cannot read refuses the list, never half of it.
             if case .failure(let problem) = ExpertListCodec.decode(text) { return problem.message }
             return nil
+        case (.expertHandoverTranscript, .string(let raw)):
+            // Deny by default: a value this build does not know is a named drop, never a guess.
+            return ReportTranscriptPolicy.ExpertRule(rawValue: raw) == nil
+                ? "not one of include, ask or never" : nil
+        case (.expertHandoverRetentionDays, .string(let raw)):
+            return ExpertHandoverRetention.days(raw) == nil ? "not a whole number of days from 1 to 30" : nil
         case (.capturedManualsPolicy, .string(let raw)):
             return ["off", "jobOnly", "reviewToPool"].contains(raw) ? nil : "not a photographed-manual policy"
         case (.organizationReportTranscriptInternal, .string(let raw)):

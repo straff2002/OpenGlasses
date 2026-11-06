@@ -148,6 +148,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// Part numbers on this job the technician said did not come off the van — ordered in, or
     /// the customer's — so the close does not ask about them again.
     var vanStockNotFromVan: [String]?
+    /// The handovers this job sent to experts (Plan KM P1), one per generation: to whom, by what,
+    /// and what each carried — counts and photo ids, never pixels. The next "send the latest" reads
+    /// it for its generation number. Nil, and absent from the JSON, on a job that sent none.
+    var expertHandovers: [ExpertHandoverSent]?
 
     /// Whether anything is already recorded against the current unit: a task under its scope (a
     /// task with no recorded scope is `"initial"`), or a reading reported on it. Photos and pages
@@ -290,6 +294,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case teamLearningAnswers
         case vaultOnly
         case vanStockUses, vanStockNotFromVan
+        case expertHandovers
     }
 }
 
@@ -372,6 +377,8 @@ extension FieldSession {
         vaultOnly = try c.decodeIfPresent(Bool.self, forKey: .vaultOnly)
         vanStockUses = try c.decodeIfPresent([VanStockUse].self, forKey: .vanStockUses)
         vanStockNotFromVan = try c.decodeIfPresent([String].self, forKey: .vanStockNotFromVan)
+        // A record that no longer decodes loses the handover history, never the job.
+        expertHandovers = try? c.decodeIfPresent([ExpertHandoverSent].self, forKey: .expertHandovers)
     }
 }
 
