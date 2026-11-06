@@ -47,6 +47,12 @@ towers are not used.
 
 These shape every phase. A design that breaks one is out, however well it scores.
 
+0. **It ships on the iPhone.** The Mac is a test bench only. It runs the answer keys quickly, but Core ML on
+   a Mac is not Core ML on a phone. The compute units, the Neural Engine's fp16 behaviour, memory limits,
+   thermal throttling and background rules all differ. Any figure that decides something (latency, memory,
+   NaN, parity, the gate numbers) is read on the iPhone. A Mac number only filters what is worth taking to
+   the phone.
+
 1. **Never on the GPU.** A question is embedded while the phone is locked and the glasses are in use. iOS
    forbids Metal in the background, and MLX's failure there is an uncatchable abort that kills the app (see
    `LocalLLMService`'s guards). The model runs through Core ML with compute units pinned to the CPU, or
@@ -84,7 +90,7 @@ If it misses the bar, the plan ends at P1 with the numbers written down, and not
 
 ## Phases
 
-### P0 — convert and check (Mac, headless)
+### P0 — convert and check (Mac to convert, iPhone to decide)
 
 - A conversion script under `Scripts/` that turns the text encoder into a Core ML package with int8 weights.
   Weights and packages live outside the repository.
@@ -92,11 +98,22 @@ If it misses the bar, the plan ends at P1 with the numbers written down, and not
   licence text.
 - Parity against the reference fp32 encoder on a few hundred invented sentences: cosine ≥ 0.999 at each
   dimension kept.
-- Re-run that check in fp16 on the Neural Engine. Count the NaNs and record the parity.
 - Check that `swift-transformers`, already a dependency, tokenizes as the reference does, byte for byte, on
   the same sentences.
+- **On the iPhone, before P1's sweep:**
+  - load the package in a developer build;
+  - question latency and peak memory on the CPU and on the Neural Engine, cold and warm;
+  - NaN count and parity against the Mac's fp32 vectors on the same sentences;
+  - one question with the phone locked.
 
-### P1 — measure on the keys (Mac runner)
+  Only a compute-unit choice that meets the latency bar on the phone goes on to P1. If none does, the plan
+  stops here.
+
+### P1 — measure on the keys (Mac runner, on the phone's compute choice)
+
+The Mac runner reads the keys quickly. It embeds with the compute units and precision P0 chose for the
+phone, so its vectors are the phone's to within P0's parity. A key whose vectors fall outside parity is
+re-scored from vectors made on the phone.
 
 - `RETRIEVAL_EVAL_EMBEDDER=eg2[:<dim>]` in `Scripts/retrieval-eval`, through the same `DocumentStore`,
   `DocumentChunker` and `VaultRetriever` the app uses.
