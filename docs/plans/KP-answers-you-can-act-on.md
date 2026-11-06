@@ -1,11 +1,13 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 🚧 P0 + P1 + P1b + P2 built (headless) 2026-11-06: the pure core (`HUDAnswerPager` and
+**Status:** 🚧 P0 + P1 + P1b + P2 + P3 built (headless; P3 lessons 1–3, lesson 4 waits for JV),
+P0–P2 2026-11-06 and P3 2026-11-07: the pure core (`HUDAnswerPager` and
 `HUDAnswerPage`, `PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the
 glasses (`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's
 keys), then what the wearer gets while another app has the Display (`DisplayAvailability`, the held
 card, the busy hint), then suggested follow-ups (`FollowUpPrompt`, the tail taken off everywhere, the
-streamer's hold); P3 next, P6 device pass owed. The
+streamer's hold), then the band check (`BandPractice`, `BandPracticeSession`, the phone page, the
+report's **Band check** section); P4 next, P6 device pass owed. The
 owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
 the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
 folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
@@ -531,6 +533,55 @@ section; lesson 4 only under `DAT_EXPERIMENTAL` inside `Sources/Glasses/Experime
 **Tests:** lessons advance on simulated presses (`testInteractiveButtonActions`); a press against a
 stale revision is ignored; the report section's content; lesson 4 absent from an unflagged build (JV's
 guard tests).
+
+*Built 2026-11-07, lessons 1–3.* What P6 and JV need to know:
+
+- **Lesson 4 waits for JV.** Plan JV's experimental lane (`project.experimental.yml`,
+  `Sources/Glasses/Experimental/`, `DAT_EXPERIMENTAL`) isn't built yet, so nothing links `MWDATInputs`.
+  `BandLesson.back` is declared (the result, the report and the lesson list have a place for it) and
+  never offered: `BandLesson.offered` is `select`, `move`, `list`, and `BandPractice` drops `back`
+  whatever it is given. JV P0/P2 add the lesson behind its flag, listening for Inputs `back`, with
+  JV's guard tests.
+- **The core.** `BandPractice` (pure, `Services/Display/BandPractice.swift`): Select is three presses
+  of "Press me"; Move is two buttons, the marked ● starting on the right (the band's focus most
+  likely starts on the first button) and swapping sides each press; A list is six numbered buttons
+  (`HUDMenuBuilder.pageSize`, one `ButtonGroup` like the launcher's) to press 1 to 6, laid out
+  `[3, 1, 5, 6, 2, 4]` so the path goes down, back up and across both rows; pressed ones show ✓.
+  Lesson 3 asks six presses, not three. Every button id names its frame
+  (`band.<lesson>.<step>.<slot>`), so a press from an older frame is *stale* (dropped, counted
+  apart), never *wrong*; a wrong press is recorded and doesn't advance. `BandPracticeCardBuilder`
+  draws each step (the passed lessons, "2 of 3 · Move", the instruction, ●●○) and a last screen
+  with Done.
+- **The session.** `BandPracticeSession` (`AppState.bandPractice`) starts from **Practise the band**
+  in Devices & Privacy › In-Lens Display (`BandPracticeView`, glasses builds only) and from the
+  launcher's last branch (offered while a display can show it and no task card is up). It is refused,
+  with the reason on the phone, while the HUD is off, the Display reads `.off` or `.inUse`
+  (`GlassesDisplayService.practiceAvailability`, read now), or a task card is up; an open launcher
+  menu is closed first. Each press goes through §2's gate first
+  (`acceptsHeldScreenPress(issuedAgainst:)`, the answer card's rule for any held screen), then plays
+  the temple taps' accepted or refused tone, and a right one redraws the card. It ends on Done, Stop
+  on the phone, 60 s without a press, or the lens taken by something else (a task card, a menu,
+  interactive mode ended elsewhere: `heldScreenRenderKey` no longer its card). It ends interactive
+  mode only while its card is the held screen, so it never clears what replaced it. While another
+  app has the Display the card is kept, as the answer card is.
+- **The report.** The last run only, in `UserDefaults` (`bandCheckLastRun`, on `DataStoreRegistryTests`'
+  exempt list: counts, milliseconds and case names), written when the last lesson passes or the run
+  ends early. The phone section carries:
+
+  ```
+  Band check (last run 2027-01-15 08:00:00, backend metaRayBan, timedOut):
+    Lessons passed: 1 of 3 (select)
+    Presses asked for that didn't arrive: 8 (move 2, list 6)
+    Wrong presses: 1 (move 1)
+    Stale presses dropped: 0
+    Time between presses: 4 gaps, median 1000 ms, fastest 1000 ms, slowest 2000 ms
+  ```
+
+  The event log has `hud event=bandCheckStarted|bandCheckRefused|bandCheckEnded`.
+- **Owed to P6.** Whether the `ButtonGroup` lays six numbered buttons in two rows as it does the
+  launcher's labels (short labels may sit in one row; the lesson still tests moving across six);
+  whether the band reaches the second row at all; how the tones sound over speech; whether the band's
+  focus does start on the first button.
 
 ### P4 — the preview to scale
 

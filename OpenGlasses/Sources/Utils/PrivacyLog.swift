@@ -2137,6 +2137,12 @@ enum PrivacyLog {
         /// `off`; `detail` = the session state behind it, `-refused` when a start was refused).
         /// Case names only; nothing about what was, or was not, shown.
         case displaySessionRead, availabilityRead
+        /// Plan KP §5, the band check. `bandCheckStarted` carries the display backend's token in
+        /// `state`; `bandCheckRefused` why it didn't start (`reason`: `hudOff`, `displayOff`,
+        /// `displayInUse`, `taskRunning`); `bandCheckEnded` how it ended (`state`: `finished`,
+        /// `stopped`, `timedOut`, `interrupted`) and the lessons passed (`count`). Case names and a
+        /// count only.
+        case bandCheckStarted, bandCheckRefused, bandCheckEnded
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

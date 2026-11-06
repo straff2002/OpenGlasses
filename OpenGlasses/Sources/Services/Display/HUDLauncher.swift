@@ -4,7 +4,8 @@ import Foundation
 /// root menu, pushes category submenus via `HUDRouter`, and runs leaf actions through
 /// closures injected by AppState. Screens come from the pure `HUDMenuBuilder`.
 ///
-/// Branches: Resume task · Quick Actions · Workflows · SOPs (Field Assist) · Mode/Persona.
+/// Branches: Resume task · Quick Actions · Workflows · SOPs (Field Assist) · Mode/Persona ·
+/// Practise the band (Plan KP §5).
 /// Workflows and SOPs hand off to the Plan X Now/Next task card; the rest run an action and
 /// return. All app/SDK effects are injected closures so the launcher stays unit-testable.
 @MainActor
@@ -34,6 +35,11 @@ final class HUDLauncher {
     var fieldAssistActive: (() -> Bool)?
     var availableProcedures: (() -> [Procedure])?
     var startProcedure: ((String) -> Void)?
+
+    /// Practise the band (Plan KP §5): whether to offer it (a display, no task card up) and the
+    /// start, which closes this menu and puts the band check's card up.
+    var bandPracticeAvailable: (() -> Bool)?
+    var startBandPractice: (() -> Void)?
 
     init(router: HUDRouter) {
         self.router = router
@@ -139,6 +145,14 @@ final class HUDLauncher {
             branches.append(HUDItem(id: "branch:modes", label: "Mode / Persona", style: .secondary) { [weak self] in
                 guard let self else { return }
                 self.router.push(self.personaScreen())
+            })
+        }
+
+        // Plan KP §5: the band check, last before Close.
+        if bandPracticeAvailable?() == true {
+            branches.append(HUDItem(id: "branch:band", label: BandPracticeCardBuilder.title,
+                                    icon: .info, style: .secondary) { [weak self] in
+                self?.startBandPractice?()
             })
         }
 
