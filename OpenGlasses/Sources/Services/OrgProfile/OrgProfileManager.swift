@@ -958,6 +958,7 @@ extension SettingKey {
         case .expertHandoverTranscript: return "Whether a job sent to an expert carries the conversation"
         case .expertHandoverIncludesAddress: return "Whether a job sent to its own staff experts carries the site's address"
         case .expertHandoverRetentionDays: return "How long an expert's app keeps a job sent to them"
+        case .customerReportShowsExpertTime: return "Whether the customer's report shows an expert's time and name"
         default: return rawValue
         }
     }

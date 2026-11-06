@@ -1,11 +1,15 @@
 # Plan KM — An Expert on the Job (the job sent to a named expert, their advice walked through, their time on the record)
 
-**Status:** 🚧 P0–P3 built 2026-11-06 (headless; device checks owed): the expert list, the pick
-and the call by name or by specialty (P0); the handover — `.ogcase`, PDF and text, the staged send and
-generations (P1); Assisting mode — the read-only copy, the expert's clock, the staged `time` reply and
-the expert card (P2); coaching steps — the expert's step editor and the staged `coaching` reply, loaded
-on the technician's open job only for its own handover, walked as written with the safety rule first
-and readings against each step (P3). P4–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
+**Status:** 🚧 P0–P4 built 2026-11-07 (headless); P5's device checks owed, to be run with a pilot
+partner on two phones. The expert list, the pick and the call by name or by specialty (P0); the
+handover — `.ogcase`, PDF and text, the staged send and generations (P1); Assisting mode — the
+read-only copy, the expert's clock, the staged `time` reply and the expert card (P2); coaching steps —
+the expert's step editor and the staged `coaching` reply, loaded on the technician's open job only for
+its own handover, walked as written with the safety rule first and readings against each step (P3);
+time on the record — the reply checked against the observed call, billable minutes by the contracted
+expert's rule, `expert_time` on the office's record and off the customer's unless the organisation
+turns it on, the organisation's statement and the expert's own ledger, each exported as CSV and PDF
+(P4). Drafted 2026-11-03 from the owner's question; the owner
 took all ten decisions as recommended the same day. Revised the same day: the expert's side belongs to no
 organisation, so one expert can serve many.
 **Track:** Field Assist. Phone first: every part works without glasses, and the expert side needs no
@@ -625,7 +629,8 @@ several companies, and nothing on the expert's side needs a company to own it.
 - **Owed.** The P5 end-to-end device run (coaching arriving by each channel, walked by voice on the
   phone and on glasses); whether the keyboard's dictation suffices on a job site; a P4 question — the
   plan's §6 has the time reply carry "the coaching steps sent", which P2's reply does not (the
-  coaching reply carries them on its own).
+  coaching reply carries them on its own). *Answered in P4:* the time reply names the coaching
+  replies sent, by id.
 
 ### P4 — time on the record and the statement
 
@@ -636,12 +641,84 @@ several companies, and nothing on the expert's side needs a company to own it.
   unless the organisation turns it on; the technician's views never show a rate; a ledger built from the
   same replies matches the organisation's statement.
 
-### P5 — device checks (owed, two phones)
+**P4 as built (2026-11-07, headless).**
 
-- `CXCallObserver` sees a FaceTime call placed by URL, and whether it connected.
-- An `.ogcase` opens from Messages, WhatsApp, Mail and AirDrop.
-- An end-to-end run: send, take, call, coaching steps walked, Done, the reply attached, and the statement
-  row.
+- **The comparison** (`Services/FieldAssist/Experts/ExpertTime.swift`): `ExpertTimeReconciler` reads the
+  call this phone saw from the job's escalations to that expert — connected to ended, or placed to
+  ended when the connection wasn't seen (labelled so) — and compares the reply's call minutes:
+  `agrees` within **one minute** (each side rounds its own call to the nearest minute, and the two
+  phones see its edges seconds apart), else `differs(byMinutes:)`, signed. No reply: the observed call
+  only, labelled. A reply and no call seen: the reply only, labelled. A reply that carries no call
+  minutes beside a call this phone saw: said so, and nothing compared. A difference is shown on the
+  record and the statement and never settled.
+- **Billable minutes:** `ExpertBillingRule` — the minimum, then up to the grain; nothing on the clock
+  bills nothing. The rule (minutes only, never the rate or its currency) is kept on the job when the
+  call is placed (`FieldSession.Escalation.billing`) and when the reply arrives
+  (`ExpertReplyReceived.billing`), so the record stays a function of the job. Staff: minutes, no
+  billable figure. A personal addition is staff, so never billed.
+- **The record:** `WorkRecord.expertTime` (`expert_time`): expert, kind, source (`reply` or
+  `observed_call`), the day it counts on, accepted and done, review minutes (the expert's clock),
+  uncounted minutes, the reply's call minutes, the observed call and how it was measured, the minutes
+  that count, billable minutes, the reconciliation, and the coaching replies the reply names and how
+  many never reached the job. Printed in the record's lines, minutes only. No rate, currency or amount
+  field exists, and a test scrapes the technician's surfaces (the record, the Job tab and job views,
+  the intake, the tools) for one.
+- **The audiences:** the office's record and export carry it. The customer's copy —
+  `WorkRecord.forCustomer(showsExpertTime:)`, used by the work-order PDF (the customer's document
+  whoever it goes to), a customer-audience export, the sign-off sheet, a report's message body and the
+  share sheet — drops `expert_time`, shows the coaching as work done with **no name and no kind**
+  ("Steps walked on this job — finished as resolved", the steps, readings and findings intact; the
+  coaching task the same), and prints a call to a named expert as "Called an expert." — unless the new
+  profile-owned **`customerReportShowsExpertTime`** is on (decision 8). With a profile only the profile
+  decides and absent is off; with none the device owner sets it in Field Assist › Experts, default off.
+  On, the customer's copy shows the name and minutes, and still no rate.
+- **The statement** (`ExpertStatement.swift`): one row per job for an expert and month — date, job,
+  minutes, billable minutes, the rate and the amount (contracted only), and the check — and a total;
+  the amount to the cent at the rate on this phone's list when it is prepared, figured from the job's
+  own billable minutes. A staff statement has minutes only, with no rate or amount column. It says the
+  app never takes or sends a payment. Exported as CSV (quoted, formula-safe, a closing `Note` row) or
+  PDF through the Field Assist staging family, from **Settings › Field Assist › Experts › Statements**
+  — only with no profile, because it is the one place a rate appears; under a profile the office keeps
+  statements. Both documents go through the neutral `MinutesTableDocument` (`Services/Export`).
+- **The expert's side:** while a clock runs, `CXCallObserver` (no permission, no names) watches calls;
+  a call that connects while exactly **one** handover's clock is running is that handover's
+  (`AssistingCallTally`; none or two running count nothing), from connect to end, kept on the held
+  handover (`observedCalls`), and the time reply's `callMinutes` is their total — nil, and said so on
+  the reply, when none was seen. The reply also names the coaching replies whose share completed
+  (`coachingReplyIds`, optional, so an older app reads it and an older reply reads as it did).
+- **The ledger** (`Services/Assisting/ExpertLedger.swift`): every time reply whose share completed,
+  kept in `ExpertLedgerStore` (Application Support/Assisting/ledger.json; registered as `expertLedger`:
+  the expert's own record, first-unlock, out of backup, 400 days, cap 2,000) — organisation, job,
+  dates, minutes, call minutes; no rate. Assisting › **Your Time** shows it by organisation and month
+  and exports one organisation's month as CSV or PDF through the reply's own staging family; a test
+  holds that a ledger built from the same replies matches the organisation's statement minutes, and
+  `AssistingIsolationTests` adds the ledger to the store-isolation rule and a row for row 5's "beyond
+  the expert's own ledger".
+- **Owed.** The device checks below. Whether placed-to-ended should count for a call whose connect
+  wasn't seen, once P5 shows whether FaceTime by URL reports a connect at all: an unanswered call then
+  reads as a short call, labelled.
+
+### P5 — device checks (owed, two phones, with a pilot partner)
+
+Everything P0–P4 left for the device:
+
+- `CXCallObserver` sees a FaceTime call placed by URL, and whether it connected — on the technician's
+  phone (the voice pause, the no-answer offer, the observed call times) and on the expert's (the
+  reply's call minutes while the app is suspended under FaceTime).
+- The contact picker (`CNContactPickerViewController`) adds an expert with no Contacts permission.
+- The handover's composer and then the FaceTime prompt, in that order.
+- An `.ogcase` (handover, time reply, coaching reply) and an `.ogexpert` card arriving by Messages,
+  Mail, WhatsApp and AirDrop; the card's QR scan.
+- The expert's clock across a real kill and relaunch, and through a FaceTime call with the app
+  suspended.
+- The real blur on stored photos in a handover; Messages' real attachment ceiling; the handover PDF's
+  photo layout on a phone.
+- Coaching steps walked by voice, on the phone and on glasses; whether the keyboard's dictation
+  suffices on a job site.
+- The statement and ledger exports opened in Numbers or Excel and as PDFs, and the customer's work
+  order with the switch off and on.
+- An end-to-end run: send, take, call, coaching steps walked, Done, the reply attached and reconciled,
+  the statement row, and the expert's ledger row.
 
 ## Acceptance
 

@@ -187,8 +187,28 @@ final class AssistingHandoverStore: ObservableObject {
         mutate(id) { $0.noteDraft = kept }
     }
 
-    /// The share of the coaching steps completed.
-    func markCoachingSent(id: String) { mutate(id) { $0.coachingSentAt = now() } }
+    /// The share of the coaching steps completed: when, and which reply (Plan KM P4), so the time
+    /// reply can name the coaching it went with.
+    func markCoachingSent(id: String, coachingId: String? = nil) {
+        mutate(id) { held in
+            held.coachingSentAt = now()
+            if let coachingId, !(held.coachingRepliesSent ?? []).contains(coachingId) {
+                held.coachingRepliesSent = (held.coachingRepliesSent ?? []) + [coachingId]
+            }
+        }
+    }
+
+    /// A call this phone saw while the handover's clock ran (Plan KM P4), for the reply's call
+    /// minutes. Only while the clock has not been marked Done.
+    func recordObservedCall(id: String, call: AssistingObservedCall) {
+        mutate(id) { held in
+            guard held.clock != nil, held.clock?.isDone != true else { return }
+            held.observedCalls = (held.observedCalls ?? []) + [call]
+        }
+    }
+
+    /// The handovers whose clocks are running now.
+    var runningClockIds: [String] { held.filter { $0.clock?.isRunning == true }.map(\.id) }
 
     private func recoverClocksAfterRelaunch() {
         let at = now()
@@ -260,6 +280,9 @@ final class AssistingHandoverStore: ObservableObject {
 
     /// Where the index lives, for the attribute-truth test.
     var fileLocation: URL { indexURL }
+
+    /// The folder this store keeps its files in; the expert's ledger lives beside them.
+    var storeDirectory: URL { directory }
 
     private static func read(_ url: URL) -> [HeldHandover]? {
         guard let data = try? Data(contentsOf: url) else { return nil }

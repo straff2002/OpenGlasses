@@ -11,8 +11,11 @@ import Foundation
 /// - the handover id, and **every generation the expert opened**;
 /// - when they took it and when they were done, and the minutes on their clock — with the
 ///   minutes a relaunch could not count, said separately;
-/// - the call minutes the expert's app saw, which is none in this version (the call is the
-///   phone's, not the app's) — the field is there so the reconciliation (P4) has its place;
+/// - the call minutes the expert's own phone saw while the clock ran (Plan KM P4: `CXCallObserver`
+///   in Assisting, `AssistingCallTally`), or none — said so — when it saw no call; the
+///   technician's phone checks them against the call it saw (`ExpertTimeReconciler`);
+/// - the coaching replies the expert sent for this handover, by id (P4), so a reply one side never
+///   got shows;
 /// - a short note in the expert's words;
 /// - **the expert's identity**: the list entry the handover was addressed to, by id and name as
 ///   the organisation's list has it, and the expert's card id, number and handle when they have
@@ -38,11 +41,14 @@ struct ExpertTimeReply: Codable, Equatable, Sendable {
     let minutes: Int
     /// Lost after the app was killed with the clock running.
     let uncountedMinutes: Int
-    /// The call minutes the expert's app observed; nil in this version.
+    /// The call minutes the expert's phone saw while the clock ran; nil when it saw none.
     let callMinutes: Int?
     let note: String?
     let expert: Expert
     let createdAt: Date
+    /// The coaching replies the expert sent for this handover, by id (Plan KM P4). Optional, so a
+    /// reply from an app before P4 reads exactly as it did, and an app before P4 reads this one.
+    var coachingReplyIds: [String]? = nil
 
     struct Expert: Codable, Equatable, Sendable {
         /// The list entry the handover was addressed to (`ExpertHandover.expert.id`), echoed.
@@ -74,10 +80,11 @@ struct ExpertTimeReply: Codable, Equatable, Sendable {
             generationsSeen: Array(Set(held.generationsSeen)).sorted(),
             acceptedAt: clock.acceptedAt, doneAt: doneAt,
             minutes: clock.minutes(at: doneAt), uncountedMinutes: clock.uncountedMinutes,
-            callMinutes: nil, note: cleanedNote(note),
+            callMinutes: held.observedCallMinutes, note: cleanedNote(note),
             expert: Expert(listId: handover.expert.id, listName: handover.expert.name,
                            cardId: card?.cardId, phone: card?.phone, faceTimeHandle: card?.faceTimeHandle),
-            createdAt: now))
+            createdAt: now,
+            coachingReplyIds: held.coachingRepliesSent.flatMap { $0.isEmpty ? nil : $0 }))
     }
 
     static func cleanedNote(_ text: String?) -> String? {
@@ -93,6 +100,12 @@ struct ExpertTimeReply: Codable, Equatable, Sendable {
             parts.append(uncountedMinutes == 1
                          ? "1 minute wasn't counted after the app closed."
                          : "\(uncountedMinutes) minutes weren't counted after the app closed.")
+        }
+        if let callMinutes {
+            parts.append(callMinutes == 1 ? "Your phone saw 1 minute of calls while you had the job."
+                         : "Your phone saw \(callMinutes) minutes of calls while you had the job.")
+        } else {
+            parts.append("Your phone didn't see a call while you had the job, so the reply carries no call minutes.")
         }
         let updates = generationsSeen.map(String.init).joined(separator: ", ")
         parts.append(generationsSeen.count == 1 ? "You saw update \(updates)." : "You saw updates \(updates).")

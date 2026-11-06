@@ -480,9 +480,11 @@ struct CoachingWalkthrough: Codable, Equatable {
     }
 
     let procedureId: String
-    /// "Sam Okafor (contracted expert)".
-    let credit: String
-    let expertKind: EscalationContact.Kind
+    /// "Sam Okafor (contracted expert)". Nil on a customer's report with the organisation's
+    /// switch off (Plan KM P4, decision 8): the steps are shown as work done, with no name and no
+    /// kind (`uncredited`).
+    let credit: String?
+    let expertKind: EscalationContact.Kind?
     let receivedAt: Date
     /// `not_started`, `in_progress`, or the outcome it finished with (`resolved`, `escalated`, …).
     let status: String
@@ -522,6 +524,13 @@ struct CoachingWalkthrough: Codable, Equatable {
         }
     }
 
+    /// The same steps for a customer's report with expert time not shown (Plan KM P4): as work
+    /// done, with neither the expert's name nor their kind. The steps, readings and findings stay.
+    var uncredited: CoachingWalkthrough {
+        CoachingWalkthrough(procedureId: procedureId, credit: nil, expertKind: nil, receivedAt: receivedAt,
+                            status: status, steps: steps)
+    }
+
     /// The walkthrough in the record's words, one line at a time.
     var lines: [String] {
         let state: String
@@ -530,7 +539,8 @@ struct CoachingWalkthrough: Codable, Equatable {
         case Self.inProgress: state = "being walked"
         default: state = "finished as " + WorkRecord.prettyLabel(status).lowercased()
         }
-        var lines = ["Coaching steps from \(credit), read as written — \(state)."]
+        var lines = [credit.map { "Coaching steps from \($0), read as written — \(state)." }
+                     ?? "\(ExpertTimeAudience.uncreditedSteps) — \(state)."]
         for step in steps {
             lines.append("  Step \(step.number): \(WorkRecord.terminated(step.instruction))")
             if let rule = step.safetyRule {

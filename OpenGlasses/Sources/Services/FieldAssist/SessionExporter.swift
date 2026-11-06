@@ -223,6 +223,16 @@ enum SessionExporter {
             }
         }
 
+        // A call to a named expert names them in the log's reason. A record that is not the
+        // office's says "Called an expert." unless the organisation shows expert time (Plan KM P4).
+        if decision.audience != .office {
+            let full = WorkRecord(session: session, vaultName: session.vaultId)
+            let shows = Config.customerReportShowsExpertTime
+            escalations = escalations.map {
+                .init(timestamp: $0.timestamp, reason: full.customerEscalationReason($0.reason, showsExpertTime: shows))
+            }
+        }
+
         let proceduresRun: [SessionExport.ProcedureRun] = procOrder.map { id in
             .init(procedureId: id, stepsCompleted: procStepIds[id]?.count ?? 0, outcome: procOutcome[id])
         }
@@ -285,8 +295,10 @@ enum SessionExporter {
     ///
     /// Team-learning candidates are internal to the organisation (Plan FP P1; contract §8): the
     /// office's record shows that one was filed and is not in use, and a record going to a customer
-    /// does not mention them at all.
-    static func exportedRecord(session: FieldSession, audience: ReportAudience) -> WorkRecord {
+    /// does not mention them at all. Expert time and an expert's credit are the office's too, and
+    /// reach a customer's record only when the organisation shows them (Plan KM P4, decision 8).
+    static func exportedRecord(session: FieldSession, audience: ReportAudience,
+                               showsExpertTime: Bool = Config.customerReportShowsExpertTime) -> WorkRecord {
         let vaultName = VaultRegistry.shared.manifest(id: session.vaultId)?.name ?? session.vaultId
         var record = WorkRecord(
             session: session, vaultName: vaultName,
@@ -297,6 +309,7 @@ enum SessionExporter {
             record.teamLearnings = nil
             record.teamLearningAnswers = nil
             record.capturedManuals = nil
+            record = record.forCustomer(showsExpertTime: showsExpertTime)
         } else {
             let references = FieldSessionService.shared.capturedManualReferences(for:session)
             record.capturedManuals = references.isEmpty ? nil : references
@@ -361,10 +374,16 @@ enum SessionExporter {
     ///   `DebriefDocumentPolicy` — **empty for a job whose report has already gone**, so a PDF a
     ///   customer already holds re-renders byte for byte however much was said afterwards. Those
     ///   debriefs travel in an addendum of their own (``writeAddendumPDF(record:debriefs:to:)``).
+    ///
+    /// - Parameter showsExpertTime: whether the organisation shows expert time and the expert's
+    ///   credit on the customer's report (Plan KM P4, decision 8). The work order is the customer's
+    ///   document whoever it is sent to, so with this off it prints neither, even when the record
+    ///   it is drawn from is the office's.
     static func writePDF(_ document: SessionExport, to url: URL,
                          photosDirectory: URL? = nil,
                          clipPlan: ClipDeliveryPlan = .undecided,
-                         debriefs: [JobDebrief] = []) throws {
+                         debriefs: [JobDebrief] = [],
+                         showsExpertTime: Bool = Config.customerReportShowsExpertTime) throws {
         let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792) // US Letter
         // Composite: the record mixes the technician's speech-to-text and entered values with
         // the assistant's AI-generated turns.
@@ -389,7 +408,7 @@ enum SessionExporter {
 
             if let record = document.workRecord {
                 layout.section("Work Record")
-                for line in record.summaryLines { layout.body(line) }
+                for line in record.forCustomer(showsExpertTime: showsExpertTime).summaryLines { layout.body(line) }
             }
 
             if !document.proceduresRun.isEmpty {
@@ -414,7 +433,9 @@ enum SessionExporter {
             if !document.escalations.isEmpty {
                 layout.section("Escalations")
                 for esc in document.escalations {
-                    layout.body("• [\(Self.time(esc.timestamp))] \(esc.reason)")
+                    let reason = document.workRecord?.customerEscalationReason(esc.reason, showsExpertTime: showsExpertTime)
+                        ?? esc.reason
+                    layout.body("• [\(Self.time(esc.timestamp))] \(reason)")
                 }
             }
 

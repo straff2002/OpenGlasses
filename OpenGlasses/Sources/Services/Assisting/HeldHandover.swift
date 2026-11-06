@@ -27,6 +27,18 @@ struct HeldHandover: Codable, Equatable, Identifiable, Sendable {
     var noteDraft: String?
     /// When the expert's share of their coaching steps last completed. Nil until it has.
     var coachingSentAt: Date?
+    /// The coaching replies whose share completed, by id, in order (Plan KM P4): the time reply
+    /// names them, so the organisation can see one it never got. Nil until the first.
+    var coachingRepliesSent: [String]?
+    /// Calls this phone saw connect and end while this handover's clock ran (Plan KM P4): the time
+    /// reply's call minutes. Nil when none was seen — the reply then carries no call minutes.
+    var observedCalls: [AssistingObservedCall]?
+
+    /// The observed calls' total, in whole minutes; nil when none was seen.
+    var observedCallMinutes: Int? {
+        guard let observedCalls, !observedCalls.isEmpty else { return nil }
+        return AssistingClock.wholeMinutes(observedCalls.reduce(0) { $0 + $1.seconds })
+    }
 
     var id: String { handover.handoverId }
 

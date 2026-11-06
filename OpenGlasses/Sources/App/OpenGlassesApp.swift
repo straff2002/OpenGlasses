@@ -5819,7 +5819,8 @@ class AppState: ObservableObject, AppStateProtocol {
         guard let record = row.record else { return }
         let policy = DeliveryPolicy(settings: Config.deliverySettings)
         guard case .allowed(let recipients) = policy.decide(channel: .email) else {
-            deliveryShareItem = ShareItem(items: [record.summary])
+            // The share sheet's destination is unknown: the customer's copy (Plan KM P4).
+            deliveryShareItem = ShareItem(items: [record.forCustomer(showsExpertTime: Config.customerReportShowsExpertTime).summary])
             return
         }
         presentDelivery(DeliveryRequest.make(record: record, channel: .email,

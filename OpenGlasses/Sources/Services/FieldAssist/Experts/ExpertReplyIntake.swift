@@ -2,8 +2,8 @@ import Foundation
 import Combine
 
 /// An expert's time reply, as the technician's job keeps it (Plan KM P2): what the expert's app
-/// said, matched to the handover this phone sent. Reconciliation against the call the phone saw
-/// is Plan KM P4; this keeps the reply as it arrived.
+/// said, matched to the handover this phone sent. Kept as it arrived; `ExpertTime` (P4) reconciles
+/// it against the call the phone saw when the record is built.
 struct ExpertReplyReceived: Codable, Equatable, Sendable {
     enum MatchedBy: String, Codable, Sendable {
         /// The list entry was made from the expert's card, and the reply carries the same card.
@@ -24,6 +24,13 @@ struct ExpertReplyReceived: Codable, Equatable, Sendable {
     let note: String?
     let matchedBy: MatchedBy
     let receivedAt: Date
+    /// A contracted expert's billing grain, from the organisation's list entry when the reply
+    /// arrived (Plan KM P4): minutes only, never the rate. Nil for staff, and on every reply kept
+    /// before P4.
+    var billing: ExpertBillingRule? = nil
+    /// The coaching replies the expert says they sent for this handover (Plan KM P4), by id. Nil
+    /// when their app says nothing of coaching.
+    var coachingReplyIds: [String]? = nil
 }
 
 /// Whether a reply answers a handover this phone sent (Plan KM §5, P2). Pure.
@@ -87,8 +94,12 @@ enum ExpertReplyMatch {
         return .success((expert, fromCard ? .card : .listEntry))
     }
 
-    /// - Parameter sessions: the jobs this phone holds — the open one and the history.
-    static func match(_ reply: ExpertTimeReply, sessions: [FieldSession], now: Date) -> Result<Match, Refusal> {
+    /// - Parameters:
+    ///   - sessions: the jobs this phone holds — the open one and the history.
+    ///   - organisationExperts: the organisation's list, for a contracted expert's billing grain
+    ///     (minutes only; the rate stays on the list).
+    static func match(_ reply: ExpertTimeReply, sessions: [FieldSession], organisationExperts: [EscalationContact] = [],
+                      now: Date) -> Result<Match, Refusal> {
         guard let session = session(sending: reply.handoverId, in: sessions) else { return .failure(.unknownHandover) }
         let expert: ExpertSnapshot
         let fromCard: Bool
@@ -98,6 +109,7 @@ enum ExpertReplyMatch {
             expert = verified.expert
             fromCard = verified.matchedBy == .card
         }
+        let listed = organisationExperts.first { $0.id == expert.id && $0.kind == .contracted }
         let received = ExpertReplyReceived(
             handoverId: reply.handoverId, expert: expert,
             generationsSeen: Array(Set(reply.generationsSeen)).sorted(),
@@ -105,7 +117,11 @@ enum ExpertReplyMatch {
             minutes: max(0, reply.minutes), uncountedMinutes: max(0, reply.uncountedMinutes),
             callMinutes: reply.callMinutes.map { max(0, $0) },
             note: ExpertTimeReply.cleanedNote(reply.note),
-            matchedBy: fromCard ? .card : .listEntry, receivedAt: now)
+            matchedBy: fromCard ? .card : .listEntry, receivedAt: now,
+            billing: expert.kind == .contracted ? listed?.billingRule : nil,
+            coachingReplyIds: reply.coachingReplyIds.map { ids in
+                Array(Set(ids.filter(CoachingText.isSafeIdentifier))).sorted()
+            })
         return .success(Match(sessionId: session.id, received: received))
     }
 
@@ -137,7 +153,7 @@ final class ExpertReplyIntake {
     /// Attach the reply, or say why not. Returns what to tell the technician.
     func receive(_ reply: ExpertTimeReply) -> String {
         let held = (sessions.activeSession.map { [$0] } ?? []) + sessions.history
-        switch ExpertReplyMatch.match(reply, sessions: held, now: now()) {
+        switch ExpertReplyMatch.match(reply, sessions: held, organisationExperts: organisationExperts(), now: now()) {
         case .failure(let refusal):
             PrivacyLog.transfer(.fieldSessionExport, .quarantined)
             return refusal.message

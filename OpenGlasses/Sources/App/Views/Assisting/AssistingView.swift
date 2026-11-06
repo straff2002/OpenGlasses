@@ -27,6 +27,13 @@ struct AssistingView: View {
                                           : String(localized: "Share it as a file or a code"),
                                       icon: "person.text.rectangle")
                 }
+                NavigationLink {
+                    ExpertLedgerView(service: service)
+                } label: {
+                    SettingsLinkLabel(title: String(localized: "Your Time"),
+                                      subtitle: String(localized: "Your time replies by organisation and month, to export"),
+                                      icon: "clock.badge.checkmark")
+                }
             } footer: {
                 Text("Organisations you advise add you to their experts list from your card. Your rate is agreed with each of them; the card never carries one.")
             }
