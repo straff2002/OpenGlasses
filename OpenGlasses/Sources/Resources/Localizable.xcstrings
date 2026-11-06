@@ -29586,7 +29586,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uma planilha de compartilhamento será apresentada com a transcrição no formato selecionado quando a gravação for interrompida."
+            "value" : "Um menu de compartilhamento será apresentado com a transcrição no formato selecionado quando a gravação for interrompida."
           }
         },
         "ru" : {
@@ -45428,7 +45428,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consenti l'accesso alla salute di Apple"
+            "value" : "Consenti l'accesso ad Apple Health"
           }
         },
         "ja" : {
@@ -46640,7 +46640,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "طرق بديلة لبدء تشغيل المساعد بدون كلمة التنبيه - في المواقف الصاخبة أو الصامتة أو التي لا يوجد فيها كلام. جميعها متوقفة بشكل افتراضي. يمكن أن يتداخل مشغل زر مستوى الصوت مع التحكم العادي في مستوى الصوت؛ يتوقف Temple Tap مؤقتًا أثناء تشغيل الصوت الخاص بك."
+            "value" : "طرق بديلة لبدء تشغيل المساعد بدون كلمة التنبيه - في المواقف الصاخبة أو الصامتة أو التي لا يوجد فيها كلام. جميعها متوقفة بشكل افتراضي. يمكن أن يتداخل مشغل زر مستوى الصوت مع التحكم العادي في مستوى الصوت؛ تتوقف نقرات ذراع النظارة مؤقتًا أثناء تشغيل الصوت الخاص بك."
           }
         },
         "es-MX" : {
@@ -46652,67 +46652,67 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Autres façons de démarrer l'assistant sans le mot d'activation — pour des situations bruyantes, silencieuses ou sans parole. Toutes sont désactivées par défaut. Le déclencheur du bouton de volume peut interférer avec le contrôle normal du volume ; Temple Tap met en pause pendant que votre propre audio est lu."
+            "value" : "Autres façons de démarrer l'assistant sans le mot d'activation — pour des situations bruyantes, silencieuses ou sans parole. Toutes sont désactivées par défaut. Le déclencheur du bouton de volume peut interférer avec le contrôle normal du volume ; les tapotements sur la branche sont suspendus pendant la lecture de votre propre audio."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alternatív módok az asszisztens elindítására az ébresztőszó nélkül – zajos, néma vagy beszéd nélküli helyzetekben. Alapértelmezés szerint mindegyik ki van kapcsolva. A Hangerő gomb kioldója zavarhatja a normál hangerőszabályozást; A Temple Tap szünetel a saját hang lejátszása közben."
+            "value" : "Alternatív módok az asszisztens elindítására az ébresztőszó nélkül – zajos, néma vagy beszéd nélküli helyzetekben. Alapértelmezés szerint mindegyik ki van kapcsolva. A Hangerő gomb kioldója zavarhatja a normál hangerőszabályozást; a szárkoppintás szünetel a saját hang lejátszása közben."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modi alternativi per avviare l'assistente senza la parola di attivazione: per situazioni rumorose, silenziose o in cui non è possibile parlare. Sono tutti disattivati ​​per impostazione predefinita. Il grilletto del pulsante del volume può interferire con il normale controllo del volume; Temple Tap viene messo in pausa durante la riproduzione dell'audio."
+            "value" : "Modi alternativi per avviare l'assistente senza la parola di attivazione: per situazioni rumorose, silenziose o in cui non è possibile parlare. Sono tutti disattivati ​​per impostazione predefinita. Il grilletto del pulsante del volume può interferire con il normale controllo del volume; i tocchi sull'asta vengono sospesi durante la riproduzione del tuo audio."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ウェイクワードなしでアシスタントを起動する代替方法 — 騒がしい環境、無音環境、または音声がない状況向け。すべてデフォルトでオフです。音量ボタントリガーは通常の音量制御に干渉する可能性があります。Temple Tapは自身のオーディオ再生中に一時停止します。"
+            "value" : "ウェイクワードなしでアシスタントを起動する代替方法 — 騒がしい環境、無音環境、または音声がない状況向け。すべてデフォルトでオフです。音量ボタントリガーは通常の音量制御に干渉する可能性があります。テンプルタップは自分のオーディオの再生中は一時停止します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "시끄럽거나 조용하거나 말이 없는 상황에서 깨우기 단어 없이 어시스턴트를 시작하는 대체 방법입니다. 기본적으로 모두 꺼져 있습니다. 볼륨 버튼 트리거는 일반적인 볼륨 제어를 방해할 수 있습니다. 자신의 오디오가 재생되는 동안 Temple Tap이 일시 중지됩니다."
+            "value" : "시끄럽거나 조용하거나 말이 없는 상황에서 깨우기 단어 없이 어시스턴트를 시작하는 대체 방법입니다. 기본적으로 모두 꺼져 있습니다. 볼륨 버튼 트리거는 일반적인 볼륨 제어를 방해할 수 있습니다. 자신의 오디오가 재생되는 동안 템플 탭이 일시 중지됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alternatieve manieren om de assistent te starten zonder het wake-word – voor luidruchtige, stille situaties of situaties zonder spraak. Standaard zijn ze allemaal uitgeschakeld. De trigger van de volumeknop kan de normale volumeregeling verstoren; Temple Tap pauzeert terwijl je eigen audio wordt afgespeeld."
+            "value" : "Alternatieve manieren om de assistent te starten zonder het wake-word – voor luidruchtige, stille situaties of situaties zonder spraak. Standaard zijn ze allemaal uitgeschakeld. De trigger van de volumeknop kan de normale volumeregeling verstoren; tikken op de poot pauzeren terwijl je eigen audio wordt afgespeeld."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Maneiras alternativas de iniciar o assistente sem a palavra de ativação — para situações barulhentas, silenciosas ou sem fala. Todos estão desativados por padrão. O gatilho do botão de volume pode interferir no controle normal do volume; Temple Tap faz uma pausa enquanto seu próprio áudio é reproduzido."
+            "value" : "Maneiras alternativas de iniciar o assistente sem a palavra de ativação — para situações barulhentas, silenciosas ou sem fala. Todos estão desativados por padrão. O gatilho do botão de volume pode interferir no controle normal do volume; os toques na haste ficam pausados enquanto seu próprio áudio é reproduzido."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Альтернативные способы запустить ассистента без слова активации — для шумных, тихих ситуаций или когда говорить нельзя. По умолчанию все отключены. Триггер кнопки громкости может мешать обычному управлению громкостью; двойное касание дужки приостанавливается, пока играет ваш собственный звук."
+            "value" : "Альтернативные способы запустить ассистента без слова активации — для шумных, тихих ситуаций или когда говорить нельзя. По умолчанию все отключены. Триггер кнопки громкости может мешать обычному управлению громкостью; касания дужки приостанавливаются, пока играет ваш собственный звук."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ویک ورڈ کے بغیر اسسٹنٹ شروع کرنے کے متبادل طریقے — شور والی، خاموش، یا بغیر بولے صورتحال کے لیے۔ سب بطورِ ڈیفالٹ بند ہیں۔ والیوم بٹن ٹرگر معمول کے والیوم کنٹرول میں مداخلت کر سکتا ہے؛ آپ کی اپنی آڈیو چلنے کے دوران Temple Tap رک جاتا ہے۔"
+            "value" : "ویک ورڈ کے بغیر اسسٹنٹ شروع کرنے کے متبادل طریقے — شور والی، خاموش، یا بغیر بولے صورتحال کے لیے۔ سب بطورِ ڈیفالٹ بند ہیں۔ والیوم بٹن ٹرگر معمول کے والیوم کنٹرول میں مداخلت کر سکتا ہے؛ آپ کی اپنی آڈیو چلنے کے دوران ٹیمپل ٹیپ رک جاتا ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在嘈杂、安静或无人讲话的情况下，无需唤醒词即可启动助手的替代方法。默认情况下全部关闭。音量按钮触发可能会干扰正常的音量控制；按太阳穴可在播放自己的音频时暂停。"
+            "value" : "在嘈杂、安静或无人讲话的情况下，无需唤醒词即可启动助手的替代方法。默认情况下全部关闭。音量按钮触发可能会干扰正常的音量控制；播放你自己的音频时，镜腿轻点会暂停。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在噪音、安靜或無語音的情況下，使用喚醒詞以外的方式啟動助手。所有選項預設皆為關閉。音量按鈕觸發可能會干擾正常音量控制；觸碰太陽穴時會在播放你自己的音訊期間暫停。"
+            "value" : "在噪音、安靜或無語音的情況下，使用喚醒詞以外的方式啟動助手。所有選項預設皆為關閉。音量按鈕觸發可能會干擾正常音量控制；播放你自己的音訊時，鏡腳輕點會暫停。"
           }
         }
       }
@@ -46722,7 +46722,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "طرق بديلة لبدء تشغيل المساعد بدون كلمة التنبيه - في المواقف الصاخبة أو الصامتة أو التي لا يوجد فيها كلام. جميعها متوقفة بشكل افتراضي. يمكن أن يتداخل مشغل زر مستوى الصوت مع التحكم العادي في مستوى الصوت. تم إعداد صنابير المعبد ضمن الأجهزة والخصوصية."
+            "value" : "طرق بديلة لبدء تشغيل المساعد بدون كلمة التنبيه - في المواقف الصاخبة أو الصامتة أو التي لا يوجد فيها كلام. جميعها متوقفة بشكل افتراضي. يمكن أن يتداخل مشغل زر مستوى الصوت مع التحكم العادي في مستوى الصوت. يتم إعداد نقرات ذراع النظارة ضمن الأجهزة والخصوصية."
           }
         },
         "es-MX" : {
@@ -46734,43 +46734,43 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Autres façons de démarrer l'assistant sans le mot d'activation — pour les situations bruyantes, silencieuses ou sans parole. Tous sont désactivés par défaut. Le déclencheur par bouton de volume peut interférer avec le contrôle normal du volume. Les tapotements du temple sont configurés dans Matériel et confidentialité."
+            "value" : "Autres façons de démarrer l'assistant sans le mot d'activation — pour les situations bruyantes, silencieuses ou sans parole. Tous sont désactivés par défaut. Le déclencheur par bouton de volume peut interférer avec le contrôle normal du volume. Les tapotements sur la branche sont configurés dans Matériel et confidentialité."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alternatív módok az asszisztens elindítására az ébresztőszó nélkül – zajos, néma vagy beszéd nélküli helyzetekben. Alapértelmezés szerint mindegyik ki van kapcsolva. A Hangerő gomb kioldója megzavarhatja a normál hangerőszabályozást. A templomi csapok a Hardver és adatvédelem alatt vannak beállítva."
+            "value" : "Alternatív módok az asszisztens elindítására az ébresztőszó nélkül – zajos, néma vagy beszéd nélküli helyzetekben. Alapértelmezés szerint mindegyik ki van kapcsolva. A Hangerő gomb kioldója megzavarhatja a normál hangerőszabályozást. A szárkoppintások a Hardver és adatvédelem alatt állíthatók be."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Modi alternativi per avviare l'assistente senza la parola di attivazione: per situazioni rumorose, silenziose o in cui non è possibile parlare. Sono tutti disattivati ​​per impostazione predefinita. Il grilletto del pulsante del volume può interferire con il normale controllo del volume. I rubinetti del tempio sono impostati in Hardware e privacy."
+            "value" : "Modi alternativi per avviare l'assistente senza la parola di attivazione: per situazioni rumorose, silenziose o in cui non è possibile parlare. Sono tutti disattivati ​​per impostazione predefinita. Il grilletto del pulsante del volume può interferire con il normale controllo del volume. I tocchi sull'asta si impostano in Hardware e privacy."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "起動ワードなしでアシスタントを開始する代替方法 — 騒がしい、静かな、または発話のない状況向け。すべてデフォルトではオフです。音量ボタンでのトリガーは通常の音量調整に干渉することがあります。こめかみタップはハードウェアとプライバシーの設定で設定します。"
+            "value" : "起動ワードなしでアシスタントを開始する代替方法 — 騒がしい、静かな、または発話のない状況向け。すべてデフォルトではオフです。音量ボタンでのトリガーは通常の音量調整に干渉することがあります。テンプルタップはハードウェアとプライバシーの設定で設定します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "시끄럽거나 조용하거나 말이 없는 상황에서 깨우기 단어 없이 어시스턴트를 시작하는 대체 방법입니다. 기본적으로 모두 꺼져 있습니다. 볼륨 버튼 트리거는 일반적인 볼륨 제어를 방해할 수 있습니다. Temple Tap은 하드웨어 및 개인 정보 보호 아래에서 설정됩니다."
+            "value" : "시끄럽거나 조용하거나 말이 없는 상황에서 깨우기 단어 없이 어시스턴트를 시작하는 대체 방법입니다. 기본적으로 모두 꺼져 있습니다. 볼륨 버튼 트리거는 일반적인 볼륨 제어를 방해할 수 있습니다. 템플 탭은 하드웨어 및 개인 정보 보호 아래에서 설정됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alternatieve manieren om de assistent te starten zonder het wake-word – voor luidruchtige, stille situaties of situaties zonder spraak. Standaard zijn ze allemaal uitgeschakeld. De trigger van de volumeknop kan de normale volumeregeling verstoren. Tempelkranen worden ingesteld onder Hardware en privacy."
+            "value" : "Alternatieve manieren om de assistent te starten zonder het wake-word – voor luidruchtige, stille situaties of situaties zonder spraak. Standaard zijn ze allemaal uitgeschakeld. De trigger van de volumeknop kan de normale volumeregeling verstoren. Tikken op de poot worden ingesteld onder Hardware en privacy."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Maneiras alternativas de iniciar o assistente sem a palavra de ativação — para situações barulhentas, silenciosas ou sem fala. Todos estão desativados por padrão. O gatilho do botão de volume pode interferir no controle normal do volume. As torneiras do templo são configuradas em Hardware e privacidade."
+            "value" : "Maneiras alternativas de iniciar o assistente sem a palavra de ativação — para situações barulhentas, silenciosas ou sem fala. Todos estão desativados por padrão. O gatilho do botão de volume pode interferir no controle normal do volume. Os toques na haste são configurados em Hardware e privacidade."
           }
         },
         "ru" : {
@@ -46788,13 +46788,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在嘈杂、安静或无人讲话的情况下，无需唤醒词即可启动助手的替代方法。默认情况下全部关闭。音量按钮触发可能会干扰正常的音量控制。按太阳穴的操作在“硬件与隐私”中设置。"
+            "value" : "在嘈杂、安静或无人讲话的情况下，无需唤醒词即可启动助手的替代方法。默认情况下全部关闭。音量按钮触发可能会干扰正常的音量控制。镜腿轻点在“硬件与隐私”中设置。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在噪音、安靜或無語音的情況下，使用喚醒詞以外的方式啟動助手。所有選項預設皆為關閉。音量按鈕觸發可能會干擾正常音量控制。觸碰太陽穴的操作可在「硬體與隱私」中設定。"
+            "value" : "在噪音、安靜或無語音的情況下，使用喚醒詞以外的方式啟動助手。所有選項預設皆為關閉。音量按鈕觸發可能會干擾正常音量控制。鏡腳輕點可在「硬體與隱私」中設定。"
           }
         }
       }
@@ -51303,7 +51303,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Accesso a Salute di Apple"
+            "value" : "Accesso ad Apple Health"
           }
         },
         "ja" : {
@@ -51321,7 +51321,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toegang tot Apple Gezondheid"
+            "value" : "Toegang tot Apple Health"
           }
         },
         "pt-BR" : {
@@ -51387,7 +51387,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è possibile leggere Salute di Apple mentre il telefono è bloccato, ovvero il momento in cui è più probabile che tu chieda dai tuoi occhiali. Pertanto Avenkin mantiene gli ultimi numeri di riepilogo, mai i campioni sottostanti, crittografati su questo telefono, senza backup, per un massimo di 24 ore. Una risposta al telefono bloccato dice quanti anni ha."
+            "value" : "Non è possibile leggere Apple Health mentre il telefono è bloccato, ovvero il momento in cui è più probabile che tu chieda dai tuoi occhiali. Pertanto Avenkin mantiene gli ultimi numeri di riepilogo, mai i campioni sottostanti, crittografati su questo telefono, senza backup, per un massimo di 24 ore. Una risposta data a telefono bloccato indica a quando risalgono i dati."
           }
         },
         "ja" : {
@@ -51399,7 +51399,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "휴대폰이 잠겨 있는 동안에는 Apple Health를 읽을 수 없습니다. 이때 안경을 착용하고 질문할 가능성이 가장 높습니다. 따라서 Avenkin는 기본 샘플이 아닌 마지막 요약 번호를 백업 중 최대 24시간 동안 이 전화기에 암호화된 상태로 유지합니다. 잠긴 전화 응답은 그것이 몇 살인지 알려줍니다."
+            "value" : "휴대폰이 잠겨 있는 동안에는 Apple 건강을 읽을 수 없습니다. 이때 안경을 착용하고 질문할 가능성이 가장 높습니다. 따라서 Avenkin는 기본 샘플이 아닌 마지막 요약 수치를 백업 중 최대 24시간 동안 이 전화기에 암호화된 상태로 유지합니다. 휴대폰이 잠긴 상태의 답변에는 데이터가 얼마나 오래되었는지 표시됩니다."
           }
         },
         "nl" : {
@@ -51429,7 +51429,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当您的手机锁定时（这也是您最有可能通过眼镜查询的时候），Apple Health 无法读取。因此 Avenkin 会将最后的汇总数字——而非底层样本——加密存储在此手机上，并且不进行备份，最长可达 24 小时。锁定手机时的回答会显示数据有多旧。"
+            "value" : "当您的手机锁定时（这也是您最有可能通过眼镜查询的时候），Apple 健康无法读取。因此 Avenkin 会将最后的汇总数字——而非底层样本——加密存储在此手机上，并且不进行备份，最长可达 24 小时。锁定手机时的回答会显示数据有多旧。"
           }
         },
         "zh-Hant" : {
@@ -51483,7 +51483,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 기기에서는 Apple Health를 사용할 수 없습니다"
+            "value" : "이 기기에서는 Apple 건강을 사용할 수 없습니다"
           }
         },
         "nl" : {
@@ -51513,7 +51513,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此设备无法访问 Apple Health"
+            "value" : "此设备无法访问 Apple 健康"
           }
         },
         "zh-Hant" : {
@@ -61207,7 +61207,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Automaticamente dimensiona a taxa de bits de gravação para a resolução e taxa de quadros acima, que é quase sempre o que você deseja – uma taxa fixa deixa 720p vazio ou desperdiça espaço em 360p. Uma taxa fixa mais alta preenche o armazenamento mais rapidamente e reduz a estimativa do aviso de pouco armazenamento.\n\nCada gravação finalizada é mantida na pasta Gravações do próprio aplicativo – essa cópia sempre acontece, então nada é perdido se você descartar a planilha de compartilhamento. Além disso, ele vai para o álbum Óculos em Fotos, a menos que você o desative. Escolha uma pasta de vídeo ou transcrição abaixo para também manter cópias em algum lugar onde você possa navegar no aplicativo Arquivos."
+            "value" : "Automaticamente dimensiona a taxa de bits de gravação para a resolução e taxa de quadros acima, que é quase sempre o que você deseja – uma taxa fixa deixa 720p vazio ou desperdiça espaço em 360p. Uma taxa fixa mais alta preenche o armazenamento mais rapidamente e reduz a estimativa do aviso de pouco armazenamento.\n\nCada gravação finalizada é mantida na pasta Gravações do próprio aplicativo – essa cópia sempre acontece, então nada é perdido se você fechar o menu de compartilhamento. Além disso, ele vai para o álbum Óculos em Fotos, a menos que você o desative. Escolha uma pasta de vídeo ou transcrição abaixo para também manter cópias em algum lugar onde você possa navegar no aplicativo Arquivos."
           }
         },
         "ru" : {
@@ -62596,7 +62596,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin ne peut pas contrôler Spotify ou d'autres applications musicales directement. Les commandes situées sur l'armature de vos lunettes fonctionnent toujours pour ce qui est en cours de lecture, et un haut-parleur Home Assistant peut être votre fournisseur de musique."
+            "value" : "Avenkin ne peut pas contrôler Spotify ou d'autres applications musicales directement. Les commandes situées sur la branche de vos lunettes fonctionnent toujours pour ce qui est en cours de lecture, et un haut-parleur Home Assistant peut être votre fournisseur de musique."
           }
         },
         "hu" : {
@@ -62608,7 +62608,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin non può controllare direttamente Spotify o altre app musicali. I controlli sulle tempie degli occhiali continuano a funzionare con qualsiasi cosa stia suonando e un altoparlante Home Assistant può essere il tuo fornitore di musica."
+            "value" : "Avenkin non può controllare direttamente Spotify o altre app musicali. I controlli sull'asta degli occhiali continuano a funzionare con qualsiasi cosa stia suonando e un altoparlante Home Assistant può essere il tuo fornitore di musica."
           }
         },
         "ja" : {
@@ -62620,19 +62620,19 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin는 Spotify 또는 기타 음악 앱을 직접 제어할 수 없습니다. 안경의 관자놀이 컨트롤은 재생 중인 모든 항목에서 계속 작동하며 홈어시스턴트 스피커가 음악 제공자가 될 수 있습니다."
+            "value" : "Avenkin는 Spotify 또는 기타 음악 앱을 직접 제어할 수 없습니다. 안경의 템플 컨트롤은 재생 중인 모든 항목에서 계속 작동하며 홈어시스턴트 스피커가 음악 제공자가 될 수 있습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin kan Spotify of andere muziekapps niet rechtstreeks bedienen. De tempelbedieningen van uw bril werken nog steeds op wat er wordt afgespeeld, en een Home Assistant-luidspreker kan uw muziekprovider zijn."
+            "value" : "Avenkin kan Spotify of andere muziekapps niet rechtstreeks bedienen. De bedieningselementen op de poot van uw bril werken nog steeds op wat er wordt afgespeeld, en een Home Assistant-luidspreker kan uw muziekprovider zijn."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin não pode controlar o Spotify ou outros aplicativos de música diretamente. Os controles da têmpora dos seus óculos ainda funcionam com o que quer que esteja tocando, e um alto-falante Home Assistant pode ser seu provedor de música."
+            "value" : "Avenkin não pode controlar o Spotify ou outros aplicativos de música diretamente. Os controles da haste dos seus óculos ainda funcionam com o que quer que esteja tocando, e um alto-falante Home Assistant pode ser seu provedor de música."
           }
         },
         "ru" : {
@@ -63394,7 +63394,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 是一個私人 AI 助手，它為你工作，而不是為某個平台工作：你選擇的 AI、你設備上的記憶體、你的手機、手錶或眼鏡。"
+            "value" : "Avenkin 是一個私人 AI 助手，它為你工作，而不是為某個平台工作：你選擇的 AI、你設備上的記憶、你的手機、手錶或眼鏡。"
           }
         }
       }
@@ -73012,7 +73012,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "傍観者の顔のぼかしは完全にデバイス上で実行され、画像が端末の外に出ることはありません。「健康データをAIと共有」はデフォルトでオフです。Apple ヘルスケアのデータは、オンにした場合にのみAIプロバイダに送信されます。"
+            "value" : "傍観者の顔のぼかしは完全にデバイス上で実行され、画像が端末の外に出ることはありません。「健康データをAIと共有」はデフォルトでオフです。Apple Healthのデータは、オンにした場合にのみAIプロバイダに送信されます。"
           }
         },
         "ko" : {
@@ -73112,7 +73112,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gezichtsvervaging voor omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en het vervaagde beeld is wat een AI-aanbieder, opname, uitzending of expertgesprek ontvangt. Gezondheidsgegevens delen met AI (onder Dagelijks) staat standaard uit: Apple Gezondheid-cijfers worden alleen naar uw AI-aanbieder gestuurd als u dit inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Avenkin heeft geen eigen analyse of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat in iOS toestaat), en de eigen analyse van de bril-SDK is uitgeschakeld en geblokkeerd op deze telefoon."
+            "value" : "Gezichtsvervaging voor omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en het vervaagde beeld is wat een AI-aanbieder, opname, uitzending of expertgesprek ontvangt. Gezondheidsgegevens delen met AI (onder Dagelijks) staat standaard uit: Apple Health-cijfers worden alleen naar uw AI-aanbieder gestuurd als u dit inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Avenkin heeft geen eigen analyse of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat in iOS toestaat), en de eigen analyse van de bril-SDK is uitgeschakeld en geblokkeerd op deze telefoon."
           }
         },
         "pt-BR" : {
@@ -73158,7 +73158,7 @@
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El difuminado de rostros de transeúntes se ejecuta por completo en el dispositivo: los rostros se detectan y se difuminan en tu celular, y el cuadro difuminado es lo que recibe un proveedor de IA, una grabación, una transmisión o una llamada con un experto. Compartir datos de salud con la IA (en Día a día) está desactivado de forma predeterminada: las cifras de Apple Health se envían a tu proveedor de IA solo cuando lo activas. El dictado en la nube está desactivado de forma predeterminada: solo cuando eliges Deepgram u OpenAI como reconocedor, el audio de cada pregunta va a ese proveedor. Enviar un trabajo a un experto envía sus detalles, y las fotos que elijas con los rostros difuminados, solo al experto que elijas, por tus propios Mensajes, Mail u hoja para compartir. Un trabajo que te envían como experto se queda solo en este celular, durante los días que fijó su organización, y nunca llega al asistente ni a su memoria; tu respuesta de tiempo solo se envía cuando la compartes. Avenkin no tiene analíticas ni reportes de fallos propios (Apple puede compartirnos reportes de fallos desde TestFlight, o si lo permites en iOS), y las analíticas propias del SDK de los lentes están excluidas y bloqueadas en este celular."
+            "value" : "El difuminado de rostros de transeúntes se ejecuta por completo en el dispositivo: los rostros se detectan y se difuminan en tu celular, y el cuadro difuminado es lo que recibe un proveedor de IA, una grabación, una transmisión o una llamada con un experto. Compartir datos de salud con la IA (en Día a día) está desactivado de forma predeterminada: las cifras de Salud de Apple se envían a tu proveedor de IA solo cuando lo activas. El dictado en la nube está desactivado de forma predeterminada: solo cuando eliges Deepgram u OpenAI como reconocedor, el audio de cada pregunta va a ese proveedor. Enviar un trabajo a un experto envía sus detalles, y las fotos que elijas con los rostros difuminados, solo al experto que elijas, por tus propios Mensajes, Mail u hoja para compartir. Un trabajo que te envían como experto se queda solo en este celular, durante los días que fijó su organización, y nunca llega al asistente ni a su memoria; tu respuesta de tiempo solo se envía cuando la compartes. Avenkin no tiene analíticas ni reportes de fallos propios (Apple puede compartirnos reportes de fallos desde TestFlight, o si lo permites en iOS), y las analíticas propias del SDK de los lentes están excluidas y bloqueadas en este celular."
           }
         },
         "fr-CA" : {
@@ -73200,7 +73200,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O desfoque de rostos de transeuntes é executado inteiramente no dispositivo: os rostos são encontrados e desfocados no seu telefone, e o quadro desfocado é o que um provedor de IA, uma gravação, uma transmissão ou uma chamada com especialista recebe. Compartilhar dados de saúde com IA (em Dia a dia) está desativado por padrão: os números do Apple Health são enviados ao seu provedor de IA somente quando você o ativa. O ditado na nuvem está desativado por padrão: somente quando você escolhe Deepgram ou OpenAI como reconhecedor o áudio de cada pergunta vai para esse fornecedor. Enviar um trabalho a um especialista envia os detalhes dele, e as fotos que você escolher com os rostos desfocados, apenas para o especialista que você escolher, pelo seu próprio Mensagens, Mail ou planilha de compartilhamento. Um trabalho enviado a você como especialista fica apenas neste telefone, pelos dias que a organização dele definiu, e nunca chega ao assistente nem à memória dele; sua resposta de tempo só é enviada quando você a compartilha. O Avenkin não tem análises nem relatórios de falhas próprios (a Apple pode compartilhar relatórios de falhas conosco pelo TestFlight, ou se você permitir no iOS), e as análises do próprio SDK dos óculos estão desativadas e bloqueadas neste telefone."
+            "value" : "O desfoque de rostos de transeuntes é executado inteiramente no dispositivo: os rostos são encontrados e desfocados no seu telefone, e o quadro desfocado é o que um provedor de IA, uma gravação, uma transmissão ou uma chamada com especialista recebe. Compartilhar dados de saúde com IA (em Dia a dia) está desativado por padrão: os números do Apple Health são enviados ao seu provedor de IA somente quando você o ativa. O ditado na nuvem está desativado por padrão: somente quando você escolhe Deepgram ou OpenAI como reconhecedor o áudio de cada pergunta vai para esse fornecedor. Enviar um trabalho a um especialista envia os detalhes dele, e as fotos que você escolher com os rostos desfocados, apenas para o especialista que você escolher, pelo seu próprio Mensagens, Mail ou menu de compartilhamento. Um trabalho enviado a você como especialista fica apenas neste telefone, pelos dias que a organização dele definiu, e nunca chega ao assistente nem à memória dele; sua resposta de tempo só é enviada quando você a compartilha. O Avenkin não tem análises nem relatórios de falhas próprios (a Apple pode compartilhar relatórios de falhas conosco pelo TestFlight, ou se você permitir no iOS), e as análises do próprio SDK dos óculos estão desativadas e bloqueadas neste telefone."
           }
         },
         "ru" : {
@@ -73270,13 +73270,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bystander Face Blur는 전적으로 기기 내에서 실행됩니다. 휴대전화에서 얼굴을 찾아 흐리게 처리하며, 흐리게 처리된 프레임은 AI 제공자, 녹음, 방송 또는 전문가 통화가 수신하는 내용입니다. AI와 건강 데이터 공유(건강 아래)는 기본적으로 꺼져 있습니다. Apple 건강 번호는 이 기능을 켠 경우에만 AI 제공자에게 전송됩니다. Avenkin에는 자체 분석이나 충돌 보고가 없으며(Apple은 TestFlight에서 또는 iOS에서 허용하는 경우 충돌 보고서를 우리와 공유할 수 있음) 안경 SDK의 자체 분석이 이 전화기에서 선택 해제되어 차단됩니다."
+            "value" : "Bystander Face Blur는 전적으로 기기 내에서 실행됩니다. 휴대전화에서 얼굴을 찾아 흐리게 처리하며, 흐리게 처리된 프레임은 AI 제공자, 녹음, 방송 또는 전문가 통화가 수신하는 내용입니다. AI와 건강 데이터 공유(건강 아래)는 기본적으로 꺼져 있습니다. Apple 건강 수치는 이 기능을 켠 경우에만 AI 제공자에게 전송됩니다. Avenkin에는 자체 분석이나 충돌 보고가 없으며(Apple은 TestFlight에서 또는 iOS에서 허용하는 경우 충돌 보고서를 우리와 공유할 수 있음) 안경 SDK의 자체 분석이 이 전화기에서 선택 해제되어 차단됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bystander Face Blur werkt volledig op het apparaat: gezichten worden gevonden en wazig gemaakt op uw telefoon, en het wazige kader is wat een AI-provider, opname, uitzending of expertoproep ontvangt. Gezondheidsgegevens delen met AI (onder Gezondheid) is standaard uitgeschakeld: Apple Health-nummers worden alleen naar uw AI-provider verzonden als u deze inschakelt. Avenkin heeft geen eigen analyses of crashrapporten (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dit toestaat in iOS), en de eigen analyses van de SDK van de bril zijn afgemeld en geblokkeerd op deze telefoon."
+            "value" : "Bystander Face Blur werkt volledig op het apparaat: gezichten worden gevonden en wazig gemaakt op uw telefoon, en het wazige kader is wat een AI-provider, opname, uitzending of expertoproep ontvangt. Gezondheidsgegevens delen met AI (onder Gezondheid) is standaard uitgeschakeld: Apple Health-cijfers worden alleen naar uw AI-provider verzonden als u deze inschakelt. Avenkin heeft geen eigen analyses of crashrapporten (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dit toestaat in iOS), en de eigen analyses van de SDK van de bril zijn afgemeld en geblokkeerd op deze telefoon."
           }
         },
         "pt-BR" : {
@@ -73306,7 +73306,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "旁觀者臉部模糊完全在裝置上運行：臉部會在你的手機上被找到並模糊，AI 提供者、錄影、直播或專家通話收到的是模糊後的影像。與 AI 分享健康數據（在「健康」下）預設是關閉的：只有當你打開時，Apple Health 的數據才會傳送給你的 AI 提供者。Avenkin 本身沒有分析或崩潰報告（Apple 可能會從 TestFlight 與我們分享崩潰報告，或者如果你在 iOS 允許它），而眼鏡 SDK 自身的分析功能已在此手機中選擇不參與並被封鎖。"
+            "value" : "旁觀者臉部模糊完全在裝置上運行：臉部會在你的手機上被找到並模糊，AI 提供者、錄影、直播或專家通話收到的是模糊後的影像。與 AI 分享健康數據（在「健康」下）預設是關閉的：只有當你打開時，Apple 健康的數據才會傳送給你的 AI 提供者。Avenkin 本身沒有分析或崩潰報告（Apple 可能會從 TestFlight 與我們分享崩潰報告，或者如果你在 iOS 允許它），而眼鏡 SDK 自身的分析功能已在此手機中選擇不參與並被封鎖。"
           }
         }
       }
@@ -73358,7 +73358,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gezichtsvervaging voor omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en het vervaagde beeld is wat een AI-aanbieder, opname, uitzending of expertgesprek ontvangt. Gezondheidsgegevens delen met AI (onder Gezondheid) staat standaard uit: Apple Gezondheid-cijfers worden alleen naar uw AI-aanbieder gestuurd als u dit inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Avenkin heeft geen eigen analyse of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat in iOS toestaat), en de eigen analyse van de bril-SDK is uitgeschakeld en geblokkeerd op deze telefoon."
+            "value" : "Gezichtsvervaging voor omstanders werkt volledig op het apparaat: gezichten worden op uw telefoon gevonden en vervaagd, en het vervaagde beeld is wat een AI-aanbieder, opname, uitzending of expertgesprek ontvangt. Gezondheidsgegevens delen met AI (onder Gezondheid) staat standaard uit: Apple Health-cijfers worden alleen naar uw AI-aanbieder gestuurd als u dit inschakelt. Clouddictatie staat standaard uit: alleen als u Deepgram of OpenAI als herkenner kiest, gaat de audio van elke vraag naar die leverancier. Avenkin heeft geen eigen analyse of crashrapportage (Apple kan crashrapporten met ons delen vanuit TestFlight, of als u dat in iOS toestaat), en de eigen analyse van de bril-SDK is uitgeschakeld en geblokkeerd op deze telefoon."
           }
         },
         "pt-BR" : {
@@ -73470,7 +73470,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "旁觀者臉部模糊完全在設備上運行：臉部會在您的手機上被識別並模糊，模糊後的畫面就是 AI 服務提供者、錄製、廣播或專家通話所接收到的內容。與 AI 分享健康資料預設為關閉：Apple Health 資料僅在您開啟時發送給您的 AI 服務提供者。Avenkin 本身沒有分析或崩潰報告（Apple 可能會從 TestFlight 與我們分享崩潰報告，或者如果您在 iOS 允許），眼鏡 SDK 自身的分析功能已在此手機上選擇退出並被阻止。"
+            "value" : "旁觀者臉部模糊完全在設備上運行：臉部會在您的手機上被識別並模糊，模糊後的畫面就是 AI 服務提供者、錄製、廣播或專家通話所接收到的內容。與 AI 分享健康資料預設為關閉：Apple 健康資料僅在您開啟時發送給您的 AI 服務提供者。Avenkin 本身沒有分析或崩潰報告（Apple 可能會從 TestFlight 與我們分享崩潰報告，或者如果您在 iOS 允許），眼鏡 SDK 自身的分析功能已在此手機上選擇退出並被阻止。"
           }
         }
       }
@@ -87306,7 +87306,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選擇你的意圖記憶"
+            "value" : "選擇你指的是哪段記憶"
           }
         }
       }
@@ -122062,7 +122062,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "رفض"
+            "value" : "إغلاق"
           }
         },
         "es-MX" : {
@@ -122092,7 +122092,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "却下"
+            "value" : "閉じる"
           }
         },
         "ko" : {
@@ -122582,7 +122582,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "العرض"
+            "value" : "الشاشة"
           }
         },
         "es-MX" : {
@@ -122624,7 +122624,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Weergave"
+            "value" : "Display"
           }
         },
         "pt-BR" : {
@@ -122648,13 +122648,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示"
+            "value" : "显示屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "顯示"
+            "value" : "顯示器"
           }
         }
       }
@@ -173651,7 +173651,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ascolta come hai dormito stanotte dall'app Salute di Apple."
+            "value" : "Ascolta come hai dormito stanotte da Apple Health."
           }
         },
         "ja" : {
@@ -220504,7 +220504,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "内存"
+            "value" : "记忆"
           }
         },
         "zh-Hant" : {
@@ -220750,7 +220750,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "内存回放"
+            "value" : "记忆回放"
           }
         },
         "zh-Hant" : {
@@ -245399,7 +245399,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今ではありません"
+            "value" : "今はしない"
           }
         },
         "ko" : {
@@ -245435,7 +245435,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "现在不行"
+            "value" : "以后"
           }
         },
         "zh-Hant" : {
@@ -245483,7 +245483,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今ではありません"
+            "value" : "今はしない"
           }
         },
         "ko" : {
@@ -245519,7 +245519,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "现在不行"
+            "value" : "以后"
           }
         },
         "zh-Hant" : {
@@ -252027,13 +252027,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "デフォルトではオフです。オンにすると、フィットネスコーチがApple ヘルスケアのワークアウト履歴を読み取り、設定したAIプロバイダ（Anthropic、OpenAI、Googleなど）に送信して進捗について話せるようになります。健康データがデバイスの外に出るのは、この設定がオンの間だけです。デバイス上でのワークアウト記録、フォーム分析、Apple ヘルスケアへのワークアウト保存は、どちらの場合でも機能します。"
+            "value" : "デフォルトではオフです。オンにすると、フィットネスコーチがApple Healthのワークアウト履歴を読み取り、設定したAIプロバイダ（Anthropic、OpenAI、Googleなど）に送信して進捗について話せるようになります。健康データがデバイスの外に出るのは、この設定がオンの間だけです。デバイス上でのワークアウト記録、フォーム分析、Apple Healthへのワークアウト保存は、どちらの場合でも機能します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "기본적으로 꺼져 있습니다. 켜져 있으면 피트니스 코치가 Apple 건강 운동 기록을 읽고 구성된 AI 제공업체(Anthropic, OpenAI, Google 등)에 전송하여 진행 상황을 논의할 수 있습니다. 건강 데이터는 이 기능이 활성화된 동안에만 장치 외부로 나갑니다. 기기 내 운동 추적, 양식 분석, 운동을 Apple Health에 저장하는 기능은 어느 쪽이든 가능합니다."
+            "value" : "기본적으로 꺼져 있습니다. 켜져 있으면 피트니스 코치가 Apple 건강 운동 기록을 읽고 구성된 AI 제공업체(Anthropic, OpenAI, Google 등)에 전송하여 진행 상황을 논의할 수 있습니다. 건강 데이터는 이 기능이 활성화된 동안에만 장치 외부로 나갑니다. 기기 내 운동 추적, 양식 분석, 운동을 Apple 건강에 저장하는 기능은 어느 쪽이든 가능합니다."
           }
         },
         "nl" : {
@@ -252727,7 +252727,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已关闭。请在“设置 › 日常 › 内存”中开启“在长对话中记住前文”。"
+            "value" : "已关闭。请在“设置 › 日常 › 记忆”中开启“在长对话中记住前文”。"
           }
         },
         "zh-Hant" : {
@@ -266861,7 +266861,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abre a planilha de compartilhamento com tudo selecionado, em tamanho real – clipes incluídos."
+            "value" : "Abre o menu de compartilhamento com tudo selecionado, em tamanho real – clipes incluídos."
           }
         },
         "ru" : {
@@ -266943,7 +266943,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abre a planilha de compartilhamento com tudo selecionado, em tamanho real. Nada é enviado até você escolher onde."
+            "value" : "Abre o menu de compartilhamento com tudo selecionado, em tamanho real. Nada é enviado até você escolher onde."
           }
         },
         "ru" : {
@@ -267025,7 +267025,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abre a planilha de compartilhamento com este clipe. Nada é enviado até você escolher onde."
+            "value" : "Abre o menu de compartilhamento com este clipe. Nada é enviado até você escolher onde."
           }
         },
         "ru" : {
@@ -289226,7 +289226,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prepara um arquivo pequeno e abre a planilha de compartilhamento. Nada é enviado até você enviar por lá."
+            "value" : "Prepara um arquivo pequeno e abre o menu de compartilhamento. Nada é enviado até você enviar por lá."
           }
         },
         "ru" : {
@@ -299804,7 +299804,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "읽기 전용입니다. Avenkin는 심박수, 수면 또는 걸음 수를 Apple Health에 기록하지 않습니다. 피트니스 코치는 귀하의 운동을 별도로 읽고 귀하가 기록한 운동을 저장합니다."
+            "value" : "읽기 전용입니다. Avenkin는 심박수, 수면 또는 걸음 수를 Apple 건강에 기록하지 않습니다. 피트니스 코치는 귀하의 운동을 별도로 읽고 귀하가 기록한 운동을 저장합니다."
           }
         },
         "nl" : {
@@ -299834,13 +299834,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅读取。Avenkin 从不将心率、睡眠或步数写入 Apple Health。健身教练会单独读取您的锻炼并保存您记录的锻炼。"
+            "value" : "仅读取。Avenkin 从不将心率、睡眠或步数写入 Apple 健康。健身教练会单独读取您的锻炼并保存您记录的锻炼。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "僅閱讀。Avenkin 從不向 Apple Health 寫入心率、睡眠或步數。健身教練會單獨讀取你的鍛鍊並保存你記錄的鍛鍊。"
+            "value" : "僅閱讀。Avenkin 從不向 Apple 健康寫入心率、睡眠或步數。健身教練會單獨讀取你的鍛鍊並保存你記錄的鍛鍊。"
           }
         }
       }
@@ -338124,7 +338124,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Memória de pesquisa"
+            "value" : "Buscar na memória"
           }
         },
         "ru" : {
@@ -338142,7 +338142,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "搜索内存"
+            "value" : "搜索记忆"
           }
         },
         "zh-Hant" : {
@@ -342147,7 +342147,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laatste gesprek verzenden bevat alleen je meest recente gesprek, met de app-gebeurtenissen van vijf minuten ervoor tot vijf minuten erna — verder niets wat je vandaag hebt gezegd. Vandaag Activiteit verzenden bevat alle gesprekken van vandaag, binnen en buiten de opdrachten, met de gebeurtenissen van de app van de dag. Beide voegen de details van elke AI-beurt toe: welk model antwoordde, de handleidingpagina's en foto's die erbij hoorden, hoe lang het duurde en of het mislukte. Plus deze telefoon en eventuele aangesloten brillen. Sleutels zijn gemaskeerd en je leest alles voordat je het verzendt. Rapporten worden gemaild naar het bovenstaande support-e-mailadres."
+            "value" : "Laatste gesprek verzenden bevat alleen je meest recente gesprek, met de app-gebeurtenissen van vijf minuten ervoor tot vijf minuten erna — verder niets wat je vandaag hebt gezegd. Activiteit van vandaag verzenden bevat alle gesprekken van vandaag, binnen en buiten de opdrachten, met de gebeurtenissen van de app van de dag. Beide voegen de details van elke AI-beurt toe: welk model antwoordde, de handleidingpagina's en foto's die erbij hoorden, hoe lang het duurde en of het mislukte. Plus deze telefoon en eventuele aangesloten brillen. Sleutels zijn gemaskeerd en je leest alles voordat je het verzendt. Rapporten worden gemaild naar het bovenstaande support-e-mailadres."
           }
         },
         "pt-BR" : {
@@ -342229,7 +342229,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Laatste gesprek verzenden bevat alleen uw meest recente gesprek, met de app-gebeurtenissen van vijf minuten ervoor tot vijf minuten erna — verder niets wat u vandaag hebt gezegd. Vandaag Activiteit verzenden bevat alle gesprekken van vandaag, binnen en buiten taken, met de app-gebeurtenissen van die dag. Beide voegen de details van elke AI-beurt toe: welk model antwoordde, welke handleidingpagina's en foto's erbij hoorden, hoe lang het duurde en of het mislukte. Plus deze telefoon. Sleutels zijn gemaskeerd, en u leest alles voordat u het verzendt. Rapporten worden gemaild naar het support-e-mailadres hierboven."
+            "value" : "Laatste gesprek verzenden bevat alleen uw meest recente gesprek, met de app-gebeurtenissen van vijf minuten ervoor tot vijf minuten erna — verder niets wat u vandaag hebt gezegd. Activiteit van vandaag verzenden bevat alle gesprekken van vandaag, binnen en buiten taken, met de app-gebeurtenissen van die dag. Beide voegen de details van elke AI-beurt toe: welk model antwoordde, welke handleidingpagina's en foto's erbij hoorden, hoe lang het duurde en of het mislukte. Plus deze telefoon. Sleutels zijn gemaskeerd, en u leest alles voordat u het verzendt. Rapporten worden gemaild naar het support-e-mailadres hierboven."
           }
         },
         "pt-BR" : {
@@ -343387,7 +343387,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vandaag Activiteit verzenden"
+            "value" : "Activiteit van vandaag verzenden"
           }
         },
         "pt-BR" : {
@@ -350820,7 +350820,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Planilha de compartilhamento"
+            "value" : "Menu de compartilhamento"
           }
         },
         "ru" : {
@@ -350866,43 +350866,43 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Partager la fiche"
+            "value" : "Feuille de partage"
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lap megosztása"
+            "value" : "Megosztási lap"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Condividi foglio"
+            "value" : "Foglio di condivisione"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "シートを共有"
+            "value" : "共有シート"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "시트 공유"
+            "value" : "공유 시트"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Blad delen"
+            "value" : "Deelvenster"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Compartilhar planilha"
+            "value" : "Menu de compartilhamento"
           }
         },
         "ru" : {
@@ -350920,13 +350920,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "共享表格"
+            "value" : "共享表"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "分享工作表"
+            "value" : "分享面板"
           }
         }
       }
@@ -351416,7 +351416,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "共享代理内存（memory.md）。代理在了解您的过程中会更新此内容。"
+            "value" : "共享代理记忆（memory.md）。代理在了解您的过程中会更新此内容。"
           }
         },
         "zh-Hant" : {
@@ -371348,7 +371348,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "깨우라는 말 없이 음성 명령 듣기 시작"
+            "value" : "웨이크 워드 없이 음성 명령 듣기 시작"
           }
         },
         "nl" : {
@@ -387887,7 +387887,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "انقر على طرف نظارتك للتحكم في Avenkin بدون كلمة تنبيه أو لمس هاتفك — يعمل حتى عندما يكون الهاتف مقفولًا في الجيب. Avenkin يحتفظ بمكان التشغيل الحالي للهاتف عندما لا يكون هناك شيء آخر شغّال، لذا يتراجع تلقائيًا عندما يتم تشغيل موسيقاك أو ملفات البودكاست الخاصة بك؛ أثناء تشغيل الموسيقى، تتحكم نقراتك بالموسيقى."
+            "value" : "انقر على ذراع نظارتك للتحكم في Avenkin بدون كلمة تنبيه أو لمس هاتفك — يعمل حتى عندما يكون الهاتف مقفولًا في الجيب. Avenkin يحتفظ بمكان التشغيل الحالي للهاتف عندما لا يكون هناك شيء آخر شغّال، لذا يتراجع تلقائيًا عندما يتم تشغيل موسيقاك أو ملفات البودكاست الخاصة بك؛ أثناء تشغيل الموسيقى، تتحكم نقراتك بالموسيقى."
           }
         },
         "es-MX" : {
@@ -387899,13 +387899,13 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tapez le temple de vos lunettes pour contrôler Avenkin sans mot d'activation ni toucher votre téléphone — cela fonctionne même si le téléphone est verrouillé dans une poche. Avenkin occupe l'emplacement Now Playing du téléphone lorsque rien d'autre ne joue, donc il s'écarte dès que votre propre musique ou vos balados jouent ; avec la musique en cours, vos tapes contrôlent la musique."
+            "value" : "Touchez la branche de vos lunettes pour contrôler Avenkin sans mot d'activation ni toucher votre téléphone — cela fonctionne même si le téléphone est verrouillé dans une poche. Avenkin occupe l'emplacement Now Playing du téléphone lorsque rien d'autre ne joue, donc il s'écarte dès que votre propre musique ou vos balados jouent ; avec la musique en cours, vos tapotements contrôlent la musique."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Érintse meg a szemüvege templomát a Avenkin vezérléséhez ébresztő szó vagy a telefon érintése nélkül — akkor is működik, ha a telefon zsebbe van zárva. A Avenkin megtartja a telefon Jelenleg Lejátszott helyét, amíg semmi más nem játszik, így félreáll, amikor a saját zenéje vagy podcastjai lejátszódnak; zene lejátszásakor az érintéseivel a zenét irányítja."
+            "value" : "Koppintson a szemüvege szárára a Avenkin vezérléséhez ébresztő szó vagy a telefon érintése nélkül — akkor is működik, ha a telefon zsebbe van zárva. A Avenkin megtartja a telefon Jelenleg Lejátszott helyét, amíg semmi más nem játszik, így félreáll, amikor a saját zenéje vagy podcastjai lejátszódnak; zene lejátszásakor az érintéseivel a zenét irányítja."
           }
         },
         "it" : {
@@ -387917,19 +387917,19 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "メガネのこめかみをタップして、ウェイクワードなしで、または電話に触れずにAvenkinを操作できます — ポケットに入れたままでも動作します。Avenkinは、他に再生中のものがない場合に電話のNow Playingスロットを保持するため、あなたの音楽やポッドキャストが再生されるときは退くようになっています。音楽が再生されている場合、タップは音楽の操作になります。"
+            "value" : "メガネのテンプルをタップして、ウェイクワードなしで、または電話に触れずにAvenkinを操作できます — ポケットに入れたままでも動作します。Avenkinは、他に再生中のものがない場合に電話のNow Playingスロットを保持するため、あなたの音楽やポッドキャストが再生されるときは退くようになっています。音楽が再生されている場合、タップは音楽の操作になります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "깨우라는 말이나 휴대폰을 만지지 않고도 안경 관자놀이를 탭하여 Avenkin를 제어할 수 있습니다. 휴대폰이 주머니에 잠겨 있는 상태에서도 작동합니다. Avenkin는 다른 것이 재생되지 않는 동안 휴대폰의 Now Playing 슬롯을 보유하므로 자신의 음악이나 팟캐스트가 재생될 때마다 옆으로 물러납니다. 음악이 재생되는 동안 탭으로 음악을 제어할 수 있습니다."
+            "value" : "웨이크 워드나 휴대폰 조작 없이도 안경 템플을 탭하여 Avenkin를 제어할 수 있습니다. 휴대폰이 주머니에 잠겨 있는 상태에서도 작동합니다. Avenkin는 다른 것이 재생되지 않는 동안 휴대폰의 Now Playing 슬롯을 보유하므로 자신의 음악이나 팟캐스트가 재생될 때마다 옆으로 물러납니다. 음악이 재생되는 동안 탭으로 음악을 제어할 수 있습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tik op de tempel van je bril om Avenkin te bedienen zonder een wake word of je telefoon aan te raken — het werkt terwijl de telefoon vergrendeld in je zak zit. Avenkin houdt de Now Playing-slot van de telefoon vast terwijl er niets anders wordt afgespeeld, dus het maakt plaats wanneer je eigen muziek of podcasts spelen; met muziek die speelt, bedienen je tikken de muziek."
+            "value" : "Tik op de poot van je bril om Avenkin te bedienen zonder een wake word of je telefoon aan te raken — het werkt terwijl de telefoon vergrendeld in je zak zit. Avenkin houdt de Now Playing-slot van de telefoon vast terwijl er niets anders wordt afgespeeld, dus het maakt plaats wanneer je eigen muziek of podcasts spelen; met muziek die speelt, bedienen je tikken de muziek."
           }
         },
         "pt-BR" : {
@@ -387959,7 +387959,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "點擊眼鏡的鏡腿即可控制 Avenkin，無需喚醒字或觸碰手機——即使手機鎖在口袋中也能工作。Avenkin 會占用手機的「正在播放」位置，當沒有其他播放內容時，因此當你播放自己的音樂或播客時，它會自動讓開；播放音樂時，你的點擊操作可以控制音樂。"
+            "value" : "點擊眼鏡的鏡腳即可控制 Avenkin，無需喚醒字或觸碰手機——即使手機鎖在口袋中也能工作。Avenkin 會占用手機的「正在播放」位置，當沒有其他播放內容時，因此當你播放自己的音樂或播客時，它會自動讓開；播放音樂時，你的點擊操作可以控制音樂。"
           }
         }
       }
@@ -387969,7 +387969,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "انقر على صدغ نظاراتك للتحكم في Avenkin دون كلمة تنبيه أو لمس هاتفك — يعمل حتى والهاتف مقفل في جيبك. لسماع النقرات، يحتفظ Avenkin بخانة «قيد التشغيل الآن» في الهاتف، التي يعرضها iOS على شاشة القفل — فقط أثناء اتصال نظاراتك وارتدائها. وبمجرد تشغيل موسيقاك أو بودكاستاتك، يترك لها الخانة إلى أن ترتدي نظاراتك مرة أخرى؛ وإلى ذلك الحين تتحكم نقراتك في الموسيقى."
+            "value" : "انقر على ذراع نظاراتك للتحكم في Avenkin دون كلمة تنبيه أو لمس هاتفك — يعمل حتى والهاتف مقفل في جيبك. لسماع النقرات، يحتفظ Avenkin بخانة «قيد التشغيل الآن» في الهاتف، التي يعرضها iOS على شاشة القفل — فقط أثناء اتصال نظاراتك وارتدائها. وبمجرد تشغيل موسيقاك أو بودكاستاتك، يترك لها الخانة إلى أن ترتدي نظاراتك مرة أخرى؛ وإلى ذلك الحين تتحكم نقراتك في الموسيقى."
           }
         },
         "es-MX" : {
@@ -390497,7 +390497,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "نقرات الصدغ"
+            "value" : "نقرات ذراع النظارة"
           }
         },
         "es-MX" : {
@@ -390509,25 +390509,25 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tapotements sur les tempes"
+            "value" : "Tapotements sur la branche"
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Homlokcsapkodás"
+            "value" : "Szárkoppintások"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rubinetti del tempio"
+            "value" : "Tocchi sull'asta"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "寺院タップ"
+            "value" : "テンプルタップ"
           }
         },
         "ko" : {
@@ -390539,13 +390539,13 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tempelkranen"
+            "value" : "Tikken op de poot"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Torneiras do Templo"
+            "value" : "Toques na haste"
           }
         },
         "ru" : {
@@ -390563,13 +390563,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "太阳穴轻敲"
+            "value" : "镜腿轻点"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "太陽穴敲擊"
+            "value" : "鏡腳輕點"
           }
         }
       }
@@ -390581,7 +390581,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "نقرات الصدغ (تجريبي)"
+            "value" : "نقرات ذراع النظارة (تجريبي)"
           }
         },
         "es-MX" : {
@@ -390593,25 +390593,25 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tapotements sur les tempes (Expérimental)"
+            "value" : "Tapotements sur la branche (Expérimental)"
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Homlokcsapkodás (Kísérleti)"
+            "value" : "Szárkoppintások (Kísérleti)"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rubinetti per templi (sperimentale)"
+            "value" : "Tocchi sull'asta (sperimentale)"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "寺院タップ（実験的）"
+            "value" : "テンプルタップ（実験的）"
           }
         },
         "ko" : {
@@ -390623,13 +390623,13 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tempelkranen (Experimenteel)"
+            "value" : "Tikken op de poot (Experimenteel)"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Torneiras do Templo (Experimental)"
+            "value" : "Toques na haste (Experimental)"
           }
         },
         "ru" : {
@@ -390647,13 +390647,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "太阳穴轻敲（实验性）"
+            "value" : "镜腿轻点（实验性）"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "太陽穴敲擊（實驗性）"
+            "value" : "鏡腳輕點（實驗性）"
           }
         }
       }
@@ -391204,13 +391204,13 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Csapkodások tesztelése"
+            "value" : "Koppintások tesztelése"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Prova i rubinetti"
+            "value" : "Prova i tocchi"
           }
         },
         "ja" : {
@@ -391228,13 +391228,13 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kranen testen"
+            "value" : "Tikken testen"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Torneiras de teste"
+            "value" : "Testar toques"
           }
         },
         "ru" : {
@@ -391252,13 +391252,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "测试轻敲"
+            "value" : "测试轻点"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "測試敲擊"
+            "value" : "測試輕點"
           }
         }
       }
@@ -411908,7 +411908,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サービスはこのデータを独自のプライバシーおよび保持条件に基づいて扱います。許可は「クラウドAIとの共有」で取り消すまで有効で、ハンズフリーのリクエストもこのサービスに届くようになります。「今ではありません」を選んだ場合、保存済みのものはそのまま残り、何も送信されません。代わりに、対応するオンデバイス処理を使うこともできます。"
+            "value" : "サービスはこのデータを独自のプライバシーおよび保持条件に基づいて扱います。許可は「クラウドAIとの共有」で取り消すまで有効で、ハンズフリーのリクエストもこのサービスに届くようになります。「今はしない」を選んだ場合、保存済みのものはそのまま残り、何も送信されません。代わりに、対応するオンデバイス処理を使うこともできます。"
           }
         },
         "ko" : {
@@ -411944,7 +411944,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "该服务会按照其自身的隐私和数据保留条款处理这些数据。授权会一直有效，直到你在“云端 AI 共享”中撤回，并且免提请求也可以发送到此服务。如果你选择“现在不行”，你已保存的内容仍会保留，且不会发送任何内容。你也可以改用受支持的设备端处理。"
+            "value" : "该服务会按照其自身的隐私和数据保留条款处理这些数据。授权会一直有效，直到你在“云端 AI 共享”中撤回，并且免提请求也可以发送到此服务。如果你选择“以后”，你已保存的内容仍会保留，且不会发送任何内容。你也可以改用受支持的设备端处理。"
           }
         },
         "zh-Hant" : {
@@ -412912,7 +412912,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O início do arquivo. O arquivo inteiro está anexado – abra-o no e-mail ou na planilha de compartilhamento para ler o resto."
+            "value" : "O início do arquivo. O arquivo inteiro está anexado – abra-o no e-mail ou no menu de compartilhamento para ler o resto."
           }
         },
         "ru" : {
@@ -419194,7 +419194,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este dispositivo não possui uma conta de e-mail configurada, então o relatório foi aberto na planilha de compartilhamento. Envie para %1$@."
+            "value" : "Este dispositivo não possui uma conta de e-mail configurada, então o relatório foi aberto no menu de compartilhamento. Envie para %1$@."
           }
         },
         "ru" : {
@@ -421460,7 +421460,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这不再存在于内存中。"
+            "value" : "这已不在记忆中。"
           }
         },
         "zh-Hant" : {
@@ -425102,7 +425102,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este telefone não tem uma conta do Mail configurada, então o arquivo foi aberto na planilha de compartilhamento. Envie para %1$@."
+            "value" : "Este telefone não tem uma conta do Mail configurada, então o arquivo foi aberto no menu de compartilhamento. Envie para %1$@."
           }
         },
         "ru" : {
@@ -429322,7 +429322,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O tempo para, o registro é finalizado e a conversa do trabalho é encerrada com ele. Você ainda pode enviar o relatório depois, e ele conterá exatamente essas fotos. Um clipe é enviado como um arquivo próprio, onde o canal pode levá-lo, e oferecido por meio da planilha de compartilhamento, onde não pode."
+            "value" : "O tempo para, o registro é finalizado e a conversa do trabalho é encerrada com ele. Você ainda pode enviar o relatório depois, e ele conterá exatamente essas fotos. Um clipe é enviado como um arquivo próprio, onde o canal pode levá-lo, e oferecido por meio do menu de compartilhamento, onde não pode."
           }
         },
         "ru" : {
@@ -460006,7 +460006,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ماذا يفعل كل نقرة"
+            "value" : "ماذا تفعل كل نقرة"
           }
         },
         "es-MX" : {
@@ -460018,7 +460018,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce que chaque touche fait"
+            "value" : "Ce que fait chaque tapotement"
           }
         },
         "hu" : {
@@ -465321,7 +465321,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se è disattivato, l'assistente non può consultare né modificare direttamente il tuo deposito Salute. I record esistenti restano su questo telefono. I riepiloghi di Salute di Apple e la relativa impostazione di condivisione sono controllati separatamente qui sotto."
+            "value" : "Se è disattivato, l'assistente non può consultare né modificare direttamente il tuo deposito Salute. I record esistenti restano su questo telefono. I riepiloghi di Apple Health e la relativa impostazione di condivisione sono controllati separatamente qui sotto."
           }
         },
         "ja" : {
@@ -465339,7 +465339,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Als dit uit staat, kan de assistent uw Gezondheidskluis niet rechtstreeks opzoeken of bewerken. Bestaande records blijven op deze telefoon. Apple Gezondheid-overzichten en de bijbehorende deelinstelling worden hieronder apart geregeld."
+            "value" : "Als dit uit staat, kan de assistent uw Gezondheidskluis niet rechtstreeks opzoeken of bewerken. Bestaande records blijven op deze telefoon. Apple Health-overzichten en de bijbehorende deelinstelling worden hieronder apart geregeld."
           }
         },
         "pt-BR" : {
@@ -465403,7 +465403,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se è disattivato, l'assistente non può consultare né modificare direttamente il tuo deposito Salute. I record esistenti restano su questo telefono. I riepiloghi di Salute di Apple e la relativa impostazione di condivisione sono controllati separatamente, in Salute e fitness."
+            "value" : "Se è disattivato, l'assistente non può consultare né modificare direttamente il tuo deposito Salute. I record esistenti restano su questo telefono. I riepiloghi di Apple Health e la relativa impostazione di condivisione sono controllati separatamente, in Salute e fitness."
           }
         },
         "ja" : {
@@ -465421,7 +465421,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Als dit uit staat, kan de assistent uw Gezondheidskluis niet rechtstreeks opzoeken of bewerken. Bestaande records blijven op deze telefoon. Apple Gezondheid-overzichten en de bijbehorende deelinstelling worden apart geregeld, onder Gezondheid en fitness."
+            "value" : "Als dit uit staat, kan de assistent uw Gezondheidskluis niet rechtstreeks opzoeken of bewerken. Bestaande records blijven op deze telefoon. Apple Health-overzichten en de bijbehorende deelinstelling worden apart geregeld, onder Gezondheid en fitness."
           }
         },
         "pt-BR" : {
