@@ -1,13 +1,14 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 🚧 P0 + P1 + P1b + P2 + P3 built (headless; P3 lessons 1–3, lesson 4 waits for JV),
-P0–P2 2026-11-06 and P3 2026-11-07: the pure core (`HUDAnswerPager` and
+**Status:** 🚧 P0–P4 built (headless; P3 lessons 1–3, lesson 4 waits for JV),
+P0–P2 2026-11-06, P3 and P4 2026-11-07: the pure core (`HUDAnswerPager` and
 `HUDAnswerPage`, `PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the
 glasses (`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's
 keys), then what the wearer gets while another app has the Display (`DisplayAvailability`, the held
 card, the busy hint), then suggested follow-ups (`FollowUpPrompt`, the tail taken off everywhere, the
 streamer's hold), then the band check (`BandPractice`, `BandPracticeSession`, the phone page, the
-report's **Band check** section); P4 next, P6 device pass owed. The
+report's **Band check** section), then the preview to scale (`HUDCanvasScale`, both lenses at their
+shape, token sizes marked as estimates); P5 next, P6 device pass owed. The
 owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
 the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
 folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
@@ -588,6 +589,31 @@ guard tests).
 `HUDCanvasScale` and both previews at the backend's shape, with token sizes marked as estimates.
 **Tests:** `HUDCanvasScaleTests` (600 × 600 and 576 × 288 into narrow and wide spaces; whole-pixel
 mapping), snapshot tests for both backends.
+
+*Built 2026-11-07.* What P6 needs to know:
+
+- **The canvas.** `HUDCanvasScale` (pure, SDK-free, `Services/Display/HUDCanvasScale.swift`) holds the
+  two lenses as `HUDCanvas` (`.metaDisplay` 600 × 600 at density 160, `.evenG2` 576 × 288) and fits one
+  into the space a preview has: centred (letterboxed), its size and origin on whole device pixels with
+  the same factor on both axes (a 2:1 panel drops an odd pixel rather than blur an edge), and never past
+  one point per lens pixel (`maxPointsPerPixel`), about true size for a density-160 unit.
+- **The estimates.** `HUDCanvas.textSize(_:)` gives each token's size in lens pixels, every one
+  `isEstimate`. Meta Display: heading 34, body 28, meta 22, lines at 1.35 × (the web mirror's 600 × 600
+  page uses the same, so the two previews agree). Even G2: one size, 20 px on a 36 px line pitch with a
+  12 px advance, which is what `EvenScreenRenderer`'s 44-cell, eight-line budget assumes. The DSL
+  renderer's own lengths (button padding 16 × 10, icons 28, images 120) are lens pixels too, and as
+  much guesses.
+- **The previews.** `HUDPreviewView` draws the chosen backend's lens (`Config.displayBackend`, or a
+  `canvas:` passed in): the Meta tree on a black square, scaled by the fit; the Even frame as the
+  renderer sends it, one green monospaced line per row, overflow cut rather than ellipsised. The HUD
+  Mirror and the teleprompter's Now playing preview go through it, so both are to scale; the mirror says
+  "Text sizes are estimates" under the lens, and VoiceOver hears it in the preview's label. The
+  phone-only build keeps its plain list (no lens there).
+- **Owed to P6.** Photograph a Meta Display page and an Even G2 page beside the phone's preview and
+  set the token sizes (and the DSL paddings, the button height and how a `ButtonGroup` wraps) from what
+  the lens shows; whether DAT wraps or cuts a long `Text`; whether the content sits top-left on the
+  Display or centred; the Even font, advance and line pitch; then clear `isEstimate` for what was
+  measured.
 
 ### P5 — caption sessions kept and shared
 
