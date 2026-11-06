@@ -1,8 +1,9 @@
 # Plan IB: Paged HUD Answers (a long reply turns pages instead of stopping at 120 characters)
 
-**Status:** 📝 Drafted 2026-10-10. Nothing built. P0 is the pure pager and the stale-frame rule; P1
-wires it into `GlassesDisplayService` and the input paths; P2 is a device pass on both display
-backends.
+**Status:** 📝 Superseded 2026-11-06 by Plan [KP](KP-answers-you-can-act-on.md), which folds this
+design in (its §1–§2, P0 and P1) and adds actions under the answer. Nothing was built from this plan; build
+from KP. One correction KP makes: on a store build the band reaches the app only as a button press, so
+pages turn with buttons, not band swipes (swipes come only through Plan JV's TestFlight lane).
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3 row "HUD
 answers cut at 120 characters", section 4 row "Paged HUD answers"; Appendix B claim 7).
 **Priority:** Every long answer shown on a display is silently cut today, on the Meta Display and on
