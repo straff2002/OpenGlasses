@@ -4,7 +4,7 @@ import XCTest
 @testable import OpenGlasses
 
 /// Plan HX P3 — why added glasses are not connected: the diagnosis table, the line it puts on the
-/// session card, what the Developer panel and the support report say, and the summary a failed
+/// session card, what the self-test and the support report say, and the summary a failed
 /// permission call carries. Headless: nothing here touches `Wearables`.
 final class GlassesReachabilityDiagnosisTests: XCTestCase {
 
@@ -228,11 +228,11 @@ final class GlassesReachabilityDiagnosisTests: XCTestCase {
             + "(disconnected, disconnected), camera permission granted")
         for secret in identifiers + ["Maria", "Ray-Ban", "Workshop", "Oakley", "serial", "81"] {
             XCTAssertFalse(line.contains(secret), "\(secret) reached the report line")
-            XCTAssertFalse(reachability.probeDetail.contains(secret), "\(secret) reached the Developer panel")
+            XCTAssertFalse(reachability.probeDetail.contains(secret), "\(secret) reached the self-test")
         }
     }
 
-    // MARK: - The Developer panel's check
+    // MARK: - The self-test's check
 
     func testEachDiagnosisHasItsOwnProbeDetailAndNoneSaysPair() {
         let samples: [GlassesReachability] = [

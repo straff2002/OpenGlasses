@@ -3,9 +3,9 @@ import Foundation
 /// The live edge of the subsystem self-test: each probe exercises the real
 /// service, so `SubsystemTestRunner` stays a pure, unit-tested core.
 ///
-/// Shared rather than owned by one screen — the same six checks back both the
-/// Developer panel and the Diagnostics & Support screen, and a check that exists
-/// in only one of them is a check someone won't run.
+/// Kept apart from the screen that runs them (the Advanced & Support page,
+/// `DiagnosticsSupportView`). The Developer panel ran its own copy of the same six
+/// checks until both sat one page apart; there is one self-test now.
 @MainActor
 enum SubsystemProbes {
 
@@ -37,7 +37,7 @@ enum SubsystemProbes {
                     return .fail("No display on this device")
                 }
                 appState.glassesDisplay.showNotification(
-                    title: "Test", body: "Developer panel render check", icon: .info, duration: 4
+                    title: "Test", body: "Self-test render check", icon: .info, duration: 4
                 )
                 return .pass("Card sent to lens")
             },

@@ -5,7 +5,7 @@ import SwiftUI
 /// split by `backend` × `ttsEngine` × `micRoute`, never pooled (see `TurnTimeline.Cohort`).
 ///
 /// Reads `TurnLedger` directly rather than through a view model — the same "pure core + thin view"
-/// split `SubsystemTestRunner`/`DeveloperPanelView` already use. This screen has nothing to add to
+/// split `SubsystemTestRunner`/`DiagnosticsSupportView` already use. This screen has nothing to add to
 /// that core beyond formatting.
 struct TurnTimelineDebugView: View {
     @ObservedObject var ledger: TurnLedger

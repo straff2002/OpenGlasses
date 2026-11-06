@@ -1,13 +1,12 @@
 import SwiftUI
 
-/// Settings → Advanced & Support → Advanced → Developer (Plan CL P2): one-tap cold-start
-/// verification that each subsystem is alive — glasses link, camera,
-/// HUD, AI round-trip, TTS, wake word — plus the live debug-event tail.
-/// Field debugging starts here instead of "say the wake word and guess".
+/// Settings → Advanced & Support → Advanced → Developer (Plan CL P2): developer flags, recogniser
+/// comparison, manual languages, turn latency and the live debug-event tail.
+///
+/// The subsystem self-test used to live here too. It is on the Advanced & Support page only
+/// (`DiagnosticsSupportView`), which Simple Mode keeps visible: one self-test, not two.
 struct DeveloperPanelView: View {
     @ObservedObject var appState: AppState
-    @StateObject private var runner: SubsystemTestRunner
-    @Environment(\.appAccent) private var accent
     /// Plan GD3 — `Config.fieldToolProfileEnabled`, the same key and default.
     @AppStorage("fieldToolProfileEnabled") private var fieldToolProfileEnabled = true
     /// Plan GU §5 — `Config.wakeSpeechGateEnabled`, the same key and default (off until tuned).
@@ -23,67 +22,10 @@ struct DeveloperPanelView: View {
 
     init(appState: AppState) {
         self.appState = appState
-        _runner = StateObject(wrappedValue: SubsystemProbes.makeRunner(appState: appState))
     }
 
     var body: some View {
         OGScrollPage {
-            OGNotice(
-                text: GlassesSupportPolicy.isSupported
-                    ? "Each test exercises the real path — the camera takes a photo, the AI answers a tiny query, the lens renders a card."
-                    : "Each test exercises the real path — the AI answers a tiny query and speech plays through your selected audio output.",
-                systemImage: "stethoscope"
-            )
-
-            OGSection(header: "Subsystems") {
-                ForEach(Array(runner.tests.enumerated()), id: \.element.id) { index, test in
-                    if index > 0 { OGDivider() }
-                    Button {
-                        Task { await runner.run(test.id) }
-                    } label: {
-                        OGRow(test.name, icon: test.icon, showsChevron: false) {
-                            trailingState(for: test.id)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(runner.running.contains(test.id))
-                }
-
-                if let failure = runner.lastFailure {
-                    OGDivider()
-                    Label(failure, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(OGTheme.errorLabel)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                }
-            }
-
-            Button {
-                Task { await runner.runAll() }
-            } label: {
-                HStack(spacing: 8) {
-                    if runner.isRunning {
-                        ProgressView().tint(Color.primary)
-                    } else {
-                        Image(systemName: "checklist")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    Text(runner.isRunning ? "Running…" : "Run All")
-                        .font(.body.weight(.semibold))
-                }
-                // The accent is the *ground* here, so the label is whichever pole
-                // reads on it — a hard-coded white loses a bright preset.
-                .foregroundStyle(runner.isRunning
-                    ? AnyShapeStyle(Color.primary)
-                    : AnyShapeStyle(OGTheme.onAccentLabel(accent)))
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(runner.isRunning ? AnyShapeStyle(Color.secondary.opacity(0.4)) : AnyShapeStyle(accent), in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(runner.isRunning)
-
             OGSection(
                 header: "Field Assist",
                 footer: "During a Field Assist job, only field tools are offered to the model, which cuts cost per request. Turn off to offer every tool."
@@ -206,26 +148,5 @@ struct DeveloperPanelView: View {
             }
         }
         .navigationTitle("Developer")
-    }
-
-    @ViewBuilder
-    private func trailingState(for id: String) -> some View {
-        if runner.running.contains(id) {
-            ProgressView()
-        } else if let outcome = runner.outcomes[id] {
-            HStack(spacing: 6) {
-                if outcome.passed {
-                    Text("\(outcome.detail) · \(SubsystemTestRunner.format(outcome.seconds))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Image(systemName: outcome.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(outcome.passed ? OGTheme.ok : OGTheme.error)
-            }
-        } else {
-            Image(systemName: "play.circle")
-                .foregroundStyle(.tertiary)
-        }
     }
 }

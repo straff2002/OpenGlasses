@@ -5,8 +5,8 @@ import UIKit
 ///
 /// Deliberately a top-level category rather than a page inside Advanced, because
 /// Simple Mode hides Advanced — and the wearers most likely to need diagnostics are
-/// exactly the ones who never see the Developer panel. Same six probes, plus a
-/// report the wearer reads in full before any of it leaves the device.
+/// exactly the ones who never see the Developer panel. This is the app's only
+/// self-test, plus a report the wearer reads in full before any of it leaves the device.
 struct DiagnosticsSupportView: View {
     @ObservedObject var appState: AppState
     /// Plan KH P2: this is the hub's Advanced & Support page, so Advanced is one row at the top.
