@@ -29,22 +29,112 @@ import MWDATDisplay
 #endif
 import SwiftUI
 
-/// Renders a `HUDScreen` as it would appear on the lens, on a dark "glass" panel.
+/// Renders a `HUDScreen` as it would appear on the lens, drawn to the lens's shape (Plan KP §6):
+/// a black 600 × 600 square for the Meta Display, the 2:1 576 × 288 panel for Even G2, fitted to
+/// the space available by `HUDCanvasScale` (letterboxed, on whole device pixels, never past one
+/// point per lens pixel). Text is drawn at each token's *estimated* lens size, scaled with the
+/// canvas, so the answer card's pages show exactly as `HUDAnswerPager` cuts them and text length
+/// can be judged without hardware. VoiceOver hears that the sizes are estimates.
 struct HUDPreviewView: View {
     let screen: HUDScreen
+    /// The lens to draw; nil follows the display backend chosen in Settings.
+    var canvas: HUDCanvas?
+
+    @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
+    @Environment(\.displayScale) private var displayScale
+
+    init(screen: HUDScreen, canvas: HUDCanvas? = nil) {
+        self.screen = screen
+        self.canvas = canvas
+    }
+
+    private var resolvedCanvas: HUDCanvas {
+        if let canvas { return canvas }
+        return HUDCanvas.canvas(for: DisplayBackendChoice(rawValue: displayBackendRaw) ?? .metaRayBan)
+    }
 
     var body: some View {
-        HUDDSLView(flexBox: GlassesDisplayService.previewFlexBox(for: screen))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(OGTheme.media)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(AppAccent.color.opacity(0.25), lineWidth: 1)
-                    )
-            )
+        let canvas = resolvedCanvas
+        Color.clear
+            .aspectRatio(canvas.aspectRatio, contentMode: .fit)
+            .overlay {
+                GeometryReader { geometry in
+                    let fit = HUDCanvasScale.fit(canvas, in: geometry.size, displayScale: displayScale)
+                    HUDCanvasView(screen: screen, fit: fit)
+                        .offset(x: fit.origin.x, y: fit.origin.y)
+                }
+            }
+            .frame(maxWidth: CGFloat(canvas.widthPixels) * HUDCanvasScale.maxPointsPerPixel)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(canvas.accessibilitySummary)
+    }
+}
+
+/// One fitted lens: the black canvas, the screen drawn the way its backend draws it, clipped to
+/// the lens's edges (what doesn't fit is cut, as on the lens).
+private struct HUDCanvasView: View {
+    let screen: HUDScreen
+    let fit: HUDCanvasScale
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.black
+            switch fit.canvas.backend {
+            case .metaDisplay:
+                HUDDSLView(flexBox: GlassesDisplayService.previewFlexBox(for: screen))
+                    .environment(\.hudCanvasFit, fit)
+                    .frame(width: fit.size.width, alignment: .topLeading)
+            case .evenG2:
+                EvenPanelView(screen: screen, fit: fit)
+            }
+        }
+        .frame(width: fit.size.width, height: fit.size.height, alignment: .topLeading)
+        .clipped()
+        .overlay(Rectangle().strokeBorder(AppAccent.color.opacity(0.25), lineWidth: 1))
+    }
+}
+
+/// The Even G2 panel: the frame `EvenScreenRenderer` sends, one monochrome line per row at the
+/// renderer's estimated cell metrics (12 px advance, 36 px pitch, 44 cells centred).
+private struct EvenPanelView: View {
+    let screen: HUDScreen
+    let fit: HUDCanvasScale
+
+    /// The panel's green, as a phone colour.
+    private static let panelGreen = Color(red: 0.42, green: 1.0, blue: 0.52)
+
+    private var lines: [String] {
+        if case .lines(let lines) = EvenScreenRenderer.render(screen: screen) { return lines }
+        return []
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { item in
+                SwiftUI.Text(verbatim: item.element)
+                    .font(.system(size: fit.points(HUDCanvas.evenFontPixels), design: .monospaced))
+                    .foregroundColor(Self.panelGreen)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)  // overflow is cut, never ellipsised
+                    .frame(height: fit.points(HUDCanvas.evenLinePitchPixels), alignment: .leading)
+            }
+        }
+        .padding(.leading, fit.points(fit.canvas.evenLeftMarginPixels))
+    }
+}
+
+/// The fit a Display tree is drawn at: every DAT length (padding, spacing) and every estimated text
+/// size is in lens pixels, and the renderer multiplies by `pointsPerPixel`. Defaults to one point
+/// per pixel.
+private struct HUDCanvasFitKey: EnvironmentKey {
+    static let defaultValue = HUDCanvasScale.fit(.metaDisplay, in: CGSize(width: 600, height: 600))
+}
+
+private extension EnvironmentValues {
+    var hudCanvasFit: HUDCanvasScale {
+        get { self[HUDCanvasFitKey.self] }
+        set { self[HUDCanvasFitKey.self] = newValue }
     }
 }
 
@@ -61,6 +151,7 @@ struct HUDDSLView: View {
 
 private struct FlexBoxView: View {
     let flexBox: MWDATDisplay.FlexBox
+    @Environment(\.hudCanvasFit) private var fit
 
     var body: some View {
         stack
@@ -73,14 +164,14 @@ private struct FlexBoxView: View {
     private var stack: some View {
         switch flexBox.direction {
         case .row, .rowReverse:
-            HStack(alignment: crossVerticalAlignment, spacing: flexBox.spacing) {
+            HStack(alignment: crossVerticalAlignment, spacing: fit.points(flexBox.spacing)) {
                 ForEach(Array(orderedChildren.enumerated()), id: \.offset) { item in
                     ComponentView(component: item.element)
                         .modifier(FlexGrowModifier(component: item.element, isRow: true))
                 }
             }
         default:  // .column / .columnReverse / future
-            VStack(alignment: crossHorizontalAlignment, spacing: flexBox.spacing) {
+            VStack(alignment: crossHorizontalAlignment, spacing: fit.points(flexBox.spacing)) {
                 ForEach(Array(orderedChildren.enumerated()), id: \.offset) { item in
                     ComponentView(component: item.element)
                         .modifier(FlexGrowModifier(component: item.element, isRow: false))
@@ -114,17 +205,18 @@ private struct FlexBoxView: View {
 
     private var edgeInsets: SwiftUI.EdgeInsets {
         guard let p = flexBox.padding else { return SwiftUI.EdgeInsets() }
-        return SwiftUI.EdgeInsets(top: p.top, leading: p.leading, bottom: p.bottom, trailing: p.trailing)
+        return SwiftUI.EdgeInsets(top: fit.points(p.top), leading: fit.points(p.leading),
+                                  bottom: fit.points(p.bottom), trailing: fit.points(p.trailing))
     }
 
     @ViewBuilder
     private var backgroundView: some View {
         switch flexBox.background {
         case .card:
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: fit.points(16), style: .continuous)
                 .fill(OGTheme.onMedia.opacity(0.06))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: fit.points(16), style: .continuous)
                         .strokeBorder(OGTheme.onMedia.opacity(0.12), lineWidth: 1)
                 )
         default:
@@ -166,11 +258,12 @@ private struct FlexGrowModifier: ViewModifier {
 
 private struct ComponentView: View {
     let component: any MWDATDisplay.ViewComponent
+    @Environment(\.hudCanvasFit) private var fit
 
     var body: some View {
         if let text = component as? MWDATDisplay.Text {
             SwiftUI.Text(text.content)
-                .font(displayFont(for: text.style))
+                .font(displayFont(for: text.style, fit: fit))
                 .foregroundColor(displayColor(for: text.color))
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let button = component as? MWDATDisplay.Button {
@@ -179,6 +272,7 @@ private struct ComponentView: View {
             imageView(image)
         } else if let icon = component as? MWDATDisplay.Icon {
             SwiftUI.Image(systemName: sfSymbol(for: icon.name))
+                .font(.system(size: fit.fontPoints(.body)))
                 .foregroundColor(AppAccent.color)
         } else if let group = component as? MWDATDisplay.ButtonGroup {
             buttonGroupView(group)
@@ -191,7 +285,7 @@ private struct ComponentView: View {
 
     @ViewBuilder
     private func buttonGroupView(_ group: MWDATDisplay.ButtonGroup) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: fit.points(8)) {
             ForEach(Array(group.buttons.enumerated()), id: \.offset) { item in
                 buttonView(item.element)
             }
@@ -210,14 +304,15 @@ private struct ComponentView: View {
     @ViewBuilder
     private func buttonView(_ button: MWDATDisplay.Button) -> some View {
         SwiftUI.Button(action: { button.onClick?() }) {
-            HStack(spacing: 6) {
+            HStack(spacing: fit.points(6)) {
                 if let iconName = button.iconName {
                     SwiftUI.Image(systemName: sfSymbol(for: iconName))
                 }
-                SwiftUI.Text(button.label).fontWeight(.semibold)
+                SwiftUI.Text(button.label)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .font(.system(size: fit.fontPoints(.body), weight: .semibold))
+            .padding(.horizontal, fit.points(16))
+            .padding(.vertical, fit.points(10))
             .frame(maxWidth: .infinity)
             .background(buttonBackground(button.style))
             .foregroundColor(buttonForeground(button.style))
@@ -225,7 +320,7 @@ private struct ComponentView: View {
             .overlay(
                 Capsule().strokeBorder(
                     AppAccent.color.opacity(button.style == .outline ? 0.8 : 0),
-                    lineWidth: 1.5
+                    lineWidth: max(1, fit.points(2))
                 )
             )
         }
@@ -244,23 +339,24 @@ private struct ComponentView: View {
                 ProgressView()
             }
         }
-        .frame(width: isIcon ? 28 : nil, height: isIcon ? 28 : 120)
+        .frame(width: isIcon ? fit.points(28) : nil, height: fit.points(isIcon ? 28 : 120))
         .frame(maxWidth: isIcon ? nil : .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: corner(image.cornerRadius), style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: fit.points(corner(image.cornerRadius)), style: .continuous))
     }
 }
 
 // MARK: - Style mapping (Display enums → SwiftUI, OpenGlasses brand)
 
-/// Deliberately *fixed* point sizes, and the one place in the app they are right:
-/// this view is a fidelity mirror of a fixed-geometry lens display, so it has to
-/// reproduce what the wearer sees rather than what the phone's text size asks for.
-/// Growing these with Dynamic Type would make the preview misreport the HUD.
-private func displayFont(for style: MWDATDisplay.TextStyle) -> Font {
+/// Deliberately *fixed* sizes, and the one place in the app they are right: this view is a
+/// scaled picture of a fixed-geometry lens, so it has to reproduce what the wearer sees rather
+/// than what the phone's text size asks for. Growing these with Dynamic Type would make the
+/// preview misreport the HUD. Each token's size is `HUDCanvas.textSize(_:)`'s **estimate** in lens
+/// pixels (P6 calibrates it), scaled with the canvas.
+private func displayFont(for style: MWDATDisplay.TextStyle, fit: HUDCanvasScale) -> Font {
     switch style {
-    case .heading: return .system(size: 22, weight: .bold)
-    case .meta: return .system(size: 12, weight: .regular)
-    default: return .system(size: 15, weight: .regular)  // .body
+    case .heading: return .system(size: fit.fontPoints(.heading), weight: .bold)
+    case .meta: return .system(size: fit.fontPoints(.meta), weight: .regular)
+    default: return .system(size: fit.fontPoints(.body), weight: .regular)  // .body
     }
 }
 
@@ -344,11 +440,15 @@ private func sampleMenu() -> HUDScreen {
 }
 
 #Preview("Task card") {
-    ZStack { Color(white: 0.12).ignoresSafeArea(); HUDPreviewView(screen: sampleTaskCard()).padding() }
+    ZStack { Color(white: 0.12).ignoresSafeArea(); HUDPreviewView(screen: sampleTaskCard(), canvas: .metaDisplay).padding() }
+}
+
+#Preview("Task card, Even G2") {
+    ZStack { Color(white: 0.12).ignoresSafeArea(); HUDPreviewView(screen: sampleTaskCard(), canvas: .evenG2).padding() }
 }
 
 #Preview("Launcher menu") {
-    ZStack { Color(white: 0.12).ignoresSafeArea(); HUDPreviewView(screen: sampleMenu()).padding() }
+    ZStack { Color(white: 0.12).ignoresSafeArea(); HUDPreviewView(screen: sampleMenu(), canvas: .metaDisplay).padding() }
 }
 #endif
 

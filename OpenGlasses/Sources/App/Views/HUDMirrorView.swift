@@ -18,6 +18,14 @@ struct HUDMirrorView: View {
                 Text("Live — this is what's on the lens.")
                     .font(.footnote)
                     .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
+                #if !AVENKIN_PHONE_ONLY
+                // Plan KP §6: the preview is drawn to the lens's shape at estimated text sizes.
+                Text("Drawn to the lens's shape. Text sizes are estimates.")
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
+                    .padding(.horizontal)
+                #endif
             } else {
                 ContentUnavailableView(
                     "HUD idle",
