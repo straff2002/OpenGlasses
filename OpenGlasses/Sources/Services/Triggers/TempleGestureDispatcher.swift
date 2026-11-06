@@ -108,6 +108,7 @@ final class TempleGestureDispatcher: ObservableObject {
             case .askAgent: return "askAgent"
             case .musicPlayPause: return "musicPlayPause"
             case .quickAction: return "quickAction"
+            case .answerPage(let forward): return forward ? "answerNextPage" : "answerPreviousPage"
             }
         }
     }

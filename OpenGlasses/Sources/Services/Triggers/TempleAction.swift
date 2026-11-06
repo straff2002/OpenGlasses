@@ -20,6 +20,10 @@ enum TempleAction: Hashable, Identifiable {
     case musicPlayPause
     /// Hand the next thing the wearer says straight to their agent. Agent Mode only.
     case askAgent
+    /// Turn the answer card on the glasses to its next page (Plan KP P1). Nothing without a card.
+    case answerNextPage
+    /// Turn the answer card back a page, or from its actions back to the answer.
+    case answerPreviousPage
     /// Run a saved Quick Action by id.
     case quickAction(String)
 
@@ -28,7 +32,8 @@ enum TempleAction: Hashable, Identifiable {
     /// Every assignable action that is not a Quick Action, in picker order.
     static let builtIns: [TempleAction] = [
         .startTalking, .hangUp, .mute, .photoDescribe, .photoToCameraRoll,
-        .readDigest, .toggleRecording, .musicPlayPause, .askAgent, .nothing,
+        .readDigest, .toggleRecording, .musicPlayPause, .askAgent,
+        .answerNextPage, .answerPreviousPage, .nothing,
     ]
 
     /// Persisted form. Stable — never rename a case's value.
@@ -44,6 +49,8 @@ enum TempleAction: Hashable, Identifiable {
         case .toggleRecording: return "toggleRecording"
         case .musicPlayPause: return "musicPlayPause"
         case .askAgent: return "askAgent"
+        case .answerNextPage: return "answerNextPage"
+        case .answerPreviousPage: return "answerPreviousPage"
         case .quickAction(let id): return Self.quickActionPrefix + id
         }
     }
@@ -76,6 +83,8 @@ enum TempleAction: Hashable, Identifiable {
         case .toggleRecording: return String(localized: "Start or stop recording")
         case .musicPlayPause: return String(localized: "Play or pause music")
         case .askAgent: return String(localized: "Ask my agent")
+        case .answerNextPage: return String(localized: "Next page of an answer")
+        case .answerPreviousPage: return String(localized: "Previous page of an answer")
         case .quickAction: return String(localized: "Quick Action")
         }
     }

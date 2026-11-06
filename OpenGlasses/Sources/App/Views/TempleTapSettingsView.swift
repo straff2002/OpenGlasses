@@ -130,6 +130,21 @@ struct TempleTapSettingsView: View {
     }
 
     private var tapsFooter: String {
+        // Plan KP P1: the page taps only mean something while an answer card is on the display.
+        guard !usesAnswerPaging else {
+            return sessionFooter + " " + String(localized: "Answer page taps turn the answer showing on your glasses' display, and do nothing when none is showing.")
+        }
+        return sessionFooter
+    }
+
+    private var usesAnswerPaging: Bool {
+        TempleGesture.allCases.contains { gesture in
+            let action = map.action(for: gesture)
+            return action == .answerNextPage || action == .answerPreviousPage
+        }
+    }
+
+    private var sessionFooter: String {
         if !calibration.sessionControlAvailable {
             return String(localized: "Hanging up and muting during a conversation aren't available on these glasses — taps don't reach Avenkin while it is talking. They still work between conversations.")
         }

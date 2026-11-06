@@ -177,6 +177,53 @@ final class TempleActionResolverTests: XCTestCase {
         }
     }
 
+    // MARK: - Answer card pages (Plan KP P1)
+
+    private func cardContext(_ activity: TempleContext.Activity, showing: Bool) -> TempleContext {
+        var ctx = context(activity)
+        ctx.answerCardShowing = showing
+        return ctx
+    }
+
+    func testAnswerPageTapsTurnTheCardWhileItShows() {
+        for activity in allActivities where activity != .busy {
+            XCTAssertEqual(resolve(.answerNextPage, cardContext(activity, showing: true)),
+                           .run(.answerPage(forward: true)), "\(activity)")
+            XCTAssertEqual(resolve(.answerPreviousPage, cardContext(activity, showing: true)),
+                           .run(.answerPage(forward: false)), "\(activity)")
+        }
+        XCTAssertEqual(resolve(.answerNextPage, cardContext(.busy, showing: true)), .ignored(.busy))
+    }
+
+    func testAnswerPageTapsDoNothingWithoutACard() {
+        for activity in allActivities where activity != .busy {
+            XCTAssertEqual(resolve(.answerNextPage, cardContext(activity, showing: false)),
+                           .ignored(.noAnswerCard))
+            XCTAssertEqual(resolve(.answerPreviousPage, cardContext(activity, showing: false)),
+                           .ignored(.noAnswerCard))
+        }
+        // Silent refusal: a soft tone only, no sentence.
+        XCTAssertNil(TempleIgnoreReason.noAnswerCard.spokenLine)
+        XCTAssertEqual(TempleEarcon.for(.ignored(.noAnswerCard)), .refused)
+        XCTAssertEqual(TempleEarcon.for(.run(.answerPage(forward: true))), .accepted)
+    }
+
+    @MainActor
+    func testAnswerPageActionsPersistAndAreOffered() {
+        XCTAssertEqual(TempleAction.answerNextPage.rawValue, "answerNextPage")
+        XCTAssertEqual(TempleAction.answerPreviousPage.rawValue, "answerPreviousPage")
+        XCTAssertEqual(TempleAction(rawValue: "answerNextPage"), .answerNextPage)
+        XCTAssertEqual(TempleAction(rawValue: "answerPreviousPage"), .answerPreviousPage)
+        XCTAssertTrue(TempleAction.builtIns.contains(.answerNextPage))
+        XCTAssertTrue(TempleAction.builtIns.contains(.answerPreviousPage))
+        XCTAssertEqual(TempleAction.builtIns.last, .nothing)
+        XCTAssertFalse(TempleAction.answerNextPage.requiresAgentMode)
+        XCTAssertNotEqual(TempleAction.answerNextPage.displayName, TempleAction.answerPreviousPage.displayName)
+        XCTAssertEqual(TempleGestureDispatcher.logToken(.run(.answerPage(forward: true))), "answerNextPage")
+        XCTAssertEqual(TempleGestureDispatcher.logToken(.run(.answerPage(forward: false))), "answerPreviousPage")
+        XCTAssertEqual(TempleGestureDispatcher.logToken(.ignored(.noAnswerCard)), "ignored.noAnswerCard")
+    }
+
     func testMuteEarconsDiffer() {
         XCTAssertEqual(TempleEarcon.for(.run(.setMicMuted(true))), .muted)
         XCTAssertEqual(TempleEarcon.for(.run(.setMicMuted(false))), .unmuted)

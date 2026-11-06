@@ -1387,6 +1387,9 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var procedureHUDSource = ProcedureHUDTaskSource()
     /// Band-navigable launcher on the lens (Display Phase 4 / Plan Y).
     lazy var hudLauncher = HUDLauncher(router: hudRouter)
+    /// The answer card on the lens (Plan KP P1): a turn's answer a page at a time, with its
+    /// actions under it.
+    lazy var hudAnswerCard = HUDAnswerCard(display: glassesDisplay)
     /// Audio-paced HUD teleprompter (Teleprompter Phase 2): streams recognized speech into
     /// the `ScriptAligner` to keep your place, owns the display while active.
     let teleprompterStore = TeleprompterScriptStore()
@@ -2825,6 +2828,7 @@ class AppState: ObservableObject, AppStateProtocol {
         glassesDisplay.onDebugEvent = { [weak self] message in
             Task { @MainActor in self?.addDebugEvent(message) }
         }
+        wireAnswerCard()
 
         // Let the TTS engine selector know whether we're online, so a configured cloud voice
         // isn't preferred while offline (it'd fail the network call and fall back anyway).
@@ -7772,6 +7776,37 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
+    /// Plan KP P1: the answer card's actions, each through the path the same request takes
+    /// without the card.
+    ///
+    /// - More, Send and a follow-up are the wearer's next turn, through `sendTextMessage` (the
+    ///   entry point a typed request and Plan CG's choice buttons use). Send asks the assistant to
+    ///   send the answer: it asks who to, and `send_via` is a messaging tool, so its bound approval
+    ///   holds the send until the wearer confirms. The press itself sends nothing.
+    /// - Repeat says the answer again through the ordinary speech path, not mirrored, so it does
+    ///   not rebuild the card.
+    /// - Save runs `save_note` through the tool router — and so `ToolAuthorizationPolicy` — as a
+    ///   tapped control (`.user`), never by writing the note directly.
+    private func wireAnswerCard() {
+        speechService.answerCard = hudAnswerCard
+        hudRouter.answerCard = hudAnswerCard
+        hudAnswerCard.submitTurn = { [weak self] text in
+            Task { @MainActor in await self?.sendTextMessage(text) }
+        }
+        hudAnswerCard.speakAgain = { [weak self] text in
+            Task { @MainActor in
+                await self?.speechService.speak(text, source: .readAloud, mirrorToHUD: false)
+            }
+        }
+        hudAnswerCard.saveNote = { [weak self] title, content in
+            guard let self else { return false }
+            let outcome = await self.nativeToolRouter.execute(
+                .root(name: "save_note", arguments: ["content": content, "title": title], origin: .user))
+            if case .completed = outcome { return true }
+            return false
+        }
+    }
+
     /// Plan GE: close a phone turn that needed no model — a deterministic tool answer or the hold
     /// line — in the tier-0 shape: record it (marked as answered on the phone), speak, resume.
     private func finishPhoneTurnWithoutModel(_ reply: String, threadId: String?, admissionID: UUID) async {
@@ -8158,6 +8193,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan HZ P1: with the switch on, the reply is spoken a sentence at a time as it is written.
         // Nil — today's path, unchanged — when it is off.
         let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId)
+        // Plan KP P1: this reply's sentences collect into one answer card on the glasses.
+        hudAnswerCard.beginTurn()
 
         // Run the turn inside a tracked, cancellable task (Plan BG P2). Barge-in / stop / cancel
         // cancel it, so a normal text turn no longer speaks its now-stale response after the user
@@ -8327,6 +8364,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Plan HZ P1: the reply has been speaking since its first sentence (and the
                     // stop listener with it) — say what is left of it.
                     if let replyStream, replyStream.didStream {
+                        // Plan KP P1: the reply is final, so the whole card can show now.
+                        hudAnswerCard.finishTurn(reply: response)
                         await replyStream.finish(reply: response)
                         releaseReplyStreamStopListener(replyStream)
                         return
@@ -8352,6 +8391,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
+                    hudAnswerCard.endTurn()
                     llmService.offlineHandoffTurn = false
                     // Restore original model if we switched for this request
                     if let originalId = originalModelId {
@@ -8493,6 +8533,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan HZ P1: spoken a sentence at a time when the switch is on and the reply is spoken here.
         let replyStream = speakResponse
             ? makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId) : nil
+        // Plan KP P1: a spoken reply collects into one answer card, as on the voice path.
+        if speakResponse { hudAnswerCard.beginTurn() }
 
         // Typed turns run the same skeleton as voice turns, tracked in `currentLLMTask` so
         // barge-in / cancel stops a typed turn too (Plan BG P2: every turn is cancellable).
@@ -8583,6 +8625,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Speak the response (user can still say "stop")
                     guard speakResponse, conversationReset.isCurrent(turnGeneration) else { return }
                     if let replyStream, replyStream.didStream {
+                        hudAnswerCard.finishTurn(reply: response)
                         await replyStream.finish(reply: response)
                         releaseReplyStreamStopListener(replyStream)
                         return
@@ -8613,6 +8656,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
+                    if speakResponse { hudAnswerCard.endTurn() }
                     if answeredOnPhone {
                         llmService.offlineHandoffTurn = false
                         if let phoneOriginalModelId {

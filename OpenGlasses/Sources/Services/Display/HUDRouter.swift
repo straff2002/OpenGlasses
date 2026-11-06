@@ -18,6 +18,10 @@ final class HUDRouter: ObservableObject {
     /// Whether a task card is currently being driven on the HUD.
     @Published private(set) var isPresentingTask = false
 
+    /// The answer card (Plan KP P1), whose paging words this router takes while it is the
+    /// frame on the glasses. Set by AppState.
+    weak var answerCard: HUDAnswerCard?
+
     init(display: GlassesDisplayService) {
         self.display = display
     }
@@ -91,6 +95,22 @@ final class HUDRouter: ObservableObject {
     /// LLM). No-op otherwise.
     @discardableResult
     func handleVoiceCommand(_ text: String) async -> Bool {
+        // Plan KP: an answer card's paging words, consulted only while the card is the frame on
+        // the glasses — never over a task card, where "next" means the step is done.
+        // A word with nothing to do ("next" on the last page) is left to the model.
+        if !isPresentingTask, !isPresentingMenu, let card = answerCard, card.isShowing,
+           let command = HUDAnswerVoiceCommand.parse(text) {
+            let action: HUDAnswerAction
+            switch command {
+            case .next: action = .next
+            case .back: action = .back
+            case .close: action = .close
+            }
+            if card.canTurn(action) {
+                card.press(action)
+                return true
+            }
+        }
         guard isPresentingTask, let source = taskSource else { return false }
         if let command = HUDVoiceCommand.parse(text) {
             switch command {

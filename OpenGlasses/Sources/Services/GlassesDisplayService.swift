@@ -121,6 +121,37 @@ final class GlassesDisplayService: ObservableObject {
     private var currentScreen: HUDScreen?
     private var screenSelectionHandler: ((String) -> Void)?
 
+    // MARK: - Answer cards and stale frames (Plan KP P1)
+
+    /// Bumped by every frame the render queue is handed: an ambient op, a screen, a clear, an
+    /// answer card's page (§2). A page turn or a card action carries the revision it was issued
+    /// against, and `PageTurnGate` drops it when anything was enqueued since, so a notification
+    /// that arrived between "next" and the page render wins.
+    private(set) var frameRevision: UInt64 = 0
+
+    /// The revision at which the held interactive screen was last handed to the queue — the
+    /// frame whose buttons a band press (or a spoken or tapped page turn) acts on. A press is
+    /// issued against this, so a notification enqueued over the card makes it stale until the
+    /// card is drawn again (the flash's restore, or the card's next change).
+    private(set) var heldScreenRevision: UInt64 = 0
+
+    /// True while the held interactive screen is an answer card (`HUDAnswerCard`) rather than a
+    /// task card, a menu or a choice list. An answer only becomes a card while this is true or
+    /// nothing interactive is up: over anything else it flashes, as it always has.
+    @Published private(set) var showsAnswerCard = false
+
+    /// A transient frame (a notification, a flash) is drawn over the held interactive screen and
+    /// will restore it. A card that changes meanwhile updates `currentScreen` only, so the restore
+    /// draws the newest version instead of the card cutting the notification short.
+    private var flashingOverInteractive = false
+
+    /// Whether an answer may be shown as a card right now: the HUD is on, something can show it
+    /// (a display or the mirror), and nothing but an answer card is held.
+    var acceptsAnswerCard: Bool {
+        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        return !isInteractive || showsAnswerCard
+    }
+
     // MARK: - Testing seam
     //
     // No display hardware is available in CI/sim, so the interactive logic (capability
@@ -185,12 +216,20 @@ final class GlassesDisplayService: ObservableObject {
     /// Show persistent navigation guidance (icon + body). Cleared explicitly via
     /// `clear()` when guidance stops.
     func showNavigation(_ text: String, icon: HUDIcon = .navigation) {
+        // Plan KP: guidance and hazard lines are never paged and never wait behind an answer
+        // card. An answer used to be a plain line the next guidance line replaced; a card gives
+        // way the same way, rather than holding the line back for up to a minute.
+        if showsAnswerCard { endInteractive() }
         present(HUDContent(title: nil, body: text, icon: icon), transient: false, duration: 0)
     }
 
     /// Clear the HUD (keeps the transport alive for fast subsequent updates).
     func clear() {
         guard isEnabled else { return }
+        // Plan KP: a producer clearing its own line (captions stopping, guidance ending) never
+        // blanks an answer card held over it. The card ends by Close, a new answer, or its
+        // lifetime.
+        guard !showsAnswerCard else { return }
         guard isDisplayActive || lastRendered != nil || lastScreenKey != nil else { return }
         enqueue(.op(.clear))
     }
@@ -203,14 +242,60 @@ final class GlassesDisplayService: ObservableObject {
         screenSelectionHandler = onSelect
         currentScreen = screen
         isInteractive = true
+        showsAnswerCard = false
+        flashingOverInteractive = false
         onDebugEvent?("HUD task card: \(screen.title ?? "menu")")
         enqueue(.screen(screen))
+    }
+
+    /// Plan KP P1: hold an answer card on the HUD — a new answer, or the card it already holds
+    /// redrawn because more of the answer arrived. Not a press, so not gated: a new answer
+    /// replaces whatever card was up. While a transient frame is over the card, only the held
+    /// screen is updated and the flash's restore draws it.
+    @discardableResult
+    func presentAnswerCard(_ screen: HUDScreen, onSelect: @escaping (String) -> Void) -> Bool {
+        guard acceptsAnswerCard else { return false }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        isInteractive = true
+        showsAnswerCard = true
+        if !flashingOverInteractive { enqueue(.screen(screen)) }
+        return true
+    }
+
+    /// Plan KP §2: whether a press issued against `revision` is still current. A stale one is
+    /// logged (`hudPageTurnStale`) and must be dropped by the caller.
+    func acceptsCardPress(issuedAgainst revision: UInt64) -> Bool {
+        guard showsAnswerCard else { return false }
+        guard PageTurnGate.accept(turnRevision: revision, currentRevision: frameRevision) else {
+            PrivacyLog.device(.hud, .hudPageTurnStale,
+                              count: Int(clamping: frameRevision &- revision))
+            onDebugEvent?("HUD page turn stale")
+            return false
+        }
+        return true
+    }
+
+    /// Plan KP §2: a page turn (or the Actions screen and back), issued against `revision`.
+    /// Drawn only when nothing has been enqueued since; otherwise dropped and logged, and the
+    /// card is left as it was. Returns whether it was taken.
+    @discardableResult
+    func turnAnswerCard(to screen: HUDScreen, issuedAgainst revision: UInt64,
+                        onSelect: @escaping (String) -> Void) -> Bool {
+        guard acceptsCardPress(issuedAgainst: revision) else { return false }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        flashingOverInteractive = false
+        enqueue(.screen(screen))
+        return true
     }
 
     /// Leave interactive mode and clear the HUD so ambient producers resume.
     func endInteractive() {
         guard isInteractive else { return }
         isInteractive = false
+        showsAnswerCard = false
+        flashingOverInteractive = false
         currentScreen = nil
         screenSelectionHandler = nil
         onDebugEvent?("HUD interactive ended")
@@ -244,6 +329,7 @@ final class GlassesDisplayService: ObservableObject {
         guard hasBody || hasTitle else { return }
 
         let op = RenderOp.show(shaped)
+        if transient && isInteractive { flashingOverInteractive = true }
         enqueue(.op(op))
         if transient { scheduleAutoClear(for: op, after: duration) }
     }
@@ -257,6 +343,7 @@ final class GlassesDisplayService: ObservableObject {
             // Only act if this frame is still what's on screen.
             guard self.lastRendered == op else { return }
             if self.isInteractive, let screen = self.currentScreen {
+                self.flashingOverInteractive = false
                 self.enqueue(.screen(screen))     // restore the held screen after the flash
             } else {
                 self.enqueue(.op(.clear))         // auto-clear the just-shown transient frame
@@ -267,6 +354,8 @@ final class GlassesDisplayService: ObservableObject {
     // MARK: - Render queue
 
     private func enqueue(_ frame: Frame) {
+        frameRevision &+= 1
+        if case .screen = frame { heldScreenRevision = frameRevision }
         pending = frame
         guard !isRendering else { return }
         isRendering = true
@@ -299,7 +388,13 @@ final class GlassesDisplayService: ObservableObject {
                         self.lastRendered = op
                         self.lastScreenKey = nil
                     case .screen(let screen):
-                        if screen.renderKey == self.lastScreenKey { continue }
+                        if screen.renderKey == self.lastScreenKey {
+                            // Plan KP: the page on the glasses is unchanged, but an answer card's
+                            // readable pages may have grown behind it; the web mirror turns pages
+                            // by itself, so it still gets them.
+                            if screen.pageSet != nil { self.mirrorScreen = screen }
+                            continue
+                        }
                         self.mirrorScreen = screen
                         if let sink = self.testRenderSink {
                             sink(.screen(renderKey: screen.renderKey))
@@ -362,6 +457,8 @@ final class GlassesDisplayService: ObservableObject {
         isDisplayActive = false
         lastRendered = nil
         lastScreenKey = nil
+        // A flash that failed to draw restores nothing; the held screen draws on its next change.
+        flashingOverInteractive = false
     }
 }
 
