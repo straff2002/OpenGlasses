@@ -75,6 +75,10 @@ final class SessionLogger {
             /// An expert's time reply accepted for a handover this job sent (Plan KM P2): the expert,
             /// the handover, the generations and the minutes. Never their note's words.
             case expertReplyReceived = "expert_reply_received"
+            /// An expert's coaching steps accepted for this job (Plan KM P3): the expert, the
+            /// handover, how many steps and how many hit the safety file. Never the steps' words —
+            /// they are on the job's record, credited.
+            case expertCoachingReceived = "expert_coaching_received"
             case citation = "citation"
             case safetyAssessment = "safety_assessment"
             case captureRecordSaved = "capture_record"

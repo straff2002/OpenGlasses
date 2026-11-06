@@ -157,6 +157,11 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// from the expert it went to, is ever kept here. Reconciled against the observed call in P4.
     /// Nil, and absent from the JSON, on a job that received none.
     var expertReplies: [ExpertReplyReceived]?
+    /// Coaching steps experts sent for this job (Plan KM P3), as accepted: only steps that answer a
+    /// handover this job sent, on the job while it was open, from the expert it went to, ever get
+    /// here (`FieldSessionService.loadCoaching`). They live with the job — walked as a procedure,
+    /// never in the procedure library. Nil, and absent from the JSON, on a job that received none.
+    var expertCoaching: [ExpertCoachingReceived]?
 
     /// Whether anything is already recorded against the current unit: a task under its scope (a
     /// task with no recorded scope is `"initial"`), or a reading reported on it. Photos and pages
@@ -301,6 +306,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case vanStockUses, vanStockNotFromVan
         case expertHandovers
         case expertReplies
+        case expertCoaching
     }
 }
 
@@ -386,6 +392,7 @@ extension FieldSession {
         // A record that no longer decodes loses the handover history, never the job.
         expertHandovers = try? c.decodeIfPresent([ExpertHandoverSent].self, forKey: .expertHandovers)
         expertReplies = try? c.decodeIfPresent([ExpertReplyReceived].self, forKey: .expertReplies)
+        expertCoaching = try? c.decodeIfPresent([ExpertCoachingReceived].self, forKey: .expertCoaching)
     }
 }
 

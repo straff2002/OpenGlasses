@@ -147,13 +147,19 @@ final class ProcedureRunner {
         var lines: [String] = []
         let position = "step \(visited.count)"
         lines.append("ACTIVE PROCEDURE — \(procedure.title) (\(position), step id: \(step.id)):")
-        if let note = step.safetyNote {
-            lines.append("SAFETY: \(note)")
-        }
-        lines.append("Step: \(step.title)")
-        lines.append("Instruction to give the technician: \(step.instruction)")
-        if let expected = step.expectedInput {
-            lines.append("Expected observation from technician: \(expected)")
+        if let coaching = procedure.coaching {
+            // An expert's coaching (Plan KM P3): the rule first, then the step exactly as written.
+            lines.append(CoachingProcedure.readAsWrittenRule(credit: coaching.credit))
+            lines.append(contentsOf: CoachingProcedure.stepLines(step))
+        } else {
+            if let note = step.safetyNote {
+                lines.append("SAFETY: \(note)")
+            }
+            lines.append("Step: \(step.title)")
+            lines.append("Instruction to give the technician: \(step.instruction)")
+            if let expected = step.expectedInput {
+                lines.append("Expected observation from technician: \(expected)")
+            }
         }
         if let calc = step.calcRef {
             lines.append("Calculation aid: call the \(calc.tool) tool (op: \(calc.op)).\(calc.hint.map { " " + $0 } ?? "")")

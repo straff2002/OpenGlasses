@@ -71,10 +71,17 @@ struct EscalationContact: Codable, Equatable, Identifiable, Sendable {
     let timeZoneIdentifier: String?
     /// Contracted only. Always nil for staff.
     let rate: Rate?
+    /// Contracted only (Plan KM decision 10): whether this expert's coaching steps may be offered
+    /// as a team learning. A staff expert's always may — a senior's walkthrough becoming the team's
+    /// is the point — so this is false for staff. **Off unless the organisation turns it on**: who
+    /// owns a paid adviser's method is a matter for the agreement, not the app. Set, like the rate,
+    /// only by the profile's list or the device owner's; a personal addition has no such field.
+    let coachingMayBecomeTeamLearning: Bool
 
     init(id: String, name: String, phone: String? = nil, faceTimeHandle: String? = nil,
          handoverChannel: HandoverChannel? = nil, specialties: [String] = [], kind: Kind = .staff,
-         onCall: [OnCallWindow] = [], timeZoneIdentifier: String? = nil, rate: Rate? = nil) {
+         onCall: [OnCallWindow] = [], timeZoneIdentifier: String? = nil, rate: Rate? = nil,
+         coachingMayBecomeTeamLearning: Bool = false) {
         self.id = id
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.phone = Self.nonEmpty(phone)
@@ -84,8 +91,9 @@ struct EscalationContact: Codable, Equatable, Identifiable, Sendable {
         self.kind = kind
         self.onCall = onCall
         self.timeZoneIdentifier = Self.nonEmpty(timeZoneIdentifier)
-        // The invariant: only a contracted expert has a rate.
+        // The invariant: only a contracted expert has a rate, or the coaching flag.
         self.rate = kind == .contracted ? rate : nil
+        self.coachingMayBecomeTeamLearning = kind == .contracted && coachingMayBecomeTeamLearning
     }
 
     /// The zone on-call windows are read in.
@@ -127,7 +135,7 @@ struct EscalationContact: Codable, Equatable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, phone, faceTimeHandle = "faceTime", handoverChannel = "handover", specialties, kind,
-             onCall, timeZoneIdentifier = "timeZone", rate
+             onCall, timeZoneIdentifier = "timeZone", rate, coachingMayBecomeTeamLearning = "coachingToTeam"
     }
 
     /// Strict: a staff entry with a rate, or a kind this build does not know, is an error, never a
@@ -152,7 +160,9 @@ struct EscalationContact: Codable, Equatable, Identifiable, Sendable {
                   kind: kind,
                   onCall: try c.decodeIfPresent([OnCallWindow].self, forKey: .onCall) ?? [],
                   timeZoneIdentifier: try c.decodeIfPresent(String.self, forKey: .timeZoneIdentifier),
-                  rate: rate)
+                  rate: rate,
+                  // Absent means off; on a staff entry it means nothing and is dropped.
+                  coachingMayBecomeTeamLearning: try c.decodeIfPresent(Bool.self, forKey: .coachingMayBecomeTeamLearning) ?? false)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -167,6 +177,7 @@ struct EscalationContact: Codable, Equatable, Identifiable, Sendable {
         if !onCall.isEmpty { try c.encode(onCall, forKey: .onCall) }
         try c.encodeIfPresent(timeZoneIdentifier, forKey: .timeZoneIdentifier)
         try c.encodeIfPresent(rate, forKey: .rate)
+        if coachingMayBecomeTeamLearning { try c.encode(true, forKey: .coachingMayBecomeTeamLearning) }
     }
 
     /// A stable id from the entry's own words, for a list that gave none.

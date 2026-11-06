@@ -61,6 +61,9 @@ final class LearningCandidateService {
         case notFound(String)
         case alreadyWithdrawn
         case nothingToAmend
+        /// An expert's coaching steps that aren't offered as a team learning (Plan KM decision 10),
+        /// or aren't on the open job.
+        case coachingNotOffered(String)
 
         var spoken: String {
             switch self {
@@ -77,6 +80,7 @@ final class LearningCandidateService {
             case .alreadyWithdrawn: return "That team learning was already withdrawn."
             case .nothingToAmend:
                 return "Nothing was changed: say the new finding, symptom or fix for that team learning."
+            case .coachingNotOffered(let reason): return reason
             }
         }
     }
@@ -160,6 +164,47 @@ final class LearningCandidateService {
         store.add(candidate)
         sessions.recordTeamLearning(.teamLearningFiled, reference: candidate.reference,
                                     sessionId: candidate.sessionId, now: filedAt)
+        onChange?(candidate)
+        return .success(candidate)
+    }
+
+    // MARK: - An expert's coaching steps (Plan KM §5, P3)
+
+    /// The organisation's experts, for whether a contracted expert's steps may be offered (decision
+    /// 10). The organisation's list only: a personal addition can never turn that on. Injectable.
+    var organisationExperts: () -> [EscalationContact] = { ExpertListStore.shared.organizationExperts }
+
+    /// Offer an expert's coaching steps, walked on the open job, for the team's review. They go
+    /// where every candidate goes — the office's or owner's `LearningReview` — never straight to the
+    /// procedure library, credited to the expert in the finding's own words. A staff expert's steps
+    /// may be offered; a contracted expert's only when the organisation turned that on for them.
+    func offerCoaching(coachingId: String) -> Result<LearningCandidate, Refusal> {
+        if let refusal = entitlementRefusal() { return .failure(refusal) }
+        guard let session = sessions.activeSession else { return .failure(.noActiveJob) }
+        guard let received = session.expertCoaching?.first(where: { $0.coachingId == coachingId }) else {
+            return .failure(.coachingNotOffered("Those coaching steps aren't on the open job."))
+        }
+        if case .notOffered(let why) = CoachingTeamLearning.decide(received, organisationExperts: organisationExperts()) {
+            return .failure(.coachingNotOffered(why))
+        }
+        let cleaned: LearningCandidateText.Cleaned
+        switch LearningCandidateText.clean(finding: CoachingTeamLearning.finding(received, jobReference: session.jobReference),
+                                           symptom: nil, fix: nil) {
+        case .failure(let refusal): return .failure(.text(refusal))
+        case .success(let value): cleaned = value
+        }
+        let filedAt = now()
+        let candidate = LearningCandidate(
+            sessionId: session.id, jobReference: session.jobReference, taskId: nil,
+            vaultId: session.vaultId, equipment: session.equipment.map(LearningCandidate.Equipment.init),
+            spokenModel: nil, finding: cleaned.finding, symptom: nil, fix: nil,
+            evidence: LearningCandidate.Evidence(session.jobEvidence),
+            author: LearningCandidateText.author(authorName()),
+            createdAt: filedAt, redactions: cleaned.redactions)
+        store.add(candidate)
+        sessions.recordTeamLearning(.teamLearningFiled, reference: candidate.reference,
+                                    sessionId: candidate.sessionId, now: filedAt)
+        sessions.markCoachingOffered(coachingId: coachingId, at: filedAt)
         onChange?(candidate)
         return .success(candidate)
     }

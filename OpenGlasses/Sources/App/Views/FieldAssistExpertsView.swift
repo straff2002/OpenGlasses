@@ -269,6 +269,7 @@ struct ExpertDraft: Equatable {
     var minimumMinutes: Int
     var roundingMinutes: Int
     var currency: String
+    var coachingMayBecomeTeamLearning: Bool
 
     init(_ contact: EscalationContact) {
         id = contact.id
@@ -284,6 +285,7 @@ struct ExpertDraft: Equatable {
         minimumMinutes = contact.rate?.minimumMinutes ?? 15
         roundingMinutes = contact.rate?.roundingMinutes ?? 15
         currency = contact.rate?.currency ?? (Locale.current.currency?.identifier ?? "USD")
+        coachingMayBecomeTeamLearning = contact.coachingMayBecomeTeamLearning
     }
 
     /// The contact this draft describes. The owner's fields are read only when `ownerFields`.
@@ -303,7 +305,8 @@ struct ExpertDraft: Equatable {
                                  kind: kind,
                                  onCall: windows.compactMap { OnCallWindow(weekday: $0.weekday, startMinute: $0.start,
                                                                            endMinute: $0.end == 0 ? 1440 : $0.end) },
-                                 timeZoneIdentifier: timeZoneIdentifier, rate: rate)
+                                 timeZoneIdentifier: timeZoneIdentifier, rate: rate,
+                                 coachingMayBecomeTeamLearning: kind == .contracted && coachingMayBecomeTeamLearning)
     }
 }
 
@@ -424,6 +427,12 @@ private struct ExpertEditorView: View {
                 Text("Rate")
             } footer: {
                 Text("Used only to figure the expert's time on statements. Technicians see minutes, never the rate, and the app never charges anything.")
+            }
+
+            Section {
+                Toggle("Coaching can become a team learning", isOn: $draft.coachingMayBecomeTeamLearning)
+            } footer: {
+                Text("Off unless your agreement with this expert covers it. When on, a technician may offer this expert's coaching steps for review as a team learning, credited to them. A staff expert's steps can always be offered.")
             }
         }
     }

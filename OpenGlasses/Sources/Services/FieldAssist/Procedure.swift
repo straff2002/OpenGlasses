@@ -18,6 +18,18 @@ struct Procedure: Codable, Equatable, Identifiable {
     /// Id of the first step. Falls back to the first entry in `steps` when nil.
     let entryStep: String?
     let steps: [Step]
+    /// Set only on an expert's coaching steps walked on a job (Plan KM P3): who wrote them, so
+    /// the runner and the tool put them in front of the model **as written** and credited.
+    /// **Never read from a file** — it is not one of the coding keys — so a vault's procedure can't
+    /// claim to be someone's coaching, and a coaching procedure is never written anywhere.
+    private(set) var coaching: Coaching? = nil
+
+    /// Who an expert's coaching walkthrough is credited to (Plan KM P3).
+    struct Coaching: Equatable {
+        let coachingId: String
+        /// "Sam Okafor (staff expert)".
+        let credit: String
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, title, version, vault, description, steps
@@ -33,7 +45,8 @@ struct Procedure: Codable, Equatable, Identifiable {
         description: String? = nil,
         safetyNotes: [String] = [],
         entryStep: String? = nil,
-        steps: [Step]
+        steps: [Step],
+        coaching: Coaching? = nil
     ) {
         self.id = id
         self.title = title
@@ -43,6 +56,7 @@ struct Procedure: Codable, Equatable, Identifiable {
         self.safetyNotes = safetyNotes
         self.entryStep = entryStep
         self.steps = steps
+        self.coaching = coaching
     }
 
     /// A single step in the procedure graph.

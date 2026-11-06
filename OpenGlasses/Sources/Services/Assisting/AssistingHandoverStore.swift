@@ -169,6 +169,27 @@ final class AssistingHandoverStore: ObservableObject {
     /// The share of the time reply completed.
     func markReplySent(id: String) { mutate(id) { $0.replySentAt = now() } }
 
+    // MARK: - The coaching draft and the note (Plan KM P3)
+
+    /// Keep the coaching steps as the expert has them, in order. An empty list is no draft.
+    func setCoachingDraft(id: String, steps: [CoachingStep]) {
+        mutate(id) { $0.coachingDraft = steps.isEmpty ? nil : steps }
+    }
+
+    /// Keep the note for the time reply as far as it is written.
+    func setNoteDraft(id: String, note: String?) {
+        let kept: String?
+        if let note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            kept = String(note.prefix(ExpertTimeReply.noteLimit))
+        } else {
+            kept = nil
+        }
+        mutate(id) { $0.noteDraft = kept }
+    }
+
+    /// The share of the coaching steps completed.
+    func markCoachingSent(id: String) { mutate(id) { $0.coachingSentAt = now() } }
+
     private func recoverClocksAfterRelaunch() {
         let at = now()
         var recovered = 0
@@ -220,14 +241,15 @@ final class AssistingHandoverStore: ObservableObject {
     }
 
     /// The subject erasure's call: every handover whose words mention `token` goes whole, photos
-    /// and clock included — a handover is one organisation's job, and half of one is not kept.
+    /// and clock included — a handover is one organisation's job, and half of one is not kept. The
+    /// expert's own drafts on it (coaching steps, the note) are read too, and go with it.
     @discardableResult
     func deleteMatching(_ token: String) -> Int {
         let needle = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return 0 }
         let encoder = ExpertHandoverFile.encoder()
         let doomed = held.filter { entry in
-            guard let data = try? encoder.encode(entry.handover) else { return false }
+            guard let data = try? encoder.encode(entry) else { return false }
             return String(decoding: data, as: UTF8.self).localizedCaseInsensitiveContains(needle)
         }.map(\.id)
         doomed.forEach(remove(id:))

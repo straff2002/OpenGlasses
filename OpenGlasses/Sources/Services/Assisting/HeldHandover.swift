@@ -19,6 +19,14 @@ struct HeldHandover: Codable, Equatable, Identifiable, Sendable {
     var clock: AssistingClock?
     /// When the expert's share of the time reply completed. Nil until it has.
     var replySentAt: Date?
+    /// The coaching steps the expert is writing for this handover (Plan KM P3), kept as they write
+    /// them so a relaunch loses none. Nil until the first step, and on every handover held before
+    /// this existed.
+    var coachingDraft: [CoachingStep]?
+    /// The note for the time reply, as far as the expert has written it. Nil when empty.
+    var noteDraft: String?
+    /// When the expert's share of their coaching steps last completed. Nil until it has.
+    var coachingSentAt: Date?
 
     var id: String { handover.handoverId }
 
