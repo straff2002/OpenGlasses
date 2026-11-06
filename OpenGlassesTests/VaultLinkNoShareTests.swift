@@ -45,12 +45,15 @@ final class VaultLinkNoShareTests: XCTestCase {
 
     // MARK: - No QR is ever produced
 
-    /// The one place the app renders a code, and why it is not a vault. Each entry is held to the
+    /// The places the app renders a code, and why none is a vault. Each entry is held to the
     /// rule that matters here: it never touches a vault link or archive.
     private static let codeRenderers: [String: String] = [
         "OpenGlasses/Sources/App/Views/AdminGateViews.swift":
             "Plan CT 3b: an administrator phone shows the organisation's admin card for a "
                 + "technician's phone to scan — a key to administrator settings, never a vault",
+        "OpenGlasses/Sources/App/Views/Assisting/ExpertCardView.swift":
+            "Plan KM P2: an expert shows their own card (name, number, handle, specialties) for an "
+                + "organisation to scan onto its experts list — a contact, never a vault",
     ]
 
     func testNothingInTheAppGeneratesAQRCode() throws {
