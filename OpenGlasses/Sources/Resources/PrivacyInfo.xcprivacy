@@ -55,6 +55,13 @@
       share sheet. No new service or network route: the file goes the way any
       attachment goes, and only on the technician's tap. Never in Medical
       Compliance mode.
+    - A job handover opened on an expert's phone (Assisting) is kept on that
+      phone only, apart from everything else, for the days the sending
+      organisation set after Done, then deleted; it never reaches the assistant,
+      its memory, search or team learnings. The expert's time reply (minutes,
+      the updates seen, a note and their expert card's details) goes back only
+      by the expert's own share sheet. No new service or network route; not a
+      data collection by the developer.
     - Keep these declarations aligned with App Store Connect and verified provider
       retention/use terms. Arbitrary user-configured recipients do not establish a
       blanket guarantee about third-party data handling.

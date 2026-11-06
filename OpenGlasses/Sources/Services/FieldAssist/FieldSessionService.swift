@@ -487,6 +487,47 @@ final class FieldSessionService: ObservableObject {
                                       "transcript": AnyCodable(sent.transcriptIncluded)]))
     }
 
+    /// An expert's time reply that answers a handover this job sent (Plan KM P2), already matched
+    /// by `ExpertReplyMatch`: kept on the job as received, and a line in the job's log — the
+    /// expert, the handover, the generations and the minutes, never the note's words. The open job
+    /// or one in the history; a job locked for the organisation's departure is not changed. The
+    /// same reply twice is kept once. Returns whether the job now holds it.
+    @discardableResult
+    func recordExpertReply(_ received: ExpertReplyReceived, sessionId: String) -> Bool {
+        guard !lockedSessionIDs.contains(sessionId) else { return false }
+        func apply(_ session: inout FieldSession) -> Bool {
+            var replies = session.expertReplies ?? []
+            guard !ExpertReplyMatch.isDuplicate(received, of: replies) else { return false }
+            replies.append(received)
+            session.expertReplies = replies
+            return true
+        }
+        let line = SessionLogger.Event(
+            timestamp: received.receivedAt, kind: .expertReplyReceived,
+            text: "Time reply from \(received.expert.name): \(received.minutes) min",
+            payload: ["handover_id": AnyCodable(received.handoverId),
+                      "expert_id": AnyCodable(received.expert.id),
+                      "generations": AnyCodable(received.generationsSeen.map(String.init).joined(separator: ",")),
+                      "minutes": AnyCodable(received.minutes),
+                      "uncounted_minutes": AnyCodable(received.uncountedMinutes),
+                      "matched_by": AnyCodable(received.matchedBy.rawValue)])
+        if var session = activeSession, session.id == sessionId, let logger {
+            guard apply(&session) else { return true }
+            activeSession = session
+            history = history.replacingFirst(matching: session.id, with: session)
+            logger.updateSession { $0 = session }
+            logger.append(line)
+            return true
+        }
+        guard var session = history.first(where: { $0.id == sessionId }) ?? storedSession(id: sessionId) else { return false }
+        guard apply(&session) else { return true }
+        let log = SessionLogger(session: session, root: sessionDirectory(sessionId: sessionId))
+        log.updateSession { $0 = session }
+        log.append(line)
+        history = history.replacingFirst(matching: session.id, with: session)
+        return true
+    }
+
     /// Mark the most recent unresolved escalation as resolved and log it.
     func resolveLastEscalation(note: String? = nil) {
         guard var session = activeSession, let logger else { return }

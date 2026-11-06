@@ -366,6 +366,16 @@ struct OpenGlassesApp: App {
                         }
                     }
 
+                // A job handover opened from Messages, Mail or Files (Plan KM P2): the expert's
+                // read-only view of it, on whatever tab the app is.
+                Color.clear
+                    .modifier(AssistingSheetHost(service: AssistingService.shared))
+
+                // An expert's card opened or scanned (Plan KM P2): the organisation's review, whose
+                // one button is the write.
+                Color.clear
+                    .modifier(ExpertCardImportHost(inbox: ExpertCardInbox.shared))
+
                 // The end-of-shift stock (Plan IH P5): staged, shown, and sent only from this sheet.
                 Color.clear
                     .sheet(isPresented: Binding(
@@ -468,11 +478,33 @@ struct OpenGlassesApp: App {
                         Task { @MainActor in appState.jobFiles.open(url) }
                         return
                     }
-                    // A job handover for an expert (Plan KM P1). This version reads and checks
-                    // it, removes the copy and keeps nothing; the expert's view is Plan KM P2.
+                    // An `.ogcase` (Plan KM P1/P2). A job handover sent to this phone's owner as
+                    // an expert opens in Assisting mode — read-only, kept apart, needing no Field
+                    // Assist. An expert's time reply goes to the job that sent the handover, and
+                    // only if this phone sent it. Anything else is refused by name.
                     if ExpertHandoverFile.isHandoverFile(url) {
                         Task { @MainActor in
-                            NoticeCenter.shared.post(ExpertHandoverFile.intake(url), severity: .advisory, source: .app)
+                            switch ExpertHandoverFile.receive(url) {
+                            case .handover(let opened):
+                                let report = AssistingService.shared.open(opened)
+                                if !report.shown {
+                                    NoticeCenter.shared.post(report.message, severity: .advisory, source: .app)
+                                }
+                            case .timeReply(let reply):
+                                NoticeCenter.shared.post(ExpertReplyIntake.shared.receive(reply), severity: .advisory, source: .app)
+                            case .refused(let message):
+                                NoticeCenter.shared.post(message, severity: .advisory, source: .app)
+                            }
+                        }
+                        return
+                    }
+                    // An expert's card (Plan KM P2), for the organisation's review before it goes
+                    // on the experts list. Nothing is added from the file alone.
+                    if ExpertCardCodec.isCardFile(url) {
+                        Task { @MainActor in
+                            if let refusal = ExpertCardInbox.shared.open(url) {
+                                NoticeCenter.shared.post(refusal, severity: .advisory, source: .app)
+                            }
                         }
                         return
                     }
@@ -646,6 +678,9 @@ struct OpenGlassesApp: App {
             appState.cameraService.notePresence(scenePhase: .init(newPhase))
             switch newPhase {
             case .background:
+                // Plan KM P2: the expert's clock writes its last sign of life, so a kill while
+                // backgrounded loses only what came after.
+                AssistingService.shared.appWillResignActive()
                 // Plan JM P1: a transcript under review has nothing left to be read on.
                 appState.pendingTranscriptAppDidEnterBackground()
                 appState.skillPackSideload.handleBackground()
@@ -673,6 +708,8 @@ struct OpenGlassesApp: App {
                 if Config.hipaaMode { isHipaaLocked = true }
             case .active:
                 PrivacyLog.app(.becameActive)
+                // Plan KM P2: a running expert's clock keeps its minute checkpoint going.
+                AssistingService.shared.appDidBecomeActive()
                 _ = OrgProfileManager.shared.evaluateLease()
                 FieldSessionService.shared.reconcileAccess()
                 appState.restoreFromBackground()
@@ -2461,6 +2498,8 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.goals = GoalStore.shared
         erasure.activity = ActivityStore.shared
         erasure.tableChecks = TableCheckStore()
+        // Plan KM P2: handovers sent to this phone's owner as an expert can name a person.
+        erasure.assistingHandovers = AssistingHandoverStore.shared
         return MemoryFactServices(
             stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
                                      agentDocuments: agentDocs, objects: .shared,
@@ -3001,6 +3040,8 @@ class AppState: ObservableObject, AppStateProtocol {
             StagedExportCoordinator.scavengeAll() + DiagnosticExportCoordinator.shared.scavenge()
         }
         retentionSources.erasureLedger = erasureLedger
+        // Plan KM P2: each handover sent to this phone's owner as an expert, on its own period.
+        retentionSources.assistingHandovers = AssistingHandoverStore.shared
         let scheduler = RetentionScheduler(
             targets: RetentionScheduler.targets(sources: retentionSources),
             audit: hipaaService)
@@ -3028,6 +3069,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.goals = GoalStore.shared
             erasureStores.activity = ActivityStore.shared
             erasureStores.tableChecks = TableCheckStore()
+            erasureStores.assistingHandovers = AssistingHandoverStore.shared
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
             replaySources.classFiles = { erasable in

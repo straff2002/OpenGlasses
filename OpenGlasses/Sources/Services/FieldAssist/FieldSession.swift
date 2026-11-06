@@ -152,6 +152,11 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// and what each carried — counts and photo ids, never pixels. The next "send the latest" reads
     /// it for its generation number. Nil, and absent from the JSON, on a job that sent none.
     var expertHandovers: [ExpertHandoverSent]?
+    /// The time replies experts sent back for those handovers (Plan KM P2), as received: minutes,
+    /// the generations they saw and their note. Only a reply that answers a handover this job sent,
+    /// from the expert it went to, is ever kept here. Reconciled against the observed call in P4.
+    /// Nil, and absent from the JSON, on a job that received none.
+    var expertReplies: [ExpertReplyReceived]?
 
     /// Whether anything is already recorded against the current unit: a task under its scope (a
     /// task with no recorded scope is `"initial"`), or a reading reported on it. Photos and pages
@@ -295,6 +300,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case vaultOnly
         case vanStockUses, vanStockNotFromVan
         case expertHandovers
+        case expertReplies
     }
 }
 
@@ -379,6 +385,7 @@ extension FieldSession {
         vanStockNotFromVan = try c.decodeIfPresent([String].self, forKey: .vanStockNotFromVan)
         // A record that no longer decodes loses the handover history, never the job.
         expertHandovers = try? c.decodeIfPresent([ExpertHandoverSent].self, forKey: .expertHandovers)
+        expertReplies = try? c.decodeIfPresent([ExpertReplyReceived].self, forKey: .expertReplies)
     }
 }
 

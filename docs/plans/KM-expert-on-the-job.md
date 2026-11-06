@@ -1,8 +1,9 @@
 # Plan KM — An Expert on the Job (the job sent to a named expert, their advice walked through, their time on the record)
 
-**Status:** 🚧 P0 and P1 built 2026-11-06 (headless; device checks owed): the expert list, the pick
+**Status:** 🚧 P0–P2 built 2026-11-06 (headless; device checks owed): the expert list, the pick
 and the call by name or by specialty (P0); the handover — `.ogcase`, PDF and text, the staged send and
-generations (P1). P2–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
+generations (P1); Assisting mode — the read-only copy, the expert's clock, the staged `time` reply and
+the expert card (P2). P3–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
 took all ten decisions as recommended the same day. Revised the same day: the expert's side belongs to no
 organisation, so one expert can serve many.
 **Track:** Field Assist. Phone first: every part works without glasses, and the expert side needs no
@@ -490,6 +491,64 @@ several companies, and nothing on the expert's side needs a company to own it.
   - Assisting mode works with no licence, entitlement or profile installed, and with one installed it
     opens no Field Assist surface: every row of the "never opens" table is a test;
   - an imported card fills the list entry and a reply matches it.
+
+**P2 as built (2026-11-06, headless).**
+
+- **Where it lives** (`Services/Assisting/`, `App/Views/Assisting/`): Everyday › **Assisting**, shown
+  whatever is installed, and a sheet on any tab when an `.ogcase` is opened. No switch, no setting,
+  no plan letter in the UI. The list is one section per organisation, newest first, with no search;
+  each row opens a read-only view of that handover (the question, the job, the unit, tasks,
+  procedures, readings, ruled out, deviations, the conversation, the photos, manuals by name).
+- **The store** (`AssistingHandoverStore`): Application Support/Assisting — `handovers.json` and one
+  photo folder per handover named by a digest of its id. Registered as `assistingHandovers`:
+  third-party, first-unlock, backup-excluded, cap 200, `deleteMatching` in the subject-erasure walk
+  (a handover that names the subject goes whole), `removeAll`. **Retention** is each handover's own
+  `retentionDays` after Done, or after the last change for one never Done, applied by a new
+  `RetentionScheduler` target (`assistingHandovers`) with a per-record override, and on opening the
+  list. **Generations:** a later generation with the same id, organisation and addressee replaces the
+  held one and marks the changed sections (`HandoverChanges`); an earlier or repeated one is kept as
+  it was; one from another organisation or to another expert is refused (`conflicting`).
+- **The clock** (`AssistingClock`): Take this job, Pause, Resume, Done; a checkpoint every minute
+  while it runs and when the app leaves the foreground; a relaunch that finds it running pauses it at
+  the last checkpoint with `BillableClock.recover` (now also over plain fields), and the time since is
+  carried as uncounted minutes.
+- **The `time` reply** (`ExpertTimeReply`): an `.ogcase` of kind `time` — the same zip and manifest
+  name, holding only `handover.json` — so no new UTI. It carries the handover id, every generation
+  seen, accepted and done times, minutes and uncounted minutes, call minutes (nil: the expert's app
+  sees no call), a note of up to 500 characters, and the expert as the list has them (`listId`,
+  `listName`) plus their card's id, number and handle. No rate. Built and shown on Done; only Send
+  Time Reply writes it into its own staging family (`StagedExportCoordinator.assistingReply`) and
+  opens the share sheet, whose own Send sends; a completed share marks it sent.
+- **The technician's side** (`ExpertReplyIntake`, `ExpertReplyMatch`): `ExpertHandoverFile.received`
+  reads the kind first. A reply is attached only when its handover id is in a job's sent ledger, it
+  is addressed to the expert that handover went to, an entry made from a card is answered by the same
+  card, and every generation it claims was sent; otherwise it is refused by name and never kept.
+  Accepted, it goes on `FieldSession.expertReplies` (open job or history; never a job locked for a
+  departure) with an `expert_reply_received` log line (no note words). Reconciliation is P4.
+- **The expert card** (`ExpertCard`, `.ogexpert`, `com.openglasses.app.expert-card`, JSON): card id
+  `card-<uuid>`, name, number, FaceTime handle, channel, specialties, licences; no kind, hours or rate,
+  and a decoder that drops any written in. Shared as a file or a QR code (the compact JSON, up to
+  1,200 bytes; a longer card goes as the file). Kept in preferences (`expertCard`). The organisation
+  opens the file or scans the code (Field Assist › Experts › Import a Card File / Scan a Card's Code),
+  reviews it and adds it: under the card's id, staff with no rate, on the device owner's list (or the
+  technician's own under a profile); a refreshed card keeps the organisation's kind, hours and rate.
+  Licences are shown on the review, not stored on the list (the P0 entry has no field for them).
+- **Unlocks nothing:** no Assisting source names `FieldAssistEntitlement`, a licence or a profile,
+  and the flow runs identically with none or every entitlement installed without one read of it.
+  `AssistingIsolationTests` has one test per "never opens" row, each scraping the Assisting sources
+  for every type that surface declares, plus the reverse: only Assisting, the app's wiring and the
+  erasure and retention walks may name the store, so nothing reaches `BrainStore`, threads, team
+  learnings, retrieval or a tool.
+- **Medical Compliance:** the plan closes the *sending* (§8) and says nothing of receiving, so
+  Assisting stays available there: read-only, no network route, and the only egress is the expert's
+  own reply by their own share.
+- **Disclosure:** the Privacy footers, `PrivacyInfo.xcprivacy`'s notes and `privacy.html`'s Field
+  Assist row say a handover sent to you stays on the phone for its period and never reaches the
+  assistant, and the reply goes only when you share it.
+- **Owed.** **Call back** (§7's "opens" column): a handover carries no number for the technician, so
+  P2 has no call-back control; it needs a field P1's handover does not have. The P5 device checks: an
+  `.ogcase` and an `.ogexpert` arriving by Messages, Mail, WhatsApp and AirDrop; the QR scan; the
+  clock across a real kill and a FaceTime call with the app suspended.
 
 ### P3 — coaching steps
 

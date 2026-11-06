@@ -79,6 +79,10 @@ enum SensitiveStore: String, CaseIterable {
     case tableChecks
     case fieldDeliverySettings
     case expertList
+    /// Job handovers sent to this phone's owner as an expert, and their clocks (Plan KM P2).
+    case assistingHandovers
+    /// The expert card this phone's owner made (Plan KM P2).
+    case expertCard
     case jobDeliveryQueue
     case upcomingJobs
     case workizConnection
@@ -635,6 +639,38 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Experts/ExpertListStore.swift"],
                           location: "preferences keys `organizationExperts`, `fieldAssistPersonalExperts`, `fieldAssistExpertRotaLastCalled`")
 
+        case .assistingHandovers:
+            // Job handovers another organisation's technician sent to this phone's owner as an
+            // expert (Plan KM P2): the unit, the work, the readings, the technician's words and
+            // the photos they chose (already blurred), and the expert's own clock on each. Held
+            // under that organisation's confidentiality, so the linkage is third-party: walked by
+            // the subject erasure (a handover naming the subject goes whole), protected
+            // first-unlock (a clock's checkpoint can be written with the phone locked during a
+            // call), kept out of backup, and never read by the assistant, its memory, search or
+            // team learnings. Each handover carries its own retention period, which the retention
+            // scheduler applies; the expert deletes one or all in Assisting.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("each handover's own retention days after Done (30 at most); cap \(AssistingHandoverStore.entryCap)"),
+                          deleteAll: .api("AssistingHandoverStore.removeAll()"),
+                          deleteSubject: .api("AssistingHandoverStore.deleteMatching(_:)"),
+                          owner: "AssistingHandoverStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Assisting/AssistingHandoverStore.swift"],
+                          location: "Application Support/Assisting/handovers.json and Assisting/photos/{digest}/NN.jpg")
+
+        case .expertCard:
+            // The card this phone's owner made so organisations can add them as an expert (Plan
+            // KM P2): their own name, number, FaceTime handle, specialties and licences, entered on
+            // purpose and shared only by their own tap. The wearer's own details, so a preference;
+            // deleted from Assisting › Your Expert Card.
+            return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          deleteAll: .api("ExpertCardStore.remove()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ExpertCardStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Assisting/ExpertCard.swift"],
+                          location: "preferences key `assistingExpertCard`")
+
         case .jobDeliveryQueue:
             // Reports asked for by voice and waiting for a thumb (Plan FO P3b). It carries the
             // addresses each one would go to — which are **the same addresses
@@ -1149,7 +1185,7 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .unavailable("an export is a lease, released rather than searched"),
                           owner: "StagedExportCoordinator",
                           ownerPaths: ["OpenGlasses/Sources/Services/Export/StagedExportCoordinator.swift"],
-                          location: "Caches/{Agent,Safety,FieldSession}Exports/{session}")
+                          location: "Caches/{Agent,Safety,FieldSession,AssistingReply}Exports/{session}")
 
         case .diagnosticExports:
             return Record(store: self, dataClass: .exportArtifact, subjectLinkage: .wearer,

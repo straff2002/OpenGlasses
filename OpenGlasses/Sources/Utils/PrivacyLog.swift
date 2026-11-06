@@ -1953,6 +1953,9 @@ enum PrivacyLog {
         /// A coordinated erasure walk. What is recorded is how many stores completed of how many
         /// were walked — never the subject, whose whole point is that they are being forgotten.
         case subjectErasure
+        /// The handovers an expert was sent (Plan KM P2): whether one was added or replaced, how
+        /// many photos, how many clocks a relaunch recovered. Never an organisation, a job or a name.
+        case assistingHandovers
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,
@@ -2033,6 +2036,9 @@ enum PrivacyLog {
         /// A Field Assist session's audit JSON and work-order PDF, by their leases. The record
         /// names a customer, an asset and an engineer; the lifecycle is all that is logged.
         case fieldSessionExport
+        /// An expert's time reply to a handover (Plan KM P2), by its lease. The reply names a job
+        /// and an organisation; only the lifecycle is logged.
+        case assistingReply
     }
 
     enum TransferEvent: String {

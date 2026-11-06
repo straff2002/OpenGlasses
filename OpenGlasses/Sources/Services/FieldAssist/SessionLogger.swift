@@ -72,6 +72,9 @@ final class SessionLogger {
             case expertCall = "expert_call"
             /// A handover sent to a named expert (Plan KM P1): who, which generation, by what.
             case expertHandoverSent = "expert_handover_sent"
+            /// An expert's time reply accepted for a handover this job sent (Plan KM P2): the expert,
+            /// the handover, the generations and the minutes. Never their note's words.
+            case expertReplyReceived = "expert_reply_received"
             case citation = "citation"
             case safetyAssessment = "safety_assessment"
             case captureRecordSaved = "capture_record"

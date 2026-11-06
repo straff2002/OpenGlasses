@@ -61,6 +61,23 @@
 				<string>com.openglasses.app.handover</string>
 			</array>
 		</dict>
+		<!-- An expert's card (.ogexpert, Plan KM P2): the expert makes it in Assisting and shares
+		     it with each organisation they advise; the organisation opens it here to add them to
+		     its experts list. Plain JSON of the app's own type. Opened as a copy; the reader
+		     refuses anything that is not exactly a version-1 card, and nothing is added until
+		     the review's button. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Avenkin Expert Card</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.openglasses.app.expert-card</string>
+			</array>
+		</dict>
 		<!-- The setup file Avenkin Office saves for a device (.avenkinsetup). Receive only, opened
 		     as a copy like a job file. It carries the vendor-signed profile and licence; the app
 		     verifies both and the owner reviews them before anything is applied. -->
@@ -139,6 +156,28 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>application/vnd.openglasses.handover+zip</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.openglasses.app.expert-card</string>
+			<key>UTTypeDescription</key>
+			<string>Avenkin Expert Card</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ogexpert</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.openglasses.expert-card+json</string>
 				</array>
 			</dict>
 		</dict>
