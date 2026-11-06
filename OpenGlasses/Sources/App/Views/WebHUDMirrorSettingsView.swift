@@ -6,6 +6,7 @@ import SwiftUI
 struct WebHUDMirrorSettingsView: View {
     @EnvironmentObject var appState: AppState
     @State private var enabled = Config.hudMirrorEnabled
+    @State private var followUpsOnMirror = Config.followUpsOnMirrorEnabled
     @State private var exportedPreview: URL?
 
     private var legacyTransportAvailable: Bool {
@@ -34,6 +35,13 @@ struct WebHUDMirrorSettingsView: View {
                             appState.webHUDMirror.stop()
                         }
                     }
+                if enabled {
+                    // Plan KP §4: off by default (decision 5); only read when no display shows answers.
+                    Toggle("Suggested follow-ups on the mirror", isOn: $followUpsOnMirror)
+                        .onChange(of: followUpsOnMirror) { _, newValue in
+                            Config.setFollowUpsOnMirrorEnabled(newValue)
+                        }
+                }
                 if !Config.agentModeEnabled {
                     Label("Requires Agent Mode", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(OGTheme.warnLabel)

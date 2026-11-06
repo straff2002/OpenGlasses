@@ -94,6 +94,8 @@ struct FollowUpTail: Equatable {
     /// For the sentence streamer: when a streamed chunk carries the end of the answer and the
     /// start of a tail together ("…the end. <next>Why?"), the part before the tail, to speak.
     /// Nil when the chunk has no `<next>` that begins a sentence.
+    /// `StreamSpeechGate` asks it about the text up to the first `<next>`, to tell a tail from a
+    /// `<next>` written inside a sentence.
     static func textBeforeTail(in sentence: String) -> String? {
         var searchEnd = sentence.endIndex
         while let open = sentence.range(of: openTag, options: [.caseInsensitive, .backwards],
@@ -104,6 +106,26 @@ struct FollowUpTail: Equatable {
             searchEnd = open.lowerBound
         }
         return nil
+    }
+
+    /// For text still arriving (Plan KP P2): what may be spoken or shown now. That is everything
+    /// before the first `<next>` (any case, anywhere in the text), with a trailing piece that could
+    /// still turn into one ("<", "<ne") held back until the next chunk says what it is.
+    /// `tailStarted` is true once a whole `<next>` has arrived; nothing after it is ever released,
+    /// and `visible` stops growing. The visible part only ever grows as text is appended, so a
+    /// caller can release the difference between two calls.
+    static func streamingVisible(_ text: String) -> (visible: Substring, tailStarted: Bool) {
+        if let open = text.range(of: openTag, options: .caseInsensitive) {
+            return (text[..<open.lowerBound], true)
+        }
+        let longest = min(openTag.count - 1, text.count)
+        if longest > 0 {
+            for length in stride(from: longest, through: 1, by: -1)
+            where text.suffix(length).lowercased() == String(openTag.prefix(length)) {
+                return (text.dropLast(length), false)
+            }
+        }
+        return (text[...], false)
     }
 
     // MARK: - Helpers

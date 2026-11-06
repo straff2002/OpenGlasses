@@ -15,6 +15,12 @@ import Foundation
 ///   later processing rewrites (a memory command by default), or `Rules.looksLikeChoiceList` says
 ///   its opening is a choice list. What is held is spoken whole at the end, as it is today, by the
 ///   caller — `reconcile(reply:spoken:)` says what is left to say.
+/// - **from a follow-up tail on** (Plan KP P2). The splitter is only ever handed text before the
+///   first `<next>` (`FollowUpTail.streamingVisible`), with a trailing "<", "<ne"… held back until
+///   the next chunk says whether it is the tag. Once the tag has arrived nothing more of the
+///   iteration is released; when it begins a sentence (a tail, by `FollowUpTail`'s rules) the
+///   answer has ended, so its last sentence is released at once, however short. The caller's final
+///   reply has had its tail removed, so the reconciliation never says it either.
 ///
 /// One gate covers one *iteration* of the tool loop. `endIteration()` is the stream reset: the
 /// iteration's last complete sentence may still be released (a preamble — "Let me check the
@@ -38,6 +44,8 @@ final class StreamSpeechGate {
     enum HoldReason: String, Equatable {
         case rewrite
         case choiceList
+        /// A `<next>` arrived: the rest of the iteration is a follow-up tail (Plan KP P2).
+        case followUpTail
     }
 
     private let rules: Rules
@@ -51,6 +59,8 @@ final class StreamSpeechGate {
     private(set) var released: [String] = []
     /// Set once the rest of the iteration is held for the end.
     private(set) var holdReason: HoldReason?
+    /// How many characters of `text` the splitter has been handed.
+    private var splitterFed = 0
 
     init(rules: Rules = .default, limits: SentenceStreamSplitter.Limits = .default) {
         self.rules = rules
@@ -74,7 +84,27 @@ final class StreamSpeechGate {
             holdReason = .choiceList
             return []
         }
-        let sentences = splitter.ingest(visible)
+        return releaseSpeakable(endOfIteration: false)
+    }
+
+    /// Hand the splitter what of `text` may be spoken and it has not had yet, and return the
+    /// sentences that completes. Nothing from a `<next>` on is ever handed over (Plan KP P2).
+    /// At the end of an iteration a held-back "<ne…" that never became the tag is ordinary text.
+    private func releaseSpeakable(endOfIteration: Bool) -> [String] {
+        let (speakable, tailStarted) = FollowUpTail.streamingVisible(text)
+        let upTo = endOfIteration && !tailStarted ? text[...] : speakable
+        var sentences: [String] = []
+        if upTo.count > splitterFed {
+            sentences = splitter.ingest(String(upTo.dropFirst(splitterFed)))
+            splitterFed = upTo.count
+        }
+        if tailStarted {
+            holdReason = .followUpTail
+            // A tail begins a sentence: the answer is over, and what waits is its last sentence.
+            if FollowUpTail.textBeforeTail(in: String(speakable) + FollowUpTail.openTag) != nil {
+                sentences += splitter.flush()
+            }
+        }
         released += sentences
         return sentences
     }
@@ -89,20 +119,16 @@ final class StreamSpeechGate {
     func endIteration() -> [String] {
         var tail: [String] = []
         if holdReason == nil {
-            let rest = thinkFilter.flush()
-            if !rest.isEmpty {
-                text += rest
-                if !rules.holdWholeReply(text), !rules.looksLikeChoiceList(text) {
-                    tail = splitter.ingest(rest)
-                }
-            }
-            if holdReason == nil, !rules.holdWholeReply(text), !rules.looksLikeChoiceList(text) {
-                tail += splitter.flushIfComplete()
+            text += thinkFilter.flush()
+            if !rules.holdWholeReply(text), !rules.looksLikeChoiceList(text) {
+                tail = releaseSpeakable(endOfIteration: true)
+                if holdReason == nil { tail += splitter.flushIfComplete() }
             }
         }
         thinkFilter = ThinkStreamFilter(startsInThink: false)
         splitter = SentenceStreamSplitter(limits: limits)
         text = ""
+        splitterFed = 0
         released = []
         holdReason = nil
         return tail

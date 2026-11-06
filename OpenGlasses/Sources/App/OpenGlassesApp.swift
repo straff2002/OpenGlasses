@@ -7882,6 +7882,8 @@ class AppState: ObservableObject, AppStateProtocol {
     private func wireAnswerCard() {
         speechService.answerCard = hudAnswerCard
         hudRouter.answerCard = hudAnswerCard
+        // Plan KP P2: the Direct prompt asks for follow-ups only while this says something shows them.
+        FollowUpPrompt.currentSurface = { [weak display = glassesDisplay] in display?.answerSurface ?? .none }
         hudAnswerCard.submitTurn = { [weak self] text in
             Task { @MainActor in await self?.sendTextMessage(text) }
         }
@@ -8407,6 +8409,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     } else {
                         rawResponse = try await cloudCascade()
                     }
+                    // Plan KP P2: the reply's follow-ups (its tail, already off the reply) go to
+                    // this turn's answer card, read the moment the model's call returns.
+                    hudAnswerCard.offerFollowUps(llmService.replyFollowUps)
                     nowPlayingAtStart = nil  // consumed for this turn
                     return rawResponse
                 },
@@ -8501,7 +8506,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 waitForAnnouncement: { [self] in await turnAnnouncement.waitUntilSpoken() },
                 // The wearer's words, so a timer or reminder the model sets can be checked against
                 // them (`RelativeTimeGuard`).
-                utterance: query
+                utterance: query,
+                // Plan KP P2: a tail the spine took off (another brain's reply) goes to the card.
+                onFollowUps: { [self] questions in hudAnswerCard.offerFollowUps(questions) }
             ))
         }
     }
@@ -8641,7 +8648,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     } else {
                         image = await smartCameraImageData(for: query)
                     }
-                    return try await llmService.sendMessageCascading(
+                    let reply = try await llmService.sendMessageCascading(
                         query,
                         locationContext: locationService.locationContext,
                         imageData: image,
@@ -8652,20 +8659,24 @@ class AppState: ObservableObject, AppStateProtocol {
                         onToken: { [weak self] chunk in
                             replyStream?.ingest(chunk)
                             guard let self, let id = streamThreadId else { return }
-                            if self.streamingTurn?.threadId == id { self.streamingTurn?.text += chunk }
+                            // Plan KP P2: the bubble never shows a follow-ups tail as it arrives.
+                            if self.streamingTurn?.threadId == id { self.streamingTurn?.append(chunk) }
                         },
                         onStreamReset: { [weak self] in
                             replyStream?.streamDidReset()
                             // A new tool-loop iteration is starting (BM P9): drop the previous
                             // iteration's text so the bubble never shows intermediate+final concatenated.
                             guard let self, let id = streamThreadId else { return }
-                            if self.streamingTurn?.threadId == id { self.streamingTurn?.text = "" }
+                            if self.streamingTurn?.threadId == id { self.streamingTurn?.restart() }
                         },
                         onModelSwitch: { [self] from, to, failure, error in
                             guard speakResponse else { return }   // silent when Siri speaks the reply
                             await narrateModelSwitch(from: from, to: to, failure: failure, error: error)
                         }
                     )
+                    // Plan KP P2: the reply's follow-ups go to this turn's answer card.
+                    if speakResponse { hudAnswerCard.offerFollowUps(llmService.replyFollowUps) }
+                    return reply
                 },
                 postProcess: { [self] rawResponse in
                     Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId) : rawResponse
@@ -8763,7 +8774,10 @@ class AppState: ObservableObject, AppStateProtocol {
                 waitForAnnouncement: { [self] in await turnAnnouncement.waitUntilSpoken() },
                 // The wearer's words, so a timer or reminder the model sets can be checked against
                 // them (`RelativeTimeGuard`).
-                utterance: query
+                utterance: query,
+                onFollowUps: { [self] questions in
+                    if speakResponse { hudAnswerCard.offerFollowUps(questions) }
+                }
             ))
         }
         currentLLMTask = turn
