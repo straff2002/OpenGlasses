@@ -25,6 +25,16 @@ struct RetrievalEvalMain {
             guard let number = Int(value), number >= 0 else { fail("RETRIEVAL_EVAL_FAMILY is a whole number") }
             return number
         } ?? 0
+        // Plan KN P2: RETRIEVAL_EVAL_FEATURES_FROM=shipped exports the shipped request instead (the
+        // shipped gate, asked for 4, every candidate it gathers), so the fit reads the shipped hit@4
+        // back off the lines and any other order against the same gate. `open`, the default, is P1's.
+        let featuresFromShipped: Bool = {
+            switch env["RETRIEVAL_EVAL_FEATURES_FROM"] {
+            case nil, "open": return false
+            case "shipped": return true
+            default: fail("RETRIEVAL_EVAL_FEATURES_FROM is \"open\" or \"shipped\"")
+            }
+        }()
 
         // Plan IV P5: estimate how often one guided retry (the book's index, or the nearest
         // headings) would find what a missed question was after.
@@ -185,9 +195,13 @@ struct RetrievalEvalMain {
             let index = Dictionary(documents.enumerated().compactMap { offset, document in
                 store.document(named: document.title).map { ($0.id, offset + 1) }
             }, uniquingKeysWith: min)
-            let lines = RetrievalEval.featureLines(
-                questions, openFor: { RetrievalEval.retriever(over: store, policy: open, editions: editions, turn: $0) },
-                family: family, embedder: embedder.modelId, documentIndex: { index[$0] })
+            let lines = featuresFromShipped
+                ? RetrievalEval.featureLines(
+                    questions, retrieverFor: { RetrievalEval.retriever(over: store, policy: policy, editions: editions, turn: $0) },
+                    limit: 4, depth: nil, family: family, embedder: embedder.modelId, documentIndex: { index[$0] })
+                : RetrievalEval.featureLines(
+                    questions, retrieverFor: { RetrievalEval.retriever(over: store, policy: open, editions: editions, turn: $0) },
+                    family: family, embedder: embedder.modelId, documentIndex: { index[$0] })
             do {
                 let text = try lines.map { try $0.encoded() }.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
                 try text.write(to: featuresFile, atomically: true, encoding: .utf8)
@@ -195,7 +209,8 @@ struct RetrievalEvalMain {
                 fail("can't write the features file")
             }
             print("[EVAL]   features: \(lines.count) candidate lines, \(lines.filter { $0.label == 1 }.count) holding the answer, "
-                  + "\(Set(lines.map(\.q)).count) questions, schema \(RankingFeatures.schemaVersion)")
+                  + "\(Set(lines.map(\.q)).count) questions, schema \(RankingFeatures.schemaVersion)"
+                  + (featuresFromShipped ? ", from the shipped request, \(lines.filter(\.evidence).count) kept by its gate" : ""))
         }
         if relocate { print("[EVAL]   relocated \(relocated), not relocated (text changed) \(notRelocated)") }
         print("[EVAL]   documents: " + profiles.sorted { $0.key < $1.key }.map { "\($0.key) ×\($0.value)" }.joined(separator: ", "))

@@ -1,6 +1,6 @@
 # Plan KN — A Learned Order for Manual Passages (the signals already measured, weighed by the answer keys)
 
-**Status:** 🚧 P1 built 2026-11-05 (headless): `RankingFeatures` (schema 1, 25 numbers and flags per candidate) computed inside `VaultRetriever` on the eval path only, and written by the Mac runner as JSON lines to a file outside the repository (`RETRIEVAL_EVAL_FEATURES`); the app's order and outcome are unchanged. P0 run 2026-11-05 (local): the bar is met, 331 scored questions and 107 out of scope across 9 vaults and four manual types, with today's numbers on both Mac embedders. P2 next. Drafted 2026-11-05 from the owner's question. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
+**Status:** 🚧 P2 run 2026-11-06 (local): **inside the groups no order beats the rules** on either embedder, so P3 as drafted is not built. Across the groups a fitted order meets the bar on the sentence model and on neither hold-out together on the contextual one, and nearly all of the gain is one tier: the exact-token group outranking the passage that answers. Decision 6, taken by the owner on 2026-11-06: a rule round for that tier, Plan KO, not weights. The export now carries the gate's verdict and can read the shipped request (`RETRIEVAL_EVAL_FEATURES_FROM=shipped`), and `Scripts/retrieval-eval/fit-order.py` fits and holds out. P1 built 2026-11-05 (headless): `RankingFeatures` (schema 1, 25 numbers and flags per candidate) computed inside `VaultRetriever` on the eval path only, and written by the Mac runner as JSON lines to a file outside the repository (`RETRIEVAL_EVAL_FEATURES`); the app's order and outcome are unchanged. P0 run 2026-11-05 (local): the bar is met, 331 scored questions and 107 out of scope across 9 vaults and four manual types, with today's numbers on both Mac embedders. Drafted 2026-11-05 from the owner's question. The owner took all five decisions as recommended the same day. Revised the same day: the answer keys must span
 manual types, P2 holds out a whole type, and P3 applies only to the types it measured. The question was whether a small
 model should do part of the manuals work. The answer drafted here: one small model, for ranking only, and only
 if it beats the rules on manuals it was not fitted on. The answer keys come before the model, and P0 decides
@@ -270,6 +270,71 @@ written on, outside every repository.
 - The outcome is written into this plan either way. "The rules are as good as a fitted order" is a finding: it
   closes the question and P3 is not built.
 
+**P2 as run (2026-11-06).** Local, on the Mac; nothing in the app's order changed.
+
+- **What was measured, and on what.** P1's export read the ungated retriever asked for 30. Each route searches
+  twice the request's limit, so those are not the candidates the app ranks. P2 needed the shipped request. The
+  export gained a mode for it, `RETRIEVAL_EVAL_FEATURES_FROM=shipped`: the shipped gate, asked for 4, every
+  candidate it gathers, and on every line `evidence`, whether the gate keeps the passage. `RankedCandidate`
+  carries the gate's verdict, judged as `decide` judges it. The first four kept lines in today's order are the
+  four passages hit@4 scores. The fit script reads every key's shipped hit@1, hit@4 and refusals back exactly as
+  the runner prints them, and it checks that before measuring anything else.
+- **Today's numbers moved after P0.** PRs 960 and 962 changed the sentence model's gate and citations. On the
+  sentence model, hit@1 is now 120, hit@4 169 of 331 and out of scope refused 72 of 107 (P0: 103, 147, 74). The
+  contextual model is unchanged at 139, 199 and 57. These are the baselines P2 measured against.
+- **An order cannot change a refusal.** The gate keeps or drops each passage on its own, against the best
+  similarity among all candidates, and refuses only when it keeps none. So reordering the same candidates never
+  changes an in-scope or out-of-scope refusal. The bar's refusal clauses hold for every arm by construction, and
+  the script confirms it on every run.
+- **The arms.** Each is scored on pairs: a kept passage that holds the answer against a kept one that doesn't.
+  1. Logistic regression.
+  2. A network with one hidden layer of 16. Across the groups, four further seeds moved pooled hit@4 by at most 2.
+  3. The no-data weights, written from the feature descriptions before any fit was run. They are `PRIOR` in
+     the script.
+
+  23 features per candidate, read as places and shares within the question. Across the groups, three more say
+  which hard tier a candidate is in.
+- **Inside the groups (decision 4's default): no arm meets the bar on either embedder.** Pooled hit@4, held out by
+  family / by type. "Gained / lost" counts questions against today's order, family hold-out:
+
+  | Arm | Sentence hit@4 (today 169) | Gained / lost | Contextual hit@4 (today 199) | Gained / lost |
+  |---|---|---|---|---|
+  | Logistic | 165 / 168 | 2 / 6 | 195 / 201 | 2 / 6 |
+  | Network | 164 / 164 | 2 / 7 | 196 / 202 | 3 / 6 |
+  | No-data weights | 169 / 169 | 5 / 5 | 205 / 205 | 12 / 6 |
+
+  Every fitted arm loses hit@1 as well. The no-data weights fail on the contextual model because the EU regulation
+  drops 18 → 16. Inside a group, the chain's BM25F step is already as good as a fitted order. **That is the finding
+  for P3 as drafted: it is not built.**
+- **Across the groups: a gain, and almost all of it in one tier.**
+
+  | Arm | Sentence hit@4, family / type held out | Gained / lost | Bar | Contextual hit@4, family / type | Gained / lost | Bar |
+  |---|---|---|---|---|---|---|
+  | Logistic | 177 / 179 | 11 / 3 | met, both | 205 / 210 | 11 / 5 | type only (refrigerator 31 → 29 by family) |
+  | Network | 170 / 171 | 8 / 7 | met, both | 205 / 203 | 11 / 5 | family only (hit@1 down by type) |
+  | No-data weights | 180 / 180 | 17 / 6 | met, both | 211 / 211 | 23 / 11 | type only (EU regulation 18 → 16 by family) |
+
+  - On the sentence model, logistic regression across the groups meets the bar both ways. Net per family, it is
+    up on the heat pump (+1), the network switch (+3), the drive (+1) and the code book (+4), down one on the
+    dangerous-goods regulation, and level on the rest.
+  - Of its 11 gains (sentence), 10 are questions where today's top four came from the exact-token group and the
+    answer was an ordinary passage. On the contextual model it is 8 of 11. 73 of the 331 questions have a kept
+    token-group candidate at all.
+  - The other two hard tiers, a named table and a clause, cost nothing measurable.
+- **The tier as a rule, for comparison.** No fit: keep the table and clause tiers, then let the words (BM25F)
+  decide before the count of matched codes. Measured on all the keys, with nothing held out, since nothing is
+  fitted:
+  - sentence model: hit@1 120 → 131 and hit@4 169 → 178, 14 gained and 5 lost;
+  - contextual model: hit@1 139 → 149 and hit@4 199 → 211, 17 gained and 5 lost.
+
+  Most of that is the code book (+9 and +11). On both embedders the refrigerator vault loses 2, its questions
+  that name a code or a model, so the rule fails the same bar. The rule was chosen after seeing where the gain was,
+  so its numbers are an upper bound, not a held-out result.
+- **What this leaves.** The rules order well inside their groups. What costs answers is the exact-token tier
+  ranking a passage that merely prints a number or designation from the question above the passage that answers
+  it. The learned order, allowed across the groups, fixes that on the sentence model without losing a family. A
+  narrower rule for the tier fixes more but loses refrigerator code questions. Decision 6 is which to take.
+
 ### P3 — the learned order behind a flag (headless)
 
 - `LearnedPassageOrder`: weights in source, stamped with the feature-schema version and the embedder id
@@ -310,3 +375,18 @@ written on, outside every repository.
    refusal lost.
 5. **Weights per embedder, or one set?** **Taken as recommended:** per embedder. The simulator's word-average model and the
    device models behave too differently for one set.
+
+6. **After P2 (2026-11-06): the exact-token tier.** Inside the groups nothing beats the rules (see "P2 as run"), so
+   P3 as drafted is dropped. The gain is in letting a candidate outrank the exact-token group. Options:
+   - **(a) P3 across the groups, sentence model only.** Logistic weights fitted on all ten keys, crossing the
+     token group but not the table or clause tiers. Behind the flag, applied to the measured types and English
+     only. The contextual model keeps the rules, because no arm met both hold-outs there.
+   - **(b) A rule round for the token tier instead.** One plan and one PR: tell which tokens earn the tier
+     (a code or model the manual prints as one, against a bare number or unit the question happens to hold). The
+     refrigerator vault's code questions are its test. Measured on these keys and both embedders, with no
+     weights to keep.
+   - **(c) Neither.** Close the plan with the finding.
+
+   **Recommended: (b).** It goes after the one cause the fit found. It works for both embedders, every
+   language and every manual type, including the imported documents (a) would leave out. It is reviewable as a
+   rule, and (a) stays possible afterwards on the same export. **Taken 2026-11-06 by the owner: (b)**, as Plan KO.
