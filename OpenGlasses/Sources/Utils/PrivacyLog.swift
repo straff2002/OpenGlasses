@@ -1959,6 +1959,9 @@ enum PrivacyLog {
         /// The expert's own ledger of the time replies they sent (Plan KM P4): how many rows, and
         /// failures. Never an organisation, a job or a minute figure.
         case expertLedger
+        /// Kept caption sessions (Plan KP P5): how many lines a kept session had, how many expired
+        /// or were cleared, and failures. Never a word of what was said, a speaker or a time.
+        case captionSessions
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,

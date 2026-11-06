@@ -138,6 +138,9 @@ class HIPAAComplianceService: ObservableObject {
             // Plan BQ P2: compliance mode hard-disables Spotlight donation — purge
             // everything previously donated. (Refreshes while enabled donate nothing.)
             Task { @MainActor in await SpotlightIndexService.shared.purgeAll() }
+            // Plan KP P5: caption sessions are never kept in the mode, and the switch stays off
+            // after it until the wearer turns it on again.
+            Config.turnOffKeepCaptionSessionsForComplianceMode()
             // Files saved before the mode was on get the same protection as files saved after it.
             // This runs from Settings, on an unlocked phone, so the class can be applied.
             sweepRecordingArtefacts()

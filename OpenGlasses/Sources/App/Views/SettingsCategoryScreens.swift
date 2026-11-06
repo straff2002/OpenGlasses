@@ -165,6 +165,8 @@ struct CaptureStreamingSettingsScreen: View {
 /// The sections themselves, which Devices & Privacy draws on its own page (Plan KH P2).
 struct CaptureStreamingSections: View {
     @ObservedObject var appState: AppState
+    @AppStorage("hipaaMode") private var hipaaMode = false
+    @AppStorage(Config.keepCaptionSessionsKey) private var keepCaptionSessions = false
 
     var body: some View {
         Section {
@@ -189,10 +191,23 @@ struct CaptureStreamingSections: View {
             } label: {
                 Label("Meeting Records", systemImage: "text.book.closed")
             }
+
+            // Plan KP P5: captions run on the phone with or without glasses, so this is here and
+            // not under the glasses.
+            NavigationLink {
+                CaptionSessionsView()
+            } label: {
+                HStack {
+                    Label(String(localized: "Caption Sessions"), systemImage: "captions.bubble")
+                    Spacer()
+                    Text(keepCaptionSessions && !hipaaMode ? String(localized: "On") : String(localized: "Off"))
+                        .foregroundStyle(.secondary)
+                }
+            }
         } header: {
             Text("What You Keep")
         } footer: {
-            Text("Finished recordings with playback and transcripts, and the summaries the Meeting Summary tool saves.")
+            Text("Finished recordings with playback and transcripts, the summaries the Meeting Summary tool saves, and caption sessions if you choose to keep them, for seven days.")
         }
 
         Section {
