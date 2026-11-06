@@ -154,6 +154,45 @@ final class AssistingIsolationTests: XCTestCase {
         XCTAssertTrue(service.contains(".assistingReply"))
     }
 
+    /// Row 5's exception (Plan KM P4): "beyond the expert's own ledger". The ledger is exported
+    /// through `MinutesTableDocument` — a neutral table of text that knows nothing of a job — and
+    /// through the reply's own staging family; one organisation per document, and never a rate.
+    func testTheOnlyExportBeyondTheReplyIsTheExpertsOwnLedger() throws {
+        let table = try Self.code(Self.sourcesRoot.appendingPathComponent("Services/Export/MinutesTableDocument.swift"))
+        let report = try Self.declaredTypes(in: [
+            "Services/FieldAssist/WorkRecord.swift", "Services/FieldAssist/SessionExport.swift",
+            "Services/FieldAssist/FieldSession.swift", "Services/FieldAssist/Experts/ExpertHandover.swift",
+            "Services/FieldAssist/Experts/ExpertStatement.swift",
+        ])
+        for symbol in report.union(["AssistingHandoverStore", "HeldHandover", "ExpertLedgerEntry"]).sorted()
+        where table.range(of: #"\b\#(symbol)\b"#, options: .regularExpression) != nil {
+            XCTFail("MinutesTableDocument names \(symbol); it must stay a neutral table of text")
+        }
+        let ledgerCode = try Self.code(Self.sourcesRoot.appendingPathComponent("Services/Assisting/ExpertLedger.swift"))
+        for money in ["Rate", "perHour", "currency", "amount", "ExpertStatement"] {
+            XCTAssertNil(ledgerCode.range(of: #"\b\#(money)\b"#, options: .regularExpression), "the ledger names \(money)")
+        }
+        let view = try Self.code(Self.sourcesRoot.appendingPathComponent("App/Views/Assisting/ExpertLedgerView.swift"))
+        XCTAssertFalse(view.contains(".searchable("))
+
+        // One organisation per document, whatever the ledger holds.
+        let entries = [("A", "Kestrel Heating"), ("B", "Rival Air"), ("C", "Kestrel Heating")].map { id, organisation in
+            ExpertLedgerEntry(reply: AssistingFixture.timeReply(handoverId: id, organisation: organisation, minutes: 20),
+                              sentAt: AssistingFixture.start)
+        }
+        let ledger = ExpertLedger(entries: entries)
+        let calendar = AssistingFixture.calendar
+        let month = CalendarMonth(AssistingFixture.start, calendar: calendar)
+        for organisation in ledger.organisations {
+            let document = ledger.document(organisation: organisation.id, month: month, calendar: calendar,
+                                           preparedAt: AssistingFixture.start)
+            let other = ledger.organisations.filter { $0.id != organisation.id }.map { $0.name }
+            for name in other { XCTAssertFalse(document.csv.contains(name), "\(organisation.name)'s ledger names \(name)") }
+        }
+        XCTAssertEqual(ledger.rows(organisation: HeldHandover.organisationKey("Kestrel Heating"), month: month,
+                                   calendar: calendar).count, 2)
+    }
+
     /// Row 6: any Field Assist tool in the expert's assistant. Handovers are not fed to it.
     func testNeverGivesTheAssistantAFieldAssistToolOrAHandover() throws {
         var symbols = try Self.declaredTypes(in: ["Services/NativeTools"])
@@ -184,7 +223,9 @@ final class AssistingIsolationTests: XCTestCase {
             "Services/Privacy/RetentionScheduler.swift",
             "Services/Privacy/SubjectErasureCoordinator.swift",
         ]
-        let held = ["AssistingHandoverStore", "HeldHandover", "AssistingService"]
+        let held = ["AssistingHandoverStore", "HeldHandover", "AssistingService",
+                    // Plan KM P4: the expert's own ledger is held apart the same way.
+                    "ExpertLedgerStore", "ExpertLedger", "ExpertLedgerEntry"]
         for url in Self.swiftFiles(under: "") {
             let relative = Self.relative(url)
             if Self.assistingFolders.contains(where: { relative.hasPrefix($0 + "/") }) || allowed.contains(relative) { continue }
@@ -279,7 +320,10 @@ final class AssistingIsolationTests: XCTestCase {
         XCTAssertEqual(Set(Mirror(reflecting: held).children.compactMap(\.label)),
                        ["handover", "generationsSeen", "firstReceivedAt", "lastReceivedAt", "changes", "clock", "replySentAt",
                         // Plan KM P3: the expert's own drafts, which go back only by their own share.
-                        "coachingDraft", "noteDraft", "coachingSentAt"])
+                        "coachingDraft", "noteDraft", "coachingSentAt",
+                        // Plan KM P4: the coaching replies sent, by id, and the calls seen while the
+                        // clock ran — times only.
+                        "coachingRepliesSent", "observedCalls"])
     }
 
     /// Medical Compliance (§8 never offers the *sending*): Assisting reads no mode at all — it is a

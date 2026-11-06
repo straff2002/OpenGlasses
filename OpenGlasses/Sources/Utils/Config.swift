@@ -2737,6 +2737,26 @@ struct Config {
                             stored: UserDefaults.standard.bool(forKey: SettingKey.expertHandoverIncludesAddress.rawValue))
     }
 
+    /// Whether the customer's report shows an expert's time and credit (Plan KM P4, decision 8).
+    /// With a profile in force only the profile decides, and absent means off; with none the device
+    /// owner decides in Field Assist › Experts. Off by default.
+    static var customerReportShowsExpertTime: Bool {
+        let key = SettingKey.customerReportShowsExpertTime
+        let owned: Bool?
+        if case .bool(let value)? = PolicyEnvelope.current.owned[key] { owned = value } else { owned = nil }
+        return ExpertTimeAudience.customerShowsExpertTime(managed: PolicyEnvelope.isManaged, owned: owned,
+                                                          stored: UserDefaults.standard.bool(forKey: key.rawValue))
+    }
+
+    /// The device owner's switch, with no profile in force. Refused (returns false) under a profile:
+    /// there, only the organisation decides.
+    @discardableResult
+    static func setCustomerReportShowsExpertTime(_ on: Bool) -> Bool {
+        guard !PolicyEnvelope.isManaged else { return false }
+        UserDefaults.standard.set(on, forKey: SettingKey.customerReportShowsExpertTime.rawValue)
+        return true
+    }
+
     /// How many days after Done the expert's app keeps a handover: the profile's figure, or 30.
     static var expertHandoverRetentionDays: Int {
         let stored = UserDefaults.standard.string(forKey: SettingKey.expertHandoverRetentionDays.rawValue) ?? ""

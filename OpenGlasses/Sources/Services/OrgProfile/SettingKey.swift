@@ -52,6 +52,11 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// How many days after Done the expert's app keeps a handover (Plan KM P1, §7): `1`–`30`,
     /// written as digits. Absent: 30. A profile may shorten it, never lengthen it past 30.
     case expertHandoverRetentionDays
+    /// Whether the customer's report shows an expert's time and credit (Plan KM P4, decision 8):
+    /// the minutes and billable minutes on the work order, and the expert's name and kind on their
+    /// coaching steps. Never a rate. Absent or false: off — the steps print as work done, unnamed.
+    /// With no profile the device owner sets the same key in Field Assist › Experts.
+    case customerReportShowsExpertTime
 
     // Organisation policy — tighten only.
     case organizationAllowsUnsignedVaults
@@ -144,7 +149,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .organizationToolDefinitionsMode, .technicianFullName, .technicianID, .organizationExperts,
              .expertHandoverTranscript, .expertHandoverRetentionDays:
             return .profileOwned(.string)
-        case .expertHandoverIncludesAddress:
+        case .expertHandoverIncludesAddress, .customerReportShowsExpertTime:
             return .profileOwned(.bool)
         case .organizationReportRecipients:
             return .profileOwned(.strings)

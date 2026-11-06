@@ -62,6 +62,10 @@ struct WorkRecord: Codable, Equatable {
     struct Escalation: Codable, Equatable {
         let reason: String
         let resolved: Bool
+        /// The named expert called (Plan KM P0), id, name and kind — never a rate or a number.
+        /// Absent from the JSON for a page to the pool, so an older record encodes as it did, and
+        /// left out of a customer's report unless the organisation shows expert time (decision 8).
+        var expert: ExpertSnapshot? = nil
     }
 
     let sessionId: String
@@ -75,7 +79,7 @@ struct WorkRecord: Codable, Equatable {
     let assetId: String?
     let equipment: Equipment?
     let identityFields: [DeviceIdentityField]
-    let tasks: [FieldSession.Task]
+    private(set) var tasks: [FieldSession.Task]
     let partsRequests: [PartsRequest]
     /// Evidence recorded when no task was active — it belongs to the visit, not to nothing.
     let jobEvidence: FieldSession.Evidence
@@ -98,7 +102,7 @@ struct WorkRecord: Codable, Equatable {
     let faultReport: FaultReport?
     /// The job file the visit came from, when it came from one (Plan FO §8).
     let jobFile: JobFileProvenance?
-    let escalations: [Escalation]
+    private(set) var escalations: [Escalation]
     let startedAt: Date
     let endedAt: Date?
     /// Exact accumulated active time. Optional so older exported records still decode.
@@ -140,6 +144,12 @@ struct WorkRecord: Codable, Equatable {
     /// safety rule read first where one hit, and what was found at each step. Nil, and absent from
     /// the JSON, on a job that received none, so an older record encodes exactly as it did.
     var coachingWalkthroughs: [CoachingWalkthrough]?
+    /// Each expert's time on this job (Plan KM P4): their reply checked against the call this phone
+    /// saw, and a contracted expert's billable minutes. **Minutes, never a rate** (decision 6). In
+    /// the office's record; out of a customer's report unless the organisation turns it on
+    /// (decision 8, `forCustomer`). Nil, and absent from the JSON, on a job that called no named
+    /// expert and heard from none, so an older record encodes exactly as it did.
+    var expertTime: [ExpertTime]?
 
     var reportedBy: ReportIdentity? = nil
 
@@ -180,6 +190,7 @@ struct WorkRecord: Codable, Equatable {
         case vanStock = "van_stock"
         case capturedManuals = "captured_manuals"
         case coachingWalkthroughs = "coaching_walkthroughs"
+        case expertTime = "expert_time"
     }
 
     // MARK: - Assembly
@@ -210,7 +221,7 @@ struct WorkRecord: Codable, Equatable {
         self.faultReport = session.faultReport
         self.jobFile = session.jobFile
         self.escalations = session.escalations.map {
-            Escalation(reason: $0.reason, resolved: $0.resolvedAt != nil)
+            Escalation(reason: $0.reason, resolved: $0.resolvedAt != nil, expert: $0.expert)
         }
         self.startedAt = session.startedAt
         self.endedAt = session.endedAt
@@ -231,6 +242,8 @@ struct WorkRecord: Codable, Equatable {
         self.vanStock = (session.vanStockUses ?? []).isEmpty ? nil : session.vanStockUses
         let walkthroughs = CoachingWalkthrough.build(session: session)
         self.coachingWalkthroughs = walkthroughs.isEmpty ? nil : walkthroughs
+        let expertTime = ExpertTime.build(session: session)
+        self.expertTime = expertTime.isEmpty ? nil : expertTime
     }
 
     /// Hand-written so a record exported before the evidence review existed still decodes.
@@ -278,6 +291,7 @@ struct WorkRecord: Codable, Equatable {
         vanStock = try c.decodeIfPresent([VanStockUse].self, forKey: .vanStock)
         capturedManuals = try c.decodeIfPresent([CapturedManualReference].self,forKey:.capturedManuals)
         coachingWalkthroughs = try c.decodeIfPresent([CoachingWalkthrough].self, forKey: .coachingWalkthroughs)
+        expertTime = try c.decodeIfPresent([ExpertTime].self, forKey: .expertTime)
     }
 
     /// A summary with no requests is no summary: kept out of the record, so the synthesized encoder
@@ -428,6 +442,12 @@ struct WorkRecord: Codable, Equatable {
         // found at each step.
         for walkthrough in coachingWalkthroughs ?? [] {
             lines.append(contentsOf: walkthrough.lines)
+        }
+
+        // Each expert's minutes (Plan KM P4), checked against the call this phone saw. Minutes
+        // only: a rate or an amount is never on the record.
+        for time in expertTime ?? [] {
+            lines.append(contentsOf: time.lines)
         }
 
         let used = partsUsed
@@ -652,5 +672,49 @@ struct WorkRecord: Codable, Equatable {
             if index == 0 { return lower.prefix(1).uppercased() + lower.dropFirst() }
             return lower
         }.joined(separator: " ")
+    }
+}
+
+// MARK: - The customer's copy (Plan KM P4, decision 8)
+
+extension WorkRecord {
+
+    /// The record as a customer's document carries it: the work-order PDF (which is the customer's
+    /// document whoever it goes to), a customer-audience export, the sign-off sheet and a report's
+    /// message body.
+    ///
+    /// **Expert time and the expert's credit stay off unless the organisation turns them on**
+    /// (`Config.customerReportShowsExpertTime`): what the customer is billed is the organisation's
+    /// business. With the switch off —
+    /// - `expert_time` goes;
+    /// - an expert's coaching is shown as work done, its steps and readings intact, with no name
+    ///   and no kind (`CoachingWalkthrough.uncredited`), and its task reads "Steps walked on this job";
+    /// - a call to a named expert reads "Called an expert." and drops the expert.
+    ///
+    /// With it on, the record is unchanged: minutes and the credit, and still never a rate, which no
+    /// record carries.
+    func forCustomer(showsExpertTime: Bool) -> WorkRecord {
+        guard !showsExpertTime else { return self }
+        var copy = self
+        copy.expertTime = nil
+        copy.coachingWalkthroughs = coachingWalkthroughs?.map(\.uncredited)
+        copy.tasks = tasks.map { task in
+            guard let procedureId = task.procedureId, CoachingProcedure.isCoachingId(procedureId) else { return task }
+            var plain = task
+            plain.title = ExpertTimeAudience.uncreditedSteps
+            return plain
+        }
+        copy.escalations = escalations.map { escalation in
+            guard escalation.expert != nil else { return escalation }
+            return Escalation(reason: ExpertTimeAudience.uncreditedCall, resolved: escalation.resolved)
+        }
+        return copy
+    }
+
+    /// What a customer's document prints for an escalation the log recorded with `reason`: the
+    /// reason, or — for a call to a named expert, with expert time not shown — "Called an expert."
+    func customerEscalationReason(_ reason: String, showsExpertTime: Bool) -> String {
+        guard !showsExpertTime, escalations.contains(where: { $0.expert != nil && $0.reason == reason }) else { return reason }
+        return ExpertTimeAudience.uncreditedCall
     }
 }

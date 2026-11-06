@@ -1956,6 +1956,9 @@ enum PrivacyLog {
         /// The handovers an expert was sent (Plan KM P2): whether one was added or replaced, how
         /// many photos, how many clocks a relaunch recovered. Never an organisation, a job or a name.
         case assistingHandovers
+        /// The expert's own ledger of the time replies they sent (Plan KM P4): how many rows, and
+        /// failures. Never an organisation, a job or a minute figure.
+        case expertLedger
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,

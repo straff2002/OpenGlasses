@@ -24,6 +24,7 @@ struct FieldAssistExpertsView: View {
     @State private var problem: String?
     @State private var importingCard = false
     @State private var scanningCard = false
+    @State private var showsExpertTime = false
     @ObservedObject private var cardInbox = ExpertCardInbox.shared
 
     var body: some View {
@@ -36,6 +37,7 @@ struct FieldAssistExpertsView: View {
             if managed || !personal.isEmpty {
                 personalSection
             }
+            timeSection
             cardSection
             if let problem {
                 Section {
@@ -89,6 +91,35 @@ struct FieldAssistExpertsView: View {
             Text(managed
                  ? "A card adds the expert to your own list, as staff with no rate."
                  : "A card fills in who they are and how to reach them. You set their kind, hours and any rate after.")
+        }
+    }
+
+    /// An expert's time (Plan KM P4): whether the customer's report shows it (decision 8), and —
+    /// for the device owner only, with no profile — the statements, the one place a rate and an
+    /// amount appear (decision 6).
+    private var timeSection: some View {
+        Section {
+            Toggle("Show Expert Time on the Customer's Report", isOn: Binding(
+                get: { showsExpertTime },
+                set: { on in
+                    if Config.setCustomerReportShowsExpertTime(on) { showsExpertTime = on }
+                }))
+                .disabled(managed)
+            if !managed {
+                NavigationLink {
+                    ExpertStatementView()
+                } label: {
+                    Label("Statements", systemImage: "list.bullet.rectangle")
+                }
+            }
+        } header: {
+            Text("Expert time")
+        } footer: {
+            if managed {
+                ManagedLockNote(organization: ManagedLockReason.organization)
+            } else {
+                Text("Off, the customer's report shows an expert's coaching as work done, with no name, and no expert time. On, it shows their name and minutes. Never a rate: rates and amounts are only on statements, for each expert and month.")
+            }
         }
     }
 
@@ -174,6 +205,7 @@ struct FieldAssistExpertsView: View {
         managed = store.organizationListIsManaged
         organization = store.organizationExperts
         personal = store.personalExperts
+        showsExpertTime = Config.customerReportShowsExpertTime
     }
 
     private func add(_ snapshot: ContactSnapshot) {

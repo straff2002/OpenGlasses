@@ -285,7 +285,12 @@ struct DeliveryRequest: Identifiable, Equatable {
             channel: channel,
             recipients: recipients,
             subject: record.reportSubject,
-            body: record.summary,
+            // The body may be read by anyone the message reaches. Expert time and an expert's
+            // credit are in it only for the office, or when the organisation shows them to the
+            // customer (Plan KM P4, decision 8).
+            body: transcript?.audience == .office
+                ? record.summary
+                : record.forCustomer(showsExpertTime: Config.customerReportShowsExpertTime).summary,
             shortBody: record.shortSummary,
             // A channel with no way to carry a file carries none, whatever it was handed.
             attachments: channel.carriesAttachments ? attachments : [],

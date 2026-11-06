@@ -435,10 +435,12 @@ final class FieldSessionService: ObservableObject {
 
     /// Record an escalation request on the active session — to the pool, or (Plan KM P0) a call to
     /// a named expert, whose snapshot the record keeps.
-    func recordEscalation(reason: String, expert: ExpertSnapshot? = nil, via: CallVia? = nil) {
+    func recordEscalation(reason: String, expert: ExpertSnapshot? = nil, via: CallVia? = nil,
+                          billing: ExpertBillingRule? = nil) {
         guard var session = activeSession, let logger else { return }
         session.escalations.append(.init(timestamp: Date(), reason: reason, resolvedAt: nil,
-                                         expert: expert, callVia: via?.rawValue))
+                                         expert: expert, callVia: via?.rawValue,
+                                         billing: expert?.kind == .contracted ? billing : nil))
         activeSession = session
         history = history.replacingFirst(matching: session.id, with: session)
         logger.updateSession { $0 = session }

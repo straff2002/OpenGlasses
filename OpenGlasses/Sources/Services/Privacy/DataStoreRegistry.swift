@@ -83,6 +83,8 @@ enum SensitiveStore: String, CaseIterable {
     case assistingHandovers
     /// The expert card this phone's owner made (Plan KM P2).
     case expertCard
+    /// The time replies this phone's owner sent as an expert, as their own ledger (Plan KM P4).
+    case expertLedger
     case jobDeliveryQueue
     case upcomingJobs
     case workizConnection
@@ -657,6 +659,24 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "AssistingHandoverStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Assisting/AssistingHandoverStore.swift"],
                           location: "Application Support/Assisting/handovers.json and Assisting/photos/{digest}/NN.jpg")
+
+        case .expertLedger:
+            // The expert's own ledger (Plan KM P4): one row per time reply whose share completed —
+            // the organisation's name as the handover gave it, the job reference, when, and the
+            // minutes. No rate (the expert's side never has one), no customer, no unit, no words.
+            // The expert's own business record, so the linkage is the wearer's and there is no
+            // subject to search for; kept beside the handovers, under the same first-unlock
+            // protection and out of backup (it names other organisations' jobs), longer than any
+            // handover so a month can be invoiced. Read only by Assisting's ledger screen, never by
+            // the assistant, its memory, search or team learnings.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("rows older than \(ExpertLedgerStore.retentionDays) days go; cap \(ExpertLedgerStore.entryCap)"),
+                          deleteAll: .api("ExpertLedgerStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ExpertLedgerStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Assisting/ExpertLedger.swift"],
+                          location: "Application Support/Assisting/ledger.json")
 
         case .expertCard:
             // The card this phone's owner made so organisations can add them as an expert (Plan

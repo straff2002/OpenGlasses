@@ -131,7 +131,10 @@ final class EscalationCoordinator: ObservableObject {
             return .refused("Your phone couldn't start the call to \(name).")
         }
         state = .awaitingExpert(reason: reason)
-        sessionService.recordEscalation(reason: reason, expert: contact.snapshot, via: via)
+        // The billing grain (minutes only) goes on the record now, so the job's expert time is a
+        // function of the job (Plan KM P4); the rate itself stays on the list.
+        sessionService.recordEscalation(reason: reason, expert: contact.snapshot, via: via,
+                                        billing: contact.billingRule)
         expertList.lastCalledExpertId = contact.id
         let order = lastPickOrder.contains(where: { $0.id == contact.id }) ? lastPickOrder : [contact]
         callMonitor.expect(contact, order: order)

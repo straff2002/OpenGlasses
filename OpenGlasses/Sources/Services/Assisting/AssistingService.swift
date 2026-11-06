@@ -29,8 +29,15 @@ final class AssistingService: ObservableObject {
 
     let store: AssistingHandoverStore
     let cards: ExpertCardStore
+    /// The expert's own ledger (Plan KM P4): every time reply whose share completed.
+    let ledger: ExpertLedgerStore
     private let replies: StagedExportCoordinator
     private let now: () -> Date
+    /// The call observer, made on the first clock that runs, so a phone that never takes a job
+    /// never observes. Injectable for tests.
+    var makeCallObserver: () -> CallObserving = { SystemCallObserver() }
+    private var callObserver: CallObserving?
+    private var calls = AssistingCallTally()
 
     /// A handover the app just opened, for the sheet that shows it.
     @Published var presented: Presented?
@@ -41,11 +48,15 @@ final class AssistingService: ObservableObject {
         let message: String
     }
 
+    /// - Parameter ledger: the expert's ledger; by default the shared one, or — for a store given
+    ///   here — one beside that store's files, so a test's handovers and ledger stay together.
     init(store: AssistingHandoverStore? = nil, cards: ExpertCardStore = .shared,
-         replies: StagedExportCoordinator = .assistingReply, now: @escaping () -> Date = Date.init) {
+         replies: StagedExportCoordinator = .assistingReply, ledger: ExpertLedgerStore? = nil,
+         now: @escaping () -> Date = Date.init) {
         self.store = store ?? .shared
         self.cards = cards
         self.replies = replies
+        self.ledger = ledger ?? (store.map { ExpertLedgerStore(directory: $0.storeDirectory, now: now) } ?? .shared)
         self.now = now
     }
 
@@ -97,10 +108,27 @@ final class AssistingService: ObservableObject {
 
     // MARK: - The clock
 
-    func take(_ id: String) { store.take(id: id); startHeartbeat() }
+    func take(_ id: String) { store.take(id: id); startHeartbeat(); watchCalls() }
     func pause(_ id: String) { store.pause(id: id) }
-    func resume(_ id: String) { store.resume(id: id); startHeartbeat() }
+    func resume(_ id: String) { store.resume(id: id); startHeartbeat(); watchCalls() }
     func done(_ id: String) { store.done(id: id) }
+
+    // MARK: - Calls while a clock runs (Plan KM P4)
+
+    /// Start watching the phone's calls once a clock runs: a call taken while exactly one handover's
+    /// clock is running is that handover's call minutes. `CXCallObserver` needs no permission and
+    /// never says who was called.
+    func watchCalls() {
+        guard callObserver == nil, store.hasRunningClock else { return }
+        let observer = makeCallObserver()
+        observer.onChange = { [weak self] call in self?.callChanged(call) }
+        callObserver = observer
+    }
+
+    func callChanged(_ call: ObservedCall) {
+        guard let completed = calls.observe(call, at: now(), running: store.runningClockIds) else { return }
+        store.recordObservedCall(id: completed.handoverId, call: completed.call)
+    }
 
     private var heartbeat: Task<Void, Never>?
 
@@ -124,6 +152,7 @@ final class AssistingService: ObservableObject {
 
     func appDidBecomeActive() {
         startHeartbeat()
+        watchCalls()
     }
 
     // MARK: - The time reply
@@ -174,7 +203,45 @@ final class AssistingService: ObservableObject {
     /// The share sheet closed. Only a completed share marks the reply sent.
     func finishShare(_ staged: StagedReply, for id: String, completed: Bool) {
         replies.finishShare(staged.lease, outcome: completed ? .completed : .cancelled)
-        if completed { store.markReplySent(id: id) }
+        if completed {
+            store.markReplySent(id: id)
+            // The expert's own ledger is built from the replies they sent, and only those.
+            ledger.record(staged.reply, sentAt: now())
+        }
+    }
+
+    // MARK: - The ledger (Plan KM P4)
+
+    struct StagedLedger {
+        let lease: StagedExportLease
+        let rows: Int
+    }
+
+    /// One organisation's month of the ledger, as CSV or PDF, into protected staging for the
+    /// expert's own share. One organisation per file, always.
+    func stageLedger(organisation key: String, month: CalendarMonth, pdf: Bool,
+                     calendar: Calendar = .current) -> Result<StagedLedger, Refusal> {
+        let ledger = ledger.ledger
+        let rows = ledger.rows(organisation: key, month: month, calendar: calendar)
+        guard !rows.isEmpty else { return .failure(Refusal("There's no time for that organisation in that month.")) }
+        let document = ledger.document(organisation: key, month: month, calendar: calendar, preparedAt: now())
+        let ext = pdf ? "pdf" : "csv"
+        do {
+            let lease = try replies.makeLease(data: pdf ? document.pdfData() : document.csvData, fileExtension: ext,
+                                              displayName: ledger.fileStem(organisation: key, month: month) + "." + ext,
+                                              fallbackName: "time-ledger." + ext)
+            PrivacyLog.transfer(.assistingReply, .exported, count: rows.count)
+            return .success(StagedLedger(lease: lease, rows: rows.count))
+        } catch {
+            PrivacyLog.transfer(.assistingReply, .fileFailed, error: SafeErrorSummary(error))
+            return .failure(Refusal("The ledger couldn't be written on this phone. Try again."))
+        }
+    }
+
+    func beginShare(_ staged: StagedLedger) { replies.beginShare(staged.lease) }
+
+    func finishShare(_ staged: StagedLedger, completed: Bool) {
+        replies.finishShare(staged.lease, outcome: completed ? .completed : .cancelled)
     }
 
     // MARK: - The note
@@ -266,7 +333,7 @@ final class AssistingService: ObservableObject {
     /// The share sheet closed. Only a completed share marks the steps sent.
     func finishShare(_ staged: StagedCoaching, for id: String, completed: Bool) {
         replies.finishShare(staged.lease, outcome: completed ? .completed : .cancelled)
-        if completed { store.markCoachingSent(id: id) }
+        if completed { store.markCoachingSent(id: id, coachingId: staged.reply.coachingId) }
     }
 
     // MARK: - Deleting

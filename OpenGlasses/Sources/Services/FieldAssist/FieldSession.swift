@@ -154,7 +154,8 @@ struct FieldSession: Codable, Identifiable, Equatable {
     var expertHandovers: [ExpertHandoverSent]?
     /// The time replies experts sent back for those handovers (Plan KM P2), as received: minutes,
     /// the generations they saw and their note. Only a reply that answers a handover this job sent,
-    /// from the expert it went to, is ever kept here. Reconciled against the observed call in P4.
+    /// from the expert it went to, is ever kept here. Reconciled against the observed call when the
+    /// record is built (`ExpertTime`, P4).
     /// Nil, and absent from the JSON, on a job that received none.
     var expertReplies: [ExpertReplyReceived]?
     /// Coaching steps experts sent for this job (Plan KM P3), as accepted: only steps that answer a
@@ -259,6 +260,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
         var callStartedAt: Date? = nil
         var callConnectedAt: Date? = nil
         var callEndedAt: Date? = nil
+        /// A contracted expert's billing grain when the call was placed (Plan KM P4): the minimum
+        /// and the rounding, never the rate or its currency. Nil for staff, for the pool, and on
+        /// every escalation recorded before P4.
+        var billing: ExpertBillingRule? = nil
     }
 
     /// Computed: whether the session is currently accepting input.

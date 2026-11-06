@@ -159,7 +159,11 @@ struct CustomerSignOff: Codable, Equatable {
 enum CustomerSummary {
 
     /// The lines exactly as the sheet shows them and the digest is taken over.
-    static func lines(for record: WorkRecord) -> [String] {
+    static func lines(for record: WorkRecord,
+                      showsExpertTime: Bool = Config.customerReportShowsExpertTime) -> [String] {
+        // The customer's copy (Plan KM P4): an expert's coaching task reads as work done, with no
+        // name, unless the organisation shows expert time.
+        let record = record.forCustomer(showsExpertTime: showsExpertTime)
         var lines: [String] = []
 
         // 1. Work done. Completed tasks only, by title — the *why*, the completion note, the
