@@ -38,7 +38,29 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
 /// bubble to its thread so a reply never renders in the wrong conversation.
 struct StreamingTurn: Equatable {
     let threadId: String
+    /// What the live bubble shows.
     var text: String
+    /// Everything the stream has delivered this iteration, `text` with any follow-ups tail.
+    private(set) var received = ""
+
+    init(threadId: String, text: String) {
+        self.threadId = threadId
+        self.text = text
+        self.received = text
+    }
+
+    /// Plan KP P2: add a streamed chunk. The bubble shows the reply up to its follow-ups tail
+    /// (`FollowUpTail.streamingVisible`), never the tail itself, not even a "<ne" of it.
+    mutating func append(_ chunk: String) {
+        received += chunk
+        text = String(FollowUpTail.streamingVisible(received).visible)
+    }
+
+    /// A new tool-loop iteration: the bubble starts again.
+    mutating func restart() {
+        received = ""
+        text = ""
+    }
 }
 
 /// A conversation thread with metadata.

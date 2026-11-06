@@ -153,6 +153,14 @@ final class GlassesDisplayService: ObservableObject {
         return !isInteractive || showsAnswerCard
     }
 
+    /// Plan KP P2: what would show an answer's suggested follow-ups now, for `FollowUpPrompt`. A
+    /// display with the HUD on wins over the mirror; the mirror counts only without one.
+    var answerSurface: FollowUpPrompt.Surface {
+        guard isEnabled else { return .none }
+        if deviceSupportsDisplay() { return .display }
+        return Config.hudMirrorEnabled ? .mirrorOnly : .none
+    }
+
     // MARK: - When the Display is in use (Plan KP P1b)
 
     /// Whose the Display is (§8): `.ours`, `.inUse` (another app has it) or `.off`. Read from the

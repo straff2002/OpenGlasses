@@ -23,6 +23,11 @@ import Foundation
 /// (`GlassesDisplayService.acceptsAnswerCard`). Notifications flash over the card and it comes
 /// back. Guidance and hazard lines are never paged, and take the HUD from a card.
 ///
+/// **Follow-ups (P2).** The open turn's suggested follow-ups (`offerFollowUps`, from the reply's
+/// tail, which never reaches anything else) go on its card: two on the last page, a third on the
+/// Actions screen (`HUDAnswerCardBuilder`). Only a reply that came back whole carries them: a turn
+/// cut short (an error, a barge-in) shows none, and a new answer's card starts with none.
+///
 /// **Lifetime.** Until Close, a new answer, or `idleLifetime` (60 s) with no press and no change to
 /// the answer — so a long answer still being spoken never clears under the wearer. In memory only.
 ///
@@ -76,12 +81,16 @@ final class HUDAnswerCard {
     private var turn: HUDAnswerTurn?
     /// The open turn's card has been shown (it replaced whatever card was up).
     private var turnHasCard = false
+    /// The open turn's suggested follow-ups, from its reply's tail (Plan KP P2).
+    private var turnFollowUps: [String] = []
 
     /// The card's answer, pages and position.
     private(set) var answer = ""
     private(set) var pages: [HUDAnswerPage] = []
     private(set) var pageIndex = 0
     private(set) var isOnActions = false
+    /// The card's suggested follow-ups (Plan KP P2): its turn's, and none for any other card.
+    private(set) var followUps: [String] = []
     /// The answer is final: every page may be read.
     private var answerIsComplete = false
     /// The screen last handed to the display, for routing a band press back by id.
@@ -100,6 +109,9 @@ final class HUDAnswerCard {
 
     /// The card is on the glasses (or held under a notification).
     var isShowing: Bool { display.showsAnswerCard }
+    /// The screen last handed to the display, buttons and all: what a band press acts on. Read
+    /// by tests, which check a card's buttons without waiting on the render queue.
+    var screenOnLens: HUDScreen? { shownScreen }
     var isTurnOpen: Bool { turn != nil }
 
     /// Pages the wearer may turn to: all of a final answer, the settled ones of a streaming one.
@@ -142,6 +154,18 @@ final class HUDAnswerCard {
     func beginTurn() {
         turn = HUDAnswerTurn()
         turnHasCard = false
+        turnFollowUps = []
+    }
+
+    /// Plan KP P2: the open turn's reply came back with these follow-ups (its tail, already taken
+    /// off the reply). They show when the reply is final on the card (`finishTurn`, or the whole
+    /// answer reaching `absorb`); a card already showing the final answer is redrawn with them.
+    /// Ignored with no turn open.
+    func offerFollowUps(_ questions: [String]) {
+        guard turn != nil else { return }
+        turnFollowUps = Array(questions.prefix(FollowUpTail.maxFollowUps))
+        guard let open = turn, open.isFinished else { return }
+        update()
     }
 
     /// The open turn's reply is final (a streamed reply's text is known before it has all been
@@ -158,6 +182,8 @@ final class HUDAnswerCard {
     func endTurn() {
         guard var open = turn else { return }
         if !open.isFinished, !open.isEmpty, display.acceptsAnswerCard {
+            // Cut short: what was said shows, with no follow-ups for an answer never finished.
+            turnFollowUps = []
             open.seal()
             turn = open
             update()
@@ -198,6 +224,7 @@ final class HUDAnswerCard {
             answerIsComplete = turn.isFinished
             pageIndex = 0
             isOnActions = false
+            followUps = turn.isFinished ? turnFollowUps : []
             cardSerial += 1
             let screen = currentScreen()
             guard display.presentAnswerCard(screen, onSelect: selectionHandler) else { return }
@@ -209,6 +236,7 @@ final class HUDAnswerCard {
             answer = turn.text
             pages = laid
             answerIsComplete = turn.isFinished
+            followUps = turn.isFinished ? turnFollowUps : []
             // The wearer closed it: more of the answer doesn't bring it back.
             guard isShowing else { return }
             let screen = currentScreen()
@@ -284,6 +312,7 @@ final class HUDAnswerCard {
         pages = []
         pageIndex = 0
         isOnActions = false
+        followUps = []
         answerIsComplete = false
         shownScreen = nil
         answerMadeAt = nil
@@ -360,11 +389,11 @@ final class HUDAnswerCard {
     private func currentScreen() -> HUDScreen {
         let onAction = self.onAction
         if isOnActions {
-            return HUDAnswerCardBuilder.actions(pages, followUps: [], onAction: onAction)
+            return HUDAnswerCardBuilder.actions(pages, followUps: followUps, onAction: onAction)
         }
         let readable = max(1, min(visiblePageCount, pages.count))
         let screens = (0..<readable).compactMap {
-            HUDAnswerCardBuilder.page(pages, index: $0, followUps: [], onAction: onAction)
+            HUDAnswerCardBuilder.page(pages, index: $0, followUps: followUps, onAction: onAction)
         }
         let index = min(pageIndex, readable - 1)
         var screen = screens.indices.contains(index) ? screens[index] : HUDScreen()

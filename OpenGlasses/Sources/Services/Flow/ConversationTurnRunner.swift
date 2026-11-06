@@ -14,6 +14,11 @@ import Foundation
 /// - An error mid-flow still reaches `finish`, so the app resumes listening or returns to the
 ///   wake word instead of sticking in the processing state (the July 2026 audit's
 ///   stuck-listening scenario).
+/// - A suggested-follow-ups tail (Plan KP P2, `FollowUpTail`) never reaches `postProcess`,
+///   `accept` or `speak`, whichever brain answered. `LLMService` already takes it off its own
+///   replies (and their history); this is the spine's backstop for every other `send`, and for a
+///   tail a memory tag after it kept from the end of the reply until `postProcess` removed the
+///   tag. Its questions go to `onFollowUps` only.
 enum ConversationTurnRunner {
 
     /// The seams of one turn. All closures are main-actor isolated because they mutate
@@ -44,6 +49,9 @@ enum ConversationTurnRunner {
         /// `TurnUtteranceScope.current` so a tool the model calls can check its arguments against
         /// the words (`RelativeTimeGuard`). Nil for a turn nobody spoke.
         var utterance: String? = nil
+        /// Plan KP P2: the spine took a follow-ups tail off the reply; these are its questions
+        /// (possibly none). Not called when the reply had no tail.
+        var onFollowUps: @MainActor ([String]) -> Void = { _ in }
     }
 
     @MainActor
@@ -56,14 +64,21 @@ enum ConversationTurnRunner {
         do {
             try Task.checkCancellation()
             TurnRecorder.mark(.commit)
-            let raw = try await TurnUtteranceScope.$current.withValue(deps.utterance) {
+            let sent = try await TurnUtteranceScope.$current.withValue(deps.utterance) {
                 try await deps.send()
             }
             TurnRecorder.mark(.generationDone)
             // `postProcess` can persist memory and inject prompt state, so a response cancelled
             // while in flight must not reach it.
             try Task.checkCancellation()
-            let response = await deps.postProcess(raw)
+            // Plan KP P2: the tail comes off before memory sees the reply, and again after, for
+            // one that a memory tag written after it kept from the end.
+            let tail = FollowUpTail.parse(sent)
+            let processed = FollowUpTail.parse(await deps.postProcess(tail.answer))
+            if tail.removedTail || processed.removedTail {
+                deps.onFollowUps(tail.removedTail ? tail.followUps : processed.followUps)
+            }
+            let response = processed.answer
             // Each injected async stage can yield the main actor. Re-check before every visible
             // step so a barge-in cannot persist, mirror, or speak a stale response.
             try Task.checkCancellation()

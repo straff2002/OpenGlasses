@@ -4005,6 +4005,19 @@ struct Config {
 
     static func setDisplayBusyHintEnabled(_ enabled: Bool) { displayBusyHintEnabled = enabled }
 
+    /// Plan KP §4: up to three suggested next questions under an answer on a glasses display, as
+    /// buttons. The model writes them at the end of its reply only while this is on and a display
+    /// shows answers (`FollowUpPrompt`). On by default (decision 5).
+    @UserDefaultsBacked("followUpsOnDisplayEnabled", default: true) static var followUpsOnDisplayEnabled: Bool
+
+    static func setFollowUpsOnDisplayEnabled(_ enabled: Bool) { followUpsOnDisplayEnabled = enabled }
+
+    /// Plan KP §4: the same follow-ups when only the web mirror shows answers (no display). Off by
+    /// default (decision 5): the mirror is read-only, so its buttons can't be pressed there.
+    @UserDefaultsBacked("followUpsOnMirrorEnabled", default: false) static var followUpsOnMirrorEnabled: Bool
+
+    static func setFollowUpsOnMirrorEnabled(_ enabled: Bool) { followUpsOnMirrorEnabled = enabled }
+
     // MARK: - Memory loop (self-improving)
 
     /// When on, the assistant offers a spoken nudge after you state a durable fact or repeat a

@@ -178,6 +178,12 @@ class LLMService: ObservableObject {
     /// Kept for the Prompt Inspector UI — never spoken aloud.
     @Published var lastReasoning: String?
 
+    /// Plan KP P2: the suggested follow-ups the last `sendMessage` reply carried in its tail, which
+    /// was taken off the reply (and its history entry) before anything else saw it. Empty when the
+    /// reply had none. Reset as each `sendMessage` starts; the Direct turn reads it right after its
+    /// call returns and hands it to the answer card, the only place follow-ups go.
+    private(set) var replyFollowUps: [String] = []
+
     /// Optional OpenClaw bridge for tool calling in direct mode
     var openClawBridge: OpenClawBridge?
 
@@ -636,7 +642,7 @@ class LLMService: ObservableObject {
     /// location, skills, job and manual context, …) — so a route that can place the tail after the
     /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
     /// single string, head first.
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, device: AssistantIdentity.Device) async -> PromptLayout {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -885,6 +891,13 @@ class LLMService: ObservableObject {
             prompt += "\n\n\(skillContext)"
         }
         closeBlock("installed skills")
+        // Plan KP P2: the follow-up tail, asked for only while answers are shown on a display (or
+        // the mirror) and its setting is on. In the volatile tail: the display comes and goes, and
+        // the cacheable head must not move with it. Cloud prompts only (`offersFollowUps`).
+        if offersFollowUps, let clause = FollowUpPrompt.clauseForPrompt() {
+            prompt += "\n\n" + clause
+        }
+        closeBlock("follow-ups")
         // Always append the prompt-injection / untrusted-content policy. This is a security
         // baseline — it is never stripped by the classifier and applies in every mode.
         prompt += PromptInjectionPolicy.systemPromptPolicy
@@ -1087,6 +1100,7 @@ class LLMService: ObservableObject {
         lastAttemptFittable = false
         lastAttemptCarriedTools = true
         lastChatRequestShape = nil
+        replyFollowUps = []
         // Plan KL P2: a turn the chain does not own starts its own ledger.
         if !cascadeTurnInFlight {
             turnToolLedger.reset()
@@ -1292,7 +1306,7 @@ class LLMService: ObservableObject {
             }
             let onDemandGuide = exposureTurn.flatMap { onDemandToolGuide(for: $0.decision, nativeToolNames: nativeToolNames) }
             let gatewayToolNames = openClawBridge?.availableToolNames ?? []
-            let layout = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, onDemandToolGuide: onDemandGuide, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text, device: device)
+            let layout = await Self.buildSystemPrompt(locationContext: locationContext, includeTools: includeTools, includeOpenClaw: includeOpenClaw, hasImage: imageData != nil, nativeToolNames: nativeToolNames, nativeToolDescriptions: nativeToolDescriptions, onDemandToolGuide: onDemandGuide, gatewayToolNames: gatewayToolNames, memoryContext: memoryContext, agentContext: agentContext, playbookContext: playbookContext, nowPlayingContext: nowPlayingContext, shortcutsContext: shortcutsContext, promptSections: promptSections, turn: text, offersFollowUps: true, device: device)
             if provider == .openai || provider == .anthropic {
                 fullPrompt = layout.stable
                 volatileTail = layout.volatile
@@ -1429,7 +1443,10 @@ class LLMService: ObservableObject {
         }
         // Plan KD P3: one chokepoint for every provider, before the reply is spoken, logged or
         // shown — a reply that repeats its own last part is said and kept once.
-        let rawResponse = collapsingRepeatedReply(providerResponse)
+        // Plan KP P2: and its follow-up tail is taken off here, before the job's log, the
+        // transcript, memory, speech or the HUD sees it, and out of the history the model is sent
+        // on later turns.
+        let rawResponse = takingFollowUpTail(collapsingRepeatedReply(providerResponse))
 
         // Local reasoning models (LFM2.5) are stripped at the generate layer —
         // LocalLLMService owns the template-opened <think> handling and every local
@@ -1584,6 +1601,41 @@ class LLMService: ObservableObject {
             in: conversationHistory, original: reply, with: collapsed)
         PrivacyLog.model(.replyRepeatCollapsed, characters: reply.count - collapsed.count)
         return collapsed
+    }
+
+    /// Plan KP P2: take the follow-up tail off a reply (`FollowUpTail.parse`) and off the history
+    /// entry that recorded it, keep its questions in `replyFollowUps`, and return the answer. A
+    /// reply without a tail, or with a malformed one, is returned as `FollowUpTail` leaves it.
+    func takingFollowUpTail(_ reply: String) -> String {
+        let tail = FollowUpTail.parse(reply)
+        replyFollowUps = tail.followUps
+        guard tail.removedTail else { return reply }
+        conversationHistory = Self.removingFollowUpTailFromLastAssistant(conversationHistory)
+        return tail.answer
+    }
+
+    /// The history with the tail taken off its last assistant message: plain text, or the text
+    /// of its last text part (Gemini's `parts`, Anthropic's content blocks). The model never sees
+    /// its own tags again, and a restored or exported history carries none. Pure.
+    static func removingFollowUpTailFromLastAssistant(_ history: [[String: Any]]) -> [[String: Any]] {
+        guard let index = history.lastIndex(where: { $0["role"] as? String == "assistant" }) else {
+            return history
+        }
+        var history = history
+        var message = history[index]
+        if let content = message["content"] as? String {
+            message["content"] = FollowUpTail.parse(content).answer
+        } else {
+            for key in ["content", "parts"] {
+                guard var blocks = message[key] as? [[String: Any]],
+                      let last = blocks.lastIndex(where: { $0["text"] is String }),
+                      let text = blocks[last]["text"] as? String else { continue }
+                blocks[last]["text"] = FollowUpTail.parse(text).answer
+                message[key] = blocks
+            }
+        }
+        history[index] = message
+        return history
     }
 
     /// The final reply joins the job's log beside the turn that asked for it (Plan GB P0), so a
@@ -5756,6 +5808,7 @@ class LLMService: ObservableObject {
     /// Used for fast-tier queries when agentic mode is enabled.
     /// Builds its own lightweight prompt and routes through sendLocal().
     func sendViaLocalAgent(_ text: String, locationContext: String? = nil, memoryContext: String? = nil, weatherContext: String? = nil) async throws -> String {
+        replyFollowUps = []   // Plan KP P2: on-device prompts don't ask for them
         let agentModelId = Config.agentModelId
         let hasNativeTools = nativeToolRouter != nil
         let device = Self.deviceInUse()   // Plan FY F3: read once for whichever prompt is built
@@ -6015,11 +6068,12 @@ class LLMService: ObservableObject {
                                        hasImage: Bool = false, includeTools: Bool = true,
                                        nativeToolNames: [String] = ["get_weather", "web_search"],
                                        turn: String? = nil,
+                                       offersFollowUps: Bool = true,
                                        device: AssistantIdentity.Device = .phone) async -> PromptLayout {
         await buildSystemPrompt(locationContext: locationContext, includeTools: includeTools,
                                 includeOpenClaw: false, hasImage: hasImage,
                                 nativeToolNames: nativeToolNames, memoryContext: memoryContext,
-                                turn: turn, device: device)
+                                turn: turn, offersFollowUps: offersFollowUps, device: device)
     }
 
     /// Start a test from a known history. Test-only.

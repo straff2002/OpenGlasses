@@ -279,6 +279,14 @@ struct DisplayHUDSections: View {
                 ),
                 info: "While another app is using the in-lens display, answers can't be shown on it. The first answer you hear then is followed once by a short reminder that you can say \"repeat\", \"save that\" or \"tell me more\" instead. The app never takes the display back from the other app."
             )
+            InfoToggle(
+                title: "Suggested follow-ups on the display",
+                isOn: Binding(
+                    get: { Config.followUpsOnDisplayEnabled },
+                    set: { Config.setFollowUpsOnDisplayEnabled($0) }
+                ),
+                info: "Up to three short next questions appear as buttons under an answer on the in-lens display. Press one to ask it. The assistant writes them with the answer, so they cost no extra request; they are never spoken and never saved in the conversation."
+            )
         } header: {
             Text("In-Lens Display")
         } footer: {
