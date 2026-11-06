@@ -165,6 +165,7 @@ final class SettingsHubTests: XCTestCase {
         ("EvenDisplaySettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         ("WebHUDMirrorSettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         ("TeleprompterSettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
+        ("BandPracticeView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         // Advanced.
         ("DeveloperPanelView", .advanced, ["AdvancedSettingsScreen"]),
         ("PromptInspectorView", .advanced, ["AdvancedSettingsScreen"]),

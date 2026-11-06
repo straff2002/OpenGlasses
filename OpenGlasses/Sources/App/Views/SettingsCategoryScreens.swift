@@ -287,6 +287,12 @@ struct DisplayHUDSections: View {
                 ),
                 info: "Up to three short next questions appear as buttons under an answer on the in-lens display. Press one to ask it. The assistant writes them with the answer, so they cost no extra request; they are never spoken and never saved in the conversation."
             )
+            // Plan KP §5: the band check, also on the lens launcher.
+            NavigationLink {
+                BandPracticeView(session: appState.bandPractice)
+            } label: {
+                Label("Practise the band", systemImage: "hand.tap")
+            }
         } header: {
             Text("In-Lens Display")
         } footer: {

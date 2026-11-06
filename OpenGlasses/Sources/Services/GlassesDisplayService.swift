@@ -269,6 +269,17 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
+    /// Plan KP P3: whose the Display is for the band check, read now rather than from the last
+    /// change: `.off` while the HUD is off or there is no display (the mirror has no band).
+    var practiceAvailability: DisplayAvailability {
+        guard isEnabled, deviceSupportsDisplay() else { return .off }
+        return currentAvailability()
+    }
+
+    /// The held interactive screen's `renderKey`, so a holder (the band check) can tell its own
+    /// screen is still the one on the HUD. Nil when none is held.
+    var heldScreenRenderKey: String? { isInteractive ? currentScreen?.renderKey : nil }
+
     /// The support report's lines about the reading.
     var availabilityReportLines: [String] {
         ["Display reading now: \(displayAvailability.reportName) (\(sessionReading.reportName))"]
@@ -390,6 +401,14 @@ final class GlassesDisplayService: ObservableObject {
     /// logged (`hudPageTurnStale`) and must be dropped by the caller.
     func acceptsCardPress(issuedAgainst revision: UInt64) -> Bool {
         guard showsAnswerCard else { return false }
+        return acceptsHeldScreenPress(issuedAgainst: revision)
+    }
+
+    /// Plan KP §2, for any held interactive screen (the band check's card, P3): whether a press
+    /// issued against `revision` is still current. A stale one is logged (`hudPageTurnStale`) and
+    /// must be dropped by the caller.
+    func acceptsHeldScreenPress(issuedAgainst revision: UInt64) -> Bool {
+        guard isInteractive else { return false }
         guard PageTurnGate.accept(turnRevision: revision, currentRevision: frameRevision) else {
             PrivacyLog.device(.hud, .hudPageTurnStale,
                               count: Int(clamping: frameRevision &- revision))

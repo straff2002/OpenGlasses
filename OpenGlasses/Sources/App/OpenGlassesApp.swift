@@ -1439,6 +1439,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The answer card on the lens (Plan KP P1): a turn's answer a page at a time, with its
     /// actions under it.
     lazy var hudAnswerCard = HUDAnswerCard(display: glassesDisplay)
+    /// The band check (Plan KP §5): Practise the band, on the lens and the phone page.
+    lazy var bandPractice = BandPracticeSession(display: glassesDisplay)
     /// Audio-paced HUD teleprompter (Teleprompter Phase 2): streams recognized speech into
     /// the `ScriptAligner` to keep your place, owns the display while active.
     let teleprompterStore = TeleprompterScriptStore()
@@ -4691,6 +4693,19 @@ class AppState: ObservableObject, AppStateProtocol {
                 catch { PrivacyLog.location(.routeStartFailed, error: SafeErrorSummary(error)) }
             }
         }
+
+        // Plan KP §5: Practise the band from the launcher, offered while a display can show it and
+        // no task card is up (the check never takes the HUD from one). Each press plays the temple
+        // taps' accepted or refused tone.
+        bandPractice.router = hudRouter
+        bandPractice.playCue = { [weak self] cue in
+            self?.playTempleEarcon(cue == .right ? .accepted : .refused)
+        }
+        hudLauncher.bandPracticeAvailable = { [weak self] in
+            guard let self else { return false }
+            return self.glassesDisplay.deviceSupportsDisplay() && !self.hudRouter.isPresentingTask
+        }
+        hudLauncher.startBandPractice = { [weak self] in self?.bandPractice.start() }
 
         hudLauncher.runQuickAction = { [weak self] action in
             Task { @MainActor in await self?.executeQuickAction(action) }
