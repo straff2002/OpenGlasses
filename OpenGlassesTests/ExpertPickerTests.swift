@@ -326,7 +326,9 @@ final class ExpertPickerTests: XCTestCase {
                        ["trades", "equipment"])
         XCTAssertEqual(Set(Mirror(reflecting: sam).children.compactMap(\.label)),
                        ["id", "name", "phone", "faceTimeHandle", "handoverChannel", "specialties", "kind",
-                        "onCall", "timeZoneIdentifier", "rate"])
+                        "onCall", "timeZoneIdentifier", "rate",
+                        // Plan KM P3, decision 10: a human-set agreement term, not a ranking input.
+                        "coachingMayBecomeTeamLearning"])
         XCTAssertEqual(Set(Mirror(reflecting: Fixture.window(1, 0, 60)).children.compactMap(\.label)),
                        ["weekday", "startMinute", "endMinute"])
         let forbidden = ["score", "rating", "rank", "outcome", "history", "count", "success", "weight"]

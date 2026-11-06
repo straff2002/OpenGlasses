@@ -277,7 +277,9 @@ final class AssistingIsolationTests: XCTestCase {
         // A held handover is a copy: changing it changes nothing it came from.
         let held = HeldHandover(handover: AssistingFixture.handover(), receivedAt: AssistingFixture.start)
         XCTAssertEqual(Set(Mirror(reflecting: held).children.compactMap(\.label)),
-                       ["handover", "generationsSeen", "firstReceivedAt", "lastReceivedAt", "changes", "clock", "replySentAt"])
+                       ["handover", "generationsSeen", "firstReceivedAt", "lastReceivedAt", "changes", "clock", "replySentAt",
+                        // Plan KM P3: the expert's own drafts, which go back only by their own share.
+                        "coachingDraft", "noteDraft", "coachingSentAt"])
     }
 
     /// Medical Compliance (§8 never offers the *sending*): Assisting reads no mode at all — it is a

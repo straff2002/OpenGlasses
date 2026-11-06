@@ -136,6 +136,10 @@ struct WorkRecord: Codable, Equatable {
     var vanStock: [VanStockUse]?
     /// Office-only references. Source serial, images and recognised text are never embedded.
     var capturedManuals: [CapturedManualReference]?
+    /// Experts' coaching steps walked on this job (Plan KM P3): credited, each step as written, the
+    /// safety rule read first where one hit, and what was found at each step. Nil, and absent from
+    /// the JSON, on a job that received none, so an older record encodes exactly as it did.
+    var coachingWalkthroughs: [CoachingWalkthrough]?
 
     var reportedBy: ReportIdentity? = nil
 
@@ -175,6 +179,7 @@ struct WorkRecord: Codable, Equatable {
         case teamLearningAnswers = "team_learning_answers"
         case vanStock = "van_stock"
         case capturedManuals = "captured_manuals"
+        case coachingWalkthroughs = "coaching_walkthroughs"
     }
 
     // MARK: - Assembly
@@ -224,6 +229,8 @@ struct WorkRecord: Codable, Equatable {
         self.teamLearnings = (session.teamLearnings ?? []).isEmpty ? nil : session.teamLearnings
         self.teamLearningAnswers = (session.teamLearningAnswers ?? []).isEmpty ? nil : session.teamLearningAnswers
         self.vanStock = (session.vanStockUses ?? []).isEmpty ? nil : session.vanStockUses
+        let walkthroughs = CoachingWalkthrough.build(session: session)
+        self.coachingWalkthroughs = walkthroughs.isEmpty ? nil : walkthroughs
     }
 
     /// Hand-written so a record exported before the evidence review existed still decodes.
@@ -270,6 +277,7 @@ struct WorkRecord: Codable, Equatable {
         teamLearningAnswers = try c.decodeIfPresent([TeamLearningAnswer].self, forKey: .teamLearningAnswers)
         vanStock = try c.decodeIfPresent([VanStockUse].self, forKey: .vanStock)
         capturedManuals = try c.decodeIfPresent([CapturedManualReference].self,forKey:.capturedManuals)
+        coachingWalkthroughs = try c.decodeIfPresent([CoachingWalkthrough].self, forKey: .coachingWalkthroughs)
     }
 
     /// A summary with no requests is no summary: kept out of the record, so the synthesized encoder
@@ -416,6 +424,12 @@ struct WorkRecord: Codable, Equatable {
             }
         }
 
+        // Experts' coaching walked on the job (Plan KM P3): credited, as written, with what was
+        // found at each step.
+        for walkthrough in coachingWalkthroughs ?? [] {
+            lines.append(contentsOf: walkthrough.lines)
+        }
+
         let used = partsUsed
         if !used.isEmpty {
             lines.append("Parts used:")
@@ -529,7 +543,12 @@ struct WorkRecord: Codable, Equatable {
         if task.origin == .operatorAdded { head += " (added by the technician)" }
         var parts = [head]
         if let why = task.why, !why.isEmpty { parts.append("Why: \(why)") }
-        if let procedureId = task.procedureId {
+        if let procedureId = task.procedureId, CoachingProcedure.isCoachingId(procedureId) {
+            // An expert's coaching (Plan KM P3): the walkthrough is listed in full below.
+            parts.append(task.procedureOutcome.map {
+                "Coaching steps finished as \(prettyLabel($0).lowercased())"
+            } ?? "Coaching steps")
+        } else if let procedureId = task.procedureId {
             let procedure = prettyLabel(procedureId)
             parts.append(task.procedureOutcome.map {
                 "Procedure \(procedure) finished as \(prettyLabel($0).lowercased())"

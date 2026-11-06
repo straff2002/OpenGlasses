@@ -478,10 +478,10 @@ struct OpenGlassesApp: App {
                         Task { @MainActor in appState.jobFiles.open(url) }
                         return
                     }
-                    // An `.ogcase` (Plan KM P1/P2). A job handover sent to this phone's owner as
+                    // An `.ogcase` (Plan KM P1–P3). A job handover sent to this phone's owner as
                     // an expert opens in Assisting mode — read-only, kept apart, needing no Field
-                    // Assist. An expert's time reply goes to the job that sent the handover, and
-                    // only if this phone sent it. Anything else is refused by name.
+                    // Assist. An expert's time reply or coaching steps go to the job that sent the
+                    // handover, and only if this phone sent it. Anything else is refused by name.
                     if ExpertHandoverFile.isHandoverFile(url) {
                         Task { @MainActor in
                             switch ExpertHandoverFile.receive(url) {
@@ -491,6 +491,10 @@ struct OpenGlassesApp: App {
                                     NoticeCenter.shared.post(report.message, severity: .advisory, source: .app)
                                 }
                             case .timeReply(let reply):
+                                NoticeCenter.shared.post(ExpertReplyIntake.shared.receive(reply), severity: .advisory, source: .app)
+                            case .coachingReply(let reply):
+                                // Plan KM P3: loaded on the open job only if it answers this
+                                // phone's own handover, from the expert it went to.
                                 NoticeCenter.shared.post(ExpertReplyIntake.shared.receive(reply), severity: .advisory, source: .app)
                             case .refused(let message):
                                 NoticeCenter.shared.post(message, severity: .advisory, source: .app)

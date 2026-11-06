@@ -61,22 +61,42 @@ enum ExpertReplyMatch {
         let received: ExpertReplyReceived
     }
 
-    /// - Parameter sessions: the jobs this phone holds — the open one and the history.
-    static func match(_ reply: ExpertTimeReply, sessions: [FieldSession], now: Date) -> Result<Match, Refusal> {
-        guard let session = sessions.first(where: { ($0.expertHandovers ?? []).contains { $0.handoverId == reply.handoverId } }),
-              let sent = session.expertHandovers?.filter({ $0.handoverId == reply.handoverId }),
-              let first = sent.first else {
-            return .failure(.unknownHandover)
-        }
+    /// The job among `sessions` that sent this handover, or nil.
+    static func session(sending handoverId: String, in sessions: [FieldSession]) -> FieldSession? {
+        sessions.first { ($0.expertHandovers ?? []).contains { $0.handoverId == handoverId } }
+    }
+
+    /// Whether a reply on `session` is from the expert its handover went to (Plan KM P2, shared by
+    /// the time reply and P3's coaching reply): addressed to that list entry, answered by the same
+    /// card when the entry came from one, and claiming only generations this phone sent. Returns
+    /// the expert as the job's own sent record has them. Pure.
+    static func verify(handoverId: String, expert claimed: ExpertTimeReply.Expert, generationsSeen: [Int],
+                       on session: FieldSession) -> Result<(expert: ExpertSnapshot, matchedBy: ExpertReplyReceived.MatchedBy), Refusal> {
+        let sent = (session.expertHandovers ?? []).filter { $0.handoverId == handoverId }
+        guard let first = sent.first else { return .failure(.unknownHandover) }
         let expert = first.expert
-        guard sent.allSatisfy({ $0.expert.id == expert.id }), reply.expert.listId == expert.id else {
+        guard sent.allSatisfy({ $0.expert.id == expert.id }), claimed.listId == expert.id else {
             return .failure(.otherSender)
         }
         let fromCard = ExpertCard.isCardId(expert.id)
-        if fromCard, reply.expert.cardId != expert.id { return .failure(.cardMismatch) }
+        if fromCard, claimed.cardId != expert.id { return .failure(.cardMismatch) }
         let sentGenerations = Set(sent.map(\.generation))
-        guard !reply.generationsSeen.isEmpty, Set(reply.generationsSeen).isSubset(of: sentGenerations) else {
+        guard !generationsSeen.isEmpty, Set(generationsSeen).isSubset(of: sentGenerations) else {
             return .failure(.generationNotSent)
+        }
+        return .success((expert, fromCard ? .card : .listEntry))
+    }
+
+    /// - Parameter sessions: the jobs this phone holds — the open one and the history.
+    static func match(_ reply: ExpertTimeReply, sessions: [FieldSession], now: Date) -> Result<Match, Refusal> {
+        guard let session = session(sending: reply.handoverId, in: sessions) else { return .failure(.unknownHandover) }
+        let expert: ExpertSnapshot
+        let fromCard: Bool
+        switch verify(handoverId: reply.handoverId, expert: reply.expert, generationsSeen: reply.generationsSeen, on: session) {
+        case .failure(let refusal): return .failure(refusal)
+        case .success(let verified):
+            expert = verified.expert
+            fromCard = verified.matchedBy == .card
         }
         let received = ExpertReplyReceived(
             handoverId: reply.handoverId, expert: expert,
@@ -128,6 +148,41 @@ final class ExpertReplyIntake {
             }
             PrivacyLog.transfer(.fieldSessionExport, .imported, count: 1)
             return ExpertReplyMatch.confirmation(match.received, jobReference: reference)
+        }
+    }
+
+    // MARK: - Coaching steps (Plan KM P3)
+
+    /// The organisation's list: the expert's kind for the credit. Injectable for tests.
+    var organisationExperts: () -> [EscalationContact] = { ExpertListStore.shared.organizationExperts }
+    /// The open job's vault core files, for the safety check. Nil reads the open job's vault.
+    var coreFiles: (() -> [(filename: String, contents: String)])?
+    var medicalMode: () -> Bool = { MedicalEgressGuard.currentMode().hipaaMode }
+
+    /// Put an expert's coaching steps on the open job, or say why not. Returns what to tell the
+    /// technician. A reply that doesn't answer this phone's own handover, on the job still open,
+    /// from the expert it went to, is a file this phone didn't ask for: it is refused by name and
+    /// nothing of it is kept, so it never reaches the procedure runner or the prompt.
+    func receive(_ reply: ExpertCoachingReply) -> String {
+        let open = sessions.activeSession
+        let others = sessions.history.filter { $0.id != open?.id }
+        let files = coreFiles?() ?? sessions.activeVault?.readAll() ?? []
+        switch CoachingReplyMatch.match(reply, openJob: open, otherJobs: others,
+                                        lockedSessionIds: sessions.lockedManagedRecordIDs,
+                                        organisationExperts: organisationExperts(), coreFiles: files,
+                                        medicalMode: medicalMode(), now: now()) {
+        case .failure(let refusal):
+            PrivacyLog.transfer(.fieldSessionExport, .quarantined)
+            return refusal.message
+        case .success(let accepted):
+            switch sessions.loadCoaching(accepted) {
+            case .refused(let why):
+                PrivacyLog.transfer(.fieldSessionExport, .quarantined)
+                return why
+            case .loaded:
+                PrivacyLog.transfer(.fieldSessionExport, .imported, count: accepted.received.steps.count)
+                return CoachingReplyMatch.confirmation(accepted.received)
+            }
         }
     }
 }
@@ -188,7 +243,8 @@ enum ExpertCardImport {
                 list[index] = EscalationContact(id: card.cardId, name: card.name, phone: card.phone,
                                                 faceTimeHandle: card.faceTimeHandle, handoverChannel: card.handoverChannel,
                                                 specialties: card.specialties, kind: kept.kind, onCall: kept.onCall,
-                                                timeZoneIdentifier: kept.timeZoneIdentifier, rate: kept.rate)
+                                                timeZoneIdentifier: kept.timeZoneIdentifier, rate: kept.rate,
+                                                coachingMayBecomeTeamLearning: kept.coachingMayBecomeTeamLearning)
                 outcome = .updated(.organisation)
             } else {
                 list.append(ownerEntry(card))

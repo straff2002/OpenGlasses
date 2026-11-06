@@ -18,8 +18,9 @@ import Foundation
 /// `.ogjob`, which it only ever receives. It carries no signature: a handover is a document, not a
 /// key (§7), and opening one grants nothing.
 ///
-/// The expert's time reply (Plan KM P2, `ExpertTimeReplyFile`) is the same family: the same zip
-/// and manifest name, kind `time`, read by its own reader. `received(_:)` reads the kind first.
+/// The expert's time reply (Plan KM P2, `ExpertTimeReplyFile`) and coaching reply (P3,
+/// `ExpertCoachingReplyFile`) are the same family: the same zip and manifest name, kinds `time` and
+/// `coaching`, each read by its own reader. `received(_:)` reads the kind first.
 enum ExpertHandoverFile {
 
     static let fileExtension = "ogcase"
@@ -146,13 +147,15 @@ enum ExpertHandoverFile {
 
     // MARK: - Opening one on this phone
 
-    /// What an `.ogcase` handed to the app turned out to be (Plan KM P2). The family has two kinds
-    /// this version reads: a **handover**, which goes to Assisting mode, and an expert's **time
-    /// reply**, which goes to the job that sent the handover. The kind is read before anything else,
-    /// and each is then read by its own strict reader.
+    /// What an `.ogcase` handed to the app turned out to be (Plan KM P2, P3). The family has three
+    /// kinds this version reads: a **handover**, which goes to Assisting mode, and an expert's
+    /// **time reply** or **coaching reply**, which go to the job that sent the handover — and only
+    /// if this phone sent it. The kind is read before anything else, and each is then read by its
+    /// own strict reader.
     enum Received: Equatable {
         case handover(Opened)
         case timeReply(ExpertTimeReply)
+        case coachingReply(ExpertCoachingReply)
         /// Refused, in the words a notice shows.
         case refused(String)
     }
@@ -171,7 +174,14 @@ enum ExpertHandoverFile {
 
     /// The same, over bytes. Pure.
     static func received(_ data: Data) -> Received {
-        if kind(of: data) == ExpertTimeReply.kind {
+        let manifestKind = kind(of: data)
+        if manifestKind == ExpertCoachingReply.kind {
+            switch ExpertCoachingReplyFile.read(data) {
+            case .success(let reply): return .coachingReply(reply)
+            case .failure(let error): return .refused(ExpertCoachingReplyFile.describe(error))
+            }
+        }
+        if manifestKind == ExpertTimeReply.kind {
             switch ExpertTimeReplyFile.read(data) {
             case .success(let reply): return .timeReply(reply)
             case .failure(let error): return .refused(ExpertTimeReplyFile.describe(error))

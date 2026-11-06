@@ -59,6 +59,8 @@ struct ActiveJobView: View {
             // Parts asked for on this job and not sent yet, with the button that emails them.
             JobPartsOrderSection(sessionId: FieldSessionService.shared.activeSession?.id)
             PhotographedManualSection()
+            // Coaching steps an expert sent for this job (Plan KM P3). Draws nothing without any.
+            JobCoachingSection()
             // The job's evidence, with the face-blur state stated in plain words beside it. What
             // of it goes out is decided at close, in `JobEvidenceReviewView`; what this section is
             // for is knowing, mid-job, that the pictures and clips are landing somewhere.

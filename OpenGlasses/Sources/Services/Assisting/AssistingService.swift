@@ -16,6 +16,8 @@ import Combine
 ///   survives the app dying (`AssistingClock`);
 /// - the **time reply**, staged: built and shown on Done, and sent only from the share sheet the
 ///   expert opens with their own tap;
+/// - **coaching steps** for that handover (Plan KM P3): written, reordered and kept as a draft on
+///   the held handover, and sent the same way as the time reply — staged, by the expert's share;
 /// - the **expert card** (`ExpertCardStore`).
 ///
 /// Medical Compliance mode does not close it: holding a handover sent to you is not an egress, the
@@ -173,6 +175,98 @@ final class AssistingService: ObservableObject {
     func finishShare(_ staged: StagedReply, for id: String, completed: Bool) {
         replies.finishShare(staged.lease, outcome: completed ? .completed : .cancelled)
         if completed { store.markReplySent(id: id) }
+    }
+
+    // MARK: - The note
+
+    /// The note for the time reply as far as the expert has written it (kept across a relaunch).
+    func noteDraft(for id: String) -> String { store.handover(id: id)?.noteDraft ?? "" }
+
+    func saveNote(_ note: String, for id: String) { store.setNoteDraft(id: id, note: note) }
+
+    // MARK: - Coaching steps (Plan KM §5, P3)
+
+    /// The steps the expert has written for this handover, in order.
+    func coachingSteps(for id: String) -> [CoachingStep] { store.handover(id: id)?.coachingDraft ?? [] }
+
+    /// Add a step, or replace the one with the same id. Returns why it can't be kept, or nil.
+    @discardableResult
+    func saveCoachingStep(_ step: CoachingStep, for id: String) -> String? {
+        if let why = step.problem { return String(why.prefix(1)).uppercased() + String(why.dropFirst()) + "." }
+        var steps = coachingSteps(for: id)
+        if let index = steps.firstIndex(where: { $0.id == step.id }) {
+            steps[index] = step
+        } else {
+            guard steps.count < CoachingStep.maxSteps else { return ExpertCoachingReply.Refusal.tooManySteps.message }
+            steps.append(step)
+        }
+        store.setCoachingDraft(id: id, steps: steps)
+        return nil
+    }
+
+    func moveCoachingSteps(for id: String, from source: IndexSet, to destination: Int) {
+        store.setCoachingDraft(id: id, steps: Self.moved(coachingSteps(for: id), from: source, to: destination))
+    }
+
+    func deleteCoachingSteps(for id: String, at offsets: IndexSet) {
+        let steps = coachingSteps(for: id).enumerated().filter { !offsets.contains($0.offset) }.map(\.element)
+        store.setCoachingDraft(id: id, steps: steps)
+    }
+
+    /// The list a drag in the editor makes: the rows at `source` moved to before `destination`, as
+    /// SwiftUI's `onMove` reports it. Pure.
+    static func moved<T>(_ items: [T], from source: IndexSet, to destination: Int) -> [T] {
+        let moving = source.filter { $0 < items.count }.map { items[$0] }
+        var rest: [T] = []
+        var insertAt = 0
+        for (index, item) in items.enumerated() where !source.contains(index) {
+            if index < destination { insertAt += 1 }
+            rest.append(item)
+        }
+        rest.insert(contentsOf: moving, at: min(insertAt, rest.count))
+        return rest
+    }
+
+    /// The coaching reply for the steps written so far, for the view to show. Nothing is written
+    /// and nothing leaves.
+    func coachingReply(for id: String) -> Result<ExpertCoachingReply, ExpertCoachingReply.Refusal>? {
+        guard let held = store.handover(id: id) else { return nil }
+        return ExpertCoachingReply.build(for: held, steps: held.coachingDraft ?? [], card: cards.card, now: now())
+    }
+
+    struct StagedCoaching {
+        let reply: ExpertCoachingReply
+        let lease: StagedExportLease
+    }
+
+    /// The expert tapped Send Coaching Steps: write the file into protected staging for the share
+    /// sheet. Nothing has left yet — the share sheet's own Send is the tap that sends.
+    func stageCoaching(for id: String) -> Result<StagedCoaching, Refusal> {
+        guard let result = coachingReply(for: id) else { return .failure(Refusal("That handover is no longer on this phone.")) }
+        let reply: ExpertCoachingReply
+        switch result {
+        case .failure(let refusal): return .failure(Refusal(refusal.message))
+        case .success(let built): reply = built
+        }
+        do {
+            let data = try ExpertCoachingReplyFile.write(reply)
+            let lease = try replies.makeLease(data: data, fileExtension: ExpertHandoverFile.fileExtension,
+                                              displayName: ExpertCoachingReplyFile.fileName(reply),
+                                              fallbackName: "coaching.ogcase")
+            PrivacyLog.transfer(.assistingReply, .exported, count: reply.steps.count)
+            return .success(StagedCoaching(reply: reply, lease: lease))
+        } catch {
+            PrivacyLog.transfer(.assistingReply, .fileFailed, error: SafeErrorSummary(error))
+            return .failure(Refusal("The coaching steps couldn't be written on this phone. Try again."))
+        }
+    }
+
+    func beginShare(_ staged: StagedCoaching) { replies.beginShare(staged.lease) }
+
+    /// The share sheet closed. Only a completed share marks the steps sent.
+    func finishShare(_ staged: StagedCoaching, for id: String, completed: Bool) {
+        replies.finishShare(staged.lease, outcome: completed ? .completed : .cancelled)
+        if completed { store.markCoachingSent(id: id) }
     }
 
     // MARK: - Deleting

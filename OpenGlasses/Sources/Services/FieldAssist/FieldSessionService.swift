@@ -2018,6 +2018,9 @@ final class FieldSessionService: ObservableObject {
             if !procedureContext.isEmpty {
                 context = (context.map { $0 + "\n\n" } ?? "") + procedureContext
             }
+        } else if !coachingMedicalMode(), let coaching = CoachingProcedure.waitingPromptNote(coachingWaiting) {
+            // An expert's coaching on the job, not yet walked (Plan KM P3): how to start it.
+            context = (context.map { $0 + "\n\n" } ?? "") + coaching
         }
         // The rule chain's current step, or the chains the vault offers (Plan JJ P2).
         if let chains = chainPromptContext() {
@@ -3533,11 +3536,13 @@ final class FieldSessionService: ObservableObject {
         let quantity = quantity.trimmingCharacters(in: .whitespacesAndNewlines)
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let session = activeSession, !quantity.isEmpty, !value.isEmpty else { return nil }
+        let step = currentProcedureStep
         let reading = SpokenReading(quantity: quantity, value: value,
                                     unit: SpokenReading.normalisedUnit(unit),
                                     unitScope: session.continuityScope,
                                     taskId: session.activeTask?.id, at: at,
-                                    citation: verifiedCitation(page))
+                                    citation: verifiedCitation(page),
+                                    procedureId: step?.procedureId, procedureStepId: step?.stepId)
         mutateSession { $0.spokenReadings.append(reading) }
         attachEvidence { evidence in
             if !evidence.readings.contains(reading.id) { evidence.readings.append(reading.id) }
@@ -3556,12 +3561,14 @@ final class FieldSessionService: ObservableObject {
         let quantity = quantity.trimmingCharacters(in: .whitespacesAndNewlines)
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let session = activeSession, !quantity.isEmpty, !value.isEmpty else { return nil }
+        let step = currentProcedureStep
         let reading = SpokenReading(quantity: quantity, value: value,
                                     unit: SpokenReading.normalisedUnit(unit),
                                     unitScope: session.continuityScope,
                                     taskId: session.activeTask?.id, at: at,
                                     method: method, photoId: photoId,
-                                    refrigerant: refrigerant, refrigerantSource: refrigerantSource)
+                                    refrigerant: refrigerant, refrigerantSource: refrigerantSource,
+                                    procedureId: step?.procedureId, procedureStepId: step?.stepId)
         mutateSession { $0.spokenReadings.append(reading) }
         attachEvidence { evidence in
             if !evidence.readings.contains(reading.id) { evidence.readings.append(reading.id) }
@@ -3630,9 +3637,11 @@ final class FieldSessionService: ObservableObject {
                                        unitScope: target.unitScope, taskId: target.taskId, at: at,
                                        supersedes: target.id,
                                        citation: verifiedCitation(page) ?? target.citation,
-                                       // Said, so no method or photo — but on the same refrigerant.
+                                       // Said, so no method or photo — but on the same refrigerant,
+                                       // and against the same procedure step (Plan KM P3).
                                        refrigerant: target.refrigerant,
-                                       refrigerantSource: target.refrigerantSource)
+                                       refrigerantSource: target.refrigerantSource,
+                                       procedureId: target.procedureId, procedureStepId: target.procedureStepId)
         mutateSession { $0.spokenReadings.append(correction) }
         logReading(correction, kind: .readingCorrected)
         return correction
@@ -4120,9 +4129,15 @@ final class FieldSessionService: ObservableObject {
 
     // MARK: - Procedures
 
-    /// "id — title" summaries of procedures available in the active session's vault.
+    /// "id — title" summaries of procedures available in the active session's vault, then the
+    /// coaching steps an expert sent for this job (Plan KM P3), which live with the job and are
+    /// never in the library.
     func availableProcedures() -> [String] {
-        library?.summaries() ?? []
+        let coaching = coachingOnJob.map { received in
+            let count = received.steps.count == 1 ? "1 step" : "\(received.steps.count) steps"
+            return "\(received.procedureId) — Coaching from \(received.credit), \(count) (sent for this job)"
+        }
+        return (library?.summaries() ?? []) + coaching
     }
 
     /// Structured procedure definitions available in the active session's vault (empty when
@@ -4137,12 +4152,19 @@ final class FieldSessionService: ObservableObject {
     /// Title of the active procedure, if any.
     var activeProcedureTitle: String? { runner?.procedure.title }
 
+    /// Who the running procedure is credited to, when it is an expert's coaching (Plan KM P3).
+    var activeProcedureCoaching: Procedure.Coaching? { runner?.procedure.coaching }
+
     /// Begin a procedure by id. Requires an active session and no procedure already running.
+    /// A vault procedure comes from the library; an expert's coaching (Plan KM P3) from this job's
+    /// own record of it, and from nowhere else.
     @discardableResult
     func startProcedure(id: String) throws -> Procedure.Step {
         guard activeSession != nil, let logger else { throw FieldSessionError.noActiveSession }
         guard runner == nil else { throw FieldSessionError.procedureAlreadyRunning }
-        guard let procedure = library?.procedure(id: id) else { throw FieldSessionError.unknownProcedure(id) }
+        guard let procedure = try library?.procedure(id: id) ?? coachingProcedure(id: id) else {
+            throw FieldSessionError.unknownProcedure(id)
+        }
         let newRunner = try ProcedureRunner(starting: procedure, logger: logger)
         runner = newRunner
         activeProcedureId = procedure.id
@@ -4239,6 +4261,87 @@ final class FieldSessionService: ObservableObject {
     private func clearRunner() {
         runner = nil
         activeProcedureId = nil
+    }
+
+    // MARK: - An expert's coaching steps (Plan KM §5, P3)
+
+    /// Whether Medical Compliance mode is on. Injectable for tests.
+    var coachingMedicalMode: () -> Bool = { MedicalEgressGuard.currentMode().hipaaMode }
+
+    /// The coaching steps experts sent for the open job, in the order they arrived.
+    var coachingOnJob: [ExpertCoachingReceived] { activeSession?.expertCoaching ?? [] }
+
+    /// The coaching on the open job that has not been started yet.
+    var coachingWaiting: [ExpertCoachingReceived] {
+        guard let session = activeSession else { return [] }
+        return coachingOnJob.filter { received in !session.tasks.contains { $0.procedureId == received.procedureId } }
+    }
+
+    /// What happened when coaching was put on the job.
+    enum CoachingLoad: Equatable {
+        case loaded
+        case refused(String)
+    }
+
+    /// Put an expert's accepted coaching on the open job. **The only way coaching reaches a job**:
+    /// it takes an `AcceptedCoaching`, which only `CoachingReplyMatch` makes — a reply that answered
+    /// this job's own handover, from the expert it went to — so a crafted file never gets here. The
+    /// steps are kept with the job (never the procedure library) and walked as a procedure when the
+    /// technician asks. Refused in Medical Compliance mode, and on any job but the one open.
+    @discardableResult
+    func loadCoaching(_ accepted: AcceptedCoaching) -> CoachingLoad {
+        if coachingMedicalMode() { return .refused(CoachingReplyMatch.Refusal.medicalMode.message) }
+        guard let session = activeSession, session.id == accepted.sessionId, session.endedAt == nil,
+              !lockedSessionIDs.contains(session.id), let logger else {
+            return .refused(CoachingReplyMatch.Refusal.jobClosed.message)
+        }
+        let received = accepted.received
+        if let already = session.expertCoaching?.first(where: { $0.coachingId == received.coachingId }) {
+            return .refused(CoachingReplyMatch.Refusal.alreadyOnJob(procedureId: already.procedureId).message)
+        }
+        mutateSession { $0.expertCoaching = ($0.expertCoaching ?? []) + [received] }
+        logger.append(.init(timestamp: received.receivedAt, kind: .expertCoachingReceived,
+                            text: "Coaching from \(received.credit): \(received.steps.count) steps",
+                            payload: ["handover_id": AnyCodable(received.handoverId),
+                                      "coaching_id": AnyCodable(received.coachingId),
+                                      "procedure_id": AnyCodable(received.procedureId),
+                                      "expert_id": AnyCodable(received.expert.id),
+                                      "expert_kind": AnyCodable(received.expert.kind.rawValue),
+                                      "steps": AnyCodable(received.steps.count),
+                                      "safety_flagged": AnyCodable(received.flaggedSteps.count),
+                                      "matched_by": AnyCodable(received.matchedBy.rawValue)]))
+        return .loaded
+    }
+
+    /// The coaching procedure for `id`, built from this job's own record of the expert's steps, or
+    /// nil when the job holds none by that id. Throws in Medical Compliance mode, and when the
+    /// built steps are not the expert's exactly as written.
+    private func coachingProcedure(id: String) throws -> Procedure? {
+        guard CoachingProcedure.isCoachingId(id),
+              let received = coachingOnJob.first(where: { $0.procedureId == id }) else { return nil }
+        if coachingMedicalMode() { throw FieldSessionError.coachingInMedicalMode }
+        let procedure = CoachingProcedure.procedure(for: received)
+        guard CoachingProcedure.isVerbatim(procedure, received) else { throw FieldSessionError.coachingNotAsWritten }
+        return procedure
+    }
+
+    /// The technician offered the steps as a team learning (they went to `LearningReview`).
+    func markCoachingOffered(coachingId: String, at date: Date = Date()) {
+        guard activeSession?.expertCoaching?.contains(where: { $0.coachingId == coachingId }) == true else { return }
+        mutateSession { session in
+            guard var list = session.expertCoaching,
+                  let index = list.firstIndex(where: { $0.coachingId == coachingId }) else { return }
+            list[index].offeredAsTeamLearningAt = date
+            session.expertCoaching = list
+        }
+    }
+
+    /// The step a reading taken now is recorded against: the running procedure's current step,
+    /// while the procedure runs on this unit.
+    private var currentProcedureStep: (procedureId: String, stepId: String)? {
+        guard let runner, let session = activeSession,
+              (session.procedureEquipmentScope ?? "initial") == session.continuityScope else { return nil }
+        return (runner.procedure.id, runner.currentStepId)
     }
 
     // MARK: - Export
@@ -4381,7 +4484,8 @@ final class FieldSessionService: ObservableObject {
                 break
             }
         }
-        guard let procId = activeProcId, let procedure = library?.procedure(id: procId) else { return }
+        guard let procId = activeProcId,
+              let procedure = library?.procedure(id: procId) ?? (try? coachingProcedure(id: procId)) else { return }
         runner = ProcedureRunner(restoring: procedure, visited: stack, logger: logger)
         activeProcedureId = procId
     }
@@ -4416,6 +4520,10 @@ enum FieldSessionError: LocalizedError {
     case verificationOwed(String)
     /// The close is held on a question the technician has to answer first (Plan GB P3).
     case jobCloseHeld(String)
+    /// An expert's coaching is not walked in Medical Compliance mode (Plan KM P3).
+    case coachingInMedicalMode
+    /// The coaching procedure no longer carries the expert's steps as written (Plan KM P3).
+    case coachingNotAsWritten
 
     var errorDescription: String? {
         switch self {
@@ -4435,6 +4543,9 @@ enum FieldSessionError: LocalizedError {
         case .customerSignOffRequired(let reason): return reason
         case .verificationOwed(let reason): return reason
         case .jobCloseHeld(let question): return question
+        case .coachingInMedicalMode: return CoachingReplyMatch.Refusal.medicalMode.message
+        case .coachingNotAsWritten:
+            return "Those coaching steps can't be walked: they no longer match what the expert sent."
         }
     }
 }

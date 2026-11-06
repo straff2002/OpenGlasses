@@ -3,7 +3,7 @@ import UIKit
 
 /// One handover, read-only (Plan KM §7, P2): the job as the technician's phone sent it, what
 /// changed in the latest update, the photos, and the expert's own controls — Take this job,
-/// Pause, Resume, Done — and, once Done, the time reply.
+/// Pause, Resume, Done — the coaching steps they write for it (P3) and, once Done, the time reply.
 ///
 /// **Nothing here can touch the technician's job.** Every row is text from the file; there is no
 /// edit, no tool and no link into Field Assist. A manual is named, never opened from here. The
@@ -43,6 +43,9 @@ struct AssistingHandoverView: View {
         .sheet(item: $sharing) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
         }
+        // The note is kept as far as it is written (Plan KM P3), so leaving the view loses none.
+        .onAppear { note = service.noteDraft(for: handoverId) }
+        .onDisappear { service.saveNote(note, for: handoverId) }
     }
 
     private var title: String {
@@ -73,6 +76,9 @@ struct AssistingHandoverView: View {
             }
 
             clockSection(held)
+
+            // Plan KM P3: the steps the expert writes for the technician to walk.
+            AssistingCoachingSection(service: service, store: store, handoverId: handoverId, problem: $problem)
 
             if held.clock?.isDone == true {
                 replySection(held)
@@ -205,6 +211,7 @@ struct AssistingHandoverView: View {
     }
 
     private func sendReply() {
+        service.saveNote(note, for: handoverId)
         switch service.stageReply(for: handoverId, note: note) {
         case .failure(let refusal):
             problem = refusal.message

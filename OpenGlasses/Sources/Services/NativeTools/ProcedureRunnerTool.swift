@@ -18,7 +18,8 @@ final class ProcedureRunnerTool: NativeTool {
     technician says it passed; without it the fix is recorded and a 'Verify: …' task stays open — \
     never tell them it is resolved before then. Starting a procedure opens a task for it on the \
     current unit. The current step and its branch choices are provided in the system prompt — use \
-    those choice ids.
+    those choice ids. Coaching steps an expert sent for the job are listed and started the same way \
+    ("walk Sam's steps", "load the coaching"); read each one exactly as written.
     """
     let parametersSchema: [String: Any] = [
         "type": "object",
@@ -49,6 +50,8 @@ final class ProcedureRunnerTool: NativeTool {
 
     /// Session to run against; nil means the shared service. Injectable for tests.
     private let injectedSession: FieldSessionService?
+    /// The running procedure's coaching credit for this call, when it is an expert's coaching.
+    private var coaching: Procedure.Coaching?
 
     init(sessionService: FieldSessionService? = nil) {
         self.injectedSession = sessionService
@@ -66,6 +69,8 @@ final class ProcedureRunnerTool: NativeTool {
         guard service.activeSession != nil || action == "list" else {
             return "No active Field Assist session. Start a session before running a procedure."
         }
+        coaching = service.activeProcedureCoaching
+        defer { coaching = nil }
 
         switch action {
         case "list":   return listProcedures(service)
@@ -94,6 +99,7 @@ final class ProcedureRunnerTool: NativeTool {
         }
         do {
             let step = try service.startProcedure(id: id)
+            coaching = service.activeProcedureCoaching
             return "Started procedure '\(service.activeProcedureTitle ?? id)'.\n\n" + present(step)
         } catch {
             return "Could not start procedure: \(error.localizedDescription)"
@@ -156,9 +162,15 @@ final class ProcedureRunnerTool: NativeTool {
     /// echoing them here keeps the model aligned even mid-turn.
     private func present(_ step: Procedure.Step) -> String {
         var lines: [String] = []
-        if let note = step.safetyNote { lines.append("⚠️ SAFETY: \(note)") }
-        lines.append("Step — \(step.title)")
-        lines.append(step.instruction)
+        if let coaching {
+            // An expert's coaching (Plan KM P3): the rule first, then the step exactly as written.
+            lines.append(CoachingProcedure.readAsWrittenRule(credit: coaching.credit))
+            lines.append(contentsOf: CoachingProcedure.stepLines(step))
+        } else {
+            if let note = step.safetyNote { lines.append("⚠️ SAFETY: \(note)") }
+            lines.append("Step — \(step.title)")
+            lines.append(step.instruction)
+        }
         if step.needsConfirmation {
             lines.append("(Last step. It needs the technician's confirmation that the check passed: call "
                          + "'complete' with confirmed true once they say so. \(VerificationRequirement.notYetVerified))")

@@ -1,9 +1,11 @@
 # Plan KM — An Expert on the Job (the job sent to a named expert, their advice walked through, their time on the record)
 
-**Status:** 🚧 P0–P2 built 2026-11-06 (headless; device checks owed): the expert list, the pick
+**Status:** 🚧 P0–P3 built 2026-11-06 (headless; device checks owed): the expert list, the pick
 and the call by name or by specialty (P0); the handover — `.ogcase`, PDF and text, the staged send and
 generations (P1); Assisting mode — the read-only copy, the expert's clock, the staged `time` reply and
-the expert card (P2). P3–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
+the expert card (P2); coaching steps — the expert's step editor and the staged `coaching` reply, loaded
+on the technician's open job only for its own handover, walked as written with the safety rule first
+and readings against each step (P3). P4–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
 took all ten decisions as recommended the same day. Revised the same day: the expert's side belongs to no
 organisation, so one expert can serve many.
 **Track:** Field Assist. Phone first: every part works without glasses, and the expert side needs no
@@ -560,6 +562,70 @@ several companies, and nothing on the expert's side needs a company to own it.
   - the steps are read as written;
   - a reply with an unknown handover id, a closed job or another sender is never loaded;
   - coaching steps never reach the procedure library.
+
+**P3 as built (2026-11-06, headless).**
+
+- **The expert's side** (`Services/Assisting/ExpertCoachingReply.swift`, `App/Views/Assisting/
+  AssistingCoachingSection.swift`): a Coaching steps section on every held handover — numbered steps,
+  each an instruction with an optional reading (what, and its unit) and an optional "stop if"; add,
+  edit, reorder and delete; typed, or dictated with the keyboard's own microphone (no new speech
+  pipeline). `CoachingStep` tidies only white space and control characters and never shortens: a
+  step over its limit (500 characters; 30 steps) is refused by name. The draft is kept on the held
+  handover (`coachingDraft`, and the time reply's note as `noteDraft`), so a relaunch loses neither;
+  the subject erasure reads both. **The reply** is an `.ogcase` of kind `coaching` — the same zip and
+  manifest as the time reply, holding only `handover.json` — with the handover id, every generation
+  seen, the expert exactly as the time reply carries them, and the steps; no rate. Its id is a digest
+  of the handover and the steps, so the same steps sent twice are one reply. Staged into the
+  `assistingReply` family; only the share sheet's own Send sends.
+- **Accepting** (`Services/FieldAssist/Experts/ExpertCoachingIntake.swift`): `ExpertHandoverFile.received`
+  reads the kind first and hands a coaching reply to `ExpertReplyIntake`. `CoachingReplyMatch` reuses
+  the time reply's checks (`ExpertReplyMatch.verify`: the list entry, the same card, only generations
+  sent) and adds: the handover must be the **open** job's (a closed or departure-locked job takes
+  nothing, and says so), not already on it, and not in Medical Compliance mode. Anything else is "a
+  file this phone didn't ask for" and nothing of it is kept. **Structural:** the only key to the job
+  is `AcceptedCoaching`, whose init is private to that file and made only by the matcher;
+  `FieldSessionService.loadCoaching` takes nothing else, and a source-scrape test holds that only the
+  matcher makes the token, only the loader writes `FieldSession.expertCoaching`, and the reply file's
+  type is named by neither the service, the runner, the tool nor the record.
+- **The walkthrough:** `CoachingProcedure` builds a procedure in memory from the job's own record
+  (`coaching-1`, `coaching-2`, …) whenever it is started or recovered after a relaunch — never written
+  to a vault and never in `ProcedureLibrary`. One step per expert step; a "stop if" offers `continue`
+  or `stop` (a closing step that says to call the expert back, outcome `escalated`); the last leads to
+  an end step. It is credited "<name> (staff expert)" or "<name> (contracted expert)" — contracted if
+  the sent record or the organisation's list says so. `Procedure.coaching` carries the credit and is
+  not a coding key, so no vault file can claim to be someone's coaching. **Voice:** `procedure_runner`
+  lists and starts coaching like any procedure, its description names "walk Sam's steps" / "load the
+  coaching", and while coaching waits unwalked the prompt says which id to start; the Job tab shows it
+  with a Walk these steps button.
+- **Safety first:** at acceptance every step goes through `LearningSafetyCheck.check`; a step that
+  collides carries `CoachingStepSafety` — the matched words and the rule, which is the safety file's
+  own section (by heading, then by its words) or, for a fixed-list hazard no section names, the
+  standing rule. The rule is the step's `safetyNote`, put before the step wherever it is shown to the
+  model, and the step's words are never changed around it.
+- **Read as written:** `ProcedureRunner.promptContext` and the tool's answer both use
+  `CoachingProcedure.stepLines` — the read-as-written instruction (word for word; questions may be
+  answered from the manual, saying where from; the step is never changed), the safety rule first,
+  then "Read exactly as written:" and the stored instruction. `CoachingProcedure.isVerbatim` is checked
+  before a coaching procedure starts; one that no longer matches the expert's words is refused.
+- **Readings against steps:** `SpokenReading` gains `procedure_id` and `procedure_step_id`, stamped
+  while any procedure runs on the current unit and carried by a correction; absent otherwise, so other
+  readings store exactly what they did. The work record gains `coaching_walkthroughs` (credit, status,
+  each step as written, the safety rule read first where flagged, the reading asked for, the stop-if,
+  and what was found at that step), printed in the record's lines and so in the job report's PDF; the
+  coaching task's line says "Coaching steps finished as …".
+- **Never the library; the team's by review only:** `LearningCandidateService.offerCoaching` files the
+  steps as an ordinary candidate for `LearningReview`, the finding credited to the expert. Offered for
+  a `staff` expert; for a `contracted` one only when the organisation's own list entry has the new
+  `coachingMayBecomeTeamLearning` (JSON `coachingToTeam`; off by default, dropped on a staff entry, set
+  only on the profile's or the device owner's list — a personal addition has no such field). A
+  refreshed card keeps it. The P0 Mirror allow-list is updated deliberately, with a test.
+- **Medical Compliance:** P1 never offers the send, so no coaching should arise; if a file arrives
+  anyway it is not loaded, and coaching already on a job is not walked or offered in the prompt in that
+  mode.
+- **Owed.** The P5 end-to-end device run (coaching arriving by each channel, walked by voice on the
+  phone and on glasses); whether the keyboard's dictation suffices on a job site; a P4 question — the
+  plan's §6 has the time reply carry "the coaching steps sent", which P2's reply does not (the
+  coaching reply carries them on its own).
 
 ### P4 — time on the record and the statement
 

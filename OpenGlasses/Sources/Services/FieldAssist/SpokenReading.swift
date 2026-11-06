@@ -39,6 +39,11 @@ struct SpokenReading: Codable, Equatable, Identifiable {
     /// page") (Plan JN P2). Nil otherwise, and not written, so a reading without one stores exactly
     /// what it stored before.
     let pictureMarks: [String]?
+    /// The procedure and step running when it was taken (Plan KM P3), so a walkthrough's record
+    /// shows what was found at each step. Nil — and not written — for a reading taken with no
+    /// procedure running, so such a reading stores exactly what it stored before.
+    let procedureId: String?
+    let procedureStepId: String?
 
     /// The method recorded for a value read off a photographed instrument.
     static let instrumentReadingMethod = "instrument_reading"
@@ -47,7 +52,7 @@ struct SpokenReading: Codable, Equatable, Identifiable {
          unitScope: String = "initial", taskId: String? = nil, at: Date = Date(),
          supersedes: String? = nil, citation: String? = nil, method: String? = nil,
          photoId: String? = nil, refrigerant: String? = nil, refrigerantSource: String? = nil,
-         pictureMarks: [String]? = nil) {
+         pictureMarks: [String]? = nil, procedureId: String? = nil, procedureStepId: String? = nil) {
         self.id = id
         self.quantity = quantity
         self.value = value
@@ -62,6 +67,8 @@ struct SpokenReading: Codable, Equatable, Identifiable {
         self.refrigerant = refrigerant
         self.refrigerantSource = refrigerantSource
         self.pictureMarks = pictureMarks?.isEmpty == true ? nil : pictureMarks
+        self.procedureId = procedureId
+        self.procedureStepId = procedureId == nil ? nil : procedureStepId
     }
 
     enum CodingKeys: String, CodingKey {
@@ -71,6 +78,8 @@ struct SpokenReading: Codable, Equatable, Identifiable {
         case photoId = "photo_id"
         case refrigerantSource = "refrigerant_source"
         case pictureMarks = "picture_marks"
+        case procedureId = "procedure_id"
+        case procedureStepId = "procedure_step_id"
     }
 
     /// The method recorded for a rule chain's read-back (Plan JJ P2): worked step by step from the
@@ -90,7 +99,8 @@ struct SpokenReading: Codable, Equatable, Identifiable {
     func movedToScope(_ scope: String) -> SpokenReading {
         SpokenReading(id: id, quantity: quantity, value: value, unit: unit, unitScope: scope, taskId: taskId,
                       at: at, supersedes: supersedes, citation: citation, method: method, photoId: photoId,
-                      refrigerant: refrigerant, refrigerantSource: refrigerantSource, pictureMarks: pictureMarks)
+                      refrigerant: refrigerant, refrigerantSource: refrigerantSource, pictureMarks: pictureMarks,
+                      procedureId: procedureId, procedureStepId: procedureStepId)
     }
 
     /// "140 °F", "0.28 inWC", "140". A value that already ends in its unit prints as it is (Plan KJ
