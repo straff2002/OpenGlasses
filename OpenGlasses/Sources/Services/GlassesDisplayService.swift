@@ -89,6 +89,7 @@ final class GlassesDisplayService: ObservableObject {
         #if !AVENKIN_PHONE_ONLY
         if let meta = backend as? MetaDisplayBackend {
             meta.onDebugEvent = { [weak self] message in self?.onDebugEvent?(message) }
+            meta.onSessionReading = { [weak self] reading in self?.applySessionReading(reading) }
         }
         #endif
     }
@@ -150,6 +151,120 @@ final class GlassesDisplayService: ObservableObject {
     var acceptsAnswerCard: Bool {
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
         return !isInteractive || showsAnswerCard
+    }
+
+    // MARK: - When the Display is in use (Plan KP P1b)
+
+    /// Whose the Display is (§8): `.ours`, `.inUse` (another app has it) or `.off`. Read from the
+    /// Meta session (`applySessionReading`), the link and worn state (`updateGlassesLink`). The Even
+    /// backend and the phone-only build always read `.ours`.
+    ///
+    /// While `.inUse` nothing is handed to the render queue, so nothing queues for the lens and the
+    /// session is never asked to start: notifications and captions are dropped (they were spoken,
+    /// or they are live), and the web mirror holds its last frame too. The service keeps state
+    /// only: the answer card (`HUDAnswerCard`), or a task card or menu that is still running. When
+    /// the reading is `.ours` again the lens is drawn once from that state: a task card or menu as
+    /// it now is, the answer card if it is still fresh (`onLensReturnedToAnswerCard`), else a
+    /// clear. `.off` changes nothing about rendering; it only means no busy hint.
+    @Published private(set) var displayAvailability: DisplayAvailability = .off
+
+    /// What the Meta session last reported (state, refused start).
+    private(set) var sessionReading = DisplaySessionReading()
+    private var glassesConnected = false
+    private var glassesWorn: Bool?
+    /// Something was held back from the lens while it was not ours, so it is redrawn on return.
+    private var lensMissedFrames = false
+    private var busyHint = DisplayBusyHint()
+    /// Each change of reading, for the support report.
+    private(set) var availabilityLog = DisplayAvailabilityLog()
+    /// Test seam: the clock the log stamps with.
+    var now: () -> Date = Date.init
+
+    /// Set by `HUDAnswerCard`: the lens is ours again and an answer card is held. The card shows
+    /// itself again if it is still inside its lifetime, or closes.
+    var onLensReturnedToAnswerCard: (() -> Void)?
+
+    /// While another app has the Display, nothing is enqueued for the lens.
+    private var holdsLens: Bool { displayAvailability == .inUse }
+
+    /// The glasses' link and worn state, from `GlassesConnectionService` (`isConnected`, which is
+    /// `linkState == .connected`, and `isWorn`).
+    func updateGlassesLink(connected: Bool, worn: Bool?) {
+        guard connected != glassesConnected || worn != glassesWorn else { return }
+        glassesConnected = connected
+        glassesWorn = worn
+        refreshAvailability()
+    }
+
+    /// What the Meta display session says. Internal so tests can drive the reading without DAT.
+    func applySessionReading(_ reading: DisplaySessionReading) {
+        guard reading != sessionReading else { return }
+        sessionReading = reading
+        refreshAvailability()
+    }
+
+    /// Plan KP §8 rule 5: whether the busy hint plays after a line from `source` (only an answer),
+    /// spoken while the display is `.inUse`, with speech not suppressed and the setting on. Once
+    /// per stretch of `.inUse`: taking it uses it up.
+    func claimBusyHint(afterLineFrom source: SpeechSource, speechSuppressed: Bool) -> Bool {
+        busyHint.claim(availability: displayAvailability,
+                       isAnswer: HUDAnswerCard.takesAnswers(from: source),
+                       speechSuppressed: speechSuppressed,
+                       enabled: Config.displayBusyHintEnabled)
+    }
+
+    private var readsSessionAvailability: Bool {
+        #if !AVENKIN_PHONE_ONLY
+        return Config.displayBackend == .metaRayBan
+        #else
+        return false
+        #endif
+    }
+
+    private func currentAvailability() -> DisplayAvailability {
+        guard readsSessionAvailability else { return .ours }
+        return DisplayAvailability.read(hasDisplay: deviceSupportsDisplay(), connected: glassesConnected,
+                                        worn: glassesWorn, session: sessionReading)
+    }
+
+    private func refreshAvailability() {
+        let next = currentAvailability()
+        guard next != displayAvailability else { return }
+        displayAvailability = next
+        busyHint.readingChanged(to: next)
+        availabilityLog.record(next, session: sessionReading, at: now())
+        PrivacyLog.device(.hud, .availabilityRead, state: PrivacyToken(next.rawValue),
+                          detail: PrivacyToken(sessionReading.token))
+        onDebugEvent?("HUD display \(next.rawValue) (\(sessionReading.token))")
+        switch next {
+        case .inUse: lensMissedFrames = true
+        case .ours: if lensMissedFrames { resumeLens() }
+        case .off: break
+        }
+    }
+
+    /// The lens is ours again after another app had it: draw it once from what is held now. No
+    /// backlog: what was dropped stays dropped.
+    private func resumeLens() {
+        lensMissedFrames = false
+        // What is on the lens now is not known; nothing is skipped as "already shown".
+        lastRendered = nil
+        lastScreenKey = nil
+        flashingOverInteractive = false
+        guard isEnabled else { return }
+        if showsAnswerCard, let onLensReturnedToAnswerCard {
+            onLensReturnedToAnswerCard()
+        } else if isInteractive, let currentScreen {
+            enqueue(.screen(currentScreen))
+        } else {
+            enqueue(.op(.clear))
+        }
+    }
+
+    /// The support report's lines about the reading.
+    var availabilityReportLines: [String] {
+        ["Display reading now: \(displayAvailability.reportName) (\(sessionReading.reportName))"]
+            + availabilityLog.reportLines()
     }
 
     // MARK: - Testing seam
@@ -318,6 +433,9 @@ final class GlassesDisplayService: ObservableObject {
         // The web mirror (Plan BP) keeps the queue alive even without a native display —
         // that's the entitlement-free path; the backend send itself is capability-gated.
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
+        // Plan KP §8 rule 3: while another app has the Display, no backlog. A notification or a
+        // caption was spoken, or is live; it is dropped rather than queued for later.
+        guard !holdsLens else { return }
         // While an interactive screen is held, suppress persistent ambient frames;
         // transient notifications still flash (and restore the screen on auto-clear).
         if isInteractive && !transient { return }
@@ -354,6 +472,12 @@ final class GlassesDisplayService: ObservableObject {
     // MARK: - Render queue
 
     private func enqueue(_ frame: Frame) {
+        // Plan KP §8: nothing is handed to the queue while another app has the Display, so the
+        // session is never asked to start; `resumeLens()` draws the held state once it is ours.
+        guard !holdsLens else {
+            lensMissedFrames = true
+            return
+        }
         frameRevision &+= 1
         if case .screen = frame { heldScreenRevision = frameRevision }
         pending = frame
@@ -448,6 +572,15 @@ final class GlassesDisplayService: ObservableObject {
     private func handleRenderError(_ error: Error) {
         // Don't spam logs for the expected "no display" no-op path.
         if case GlassesDisplayError.noDisplay = error { return }
+        // Plan KP §8: another app has the Display. A reading, not a failure: the backend keeps
+        // (and follows) its session, nothing is torn down, and the lens is redrawn once it is ours.
+        if case GlassesDisplayError.displayInUse = error {
+            lastRendered = nil
+            lastScreenKey = nil
+            flashingOverInteractive = false
+            lensMissedFrames = true
+            return
+        }
         PrivacyLog.device(.hud, .renderFailed, error: SafeErrorSummary(error))
         // The on-screen diagnostics panel is a different sink with a different audience — the
         // wearer chose to open it — so it keeps the readable text the device log does not.
@@ -465,6 +598,9 @@ final class GlassesDisplayService: ObservableObject {
 enum GlassesDisplayError: LocalizedError {
     case noDisplay
     case sessionUnavailable
+    /// Plan KP §8: another app has the Display (our session is paused, or a start was refused).
+    /// A reading, not a failure: nothing is torn down and nothing is retried until it is ours.
+    case displayInUse
 
     var errorDescription: String? {
         switch self {
@@ -474,6 +610,7 @@ enum GlassesDisplayError: LocalizedError {
         case .noDisplay: return "Connected glasses have no in-lens display"
         #endif
         case .sessionUnavailable: return "Display session unavailable"
+        case .displayInUse: return "Another app is using the display"
         }
     }
 }

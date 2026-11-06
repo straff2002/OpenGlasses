@@ -4259,6 +4259,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 DispatchQueue.main.async { self?.glassesWornChanged(worn) }
             }
         cancellables.append(wornToken)
+        // Plan KP §8: whose the in-lens Display is reads the link (`linkState == .connected`) and
+        // worn state beside the display session. Both fire in willSet, so the values are handed over.
+        let displayLinkToken = glassesService.$isConnected
+            .combineLatest(glassesService.$isWorn)
+            .sink { [weak self] connected, worn in
+                DispatchQueue.main.async {
+                    self?.glassesDisplay.updateGlassesLink(connected: connected, worn: worn)
+                }
+            }
+        cancellables.append(displayLinkToken)
         // The glasses say whether they and this build can work together (Plan HX P1). `nil` is
         // the link not being up, so a requirement is only ever acted on while connected.
         let compatibilityToken = glassesService.$compatibility

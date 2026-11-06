@@ -16,7 +16,9 @@ extension AppState: TempleActionPerforming {
             glassesCameraReady: cameraService.activeCapabilities?.stillCapture == true,
             digestEnabled: Config.digestEnabled,
             quickActionIDs: Set(Config.quickActions.map(\.id)),
-            answerCardShowing: hudAnswerCard.isShowing)
+            // Plan KP §8: a card held while another app has the Display can't be seen, so a page
+            // tap is refused (the soft tone) rather than turning a page nobody can read.
+            answerCardShowing: hudAnswerCard.isShowing && glassesDisplay.displayAvailability != .inUse)
     }
 
     private var templeActivity: TempleContext.Activity {

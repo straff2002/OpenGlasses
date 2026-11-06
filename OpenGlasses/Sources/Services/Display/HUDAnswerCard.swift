@@ -30,6 +30,13 @@ import Foundation
 /// which the card was last drawn (`GlassesDisplayService.heldScreenRevision`). A notification
 /// enqueued over the card since makes it stale, so the press is dropped rather than drawn over the
 /// notification (§2).
+///
+/// **While another app has the Display (§8, P1b).** Nothing reaches the lens, but the card is still
+/// held: a new answer replaces it and its lifetime runs as usual. When the Display is ours again the
+/// card shows if it is still inside `idleLifetime` counted from when the answer was made (its last
+/// change), and is dropped otherwise (`displayReturned`). The paging words are left to the model
+/// meanwhile ("next" may mean the next track), and "repeat", "tell me more", "save that" and "send
+/// that" reach everything the card offers as ordinary requests.
 @MainActor
 final class HUDAnswerCard {
     /// Plan KP §3: a card with no press for this long clears.
@@ -50,6 +57,8 @@ final class HUDAnswerCard {
     }
     /// The page shape, from the active backend.
     var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeGeometry
+    /// Test seam: the clock that says when the answer was made.
+    var now: () -> Date = Date.init
 
     // MARK: Wiring (AppState)
 
@@ -80,9 +89,13 @@ final class HUDAnswerCard {
     private var idleGeneration = 0
     /// Counts cards shown, so the web mirror can tell a new answer from more of the same one.
     private var cardSerial = 0
+    /// When the card's answer last changed: the start of the lifetime a card held while another
+    /// app had the Display is judged by (§8 rule 4).
+    private(set) var answerMadeAt: Date?
 
     init(display: GlassesDisplayService) {
         self.display = display
+        display.onLensReturnedToAnswerCard = { [weak self] in self?.displayReturned() }
     }
 
     /// The card is on the glasses (or held under a notification).
@@ -180,6 +193,7 @@ final class HUDAnswerCard {
         if !turnHasCard {
             guard turn.isFinished || HUDAnswerPager.settledPageCount(laid) > 0 else { return }
             answer = turn.text
+            answerMadeAt = now()
             pages = laid
             answerIsComplete = turn.isFinished
             pageIndex = 0
@@ -191,6 +205,7 @@ final class HUDAnswerCard {
             turnHasCard = true
             armIdleTimer()
         } else {
+            if answer != turn.text { answerMadeAt = now() }
             answer = turn.text
             pages = laid
             answerIsComplete = turn.isFinished
@@ -216,7 +231,8 @@ final class HUDAnswerCard {
     /// "back" on the first has nothing to do, so `HUDRouter` leaves the utterance to the model
     /// (it may mean the next track) instead of swallowing it.
     func canTurn(_ action: HUDAnswerAction) -> Bool {
-        guard isShowing else { return false }
+        // Not while another app has the Display: the card can't be seen, so the word goes on.
+        guard isShowing, display.displayAvailability != .inUse else { return false }
         switch action {
         case .next: return !isOnActions && pageIndex + 1 < visiblePageCount
         case .back: return isOnActions || pageIndex > 0
@@ -270,7 +286,21 @@ final class HUDAnswerCard {
         isOnActions = false
         answerIsComplete = false
         shownScreen = nil
+        answerMadeAt = nil
         if wasShowing { display.endInteractive() }
+    }
+
+    /// Plan KP §8 rule 4: the Display is ours again after another app had it. The held card shows
+    /// again, on the page the wearer left, if it is inside its lifetime counted from when the answer
+    /// was made; an older one is dropped. The lifetime timer already running is left as it is.
+    func displayReturned() {
+        guard isShowing else { return }
+        guard let made = answerMadeAt, now().timeIntervalSince(made) < idleLifetime else {
+            close()
+            return
+        }
+        let screen = currentScreen()
+        if display.presentAnswerCard(screen, onSelect: selectionHandler) { shownScreen = screen }
     }
 
     private func show(page: Int, actions: Bool, _ revision: UInt64) {
