@@ -1,7 +1,9 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 🚧 P0 built 2026-11-06 (headless): the pure core (`HUDAnswerPager` and `HUDAnswerPage`,
-`PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`) and its tests, nothing wired yet; P1 next. The
+**Status:** 🚧 P0 + P1 built 2026-11-06 (headless): the pure core (`HUDAnswerPager` and `HUDAnswerPage`,
+`PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the glasses
+(`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's keys);
+P1b next, P6 device pass owed. The
 owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
 the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
 folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
@@ -354,6 +356,69 @@ makes a turn stale; navigation lines never page; a task card still gets a five-s
 sends without the confirmation), `WebHUDMirrorTests` (the footer shows and the arrow keys turn pages),
 `HUDPreviewSnapshotTests` (one paged card per backend), `TempleActionResolverTests` (the new action).
 
+*Built 2026-11-06.* What P1b and P2 build on:
+
+- **The answer turn.** KK's turn id doesn't reach the speech path (`TurnRecorder` is instrumentation
+  only), so `HUDAnswerCard` holds a pure `HUDAnswerTurn`. The Direct voice and typed turns call
+  `beginTurn()` beside `makeReplySpeechStream`, `finishTurn(reply:)` in the streamed branch of `speak:`
+  (the reply is final before it has all been said, so the whole card shows then), and `endTurn()` in
+  `finish:`. `TextToSpeechService` hands answer lines (`SpeechSource.reply` and `.phoneAnswer` only) to
+  `HUDAnswerCard.absorb(_:streamed:)` at the two mirror points (`speakReporting`, `playStreamedSentence`)
+  instead of `showText`; every other source keeps `showText`. A whole answer outside a turn (a photo
+  answer, tier 0, an agent's result) is a card of its own. A *streamed* answer line outside a turn (the
+  gateway's partial results) keeps today's sentence-at-a-time line. The text is append-only: the final
+  reply is reconciled with what was streamed through `StreamSpeechGate.reconcile`, a preamble said before a
+  tool stays in front, and lines played after the reply is final are already on the card.
+- **Showing.** Page 1 shows once settled or final; only settled pages can be turned to while the answer
+  streams, so Next on the last settled page waits. `GlassesDisplayService.showsAnswerCard` marks the held
+  screen as a card; an answer becomes a card only when nothing else interactive is up
+  (`acceptsAnswerCard`), so over a task card, a menu or a choice list it still flashes for 5 s. While a
+  notification is over the card, a changed card only updates the held screen and the flash's restore
+  draws it. `clear()` from a producer leaves a card alone; `showNavigation` ends a card (guidance never
+  waits behind one, and is never paged), which is what a guidance line did to a plain answer line.
+- **frameRevision.** Bumped by every `enqueue` (op, screen, clear, page); `heldScreenRevision` is the
+  revision at which the held screen was last enqueued, the frame whose buttons are on the glasses.
+  Every card press goes through `acceptsCardPress(issuedAgainst:)`; a stale one is dropped and logged
+  as `hud event=hudPageTurnStale count=<frames between>`. Band presses, and voice words and temple taps
+  through `HUDAnswerCard.press(_:)`, are issued against `heldScreenRevision`, so while a notification
+  is over the card every press is stale and the notification stays; once the flash restores the card,
+  presses work again. JV's Inputs can pass a revision of their own.
+- **Layout change.** ‹ Back is on middle pages too (P0 had it on the paged last page only), and the
+  Actions screen has **‹ Answer** (`kp.answer`, `HUDAnswerAction.answer`) back to the page the wearer
+  was on, before Close. Voice "back" does the same.
+- **Actions.** More, Send and a follow-up go through `sendTextMessage` (the typed entry point, as Plan
+  CG's choice buttons do): More sends "Tell me more about that", Send sends "Send your last answer to
+  someone". The assistant asks who, and `send_via` is a messaging tool, so its bound approval holds the
+  send; the press runs no tool. Repeat is `speak(answer, source: .readAloud, mirrorToHUD: false)`. Save
+  runs `save_note` through `NativeToolRouter.execute` with origin `.user` (titled by the answer's first
+  line, cut to 40 characters), then flashes "Saved" for 2 s (a press during that flash is stale, as over
+  a notification). Close ends interactive mode. A More, Send or follow-up press while a turn is being
+  processed is dropped by `acceptsTypedTurn`, as a typed message would be.
+- **Lifetime.** 60 s (`idleLifetime`) from the last press, the last change to the answer, or the
+  turn's end, whichever is latest, so a long answer still being spoken never clears under the wearer;
+  a new answer replaces the card. Each arming bumps a generation, so an older timer never clears a
+  newer card, and none clears a task card or menu that took the HUD. `scheduleIdleTimer` is the test
+  seam (tests fire the timers by hand).
+- **Other input.** `HUDAnswerVoiceCommand` ("next", "next page", "back", "go back", "previous",
+  "previous page", "close", "clear", …), consulted by `HUDRouter.handleVoiceCommand` only while a card is
+  up and no task or menu is, and taken only when it moves the card (`canTurn`): "next" on the last
+  readable page, or "back" on the first, goes on to the model as before (it may mean the next track).
+  Temple taps: two assignable actions, `answerNextPage` and `answerPreviousPage` (the map gives each tap count one action, so one `pageAnswer` with single/double
+  didn't fit), refused with the soft tone (`noAnswerCard`) when no card is up, working in any activity but
+  `busy`. The web mirror stays read-only: a card's payload carries all its readable pages
+  (`HUDScreen.pageSet` → `WebHUDPayload.pages`/`pageIndex`/`card`), and the page turns them itself on
+  ◀/▶ and hides the card on Escape, locally; no key reaches the phone. The payload's `renderKey` adds
+  the card, page count and index, and the queue republishes a card whose readable pages grew behind an
+  unchanged page, so the mirror gets newly settled pages. While the same card grows and the phone stays
+  on its page, the browser keeps the page it turned to (and stays hidden after Escape); a new answer, or
+  the phone turning a page, resets both.
+- **Live modes.** Gemini Live and OpenAI Realtime replies don't reach the HUD today (their audio comes
+  from the model; nothing mirrors it), so they get no card. Left as is.
+- **For P1b.** The held card to bring back is `HUDAnswerCard`'s state; `presentAnswerCard` is where a
+  `.inUse` reading should hold rather than enqueue. **For P2.** Follow-ups go in where the card builds
+  its screens (`HUDAnswerCard.currentScreen`, `followUps: []` today), and `.followUp` presses already
+  submit their text as the next turn.
+
 ### P1b — when the Display is in use
 
 `DisplayAvailability`; `MetaDisplayBackend` reports `.inUse` instead of restarting or tearing down a
@@ -426,7 +491,8 @@ changes in their own commit, and this Status line and the index row updated.
 - Whether stable DAT reports the band's back gesture to the app at all, or the Display keeps it. P3's
   lesson 4 and JV's probe answer it.
 - The real pixel sizes behind DAT's text tokens (P6).
-- Whether the live modes' replies reach the HUD today (P1 finds out).
+- ~~Whether the live modes' replies reach the HUD today.~~ Answered by P1: they don't (their audio comes
+  from the model and nothing mirrors it), so they get no card.
 - What DAT reports when another app takes the Display: `paused`, `stopped`, or an error (P6, from the
   support report).
 - Whether the glasses play our speech over another Display app's own sound, or hold it back (P6).
