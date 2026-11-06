@@ -70,6 +70,8 @@ enum SensitiveStore: String, CaseIterable {
     case recordings
     case recordedSessions
     case capturedPhotos
+    /// Kept caption sessions (Plan KP P5): only while Keep caption sessions is on.
+    case captionSessions
 
     // Field Assist and vaults
     case fieldSessionLogs
@@ -535,6 +537,25 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "RecordedSessionStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/RecordedSessionStore.swift"],
                           location: "Documents/recorded_sessions.json plus the audio it names")
+
+        case .captionSessions:
+            // Captions and translated captions the wearer chose to keep (Plan KP §7): each line's
+            // time, what was said, its translation and the speaker's name where diarisation
+            // labelled one. Other people's speech, so the linkage is third-party: walked by the
+            // subject erasure (a session mentioning the subject goes whole), first-unlock (captions
+            // can stop with the phone locked), out of backup, and read by nothing but its own list
+            // and transcript. Written only while the switch is on (off by default) and never in
+            // Medical Compliance mode; each session goes seven days after it began.
+            return Record(store: self, dataClass: .conversationContent, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("\(CaptionSessionStore.retentionDays) days from when each "
+                                             + "session began; written only while Keep caption sessions "
+                                             + "is on, never in Medical Compliance mode"),
+                          deleteAll: .api("CaptionSessionStore.deleteAll()"),
+                          deleteSubject: .api("CaptionSessionStore.deleteMatching(_:)"),
+                          owner: "CaptionSessionStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/CaptionSessions/CaptionSessionStore.swift"],
+                          location: "Application Support/CaptionSessions/caption-session-{began}.json")
 
         case .capturedPhotos:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,

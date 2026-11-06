@@ -39,6 +39,7 @@ final class SubjectErasureTests: XCTestCase {
     private var learningCandidates: LearningCandidateStore!
     private var goals: GoalStore!
     private var activity: ActivityStore!
+    private var captionSessions: CaptionSessionStore!
 
     private var queuePath: URL { workspace.appendingPathComponent("offline_queue.sqlite") }
 
@@ -67,6 +68,7 @@ final class SubjectErasureTests: XCTestCase {
         learningCandidates = LearningCandidateStore(directory: workspace)
         goals = GoalStore(directory: workspace, hipaaRetentionDays: { nil })
         activity = ActivityStore(directory: workspace, hipaaMode: { false }, hipaaRetentionDays: { nil })
+        captionSessions = makeCaptionSessions()
         exports = StagedExportCoordinator(
             channel: .agentExport, rootDirectoryName: "unused",
             store: ProtectedExportFileStore(
@@ -90,6 +92,11 @@ final class SubjectErasureTests: XCTestCase {
 
     // MARK: - Fixtures
 
+    private func makeCaptionSessions() -> CaptionSessionStore {
+        CaptionSessionStore(directory: workspace.appendingPathComponent("CaptionSessions", isDirectory: true),
+                            isEnabled: { true }, hipaaMode: { false })
+    }
+
     private func makeStores() -> SubjectErasureCoordinator.Stores {
         var stores = SubjectErasureCoordinator.Stores()
         stores.stagedExports = [exports]
@@ -111,6 +118,7 @@ final class SubjectErasureTests: XCTestCase {
         stores.learningCandidates = learningCandidates
         stores.goals = goals
         stores.activity = activity
+        stores.captionSessions = captionSessions
         return stores
     }
 
@@ -165,6 +173,11 @@ final class SubjectErasureTests: XCTestCase {
         queue.enqueue(QueuedOp.make(kind: .logEntry, sessionId: "s1",
                                     json: ["note": "spoke to \(canary)"]))
 
+        // A kept caption session in which the subject spoke (Plan KP P5).
+        _ = captionSessions.keep(CaptionSession(
+            id: UUID(), startedAt: Date(), endedAt: Date(),
+            turns: [.init(at: Date(), said: "The roof plant is fine", speaker: canary)]))
+
         // A team-learning finding that slipped a customer's name past capture (Plan FP P1).
         learningCandidates.add(LearningCandidate(
             sessionId: "s1", jobReference: "1007", taskId: nil, vaultId: "refrigeration",
@@ -207,6 +220,8 @@ final class SubjectErasureTests: XCTestCase {
         note("agentDocuments", agentDocuments.content(for: .memory))
         note("agentDocuments.prompt", agentDocuments.agentContext())
         note("recordedSessions", recordedSessions.sessions.map(\.transcript).joined(separator: ","))
+        note("captionSessions", captionSessions.sessions.flatMap(\.turns)
+            .map { "\($0.speaker ?? "") \($0.said)" }.joined(separator: ","))
         note("learningCandidates", learningCandidates.candidates.map(\.finding).joined(separator: ","))
         note("goals", goals.goals.map { "\($0.title) \($0.steps.map(\.title))" }.joined(separator: ","))
         note("activityTrail", activity.entries.map { "\($0.title) \($0.detail ?? "")" }.joined(separator: ","))
@@ -238,6 +253,7 @@ final class SubjectErasureTests: XCTestCase {
         learningCandidates = LearningCandidateStore(directory: workspace)
         goals = GoalStore(directory: workspace, hipaaRetentionDays: { nil })
         activity = ActivityStore(directory: workspace, hipaaMode: { false }, hipaaRetentionDays: { nil })
+        captionSessions = makeCaptionSessions()
         social = SocialContextStore(defaults: defaults)
         contextualNotes = ContextualNoteStore(defaults: defaults)
         objectMemory = ObjectMemoryStore(defaults: defaults)

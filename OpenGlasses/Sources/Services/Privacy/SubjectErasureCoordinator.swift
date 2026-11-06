@@ -131,6 +131,8 @@ final class SubjectErasureCoordinator {
         var tableChecks: TableCheckStore?
         /// Job handovers sent to this phone's owner as an expert (Plan KM P2).
         var assistingHandovers: AssistingHandoverStore?
+        /// Kept caption sessions (Plan KP P5).
+        var captionSessions: CaptionSessionStore?
 
         init() {}
     }
@@ -162,6 +164,7 @@ final class SubjectErasureCoordinator {
         .evolvedSkills,
         .agentDocuments,
         .recordedSessions,
+        .captionSessions,
         .learningCandidates,
         .learningEntries,
         .assistingHandovers,
@@ -250,6 +253,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseAgentDocuments(subject)
             case .recordedSessions:
                 receipt = eraseRecordedSessions(subject)
+            case .captionSessions:
+                receipt = eraseCaptionSessions(subject)
             case .learningCandidates:
                 receipt = eraseLearningCandidates(subject)
             case .learningEntries:
@@ -665,6 +670,17 @@ final class SubjectErasureCoordinator {
         }
         doomed.forEach { sessions.delete($0) }
         return .complete(.recordedSessions, removed: doomed.count)
+    }
+
+    /// A kept caption session that mentions the person goes whole (Plan KP P5): what was said,
+    /// its translation and the speakers' names are all searched. A thread or a document is not
+    /// what a session is about, so those subjects find nothing here.
+    private func eraseCaptionSessions(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let sessions = stores.captionSessions else {
+            return .unsupported(.captionSessions, "no store of kept caption sessions was supplied")
+        }
+        guard case .person = subject else { return .complete(.captionSessions) }
+        return .complete(.captionSessions, removed: sessions.deleteMatching(subject.searchToken))
     }
 
     /// A team-learning candidate that names the subject goes whole (Plan FP P1). The job record

@@ -101,6 +101,20 @@ class AmbientCaptionService: ObservableObject {
     /// Last value handed to `onTranscribingChanged`, so it fires on genuine edges only.
     private var lastTranscribing = false
 
+    /// Plan KP P5: called once when captions stop, with everything said since they started; not
+    /// called when nothing was. AppState hands it to `CaptionSessionStore`, which writes it only
+    /// while **Keep caption sessions** is on and never in Medical Compliance mode.
+    var onSessionEnded: ((CaptionSession) -> Void)?
+
+    /// Whether sessions are being kept. Read at every final caption, so nothing beyond the capped
+    /// history is held in memory while the switch is off, and a switch turned on mid-session keeps
+    /// what follows. False in Medical Compliance mode.
+    var keepsSessions: () -> Bool = { Config.keepCaptionSessions }
+
+    /// The session being collected, while sessions are kept. A presence suspension is not a stop,
+    /// so it carries on through one.
+    private var sessionRecorder: CaptionSessionRecorder?
+
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
 
@@ -153,6 +167,7 @@ class AmbientCaptionService: ObservableObject {
 
         isActive = true
         currentCaption = ""
+        sessionRecorder = keepsSessions() ? CaptionSessionRecorder(startedAt: Date()) : nil
         startRecognitionSession()
         syncTranscribing()
         PrivacyLog.speech(.ambientCaptions, .started)
@@ -166,6 +181,18 @@ class AmbientCaptionService: ObservableObject {
         glassesDisplay?.clear()
         syncTranscribing()
         PrivacyLog.speech(.ambientCaptions, .stopped)
+        // After the teardown, which commits a caption still pending, so the last line is kept too.
+        endSession()
+    }
+
+    /// Hand the finished session on, with each diarised line named as the registry names it now.
+    private func endSession() {
+        guard let recorder = sessionRecorder else { return }
+        sessionRecorder = nil
+        let registry = speakerRegistry
+        if let session = recorder.finish(at: Date(), speakerLabel: { registry.displayLabel(for: $0) }) {
+            onSessionEnded?(session)
+        }
     }
 
     /// Presence-aware suspend (Plan W v2): a user-started caption stream pauses only when the user is
@@ -505,6 +532,7 @@ class AmbientCaptionService: ObservableObject {
         let entry = CaptionEntry(text: trimmed, timestamp: Date(), seq: makeSeq(),
                                  speaker: speaker, original: original, language: language)
         captionHistory.insert(entry, at: 0)
+        recordForSession(entry)
 
         // Trim history
         if captionHistory.count > maxHistory {
@@ -512,6 +540,21 @@ class AmbientCaptionService: ObservableObject {
         }
 
         currentCaption = ""
+    }
+
+    /// Plan KP P5: add a final caption to the session being kept. With the switch off nothing is
+    /// held; turned on mid-session, the session starts here. During `stop()`'s teardown (no longer
+    /// active) a pending caption joins a session already running but never starts one.
+    private func recordForSession(_ entry: CaptionEntry) {
+        guard keepsSessions() else {
+            sessionRecorder = nil
+            return
+        }
+        if sessionRecorder == nil, isActive {
+            sessionRecorder = CaptionSessionRecorder(startedAt: entry.timestamp)
+        }
+        sessionRecorder?.append(text: entry.text, original: entry.original, speaker: entry.speaker,
+                                at: entry.timestamp)
     }
 
     private func resetSilenceTimer() {

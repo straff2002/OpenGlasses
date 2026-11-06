@@ -1,14 +1,16 @@
 # Plan KP — Answers You Can Act On, on the Display (the whole answer in pages, actions under it, a band check, a preview to scale, captions kept)
 
-**Status:** 🚧 P0–P4 built (headless; P3 lessons 1–3, lesson 4 waits for JV),
-P0–P2 2026-11-06, P3 and P4 2026-11-07: the pure core (`HUDAnswerPager` and
+**Status:** 🚧 P0–P5 built (headless); P6 device pass owed. Still 🚧 rather than ✅ because P3's
+lesson 4 (back) is declared but unbuilt and waits for JV. P0–P2 2026-11-06, P3–P5 2026-11-07: the pure core (`HUDAnswerPager` and
 `HUDAnswerPage`, `PageTurnGate`, `HUDAnswerCardBuilder`, `FollowUpTail`), then the card wired onto the
 glasses (`HUDAnswerTurn`, `HUDAnswerCard`, `frameRevision`, the voice words, the page taps, the mirror's
 keys), then what the wearer gets while another app has the Display (`DisplayAvailability`, the held
 card, the busy hint), then suggested follow-ups (`FollowUpPrompt`, the tail taken off everywhere, the
 streamer's hold), then the band check (`BandPractice`, `BandPracticeSession`, the phone page, the
 report's **Band check** section), then the preview to scale (`HUDCanvasScale`, both lenses at their
-shape, token sizes marked as estimates); P5 next, P6 device pass owed. The
+shape, token sizes marked as estimates), then caption sessions kept and shared (`CaptionSessionStore`,
+**Keep caption sessions**, the list, the transcript and Share, the live view following the newest
+line). The
 owner took all nine recommended decisions on 2026-11-06 ("build out the plan"). Drafted 2026-11-06 from
 the owner's question. Supersedes Plan [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is
 folded in here as §1–§2 and P0–P1. Revised the same day: §8 and P1b cover what the wearer gets while
@@ -622,6 +624,43 @@ transcript view, Share, seven-day expiry, Delete all, the `hipaaMode` lock, and 
 the newest turn. **Tests:** store round trip; expiry; erasure through the registry; the plain-text
 export (times, translation lines, speaker names); the setting can't be turned on under `hipaaMode`; a
 session never enters memory unasked.
+
+*Built 2026-11-07.* What P6 needs to know:
+
+- **The store.** `CaptionSessionStore` (`Services/CaptionSessions/`): one JSON file per session in
+  Application Support/CaptionSessions, named by when it began (`caption-session-{UTC began}.json`),
+  first-unlock protection, out of backup on the folder and each file. A session is the run from
+  `AmbientCaptionService.start()` to `stop()` (a presence suspension is not a stop), collected by
+  `CaptionSessionRecorder` from each final caption: its time, the words as spoken (`original` for a
+  translated caption), the translation, and the speaker's id, named through `SpeakerRegistry` when the
+  session ends, so a voice named halfway through is named on every line. Visual notes are not kept.
+  Nothing is collected while the switch is off (beyond the capped history captions always hold);
+  turned on mid-session, the session starts at the next line.
+  `stop()` hands it to `onSessionEnded`, and AppState's one closure gives it to the store; `keep(_:)`
+  writes only while **Keep caption sessions** is on and never in Medical Compliance mode.
+- **Seven days.** From when the session began, by the file name, so an old session goes even before
+  the phone's first unlock: on opening the store (launch), on every write and when the list is shown.
+- **Registered and erased.** `SensitiveStore.captionSessions` (conversation content, third-party,
+  first-unlock, backup-excluded); the subject erasure walks it after recorded sessions and removes
+  every session whose words, translations or speaker names mention the person; **Delete all** is
+  `deleteAll()`. `AIFeature.ambientCaptions` now names the store. `CaptionSessionIsolationTests`
+  holds that only the caption files, the wiring and the walks name a kept session.
+- **The switch.** Devices & Privacy › What You Keep › **Caption Sessions**, beside Recordings and
+  Meeting Records: the toggle (`keepCaptionSessions`, off by default), the footer (what is kept, seven
+  days, on this phone, the people speaking may need to agree), the list newest first, swipe to delete
+  and **Delete all**. `Config.keepCaptionSessions` reads false in the mode and the setter refuses;
+  turning the mode on writes it off, and it stays off afterwards. The privacy page says the same.
+- **The transcript.** One turn per line, `HH:mm` (24-hour, Latin digits), the speaker's name before
+  the words, the translation under them; **Share** hands `CaptionSessionTranscript.plainText` to the
+  share sheet, with a heading naming when it began.
+- **The live view.** The overlay's history now scrolls (about three lines tall, growing with the text):
+  the newest line full strength, earlier ones faded, and `CaptionFollowRule` follows the newest line
+  until the wearer scrolls back, and again once they rest at the bottom. The two-way split is as it was.
+- **Owed to P6.** Run captions for a few minutes with the switch on, then off; check the session
+  appears, opens, shares as plain text and is not written with the switch off; scroll back during live
+  captions and check new lines don't move the text; check the follow resumes at the bottom.
+- **Not covered.** The spoken interpreter (`LiveTranslationService`) has no captions and keeps nothing.
+  A session cut short by the app being killed is not kept (it is written at `stop()`).
 
 ### P6 — device pass (owed; needs someone with a Display)
 

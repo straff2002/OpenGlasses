@@ -297,9 +297,10 @@ enum AIFeature: String, CaseIterable {
                                                 setEnabled: { Config.ambientCaptionsEnabled = $0 },
                                                 preexisting: false),
                           toolNames: [],
-                          stores: [],
-                          dataRetainedWhenDisabled: "Nothing. Captions are held for the session and are not written to disk.",
-                          erasure: .notSubjectLinked)
+                          // Plan KP P5: only while Keep caption sessions is on (off by default).
+                          stores: [.captionSessions],
+                          dataRetainedWhenDisabled: "Kept caption sessions, if Keep caption sessions was turned on: each stays on this phone for seven days from when it began, or until it is deleted. With that switch off, as it is by default, captions are held for the session and are not written to disk.",
+                          erasure: .api("CaptionSessionStore.deleteAll()"))
         }
     }
 }

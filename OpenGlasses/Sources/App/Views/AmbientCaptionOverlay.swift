@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Floating overlay that displays real-time ambient captions.
-/// Shows the current live caption and recent history, auto-fading old entries.
+/// Shows the current live caption and recent history: the newest line bright, older ones faded,
+/// in a window that follows the newest line unless the wearer has scrolled back to read (Plan KP P5).
 /// Diarized captions carry a tappable speaker chip (BM P7) — tap to name the speaker; names
 /// persist through `SpeakerRegistry` and merge-on-same-name keeps colours consistent.
 ///
@@ -34,6 +35,14 @@ struct AmbientCaptionOverlay: View {
     @ScaledMetric(relativeTo: .caption) private var legPlaceholderSize: CGFloat = 12
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    /// Plan KP P5: the history scrolls, and follows the newest line until the wearer scrolls back
+    /// to read (`CaptionFollowRule`). The window is about three lines tall at the default size,
+    /// which is what the stack showed before it scrolled, and grows with the text.
+    @State private var follow = CaptionFollowRule()
+    @State private var historyPosition = ScrollPosition(edge: .bottom)
+    @State private var historyContentHeight: CGFloat = 0
+    @ScaledMetric(relativeTo: .subheadline) private var historyWindow: CGFloat = 96
+
     /// The line caps that keep the stack a fixed number of lines are a density
     /// choice, and density stops being the right trade at accessibility sizes:
     /// a reader who has asked for larger text is the reader this overlay exists
@@ -56,10 +65,9 @@ struct AmbientCaptionOverlay: View {
                     .padding(.horizontal, 40)
                 twoWayLeg(wearer: true)
             } else {
-                // Recent history (faded)
-                ForEach(captionService.captionHistory.prefix(3).reversed()) { entry in
-                    historyRow(entry)
-                }
+                // Recent history: the newest line bright, the ones before it faded, and the view
+                // following the newest unless the wearer has scrolled back (Plan KP P5).
+                historyScroll
             }
 
             // Current live caption
@@ -116,12 +124,65 @@ struct AmbientCaptionOverlay: View {
                 if let id = renameSpeakerId {
                     captionService.speakerRegistry.setName(renameText, for: id)
                     registryVersion += 1
+                    // The stack is redrawn from the newest line, so it is following again.
+                    follow = CaptionFollowRule()
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Captions from this voice will show this name. Give two chips the same name to merge them.")
         }
+    }
+
+    /// The caption history, oldest at the top, in a window that follows the newest line until the
+    /// wearer scrolls back to read, and picks it up again once they scroll back to the bottom.
+    @ViewBuilder
+    private var historyScroll: some View {
+        let newest = captionService.captionHistory.first?.id
+        if newest != nil {
+            ScrollView(.vertical) {
+                VStack(spacing: 4) {
+                    ForEach(captionService.captionHistory.reversed()) { entry in
+                        historyRow(entry, newest: entry.id == newest)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { historyContentHeight = $0 }
+            }
+            .scrollPosition($historyPosition)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(max(historyContentHeight, 1), historyWindow))
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                Self.isAtBottom(geometry)
+            } action: { _, atBottom in
+                follow.scrolled(atBottom: atBottom)
+            }
+            .onScrollPhaseChange { _, phase, context in
+                switch phase {
+                case .tracking, .interacting:
+                    follow.wearerBeganScrolling()
+                case .idle:
+                    if follow.wearerScrolling {
+                        follow.wearerStoppedScrolling(atBottom: Self.isAtBottom(context.geometry))
+                    }
+                default:
+                    break
+                }
+            }
+            .onChange(of: newest) {
+                guard follow.followsNewTurn else { return }
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                    historyPosition.scrollTo(edge: .bottom)
+                }
+            }
+        }
+    }
+
+    private static func isAtBottom(_ geometry: ScrollGeometry) -> Bool {
+        CaptionFollowRule.isAtBottom(contentOffsetY: geometry.visibleRect.minY,
+                                     visibleHeight: geometry.visibleRect.height,
+                                     contentHeight: geometry.contentSize.height)
     }
 
     /// One leg of the two-way split: entries whose *render* language belongs to this side.
@@ -162,8 +223,10 @@ struct AmbientCaptionOverlay: View {
         }
     }
 
+    /// `newest` draws the line at full strength: the latest thing said stays bright, and the
+    /// lines before it step down a role.
     @ViewBuilder
-    private func historyRow(_ entry: AmbientCaptionService.CaptionEntry) -> some View {
+    private func historyRow(_ entry: AmbientCaptionService.CaptionEntry, newest: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             if let chip = SpeakerChipModel.chip(speaker: entry.speaker, registry: captionService.speakerRegistry) {
                 SpeakerChipView(chip: chip) {
@@ -178,7 +241,8 @@ struct AmbientCaptionOverlay: View {
                 // leaves the quiet floor to the surfaces that sit on real black.
                 Text(entry.text)
                     .font(.system(size: historySize, weight: .regular))
-                    .foregroundStyle(OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
+                    .foregroundStyle(newest ? OGTheme.onMedia
+                                            : OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
                     .lineLimit(capsLines ? 2 : nil)
                     .multilineTextAlignment(.center)
                 // Show-original ribbon (BY P2): the source-language words under the translation.

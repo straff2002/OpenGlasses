@@ -328,6 +328,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.vanStock, VanStockStore.fileProtection),
             (.goals, GoalStore.fileProtection),
             (.activityTrail, ActivityStore.fileProtection),
+            (.captionSessions, CaptionSessionStore.fileProtection),
         ]
         for (store, protection) in declared {
             XCTAssertEqual(protection, .completeUntilFirstUserAuthentication,
@@ -351,6 +352,17 @@ final class DataStoreRegistryTests: XCTestCase {
         store.append(ActivityEntry(id: UUID(), at: Date(), kind: .action, title: "Saved a note for you",
                                    authorisation: .asked, origin: .wearer, outcome: .done))
         try assertAttributes(of: workspace.appendingPathComponent("activity.json"), match: .activityTrail)
+    }
+
+    /// Plan KP P5: a kept caption session is other people's speech, out of backup.
+    @MainActor
+    func testCaptionSessionAttributesMatchTheRegistry() throws {
+        let store = CaptionSessionStore(directory: workspace, isEnabled: { true }, hipaaMode: { false })
+        let began = Date()
+        let session = CaptionSession(id: UUID(), startedAt: began, endedAt: began,
+                                     turns: [.init(at: began, said: "Registry probe")])
+        XCTAssertEqual(store.keep(session), .kept)
+        try assertAttributes(of: XCTUnwrap(store.fileURL(for: session)), match: .captionSessions)
     }
 
     @MainActor
@@ -494,6 +506,7 @@ final class DataStoreRegistryTests: XCTestCase {
 
     /// The rule W03.3 applied: a store the subject-erasure walk can reach must not also exist in a
     /// backup, because a backup is a copy the erasure cannot reach.
+    @MainActor
     func testEveryFileBackedStoreTheErasureWalkReachesIsExcludedFromBackup() {
         let exemptFromTheRule: Set<SensitiveStore> = [
             // Not file-backed by the app: an OS service and preference-backed stores, whose

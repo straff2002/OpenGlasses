@@ -2506,6 +2506,8 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.tableChecks = TableCheckStore()
         // Plan KM P2: handovers sent to this phone's owner as an expert can name a person.
         erasure.assistingHandovers = AssistingHandoverStore.shared
+        // Plan KP P5: a kept caption session is other people's speech.
+        erasure.captionSessions = CaptionSessionStore.shared
         return MemoryFactServices(
             stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
                                      agentDocuments: agentDocs, objects: .shared,
@@ -2931,6 +2933,11 @@ class AppState: ObservableObject, AppStateProtocol {
         ambientCaptions.onTranscribingChanged = { active in
             SceneNarrationService.shared.noteInterruption(.ambientCaptions, active: active)
         }
+        // Plan KP P5: a stopped session is kept only if the wearer turned Keep caption sessions
+        // on, and never in Medical Compliance mode; the store decides. Nothing else reads it.
+        ambientCaptions.onSessionEnded = { session in
+            CaptionSessionStore.shared.keep(session)
+        }
         // Toggling HIPAA mid-session must tear down any live cloud diarization at once (Plan BM
         // P0): reconfigure ambient captions onto the on-device path the moment the flag flips.
         hipaaService.onModeChanged = { [weak ambientCaptions, weak self] in
@@ -3053,6 +3060,8 @@ class AppState: ObservableObject, AppStateProtocol {
             audit: hipaaService)
         retention = scheduler
         scheduler.runIfDue()
+        // Plan KP P5: kept caption sessions go seven days after they began, counted at launch too.
+        CaptionSessionStore.shared.pruneExpired()
 
         // W03.5: replay completed erasures. Free when nothing has ever been erased, which is the
         // ordinary case — the guard is an empty-array check on a file that is usually absent.
@@ -3076,6 +3085,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.activity = ActivityStore.shared
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
+            erasureStores.captionSessions = CaptionSessionStore.shared
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
             replaySources.classFiles = { erasable in
