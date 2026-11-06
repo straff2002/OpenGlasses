@@ -32,6 +32,14 @@ final class JobSendService: ObservableObject {
         var notify: (_ stagedCount: Int) -> Void = { _ in }
         /// Write into the job's own audit log.
         var log: (SessionLogger.Event.Kind, String, [String: AnyCodable]) -> Void = { _, _, _ in }
+        /// Build the handover's files and request (Plan KM P1). The app wires
+        /// `ExpertHandoverService`; a failure is the sentence to say instead.
+        var buildHandover: (ExpertHandoverDraft) -> Result<DeliveryRequest, ExpertHandoverRefusal> = { _ in
+            .failure(.init("The handover couldn't be put together on this phone."))
+        }
+        /// Open the composer for a built handover. Its own seam because the sheet that asked for it
+        /// is closing as it opens: the app waits for that before presenting.
+        var presentHandover: (DeliveryRequest) -> Void = { _ in }
     }
 
     /// What the app is about to do, held between the confirmation and the "send it".
@@ -53,6 +61,10 @@ final class JobSendService: ObservableObject {
     @Published private(set) var proposal: Proposal?
     /// Republished whenever the queue moves, so SwiftUI sees a change through this object.
     @Published private(set) var revision = 0
+    /// A handover to an expert, shown on the sheet and waiting for "send it" or the tap (Plan KM
+    /// P1). Published so the sheet appears wherever it was asked for, by voice or by a tap, and
+    /// edited in place: what goes is what the sheet says when Send is pressed.
+    @Published var handoverDraft: ExpertHandoverDraft?
     /// The entry whose composer is on screen, so the outcome lands on the right one.
     private(set) var presenting: QueuedSend?
     /// Whether Send all is walking the queue.
@@ -190,6 +202,45 @@ final class JobSendService: ObservableObject {
                                                 queuedOffline: queuedOffline)
             await seams.speak(line)
             return line
+        }
+    }
+
+    // MARK: - A handover to an expert (Plan KM P1)
+
+    /// Put the handover on the sheet and name what would go. Nothing is built or sent.
+    @discardableResult
+    func proposeHandover(_ draft: ExpertHandoverDraft) -> String {
+        handoverDraft = draft
+        return ExpertHandoverSendCopy.proposal(draft)
+    }
+
+    /// Whether this utterance is "send it" for a handover on the sheet.
+    func isHandoverConfirmation(_ text: String) -> Bool {
+        handoverDraft != nil && SpokenSendPolicy.isSendConfirmation(text)
+    }
+
+    func cancelHandover() { handoverDraft = nil }
+
+    /// "Send it", or the sheet's Send. Build the files from the sheet as it stands and open the
+    /// composer. The composer's own Send is the technician's tap; nothing has gone when this
+    /// returns, and only a confirmed send is recorded as a generation.
+    @discardableResult
+    func confirmHandover() -> String {
+        guard let draft = handoverDraft else { return "There's no handover waiting to send." }
+        switch seams.buildHandover(draft) {
+        case .failure(let refusal):
+            return refusal.message
+        case .success(let request):
+            handoverDraft = nil
+            seams.log(.sendQueued, draft.sessionId, [
+                "document": AnyCodable("expert_handover"),
+                "channel": AnyCodable(request.channel.rawValue),
+                "handling": AnyCodable("staged"),
+                "generation": AnyCodable(draft.generation),
+                "recipients": AnyCodable(request.recipients.count)
+            ])
+            seams.presentHandover(request)
+            return request.confirmation
         }
     }
 

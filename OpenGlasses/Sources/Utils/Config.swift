@@ -2720,6 +2720,30 @@ struct Config {
                             stored: UserDefaults.standard.bool(forKey: "organizationForbidsCustomerTranscript"))
     }
 
+    // MARK: - Handovers to experts (Plan KM P1)
+
+    /// What the organisation says about the conversation in a handover to an expert (decision 3),
+    /// or nil when it says nothing. Written only by a profile; there is no setter on purpose.
+    static var expertHandoverTranscript: ReportTranscriptPolicy.ExpertRule? {
+        let stored = UserDefaults.standard.string(forKey: SettingKey.expertHandoverTranscript.rawValue) ?? ""
+        return ReportTranscriptPolicy.ExpertRule(
+            rawValue: PolicyEnvelope.string(.expertHandoverTranscript, stored: stored))
+    }
+
+    /// Whether a handover to one of the organisation's own staff experts may carry the site's
+    /// address (decision 2). False on a phone without a profile that says so.
+    static var expertHandoverIncludesAddress: Bool {
+        PolicyEnvelope.bool(.expertHandoverIncludesAddress,
+                            stored: UserDefaults.standard.bool(forKey: SettingKey.expertHandoverIncludesAddress.rawValue))
+    }
+
+    /// How many days after Done the expert's app keeps a handover: the profile's figure, or 30.
+    static var expertHandoverRetentionDays: Int {
+        let stored = UserDefaults.standard.string(forKey: SettingKey.expertHandoverRetentionDays.rawValue) ?? ""
+        return ExpertHandoverRetention.days(PolicyEnvelope.string(.expertHandoverRetentionDays, stored: stored))
+            ?? ExpertHandoverRetention.defaultDays
+    }
+
     // MARK: - Recorded jobs (Plan HE)
 
     /// Whether the organisation forbids "Record this job". A ceiling pinned on, written only by a

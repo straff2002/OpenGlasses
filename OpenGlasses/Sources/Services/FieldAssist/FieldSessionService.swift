@@ -465,6 +465,28 @@ final class FieldSessionService: ObservableObject {
         logger.append(.init(timestamp: Date(), kind: .expertCall, text: "\(who): \(notes.joined(separator: ", "))", payload: nil))
     }
 
+    /// A handover went to an expert (Plan KM P1): keep what went, by generation, on the job, and
+    /// say so in the job's log — the expert's name, the generation and the channel, never a
+    /// number, an address or a picture.
+    func recordHandoverSent(_ sent: ExpertHandoverSent, sessionId: String) {
+        guard var session = activeSession, session.id == sessionId, let logger else { return }
+        var records = session.expertHandovers ?? []
+        guard !records.contains(where: { $0.handoverId == sent.handoverId && $0.generation == sent.generation }) else { return }
+        records.append(sent)
+        session.expertHandovers = records
+        activeSession = session
+        history = history.replacingFirst(matching: session.id, with: session)
+        logger.updateSession { $0 = session }
+        logger.append(.init(timestamp: sent.sentAt, kind: .expertHandoverSent,
+                            text: "Job sent to \(sent.expert.name), update \(sent.generation)",
+                            payload: ["handover_id": AnyCodable(sent.handoverId),
+                                      "generation": AnyCodable(sent.generation),
+                                      "expert_id": AnyCodable(sent.expert.id),
+                                      "channel": AnyCodable(sent.channel),
+                                      "photos": AnyCodable(sent.photoIds.count),
+                                      "transcript": AnyCodable(sent.transcriptIncluded)]))
+    }
+
     /// Mark the most recent unresolved escalation as resolved and log it.
     func resolveLastEscalation(note: String? = nil) {
         guard var session = activeSession, let logger else { return }
@@ -1749,7 +1771,9 @@ final class FieldSessionService: ObservableObject {
     func stageDelivery(_ request: DeliveryRequest) {
         // A parts order is not the report: staging one says nothing about whether the report went.
         // Nor do kept rule chains, which belong to no job (Plan JJ P3).
-        if request.payload.partsOrder == nil, request.payload.ruleChains == nil { lastDeliveryCancelled = false }
+        // Nor does a handover to an expert (Plan KM P1).
+        if request.payload.partsOrder == nil, request.payload.ruleChains == nil,
+           request.payload.expertHandover == nil { lastDeliveryCancelled = false }
         stagedDelivery = request
     }
 

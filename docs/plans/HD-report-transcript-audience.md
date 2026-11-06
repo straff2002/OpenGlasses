@@ -187,3 +187,7 @@ transcript goes to whoever is added.
   send sheet.
 - The device fallback rebuilds only a report that carries transcript content, so a report that
   carries none keeps today's clip partition when Mail is missing.
+- *2026-11-06, Plan KM P1:* `ReportAudience` gains `expert`, decided by
+  `ReportTranscriptPolicy.forExpert` (on for the organisation's experts, off unless turned on for a
+  technician's own addition, and the profile's `expertHandoverTranscript` include/ask/never) — a job
+  handover's audience, never a report's.

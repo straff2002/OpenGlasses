@@ -507,7 +507,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
     private func expertRequestRefusal(_ call: ResolvedToolCall) -> ToolExecutionOutcome? {
         guard EscalateToExpertTool.pagesAnExpert(tool: call.name, args: call.arguments.rawValues),
               let refusal = EscalateToExpertTool.refusal(said: technicianWords(), previousReply: previousReply(),
-                                                         expertName: call.arguments.rawValues["expert_name"] as? String)
+                                                         expertName: call.arguments.rawValues["expert_name"] as? String,
+                                                         action: call.arguments.rawValues["action"] as? String)
         else { return nil }
         authorizationEvents.record(call: call, verdict: ToolRefusalReason.expertNotRequested.rawValue)
         PrivacyLog.toolGate(.expertNotRequested, tool: call.name)

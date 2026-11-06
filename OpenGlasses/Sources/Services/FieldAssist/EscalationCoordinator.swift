@@ -41,6 +41,11 @@ final class EscalationCoordinator: ObservableObject {
     var now: () -> Date = Date.init
     /// Watches the call placed and writes what it saw on the escalation record.
     lazy var callMonitor = ExpertCallMonitor(record: { [weak self] seen in self?.recordSeen(seen) })
+    /// Where a handover to an expert is staged (Plan KM P1). Wired by the app; nil headless, where
+    /// a `send` says the phone can't stage one.
+    weak var sends: JobSendService?
+    /// Drafts and builds handovers. Injectable for tests.
+    var handovers: ExpertHandoverService = .shared
     /// The order the last offer gave, for "Sam didn't answer. Try Priya?".
     private(set) var lastPickOrder: [EscalationContact] = []
 

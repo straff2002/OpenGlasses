@@ -45,6 +45,22 @@
 				<string>com.openglasses.app.job</string>
 			</array>
 		</dict>
+		<!-- A job handover for an expert (.ogcase, Plan KM P1). Unlike a job file the app writes
+		     one: a technician sends it to an expert they chose, by their own Messages, Mail,
+		     WhatsApp or AirDrop. Opened as a copy like a job file; the reader refuses anything that
+		     is not exactly a version-1 handover, and opening one grants nothing. -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Avenkin Job Handover</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.openglasses.app.handover</string>
+			</array>
+		</dict>
 		<!-- The setup file Avenkin Office saves for a device (.avenkinsetup). Receive only, opened
 		     as a copy like a job file. It carries the vendor-signed profile and licence; the app
 		     verifies both and the owner reviews them before anything is applied. -->
@@ -101,6 +117,28 @@
 				<key>public.mime-type</key>
 				<array>
 					<string>application/vnd.openglasses.job+json</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.openglasses.app.handover</string>
+			<key>UTTypeDescription</key>
+			<string>Avenkin Job Handover</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ogcase</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.openglasses.handover+zip</string>
 				</array>
 			</dict>
 		</dict>

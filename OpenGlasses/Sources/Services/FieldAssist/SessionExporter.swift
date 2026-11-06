@@ -785,7 +785,7 @@ enum SessionExporter {
 ///
 /// Text only until Plan FO P2a, which added `image(_:)` — the work order could name a photograph
 /// but not show one, so the recipient of a fault report got a file path.
-private final class PDFLayout {
+final class PDFLayout {
     private let pageRect: CGRect
     private let margin: CGFloat
     private var context: UIGraphicsPDFRendererContext!

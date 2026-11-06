@@ -138,6 +138,11 @@ enum PromptInjectionPolicy {
             // A named expert (Plan KM P0): who, and how. The number is the list's, never the model's.
             let how = CallVia(spoken: str("via")).map { $0 == .phone ? "" : " by FaceTime" } ?? ""
             return "Call \(str("expert_name") ?? "the expert offered")\(how)"
+        case "escalate_to_expert" where str("action")?.lowercased() == "send":
+            // A handover (Plan KM P1): to whom. It only reaches the sheet; the composer is a tap.
+            return "Put the job on the handover sheet for \(str("expert_name") ?? "the expert offered")"
+        case "escalate_to_expert" where str("action")?.lowercased() == "send_it":
+            return "Open the composer for the job handover"
         case "smart_home":
             return "Control smart home: \(compactArgs(args))"
         case "home_assistant":

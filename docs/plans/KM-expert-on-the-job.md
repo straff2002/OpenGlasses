@@ -1,7 +1,8 @@
 # Plan KM — An Expert on the Job (the job sent to a named expert, their advice walked through, their time on the record)
 
-**Status:** 🚧 P0 built 2026-11-06 (headless; device checks owed): the expert list, the pick and the
-call by name or by specialty. P1–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
+**Status:** 🚧 P0 and P1 built 2026-11-06 (headless; device checks owed): the expert list, the pick
+and the call by name or by specialty (P0); the handover — `.ogcase`, PDF and text, the staged send and
+generations (P1). P2–P5 not started. Drafted 2026-11-03 from the owner's question; the owner
 took all ten decisions as recommended the same day. Revised the same day: the expert's side belongs to no
 organisation, so one expert can serve many.
 **Track:** Field Assist. Phone first: every part works without glasses, and the expert side needs no
@@ -422,6 +423,55 @@ several companies, and nothing on the expert's side needs a company to own it.
   - generation n+1 replaces n.
 
   `OutboundFrameConsumerTests` passes with the new consumer.
+
+**P1 as built (2026-11-06, headless).**
+
+- **The value** (`Services/FieldAssist/Experts/`): `ExpertHandover` (type `openglasses.handover`,
+  version 1, kind `handover`) and the pure `ExpertHandoverBuilder` over the session, the job's
+  conversation lines (`JobTranscriptExport.job`'s selection: the thread, else the log), the cited
+  sources and procedure runs `SessionExporter.buildExport` already collects, and the photos already
+  blurred. The site is `SiteTown` — the town read conservatively from the address (never the first
+  comma part, never a digit) — and the address only for the organisation's own `staff` experts with
+  the new profile-owned `expertHandoverIncludesAddress`; the customer's name and contact have no
+  field. Readings go as corrected, with their unit and how they were taken. **Ruled out** is only
+  what the technician writes on the sheet or says (`ruled_out`, verbatim), carried forward from the
+  last generation sent; nothing on the record is read as ruled out. **Deviations** are an empty list
+  until Plan JL P1 records them. Manuals by `CitationLineParser` reference (title, page, section),
+  team learnings only to the organisation's own staff. No rate, model, usage or prompt field exists.
+- **The conversation:** `ReportAudience.expert` and `ReportTranscriptPolicy.forExpert` — on (and
+  editable) for the organisation's list, off unless turned on for a personal addition; the new
+  profile-owned `expertHandoverTranscript` = `include` (locked on for the list), `ask` (off until
+  turned on) or `never` (locked off).
+- **Photos:** `ExpertHandoverPhotos` — the newest four preselected; each stored photo through
+  `filteredOrUnavailable(_:for: .expertHandover)`, a new **mandatory** `PrivacyFilterScope` (blurred
+  whatever the switch says), on the roster as `expertHandoverPhotos` (held image, chokepoint); an
+  unfilterable one dropped and counted; clips never read; downscaled to 1,280 px; then
+  `AttachmentBudget.photosFittingNewestFirst` drops the oldest until both copies (package and PDF)
+  fit, and the sheet and the renderings say how many stayed.
+- **Files:** `ExpertHandoverFile` — a stored-entry zip (`handover.json` + `photos/NN.jpg`) written by
+  the new `StoredZipWriter`, read by `ZipArchiveReader`; the reader refuses another type or version,
+  a missing manifest, any unsafe path, an unlisted entry and a listed photo that is missing.
+  `com.openglasses.app.handover` (`.ogcase`) is exported and claimed in `OpenGlasses/Info.plist`,
+  opened as a copy; opening one in this version checks it, removes the inbox copy and keeps nothing.
+  `ExpertHandoverRendering` writes the text and the PDF (the shared `PDFLayout`; stamped AI-generated
+  with no model named). Retention is 30 days, shortened by the profile-owned
+  `expertHandoverRetentionDays` (1–30).
+- **The send:** `JobSendService.proposeHandover` puts the draft on `ExpertHandoverSheet` (from the
+  open job's "Send the job to an expert…" or by voice); only the sheet's Send or a spoken "send it"
+  (`confirmHandover`) builds the files (`ExpertHandoverService`, protected staging) and opens the
+  ordinary composer — Messages or Mail by the expert's handover channel, the share sheet for WhatsApp
+  and AirDrop — whose own Send is the tap. A confirmed send writes `ExpertHandoverSent` (generation,
+  photo ids, counts, never pixels) to `FieldSession.expertHandovers` and an `expert_handover_sent`
+  log line; `ExpertHandoverLedger` gives the next send the same handover id and generation n+1.
+  `escalate_to_expert` gains `send` (by name or the expert offered; `question`, `ruled_out`) and
+  `send_it` (gated on the words being "send it"); the tool says to send first and call after, and the
+  call never waits for it. Medical Compliance never offers it (`ExpertHandoverAvailability`, checked
+  by the row, the tool, the draft and the build).
+- **Disclosure:** the Privacy footers in Settings, `PrivacyInfo.xcprivacy`'s notes and
+  `privacy.html`'s Field Assist row. No new service or route.
+- **Owed.** P5 device checks: the composer and the FaceTime prompt in sequence; an `.ogcase` arriving
+  by Messages, Mail, WhatsApp and AirDrop; the real blur on stored photos; Messages' real attachment
+  ceiling. The PDF's photo layout on a phone. JL P1's deviations.
 
 ### P2 — Assisting mode
 

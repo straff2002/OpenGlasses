@@ -468,6 +468,14 @@ struct OpenGlassesApp: App {
                         Task { @MainActor in appState.jobFiles.open(url) }
                         return
                     }
+                    // A job handover for an expert (Plan KM P1). This version reads and checks
+                    // it, removes the copy and keeps nothing; the expert's view is Plan KM P2.
+                    if ExpertHandoverFile.isHandoverFile(url) {
+                        Task { @MainActor in
+                            NoticeCenter.shared.post(ExpertHandoverFile.intake(url), severity: .advisory, source: .app)
+                        }
+                        return
+                    }
                     // A spreadsheet of van stock (Plan IH P3): read into a review, never applied
                     // from the file alone.
                     if VanStockSheet.isWorkbook(url) {
@@ -1922,7 +1930,30 @@ class AppState: ObservableObject, AppStateProtocol {
             notify: { count in JobSendNotifications.post(stagedCount: count) },
             log: { kind, sessionId, payload in
                 FieldSessionService.shared.logDebrief(kind, sessionId: sessionId, payload: payload)
+            },
+            buildHandover: { draft in ExpertHandoverService.shared.request(for: draft) },
+            presentHandover: { [weak self] request in
+                // The handover sheet is closing as this is called; a composer presented over a
+                // dismissing sheet is dropped, so it waits for the sheet to go.
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    self?.presentDelivery(request)
+                }
             }))
+        // A handover to an expert (Plan KM P1): blurred by the app's own filter, the conversation
+        // read from the job's thread when the store is open, and staged on the same service.
+        let handovers = ExpertHandoverService.shared
+        handovers.filter = privacyFilter
+        handovers.conversation = { [weak self] session in
+            let thread = self.flatMap { state in
+                state.conversationStore.isLocked ? nil
+                    : session.conversationThreadId.flatMap { id in state.conversationStore.threads.first { $0.id == id } }
+            }
+            return JobTranscriptExport.job(
+                session: session, vaultName: session.vaultId, thread: thread,
+                events: SessionLogger.readEvents(at: FieldSessionService.shared.sessionDirectory(sessionId: session.id))).lines
+        }
+        EscalationCoordinator.shared.sends = jobSends
         // A tap on that notification lands on the Jobs list, where the send card is (Plan HC). The
         // router answers only `didReceive`, so every other notification behaves exactly as it did.
         jobSendNotificationRouter = JobSendNotificationRouter { [weak self] tab in
@@ -5579,6 +5610,15 @@ class AppState: ObservableObject, AppStateProtocol {
             addDebugEvent(outcome.isSent
                 ? "Team learnings sent by \(request.channel.label)."
                 : "Team learnings not confirmed sent — they stay waiting on this phone.")
+            return
+        }
+        // A handover to an expert is not the job report (Plan KM P1): no report flag, send-queue
+        // entry or stock check follows it. A confirmed send becomes a generation on the job.
+        if let sent = request.payload.expertHandover {
+            ExpertHandoverService.shared.completed(request, outcome: outcome)
+            addDebugEvent(outcome.isSent
+                ? "Job handover sent to \(sent.expert.name) by \(request.channel.label), update \(sent.generation)."
+                : "Job handover to \(sent.expert.name) not confirmed sent.")
             return
         }
         // Kept rule chains belong to no job either (Plan JJ P3): no job's log or report flag

@@ -161,6 +161,19 @@ enum TechnicianRequest {
         }
     }
 
+    /// Whether the words send the job to `name` ("send Sam the job", "send Sam the latest",
+    /// "give Priya the job"): a sending word and any word of the name, with no refusal before the
+    /// sending word (Plan KM P1).
+    static func asksToSend(name: String, _ said: String) -> Bool {
+        let words = self.words(said)
+        let nameWords = self.words(name)
+        guard !nameWords.isEmpty, nameWords.contains(where: words.contains),
+              let verb = words.firstIndex(where: sendWords.contains) else { return false }
+        return !words[..<verb].contains(where: refusingWords.contains)
+    }
+
+    private static let sendWords: Set<String> = ["send", "share", "give", "forward", "update"]
+
     private static let callWords: Set<String> = [
         "call", "ring", "phone", "facetime", "dial", "try", "get", "contact", "reach",
     ]

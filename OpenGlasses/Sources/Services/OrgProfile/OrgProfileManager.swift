@@ -955,6 +955,9 @@ extension SettingKey {
         case .technicianDisplayName: return "Your name, as your team sees it"
         case .organizationToolDefinitionsMode: return "When the assistant looks up tool definitions on demand"
         case .organizationExperts: return "The experts you can call for help on a job"
+        case .expertHandoverTranscript: return "Whether a job sent to an expert carries the conversation"
+        case .expertHandoverIncludesAddress: return "Whether a job sent to its own staff experts carries the site's address"
+        case .expertHandoverRetentionDays: return "How long an expert's app keeps a job sent to them"
         default: return rawValue
         }
     }

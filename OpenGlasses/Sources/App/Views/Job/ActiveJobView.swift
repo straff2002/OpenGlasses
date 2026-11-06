@@ -334,6 +334,10 @@ struct ActiveJobView: View {
             choice("Read back the job", action: onReadBack)
                 .disabled(!job.hasRecord)
 
+            // Plan KM P1: the job as it stands, to a named expert. Draws nothing in Medical
+            // Compliance mode, with Field Assist locked, or with nobody on the Experts list.
+            ExpertHandoverStartRow(sends: appState.jobSends)
+
             if let onSendToday {
                 choice("Send today's conversations…", action: onSendToday)
                     .accessibilityHint("Everything said today so far, this job included, for support. You see it before anything is sent.")
