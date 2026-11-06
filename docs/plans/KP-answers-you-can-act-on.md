@@ -2,7 +2,8 @@
 
 **Status:** 📝 Drafted 2026-11-06 from the owner's question; nothing built. Supersedes Plan
 [IB](IB-paged-hud-answers.md) (paged HUD answers), whose design is folded in here as §1–§2 and P0–P1.
-The decisions below are recommendations until the owner takes them.
+The decisions below are recommendations until the owner takes them. Revised the same day: §8 and P1b
+cover what the wearer gets while another app has the Display.
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`; Even G2 through Plan AH's backend; the
 web mirror of Plan BP). Every phase except P6 is headless. Phone first still holds: everything a card
 offers is also on the phone.
@@ -224,6 +225,52 @@ scrolled back to read.
 Captions record other people's speech, so the setting's footer says so plainly: what is kept, for how
 long, that it stays on this phone, and that the people speaking may need to agree.
 
+### 8 · When the Display is in use
+
+The owner asked what the wearer gets while another app has the Display. Today, nothing on the lens, and
+no sign of why.
+
+**What is known.** DAT gives an app no notification surface on the Display: an app draws only inside its
+own display session. Meta's display docs say an app has "exclusive display control during active
+sessions", that "Users must explicitly initiate a display session", and that the system may interrupt
+sessions for calls, notifications or other priority events. They don't say what an app's session does
+while another app has the Display. `DeviceSessionState` has a `paused` case, which is the likely
+reading. `MetaDisplayBackend.ensureDisplay()` handles only `started`, `stopped` and `idle`. On a paused
+session it calls `start()`, waits up to 10 s, throws `sessionUnavailable`, and the frame is dropped.
+
+**Speech is not affected.** It goes from the phone to the glasses' speakers over Bluetooth, outside the
+display session, and the app has the `audio` background mode. Answers, reminders, geofence alerts,
+approval prompts, "held while away" lines and remote-agent messages are already spoken as well as shown.
+While the Display is taken, only two things are visual-only: the agent's "Step 2 of 5" progress lines
+(kept off speech on purpose; the final summary is spoken) and §3's answer card.
+
+**The rule.**
+
+1. **A reading, not an error.** A pure `DisplayAvailability` reads the session state, the glasses' link
+   and `GlassesConnectionService.isWorn` into `.ours`, `.inUse` or `.off`. The display is `.inUse` when
+   the glasses are connected and worn and the session is `paused`, or a start is refused. It is `.off`
+   when there is no display, the glasses are disconnected, taken off or folded. A display that went to
+   sleep from inactivity is still `.ours`.
+2. **Never take the Display back.** While `.inUse`, `MetaDisplayBackend` doesn't call `start()` and
+   doesn't tear the session down. It waits for the session to report `started` again (through
+   `stateStream()`), and then the reading returns to `.ours`.
+3. **No backlog.** While `.inUse` nothing queues for the lens. Notifications and captions are dropped,
+   because they were spoken or they're live. The service keeps one thing: the latest answer card.
+4. **The card comes back if it's still fresh.** When the reading returns to `.ours`, the held card is
+   shown again if it is still inside its 60 s lifetime, counted from when the answer was made. An older
+   card is dropped.
+5. **One spoken hint per stretch.** The first time an answer is spoken while the display is `.inUse`,
+   one line follows it: "Your display's busy. Say 'repeat', 'save that' or 'tell me more'." It plays once
+   until the reading leaves `.inUse`. It never plays for an alert, when the display is `.off`, or when
+   speech is being suppressed. **Say when the display is busy** turns it off in Devices & Privacy ›
+   Glasses › Display (on by default).
+6. **Voice covers the card.** "Repeat", "tell me more", "save that" and "send that" already work as
+   ordinary requests, so everything the card offers is still reachable while it can't be seen.
+
+**Starting a session in the first place.** Today the first frame to show starts a display session on its
+own. That sits awkwardly with "Users must explicitly initiate a display session". Decision 8 settles it.
+Rule 2 holds either way: a session another app has interrupted is never started again by Avenkin.
+
 ## What KP leaves out
 
 - **Neural Band settings and battery, buzzing the band, and its firmware.** DAT exposes none of them.
@@ -251,6 +298,11 @@ long, that it stays on this phone, and that the people speaking may need to agre
 6. **Send:** the voice-asked, staged `send_via` flow (§3), never a one-press send. *Recommended.*
 7. **Caption sessions:** off by default, seven days, unavailable under `hipaaMode` (§7).
    *Recommended.*
+8. **Who starts a display session (§8):** the app, the first time it has something to show, as today, or
+   only after the wearer starts one (a band press, "show it on the display", or the HUD switch itself).
+   *Recommended: treat turning the HUD on in Settings as the wearer's explicit start, so today's behaviour
+   stays, and revisit if Meta's review reads the rule more strictly.*
+9. **The busy hint (§8):** on by default, once per stretch. *Recommended.*
 
 ## Phases (one PR each)
 
@@ -275,6 +327,17 @@ reach the HUD today and, if they do, gives them the same card without follow-ups
 makes a turn stale; navigation lines never page; a task card still gets a five-second flash; Send never
 sends without the confirmation), `WebHUDMirrorTests` (the footer shows and the arrow keys turn pages),
 `HUDPreviewSnapshotTests` (one paged card per backend), `TempleActionResolverTests` (the new action).
+
+### P1b — when the Display is in use
+
+`DisplayAvailability`; `MetaDisplayBackend` reports `.inUse` instead of restarting or tearing down a
+paused session, and follows `stateStream()` back to `started`; the held card and its return; the
+spoken hint and its setting; the support report records each change of reading with its time and the
+session state behind it. **Tests:** `DisplayAvailabilityTests` (every combination of session state,
+link, worn and folded); a paused session never gets `start()` (through the backend's test seam);
+nothing queues while `.inUse`; the held card shows again inside its lifetime and not after; the hint
+plays once per stretch, never for an alert, never when `.off`, never while speech is suppressed, and
+not at all with the setting off.
 
 ### P2 — suggested follow-ups
 
@@ -310,8 +373,10 @@ session never enters memory unasked.
 
 Read three long answers on a Meta Display and on Even G2; turn pages by band, voice and temple tap; press
 every action and two follow-ups; confirm that a stale turn never overwrites a newer notification; run
-the band check and send its report; photograph the lens to calibrate §6's estimates; settle decisions 2,
-3 and 5.
+the band check and send its report; photograph the lens to calibrate §6's estimates. Then open another
+Display app (another toolkit app, and one of Meta's own) and ask a question: listen for the answer and
+the hint, come back, and check the card. Send the support report, so it shows which session states DAT
+reported. Settle decisions 2, 3 and 5.
 
 **Gates for every PR:** the full suite and a Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`, catalog
 changes in their own commit, and this Status line and the index row updated.
@@ -327,6 +392,8 @@ changes in their own commit, and this Status line and the index row updated.
 - The phone's preview shows a page at the Display's shape, with its sizes marked as estimates.
 - With the setting on, a captioned conversation can be opened and shared afterwards, and is gone after
   seven days.
+- While another app has the Display, the wearer still hears every answer and alert, hears once that the
+  display is busy and what to say instead, and Avenkin never takes the Display back.
 
 ## Open
 
@@ -334,3 +401,6 @@ changes in their own commit, and this Status line and the index row updated.
   lesson 4 and JV's probe answer it.
 - The real pixel sizes behind DAT's text tokens (P6).
 - Whether the live modes' replies reach the HUD today (P1 finds out).
+- What DAT reports when another app takes the Display: `paused`, `stopped`, or an error (P6, from the
+  support report).
+- Whether the glasses play our speech over another Display app's own sound, or hold it back (P6).
