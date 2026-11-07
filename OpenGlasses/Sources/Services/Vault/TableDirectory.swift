@@ -50,7 +50,14 @@ enum TableDirectory {
     /// Every table sharing a term with the question, best first — ties in catalogue order. One
     /// entry per document and label: a table continued on later pages under the same caption is one
     /// table, its title the first non-empty one and its headings all of theirs.
-    static func ranked(_ question: String, in catalogue: [TableReference.Entry]) -> [Candidate] {
+    ///
+    /// `asTechnicianSaid` (the hint's ranking, Plan KR P3) reads the question as a technician says
+    /// it rather than as a model names a table: a word the trade says for what a book prints
+    /// (`printedFor`) counts as the printed word too, and a table set in kilovolt bands weighs
+    /// `unaskedBandShare` of its score when the question names no voltage — a question that says
+    /// none is about the ordinary band. `table_lookup`'s words are the model's, read as written.
+    static func ranked(_ question: String, in catalogue: [TableReference.Entry],
+                       asTechnicianSaid: Bool = false) -> [Candidate] {
         let tables = merged(catalogue)
         guard !tables.isEmpty else { return [] }
         // "Table" says the question wants a table, not which: titles that mention other tables
@@ -58,8 +65,13 @@ enum TableDirectory {
         // are cut under each table's document's rule (Plan JY P0).
         var askedByRule: [TermRule: Set<String>] = [:]
         for rule in Set(tables.map(\.termRule)).union([.english]) {
-            askedByRule[rule] = terms(question, rule: rule).subtracting(tableWords(rule))
+            var asked = terms(question, rule: rule).subtracting(tableWords(rule))
+            if asTechnicianSaid, rule == .english {
+                for (said, printed) in printedForTerms where !asked.isDisjoint(with: said) { asked.formUnion(printed) }
+            }
+            askedByRule[rule] = asked
         }
+        let demotesBands = asTechnicianSaid && !namesVoltage(question)
         guard askedByRule.values.contains(where: { !$0.isEmpty }) else { return [] }
         let fields = tables.map { (title: terms($0.title, rule: $0.termRule),
                                    headings: headingTerms($0.headings, rule: $0.termRule)) }
@@ -86,6 +98,7 @@ enum TableDirectory {
                 score += weight * rarity(term)
                 shared += 1
             }
+            if demotesBands, isKilovoltBand(tables[index]) { score *= unaskedBandShare }
             if shared > 0 { scored.append((index, score, shared)) }
         }
         let order = scored.sorted { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
@@ -101,7 +114,7 @@ enum TableDirectory {
     /// second edition of the book) is the same table, not a second candidate: it is skipped, so the
     /// second place goes to a different table, and `hint` names every document that prints it.
     static func candidates(for question: String, in catalogue: [TableReference.Entry], limit: Int = 2) -> [Candidate] {
-        let ranked = ranked(question, in: catalogue)
+        let ranked = Self.ranked(question, in: catalogue, asTechnicianSaid: true)
         guard let best = ranked.first, clears(best) else { return [] }
         var out = [best]
         for next in ranked.dropFirst() where out.count < limit {
@@ -177,6 +190,105 @@ enum TableDirectory {
         return out
     }
 
+    // MARK: - As the technician said it (Plan KR P3)
+
+    /// Words the trade says for what a book prints: "conduit" for the raceway a book's title names,
+    /// "wire" for its conductors. Generic trade words only; English.
+    static let printedFor: [(said: String, printed: String)] = [
+        ("conduit", "raceway"), ("wire", "conductor"), ("wires", "conductors"),
+    ]
+
+    private static let printedForTerms: [(Set<String>, Set<String>)] = printedFor.map {
+        (LexicalSupport.contentTerms($0.said).map(singularY).reduce(into: Set<String>()) { $0.insert($1) },
+         LexicalSupport.contentTerms($0.printed).map(singularY).reduce(into: Set<String>()) { $0.insert($1) })
+    }
+
+    /// What a kilovolt-band table scores against a question that names no voltage.
+    static let unaskedBandShare = 0.5
+
+    /// Whether the words name a voltage: a number of volts or kilovolts, or the word itself.
+    static func namesVoltage(_ text: String) -> Bool {
+        let found = terms(text)
+        if found.contains("unit:v") || found.contains("unit:kv") { return true }
+        return text.range(of: #"(?<![\p{L}])(voltage|volts?|kv|kilovolts?)(?![\p{L}])"#,
+                          options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// Whether a table is set in kilovolt bands: its title or a heading prints a kV value, or says
+    /// medium or high voltage.
+    static func isKilovoltBand(_ entry: TableReference.Entry) -> Bool {
+        ([entry.title] + entry.headings).contains { text in
+            text.range(of: #"\d\s*kv(?![\p{L}])|(?<![\p{L}])(medium|high)[\s-]voltage(?![\p{L}])"#,
+                       options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    /// One condition a table's title says it holds under.
+    struct Condition: Equatable {
+        enum Kind: String, CaseIterable {
+            case material = "conductor material"
+            case voltage = "voltage"
+            case run = "where the conductors run"
+            case count = "how many conductors"
+            case ambient = "ambient temperature"
+        }
+        let kind: Kind
+        /// As the title prints it, or shortened: "aluminum", "not over 900 V", "in free air".
+        let text: String
+    }
+
+    /// The conditions a table's title — and, for its voltage band, its headings — says it holds
+    /// under (Plan KR P3), in `Condition.Kind` order. A title shortened for the hint can lose them,
+    /// and two tables offered alike often differ only in one. Generic electrical conditions: none
+    /// for a table that prints none.
+    static func conditions(of entry: TableReference.Entry) -> [Condition] {
+        let title = entry.title
+        let lower = title.lowercased()
+        var out: [Condition] = []
+        func match(_ pattern: String, in text: String) -> String? {
+            text.range(of: pattern, options: [.regularExpression, .caseInsensitive]).map {
+                String(text[$0]).trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+            }
+        }
+        let copper = lower.range(of: #"(?<![\p{L}])copper(?![\p{L}])"#, options: .regularExpression) != nil
+        let aluminum = lower.range(of: #"(?<![\p{L}])alumin(?:um|ium)(?![\p{L}])"#, options: .regularExpression) != nil
+        if copper != aluminum { out.append(Condition(kind: .material, text: copper ? "copper" : "aluminum")) }
+        let volts = #"\d[\d ,.]*\s*k?v(?![\p{L}])"#
+        if let voltage = match(#"(?:(?:not more than|not over|no more than|up to|over|above|exceeding|rated)\s+)?"# + volts
+                               + #"(?:\s*(?:to|-|\x{2013})\s*"# + volts + ")?", in: title) {
+            out.append(Condition(kind: .voltage, text: voltage))
+        } else if let band = entry.headings.lazy.compactMap({ match(volts + #"(?:\s*(?:to|-|\x{2013})\s*"# + volts + ")?", in: $0) })
+            .first(where: { $0.lowercased().contains("kv") }) {
+            out.append(Condition(kind: .voltage, text: band + " bands"))
+        }
+        let runs = [#"in buried conduit"#, #"direct(?:ly)? buried"#, #"direct burial"#, #"underground"#,
+                    #"in free air"#, #"free air"#, #"in (?:a )?raceways? or cables?"#, #"in (?:a )?cables? or raceways?"#,
+                    #"in (?:a )?raceways?"#, #"in (?:a )?conduit"#, #"in (?:a )?cable tray"#]
+        if let run = runs.lazy.compactMap({ match(#"(?<![\p{L}])"# + $0 + #"(?![\p{L}])"#, in: title) }).first {
+            out.append(Condition(kind: .run, text: run))
+        }
+        let conductorAfter = #"(?=[^,;()]{0,40}?(?<![\p{L}])(?:conductors?|cables?)(?![\p{L}]))"#
+        if let count = match(#"(?<![\p{L}])(?:(?:not more than|no more than|up to)\s+(?:one|two|three|four|five|six|\d+)|single|(?:one|two|three|four|\d+)\s+sets\s+of\s+(?:two|three|four|\d+))(?![\p{L}])"#
+                             + conductorAfter, in: title) {
+            out.append(Condition(kind: .count, text: count))
+        }
+        if let ambient = match(#"(?<![\p{L}\p{N}])\d+\s*°\s*c(?=\*?\s+ambient)|(?<=ambient temperature of )\d+\s*°\s*c|(?<=ambient of )\d+\s*°\s*c"#,
+                               in: title) {
+            out.append(Condition(kind: .ambient, text: ambient + " ambient"))
+        }
+        return out
+    }
+
+    /// The kinds of condition every one of the tables prints, and not all alike, in
+    /// `Condition.Kind` order. A kind one table leaves unsaid decides nothing between them.
+    static func differingKinds(_ sets: [[Condition]]) -> [Condition.Kind] {
+        guard sets.count > 1 else { return [] }
+        return Condition.Kind.allCases.filter { kind in
+            let texts = sets.map { set in set.first { $0.kind == kind }?.text.lowercased() }
+            return !texts.contains(nil) && Set(texts.compactMap { $0 }).count > 1
+        }
+    }
+
     private static let tableWords = LexicalSupport.contentTerms("table tables")
 
     /// The table words under `rule`.
@@ -246,6 +358,9 @@ enum TableDirectory {
         "allowable", "allowed", "permitted", "permissible", "limit", "limits", "value", "values", "tabulated",
         "capacity", "clearance", "clearances", "spacing", "distance", "depth", "radius", "diameter", "dimension",
         "dimensions", "derate", "derating", "correction", "fill", "carry", "load", "setting", "multiplier",
+        // A rating a book tabulates under its own name (Plan KR P3): "aluminum conductors in a
+        // raceway ampacity" asks for one as surely as "what size" does.
+        "ampacity", "ampacities", "amperage",
     ]
 
     /// The line the per-turn manual block carries for a value question that names no table, or nil:
@@ -257,19 +372,39 @@ enum TableDirectory {
         let offered = candidates(for: turn, in: catalogue)
         guard !offered.isEmpty else { return nil }
         let documents = Set(catalogue.compactMap(\.documentName))
-        let named = offered.map { candidate -> String in
+        let offeredConditions = offered.map { Self.conditions(of: $0.entry) }
+        let named = zip(offered, offeredConditions).map { candidate, held -> String in
             let title = shortened(candidate.entry.title)
-            guard documents.count > 1 else { return candidate.entry.label + (title.isEmpty ? "" : " — " + title) }
+            // The conditions the table holds under, which a shortened title can lose (Plan KR P3).
+            let assumes = held.isEmpty ? "" : " [holds for: " + held.map(\.text).joined(separator: "; ") + "]"
+            guard documents.count > 1 else { return candidate.entry.label + (title.isEmpty ? "" : " — " + title) + assumes }
             // Every document that prints the label, the best-scoring one first.
             var printing: [String] = candidate.entry.documentName.map { [$0] } ?? []
             for entry in catalogue where entry.label.lowercased() == candidate.entry.label.lowercased() {
                 if let name = entry.documentName, !printing.contains(name) { printing.append(name) }
             }
             let document = printing.isEmpty ? "" : " (" + printing.joined(separator: ", ") + ")"
-            return candidate.entry.label + (title.isEmpty ? "" : " — " + title) + document
+            return candidate.entry.label + (title.isEmpty ? "" : " — " + title) + document + assumes
         }
-        return "Tables that may answer this: " + named.joined(separator: "; ")
-            + ". Read the value with table_lookup (table, row, column), and ask the technician for any input the table needs."
+        return "Tables that may answer this: " + named.joined(separator: "; ") + "."
+            + conditionsLine(offeredConditions)
+            + " Read the value with table_lookup (table, row, column), and ask the technician for any input the table needs."
+    }
+
+    /// What the model does with the tables' conditions (Plan KR P3, owner decision 4): say the table
+    /// it read and the conditions it took to hold; when the offered tables differ in one, read the
+    /// one the technician's words settle, and ask only that one condition when they settle none.
+    /// Empty when no offered table prints a condition.
+    static func conditionsLine(_ conditions: [[Condition]]) -> String {
+        guard conditions.contains(where: { !$0.isEmpty }) else { return "" }
+        var line = " Say which table you read and the conditions you took to hold."
+        let differ = differingKinds(conditions)
+        if !differ.isEmpty {
+            line += " These tables differ in " + differ.map(\.rawValue).joined(separator: ", ")
+                + ": read the one the technician's words fit; if their words fit both, ask the one condition that "
+                + "decides, then read it."
+        }
+        return line
     }
 
     /// A title as the hint says it: a trailing "(See …)" or "[See …]" cross-reference left out,

@@ -197,9 +197,12 @@ enum ToolEffectClassifier {
     /// (Plan KL P2). Taken from each tool's own `execute` switch: `CalendarTool` ("today", "schedule",
     /// "next", "upcoming", "week", "this_week", "tomorrow") and `AppleRemindersTool` ("list", "show").
     /// Every other action of theirs writes ("create"/"add"; "create"/"add"/"set", "complete"/"done"/"finish").
+    /// `FieldSessionTool`'s "status", "list" and "vaults" report the job, the history and the
+    /// installed vaults and change none of them (Plan KR P5); its other actions write.
     static let readActions: [String: Set<String>] = [
         "calendar": ["today", "schedule", "next", "upcoming", "week", "this_week", "tomorrow"],
         "reminder": ["list", "show"],
+        "field_session": ["status", "list", "vaults"],
     ]
 
     /// Whether this call of a tool declared by its strongest (writing) action only reads — the

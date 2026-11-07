@@ -136,17 +136,33 @@ final class VaultIndexingMonitor: ObservableObject {
 /// Asks iOS to keep the app running briefly after it leaves the foreground.
 protocol BackgroundTaskRunning {
     func begin(name: String) -> Int
+    /// The same, telling the caller when iOS's allowance ran out (Plan KR P5). By then the task
+    /// has been ended — the caller must not end it again.
+    func begin(name: String, onExpiry: @escaping @MainActor () -> Void) -> Int
     func end(_ token: Int)
+}
+
+extension BackgroundTaskRunning {
+    /// A runner that cannot report expiry: the caller is never told, as before.
+    func begin(name: String, onExpiry: @escaping @MainActor () -> Void) -> Int {
+        begin(name: name)
+    }
 }
 
 /// `UIApplication.beginBackgroundTask`. The expiry handler ends the task itself, as iOS requires —
 /// a task left open at expiry gets the app killed rather than suspended.
 struct SystemBackgroundTasks: BackgroundTaskRunning {
     func begin(name: String) -> Int {
+        begin(name: name, onExpiry: {})
+    }
+
+    func begin(name: String, onExpiry: @escaping @MainActor () -> Void) -> Int {
         // Boxed: the expiry handler needs the identifier `beginBackgroundTask` is about to return.
         final class Box: @unchecked Sendable { var identifier = UIBackgroundTaskIdentifier.invalid }
         let box = Box()
         box.identifier = UIApplication.shared.beginBackgroundTask(withName: name) {
+            // iOS calls this on the main thread, and the task must be ended before it returns.
+            MainActor.assumeIsolated { onExpiry() }
             UIApplication.shared.endBackgroundTask(box.identifier)
             box.identifier = .invalid
         }

@@ -303,7 +303,7 @@ final class ChainStartRequestTests: XCTestCase {
         XCTAssertEqual(RuleChainTool.startRefusal(chain: chainName, said: "what's the voltage drop on 30 metres of 6 copper",
                                                   previousReply: nil, proposed: nil),
                        RuleChainTool.notAskedRefusal)
-        XCTAssertTrue(RuleChainTool.notAskedRefusal.contains("you may offer the chain by name"))
+        XCTAssertTrue(RuleChainTool.notAskedRefusal.contains("offer the chain by its name as one yes-or-no question"))
     }
 
     func testNamingItAskingForAChainOrSayingYesToTheOfferStartsIt() {

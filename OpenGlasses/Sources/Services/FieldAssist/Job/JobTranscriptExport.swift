@@ -82,6 +82,29 @@ enum JobTranscriptExport {
         let lines: [Line]
         /// Whether the job ran sealed to its vault (Plan KE).
         var vaultOnly: Bool = false
+        /// What the technician named the job (`FieldSession.assetId`, Plan KR P6), for the heading.
+        var name: String? = nil
+        /// Whether another job owns the same conversation thread (Plan KR P6). Its lines are then
+        /// only those inside this job's window, and its AI turns are claimed inside it too.
+        var sharesThread: Bool = false
+
+        /// The job's own period, a minute either side, for a thread it shares (Plan KR P6). An open
+        /// job runs to the end of time.
+        var window: (start: Date, end: Date) {
+            let margin = JobTranscriptExport.sharedThreadMargin
+            return (startedAt.addingTimeInterval(-margin),
+                    endedAt.map { $0.addingTimeInterval(margin) } ?? .distantFuture)
+        }
+    }
+
+    /// The margin either side of a job's own period when its thread is shared with another job.
+    static let sharedThreadMargin: TimeInterval = 60
+
+    /// Whether another of `sessions` owns `session`'s conversation thread — two jobs held in one
+    /// conversation (Plan KR P6).
+    static func sharesThread(_ session: FieldSession, among sessions: [FieldSession]) -> Bool {
+        guard let thread = session.conversationThreadId else { return false }
+        return sessions.contains { $0.id != session.id && $0.conversationThreadId == thread }
     }
 
     /// A conversation held outside any job on the chosen day, or the one thread a conversation
@@ -379,9 +402,18 @@ enum JobTranscriptExport {
     ///
     /// `thread` is the thread the job owns (`FieldSession.conversationThreadId`), or nil when the
     /// job never had one or it has been deleted.
+    ///
+    /// `sharesThread` (Plan KR P6): another job owns the same thread. Each job then prints only what
+    /// was said from its start to its end, a minute either side — the partner's two jobs in one
+    /// conversation each printed the whole of it.
     static func job(session: FieldSession, vaultName: String, thread: ConversationThread?,
-                    events: [SessionLogger.Event]) -> Job {
-        let spoken = lines(of: thread?.messages ?? [])
+                    events: [SessionLogger.Event], sharesThread: Bool = false) -> Job {
+        var window: (start: Date, end: Date)?
+        if sharesThread {
+            window = (session.startedAt.addingTimeInterval(-sharedThreadMargin),
+                      session.endedAt.map { $0.addingTimeInterval(sharedThreadMargin) } ?? .distantFuture)
+        }
+        let spoken = lines(of: thread?.messages ?? [], within: window)
 
         let source: Source
         let chosen: [Line]
@@ -412,7 +444,9 @@ enum JobTranscriptExport {
             threadId: session.conversationThreadId,
             source: source,
             lines: chosen,
-            vaultOnly: session.vaultOnly == true)
+            vaultOnly: session.vaultOnly == true,
+            name: session.assetId.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 },
+            sharesThread: sharesThread)
     }
 
     // MARK: - The file
@@ -546,6 +580,16 @@ enum JobTranscriptExport {
         var printedTurns = 0
         var failedTurns = 0
 
+        // A job's turns by its own session id first, for every job, before any is matched by its
+        // thread (Plan KR P6): two jobs in one conversation had the first claim the second one's
+        // turns, and the second read "No AI turn records". By thread, then, a turn recorded for no
+        // other job — and, for a shared thread, only inside the job's own window.
+        var turnsBySession: [String: [TurnTrace]] = [:]
+        for job in jobs {
+            turnsBySession[job.sessionId] = claim { $0.fieldSessionId == job.sessionId }
+        }
+        let jobsByThread = Dictionary(grouping: jobs.compactMap(\.threadId), by: { $0 }).mapValues(\.count)
+
         for job in jobs {
             out += ["", rule("="), jobHeading(job, format: format), vaultLine(job),
                     jobTimes(job, format: format), rule("-")]
@@ -555,10 +599,14 @@ enum JobTranscriptExport {
             case .nothing: out.append(nothingNote)
             }
 
-            let traces = claim { trace in
-                trace.fieldSessionId == job.sessionId
-                    || (trace.threadId != nil && trace.threadId == job.threadId)
+            let shared = job.sharesThread || (job.threadId.map { jobsByThread[$0, default: 0] > 1 } ?? false)
+            let window = job.window
+            let byThread = claim { trace in
+                guard trace.threadId != nil, trace.threadId == job.threadId else { return false }
+                guard shared else { return true }
+                return trace.fieldSessionId == nil && trace.at >= window.start && trace.at < window.end
             }
+            let traces = ((turnsBySession[job.sessionId] ?? []) + byThread).sorted { $0.at < $1.at }
             printedTurns += traces.count
             failedTurns += traces.filter { $0.outcome == .failed }.count
             let events = (details?.jobEvents[job.sessionId] ?? []).filter {
@@ -657,17 +705,25 @@ enum JobTranscriptExport {
         return "Conversation: \(conversation.title)"
     }
 
+    /// "Job 1027 — Boiler swap · <unit> · Resolved": the number and the name by the thread
+    /// title's rule (Plan KR P6), so the report and the Chat tab call the job the same thing.
     private static func jobHeading(_ job: Job, format: Format) -> String {
         var heading = [job.jobNumber]
+        if let name = job.name {
+            let reference = job.jobNumber.hasPrefix("Job ") ? String(job.jobNumber.dropFirst(4)) : ""
+            heading = [reference.isEmpty ? job.jobNumber + JobThreadTitle.separator + name
+                       : JobThreadTitle.named(reference: reference, name: name) ?? job.jobNumber]
+        }
         if let equipment = job.equipment { heading.append(equipment) }
         heading.append(job.outcome)
         return heading.joined(separator: " · ")
     }
 
-    /// The vault the job ran on, and the seal when there was one. A reader of the trace needs to
-    /// know a `web_search` here was never possible.
-    private static func vaultLine(_ job: Job) -> String {
-        "Vault: \(job.vaultName)" + (job.vaultOnly ? " · Vault-only: on" : "")
+    /// The vault the job ran on, and whether it was sealed. A reader of the trace needs to know a
+    /// `web_search` here was never possible — and, with it off, that it was (Plan KR P6: the line
+    /// said only "on", so a report without it could not be told from one that left it out).
+    static func vaultLine(_ job: Job) -> String {
+        "Vault: \(job.vaultName) · Vault-only: " + (job.vaultOnly ? "on" : "off")
     }
 
     private static func jobTimes(_ job: Job, format: Format) -> String {
@@ -838,7 +894,21 @@ enum JobTranscriptExport {
             let first = text.components(separatedBy: .newlines).first ?? text
             line += " — " + (first.count > 200 ? String(first.prefix(200)) + "…" : first)
         }
+        if event.kind == .figurePresented, let place = presentedPlace(event.payload?["presented"]?.value as? String) {
+            line += " · " + place
+        }
         return [line]
+    }
+
+    /// Where a "figure presented" page went (Plan KR P6), from the event's `presented`: the line
+    /// named the page and never said whether anyone saw it.
+    static func presentedPlace(_ presented: String?) -> String? {
+        switch presented {
+        case "phone": return "on the phone"
+        case "model_only": return "to the model only"
+        case "none": return "nowhere"
+        default: return nil
+        }
     }
 
     private static func seconds(_ value: TimeInterval) -> String {
@@ -947,7 +1017,8 @@ enum JobTranscriptExporter {
                 thread: session.conversationThreadId.flatMap { id in
                     store.threads.first { $0.id == id }
                 },
-                events: SessionLogger.readEvents(at: sessions.sessionDirectory(sessionId: session.id)))
+                events: SessionLogger.readEvents(at: sessions.sessionDirectory(sessionId: session.id)),
+                sharesThread: JobTranscriptExport.sharesThread(session, among: sessions.history))
         }
 
         // The period the scope covers: the day, or the job or conversation from start to finish

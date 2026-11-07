@@ -76,7 +76,8 @@ final class ManualPagePolicyTests: XCTestCase {
                        .none(reason: .otherPageNamed), "a passage with no page is not the page named")
         XCTAssertEqual(P.decide(turnKind: .showMe, passageKind: .captioned, tokenHits: [],
                                 namedPages: [34, 35], passagePage: 34),
-                       .present(reason: .askedForPage), "the page asked for still opens")
+                       .attachToModelOnly(reason: .pageNamed),
+                       "the page asked for goes to the model; manual_figure opens it (Plan KR P1)")
         XCTAssertEqual(P.decide(turnKind: .question, passageKind: .captioned, tokenHits: [],
                                 namedPages: [34], passagePage: 34),
                        .attachToModelOnly(reason: .tableNotAskedFor), "on the named page the usual rules apply")

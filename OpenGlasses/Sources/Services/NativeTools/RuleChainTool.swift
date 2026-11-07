@@ -26,7 +26,8 @@ final class RuleChainTool: NativeTool {
     proposed with propose_chain once the technician says go, and chains kept on this phone; both are \
     unreviewed, so say so. Actions: 'list' (the chains by name: read the names out), 'start' (pass \
     'chain', its name; it replaces a chain already running; only when the technician asks for that \
-    chain, asks to run a chain, or says yes to the one you offered), 'answer' (pass 'step', the name \
+    chain, asks to run a chain, asks you to walk them through the work it does, or says yes to the one you \
+    offered), 'answer' (pass 'step', the name \
     of the question the chain is waiting for, and 'value', the technician's reply to it as said, from \
     their turn after the question was put; one answer per turn), \
     'status', 'stop', 'keep' (keep the proposed chain that just ran to a result on this phone, when \
@@ -35,8 +36,8 @@ final class RuleChainTool: NativeTool {
     your turn: ask it in your own words and stop. Never pass a value the technician did not say in \
     reply to that question, and never work a step yourself. When it finishes, say the result and \
     read back the steps with their pages; when it stops it has ended: say why, offer to show the page \
-    and ask for no more of its values. Offer a chain by name when one answers the question; never \
-    start one the technician did not ask for. \
+    and ask for no more of its values. Offer a chain by name, as a yes-or-no question, when one \
+    answers the question; never start one the technician did not ask for, and never tell them words to say. \
     Requires an active session.
     """
     let parametersSchema: [String: Any] = [
@@ -176,6 +177,10 @@ final class RuleChainTool: NativeTool {
             let unreadable = Self.unreadableTables(entry.chain, tables: tables)
             if !unreadable.isEmpty {
                 marks.append("can't start: needs " + unreadable.map(\.label).joined(separator: ", "))
+            } else if let column = Self.columnProblems(entry.chain, tables: tables).first {
+                // A column its headings cannot settle refuses the start just as a missing table
+                // does (Plan KR P4), so the list says so before anyone asks for it.
+                marks.append("can't start: " + Self.listMark(column))
             }
             names.append("• " + entry.chain.name + (marks.isEmpty ? "" : " (" + marks.joined(separator: "; ") + ")"))
         }
@@ -308,7 +313,7 @@ final class RuleChainTool: NativeTool {
     /// live session) is not gated, as `TechnicianWords` documents. Pure.
     static func startRefusal(chain name: String, said: String?, previousReply: String?, proposed: String?) -> String? {
         guard let said else { return nil }
-        if TechnicianRequest.names(chain: name, in: said) || TechnicianRequest.asksToRunChain(said) { return nil }
+        if TechnicianRequest.names(chain: name, in: said) || TechnicianRequest.asksToRunChain(said, chain: name) { return nil }
         if TechnicianRequest.isShortAffirmative(said) {
             if proposed == name { return nil }
             if let previousReply, !TechnicianRequest.chainsMentioned(in: previousReply, among: [name]).isEmpty {
@@ -318,8 +323,11 @@ final class RuleChainTool: NativeTool {
         return notAskedRefusal
     }
 
-    static let notAskedRefusal = "Not started — the technician didn't ask for a chain. Answer their question; "
-        + "you may offer the chain by name."
+    /// Plan KR P4: "you may offer the chain by name" became a phrase the technician was told to say
+    /// back. The offer is a yes-or-no question, and a yes starts the chain it named.
+    static let notAskedRefusal = "Not started — the technician didn't ask for a chain. Answer their question. You may "
+        + "then offer the chain by its name as one yes-or-no question; a yes starts it. Never tell the technician "
+        + "what words to say to start it."
 
     /// Why a chain was not started, and what can be shown instead. Pure.
     static func refusal(_ chain: ChainDefinition, unreadable: [UnreadableTable]) -> String {
@@ -412,6 +420,18 @@ final class RuleChainTool: NativeTool {
                 }
             }
             return nil
+        }
+    }
+
+    /// A column problem as the chain list marks it (Plan KR P4): the step, and what is wrong with
+    /// its column. Pure.
+    static func listMark(_ problem: ColumnProblem) -> String {
+        let step = "step \(problem.stepIndex + 1) (\(problem.name))"
+        let label = problem.source.table.label
+        switch problem.kind {
+        case .ambiguous: return "\(step) names a column of \(label) printed under more than one heading"
+        case .missing: return "\(step) names a column \(label) does not print"
+        case .valueOnly: return "\(step) names its column of \(label) by a value printed under more than one heading"
         }
     }
 

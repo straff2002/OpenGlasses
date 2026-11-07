@@ -4165,8 +4165,10 @@ class LLMService: ObservableObject {
 
     /// Replace the entire Field Assist contribution after every tool iteration. In particular,
     /// a change-equipment or end-session tool must not leave the previous machine in instructions.
+    /// The rebuild stages no page: the turn's first build decided it, and a page a tool put up
+    /// since stays on the phone (Plan KR P1).
     func refreshedFieldInstructions(_ original: String, turn: String) -> String {
-        let fresh = FieldSessionService.shared.promptContext(turn: turn)
+        let fresh = FieldSessionService.shared.promptContext(turn: turn, stagesFigure: false)
         return Self.replacingFieldInstructions(original, fresh: fresh)
     }
 
@@ -5025,6 +5027,10 @@ class LLMService: ObservableObject {
         noting.asksAgainWhenSilent = asksAgainWhenSilent
         noting.appendUserNote = { [weak self] text in
             self?.conversationHistory.append(["role": "user", "content": text])
+        }
+        // Plan KR P5: a read is not something done, so the turn's own closing words leave it out.
+        noting.readsOnly = { [weak self] call in
+            self?.callEffect(ofTool: call.name, args: call.arguments ?? [:]) == .readOnly
         }
         return noting
     }
