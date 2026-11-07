@@ -1,7 +1,8 @@
 # Plan KV — The Page on the Lens (the manual page or diagram in the glasses, zoomed by band or voice, and the question above the answer)
 
 **Status:** 📝 Drafted 2026-11-08 from the partner's ask, made while ordering a Meta Ray-Ban Display for
-pilot demos. Nothing built. Nine decisions below, each with a recommendation; none taken yet.
+pilot demos. Nothing built. The owner took all nine recommended decisions the same day ("take all
+nine").
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`). Field Assist and personal manuals:
 every page "show me the page" or an answer opens. Every phase except P4 is headless.
 **Related:** Plan [KP](KP-answers-you-can-act-on.md) (the answer card, `frameRevision`, the band check,
@@ -229,7 +230,7 @@ not involved. The privacy-logging gate applies to every new log line: page refer
   view reads well.
 - **Speech-synced page views**, the lens following the answer from passage to passage as it is spoken.
 
-## Decisions (each with a recommendation; none taken yet)
+## Decisions (taken 2026-11-08: every recommendation below, "take all nine")
 
 1. **When the page opens on the lens:** only when asked, with **Show here** on an auto-opened page's cue
    (§4); or every staged page. *Recommended: only when asked. A diagram the technician didn't ask for
