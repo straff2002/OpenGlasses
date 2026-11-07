@@ -8421,8 +8421,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan HZ P1: with the switch on, the reply is spoken a sentence at a time as it is written.
         // Nil — today's path, unchanged — when it is off.
         let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId)
-        // Plan KP P1: this reply's sentences collect into one answer card on the glasses.
-        hudAnswerCard.beginTurn()
+        // Plan KP P1: this reply's sentences collect into one answer card on the glasses, with what
+        // the app heard over its first page (Plan KV §7).
+        hudAnswerCard.beginTurn(question: turnUtterance)
         // Plan KR P5: the turn finishes even if the phone goes in a pocket now.
         turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
 
@@ -8774,7 +8775,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let replyStream = speakResponse
             ? makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId) : nil
         // Plan KP P1: a spoken reply collects into one answer card, as on the voice path.
-        if speakResponse { hudAnswerCard.beginTurn() }
+        if speakResponse { hudAnswerCard.beginTurn(question: turnUtterance) }
 
         // Typed turns run the same skeleton as voice turns, tracked in `currentLLMTask` so
         // barge-in / cancel stops a typed turn too (Plan BG P2: every turn is cancellable).

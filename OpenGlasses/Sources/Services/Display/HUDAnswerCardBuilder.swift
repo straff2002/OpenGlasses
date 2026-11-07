@@ -24,10 +24,14 @@ enum HUDAnswerAction: Equatable {
 ///
 /// | Page | Lines | Buttons |
 /// |---|---|---|
-/// | the first of several | the page, footer "1/3" | Next › · Actions |
+/// | the first of several | the question (Plan KV §7), the page, footer "1/3" | Next › · Actions |
 /// | a middle page | the page, footer "2/3" | Next › · Actions · ‹ Back |
 /// | the last (or only) | the page, footer when paged | up to two follow-ups · Actions · ‹ Back (paged only) |
 /// | Actions (pushed) | the answer's first line | third follow-up (if any) · Page (when the turn staged a page the lens can show) · More · Repeat · Save · Send · ‹ Answer · Close |
+///
+/// The question line ("You: what size breaker", `questionLine(for:maxChars:)`) is in the meta
+/// style, on the first page only, cut to one display line so it never wraps; the pager budgets
+/// that page one line shorter for it (`HUDAnswerPager.pages(firstPageReservedLines:)`).
 ///
 /// P1 put ‹ Back on middle pages too (P0 had it on the paged last page only): with the band
 /// alone, a wearer two pages in had no way back but to read on to the end.
@@ -53,23 +57,43 @@ enum HUDAnswerCardBuilder {
         static func followUp(_ index: Int) -> String { "kp.followup.\(index)" }
     }
 
+    /// The question line over the first page (Plan KV §7): "You:" and what the app heard,
+    /// condensed to `maxChars` (one display line, so it never wraps). Nil for no question: a turn
+    /// the app started.
+    static func questionLine(for question: String?, maxChars: Int) -> String? {
+        guard let question else { return nil }
+        let heard = HUDTextShaper.condense(question, max: Int.max)
+        guard !heard.isEmpty else { return nil }
+        let prefix = String(localized: "You:",
+                            comment: "Glasses: starts the line showing what the app heard the wearer ask, e.g. 'You: what size breaker'.")
+        // `condense` adds "…" after the cut, so cut one short to keep the line inside `maxChars`.
+        let line = HUDTextShaper.condense(prefix + " " + heard, max: max(1, maxChars - 1))
+        return line.count <= maxChars ? line : String(line.prefix(maxChars))
+    }
+
     /// The card for one page. `index` is clamped into the pages; nil when there are no pages.
+    /// `question` is the shaped question line (`questionLine(for:maxChars:)`), shown over the
+    /// first page only.
     static func page(_ pages: [HUDAnswerPage],
                      index: Int,
                      followUps: [String],
+                     question: String? = nil,
                      onAction: @escaping (HUDAnswerAction) -> Void) -> HUDScreen? {
         guard !pages.isEmpty else { return nil }
         let page = pages[min(max(index, 0), pages.count - 1)]
 
-        var lines: [HUDLine]
+        var lines: [HUDLine] = []
+        if page.index == 0, let question, !question.isEmpty {
+            lines.append(HUDLine(question, emphasis: .meta))
+        }
         if page.isPaged {
-            lines = page.lines.enumerated().map { offset, text in
+            lines += page.lines.enumerated().map { offset, text in
                 let isMoreLine = page.isCapped && offset == page.lines.count - 1
                 return HUDLine(text, emphasis: isMoreLine ? .secondary : .primary)
             }
             if let footer = page.footer { lines.append(HUDLine(footer, emphasis: .meta)) }
         } else {
-            lines = [HUDLine(page.body)]
+            lines.append(HUDLine(page.body))
         }
 
         var items: [HUDItem] = []
