@@ -158,16 +158,38 @@ final class PageFigureChoiceTests: XCTestCase {
                                                 bounds: CGRect(x: 72, y: 700, width: 300, height: 12))],
                                   showsNumbers: false)
         let asked = LensPageLayout(pageSize: page, marks: marks, pictureAreas: [], tone: .lineArt,
-                                   drawings: [upper, lower], figureIndex: 1, figureFirst: true)
+                                   drawings: [upper, lower], figureIndex: 1, drawingFocus: .first)
         XCTAssertEqual(asked.focus.source, .figure)
         XCTAssertEqual(asked.openingDrawing, 1)
         XCTAssertTrue(asked.openingViewport.cropRect.contains(lower.rect))
         let plain = LensPageLayout(pageSize: page, marks: marks, pictureAreas: [], tone: .lineArt,
-                                   drawings: [upper, lower], figureIndex: 1, figureFirst: false)
+                                   drawings: [upper, lower], figureIndex: 1, drawingFocus: .afterMarks)
         XCTAssertEqual(plain.focus.source, .citedPassages)
         XCTAssertNil(plain.openingDrawing)
         let unmarked = LensPageLayout(pageSize: page, marks: nil, pictureAreas: [], tone: .lineArt,
                                       drawings: [upper, lower], figureIndex: 0)
         XCTAssertEqual(unmarked.focus.source, .figure, "with nothing cited, the drawing still beats the whole page")
+        let page7 = LensPageLayout(pageSize: page, marks: nil, pictureAreas: [], tone: .lineArt,
+                                   drawings: [upper, lower], figureIndex: 0, drawingFocus: .none)
+        XCTAssertEqual(page7.focus.source, .wholePage, "a request for the page opens it whole")
+        XCTAssertNil(page7.openingDrawing)
+        XCTAssertEqual(page7.drawings.count, 2, "the drawings are kept for Next diagram")
+    }
+
+    func testTheDrawingIsAFocusOnlyWhenAskedForOrPutUpForItsFigure() {
+        XCTAssertEqual(PageFigureAsk.parse(said: "show me page 7", caption: "Figure 9", origin: .requested).drawingFocus,
+                       .none, "a request for the page")
+        XCTAssertEqual(PageFigureAsk.parse(said: "show me the diagram on page 7", caption: nil,
+                                           origin: .requested).drawingFocus, .first)
+        XCTAssertEqual(PageFigureAsk.parse(said: nil, caption: "Figure 9", origin: .automatic).drawingFocus,
+                       .afterMarks, "the app put the page up for its figure")
+        XCTAssertEqual(PageFigureAsk.parse(said: "what does the relay do", caption: "Figure 9",
+                                           origin: .automatic).drawingFocus, .afterMarks)
+        XCTAssertEqual(PageFigureAsk.parse(said: nil, caption: "Table 4", origin: .automatic).drawingFocus, .none,
+                       "a table's page is not a figure's")
+        XCTAssertEqual(PageFigureAsk.none.drawingFocus, .none)
+        XCTAssertNotEqual(PageFigureAsk.parse(said: "show me page 7", caption: "Figure 9", origin: .automatic).key,
+                          PageFigureAsk.parse(said: "show me page 7", caption: "Figure 9", origin: .requested).key,
+                          "the layout cache tells them apart")
     }
 }

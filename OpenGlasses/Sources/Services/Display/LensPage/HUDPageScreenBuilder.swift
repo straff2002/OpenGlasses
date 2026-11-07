@@ -38,8 +38,10 @@ struct HUDPageViewState: Equatable {
     var diagramCount: Int = 0
     var diagramIndex: Int?
 
-    /// **Next diagram ›** has somewhere to go: the page has two drawings or more.
-    var hasNextDiagram: Bool { diagramCount >= 2 }
+    /// **Next diagram ›** has somewhere to go: from a view on a drawing, the page has another;
+    /// from a view on no drawing (the whole page "show me page 7" opened on, a cited passage),
+    /// the page has any.
+    var hasNextDiagram: Bool { diagramIndex == nil ? diagramCount >= 1 : diagramCount >= 2 }
 }
 
 /// Builds the page view's lines and button row from its state (Plan KV §3). Pure: presses are
@@ -55,7 +57,8 @@ struct HUDPageViewState: Equatable {
 ///
 /// **Next page ›** goes in before Close on the opening view, while another cited page follows.
 /// **Next diagram ›** goes in second, after **Zoom in** (or **Zoom out** at the deepest step), on
-/// the opening view of a page with two drawings or more (Plan KV P1b).
+/// the opening view and on the whole page, while it has somewhere to go (`hasNextDiagram`: another
+/// drawing, or any drawing from a view on none; Plan KV P1b).
 /// The arrow row is always all four arrows, so a press always does the same thing; one against the
 /// page's edge does nothing.
 enum HUDPageScreenBuilder {
@@ -135,7 +138,7 @@ enum HUDPageScreenBuilder {
             items.append(item(ItemID.wholePage, String(localized: "Whole page"), .secondary, .wholePage, onAction))
             items.append(item(ItemID.move, String(localized: "Move"), .secondary, .move, onAction))
         }
-        if state.hasNextDiagram, viewport.isAtOpening, !items.isEmpty {
+        if state.hasNextDiagram, viewport.isAtOpening || viewport.isWholePage, !items.isEmpty {
             items.insert(item(ItemID.nextDiagram, String(localized: "Next diagram ›",
                                                          comment: "Glasses: show the page's next drawing."),
                               .secondary, .nextDiagram, onAction), at: 1)

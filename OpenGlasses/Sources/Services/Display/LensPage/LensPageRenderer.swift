@@ -64,10 +64,13 @@ struct LensPageLayout: Equatable {
     let legibility: LensLegibility
 
     /// `figure` is a known drawing's rectangle; without one, the chosen drawing's (`figureIndex`
-    /// into `drawings`). `figureFirst` puts the drawing ahead of the cited passages (§1).
+    /// into `drawings`). `drawingFocus` says where the drawing stands in the order (§1): ahead of
+    /// the cited passages (`.first`), after them (`.afterMarks`), or not a focus at all (`.none`,
+    /// a request for the page: the drawings are still kept for **Next diagram ›**).
     init(pageSize: CGSize, marks: LensPageMarks?, pictureAreas: [CGRect],
          tone: LensPageRenderPlan.Tone, figure: CGRect? = nil,
-         drawings: [PageDrawing] = [], figureIndex: Int? = nil, figureFirst: Bool = false) {
+         drawings: [PageDrawing] = [], figureIndex: Int? = nil,
+         drawingFocus: PageFigureAsk.DrawingFocus = .afterMarks) {
         self.pageSize = pageSize
         self.marks = marks.flatMap { $0.isEmpty ? nil : $0 }
         self.pictureAreas = pictureAreas
@@ -75,9 +78,10 @@ struct LensPageLayout: Equatable {
         self.drawings = drawings
         let chosen = figureIndex.flatMap { drawings.indices.contains($0) ? $0 : nil }
         self.figureIndex = chosen
+        let drawing = drawingFocus == .none ? nil : (figure ?? chosen.map { drawings[$0].rect })
         focus = LensPageFocus.pick(pageSize: pageSize, passageRects: self.marks?.marks.map(\.bounds) ?? [],
-                                   pictureAreas: pictureAreas, figure: figure ?? chosen.map { drawings[$0].rect },
-                                   figureFirst: figureFirst)
+                                   pictureAreas: pictureAreas, figure: drawing,
+                                   figureFirst: drawingFocus == .first)
         if focus.source == .figure, let chosen {
             legibility = Self.legibility(of: drawings[chosen])
         } else {
@@ -131,7 +135,7 @@ enum LensPageRenderer {
         let choice = figureChoice(page, request: request)
         return LensPageLayout(pageSize: geometry.pageSize, marks: marks, pictureAreas: areas, tone: request.tone,
                               drawings: choice.drawings, figureIndex: choice.index,
-                              figureFirst: request.ask.asksForDrawing)
+                              drawingFocus: request.ask.drawingFocus)
     }
 
     /// The page's drawings and the one the request means (Plan KV P1b). A photographed page has no

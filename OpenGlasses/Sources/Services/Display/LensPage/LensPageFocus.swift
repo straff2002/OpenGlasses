@@ -13,7 +13,9 @@ import Foundation
 ///
 /// When the request asked for a drawing (`PageFigureAsk.asksForDrawing`, passed as `figureFirst`)
 /// the drawing moves to the top, ahead of any cited passage: "show me the wiring diagram" opens on
-/// the diagram even when the answer cited a line beside it.
+/// the diagram even when the answer cited a line beside it. The drawing is passed at all only when
+/// it is a focus (`PageFigureAsk.drawingFocus`): a drawing asked for, or a figure page the app put
+/// up by itself. "Show me page 7" with nothing cited opens the whole page.
 ///
 /// All rectangles are in top-down page points (see `LensPageViewport`). A rectangle is clipped to
 /// the page first; one empty after clipping is not counted, so a source whose rectangles all lie

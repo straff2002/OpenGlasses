@@ -37,15 +37,38 @@ enum PageFigurePosition: String, Equatable, Sendable, CaseIterable {
 /// - with no words for the turn (a citation chip tapped, a live-mode turn), the staged page has a
 ///   figure's caption ("Figure 12", "Fig. 3") and the technician asked for it (`.requested`).
 /// A table's caption is not a drawing, so "show me table 16" keeps the table's marks first.
+///
+/// **Whether the drawing is a focus at all** (`drawingFocus`, §1): only when a drawing was asked
+/// for, or when the app put the page up by itself (`.automatic`) and its caption is a figure's.
+/// A request for the page ("show me page 7") with nothing cited opens the whole page; the page's
+/// drawings are still found, and **Next diagram ›** jumps to one.
 struct PageFigureAsk: Equatable, Sendable {
+    /// Where the drawing stands in the focus order (§1).
+    enum DrawingFocus: String, Equatable, Sendable {
+        /// Not a focus: the view opens on the cited passages, the table's area or the whole page.
+        case none
+        /// After the cited passages and the table's area (a figure page the app put up).
+        case afterMarks
+        /// Ahead of everything (a drawing was asked for).
+        case first
+    }
+
     /// The figure number the request named ("12" for "figure 12"), else the staged caption's.
     var captionNumber: String?
     /// The request's content words, lower-cased: what is matched against a drawing's labels.
     var words: [String]
     var position: PageFigurePosition?
     var asksForDrawing: Bool
+    /// The app put the page up by itself (`.automatic`) for its figure: the staged caption is a
+    /// figure's.
+    var isAutomaticFigure: Bool = false
 
     static let none = PageFigureAsk(captionNumber: nil, words: [], position: nil, asksForDrawing: false)
+
+    var drawingFocus: DrawingFocus {
+        if asksForDrawing { return .first }
+        return isAutomaticFigure ? .afterMarks : .none
+    }
 
     /// The nouns that ask for a drawing.
     static let drawingWords: Set<String> = [
@@ -66,9 +89,11 @@ struct PageFigureAsk: Equatable, Sendable {
 
     static func parse(said: String?, caption: String?, origin: PageOrigin) -> PageFigureAsk {
         let stagedNumber = figureNumber(inCaption: caption)
+        let automaticFigure = stagedNumber != nil && origin == .automatic
         guard let said, !said.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return PageFigureAsk(captionNumber: stagedNumber, words: [], position: nil,
-                                 asksForDrawing: stagedNumber != nil && origin == .requested)
+                                 asksForDrawing: stagedNumber != nil && origin == .requested,
+                                 isAutomaticFigure: automaticFigure)
         }
         let tokens = tokens(said)
         let named = figureNumber(inRequest: tokens)
@@ -85,12 +110,13 @@ struct PageFigureAsk: Equatable, Sendable {
         var seen = Set<String>()
         return PageFigureAsk(captionNumber: named ?? stagedNumber,
                              words: content.filter { seen.insert($0).inserted },
-                             position: position, asksForDrawing: namesDrawing)
+                             position: position, asksForDrawing: namesDrawing,
+                             isAutomaticFigure: automaticFigure)
     }
 
     /// What tells two asks apart, for the layout cache.
     var key: String {
-        [captionNumber ?? "", words.joined(separator: " "), position?.rawValue ?? "", asksForDrawing ? "d" : ""]
+        [captionNumber ?? "", words.joined(separator: " "), position?.rawValue ?? "", drawingFocus.rawValue]
             .joined(separator: "\u{1F}")
     }
 

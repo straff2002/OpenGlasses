@@ -33,7 +33,7 @@ final class PageFigureAnalysisTests: XCTestCase {
         guard let citedRect else { return laid }
         let marks = LensPageMarks(marks: [.init(number: 1, lineRects: [citedRect], bounds: citedRect)], showsNumbers: false)
         return LensPageLayout(pageSize: laid.pageSize, marks: marks, pictureAreas: [], tone: .lineArt,
-                              drawings: laid.drawings, figureIndex: laid.figureIndex, figureFirst: ask.asksForDrawing)
+                              drawings: laid.drawings, figureIndex: laid.figureIndex, drawingFocus: ask.drawingFocus)
     }
 
     private func unwrapLayout(_ layout: LensPageLayout?, file: StaticString = #filePath,
@@ -122,7 +122,8 @@ final class PageFigureAnalysisTests: XCTestCase {
         XCTAssertEqual(board.figureIndex, 1)
         let blower = try await layout(url, said: "show me the blower")
         XCTAssertEqual(blower.figureIndex, 0)
-        let bottom = try await layout(url, said: "the bottom one")
+        // A drawing asked for by where it is: the drawing is a focus only when one is asked for.
+        let bottom = try await layout(url, said: "the bottom diagram")
         XCTAssertEqual(bottom.figureIndex, 1)
         XCTAssertTrue(bottom.openingViewport.cropRect.contains(found[1].rect), "the opening zoom holds the whole drawing")
         XCTAssertGreaterThan(bottom.openingViewport.zoom, .fit)

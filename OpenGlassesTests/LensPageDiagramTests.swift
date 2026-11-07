@@ -68,7 +68,7 @@ final class LensPageDiagramTests: XCTestCase {
             let choice = PageFigureChoice.choose(drawings, ask: request.ask)
             return LensPageLayout(pageSize: LensPageFixtures.letter, marks: nil, pictureAreas: [], tone: .lineArt,
                                   drawings: choice.drawings, figureIndex: choice.index,
-                                  figureFirst: request.ask.asksForDrawing)
+                                  drawingFocus: request.ask.drawingFocus)
         }
         session.renderPicture = { _, _ in LensPageFixtures.picture() }
         session.scheduleTimer = { _, _ in }
@@ -211,6 +211,47 @@ final class LensPageDiagramTests: XCTestCase {
         XCTAssertEqual(rig.box.requests.first?.ask.asksForDrawing, true)
         XCTAssertEqual(rig.session.shownState?.diagramIndex, 1, "the bottom one opened")
         XCTAssertNotNil(rig.box.requests.first?.figureKey, "keyed for the analysis cache")
+    }
+
+    // MARK: - When the drawing is a focus
+
+    func testARequestForThePageOpensItWholeWithNextDiagramOffered() async throws {
+        let rig = makeRig(drawings: [Self.upper], said: "show me page 7")
+        rig.session.stage([LensPageFixtures.staged(page: 7, origin: .requested)])
+        await drain(rig)
+        let opening = try XCTUnwrap(rig.session.shownState)
+        XCTAssertTrue(opening.viewport.isWholePage, "nothing cited, no drawing asked for: the whole page")
+        XCTAssertNil(opening.diagramIndex)
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.nextDiagram, ID.close],
+                       "Next diagram › is there to jump to the page's one drawing")
+
+        await press(rig, ID.nextDiagram)
+        let onDrawing = try XCTUnwrap(rig.session.shownState)
+        XCTAssertEqual(onDrawing.diagramIndex, 0)
+        XCTAssertTrue(onDrawing.viewport.cropRect.contains(Self.upper.rect))
+        XCTAssertFalse(itemIDs(rig).contains(ID.nextDiagram), "one drawing, and the view is on it")
+    }
+
+    func testTheDiagramOnPageSevenOpensOnTheDrawing() async throws {
+        let rig = makeRig(drawings: [Self.upper], said: "show me the diagram on page 7")
+        rig.session.stage([LensPageFixtures.staged(page: 7, origin: .requested)])
+        await drain(rig)
+        let opening = try XCTUnwrap(rig.session.shownState)
+        XCTAssertEqual(opening.diagramIndex, 0)
+        XCTAssertFalse(opening.viewport.isWholePage)
+        XCTAssertTrue(opening.viewport.cropRect.contains(Self.upper.rect))
+    }
+
+    func testAnAutomaticPageForAFigureOpensOnTheDrawing() async throws {
+        let rig = makeRig(drawings: [Self.upper], said: "what does the invented relay do")
+        rig.session.stage([LensPageFixtures.staged(page: 7, figure: "Figure 9", origin: .automatic)])
+        await drain(rig)
+        XCTAssertEqual(rig.session.held, .cue, "the app's own page waits for Show here")
+        await press(rig, ID.showHere)
+        let opening = try XCTUnwrap(rig.session.shownState)
+        XCTAssertEqual(rig.box.requests.first?.ask.drawingFocus, .afterMarks)
+        XCTAssertEqual(opening.diagramIndex, 0, "opened on the figure it was put up for")
+        XCTAssertTrue(opening.viewport.cropRect.contains(Self.upper.rect))
     }
 
     // MARK: - The P1 fix: a notification that is showing is not cut short
