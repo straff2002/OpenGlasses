@@ -5,7 +5,9 @@ import Foundation
 ///
 /// Decoding is **strict**: an unknown key anywhere the format defines the keys — top level,
 /// `author`, `permissions`, `mcp`, a parameter, a skill, a step — rejects the file, so a typo can
-/// never silently grant a permission or drop a limit. A wrong `format` tag, both `skills` and
+/// never silently grant a permission or drop a limit. The reserved capability names
+/// (`AddOnReservedCapability`) are known keys under `permissions`; whether the file may hold
+/// them is the validator's call, from its trust class. A wrong `format` tag, both `skills` and
 /// `mcp`, or neither, is also a decode error. Limits and cross-references (lengths, hosts,
 /// variables defined before use…) are the validator's job, not the decoder's: decoding answers
 /// "is this the format?", `RecipeAddOnValidator` answers "is it allowed?".
@@ -42,12 +44,18 @@ struct RecipeAddOnManifest: Equatable, Sendable {
         let web: String?
     }
 
-    /// The four permissions the format has. None is granted by default; speaking needs none.
+    /// The four permissions every add-on may ask for, plus the reserved capabilities only a signed
+    /// add-on may hold. None is granted by default; speaking needs none.
     struct Permissions: Equatable, Sendable {
         var network: [String]
         var location: Bool
         var memory: Bool
         var display: Bool
+        /// Reserved capabilities written `true` under `permissions` (`false` is the same as leaving
+        /// the key out). Decoding accepts them on any file; `RecipeAddOnValidator` refuses them
+        /// unless the file's signature put it in a signed trust class. They grant nothing at run
+        /// time yet — no step uses them until the steps that need them are specified.
+        var reserved: Set<AddOnReservedCapability> = []
 
         static let empty = Permissions(network: [], location: false, memory: false, display: false)
     }
@@ -294,11 +302,18 @@ extension RecipeAddOnManifest.Author: Decodable {
 
 extension RecipeAddOnManifest.Permissions: Decodable {
     init(from decoder: Decoder) throws {
-        let c = try decoder.strictContainer(allowing: ["network", "location", "memory", "display"])
+        // Still strict: the reserved capability names are known keys, anything else refuses.
+        let c = try decoder.strictContainer(allowing: Set(["network", "location", "memory", "display"])
+            .union(AddOnReservedCapability.allCases.map(\.rawValue)))
         network = try c.opt("network") ?? []
         location = try c.opt("location") ?? false
         memory = try c.opt("memory") ?? false
         display = try c.opt("display") ?? false
+        var reserved = Set<AddOnReservedCapability>()
+        for capability in AddOnReservedCapability.allCases {
+            if try c.opt(capability.rawValue, as: Bool.self) == true { reserved.insert(capability) }
+        }
+        self.reserved = reserved
     }
 }
 

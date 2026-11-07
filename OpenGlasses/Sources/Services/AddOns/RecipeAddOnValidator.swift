@@ -13,6 +13,7 @@ struct RecipeAddOnIssue: Equatable, Sendable, CustomStringConvertible {
         case definitionScreen
         // Permissions
         case networkEntryInvalid, networkTooManyEntries
+        case reservedCapabilityNeedsSignature
         case locationNeedsPermission, rememberNeedsMemory, displayNeedsDisplay
         // Skills and parameters
         case skillCount, skillNameInvalid, skillNameDuplicate, skillDescriptionInvalid
@@ -44,8 +45,10 @@ struct RecipeAddOnIssue: Equatable, Sendable, CustomStringConvertible {
 /// the definition screen (`ToolDefinitionScanner`) over the add-on's and each skill's name and
 /// description — anything but `.trusted` refuses the file, as for skill packs.
 ///
-/// Signatures, trust classes and reserved capabilities are not handled here yet; a reserved
-/// capability named in `permissions` is an unknown key, which the strict decoder already refuses.
+/// The file's trust class (`AddOnTrustClass`, resolved by `AddOnSignature` from the signed
+/// envelope it arrived in) is an input: a reserved capability (`AddOnReservedCapability`) on a
+/// `community` file refuses it, on a signed one it is allowed. The default is `.community`, so a
+/// caller that names no class gets the strictest reading.
 enum RecipeAddOnValidator {
 
     // MARK: Limits
@@ -110,10 +113,12 @@ enum RecipeAddOnValidator {
     }
 
     /// Decode then validate a file. A decode failure is reported as one `.decodeFailed` issue.
-    static func validate(data: Data, nativeToolNames: Set<String> = []) -> Report {
+    /// `trust` is the class the file's signature resolved to; a bare file is `.community`.
+    static func validate(data: Data, nativeToolNames: Set<String> = [],
+                         trust: AddOnTrustClass = .community) -> Report {
         do {
             let manifest = try RecipeAddOnManifest.decode(data)
-            return Report(manifest: manifest, issues: validate(manifest, nativeToolNames: nativeToolNames))
+            return Report(manifest: manifest, issues: validate(manifest, nativeToolNames: nativeToolNames, trust: trust))
         } catch let error as RecipeAddOnDecodeError {
             return Report(manifest: nil, issues: [.init(code: .decodeFailed, path: decodePath(error), detail: error.message)])
         } catch {
@@ -123,15 +128,33 @@ enum RecipeAddOnValidator {
 
     /// Every issue with a decoded manifest; empty means it may be offered for install.
     /// `nativeToolNames` are the app's own tool names, for the definition screen's collision check.
-    static func validate(_ manifest: RecipeAddOnManifest, nativeToolNames: Set<String> = []) -> [RecipeAddOnIssue] {
+    static func validate(_ manifest: RecipeAddOnManifest, nativeToolNames: Set<String> = [],
+                         trust: AddOnTrustClass = .community) -> [RecipeAddOnIssue] {
         var v = Run(manifest: manifest, nativeNames: nativeToolNames)
         v.checkIdentity()
         v.checkNetwork()
+        v.checkReserved(trust: trust)
         switch manifest.content {
         case .skills(let skills): v.checkSkills(skills)
         case .mcp(let entry): v.checkMCP(entry)
         }
         return v.issues
+    }
+
+    /// Validate the exact bytes a signature check resolved, under the class it resolved to — the
+    /// one way to validate a file that arrived in a signed envelope.
+    static func validate(_ resolution: AddOnSignature.Resolution, nativeToolNames: Set<String> = []) -> Report {
+        validate(data: resolution.fileBytes, nativeToolNames: nativeToolNames, trust: resolution.trust)
+    }
+
+    /// The `id` rule: reverse-DNS, lowercase, at least two labels, at most `maxIDLength`.
+    static func isValidID(_ id: String) -> Bool {
+        id.count <= maxIDLength && fullMatch(#"^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)+$"#, id)
+    }
+
+    /// The `version` rule: a semantic version such as `1.0.0`.
+    static func isValidVersion(_ version: String) -> Bool {
+        fullMatch(#"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$"#, version)
     }
 
     private static func decodePath(_ error: RecipeAddOnDecodeError) -> String {
@@ -162,13 +185,13 @@ enum RecipeAddOnValidator {
 
         mutating func checkIdentity() {
             let m = manifest
-            if m.id.count > maxIDLength || !fullMatch(#"^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)+$"#, m.id) {
+            if !isValidID(m.id) {
                 add(.idInvalid, "id", "reverse-DNS, lowercase, at least two labels, at most \(maxIDLength) characters")
             }
             if !isCleanLine(m.name, max: maxNameLength) {
                 add(.nameInvalid, "name", "1–\(maxNameLength) characters on one line")
             }
-            if !fullMatch(#"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$"#, m.version) {
+            if !isValidVersion(m.version) {
                 add(.versionInvalid, "version", "semantic version such as 1.0.0")
             }
             if !isCleanLine(m.author.name, max: maxAuthorNameLength) {
@@ -215,6 +238,19 @@ enum RecipeAddOnValidator {
             for (entry, error) in parsed.failures {
                 let index = manifest.permissions.network.firstIndex(of: entry) ?? 0
                 add(.networkEntryInvalid, "permissions.network[\(index)]", "\"\(entry)\": \(error)")
+            }
+        }
+
+        // MARK: Reserved capabilities
+
+        /// A reserved capability is not a permission the wearer can grant on a sheet: only a file
+        /// whose signature verified may hold one. A signed file that was edited no longer verifies,
+        /// is read as community, and is refused here if it still names one.
+        mutating func checkReserved(trust: AddOnTrustClass) {
+            guard !trust.mayHoldReservedCapabilities else { return }
+            for capability in AddOnReservedCapability.allCases where manifest.permissions.reserved.contains(capability) {
+                add(.reservedCapabilityNeedsSignature, "permissions.\(capability.rawValue)",
+                    "only a signed add-on may use \(capability.rawValue)")
             }
         }
 

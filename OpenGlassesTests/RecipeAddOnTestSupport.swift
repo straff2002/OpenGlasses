@@ -1,4 +1,6 @@
 import Foundation
+import CryptoKit
+import XCTest
 @testable import OpenGlasses
 
 /// Shared fakes and fixtures for the recipe add-on tests: an injected clock that only moves when
@@ -141,4 +143,47 @@ enum RecipeAddOnFixtures {
         locale: Locale(identifier: "en_GB"),
         units: .metric,
         location: RecipeLocation(latitude: 51.507_35, longitude: -0.127_76, city: "London", country: "GB"))
+}
+
+/// Signing for the signed add-on tests: ephemeral ed25519 pairs made at run time (no key material
+/// in source), and envelope builders over the shared fixtures.
+enum AddOnSigningFixtures {
+
+    struct KeyPair {
+        let privateKey = Curve25519.Signing.PrivateKey()
+        var privateBase64: String { privateKey.rawRepresentation.base64EncodedString() }
+        var publicBase64: String { privateKey.publicKey.rawRepresentation.base64EncodedString() }
+        /// The key id an organisation signs under with this key.
+        var orgKeyID: String { AddOnSignature.keyID(forOrganisationKey: publicBase64)! }
+    }
+
+    static let vendorKeyID = "vendor-test"
+
+    /// A minimal add-on that says one thing, holding `reserved` capabilities.
+    static func file(reserved: [AddOnReservedCapability] = [],
+                     id: String = "org.example.test", version: String = "1.0.0") -> Data {
+        var permissions: [String: Any] = ["network": ["api.example.org"]]
+        for capability in reserved { permissions[capability.rawValue] = true }
+        return RecipeAddOnFixtures.file(skills: [RecipeAddOnFixtures.skill(steps: [["say": "Done."]])],
+                                        permissions: permissions,
+                                        overrides: ["id": id, "version": version])
+    }
+
+    static func vendorEnvelope(_ bytes: Data, key: KeyPair, keyId: String = vendorKeyID) throws -> Data {
+        try AddOnSignature.sign(fileBytes: bytes, keyId: keyId, signer: .vendor, privateKeyBase64: key.privateBase64)
+    }
+
+    static func orgEnvelope(_ bytes: Data, key: KeyPair, organizationID: String, keyId: String? = nil) throws -> Data {
+        try AddOnSignature.sign(fileBytes: bytes, keyId: keyId ?? key.orgKeyID, signer: .organisation,
+                                organizationID: organizationID, privateKeyBase64: key.privateBase64)
+    }
+
+    /// The envelope as a mutable JSON object, to edit a field and re-encode.
+    static func object(_ envelope: Data) throws -> [String: Any] {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: envelope) as? [String: Any])
+    }
+
+    static func data(_ object: [String: Any]) throws -> Data {
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
 }
