@@ -149,7 +149,7 @@ final class DocumentStore: ObservableObject {
         let versionTag = chunkEmbedder?.version.tag
         let started = Date()
         for chunk in chunks {
-            let embedding = chunkEmbedder?.embed(chunk.text)
+            let embedding = await chunkEmbedder?.embedPassage(chunk.text, priority: .userInitiated)
             insertChunk(documentId: docId, index: chunk.index, text: chunk.text,
                         embedding: embedding.map(vecToData), page: chunk.page, section: chunk.section,
                         kind: chunk.kind, figure: chunk.figure,
@@ -194,7 +194,7 @@ final class DocumentStore: ObservableObject {
         let rows = fetchChunks(namespace: namespace, documentIds: documentIds).filter { kinds.contains($0.kind) }
         let vaultQuery = QueryVectors(text: trimmed, store: self)
         let qv = rows.contains { !Self.isVaultNamespace($0.namespace) && $0.embeddingScript == .latin }
-            ? embedder.embed(trimmed) : nil
+            ? embedder.embedQuery(trimmed) : nil
         var scriptModels: [EmbeddingScript: Embedder?] = [:]
 
         let current = embedder.version
@@ -326,7 +326,7 @@ final class DocumentStore: ObservableObject {
         let rows = fetchChunks(namespace: namespace, documentIds: documentIds).filter { kinds.contains($0.kind) }
         let vaultQuery = QueryVectors(text: text, store: self)
         let qv = rows.contains { !Self.isVaultNamespace($0.namespace) && $0.embeddingScript == .latin }
-            ? embedder.embed(text) : nil
+            ? embedder.embedQuery(text) : nil
         let scored = rows
             .compactMap { row -> (row: ChunkRow, shared: Int, similarity: Float)? in
                 let shared = LexicalSupport.sharedTermCount(text: row.text, question: question, rule: row.termRule)
@@ -750,7 +750,7 @@ final class DocumentStore: ObservableObject {
         var vectors: [Data?] = []
         for chunk in chunks {
             guard stillAllowed(), !Task.isCancelled else { return false }
-            vectors.append(model?.embed(chunk.text).map(vecToData))
+            vectors.append(await model?.embedPassage(chunk.text, priority: .userInitiated).map(vecToData))
             await Task.yield()
         }
         guard stillAllowed(), !Task.isCancelled,
@@ -825,7 +825,7 @@ final class DocumentStore: ObservableObject {
         var done = 0
         for row in rows {
             let model = row.embeddingScript == .latin ? embedder : scriptModels[row.embeddingScript]
-            if let model, let fresh = model.embed(row.text) {
+            if let model, let fresh = await model.embedPassage(row.text) {
                 writeBackEmbedding(chunkId: row.id, vector: fresh, versionTag: model.version.tag)
             }
             done += 1
@@ -1269,7 +1269,7 @@ final class DocumentStore: ObservableObject {
                 return same
             }
             let started = Date()
-            let vector = embedder.embed(text)
+            let vector = embedder.embedQuery(text)
             cache.vectors[key] = vector
             cache.byTag[tag] = vector
             cache.milliseconds[tag] = Int(Date().timeIntervalSince(started) * 1000)
@@ -1346,7 +1346,7 @@ final class DocumentStore: ObservableObject {
             var done = todo.total - todo.missing.count
             for row in todo.missing {
                 guard shouldContinue(), !Task.isCancelled else { return .interrupted(done: done, total: todo.total) }
-                writePending(chunkId: row.id, vector: target.embed(row.text), versionTag: tag)
+                writePending(chunkId: row.id, vector: await target.embedPassage(row.text), versionTag: tag)
                 done += 1
                 embedded += 1
                 progress?(row.title, done, todo.total)
@@ -1618,7 +1618,7 @@ final class DocumentStore: ObservableObject {
         let chunkEmbedder = ingestEmbedder(namespace: namespace, script: EmbeddingScript(profile: profile), excluding: documentId)
         var vectors: [Data?] = []
         for chunk in chunks {
-            vectors.append(chunkEmbedder?.embed(chunk.text).map(vecToData))
+            vectors.append(await chunkEmbedder?.embedPassage(chunk.text).map(vecToData))
             await Task.yield()
         }
         guard exec("BEGIN IMMEDIATE") else { return false }
@@ -1912,7 +1912,7 @@ final class DocumentStore: ObservableObject {
         let chunkEmbedder = ingestEmbedder(namespace: namespace, script: embeddingScript(documentId: documentId))
         var vectors: [Data?] = []
         for chunk in rows.chunks {
-            vectors.append(chunkEmbedder?.embed(chunk.text).map(vecToData))
+            vectors.append(await chunkEmbedder?.embedPassage(chunk.text).map(vecToData))
             await Task.yield()
         }
         // The document may have been removed while the rows were embedded.

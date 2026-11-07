@@ -54,7 +54,7 @@ final class MedicalEgressGuardTests: XCTestCase {
         XCTAssertEqual(open, [
             "asrModelDownload", "conversationRecallSummary", "fhirConnectionTest", "fhirExport",
             "fingerspellingModelDownload", "localModelDownload", "localModelRepositoryMetadata",
-            "loopbackOAuthCallback", "ttsVoiceModelDownload"
+            "loopbackOAuthCallback", "searchModelDownload", "ttsVoiceModelDownload"
         ])
     }
 

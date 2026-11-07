@@ -269,4 +269,17 @@ final class CoreTests: XCTestCase {
         XCTAssertNoThrow(try validate(request, g, ledger: book.ledger, at: date(300)).get())
     }
 
+
+    /// Plan KQ P2b: an organisation may pin the manual-search model, and only to one the app knows.
+    func testAProfileMayPinTheManualSearchModelToAModelTheAppKnows() throws {
+        XCTAssertEqual(ProfileContract.allowList["organizationManualSearchModel"], "owned:string")
+        for model in ["standard", "smarter", "searchTrained"] {
+            XCTAssertNoThrow(try ProfileContract.checkSetting("organizationManualSearchModel",
+                                                              .init(value: .string(model), disposition: "locked")))
+        }
+        XCTAssertThrowsError(try ProfileContract.checkSetting("organizationManualSearchModel",
+                                                              .init(value: .string("fastest"), disposition: "locked")))
+        XCTAssertThrowsError(try ProfileContract.checkSetting("organizationManualSearchModel",
+                                                              .init(value: .bool(true), disposition: "locked")))
+    }
 }

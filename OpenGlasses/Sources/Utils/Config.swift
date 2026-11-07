@@ -4260,6 +4260,32 @@ struct Config {
     @UserDefaultsBacked("fieldAssistContextualSearchEnabled", default: true)
     static var fieldAssistContextualSearchEnabled: Bool
 
+    /// The model Field Assist's manual search embeds with (Plan KQ P2): Standard, Smarter (the
+    /// contextual model above, the default) or Search-trained (downloaded when chosen). Before a
+    /// choice is stored it reads the old switch, so no install changes model on upgrade, and
+    /// setting it keeps the old switch in step (on for anything but Standard).
+    /// An organisation's profile pin wins (Plan KQ P2b); the setter only ever writes the wearer's own.
+    static var fieldAssistManualSearchModel: ManualSearchModel {
+        get { organizationManualSearchModel ?? userManualSearchModel }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "fieldAssistManualSearchModel")
+            fieldAssistContextualSearchEnabled = newValue != .standard
+        }
+    }
+
+    /// The wearer's own choice, whatever the organisation pinned.
+    static var userManualSearchModel: ManualSearchModel {
+        ManualSearchModel.resolve(stored: UserDefaults.standard.string(forKey: "fieldAssistManualSearchModel"),
+                                  legacySmarter: fieldAssistContextualSearchEnabled)
+    }
+
+    /// The model the organisation's profile pins, or nil — no profile, or one that does not say.
+    /// Written only by a profile; there is no setter on purpose.
+    static var organizationManualSearchModel: ManualSearchModel? {
+        let stored = UserDefaults.standard.string(forKey: "organizationManualSearchModel") ?? ""
+        return ManualSearchModel(rawValue: PolicyEnvelope.string(.organizationManualSearchModel, stored: stored))
+    }
+
     // MARK: - Model pricing overrides (Plan AU — Settings editor)
 
     /// User edits to the bundled `ModelPricing` table (USD per 1M tokens), keyed by

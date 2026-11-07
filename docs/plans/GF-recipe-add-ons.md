@@ -1,7 +1,54 @@
 # Plan GF — Recipe Add-ons (declarative, no-code skills with per-add-on permissions)
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01; revised 2026-10-02 (organisation add-ons and
-signed-only capabilities, below) — nothing built.
+**Status:** 🚧 P0 + P1 + P1b built 2026-11-07 — the format, validator, runner, signatures, trust
+classes, reserved capabilities, organisation ceilings and the reference shape as a headless, tested
+library under `Services/AddOns/`, **not wired into the app** (no store, tool wrapper, registry entry,
+deep link, sheet, Settings screen or profile field yet). P2, P3 and P4 are owed. Drafted 2026-10-01;
+revised 2026-10-02 (organisation add-ons and signed-only capabilities, below).
+
+**Decisions taken (2026-11-07):**
+1. Format tag `avenkin.addon/1` (decision 3).
+2. A separate artifact sharing skill-pack plumbing, not a `SkillPackBinding` kind; BX P4 (JavaScript
+   handlers) is retired in favour of this (decision 1).
+3. Unsigned add-ons install in normal mode; P2's sheet is the trust decision (decision 2).
+4. Coarse location only: `lat`/`lon` rounded to 2 decimals, no precise opt-in in v1 (decision 4).
+5. HIPAA mode hides add-ons with `network` from the model; built with P2 (decision 6).
+6. The public-suffix refusal uses a **curated static set** in `AddOnDomainRule` (single-label bases,
+   common two-label country registries, well-known shared-hosting and dynamic-DNS suffixes), not
+   the full public suffix list: a suffix missing from the set is accepted as an ordinary base, and
+   the sheet still names every domain.
+
+**What P0 + P1 built.** `RecipeAddOnManifest` (strict decode: an unknown key at any level refuses
+the file), `RecipeAddOnValidator` (typed, located issues for every limit below, plus the definition
+screen over the add-on's and each skill's text), `AddOnDomainRule`, `AddOnPermissionSummary`,
+`RecipeTemplate` (escaping by context), `RecipeJSONPath` (the harness `JSONPath` now walks through
+it, grammar unchanged), `RecipeRegex` (shape rules refuse nested quantifiers and backreferences;
+matching stops on a wall-clock budget through `.reportProgress`), `RecipeSandbox`, `RecipeRunner`
+(memory writes and display cards come back in the result; nothing touches a store),
+`RecipeRunQueue` and the `AddOnHTTPTransport` seam.
+
+**What P1b built.** `AddOnReservedCapability` (`credentials`, `parts`, `workRecord`, `office`, each
+written `true` under `permissions`; any other unknown key still refuses the file) with a refusing
+validator rule for a `community` file — the validator now takes the trust class as an input,
+`.community` by default — and plain-words sheet lines shown only when present; they grant nothing
+at run time yet and the runner is unchanged. `AddOnTrustClass` (`community`, `vendorSigned`,
+`organisationSigned(organizationID:)`). `AddOnSignature`: ed25519 over the **exact file bytes**
+behind the domain-separation prefix `avenkin.addon-signature/1\n`, so no skill-pack, catalog or
+profile signature replays as an add-on one; the signed file travels in the strict envelope
+`avenkin.addon-signed/1` (`keyId`, `signer` `vendor`|`organisation`, `organizationID` for an
+organisation only, `file` = base64 of the exact bytes, `signature`). Vendor key ids resolve through
+a key table (production: the skill-pack and catalog key under `vendor-2026-09`); an organisation
+signs under `org-` + the first 16 hex digits of its administrator key's SHA-256, resolved through a
+table of trusted organisations. Every failure — an edited byte, an unknown key id or organisation,
+another organisation's key — demotes the same bytes to `community` with the failure named, so an
+edited file still naming a reserved capability is refused by the validator. `AddOnPolicy`: no
+ceiling, signed only, organisation-signed only, add-ons disabled (stricter wins when combined), and
+under every ceiling an organisation's add-on runs only on a phone enrolled with that organisation.
+`AddOnReference`: `id`, `version`, `organizationID`, an https `url` (pointer, not payload) and an
+optional `sha256` of the file bytes, strict-decoded, with a check that a fetched, verified envelope
+is the add-on referenced. **The trusted-organisation table and the policy value are injected until
+P2 wires them to the enrolled profile** (its `officeAuthority.administratorPublicKey`); no field is
+added to the signed profile format here.
 **Extends:** Plan [BX](BX-skill-packs.md) (signed skill packs; its P4 "JS handlers" is deferred).
 **Related:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (egress screen, definition scanner),
 Plan V (`MCPCatalog`), Plan DJ (composition floor, `OperationJournal`), Plan CT (org policy),

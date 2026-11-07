@@ -1399,7 +1399,23 @@ struct RetrievalEvidencePolicy: Equatable {
     ///   refuses 14 but turns away one in-scope question and drops Lennox recall to 0.89. Looser
     ///   settings refuse 2–7. This model ranks the answering passage high enough that the stricter
     ///   rule only costs answers.
+    /// - `eg2-text.768` — **measured** (Plan KQ P1, 2026-11-07, the search-trained model's int8
+    ///   package on a Mac's CPU through the same retriever, the Lennox key and the nine Plan KN
+    ///   answer keys: 331 scored and 107 out-of-scope questions). Unlike the models above, this
+    ///   one's similarity separates an answer from a near miss, so the floor does real work. Its
+    ///   cosines sit high: floors up to 0.55 refuse nothing more. Swept from 0.40 to 0.75, with
+    ///   three terms at 0.6 and 0.5 and two at 0.5: **0.69 with three terms at 0.5** gives hit@4
+    ///   243 against the contextual model's 213, hit@1 158 against 139, as sent 254 against 224,
+    ///   in-scope refusals 10 against 21 and out-of-scope refusals 63 of 107 against 57, with no
+    ///   key's hit@4 lower by more than one. The contextual model on the same lexical rule gains
+    ///   only refused questions (hit@4 223) and gives back 16 out-of-scope refusals, so the gain
+    ///   is the model's, not the looser rule's. A floor of 0.70 refuses 75 but turns away six more
+    ///   in-scope questions; 0.75 refuses 90 and loses 15 hit@4. Only the 768-value vectors are
+    ///   measured: the 256-value ones score as well but drop one key by two at every floor tried.
     static func `default`(for modelId: String) -> RetrievalEvidencePolicy {
+        if modelId == "eg2-text.768" {
+            return RetrievalEvidencePolicy(similarityFloor: 0.69, minSharedTerms: 3, sharedFraction: 0.5)
+        }
         if modelId.hasPrefix("nl-word") {
             return RetrievalEvidencePolicy(similarityFloor: 0.30, minSharedTerms: 3, sharedFraction: 0.75)
         }

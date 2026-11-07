@@ -954,6 +954,7 @@ extension SettingKey {
         case .technicianID: return "Your technician ID on internal reports"
         case .technicianDisplayName: return "Your name, as your team sees it"
         case .organizationToolDefinitionsMode: return "When the assistant looks up tool definitions on demand"
+        case .organizationManualSearchModel: return "The model Field Assist searches your manuals with"
         case .organizationExperts: return "The experts you can call for help on a job"
         case .expertHandoverTranscript: return "Whether a job sent to an expert carries the conversation"
         case .expertHandoverIncludesAddress: return "Whether a job sent to its own staff experts carries the site's address"

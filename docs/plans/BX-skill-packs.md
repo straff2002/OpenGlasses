@@ -180,6 +180,9 @@ Pure, fully headless-testable; no UI, no network.
 - Docs: a "build a skill pack" page with the manifest reference.
 
 ### P4 (deferred) — Scripted handlers
+> **Superseded 2026-11-07 by recipe add-ons (Plan [GF](GF-recipe-add-ons.md)):** packs get HTTP
+> without code through a later `recipe` binding, so this phase will not be built.
+
 - `js` binding kind: headless JavaScriptCore context per pack (tight API surface: args in,
   string out, fetch via a policied bridge), WKWebView settings/detail surfaces. Deliberately
   deferred: v1 proves the distribution + trust rails on data-only packs first, and App Review

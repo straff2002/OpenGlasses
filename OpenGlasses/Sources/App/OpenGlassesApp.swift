@@ -3598,8 +3598,22 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         ScriptModelAssets.shared.prepareForManualsIfInUse()
         Task { [documentStore] in
+            // The search-trained model (Plan KQ P2) loads before the first re-index pass, so a
+            // vault already on it isn't started towards the fallback during the ~3.5 s load.
+            if Config.fieldAssistManualSearchModel == .searchTrained, await SearchModelRuntime.load() {
+                documentStore.fieldAssistEmbedder = Embedder.fieldAssist()
+            }
             await PassageLocationMigration.run(store: documentStore)
             VaultEmbeddingUpgrade.start(store: documentStore)
+        }
+        // Plan KQ P2b: a profile that pins (or stops pinning) the manual-search model moves the
+        // vaults as the Settings picker would; a pass with nothing to do changes nothing.
+        NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak documentStore] _ in
+            guard let documentStore else { return }
+            Task { @MainActor in
+                if Config.fieldAssistManualSearchModel == .searchTrained { await SearchModelRuntime.load() }
+                VaultEmbeddingUpgrade.start(store: documentStore)
+            }
         }
         StudyService.shared.configure(llm: llmService, documentStore: documentStore, tts: speechService, camera: cameraService)
 
@@ -7268,6 +7282,9 @@ class AppState: ObservableObject, AppStateProtocol {
 
     func handleWakeWordDetected(manual: Bool = false) async {
         manuallyTriggered = manual
+        // Plan KQ P2: read the search-trained model's pages back in while the wearer speaks, so the
+        // first question after a lock doesn't pay for them (P0: 4.7 s without, ~0.13 s with).
+        SearchModelRuntime.warmUp(vaultOpen: FieldSessionService.shared.activeSession != nil)
         // The engine-before-listening ordering lives (tested) in ConversationStartSequence.
         await ConversationStartSequence.run(.init(
             beginConversation: { [self] in inConversation = true },
@@ -9526,6 +9543,9 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     func returnToWakeWord() async {
+        // Last of all — after the re-arm — the car screen settles its audio session, so its release
+        // is the final word on a conversation that ended in the car.
+        defer { CarPlaySceneDelegate.current?.appFinishedEndingConversation() }
         // Capture whether we were in a conversation before resetting state.
         // If the user was actively talking, always restart wake word — even in
         // silent mode (silent mode only suppresses the *initial* auto-start).

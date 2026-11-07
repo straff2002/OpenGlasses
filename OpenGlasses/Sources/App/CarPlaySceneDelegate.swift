@@ -1,11 +1,15 @@
 import CarPlay
+import Combine
 import UIKit
 
 /// Manages the CarPlay interface for OpenGlasses.
 ///
 /// Voice-based conversational app — primary modality is voice.
-/// Templates: Tab Bar → Voice Control, Modes (List), Conversations (List), Playbooks (List)
-/// Max template depth: 3 (including root tab bar).
+/// Templates: Tab Bar (Voice, Modes, Conversations, Playbooks, Jobs — all lists) as the root, with
+/// the voice control template presented over it: on connect in its ready state (iOS 26.4+, where
+/// it carries Talk / Stop / End and a Menu button back to the tabs), or from a row that talks.
+/// Max template depth: 3 including the root — tab bar, a tab's list, then one pushed page or the
+/// voice template (`CarPlayVoiceScreen.depth`).
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     var interfaceController: CPInterfaceController?
@@ -19,8 +23,19 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     /// Weak for the same reason `current` is.
     private weak var carScene: CPTemplateApplicationScene?
 
-    /// Track whether voice input is active so we know when to hold the audio session.
-    private(set) var isVoiceActive = false
+    /// What the voice screen is doing, and every decision about it (`CarPlayVoiceScreen`).
+    /// Main actor only.
+    private var voiceScreen = CarPlayVoiceScreen(hasButtons: CarPlaySceneDelegate.voiceTemplateHasButtons)
+
+    /// Whether the voice template is up.
+    var isVoiceActive: Bool { voiceScreen.isPresented }
+
+    /// The CarPlay audio set-up and conversation start a Start Listening began — cancelled by End
+    /// or a disconnect, so a conversation is never opened after the driver ended it.
+    private var voiceStartTask: Task<Void, Never>?
+
+    /// Follows the conversation while the voice template is up.
+    private var conversationObserver: AnyCancellable?
 
     // MARK: - Scene Lifecycle
 
@@ -29,6 +44,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
+        interfaceController.delegate = self
         self.carScene = templateApplicationScene
         Self.current = self
         PrivacyLog.device(.carPlay, .connected)
@@ -38,7 +54,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
 
         let tabBar = buildTabBar()
-        interfaceController.setRootTemplate(tabBar, animated: true, completion: nil)
+        // The voice template cannot be the root (the SDK only presents it), so the tab bar is, and
+        // the ready screen goes over it once it is up — voice is what the driver sees first.
+        interfaceController.setRootTemplate(tabBar, animated: true) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                guard let self, let appState = AppStateProvider.shared else { return }
+                self.showReadyScreenOnConnect(appState)
+            }
+        }
         // The Jobs list is built empty with the bar and filled from the main actor, like every
         // other data-bearing tab here.
         refreshJobsTab()
@@ -72,10 +95,12 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     // MARK: - Voice Tab (Primary)
 
+    /// Three rows. `CPVoiceControlTemplate` carries no buttons of its own, so Stop and End live
+    /// here: Stop cuts the reply off and keeps the conversation listening, End hangs it up.
     private func buildVoiceTab() -> CPListTemplate {
         let listenItem = CPListItem(
-            text: "Start Listening",
-            detailText: "Tap to activate voice assistant",
+            text: String(localized: "Start Listening"),
+            detailText: String(localized: "Tap to activate voice assistant"),
             image: UIImage(systemName: "mic.fill")
         )
         listenItem.handler = { [weak self] _, completion in
@@ -84,17 +109,27 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
 
         let stopItem = CPListItem(
-            text: "Stop Listening",
-            detailText: "End the current voice session",
-            image: UIImage(systemName: "mic.slash.fill")
+            text: String(localized: "Stop Talking"),
+            detailText: String(localized: "Cut the reply short and keep listening"),
+            image: UIImage(systemName: "speaker.slash.fill")
         )
         stopItem.handler = { [weak self] _, completion in
-            self?.stopVoice()
+            self?.stopTalking()
             completion()
         }
 
-        let section = CPListSection(items: [listenItem, stopItem])
-        let template = CPListTemplate(title: "Voice", sections: [section])
+        let endItem = CPListItem(
+            text: String(localized: "End Conversation"),
+            detailText: String(localized: "Stop listening and end the conversation"),
+            image: UIImage(systemName: "mic.slash.fill")
+        )
+        endItem.handler = { [weak self] _, completion in
+            self?.endVoice()
+            completion()
+        }
+
+        let section = CPListSection(items: [listenItem, stopItem, endItem])
+        let template = CPListTemplate(title: String(localized: "Voice"), sections: [section])
         template.tabImage = UIImage(systemName: "mic.fill")
         return template
     }
@@ -117,8 +152,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             return item
         }
 
-        let section = CPListSection(items: items, header: "Personas", sectionIndexTitle: nil)
-        let template = CPListTemplate(title: "Modes", sections: [section])
+        let section = CPListSection(items: items, header: String(localized: "Personas"), sectionIndexTitle: nil)
+        let template = CPListTemplate(title: String(localized: "Modes"), sections: [section])
         template.tabImage = UIImage(systemName: "person.2.fill")
         return template
     }
@@ -129,7 +164,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         var items: [CPListItem] = []
 
         let newItem = CPListItem(
-            text: "New Conversation",
+            text: String(localized: "New Conversation"),
             detailText: nil,
             image: UIImage(systemName: "plus.circle.fill")
         )
@@ -145,7 +180,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
 
         let section = CPListSection(items: items)
-        let template = CPListTemplate(title: "Conversations", sections: [section])
+        let template = CPListTemplate(title: String(localized: "Conversations"), sections: [section])
         template.tabImage = UIImage(systemName: "bubble.left.and.bubble.right.fill")
         return template
     }
@@ -154,7 +189,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func buildPlaybooksTab() -> CPListTemplate {
         let section = CPListSection(items: [])
-        let template = CPListTemplate(title: "Playbooks", sections: [section])
+        let template = CPListTemplate(title: String(localized: "Playbooks"), sections: [section])
         template.tabImage = UIImage(systemName: "list.clipboard.fill")
         return template
     }
@@ -169,7 +204,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     /// selecting a finished one reads its name aloud and does nothing else. The Debrief action
     /// §6 describes is P3b's, and the seam for it is `CarPlayJobsList.Selection`.
     private func buildJobsTab() -> CPListTemplate {
-        let template = CPListTemplate(title: "Jobs", sections: [CPListSection(items: [])])
+        let template = CPListTemplate(title: String(localized: "Jobs"), sections: [CPListSection(items: [])])
         template.tabImage = UIImage(systemName: "wrench.and.screwdriver.fill")
         return template
     }
@@ -205,7 +240,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                     fieldAssistActive: Config.fieldAssistActive), detailText: nil)]
             }
 
-            let template = CPListTemplate(title: "Jobs", sections: [CPListSection(items: items)])
+            let template = CPListTemplate(title: String(localized: "Jobs"), sections: [CPListSection(items: items)])
             template.tabImage = UIImage(systemName: "wrench.and.screwdriver.fill")
 
             guard let tabBar = self.interfaceController?.rootTemplate as? CPTabBarTemplate else { return }
@@ -307,67 +342,288 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     // MARK: - Voice Control
 
+    // The decisions live in `CarPlayVoiceScreen`; everything below reads a snapshot, hands it over
+    // and carries out what comes back. All of it runs on the main actor — the CarPlay handlers
+    // arrive on the main thread, and every `Task` here is `@MainActor`, so taps are applied in the
+    // order they were made.
+
+    /// Whether the voice template can carry buttons (iOS 26.4). Without them there is no ready
+    /// screen: nothing on it could be tapped, and nothing would lead back to the tabs.
+    private static var voiceTemplateHasButtons: Bool {
+        if #available(iOS 26.4, *) { return true }
+        return false
+    }
+
+    /// The conversation as the voice screen sees it.
+    @MainActor
+    private static func conversation(_ appState: AppState) -> CarPlayVoiceScreen.Conversation {
+        CarPlayVoiceScreen.Conversation(inConversation: appState.inConversation,
+                                        isListening: appState.isListening,
+                                        isProcessing: appState.isProcessing,
+                                        isSpeaking: appState.speechService.isSpeaking)
+    }
+
+    /// Voice first: the ready screen on connect, over the tab bar. It opens no microphone and says
+    /// nothing — only Talk does. Without template buttons the car opens on the tab bar as before.
+    @MainActor
+    private func showReadyScreenOnConnect(_ appState: AppState) {
+        guard voiceScreen.connected() else { return }
+        presentVoiceTemplate(showing: .ready, appState: appState)
+    }
+
     private func startVoice() {
-        guard !isVoiceActive else { return }
-        isVoiceActive = true
-        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("startVoice"))
+        Task { @MainActor [weak self] in
+            guard let self, let appState = AppStateProvider.shared else { return }
+            self.startVoice(appState)
+        }
+    }
 
-        let states: [CPVoiceControlState] = [
-            CPVoiceControlState(
-                identifier: "listening",
-                titleVariants: ["Listening..."],
-                image: UIImage(systemName: "ear.fill"),
-                repeats: true
-            ),
-            CPVoiceControlState(
-                identifier: "processing",
-                titleVariants: ["Thinking..."],
-                image: UIImage(systemName: "brain"),
-                repeats: true
-            ),
-            CPVoiceControlState(
-                identifier: "speaking",
-                titleVariants: ["Speaking..."],
-                image: UIImage(systemName: "speaker.wave.2.fill"),
-                repeats: true
-            )
-        ]
+    @MainActor
+    private func startVoice(_ appState: AppState) {
+        switch voiceScreen.start(Self.conversation(appState)) {
+        case .nothing:
+            return
+        case .show(let state):
+            show(state)
+        case .presentOverRunningConversation(let state):
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("showVoice"))
+            presentVoiceTemplate(showing: state, appState: appState)
+        case .presentAndStartConversation:
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("startVoice"))
+            presentVoiceTemplate(showing: .listening, appState: appState)
+            beginConversation(appState)
+        case .startConversation:
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("startVoice"))
+            show(.listening)
+            beginConversation(appState)
+        }
+    }
 
-        let template = CPVoiceControlTemplate(voiceControlStates: states)
-        voiceControlTemplate = template
-
-        interfaceController?.presentTemplate(template, animated: true, completion: nil)
-
-        Task { @MainActor in
-            guard let appState = AppStateProvider.shared else { return }
+    /// The CarPlay audio set-up, then the wake word's own conversation start — the only place the
+    /// car screen opens the microphone, and only after a tap.
+    @MainActor
+    private func beginConversation(_ appState: AppState) {
+        voiceStartTask?.cancel()
+        voiceStartTask = Task { @MainActor [weak self] in
+            // Cancelled before it ran (End, or the car going): leave the audio mode alone.
+            guard !Task.isCancelled else { return }
             appState.wakeWordService.carPlayMode = true
             await appState.wakeWordService.reconfigureAudioSession()
+            guard !Task.isCancelled else { return }
             appState.wakeWordService.stopListening()
             try? await Task.sleep(nanoseconds: 100_000_000)
+            // Ended (or the car went) while the audio was being set up: open nothing.
+            guard !Task.isCancelled else { return }
             await appState.handleWakeWordDetected()
+            guard let self, !Task.isCancelled else { return }
+            self.voiceStartTask = nil
+            self.apply(self.voiceScreen.startFinished(Self.conversation(appState)), appState: appState)
         }
     }
 
-    private func stopVoice() {
-        guard isVoiceActive else { return }
-        isVoiceActive = false
-        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopVoice"))
+    /// Present the voice template on `state` and follow the conversation while it is up.
+    @MainActor
+    private func presentVoiceTemplate(showing state: CarPlayVoiceScreen.VoiceState, appState: AppState) {
+        guard let interfaceController else { return }
+        // Depth: tab bar, its list, and this template make three — never over a pushed page.
+        if CarPlayVoiceScreen.mustPopToRootBeforePresenting(pushed: max(0, interfaceController.templates.count - 1)) {
+            interfaceController.popToRootTemplate(animated: false, completion: nil)
+        }
+        let states = CarPlayVoiceScreen.states(hasButtons: voiceScreen.hasButtons)
+        let template = CPVoiceControlTemplate(voiceControlStates: states.map(voiceControlState))
+        if #available(iOS 26.4, *) {
+            // The way back to the tabs (Modes, Conversations, Playbooks, Jobs). The conversation,
+            // if one is running, carries on; the Voice tab's rows still reach it.
+            template.leadingNavigationBarButtons = [
+                CPBarButton(title: String(localized: "Menu")) { [weak self] _ in self?.showTabs() }
+            ]
+        }
+        voiceControlTemplate = template
+        interfaceController.presentTemplate(template, animated: true) { [weak self, weak template] presented, _ in
+            // A state can only be activated once the template is up; it opens on the first one.
+            guard presented, let template, state != states.first,
+                  self?.voiceControlTemplate === template else { return }
+            template.activateVoiceControlState(withIdentifier: state.rawValue)
+        }
+        observeConversation(appState)
+    }
 
+    private func voiceControlState(_ state: CarPlayVoiceScreen.VoiceState) -> CPVoiceControlState {
+        let voiceState = CPVoiceControlState(identifier: state.rawValue,
+                                             titleVariants: [state.title],
+                                             image: UIImage(systemName: state.symbol),
+                                             repeats: true)
+        if #available(iOS 26.4, *) {
+            let limit = min(CarPlayVoiceScreen.maximumButtons, CPVoiceControlState.maximumActionButtonCount)
+            voiceState.actionButtons = state.buttons.prefix(limit).map { button in
+                let image = UIImage(systemName: button.symbol) ?? UIImage()
+                let cpButton = CPButton(image: image) { [weak self] _ in self?.tapped(button) }
+                cpButton.title = button.title
+                return cpButton
+            }
+        }
+        return voiceState
+    }
+
+    private func tapped(_ button: CarPlayVoiceScreen.Button) {
+        switch button {
+        case .talk: startVoice()
+        case .stop: stopTalking()
+        case .end: endVoice()
+        }
+    }
+
+    /// The Menu button: down to the tab bar. The conversation is left as it is.
+    private func showTabs() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("showTabs"))
+            self.voiceScreen.templateDisappeared()
+            self.takeDownVoiceTemplate()
+        }
+    }
+
+    /// Follow listening, thinking and speaking while the template is up. Every assignment to these
+    /// publishes (an end of conversation reassigns `isListening` even when it is already false),
+    /// and the snapshot is read a run-loop turn later, once the assignments that published it are
+    /// all in — `@Published` announces before it stores, and `returnToWakeWord` clears
+    /// `isListening` a line before `inConversation`.
+    @MainActor
+    private func observeConversation(_ appState: AppState) {
+        conversationObserver = Publishers.Merge3(
+            appState.$isListening.map { _ in () },
+            appState.$isProcessing.map { _ in () },
+            appState.speechService.$isSpeaking.map { _ in () })
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak appState] in
+                MainActor.assumeIsolated {
+                    guard let self, let appState else { return }
+                    self.apply(self.voiceScreen.observe(Self.conversation(appState)), appState: appState)
+                }
+            }
+    }
+
+    @MainActor
+    private func show(_ state: CarPlayVoiceScreen.VoiceState) {
+        voiceControlTemplate?.activateVoiceControlState(withIdentifier: state.rawValue)
+    }
+
+    @MainActor
+    private func apply(_ effect: CarPlayVoiceScreen.UpdateEffect, appState: AppState) {
+        switch effect {
+        case .none:
+            return
+        case .show(let state):
+            show(state)
+            return
+        case .showReady:
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("voiceEnded"))
+            show(.ready)
+        case .dismiss:
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("voiceEnded"))
+            takeDownVoiceTemplate()
+        }
+        scheduleReleaseFallback(appState)
+    }
+
+    /// An end with no `returnToWakeWord` behind it (a brief read out on the ready screen, listening
+    /// switched off) still gives the audio back.
+    @MainActor
+    private func scheduleReleaseFallback(_ appState: AppState) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self, self.voiceScreen.releaseFallbackDue(Self.conversation(appState)) else { return }
+            await self.releaseAudio(appState)
+        }
+    }
+
+    /// The app finished ending a conversation (`AppState.returnToWakeWord`, its re-arm included).
+    /// Called on the main actor, at the very end of that path.
+    @MainActor
+    func appFinishedEndingConversation() {
+        guard let appState = AppStateProvider.shared else { return }
+        switch voiceScreen.appFinishedEnding(Self.conversation(appState)) {
+        case .none:
+            return
+        case .release(let screen):
+            switch screen {
+            case .showReady: show(.ready)
+            case .dismiss: takeDownVoiceTemplate()
+            case .none, .show: break
+            }
+            Task { @MainActor [weak self] in await self?.releaseAudio(appState) }
+        }
+    }
+
+    /// Give CarPlay's audio session back — voice is no longer in use.
+    @MainActor
+    private func releaseAudio(_ appState: AppState) async {
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("releaseAudio"))
+        await appState.wakeWordService.deactivateAudioSession()
+    }
+
+    /// Dismiss the template this delegate presented, and stop following the conversation.
+    @MainActor
+    private func takeDownVoiceTemplate() {
+        conversationObserver = nil
+        guard voiceControlTemplate != nil else { return }
+        // Cleared first, so the disappearance this dismissal causes is recognised as our own.
         voiceControlTemplate = nil
         interfaceController?.dismissTemplate(animated: true, completion: nil)
+    }
 
-        Task { @MainActor in
-            guard let appState = AppStateProvider.shared else { return }
-            appState.speechService.stopSpeaking()
-            await appState.wakeWordService.deactivateAudioSession()
-            appState.isListening = false
-            appState.inConversation = false
+    /// Stop: cut the reply off and keep the conversation going (`interruptSpeechAndListen`, the
+    /// temple tap's interrupt). Outside a conversation it only silences what is being read out.
+    private func stopTalking() {
+        Task { @MainActor [weak self] in
+            guard let self, let appState = AppStateProvider.shared else { return }
+            switch self.voiceScreen.stop(Self.conversation(appState)) {
+            case .nothing:
+                return
+            case .interruptAndListen:
+                PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopTalking"))
+                await appState.interruptSpeechAndListen()
+            case .stopSpeaking:
+                PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopTalking"))
+                appState.speechService.stopSpeaking()
+            }
         }
     }
 
-    /// Update the voice control template state (called by AppState during conversation flow).
-    func updateVoiceState(_ identifier: String) {
-        voiceControlTemplate?.activateVoiceControlState(withIdentifier: identifier)
+    /// End: hang the conversation up (`hangUpConversation`, the temple tap's hang up — the in-flight
+    /// turn, the recorder and the reply all go). The audio session is released when its end path
+    /// finishes (`appFinishedEndingConversation`).
+    private func endVoice() {
+        Task { @MainActor [weak self] in
+            guard let self, let appState = AppStateProvider.shared else { return }
+            self.endVoice(appState)
+        }
+    }
+
+    @MainActor
+    private func endVoice(_ appState: AppState, carDisconnected: Bool = false) {
+        let effect = carDisconnected ? voiceScreen.carDisconnected()
+                                     : voiceScreen.end(Self.conversation(appState))
+        voiceStartTask?.cancel()
+        voiceStartTask = nil
+        switch effect.screen {
+        case .showReady: show(.ready)
+        case .dismiss: takeDownVoiceTemplate()
+        case .none, .show: break
+        }
+        if carDisconnected { takeDownVoiceTemplate() }
+        if effect.restorePhoneAudio { appState.wakeWordService.carPlayMode = false }
+        guard effect.hangUp else { return }
+        PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopVoice"))
+        Task { @MainActor in
+            await appState.hangUpConversation()
+            // `hangUpConversation` ends in `returnToWakeWord`, whose last step released the audio
+            // through `appFinishedEndingConversation`; this is the backstop should that hook have
+            // missed. After a disconnect nothing is owed: the phone's own end path handed it back.
+            if self.voiceScreen.releaseFallbackDue(Self.conversation(appState)) {
+                await self.releaseAudio(appState)
+            }
+        }
     }
 
     // MARK: - Actions
@@ -453,7 +709,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             var items: [CPListItem] = []
 
             let newItem = CPListItem(
-                text: "New Conversation",
+                text: String(localized: "New Conversation"),
                 detailText: nil,
                 image: UIImage(systemName: "plus.circle.fill")
             )
@@ -479,7 +735,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             }
 
             let section = CPListSection(items: items)
-            let template = CPListTemplate(title: "Conversations", sections: [section])
+            let template = CPListTemplate(title: String(localized: "Conversations"), sections: [section])
             template.tabImage = UIImage(systemName: "bubble.left.and.bubble.right.fill")
 
             guard let tabBar = self.interfaceController?.rootTemplate as? CPTabBarTemplate else { return }
@@ -503,7 +759,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 let isActive = activeId == playbook.id
                 let item = CPListItem(
                     text: playbook.name,
-                    detailText: isActive ? "In Progress" : "\(playbook.steps.count) steps",
+                    detailText: isActive ? String(localized: "In Progress") : String(localized: "\(playbook.steps.count) steps"),
                     image: UIImage(systemName: playbook.icon)
                 )
                 item.handler = { [weak self] _, completion in
@@ -514,7 +770,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             }
 
             let section = CPListSection(items: items)
-            let template = CPListTemplate(title: "Playbooks", sections: [section])
+            let template = CPListTemplate(title: String(localized: "Playbooks"), sections: [section])
             template.tabImage = UIImage(systemName: "list.clipboard.fill")
 
             guard let tabBar = self.interfaceController?.rootTemplate as? CPTabBarTemplate else { return }
@@ -547,8 +803,29 @@ extension CarPlaySceneDelegate {
         Task { @MainActor in
             AppStateProvider.shared?.carPlayConnected = false
         }
-        stopVoice()
+        // Strongly held: the scene may let the delegate go once it has disconnected, and the
+        // conversation must still be ended.
+        Task { @MainActor in
+            guard let appState = AppStateProvider.shared else { return }
+            self.endVoice(appState, carDisconnected: true)
+        }
         self.interfaceController = nil
         self.carScene = nil
+    }
+}
+
+// MARK: - Template Dismissal
+extension CarPlaySceneDelegate: CPInterfaceControllerDelegate {
+    /// The system took the voice template down — not this delegate's own dismissal, which clears
+    /// `voiceControlTemplate` first. Forget it, so the next Start Listening presents again rather
+    /// than finding the screen "already up" and doing nothing.
+    func templateDidDisappear(_ aTemplate: CPTemplate, animated: Bool) {
+        MainActor.assumeIsolated {
+            guard let shown = voiceControlTemplate, aTemplate === shown else { return }
+            voiceControlTemplate = nil
+            conversationObserver = nil
+            voiceScreen.templateDisappeared()
+            PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("voiceDismissed"))
+        }
     }
 }

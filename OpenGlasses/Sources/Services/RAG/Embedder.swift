@@ -78,11 +78,23 @@ struct Embedder {
         return NLContextualBackend.ready(for: script.contextualLanguage) != nil
     }
 
-    /// The embedder Field Assist indexes and searches a vault's manuals with: the contextual model
-    /// while "Smarter manual search" is on (the default) and its asset is on the device, the
-    /// standard model otherwise. Every other user of embeddings keeps `Embedder()`.
-    static func fieldAssist(language: NLLanguage = .english) -> Embedder {
-        Embedder(language: language, preference: Config.fieldAssistContextualSearchEnabled ? .contextual : .standard)
+    /// The embedder Field Assist indexes and searches a vault's manuals with, by the wearer's choice
+    /// (Plan KQ P2): the search-trained model when it is chosen and loaded, else the contextual
+    /// model when it is chosen (or the search-trained one is) and its asset is on the device, else
+    /// the standard model. Every other user of embeddings keeps `Embedder()`.
+    static func fieldAssist(language: NLLanguage = .english,
+                            choice: ManualSearchModel = Config.fieldAssistManualSearchModel) -> Embedder {
+        switch choice {
+        case .standard:
+            return Embedder(language: language, preference: .standard)
+        case .smarter:
+            return Embedder(language: language, preference: .contextual)
+        case .searchTrained:
+            if language == .english, let model = SearchModelRuntime.ready {
+                return Embedder(language: language, backend: model)
+            }
+            return Embedder(language: language, preference: .contextual)
+        }
     }
 
     /// Whether the contextual model's asset is on the device.
@@ -121,6 +133,29 @@ struct Embedder {
         return backend?.embed(trimmed)
     }
 
+    /// Whether this instance embeds passages off the main thread (its backend allows it).
+    var embedsPassagesOffMainThread: Bool { backend?.isSafeOffMainThread ?? false }
+
+    /// `embed`, off the main thread when the backend allows it (Plan KQ P2), else exactly as
+    /// `embed`. For the store's passage loops: an import or re-index of thousands of passages.
+    /// Main-actor bound, so a backend that doesn't opt in keeps running on the main thread: a plain
+    /// `async` method here would run on the generic executor and move Apple's models too.
+    @MainActor
+    func embedPassage(_ text: String, priority: TaskPriority = .utility) async -> [Float]? {
+        guard let backend, backend.isSafeOffMainThread else { return embed(text) }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return await Task.detached(priority: priority) { backend.embed(trimmed) }.value
+    }
+
+    /// Embed a question being searched with (Plan KQ). The same as `embed` for every model but one
+    /// trained for retrieval, which reads a question with its own prefix.
+    func embedQuery(_ text: String) -> [Float]? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return backend?.embedQuery(trimmed)
+    }
+
     /// Cosine similarity in [-1, 1]; 0 when dimensions differ or a vector is empty/zero.
     static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
         guard a.count == b.count, !a.isEmpty else { return 0 }
@@ -145,11 +180,19 @@ struct Embedder {
     /// Ask for the contextual model's asset for Field Assist's manual search, when it's switched
     /// on and the asset isn't here. Returns whether the asset is on the device afterwards; a failed
     /// or offline request returns false and the manuals stay on the standard model.
+    ///
+    /// With the search-trained model chosen (Plan KQ P2) it loads that model when it is downloaded,
+    /// and asks for the contextual asset too, the fallback while it isn't; true when either is
+    /// ready afterwards.
     @discardableResult
-    static func prepareFieldAssistAssets(language: NLLanguage = .english) async -> Bool {
-        guard Config.fieldAssistContextualSearchEnabled else { return false }
-        if NLContextualBackend.ready(for: language) != nil { return true }
-        await NLContextualBackend.prepareAssets(for: language)
-        return NLContextualBackend.ready(for: language) != nil
+    static func prepareFieldAssistAssets(language: NLLanguage = .english,
+                                         choice: ManualSearchModel = Config.fieldAssistManualSearchModel) async -> Bool {
+        guard choice != .standard else { return false }
+        var searchTrained = false
+        if choice == .searchTrained { searchTrained = await SearchModelRuntime.load() }
+        if NLContextualBackend.ready(for: language) == nil {
+            await NLContextualBackend.prepareAssets(for: language)
+        }
+        return searchTrained || NLContextualBackend.ready(for: language) != nil
     }
 }

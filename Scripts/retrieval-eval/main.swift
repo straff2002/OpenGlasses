@@ -44,15 +44,17 @@ struct RetrievalEvalMain {
             guard let mode = RetrievalEval.TableRows(rawValue: rows) else { fail("RETRIEVAL_EVAL_TABLE_ROWS is 1, 0, token or table") }
             RetrievalEval.tableRows = mode
         }
-        let embedder = Embedder()
-        guard embedder.isAvailable else { fail("no NaturalLanguage embedding model on this Mac") }
+        // Plan KQ P1: RETRIEVAL_EVAL_EMBEDDER=eg2[:<dimension>] is the search-trained model.
+        let embedder = SearchModelEval.embedder()
+        guard embedder.isAvailable else { fail("no embedding model on this Mac") }
 
         // The store lives in a work folder the developer names (and deletes), so a long document is
         // embedded once, not on every run. Never inside the repository.
         let work = URL(fileURLWithPath: env["RETRIEVAL_EVAL_WORKDIR"]
                        ?? NSTemporaryDirectory() + "retrieval-eval-store", isDirectory: true)
         try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-        let store = DocumentStore(directory: work, chunker: RetrievalEval.chunker(named: env["RETRIEVAL_EVAL_CHUNKER"]))
+        let store = DocumentStore(directory: work, chunker: RetrievalEval.chunker(named: env["RETRIEVAL_EVAL_CHUNKER"]),
+                                  embedder: embedder)
 
         // Plan JN P1: tables printed as pictures read too, by the document grid or the words
         // reading (off by default, as the text layer alone). Give each its own work folder.
@@ -121,6 +123,12 @@ struct RetrievalEvalMain {
             store.scriptEmbedderProvider = { _ in nil }
         }
 
+        // Plan KQ P1: a work folder copied from another model's run keeps its chunks, so a new model is
+        // measured on the same passages. Every chunk stamped by another model is re-embedded here,
+        // through the store's own migration, before anything is asked.
+        let reembedded = await store.reindexOutdated()
+        if reembedded > 0 { FileHandle.standardError.write("re-embedded \(reembedded) chunks\n".data(using: .utf8)!) }
+
         // The shipped gate for this embedder, or a candidate one to calibrate a gate against both
         // sets: RETRIEVAL_EVAL_GATE="<min shared terms>,<shared fraction>" (floor 0.30), or "floor".
         var policy = RetrievalEvidencePolicy.default(for: embedder.modelId)
@@ -151,6 +159,12 @@ struct RetrievalEvalMain {
                 fail("RETRIEVAL_EVAL_FULL_MATCH is \"<floor>[,<terms>]\" or \"off\"")
             }
         }
+        // Plan KQ P1: a candidate similarity floor, RETRIEVAL_EVAL_FLOOR="<floor>", over the gate above;
+        // a new model's cosines sit on their own scale.
+        if let floor = env["RETRIEVAL_EVAL_FLOOR"] {
+            guard let value = Float(floor) else { fail("RETRIEVAL_EVAL_FLOOR is a number") }
+            policy.similarityFloor = value
+        }
         // Plan JY P3: a language group's candidate criterion and pending-passage increase
         // (RETRIEVAL_EVAL_GATE_GROUP, RETRIEVAL_EVAL_PENDING), over whatever the gate above is.
         for (group, criterion) in RetrievalEvalTuning.groupCriteria { policy.groupCriteria[group] = criterion }
@@ -169,6 +183,7 @@ struct RetrievalEvalMain {
                                            : ManualPassageLimit(prose: env["RETRIEVAL_EVAL_PROSE_PASSAGES"].flatMap(Int.init) ?? 4))
         let label = (env["RETRIEVAL_EVAL_LABEL"] ?? "local vault") + (env["RETRIEVAL_EVAL_GATE"].map { " gate=\($0)" } ?? "")
             + (env["RETRIEVAL_EVAL_FULL_MATCH"].map { " full_match=\($0)" } ?? "")
+            + (env["RETRIEVAL_EVAL_FLOOR"].map { " floor=\($0)" } ?? "")
             + (env["RETRIEVAL_EVAL_VECTORS"].map { " vectors=\($0)" } ?? "")
             + ["RETRIEVAL_EVAL_GATE_GROUP", "RETRIEVAL_EVAL_PENDING", "RETRIEVAL_EVAL_PREFIX", "RETRIEVAL_EVAL_MINLEN", "RETRIEVAL_EVAL_ENDINGS", "RETRIEVAL_EVAL_FOLD", "RETRIEVAL_EVAL_CJK",
                "RETRIEVAL_EVAL_CHUNK_SCALE", "RETRIEVAL_EVAL_P4_OFF", "RETRIEVAL_EVAL_PROSE_PASSAGES"]

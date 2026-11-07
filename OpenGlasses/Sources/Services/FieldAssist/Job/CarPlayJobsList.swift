@@ -159,6 +159,6 @@ enum CarPlayJobsList {
 
     private static func title(for session: FieldSession) -> String {
         guard let reference = session.jobReference, !reference.isEmpty else { return noJobNumber }
-        return "Job \(reference)"
+        return String(localized: "Job \(reference)")
     }
 }

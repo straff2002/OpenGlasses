@@ -15,8 +15,10 @@ struct FieldAssistSettingsView: View {
     @AppStorage("fieldAssistDefaultMode") private var defaultMode: String = "ai_only"
     @AppStorage("fieldAssistBillingBasis") private var billingBasis: String = "minutes"
     @AppStorage("fieldAssistMinutesPerBillingUnit") private var minutesPerBillingUnit: Int = 15
-    /// `Config.fieldAssistContextualSearchEnabled` — on by default (Plan IV P4).
-    @AppStorage("fieldAssistContextualSearchEnabled") private var smarterManualSearch: Bool = true
+    /// `Config.fieldAssistManualSearchModel` (Plan KQ P2): Standard, Smarter (the default) or
+    /// Search-trained. Read from the old switch until a choice is stored.
+    @State private var manualSearchModel: ManualSearchModel = Config.fieldAssistManualSearchModel
+    @StateObject private var searchModelDownloader = SearchModelDownloader()
     /// Plan IS P1: `pressure,temperature,mass`, or empty for the App Store region's default.
     @AppStorage(RefrigerationUnitsSetting.key) private var refrigerationUnitsStored: String = ""
     /// The technician's own trades (`FieldTradeSetting.key`): nil until they choose, "" for none.
@@ -271,23 +273,38 @@ struct FieldAssistSettingsView: View {
                     Text("Edit a vault's grounding references in-app — edits write to a private overlay and never touch the bundled baseline. Swipe a free or imported vault to export it with your edits; paid bundled packs can't be exported. An export leaves the manuals on this phone and lists them as files to supply.")
                 }
 
-                // ──────────────── Manual search (Plan IV P4)
+                // ──────────────── Manual search (Plan IV P4, Plan KQ P2)
                 //
-                // The contextual model finds the answering page more often; switching re-indexes
-                // the manuals once in the background, and search keeps the old index until the new
-                // one is complete.
+                // Three models, each falling back to the next until its own is on the phone;
+                // changing re-indexes the manuals once in the background, and search keeps the old
+                // index until the new one is complete.
+                // Plan KQ P2b: an organisation may pin the model. The choice is then read-only (and
+                // hidden from the technician), but a pinned Search-trained can still be downloaded.
+                let searchModelPresentation = adminGate.presentation(.key(.organizationManualSearchModel))
                 Section {
-                    Toggle("Smarter manual search", isOn: $smarterManualSearch)
-                        .onChange(of: smarterManualSearch) { _, _ in
-                            if let store = FieldSessionService.shared.documentStore {
-                                VaultEmbeddingUpgrade.start(store: store)
-                            }
+                    if Config.organizationManualSearchModel == nil {
+                        Picker("Search with", selection: $manualSearchModel) {
+                            Text("Standard").tag(ManualSearchModel.standard)
+                            Text("Smarter").tag(ManualSearchModel.smarter)
+                            Text("Search-trained").tag(ManualSearchModel.searchTrained)
                         }
+                        .onChange(of: manualSearchModel) { _, choice in
+                            Config.fieldAssistManualSearchModel = choice
+                            reindexManualsForSearchModel()
+                        }
+                    } else if searchModelPresentation.isShown {
+                        LabeledContent("Search with", value: manualSearchModel.label)
+                        ManagedLockNote(organization: ManagedLockReason.organization)
+                    }
+                    if manualSearchModel == .searchTrained {
+                        searchModelRow
+                    }
                 } header: {
                     Text("Manual Search")
                 } footer: {
-                    Text("Finds the right page in your manuals more often. Switching it on or off re-indexes your manuals once in the background, and search keeps using the current index until that finishes. The first time, your phone may download a language model from Apple.")
+                    Text(manualSearchFooter)
                 }
+                .onAppear { searchModelDownloader.refreshState() }
 
                 // One collapsible row per trade, holding its switch and its own settings.
                 tradeSection
@@ -1448,5 +1465,91 @@ struct FieldAssistSettingsView: View {
     NavigationStack {
         FieldAssistSettingsView()
             .environmentObject(AppState())
+    }
+}
+
+// MARK: - Manual search model (Plan KQ P2)
+
+extension ManualSearchModel {
+    /// The name the Settings picker shows.
+    var label: String {
+        switch self {
+        case .standard: return String(localized: "Standard")
+        case .smarter: return String(localized: "Smarter")
+        case .searchTrained: return String(localized: "Search-trained")
+        }
+    }
+}
+
+extension FieldAssistSettingsView {
+
+    /// What the footer says for the choice in force.
+    var manualSearchFooter: String {
+        switch manualSearchModel {
+        case .standard:
+            return String(localized: "The phone's built-in sentence model. Changing re-indexes your manuals once in the background, and search keeps using the current index until that finishes.")
+        case .smarter:
+            return String(localized: "Finds the right page in your manuals more often than Standard. Changing re-indexes your manuals once in the background, and search keeps using the current index until that finishes. The first time, your phone may download a language model from Apple.")
+        case .searchTrained:
+            return String(localized: "A model trained for search, which finds the right page more often still and turns away more questions your manuals don't answer. It runs on the phone and needs a one-time download of about 300 MB over Wi-Fi. Until it's downloaded, search uses Smarter.")
+        }
+    }
+
+    /// The download row for the search-trained model, shown while it is chosen.
+    @ViewBuilder var searchModelRow: some View {
+        switch searchModelDownloader.state {
+        case .ready:
+            HStack {
+                Label("Search-trained model", systemImage: "magnifyingglass")
+                Spacer()
+                Text("Downloaded").foregroundStyle(.secondary)
+            }
+            Button("Remove Download", role: .destructive) {
+                SearchModelRuntime.unload()
+                searchModelDownloader.deleteModel()
+                reindexManualsForSearchModel()
+            }
+        case .downloading(let progress):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Downloading… \(Int(progress * 100))%")
+                ProgressView(value: progress)
+            }
+        case .verifying:
+            HStack {
+                Text("Checking…")
+                Spacer()
+                ProgressView()
+            }
+        case .failed(let reason):
+            Text(reason).font(.caption).foregroundStyle(OGTheme.errorLabel)
+            searchModelDownloadButton
+        case .notDownloaded:
+            searchModelDownloadButton
+        }
+    }
+
+    @ViewBuilder private var searchModelDownloadButton: some View {
+        if appState.reachability.isExpensive {
+            Text("Connect to Wi-Fi to download the search-trained model (about 300 MB).")
+                .font(.caption).foregroundStyle(.secondary)
+        } else {
+            Button("Download (about 300 MB)") {
+                Task {
+                    await searchModelDownloader.download()
+                    if searchModelDownloader.state == .ready { reindexManualsForSearchModel() }
+                }
+            }
+        }
+    }
+
+    /// Load the chosen model if it's here, then bring the vaults onto whatever model is now the
+    /// target, once, in the background.
+    func reindexManualsForSearchModel() {
+        Task {
+            if Config.fieldAssistManualSearchModel == .searchTrained { await SearchModelRuntime.load() }
+            if let store = FieldSessionService.shared.documentStore {
+                VaultEmbeddingUpgrade.start(store: store)
+            }
+        }
     }
 }
