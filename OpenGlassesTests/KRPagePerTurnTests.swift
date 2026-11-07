@@ -325,6 +325,23 @@ final class KRPagePerTurnSessionTests: XCTestCase {
         XCTAssertFalse(late.contains("highlighted"), late)
     }
 
+    /// `manual_figure` opening the looked-up table marks the turn as one a tool put a page up in
+    /// (through `show_source`'s open), so a full rebuild in the same turn stages nothing over it.
+    func testAFullRebuildAfterManualFigureOpensTheLookedUpTableStagesNothing() async throws {
+        let (service, store) = try await startSession()
+        let phone = PhoneTimeline(service)
+        service.turnSourceID = "turn-1"
+        try await lookupTable99(service, store)
+        _ = try await figureTool(service, store).execute(args: ["figure": "Table 99"])
+        XCTAssertTrue(service.toolPutUpPageThisTurn)
+        let staged = try XCTUnwrap(service.stagedFigure)
+        let shown = phone.shown
+
+        _ = service.promptContext(turn: "show me the conductor ratings table for QXRT three conductors")
+        XCTAssertEqual(service.stagedFigure, staged, "the rebuild left the table the tool opened")
+        XCTAssertEqual(phone.shown, shown, "and put nothing on the phone")
+    }
+
     /// 'again' after a lookup newer than the last page shown brings back the table, marked.
     func testAgainAfterALookupBringsBackTheTableMarked() async throws {
         let (service, store) = try await startSession()

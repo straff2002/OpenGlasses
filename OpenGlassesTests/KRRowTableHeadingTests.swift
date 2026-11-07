@@ -131,6 +131,59 @@ final class KRRowTableHeadingTests: XCTestCase {
         XCTAssertEqual(seven.rows.first?.cells[3].text, "24")
     }
 
+    /// Invented: a stub heading, then on one line "Capacity" over three columns and "Weight" over
+    /// two, the columns' own headings under them. `capacityX`/`weightX` say where each group
+    /// heading starts — set from the left over its first column, or centred over its group.
+    private static func groupedPage(capacityX: Double, weightX: Double) -> TableFixtureLayouts.Page {
+        let xs = [200.0, 260, 320, 430, 490]
+        var items = [TableFixtureLayouts.Item(text: "Table 95 Invented widget capacities", x: 50, y: 60, size: 10, bold: true)]
+        func line(_ y: Double, _ cells: [(String, Double)]) {
+            items += cells.map { TableFixtureLayouts.Item(text: $0.0, x: $0.1, y: y, bold: true) }
+        }
+        line(84, [("Unit", 50), ("Capacity", capacityX), ("Weight", weightX)])
+        line(98, [("Model", 50), ("Low", 198), ("Mid", 258), ("High", 316), ("Net", 428), ("Gross", 485)])
+        let body: [[String]] = [["W2", "11", "12", "13", "14", "15"], ["W4", "21", "22", "23", "24", "25"],
+                                ["W6", "31", "32", "33", "34", "35"], ["W8", "41", "42", "43", "44", "45"]]
+        for (index, cells) in body.enumerated() {
+            let y = 114 + Double(index) * 14
+            items += zip(cells, [50.0] + xs).map { TableFixtureLayouts.Item(text: $0, x: $1, y: y) }
+        }
+        return items
+    }
+
+    /// A group heading set narrow from the left over three columns, and one centred over two or
+    /// three, heads every column of its group: lookups by it still resolve.
+    func testAGroupHeadingSetFromTheLeftOrCentredKeepsItsLevelInEveryColumn() throws {
+        // "Capacity" is 39.6 points wide and "Weight" 29.7 at the fixtures' advance.
+        for (name, capacityX, weightX) in [("left-set", 195.0, 428.0), ("centred", 245.2, 450.15)] {
+            let found = TableExtractor.extractAll(words: TableFixtureLayouts.words(Self.groupedPage(capacityX: capacityX,
+                                                                                                     weightX: weightX)),
+                                                  page: ManualTable.Page(physical: 1))
+            let table = try XCTUnwrap(found.first?.outcome.table, "\(name): \(String(describing: found.first?.outcome))")
+            let paths = table.columns.map(\.path)
+            XCTAssertEqual(paths.count, 5, "\(name): \(paths)")
+            guard paths.count == 5 else { continue }
+            for column in 0..<3 {
+                XCTAssertEqual(paths[column].first, "Capacity", "\(name): the group heads all three: \(paths)")
+            }
+            for column in 3..<5 {
+                XCTAssertEqual(paths[column].first, "Weight", "\(name): the group heads both: \(paths)")
+            }
+            XCTAssertEqual(paths.map(\.last), ["Low", "Mid", "High", "Net", "Gross"], "\(name): \(paths)")
+
+            let source = TableLookup.Source(documentId: "g", documentName: "Invented Book", table: table)
+            for (asked, column, cell) in [("Capacity › High", 2, "33"), ("Capacity Mid", 1, "32"), ("Weight › Gross", 4, "35")] {
+                guard case .found(let hit) = TableLookup.resolve(.init(table: "Table 95", row: "W6", column: asked),
+                                                                 in: [source]) else {
+                    XCTFail("\(name): \(asked) found nothing")
+                    continue
+                }
+                XCTAssertEqual(hit.columns, [column], "\(name): \(asked)")
+                XCTAssertEqual(hit.rows.first?.cells[column].text, cell, "\(name): \(asked)")
+            }
+        }
+    }
+
     /// A table already stored with the marker as a leaf, and its heading spread over its
     /// neighbours: the column whose own heading it is wins.
     func testAStoredColumnWhoseOwnHeadingMatchesWinsOverOnesThatOnlyCarryIt() throws {
@@ -288,6 +341,31 @@ final class KRRowTableHeadingTests: XCTestCase {
         let outcome = retriever(following: nil).retrieve(.init(turn: "invented cooling start sequence"))
         XCTAssertFalse(outcome.passages.contains { $0.chunkIndex == 2 }, "\(outcome.passages.map(\.chunkIndex))")
         XCTAssertEqual(outcome.passages.first?.chunkIndex, 40)
+    }
+
+    /// Dot leaders out to a quantity or a rating are a parts list or a spec sheet, not a contents
+    /// list: their numbers go up and down. Invented parts and ratings.
+    func testAPartsListAndASpecSheetSetWithLeadersArePassages() {
+        let parts = "Invented replacement parts\nBurner assembly ........ 2\nIgniter ........ 1\n"
+            + "Flame sensor ........ 1\nGasket set ........ 4\nWiring harness ........ 1"
+        let spec = "Invented widget furnace ratings\nInput, Btu/h ........ 60000\nOutput, Btu/h ........ 48000\n"
+            + "Temperature rise, °F ........ 35\nBlower motor, hp ........ 1"
+        XCTAssertFalse(VaultRetriever.isContentsList(parts), "a parts list is a passage")
+        XCTAssertFalse(VaultRetriever.isContentsList(spec), "a spec sheet is a passage")
+        XCTAssertFalse(VaultRetriever.isContentsList("Widget A ........ 2\nWidget B ........ 2\nWidget C ........ 2"),
+                       "one number over and over is not pages")
+        XCTAssertTrue(VaultRetriever.isContentsList("Safety ........ 2\nInstallation ........ 9\nWiring ........ 9\n"
+                                                    + "Start-up ........ 17\nUpkeep ........ 31"),
+                      "a contents list's pages may repeat but never fall")
+
+        let retriever = VaultRetriever(query: { _, _ in [
+            self.raw(5, parts, section: "Invented Replacement Parts", sim: 0.7),
+            self.raw(2, "Contents\nGeneral ........ 3\nInvented Replacement Parts ........ 40\nWiring ........ 50",
+                     section: nil, sim: 0.72),
+        ] })
+        let order = retriever.retrieve(.init(turn: "invented replacement parts burner assembly igniter")).passages.map(\.chunkIndex)
+        XCTAssertTrue(order.contains(5), "the parts list is kept: \(order)")
+        XCTAssertFalse(order.contains(2), "the contents list is still dropped: \(order)")
     }
 
     func testASectionNamedByItsHeadingIsCarriedOnInOrderWithinABudget() throws {

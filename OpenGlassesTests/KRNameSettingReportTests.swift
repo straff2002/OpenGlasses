@@ -113,6 +113,32 @@ final class KRJobNameRetitlesTests: XCTestCase {
         XCTAssertEqual(title(), "Job 4410 — Kitchen extract", "the app's own name-alone title moves too")
     }
 
+    /// A name-alone title the app wrote moves on a rename and on a new number: the thread's record
+    /// of the title the app gave it (`jobTitle`) decides, not what the title looks like.
+    func testANameAloneTitleFollowsARenameAndANewNumber() async throws {
+        _ = try flow.startJob(vaultId: "refrigeration", jobReference: "4410")
+        await turn("first look at the unit")
+        XCTAssertTrue(service.setJobName("4410 boiler swap"))
+        XCTAssertEqual(title(), "4410 boiler swap")
+
+        XCTAssertTrue(service.setJobName("4410 pump swap"))
+        XCTAssertEqual(title(), "4410 pump swap", "a rename of a name that leads with the number")
+
+        service.setJobReference("4411")
+        XCTAssertEqual(title(), "Job 4411 — 4410 pump swap", "a new number moves the app's own title")
+
+        XCTAssertTrue(service.setJobName("4411 pump swap"))
+        XCTAssertEqual(title(), "4411 pump swap")
+
+        // A title the technician set by hand stays through a rename and a new number.
+        let threadId = try XCTUnwrap(service.activeSession?.conversationThreadId)
+        let idx = try XCTUnwrap(store.threads.firstIndex { $0.id == threadId })
+        store.threads[idx].title = "Roof plant — Tuesday"
+        XCTAssertTrue(service.setJobName("4411 fan swap"))
+        service.setJobReference("4412")
+        XCTAssertEqual(store.threads[idx].title, "Roof plant — Tuesday")
+    }
+
     func testAWearersOwnTitleIsNotTakenOverByAName() async throws {
         _ = try flow.startJob(vaultId: "refrigeration", jobReference: "4410")
         await turn("first look at the unit")

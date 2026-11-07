@@ -462,7 +462,8 @@ final class FieldSessionTool: NativeTool {
             let billing = WorkRecord.billingSummary(
                 seconds: session.billableSeconds, basis: session.billingBasis,
                 minutesPerUnit: session.minutesPerBillingUnit)
-            return Self.endedResult(outcome: outcome, billing: billing, said: currentUtterance())
+            return Self.endedResult(outcome: outcome, billing: billing, said: currentUtterance(),
+                                    previousReply: previousReply())
         } catch FieldSessionError.jobCloseHeld(let question) {
             return question
         } catch {
@@ -476,12 +477,15 @@ final class FieldSessionTool: NativeTool {
     /// close went on to a status, the day's activity and another status until the budget ran out,
     /// and the fallback read the activity count out as work done. The last line says the outcome
     /// and the billable time, and the loop withholds every tool for the words (`ToolTurnEnd`). A
-    /// turn with no captured words keeps the offer open, as before. Pure.
-    static func endedResult(outcome: FieldSession.Outcome, billing: String, said: String?) -> String {
+    /// short yes to a reply that offered the report ("Shall I close the job and send the report?")
+    /// asked for it too. A turn with no captured words keeps the offer open, as before. Pure.
+    static func endedResult(outcome: FieldSession.Outcome, billing: String, said: String?,
+                            previousReply: String? = nil) -> String {
         let record = "Session ended. Status: \(outcome.displayName). Billable time: \(billing). Audit log saved."
         let offer = "If the technician wants the report sent, call deliver_report now — it sends this "
             + "closed job's report; do not start or reopen a job to send it."
-        guard let said, !TechnicianRequest.asksForReport(said) else {
+        guard let said, !TechnicianRequest.asksForReport(said),
+              !TechnicianRequest.confirmsReport(said, previousReply: previousReply) else {
             return record + " " + offer
         }
         return record + " The report can still be sent from this conversation later with deliver_report, "

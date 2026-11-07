@@ -1764,13 +1764,16 @@ enum TableExtractor {
                         || (centers[$0] >= phrase.minX && centers[$0] <= phrase.maxX)
                 })
                 covered.formUnion(under)
-                // A heading spreads over the columns either side of it only when it is set over their
+                // A heading reaches back over the columns to its left only when it is set over their
                 // middle (Plan KR P3). One printed over the last of three columns, with a stub
                 // heading far to its left, reached back over the other two by the midpoints alone
-                // and became a level of their paths too.
+                // and became a level of their paths too. Only that way: a group heading is set
+                // centred or from the left, never from the right, so one whose spread runs to its
+                // right — "Capacity" printed narrow over the first of three or four columns — heads
+                // them all, and keeps its level in every path.
                 if covered.count > 1, pitch > 0, !under.isEmpty {
                     let middle = covered.map { centers[$0] }.reduce(0, +) / Double(covered.count)
-                    if abs(phrase.center - middle) > spanOffCentre * pitch { covered = under }
+                    if phrase.center - middle > spanOffCentre * pitch { covered = under }
                 }
                 coverage.append(covered)
             }
@@ -1789,10 +1792,10 @@ enum TableExtractor {
         return paths.map { $0.map(\.text) }
     }
 
-    /// How far, in columns, a heading's centre may sit from the middle of the columns it would
-    /// spread over and still head them all. A heading centred over two columns, or set from the
-    /// left over two, sits at most half a column off; one printed over the last of three sits a
-    /// whole column off.
+    /// How far, in columns, a heading's centre may sit right of the middle of the columns it would
+    /// spread over and still head them all. A heading centred over its columns sits on their
+    /// middle; one printed over the last of three sits a whole column right of it. Left of the
+    /// middle has no limit: that is a heading set from the left over its group.
     static let spanOffCentre = 0.75
 
     /// A heading that only points to the notes: "Note", "Notes 2", "(note)", "*", "†"

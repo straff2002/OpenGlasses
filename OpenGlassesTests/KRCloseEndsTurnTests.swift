@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import OpenGlasses
 
@@ -49,6 +50,30 @@ final class KRCloseEndsTurnTests: XCTestCase {
         }
         let unspoken = FieldSessionTool.endedResult(outcome: .resolved, billing: "1 h", said: nil)
         XCTAssertNil(ToolTurnEnd.parse(unspoken), "a turn with no captured words is as before")
+    }
+
+    func testAYesToAnOfferOfTheReportKeepsTheTurnOpen() async throws {
+        let offer = "Shall I close the job and send the report to the office?"
+        for said in ["yes", "yeah go ahead", "ok do it"] {
+            let result = FieldSessionTool.endedResult(outcome: .resolved, billing: "1 h", said: said, previousReply: offer)
+            XCTAssertNil(ToolTurnEnd.parse(result), "a yes to the report asked for it: \(said)")
+            XCTAssertTrue(result.contains("call deliver_report now"), said)
+        }
+        // A yes to a close that offered no report still ends the turn.
+        let closeOnly = FieldSessionTool.endedResult(outcome: .resolved, billing: "1 h", said: "yes",
+                                                     previousReply: "Shall I close the job?")
+        XCTAssertEqual(ToolTurnEnd.parse(closeOnly), .afterConfirming(summary: "Job closed: resolved, 1 h billable."))
+        // A longer answer that is not a yes does not borrow the reply's report.
+        XCTAssertFalse(TechnicianRequest.confirmsReport("yes, but what was the reading?", previousReply: offer))
+        XCTAssertFalse(TechnicianRequest.confirmsReport("yes", previousReply: nil))
+
+        // Through the tool: the close is allowed by the yes, and the turn stays open for the report.
+        let service = FieldSessionService(sessionsRoot: tempRoot.appendingPathComponent("sessions"))
+        _ = try service.startSession(vaultId: "refrigeration", assetId: nil, jobReference: "J-4411")
+        let tool = FieldSessionTool(service: service, currentUtterance: { "yes" }, previousReply: { offer })
+        let ended = try await tool.execute(args: ["action": "end", "outcome": "resolved"])
+        XCTAssertTrue(ended.hasPrefix("Session ended."), ended)
+        XCTAssertNil(ToolTurnEnd.parse(ended), ended)
     }
 
     func testTheToolsEndResultCarriesTheLine() async throws {
@@ -314,6 +339,47 @@ final class KRTurnBackgroundTimeTests: XCTestCase {
         time.replyFinished(spoken: false, appInBackground: false)
         time.turnEnded()
         XCTAssertNil(time.appReturnedToForeground())
+    }
+
+    func testAReplyTheWearerChoseNotToHearIsNotWaiting() {
+        func unheard(_ outcome: SpeechDeliveryOutcome, away: Bool = true) -> Bool {
+            TurnBackgroundTime.replyWentUnheard(.reported(outcome), appInBackground: away, routePlaysWhileAway: false)
+        }
+        XCTAssertFalse(unheard(.suppressed(reason: .silentMode)), "silent mode is a choice")
+        XCTAssertFalse(unheard(.suppressed(reason: .muted)), "muted speech is a choice")
+        XCTAssertFalse(unheard(.completed))
+        XCTAssertFalse(unheard(.interrupted(by: .bargeIn)))
+        XCTAssertFalse(unheard(.interrupted(by: .stop)))
+        XCTAssertTrue(unheard(.suppressed(reason: .noRoute)))
+        XCTAssertTrue(unheard(.suppressed(reason: .backgrounded)))
+        XCTAssertTrue(unheard(.failed(reason: "network")))
+        XCTAssertTrue(unheard(.interrupted(by: .newUtterance)))
+        XCTAssertFalse(unheard(.failed(reason: "network"), away: false), "in front, the reply is on the screen")
+
+        // Through the state: a silenced reply leaves nothing to say on return.
+        let time = TurnBackgroundTime(tasks: FakeTasks())
+        time.turnBegan(appInBackground: true)
+        time.replyFinished(spoken: !unheard(.suppressed(reason: .silentMode)), appInBackground: true)
+        time.turnEnded()
+        XCTAssertNil(time.appReturnedToForeground())
+    }
+
+    func testAStreamedReplyIsUnheardOnlyAwayOnThePhonesOwnSpeaker() {
+        XCTAssertTrue(TurnBackgroundTime.replyWentUnheard(.streamed(stoppedByWearer: false), appInBackground: true,
+                                                          routePlaysWhileAway: false))
+        XCTAssertFalse(TurnBackgroundTime.replyWentUnheard(.streamed(stoppedByWearer: false), appInBackground: true,
+                                                           routePlaysWhileAway: true), "the glasses play it")
+        XCTAssertFalse(TurnBackgroundTime.replyWentUnheard(.streamed(stoppedByWearer: false), appInBackground: false,
+                                                           routePlaysWhileAway: false))
+        XCTAssertFalse(TurnBackgroundTime.replyWentUnheard(.streamed(stoppedByWearer: true), appInBackground: true,
+                                                           routePlaysWhileAway: false), "the wearer stopped it")
+
+        for worn in [AVAudioSession.Port.bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .headphones, .carAudio] {
+            XCTAssertTrue(TurnBackgroundTime.routePlaysWhileAway([worn]), worn.rawValue)
+        }
+        XCTAssertFalse(TurnBackgroundTime.routePlaysWhileAway([.builtInSpeaker]))
+        XCTAssertFalse(TurnBackgroundTime.routePlaysWhileAway([.builtInReceiver]))
+        XCTAssertFalse(TurnBackgroundTime.routePlaysWhileAway([]))
     }
 
     /// The fakes that predate expiry reporting still conform: the default never reports it.

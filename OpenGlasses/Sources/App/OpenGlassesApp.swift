@@ -7582,7 +7582,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             self.startStopListener()
                             let outcome = await self.speechService.speakReporting(response, source: .reply)
                             self.stopStopListener()
-                            self.noteReplySpoken(outcome)
+                            self.noteReplySpoken(.reported(outcome))
                         },
                         onCancelled: {
                             PrivacyLog.app(.turnCancelled, detail: PrivacyToken("photo"))
@@ -8044,14 +8044,16 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { @MainActor in await pass.run(turn, settings: settings) }
     }
 
-    /// Plan KR P5: how a Direct turn's reply ended, for `TurnBackgroundTime`. `nil` is a reply
-    /// whose outcome is not known (one streamed a sentence at a time). Heard through, or talked
-    /// over or stopped by the wearer, is spoken; anything else, with the app away, waits in the conversation.
-    func noteReplySpoken(_ outcome: SpeechDeliveryOutcome?) {
-        let spoken = outcome == .completed || outcome == .interrupted(by: .bargeIn)
-            || outcome == .interrupted(by: .stop)
-        turnBackgroundTime.replyFinished(spoken: spoken,
-                                         appInBackground: UIApplication.shared.applicationState == .background)
+    /// Plan KR P5: how a Direct turn's reply ended, for `TurnBackgroundTime`. Whether it went
+    /// unheard is `TurnBackgroundTime.replyWentUnheard`: a reply the wearer muted or silenced is
+    /// not, and a streamed one (no outcome) only when it finished with the app away on the phone's
+    /// own speaker or earpiece.
+    func noteReplySpoken(_ delivery: TurnBackgroundTime.ReplyDelivery) {
+        let away = UIApplication.shared.applicationState == .background
+        let worn = TurnBackgroundTime.routePlaysWhileAway(
+            AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType))
+        let unheard = TurnBackgroundTime.replyWentUnheard(delivery, appInBackground: away, routePlaysWhileAway: worn)
+        turnBackgroundTime.replyFinished(spoken: !unheard, appInBackground: away)
     }
 
     /// Plan KR P5: the app is in front again; a reply that finished unheard while it was away is
@@ -8552,16 +8554,16 @@ class AppState: ObservableObject, AppStateProtocol {
                         hudAnswerCard.finishTurn(reply: response)
                         await replyStream.finish(reply: response)
                         releaseReplyStreamStopListener(replyStream)
-                        // A streamed reply reports no outcome: away from the screen, it counts
-                        // as unheard, and the conversation holds it.
-                        noteReplySpoken(nil)
+                        // A streamed reply reports no outcome: away from the screen on the
+                        // phone's own speaker, it counts as unheard, and the conversation holds it.
+                        noteReplySpoken(.streamed(stoppedByWearer: replyStream.wasStopped))
                         return
                     }
                     // Start wake word listener during TTS so user can say "stop"
                     startStopListener()
                     let outcome = await speechService.speakReporting(response, source: .reply)
                     stopStopListener()
-                    noteReplySpoken(outcome)
+                    noteReplySpoken(.reported(outcome))
                 },
                 onCancelled: { [self] in
                     _ = nativeToolRouter.takeTurnToolNames()

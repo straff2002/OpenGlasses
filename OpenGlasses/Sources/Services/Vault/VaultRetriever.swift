@@ -448,16 +448,28 @@ struct VaultRetriever {
     }
 
     /// Whether a chunk is mostly a table of contents (Plan KR P3): at least three lines, and most
-    /// of its lines, are an entry run out to a page number by dot leaders ("Gas Piping ....... 22").
-    /// Such a chunk names every section the book has, so it shares the words of any question
-    /// about one, and it answers none of them.
+    /// of its lines, are an entry run out to a page number by dot leaders ("Gas Piping ....... 22"),
+    /// and those numbers rise in the order printed — never falling, with at least
+    /// `contentsDistinctPages` of them different. Such a chunk names every section the book has, so
+    /// it shares the words of any question about one, and it answers none of them. A parts list
+    /// ("Burner assembly ........ 2") and a spec sheet ("Input ......... 60000") are set with the
+    /// same leaders, but their numbers are quantities and ratings, which go up and down: they are
+    /// passages.
     static func isContentsList(_ text: String) -> Bool {
         let lines = text.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         guard lines.count >= 3 else { return false }
-        let entries = lines.filter { $0.range(of: contentsEntry, options: .regularExpression) != nil }.count
-        return entries >= 3 && Double(entries) >= contentsShare * Double(lines.count)
+        let pages = lines.compactMap { line -> Int? in
+            guard let range = line.range(of: contentsEntry, options: .regularExpression),
+                  let digits = line[range].range(of: #"\d{1,4}$"#, options: .regularExpression) else { return nil }
+            return Int(line[range][digits])
+        }
+        guard pages.count >= 3, Double(pages.count) >= contentsShare * Double(lines.count) else { return false }
+        return zip(pages, pages.dropFirst()).allSatisfy { $0 <= $1 } && Set(pages).count >= contentsDistinctPages
     }
+
+    /// How many different page numbers a contents list's entries carry at the least.
+    static let contentsDistinctPages = 3
 
     /// The share of a chunk's lines that must be contents entries.
     static let contentsShare = 0.6

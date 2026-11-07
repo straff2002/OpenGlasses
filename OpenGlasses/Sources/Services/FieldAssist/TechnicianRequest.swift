@@ -41,6 +41,14 @@ enum TechnicianRequest {
         return words.contains(where: reportWords.contains)
     }
 
+    /// "Yes" to the assistant's question about the report: a short affirmative, after a reply that
+    /// itself asked about sending it ("Shall I close the job and send the report?"). The same
+    /// short-yes reading `confirmsEndingJob` gives a close.
+    static func confirmsReport(_ said: String, previousReply: String?) -> Bool {
+        guard isShortAffirmative(said), let previousReply else { return false }
+        return asksForReport(previousReply)
+    }
+
     private static let reportWords: Set<String> = [
         "report", "reports", "summary", "send", "email", "mail", "forward", "deliver", "share",
     ]
