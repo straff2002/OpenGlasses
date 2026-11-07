@@ -8,7 +8,15 @@ import NaturalLanguage
 protocol EmbeddingBackend {
     var modelId: String { get }
     var dimension: Int { get }
+    /// A passage, a note, a memory: anything stored and searched.
     func embed(_ text: String) -> [Float]?
+    /// A question being searched with (Plan KQ). A model trained for retrieval reads a question and
+    /// a passage with different prefixes; every other model embeds both the same way.
+    func embedQuery(_ text: String) -> [Float]?
+}
+
+extension EmbeddingBackend {
+    func embedQuery(_ text: String) -> [Float]? { embed(text) }
 }
 
 /// The classic on-device path: `NLEmbedding.sentenceEmbedding` (preferred) with an averaged

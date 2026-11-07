@@ -194,7 +194,7 @@ final class DocumentStore: ObservableObject {
         let rows = fetchChunks(namespace: namespace, documentIds: documentIds).filter { kinds.contains($0.kind) }
         let vaultQuery = QueryVectors(text: trimmed, store: self)
         let qv = rows.contains { !Self.isVaultNamespace($0.namespace) && $0.embeddingScript == .latin }
-            ? embedder.embed(trimmed) : nil
+            ? embedder.embedQuery(trimmed) : nil
         var scriptModels: [EmbeddingScript: Embedder?] = [:]
 
         let current = embedder.version
@@ -326,7 +326,7 @@ final class DocumentStore: ObservableObject {
         let rows = fetchChunks(namespace: namespace, documentIds: documentIds).filter { kinds.contains($0.kind) }
         let vaultQuery = QueryVectors(text: text, store: self)
         let qv = rows.contains { !Self.isVaultNamespace($0.namespace) && $0.embeddingScript == .latin }
-            ? embedder.embed(text) : nil
+            ? embedder.embedQuery(text) : nil
         let scored = rows
             .compactMap { row -> (row: ChunkRow, shared: Int, similarity: Float)? in
                 let shared = LexicalSupport.sharedTermCount(text: row.text, question: question, rule: row.termRule)
@@ -1269,7 +1269,7 @@ final class DocumentStore: ObservableObject {
                 return same
             }
             let started = Date()
-            let vector = embedder.embed(text)
+            let vector = embedder.embedQuery(text)
             cache.vectors[key] = vector
             cache.byTag[tag] = vector
             cache.milliseconds[tag] = Int(Date().timeIntervalSince(started) * 1000)
