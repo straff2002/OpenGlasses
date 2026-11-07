@@ -7272,8 +7272,12 @@ class AppState: ObservableObject, AppStateProtocol {
     /// button and any explicit Push-to-Talk end. Stops the recorder (which otherwise
     /// only ends on silence) and resets conversation state.
     func endListeningSession() {
-        transcriptionService.stopRecording()
-        Task { await returnToWakeWord() }
+        // The press often lands on the last word: capture runs on for a beat so it is heard, and
+        // the turn's release (its tone, the engine down) waits for that, so the tone is not in it.
+        Task {
+            await transcriptionService.stopRecordingAfterTail()
+            await returnToWakeWord()
+        }
     }
 
     /// Whether the current conversation was started by an explicit user tap (not wake word).

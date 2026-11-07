@@ -242,7 +242,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             case "toggleRecord":
                 if appState.transcriptionService.isRecording {
-                    appState.transcriptionService.stopRecording()
+                    await appState.transcriptionService.stopRecordingAfterTail()
                 } else {
                     appState.wakeWordService.stopListening()
                     appState.transcriptionService.startRecording()
@@ -376,8 +376,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
             case "toggleRecord":
                 let isRecording = appState.transcriptionService.isRecording
                 if isRecording {
-                    // Stop transcription-only recording
-                    appState.transcriptionService.stopRecording()
+                    // Stop transcription-only recording, hearing out the last word
+                    await appState.transcriptionService.stopRecordingAfterTail()
                     PrivacyLog.device(.watch, .commandHandled,
                                       command: PrivacyToken("toggleRecord"), success: false)
                     replyHandler([
