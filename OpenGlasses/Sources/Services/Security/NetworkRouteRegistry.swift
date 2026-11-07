@@ -194,6 +194,7 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case ttsVoiceModelDownload
     case asrModelDownload
     case fingerspellingModelDownload
+    case searchModelDownload
 
     // MARK: Medical records
     case fhirExport
@@ -271,6 +272,7 @@ extension NetworkRoute {
         case .ttsVoiceModelDownload: return "Download on-device neural voice model files."
         case .asrModelDownload: return "Download on-device speech-recognition model files."
         case .fingerspellingModelDownload: return "Download the on-device fingerspelling model files."
+        case .searchModelDownload: return "Download the on-device search model that Field Assist's manual search can use, when the wearer chooses it."
         case .fhirExport: return "Write an export to the operator's own FHIR record system."
         case .fhirConnectionTest: return "Health-check the FHIR base URL the operator entered. The saved credential goes only to the address it was saved with."
         case .claudeOAuthToken: return "Exchange or refresh an OAuth token for the model provider account."
@@ -343,7 +345,7 @@ extension NetworkRoute {
         case .twitchChatSocket:
             return [.transcript, .credential]
         case .localizationCatalogDownload, .localModelRepositoryMetadata, .localModelDownload,
-             .ttsVoiceModelDownload, .asrModelDownload, .fingerspellingModelDownload:
+             .ttsVoiceModelDownload, .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload:
             return [.modelAsset]
         case .fhirExport:
             return [.healthFact, .credential]
@@ -374,7 +376,7 @@ extension NetworkRoute {
             return .userConfiguredCloud
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken,
              .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
-             .asrModelDownload, .fingerspellingModelDownload, .localizationCatalogDownload,
+             .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload, .localizationCatalogDownload,
              .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark:
             return .firstPartyCloud
         case .webSearch, .newsHeadlines, .podcastDirectory, .currencyRates,
@@ -396,7 +398,7 @@ extension NetworkRoute {
     var medicalPolicy: MedicalRoutePolicy {
         switch self {
         case .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
-             .asrModelDownload, .fingerspellingModelDownload:
+             .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload:
             return .allowedLocalOnly(
                 "The outbound half is a model identifier and a range request; no captured content leaves, and these downloads are what make on-device inference possible in the first place.")
         case .loopbackOAuthCallback:
@@ -496,6 +498,7 @@ extension NetworkRoute {
         case .ttsVoiceModelDownload: return ["HuggingFaceModelInstaller"]
         case .asrModelDownload: return ["ASRModelBundle"]
         case .fingerspellingModelDownload: return ["FingerspellingModelBundle"]
+        case .searchModelDownload: return ["HuggingFaceModelInstaller"]
         case .fhirExport: return ["MedicalExportService"]
         case .fhirConnectionTest: return ["MedicalExportService"]
         case .claudeOAuthToken: return ["ClaudeOAuthService"]

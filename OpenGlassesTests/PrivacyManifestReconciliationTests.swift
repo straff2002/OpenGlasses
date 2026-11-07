@@ -101,7 +101,7 @@ final class PrivacyManifestReconciliationTests: XCTestCase {
     func testContentFreeRoutesRequireNoDeclaration() {
         for route: NetworkRoute in [.localModelDownload, .localModelRepositoryMetadata,
                                     .ttsVoiceModelDownload, .asrModelDownload,
-                                    .fingerspellingModelDownload, .currencyRates] {
+                                    .fingerspellingModelDownload, .searchModelDownload, .currencyRates] {
             let needed = route.dataClasses.compactMap(\.privacyManifestType)
             XCTAssertEqual(needed, [], "\(route.rawValue) claims to send user data")
         }

@@ -23,6 +23,9 @@ final class CoreMLEmbeddingBackend: EmbeddingBackend {
     static let documentPrefix = "title: none | text: "
     static let maxTokens = 512
     static let supportedDimensions = [768, 512, 256, 128]
+    /// CPU only: never the GPU (forbidden in the background) or the Neural Engine (fp16). A test
+    /// pins it.
+    static let computeUnits: MLComputeUnits = .cpuOnly
 
     let modelId: String
     let dimension: Int
@@ -34,7 +37,7 @@ final class CoreMLEmbeddingBackend: EmbeddingBackend {
     init?(compiledModel url: URL, dimension: Int = 768, tokenize: @escaping (String) -> [Int]) {
         guard Self.supportedDimensions.contains(dimension) else { return nil }
         let configuration = MLModelConfiguration()
-        configuration.computeUnits = .cpuOnly
+        configuration.computeUnits = Self.computeUnits
         guard let model = try? MLModel(contentsOf: url, configuration: configuration) else { return nil }
         self.model = model
         self.dimension = dimension
