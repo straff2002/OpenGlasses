@@ -7,7 +7,21 @@ import Foundation
 enum AddOnPermissionSummary {
 
     struct Line: Equatable, Sendable {
-        enum Kind: String, Equatable, Sendable { case network, location, memory, display, never }
+        enum Kind: String, Equatable, Sendable {
+            case network, location, memory, display
+            // Reserved capabilities: only a signed add-on holds one, and only then are they shown.
+            case credentials, parts, workRecord, office
+            case never
+
+            init(_ capability: AddOnReservedCapability) {
+                switch capability {
+                case .credentials: self = .credentials
+                case .parts: self = .parts
+                case .workRecord: self = .workRecord
+                case .office: self = .office
+                }
+            }
+        }
         let kind: Kind
         let text: String
     }
@@ -35,6 +49,9 @@ enum AddOnPermissionSummary {
         }
         if permissions.display {
             lines.append(.init(kind: .display, text: "Show cards on your phone, watch and glasses display"))
+        }
+        for capability in AddOnReservedCapability.allCases where permissions.reserved.contains(capability) {
+            lines.append(.init(kind: .init(capability), text: capability.summaryText))
         }
         lines.append(.init(kind: .never, text: neverLine))
         return lines

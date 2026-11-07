@@ -178,7 +178,7 @@ final class RecipeRunnerTests: XCTestCase {
     private func branch(_ op: String, _ left: String?, _ right: String?) -> Bool {
         var vars: [String: String] = [:]
         if let left { vars["x"] = left }
-        return RecipeRunner.evaluate(.init(op: op, `var`: "x", value: right, then: [], else: []), vars: vars)
+        return RecipeRunner.evaluate(.init(op: op, var: "x", value: right, then: [], else: []), vars: vars)
     }
 
     func testEveryIfOp() {

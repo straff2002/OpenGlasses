@@ -121,8 +121,10 @@ final class RecipeAddOnManifestTests: XCTestCase {
     }
 
     func testUnknownPermissionIsRefusedNotIgnored() {
-        // A typo, and a capability the community format doesn't have, both refuse the file.
-        for key in ["netwrok", "contacts", "credentials", "camera"] {
+        // A typo, and a capability the format doesn't have, both refuse the file. The reserved
+        // capability names are known keys (the validator decides who may hold them), but only
+        // spelled exactly.
+        for key in ["netwrok", "contacts", "camera", "Credentials", "work_record", "workrecord"] {
             let data = F.file(skills: [F.skill(steps: sayHi)], permissions: [key: true])
             XCTAssertEqual(decodeError(data), .unknownKey(path: "permissions", key: key), key)
         }
