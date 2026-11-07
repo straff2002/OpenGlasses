@@ -114,7 +114,7 @@ enum TableDirectory {
     /// second edition of the book) is the same table, not a second candidate: it is skipped, so the
     /// second place goes to a different table, and `hint` names every document that prints it.
     static func candidates(for question: String, in catalogue: [TableReference.Entry], limit: Int = 2) -> [Candidate] {
-        let ranked = ranked(question, in: catalogue, asTechnicianSaid: true)
+        let ranked = Self.ranked(question, in: catalogue, asTechnicianSaid: true)
         guard let best = ranked.first, clears(best) else { return [] }
         var out = [best]
         for next in ranked.dropFirst() where out.count < limit {
@@ -372,11 +372,11 @@ enum TableDirectory {
         let offered = candidates(for: turn, in: catalogue)
         guard !offered.isEmpty else { return nil }
         let documents = Set(catalogue.compactMap(\.documentName))
-        let conditions = offered.map { conditions(of: $0.entry) }
-        let named = zip(offered, conditions).map { candidate, conditions -> String in
+        let offeredConditions = offered.map { Self.conditions(of: $0.entry) }
+        let named = zip(offered, offeredConditions).map { candidate, held -> String in
             let title = shortened(candidate.entry.title)
             // The conditions the table holds under, which a shortened title can lose (Plan KR P3).
-            let assumes = conditions.isEmpty ? "" : " [holds for: " + conditions.map(\.text).joined(separator: "; ") + "]"
+            let assumes = held.isEmpty ? "" : " [holds for: " + held.map(\.text).joined(separator: "; ") + "]"
             guard documents.count > 1 else { return candidate.entry.label + (title.isEmpty ? "" : " — " + title) + assumes }
             // Every document that prints the label, the best-scoring one first.
             var printing: [String] = candidate.entry.documentName.map { [$0] } ?? []
@@ -387,7 +387,7 @@ enum TableDirectory {
             return candidate.entry.label + (title.isEmpty ? "" : " — " + title) + document + assumes
         }
         return "Tables that may answer this: " + named.joined(separator: "; ") + "."
-            + conditionsLine(conditions)
+            + conditionsLine(offeredConditions)
             + " Read the value with table_lookup (table, row, column), and ask the technician for any input the table needs."
     }
 
