@@ -82,9 +82,14 @@ final class VaultLinkScreenshotTests: AccessibilityAuditCase {
     private func openCustomVaults(_ app: XCUIApplication) {
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
-        tapRow(startingWith: "Tools & Actions", in: app)
-        awaitScreen(app.navigationBars["Tools & Actions"], named: "Tools & Actions")
-        tapRow(startingWith: "Custom Vaults", in: app)
+        // The Connections row's page draws the tools sections after the connections ones, so
+        // Custom Vaults is below the fold, and a `Form` builds only the rows it has reached.
+        tapRow(startingWith: "Connections", in: app)
+        awaitScreen(app.navigationBars["Connections"], named: "Connections")
+        let vaults = app.buttons["Custom Vaults"]
+        for _ in 0..<12 where !(vaults.exists && vaults.isHittable) { app.swipeUp() }
+        XCTAssertTrue(vaults.exists && vaults.isHittable, "The Custom Vaults row never came into reach")
+        vaults.tap()
         awaitScreen(app.navigationBars["Custom Vaults"], named: "Custom Vaults")
         awaitScreen(app.staticTexts["Unverified source"], named: "The unverified-source badge")
     }
