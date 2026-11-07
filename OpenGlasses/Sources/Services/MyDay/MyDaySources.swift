@@ -159,7 +159,8 @@ final class NativeWeatherDaySource: WeatherDaySource {
             return .init(
                 value: MyDayWeather(
                     summary: summary,
-                    isDecisionRelevant: WeatherPhraser.isDecisionRelevant(report, now: now())
+                    isDecisionRelevant: WeatherPhraser.isDecisionRelevant(report, now: now()),
+                    report: report
                 ),
                 state: .available(.weather)
             )

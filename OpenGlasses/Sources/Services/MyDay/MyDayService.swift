@@ -9,6 +9,9 @@ enum MyDayLoadState: Equatable {
 @MainActor
 final class MyDayService: ObservableObject {
     @Published private(set) var state: MyDayLoadState = .idle
+    /// The last refresh's inputs as gathered, before composing (Plan KS: the watch's Today
+    /// screens). Set before `state`, on every refresh.
+    @Published private(set) var gathered: MyDayGathered?
 
     private let calendarSource: any CalendarDaySource
     private let remindersSource: any RemindersDaySource
@@ -96,6 +99,10 @@ final class MyDayService: ObservableObject {
                 ),
                 now: now
             )
+            gathered = MyDayGathered(generatedAt: now, locked: true,
+                                     calendarIncluded: selection.calendar, events: [],
+                                     calendarState: nil, weatherIncluded: selection.weather,
+                                     weather: nil, weatherState: nil)
             state = .loaded(snapshot)
             recordLatency(since: refreshStartedAt, at: now)
             return snapshot
@@ -130,6 +137,10 @@ final class MyDayService: ObservableObject {
             ),
             now: now
         )
+        gathered = MyDayGathered(generatedAt: now, locked: false,
+                                 calendarIncluded: selection.calendar, events: events?.value ?? [],
+                                 calendarState: events?.state, weatherIncluded: selection.weather,
+                                 weather: weather?.value ?? nil, weatherState: weather?.state)
         state = .loaded(snapshot)
         recordLatency(since: refreshStartedAt, at: now)
         return snapshot

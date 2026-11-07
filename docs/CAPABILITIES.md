@@ -190,7 +190,7 @@ The app targets **iOS 26+**; source builds require **Xcode 26+**. See [Building 
 | Compatible Meta glasses | Hands-free audio and camera through the Meta integration; pair with Meta AI and complete registration and permissions |
 | Ray-Ban Display | In-lens answers, captions, cards, and task controls on display-capable hardware |
 | EVEN Realities G2 | Experimental alternate display backend; hardware protocol validation is incomplete |
-| Apple Watch | Companion controls and status, including photo and video controls |
+| Apple Watch | Companion controls and status, including photo and video controls, map cards, and Today (Now Playing, the next of today's calendar items, today's weather) |
 | CarPlay | Voice-assistant interface on the vehicle display |
 
 **Meta display session limitation:** the current display backend owns a device session separately from the camera. While that display session is held, the camera may need the iPhone fallback. Do not assume simultaneous glasses-camera and HUD access.

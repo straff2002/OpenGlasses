@@ -2282,6 +2282,14 @@ class AppState: ObservableObject, AppStateProtocol {
     let nativeToolRegistry: NativeToolRegistry
     let nativeToolRouter: NativeToolRouter
     var myDayService: MyDayService { nativeToolRegistry.myDayService }
+
+    /// Every My Day source a refresh reads has had its permission answered, so a refresh nobody
+    /// asked for — a scheduled briefing, the watch's Today (Plan KS) — cannot put a sheet up.
+    var myDaySourceAccessReady: Bool {
+        let included = MyDaySourceSelection.current
+        return (!included.calendar || eventKitStore.calendarAuthorizationIsResolved)
+            && (!included.reminders || eventKitStore.remindersAuthorizationIsResolved)
+    }
     /// Installed skill packs (Plan BX). Actions merge into the registry below; re-merge after any
     /// install/remove/enable change via `refreshSkillPackTools()`.
     let skillPackStore: SkillPackStore
@@ -4642,10 +4650,7 @@ class AppState: ObservableObject, AppStateProtocol {
             UIApplication.shared.isProtectedDataAvailable
         }
         myDayDelivery.sourceAccessReady = { [weak self] in
-            guard let self else { return false }
-            let included = MyDaySourceSelection.current
-            return (!included.calendar || self.eventKitStore.calendarAuthorizationIsResolved)
-                && (!included.reminders || self.eventKitStore.remindersAuthorizationIsResolved)
+            self?.myDaySourceAccessReady ?? false
         }
         myDayDelivery.onDelivery = { [weak self] slot, text, shouldSpeak, identifier in
             guard let self else { return }
