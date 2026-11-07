@@ -12,8 +12,14 @@ says it is the size asked; the table hint reads the trade's words, demotes kilov
 question naming no voltage and names each table's conditions; a note-only heading yields, a heading
 heads only the columns it is centred over, and a column's own heading wins; "mm2" is "mm²"; a contents
 chunk is not a passage and a section named by its heading is carried on; a walk-through request starts
-the chosen chain, the refusal asks for a yes-or-no offer, and the list flags a column problem. P5–P8
-not started.
+the chosen chain, the refusal asks for a yes-or-no offer, and the list flags a column problem. **P5–P7
+built headless** on the same branch: a close the technician did not also ask the report of ends the
+turn on the outcome and billable time, "Done so far" leaves out what only read, and a Direct turn in
+flight when the app leaves the foreground finishes inside a background task; a rename reaches the
+job's title and the report heading, the report always says Vault-only on or off and the vault's
+settings screen shows it, two jobs in one conversation each print only their own part and keep their
+own AI turns, and a figure line says where the page went; every `van_stock` write ends with what the
+reply must say. **P1–P7 built headless; P8 device re-run owed.**
 **Track:** Field Assist. Every turn that opens a manual page; every table lookup; every rule chain;
 every job close; the support report.
 **Related:** Plan [GB](GB-field-test-round-3.md) P1 (`FigureAutoOpenPolicy`), Plan
@@ -220,6 +226,27 @@ printed under more than one heading" (`listMark`).
 - Tests: a close followed by more tool calls stops after the end; the fallback over [end, status, activity]; the
   background-task wrapper through a seam.
 
+**Built 2026-11-07 (headless):**
+- `field_session end` returns `FieldSessionTool.endedResult`: when the turn's words did not also ask
+  for the report (`TechnicianRequest.asksForReport`: report, summary or a sending word), its last line
+  is `ToolTurnEnd.confirmLine` ("End of turn — confirm this … : Job closed: resolved, 45 min
+  billable."). `ToolTurnEnd` gained `.afterConfirming(summary:)`; the loop ends the round there, makes
+  the one request left with tools withheld, answers every later call as not run, and says the summary
+  if the model says nothing. Only `field_session`'s `end` may end a turn (`mayEndTurn(_ call:)`), not
+  its other actions, whose results carry vault and job text. With the report asked for, or no words
+  captured, the result is as before.
+- `ToolLoopBudget.spoken(from:readsOnly:)` skips a call that only read, through
+  `ProviderLoopAdapter.readsOnly`, which `LLMService.notingStalls` sets from `callEffect` for all five
+  providers. `field_session`'s "status", "list" and "vaults" are now read actions
+  (`ToolEffectClassifier.readActions`), so they count as reads for a hop too (KL P2).
+- `TurnBackgroundTime` (`Services/Flow`): the Direct turn and the photo turn call `turnBegan` and
+  `turnEnded`, the scene's background phase calls `appLeftForeground`, which claims one background
+  task through `BackgroundTaskRunning` (it gained `begin(name:onExpiry:)`; the system runner calls
+  it on expiry and ends the task in the handler, so the expiry is forgotten, never ended twice). A
+  reply whose speech did not complete (or a streamed reply, which reports no outcome) with the app
+  away is noted; the next active phase says "Your last answer is in the conversation." once. The
+  reply was already saved before it was spoken.
+
 ### P6 — The name, the setting and the report say what they mean (findings 12–13)
 
 - `setJobName` calls `onJobIdentityChanged`; the title is "Job <reference> — <name>", or the name alone
@@ -232,6 +259,22 @@ printed under more than one heading" (`listMark`).
 - "figure presented" lines say where it went: on the phone, to the model only, or nowhere.
 - Tests: two jobs in one thread export without overlap and each keeps its own turns; the title rule.
 
+**Built 2026-11-07 (headless):**
+- `setJobName` calls `onJobIdentityChanged`. `JobThreadTitle.title(reference:name:equipment:)` gives
+  "Job <reference> — <name>", or the name alone when it opens with the reference (or "Job
+  <reference>") as a whole word; the name stands in for the unit; with no name the rule is
+  unchanged. `isGenerated` also counts the name-alone form, so a later rename moves it; a title the
+  technician chose is still theirs. The report's job heading uses the same rule.
+- The Vault line reads "Vault: X · Vault-only: on|off". The vault's screen in Settings › Field Assist
+  (Reference Files → the vault, `VaultFilesEditorView`) has a read-only "Vault-only On/Off" row, "as
+  set by the vault".
+- `JobTranscriptExport.job(…, sharesThread:)` (the caller asks `sharesThread(_:among:)` over the
+  history) keeps only the thread's lines from the job's start to its end, a minute either side. AI
+  turns are claimed by session id for every job before any by thread, and by thread only a turn with
+  no session id inside the job's window when the thread is shared; a job alone in its thread is as
+  before.
+- A "figure presented" line ends "· on the phone", "· to the model only" or "· nowhere".
+
 ### P7 — What was done is said (finding 14)
 
 - A stock change, reading or task change made in a turn that also asks a question ends its result with
@@ -239,6 +282,12 @@ printed under more than one heading" (`listMark`).
   confirmation line. Scope: `van_stock` writes first (owner decision 7).
 - The section split from P0 was added to P3 (a contents chunk is not a passage; a named section is
   carried on). Measuring it on the retrieval keys is the KN/KO/KQ rounds'.
+
+**Built 2026-11-07 (headless):** every `van_stock` write that changed the van — load, use, remove,
+count, undo, a top-up to standard, a standard set, a part said not to be from the van — ends with one
+line, `VanStockService.saying(_:_:)`: "Say: 1 × <part> taken off the van for job <ref>. Put this in
+the reply, whatever else the technician asked this turn." Several parts in one call are one line.
+A read, a refusal and a write that matched nothing carry none. Scope: van stock only (decision 7).
 
 ### P8 — Device re-run (owed)
 
