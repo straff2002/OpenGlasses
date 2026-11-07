@@ -4032,6 +4032,10 @@ class AppState: ObservableObject, AppStateProtocol {
             // Start glasses observers (requires Wearables.configure() first)
             glassesService.startObserving()
             autoConnectGlasses()
+            #if DAT_MOCK_DISPLAY
+            // Plan KV P4: the simulated Display, switched on at launch only when asked by argument.
+            SimulatedDisplayLab.shared.launchHook(appState: self)
+            #endif
         }
 
         // Mode-specific auto-start (mic permission). Plan FF P1/PR3: when the wearer has asked
