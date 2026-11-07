@@ -140,6 +140,10 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
     /// ground and its chip's target were the two findings this surface carried; both are fixed —
     /// the panel is opaque now, and the chip has a real 44pt target.
     func testCaptionsOverlayPassesAccessibilityAudit() {
+        // Room for the audit's own retry. On CI (run 42351988351) the audit service spent 300 s
+        // before timing out, and the 300 s per-test default stopped the case before the retry
+        // `AuditRetryPolicy` allows could run. Locally the whole case takes under 30 s.
+        executionTimeAllowance = 600
         let app = launch([.configured, .seedCaptions])
         awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar")
 

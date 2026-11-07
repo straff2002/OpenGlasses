@@ -6,6 +6,10 @@ class WorkizAccessibilityCase: AccessibilityAuditCase {
     override func setUp() {
         super.setUp()
         continueAfterFailure = true // Collect every screen's findings in the same fixture walk.
+        // Each case walks a fixture and audits several screens, so the 300 s per-test default is
+        // too tight: on CI the AX5 dark testConnectionStates took 268 s, then 302 s, and was
+        // stopped at the limit with every audit passed (run 42351988351).
+        executionTimeAllowance = 600
     }
     private static let ax5 = "UICTContentSizeCategoryAccessibilityXXXL"
     private func launchWorkiz(_ state: String, dark: Bool, large: Bool) -> XCUIApplication {
