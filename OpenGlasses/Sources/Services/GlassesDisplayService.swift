@@ -147,10 +147,135 @@ final class GlassesDisplayService: ObservableObject {
     private var flashingOverInteractive = false
 
     /// Whether an answer may be shown as a card right now: the HUD is on, something can show it
-    /// (a display or the mirror), and nothing but an answer card is held.
+    /// (a display or the mirror), and nothing but an answer card is held. Plan KV: a page's
+    /// **Show here** cue gives way to an answer like a card does; an open page view takes the
+    /// answer under it (shown when the view closes) unless it was opened over a task card or a menu.
     var acceptsAnswerCard: Bool {
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
-        return !isInteractive || showsAnswerCard
+        switch heldPage {
+        case .cue: return true
+        case .view: return pageTakesAnswerUnder
+        case nil: return !isInteractive || showsAnswerCard
+        }
+    }
+
+    // MARK: - The page on the lens (Plan KV)
+
+    /// What a page screen on the lens is: the page view itself, or the one-button **Show here** cue
+    /// for a page the app put up by itself.
+    enum HeldPage: Equatable {
+        case view
+        case cue
+    }
+
+    /// The page screen held on the lens, if one is. Set by `presentPageView`; cleared by anything
+    /// else taking the HUD.
+    @Published private(set) var heldPage: HeldPage?
+    /// The answer card the page view was opened over, or that arrived while it was up: what Close
+    /// returns to. Its screen is kept current while the view is up.
+    private var answerUnderPage: (screen: HUDScreen, onSelect: (String) -> Void)?
+    /// The page view was opened over nothing or an answer card, so an answer can wait under it. Over
+    /// a task card or a menu, an answer flashes, as it does over them.
+    private var pageTakesAnswerUnder = false
+
+    /// An answer card is held under the page view, to come back when it closes.
+    var holdsAnswerCardUnderPage: Bool { answerUnderPage != nil }
+
+    /// Set by `HUDAnswerCard`: the page view closed and the answer card under it is on the lens again.
+    var onAnswerCardReturnedFromPage: (() -> Void)?
+
+    /// Called after a screen carrying a picture reached the backend: the bytes the backend says it
+    /// sent (nil when it cannot say) and how long the send took. For the support report.
+    var onPictureSent: ((_ bytes: Int?, _ milliseconds: Int) -> Void)?
+
+    /// Test seam: whether the backend draws pictures, without constructing it.
+    var testDrawsPicturesOverride: Bool?
+
+    /// Plan KV §6: whether the active backend draws a screen's picture (Meta Display) or only its
+    /// text lines (Even G2; the phone-only build).
+    var drawsPictures: Bool { testDrawsPicturesOverride ?? activeBackend.drawsPictures }
+
+    /// Hold a page screen on the lens (Plan KV §4): the page view or its cue. Not a press, so not
+    /// gated; while a notification is over a held screen, the screen is updated and the flash's
+    /// restore draws it. False — and nothing changes — while the HUD is off, there is no display,
+    /// or another app has the Display (KP §8: the lens is not taken back).
+    @discardableResult
+    func presentPageView(_ screen: HUDScreen, kind: HeldPage, onSelect: @escaping (String) -> Void) -> Bool {
+        guard isEnabled, deviceSupportsDisplay(), !holdsLens else { return false }
+        if kind == .view {
+            switch heldPage {
+            case .view:
+                break   // the next page of the same view: what is under it stays
+            case .cue:
+                answerUnderPage = nil
+                pageTakesAnswerUnder = true
+            case nil:
+                if showsAnswerCard, let held = currentScreen, let handler = screenSelectionHandler {
+                    answerUnderPage = (held, handler)
+                } else {
+                    answerUnderPage = nil
+                }
+                pageTakesAnswerUnder = !isInteractive || showsAnswerCard
+            }
+        } else {
+            // A cue replaces what it covers, as an answer card does.
+            answerUnderPage = nil
+            pageTakesAnswerUnder = false
+        }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        isInteractive = true
+        showsAnswerCard = false
+        heldPage = kind
+        if !flashingOverInteractive { enqueue(.screen(screen)) }
+        return true
+    }
+
+    /// Plan KV §4: the page view's next frame after a press issued against `revision`. Drawn only
+    /// when nothing has been enqueued since (`PageTurnGate`); otherwise dropped and logged, so a
+    /// notification that arrived between "zoom in" and the render wins.
+    @discardableResult
+    func updatePageView(_ screen: HUDScreen, issuedAgainst revision: UInt64,
+                        onSelect: @escaping (String) -> Void) -> Bool {
+        guard heldPage != nil, acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        flashingOverInteractive = false
+        enqueue(.screen(screen))
+        return true
+    }
+
+    /// The page view (or cue) closed with nothing but an answer card, or nothing, under it: the card
+    /// comes back if one is held, else interactive mode ends.
+    func endPageView() {
+        guard heldPage != nil else { return }
+        heldPage = nil
+        pageTakesAnswerUnder = false
+        guard let under = answerUnderPage else {
+            endInteractive()
+            return
+        }
+        answerUnderPage = nil
+        screenSelectionHandler = under.onSelect
+        currentScreen = under.screen
+        isInteractive = true
+        showsAnswerCard = true
+        flashingOverInteractive = false
+        enqueue(.screen(under.screen))
+        onAnswerCardReturnedFromPage?()
+    }
+
+    /// The page view closed over a task card or a menu, which its owner redraws.
+    func releasePageView() {
+        heldPage = nil
+        answerUnderPage = nil
+        pageTakesAnswerUnder = false
+    }
+
+    /// The answer card held under the page view closed (its lifetime, a new card): Close returns
+    /// to nothing.
+    func dropAnswerCardUnderPage() {
+        answerUnderPage = nil
     }
 
     /// Plan KP P2: what would show an answer's suggested follow-ups now, for `FollowUpPrompt`. A
@@ -364,6 +489,8 @@ final class GlassesDisplayService: ObservableObject {
         // blanks an answer card held over it. The card ends by Close, a new answer, or its
         // lifetime.
         guard !showsAnswerCard else { return }
+        // Plan KV: nor a page view, or its cue, held over it.
+        guard heldPage == nil else { return }
         guard isDisplayActive || lastRendered != nil || lastScreenKey != nil else { return }
         enqueue(.op(.clear))
     }
@@ -378,6 +505,7 @@ final class GlassesDisplayService: ObservableObject {
         isInteractive = true
         showsAnswerCard = false
         flashingOverInteractive = false
+        releasePageView()
         onDebugEvent?("HUD task card: \(screen.title ?? "menu")")
         enqueue(.screen(screen))
     }
@@ -389,6 +517,12 @@ final class GlassesDisplayService: ObservableObject {
     @discardableResult
     func presentAnswerCard(_ screen: HUDScreen, onSelect: @escaping (String) -> Void) -> Bool {
         guard acceptsAnswerCard else { return false }
+        // Plan KV: under an open page view the answer waits, current, for the view to close.
+        if heldPage == .view {
+            answerUnderPage = (screen, onSelect)
+            return true
+        }
+        heldPage = nil
         screenSelectionHandler = onSelect
         currentScreen = screen
         isInteractive = true
@@ -438,6 +572,7 @@ final class GlassesDisplayService: ObservableObject {
         isInteractive = false
         showsAnswerCard = false
         flashingOverInteractive = false
+        releasePageView()
         currentScreen = nil
         screenSelectionHandler = nil
         onDebugEvent?("HUD interactive ended")
@@ -550,8 +685,17 @@ final class GlassesDisplayService: ObservableObject {
                         if let sink = self.testRenderSink {
                             sink(.screen(renderKey: screen.renderKey))
                         } else if self.deviceSupportsDisplay() {
-                            try await self.activeBackend.send(screen: screen)
+                            let backend = self.activeBackend
+                            let sent = Self.screen(screen, forBackendDrawingPictures: backend.drawsPictures)
+                            let started = ContinuousClock.now
+                            try await backend.send(screen: sent)
                             self.isDisplayActive = true
+                            if sent.picture != nil {
+                                let elapsed = ContinuousClock.now - started
+                                let ms = Int(elapsed.components.seconds * 1000
+                                             + elapsed.components.attoseconds / 1_000_000_000_000_000)
+                                self.onPictureSent?(backend.lastPictureBytes, ms)
+                            }
                         }
                         self.lastScreenKey = screen.renderKey
                         self.lastRendered = nil
@@ -563,6 +707,15 @@ final class GlassesDisplayService: ObservableObject {
             }
             self.isRendering = false
         }
+    }
+
+    /// Plan KV §6: the screen as a backend gets it. One that does not draw pictures is never handed
+    /// one: it gets the same screen without it, and renders the text lines as before.
+    static func screen(_ screen: HUDScreen, forBackendDrawingPictures drawsPictures: Bool) -> HUDScreen {
+        guard !drawsPictures, screen.picture != nil else { return screen }
+        var stripped = screen
+        stripped.picture = nil
+        return stripped
     }
 
     private func updateMirror(for op: RenderOp) {

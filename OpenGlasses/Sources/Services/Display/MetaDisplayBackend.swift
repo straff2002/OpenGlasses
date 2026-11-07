@@ -31,6 +31,19 @@ protocol GlassesDisplayBackend: AnyObject {
     /// errors throw instead. The service resets its dedup state so the next render
     /// rebuilds the transport.
     var onTransportError: ((Error) -> Void)? { get set }
+
+    /// Plan KV §6: whether the backend draws a screen's `HUDPicture`. Meta Display: yes. Even G2
+    /// (monochrome text cells) and the web mirror: no — they keep the cue line, and a picture is
+    /// never handed to them.
+    var drawsPictures: Bool { get }
+    /// The size of the last picture sent, in bytes as it went to the transport, for the support
+    /// report. Nil when the backend sent none or cannot say.
+    var lastPictureBytes: Int? { get }
+}
+
+extension GlassesDisplayBackend {
+    var drawsPictures: Bool { false }
+    var lastPictureBytes: Int? { nil }
 }
 
 #if !AVENKIN_PHONE_ONLY
@@ -104,6 +117,10 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     var onDebugEvent: ((String) -> Void)?
     /// True once the display capability is started and content is being shown.
     private(set) var isDisplayActive = false
+
+    /// Plan KV §6: `Image(image:sizePreset: .fill)` above the button row.
+    var drawsPictures: Bool { true }
+    private(set) var lastPictureBytes: Int?
 
     /// Lazily initialized after `Wearables.configure()` has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
@@ -194,7 +211,14 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     func send(screen: HUDScreen) async throws {
         let display = try await ensureDisplay()
-        try await display.send(makeScreenView(screen))
+        let view = makeScreenView(screen)
+        if screen.picture != nil { lastPictureBytes = Self.pictureBytes(in: view) }
+        try await display.send(view)
+    }
+
+    /// The encoded size of the picture in a built tree: DAT carries an `Image` as its `uri`.
+    static func pictureBytes(in view: FlexBox) -> Int? {
+        view.children.lazy.compactMap { $0 as? Image }.first.map { $0.uri.utf8.count }
     }
 
     func clear() async throws {
@@ -248,6 +272,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             (id: item.id, label: HUDTextShaper.condense(item.label, max: HUDTextShaper.maxTitleLength),
              style: item.style.buttonStyle, iconName: item.icon.metaIconName)
         }
+        // Plan KV §6: the page view's picture, built here so the builder closure captures only the
+        // Sendable `Image`, never the `UIImage`.
+        let picture = screen.picture.map { Image(image: $0.image, sizePreset: .fill) }
 
         return FlexBox(
             direction: .column,
@@ -267,6 +294,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 } else {
                     Text(line.text, style: line.style, color: line.color)
                 }
+            }
+            if let picture {
+                picture
             }
             // DAT 0.9.0 `ButtonGroup`: the sanctioned container for button rows (bare
             // buttons as loose FlexBox children predate it; flex params on a Button wrap

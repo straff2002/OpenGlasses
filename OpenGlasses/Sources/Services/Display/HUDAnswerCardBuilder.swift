@@ -15,6 +15,8 @@ enum HUDAnswerAction: Equatable {
     case close
     /// A suggested follow-up, by its position in the answer's follow-up list, with its text.
     case followUp(index: Int, text: String)
+    /// Plan KV §4: open the page the turn staged, on the lens.
+    case page
 }
 
 /// Builds the answer card's `HUDScreen`s from the pager's pages and the answer's follow-ups
@@ -25,7 +27,7 @@ enum HUDAnswerAction: Equatable {
 /// | the first of several | the page, footer "1/3" | Next › · Actions |
 /// | a middle page | the page, footer "2/3" | Next › · Actions · ‹ Back |
 /// | the last (or only) | the page, footer when paged | up to two follow-ups · Actions · ‹ Back (paged only) |
-/// | Actions (pushed) | the answer's first line | third follow-up (if any) · More · Repeat · Save · Send · ‹ Answer · Close |
+/// | Actions (pushed) | the answer's first line | third follow-up (if any) · Page (when the turn staged a page the lens can show) · More · Repeat · Save · Send · ‹ Answer · Close |
 ///
 /// P1 put ‹ Back on middle pages too (P0 had it on the paged last page only): with the band
 /// alone, a wearer two pages in had no way back but to read on to the end.
@@ -46,6 +48,8 @@ enum HUDAnswerCardBuilder {
         static let save = "kp.save"
         static let send = "kp.send"
         static let close = "kp.close"
+        /// Plan KV §4.
+        static let page = "kv.answer.page"
         static func followUp(_ index: Int) -> String { "kp.followup.\(index)" }
     }
 
@@ -88,9 +92,11 @@ enum HUDAnswerCardBuilder {
     }
 
     /// The pushed Actions screen: the answer's first line as a reminder, the third follow-up if
-    /// there is one, then More, Repeat, Save, Send, ‹ Answer (back to the page) and Close.
+    /// there is one, **Page** when the turn staged a page the lens can show (Plan KV §4), then
+    /// More, Repeat, Save, Send, ‹ Answer (back to the page) and Close.
     static func actions(_ pages: [HUDAnswerPage],
                         followUps: [String],
+                        hasPage: Bool = false,
                         onAction: @escaping (HUDAnswerAction) -> Void) -> HUDScreen {
         var lines: [HUDLine] = []
         if let first = pages.first?.lines.first, !first.isEmpty {
@@ -100,6 +106,10 @@ enum HUDAnswerCardBuilder {
         let extra = Array(followUps.prefix(maxFollowUps).dropFirst(followUpsOnLastPage))
         for (offset, question) in extra.enumerated() {
             items.append(followUpItem(followUpsOnLastPage + offset, question, onAction))
+        }
+        if hasPage {
+            items.append(item(ItemID.page, String(localized: "Page", comment: "Answer card action: show the cited manual page on the glasses."),
+                              .secondary, .page, onAction))
         }
         items.append(item(ItemID.more, String(localized: "More"), .primary, .more, onAction))
         items.append(item(ItemID.repeatAnswer, String(localized: "Repeat"), .secondary, .repeatAnswer, onAction))

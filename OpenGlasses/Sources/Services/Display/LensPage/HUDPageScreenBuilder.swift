@@ -15,6 +15,8 @@ enum HUDPageAction: Equatable {
     case doneMoving
     case nextPage
     case close
+    /// On the cue for a page the app put up by itself (§4): open the view.
+    case showHere
 }
 
 /// The page view's state, as far as its lines and buttons depend on it.
@@ -61,6 +63,18 @@ enum HUDPageScreenBuilder {
         static let done = "kv.page.done"
         static let nextPage = "kv.page.next"
         static let close = "kv.page.close"
+        static let showHere = "kv.page.show-here"
+    }
+
+    /// Plan KV §4: the cue for a page the app put up by itself — where the page is, and one
+    /// button, **Show here**, that opens the view. It never shows the page unasked.
+    static func cue(_ line: String, onAction: @escaping (HUDPageAction) -> Void) -> HUDScreen {
+        let text = HUDTextShaper.condense(line)
+        return HUDScreen(title: nil,
+                         lines: text.isEmpty ? [] : [HUDLine(text, icon: .info, emphasis: .secondary)],
+                         items: [item(ItemID.showHere,
+                                      String(localized: "Show here", comment: "Glasses: open the manual page on the lens."),
+                                      .primary, .showHere, onAction)])
     }
 
     static func screen(_ state: HUDPageViewState,

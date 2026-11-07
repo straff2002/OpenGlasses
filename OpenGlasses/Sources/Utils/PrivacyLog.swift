@@ -2158,6 +2158,12 @@ enum PrivacyLog {
         /// `stopped`, `timedOut`, `interrupted`) and the lessons passed (`count`). Case names and a
         /// count only.
         case bandCheckStarted, bandCheckRefused, bandCheckEnded
+        /// Plan KV §4, the page on the lens. `lensPageOpened` carries why the view opened in
+        /// `state` (`requested`, `automatic`, `answer_card`) and the display backend's token in
+        /// `detail`; `lensPageRefused` why a page didn't reach the lens (`reason`: `inUse`, `lens`,
+        /// `render`); `lensPageClosed` the route in `state`. Case names only — never the page, its
+        /// text or its pixels.
+        case lensPageOpened, lensPageRefused, lensPageClosed
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

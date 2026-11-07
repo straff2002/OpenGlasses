@@ -22,6 +22,13 @@ final class HUDRouter: ObservableObject {
     /// frame on the glasses. Set by AppState.
     weak var answerCard: HUDAnswerCard?
 
+    /// The page view (Plan KV), whose words (`HUDPageCommand`) this router takes while it is on the
+    /// glasses. Set by AppState.
+    weak var pageView: LensPageSession?
+
+    /// Whether the page view, or its **Show here** cue, is pushed over the HUD (Plan KV §4).
+    @Published private(set) var isPresentingPage = false
+
     init(display: GlassesDisplayService) {
         self.display = display
     }
@@ -33,6 +40,7 @@ final class HUDRouter: ObservableObject {
     func startTask(_ source: HUDTaskSource) {
         screenStack = []
         isPresentingMenu = false
+        isPresentingPage = false
         taskSource = source
         cancellable = source.changes.sink { [weak self] _ in
             // Defer to the next main-actor tick so the source reflects the new step.
@@ -72,8 +80,9 @@ final class HUDRouter: ObservableObject {
             }
             return
         }
-        // Don't render the card over an open launcher menu; it re-renders on resume/close.
-        guard !isPresentingMenu else { return }
+        // Don't render the card over an open launcher menu, or the page view pushed over it; it
+        // re-renders on resume/close.
+        guard !isPresentingMenu, !isPresentingPage else { return }
         let screen = Self.taskCard(source: source, current: current, next: source.next)
         currentScreen = screen
         display.present(screen: screen) { [weak self] id in
@@ -95,6 +104,13 @@ final class HUDRouter: ObservableObject {
     /// LLM). No-op otherwise.
     @discardableResult
     func handleVoiceCommand(_ text: String) async -> Bool {
+        // Plan KV §3: the page view's words, consulted only while the view is on the glasses. A
+        // word with nothing to do ("next page" on the last one) goes on: to the task card under the
+        // view, or to the model.
+        if isPresentingPage, let pageView, pageView.isViewOnLens,
+           let command = HUDPageCommand.parse(text), pageView.handle(command) {
+            return true
+        }
         // Plan KP: an answer card's paging words, consulted only while the card is the frame on
         // the glasses — never over a task card, where "next" means the step is done.
         // A word with nothing to do ("next" on the last page) is left to the model.
@@ -147,6 +163,7 @@ final class HUDRouter: ObservableObject {
 
     /// Present `root` as the base of a fresh navigation stack.
     func openLauncher(_ root: HUDScreen) {
+        isPresentingPage = false
         screenStack = [root]
         isPresentingMenu = true
         renderTop()
@@ -192,8 +209,56 @@ final class HUDRouter: ObservableObject {
 
     private func renderTop() {
         guard let top = screenStack.last else { return }
+        isPresentingPage = false
         currentScreen = top
         display.present(screen: top) { [weak self] id in self?.handleSelection(id) }
+    }
+
+    // MARK: - The page view (Plan KV §4)
+
+    /// Push the page view, or its cue, over whatever the HUD holds: an answer card, a task card, a
+    /// menu, or nothing. False when the lens can't take it (the HUD off, no display, or another app
+    /// has the Display).
+    @discardableResult
+    func presentPage(_ screen: HUDScreen, kind: GlassesDisplayService.HeldPage,
+                     onSelect: @escaping (String) -> Void) -> Bool {
+        guard display.presentPageView(screen, kind: kind, onSelect: onSelect) else { return false }
+        isPresentingPage = true
+        currentScreen = screen
+        return true
+    }
+
+    /// The page view's next frame, after a press issued against `revision`; dropped when another
+    /// frame was enqueued since.
+    @discardableResult
+    func updatePage(_ screen: HUDScreen, issuedAgainst revision: UInt64,
+                    onSelect: @escaping (String) -> Void) -> Bool {
+        guard isPresentingPage,
+              display.updatePageView(screen, issuedAgainst: revision, onSelect: onSelect) else { return false }
+        currentScreen = screen
+        return true
+    }
+
+    /// Close the page view and return to what was under it: the open menu, the task card, the
+    /// answer card, or nothing.
+    func closePage() {
+        guard isPresentingPage else { return }
+        isPresentingPage = false
+        if isPresentingMenu {
+            display.releasePageView()
+            renderTop()
+        } else if isPresentingTask {
+            display.releasePageView()
+            refresh()
+        } else {
+            currentScreen = nil
+            display.endPageView()
+        }
+    }
+
+    /// Something else took the lens from the page view; nothing is redrawn.
+    func pageLost() {
+        isPresentingPage = false
     }
 
     // MARK: - Card layout
