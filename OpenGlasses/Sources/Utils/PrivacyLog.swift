@@ -1666,6 +1666,11 @@ enum PrivacyLog {
         // by its native name (any other is `other`), with its declared effect. Never an argument
         // or a result.
         case hopAfterTools, hopToolRan
+        // A request's history held messages another provider wrote (a photo turn on the Vision
+        // model, a hop, a change of model) and they were converted for it: the provider, how many
+        // messages were converted out of how many sent, and the shape (`anthropic`, `openAIChat`,
+        // `gemini`) as the detail. Counts only, never a message.
+        case historyConverted
     }
 
     /// How an utterance was classified. The utterance itself, and the classifier's free-form

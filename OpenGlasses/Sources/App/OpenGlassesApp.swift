@@ -7674,8 +7674,9 @@ class AppState: ObservableObject, AppStateProtocol {
     private func expectsCameraImage(for query: String) -> Bool {
         guard Config.hasVisionCapableModel else { return false }
         let context = smartCameraContext
-        // Plan JW P0: "show me the table" with cited pages to show is `show_source`'s turn.
-        if SmartCameraPolicy.isAboutCitedPages(query, context: context) { return false }
+        // Plan JW P0: "show me the table" with cited pages to show is `show_source`'s turn, and a
+        // fault code to look up in the manuals is the manuals' turn.
+        if SmartCameraPolicy.isManualTurn(query, context: context) { return false }
         if cameraService.readinessNow.hasFreshVisualEvidence { return true }
         let behavior = Config.activePresetCameraBehavior
         if behavior == "always" { return true }
@@ -7688,10 +7689,13 @@ class AppState: ObservableObject, AppStateProtocol {
     /// What smart camera knows about a turn beyond its words (Plan JW P0): whether the last answer
     /// cited manual pages `show_source` can open — in the active Field Assist session, or in the
     /// personal library's scope, which is where `ShowSourceCenter` keeps them — and whether a manual
-    /// page sheet is open on the phone now (Plan JW P1a). Read by `look_closely` and `vision_assess`
-    /// too, so the camera tools and smart camera decide alike.
+    /// page sheet is open on the phone now (Plan JW P1a), and whether there are manuals to look a
+    /// fault code up in (a Field Assist vault or the personal library). Read by `look_closely` and
+    /// `vision_assess` too, so the camera tools and smart camera decide alike.
     var smartCameraContext: SmartCameraPolicy.Context {
         var context = SmartCameraPolicy.Context(manualPageOnScreen: manualFigureRequest != nil)
+        context.manualsToSearch = (Config.fieldAssistActive && FieldSessionService.shared.activeVault != nil)
+            || (PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
         let memory = ShowSourceCenter.shared.memory
         guard !memory.citations.isEmpty, let scope = memory.sessionId else { return context }
         let session = FieldSessionService.shared
@@ -7715,9 +7719,10 @@ class AppState: ObservableObject, AppStateProtocol {
         if requiresVisionModel, !Config.hasVisionCapableModel { return nil }
 
         // Plan JW P0: a turn asking to see the cited pages takes no frame of any kind — not the
-        // live one, not a capture, not the cooldown's follow-up.
+        // live one, not a capture, not the cooldown's follow-up. Nor does a fault code to look up
+        // in the manuals there are to search.
         let context = smartCameraContext
-        if SmartCameraPolicy.isAboutCitedPages(query, context: context) { return nil }
+        if SmartCameraPolicy.isManualTurn(query, context: context) { return nil }
 
         // Already have a live frame? Use it (cheapest path).
         if let existing = currentVisionFrameDataIfAvailable(scope: scope,

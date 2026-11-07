@@ -91,4 +91,46 @@ final class SmartCameraPolicyTests: XCTestCase {
         XCTAssertTrue(SmartCameraPolicy.mayStartGlassesCapture(linkUp: true))
         XCTAssertFalse(SmartCameraPolicy.mayStartGlassesCapture(linkUp: false))
     }
+
+    // MARK: - A fault code to look up in the manuals (2026-11-07)
+
+    private let vault = SmartCameraPolicy.Context(manualsToSearch: true)
+
+    /// The owner's two turns: each matched "that is", took a glasses frame, and so went to the Vision
+    /// model on another provider. With a vault to search they are the manuals' turns.
+    func testTheReportedTurnsAreManualTurnsWithAVault() {
+        for turn in ["It's the E4 error if you can look what that is on the refrigerator",
+                     "Look on the volts for an E4 error and tell me what that is"] {
+            XCTAssertEqual(VisionIntentDetector.classify(turn), .vision, "the words alone still read as a look: \(turn)")
+            XCTAssertTrue(SmartCameraPolicy.isManualTurn(turn, context: vault), turn)
+            XCTAssertEqual(SmartCameraPolicy.intent(for: turn, context: vault), .textOnly, turn)
+            XCTAssertEqual(SmartCameraPolicy.intent(for: turn, context: none), .vision, "no manuals, no change: \(turn)")
+        }
+    }
+
+    func testAFaultCodeOrTheManualsNamedMakeALookUpTurn() {
+        for turn in ["tell me what that is, the F21 error", "what is that error 21", "is that code SY1 bad",
+                     "look it up in the manual, what that is", "look that up for me, is that right",
+                     "check the vault for what that is"] {
+            XCTAssertTrue(SmartCameraPolicy.asksToLookUpInManuals(turn, context: vault), turn)
+        }
+    }
+
+    func testTheCameraAndThingsInFrontOfTheWearerStayCameraTurns() {
+        for turn in ["what's this error", "look at this E4 error", "what does the E4 code on the display mean",
+                     "read the error code on this nameplate", "is that E4 on the screen", "what is that",
+                     "look up at the ceiling, what is that", "can you see the E4 error"] {
+            XCTAssertFalse(SmartCameraPolicy.asksToLookUpInManuals(turn, context: vault), turn)
+            XCTAssertEqual(SmartCameraPolicy.intent(for: turn, context: vault), VisionIntentDetector.classify(turn), turn)
+        }
+    }
+
+    func testACodeTokenIsShortLettersThenDigits() {
+        for words in [["e4", "error"], ["error", "21"], ["f21", "fault"], ["er10", "code"], ["code", "c3a"]] {
+            XCTAssertTrue(SmartCameraPolicy.namesFaultCode(words), "\(words)")
+        }
+        for words in [["e4"], ["error"], ["error", "12345"], ["fault", "abcd12"], ["code", "4e"], ["error", "e1234"]] {
+            XCTAssertFalse(SmartCameraPolicy.namesFaultCode(words), "\(words)")
+        }
+    }
 }
