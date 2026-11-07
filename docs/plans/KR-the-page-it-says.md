@@ -6,8 +6,14 @@ two electrical code-book jobs, gpt-6-luna, phone only). Owner decisions taken as
 round's rebuild stages no page, a page a tool put up stays for the turn, pages said in words are
 pages (a named page opens nothing by itself), a show-me with no object reopens the last source or
 asks, a show-me after a lookup this turn shows only that table, and `manual_figure` asked for the
-looked-up table opens it through `show_source`'s path, rows marked. **P0 owed** (needs the phone).
-P3–P8 not started.
+looked-up table opens it through `show_source`'s path, rows marked. **P0 measured** (simulator, the
+app's own import; findings kept local). **P3 and P4 built headless** on the same branch: an aught row
+says it is the size asked; the table hint reads the trade's words, demotes kilovolt-band tables for a
+question naming no voltage and names each table's conditions; a note-only heading yields, a heading
+heads only the columns it is centred over, and a column's own heading wins; "mm2" is "mm²"; a contents
+chunk is not a passage and a section named by its heading is carried on; a walk-through request starts
+the chosen chain, the refusal asks for a yes-or-no offer, and the list flags a column problem. P5–P8
+not started.
 **Track:** Field Assist. Every turn that opens a manual page; every table lookup; every rule chain;
 every job close; the support report.
 **Related:** Plan [GB](GB-field-test-round-3.md) P1 (`FigureAutoOpenPolicy`), Plan
@@ -100,6 +106,23 @@ vault's table catalogue and the tables these turns used, as extracted. On the Ma
 Output: an aggregate evidence note in this plan (counts and mechanisms only), and a corrected chain file
 for the partner, sent as a handover and never committed.
 
+**Measured 2026-11-07** (simulator, the app's own import of both editions; aggregate and generic only):
+- The hint for a plain aluminum-in-conduit sizing question named two medium-voltage buried-conduit
+  tables and a bonding table; the raceway table that answers it ranked sixth. The book prints
+  "raceway" where the technician says "conduit", the wrong tables print "conduit" and a "ground wire"
+  heading, and the right one shared only the material, the unit and "size". Asked in the book's own
+  words ("… in a raceway ampacity") there was no hint at all: "ampacity" was not a value word.
+- A temperature column whose heading line sat over only its own column took its note marker as its leaf,
+  and its heading spread over the two columns to its left as a middle level; the stub's heading
+  reached the first value column too.
+- A conduit-fill chain's area step was ambiguous over four columns because "mm2" did not match the
+  printed "mm²". Its fill-count step needs a heading row the extractor does not read; no chain-file
+  fix exists for it yet.
+- An aught size found its row (0000) by AWG form, and nothing in the result linked it to the asked size.
+- The furnace's sequence-of-operation section is fifteen chunks over three pages; asked for by name,
+  retrieval found its first chunk and a table-of-contents chunk; asked as "walk me through …", none
+  of it.
+
 ### P1 — One page per turn (findings 1–4)
 
 - The automatic figure is decided once, on the turn's first build of the Field Assist block. A refresh
@@ -141,6 +164,29 @@ for the partner, sent as a handover and never committed.
 - Tests: the result line for an aught row; the hint over a catalogue of invented tables shaped like P0's
   (titles that differ by voltage band, no real cells).
 
+**Built 2026-11-07 (headless):**
+- `TableLookup.aughtNote`/`aughtReplyLine`: a row found by AWG basis reads "row 0000 (this table prints
+  4/0, four aught, as 0000: the size asked)", and the result says to give the size as the technician
+  said it. `mismatchLine` is unchanged and never fires on that basis.
+- `TableDirectory`: "ampacity", "ampacities" and "amperage" are value words. The hint's ranking
+  (`ranked(…, asTechnicianSaid: true)`, the hint only; `table_lookup`'s words are read as written)
+  counts "conduit" as "raceway" and "wire" as "conductor", and scores a kilovolt-band table at half
+  when the question names no voltage. `conditions(of:)` reads material, voltage band, where the
+  conductors run, how many, and ambient from a title (a kV band from the headings); the hint names
+  them per table and says to state the table and conditions assumed, and — when the offered tables
+  differ — to ask only the one that decides.
+- `TableExtractor`: a heading spreads over neighbouring columns only when it is centred over them
+  (`spanOffCentre`); a leaf that is only a note marker yields to the heading above it
+  (`withoutNoteLeaf`); a row-header column's heading is left out of a value column's path above its
+  own heading. `TableLookup` prefers, among columns matched alike, the one whose own heading (the
+  last that is not a note marker) holds the asked words, so tables already stored resolve too.
+- `TableLookup.tokens` folds ² and ³ to 2 and 3 on both sides.
+- Retrieval (added from P0): a chunk that is mostly table-of-contents lines is not a candidate
+  (`VaultRetriever.isContentsList`), and when the turn holds every content word of a passage's section
+  heading (three or more words), the section's following chunks follow that passage in order up to
+  4,200 characters (`continuingSection`, `DocumentStore.passages(after:)`, wired in `makeRetriever`).
+  A turn that names the heading but whose retrieval finds none of the section is not helped.
+
 ### P4 — Guided work in the trade's words (findings 9–10)
 
 - `TechnicianRequest` counts a guided-walk request as asking for the chain the model chose: "walk me
@@ -153,6 +199,14 @@ for the partner, sent as a handover and never committed.
   table, so it is seen before anyone asks.
 - Tests: invented sizing and fill requests, with and without walk-through words; the list line for a
   chain with an ambiguous column.
+
+**Built 2026-11-07 (headless):** `TechnicianRequest.asksToRunChain(_:chain:)` counts the walk-through
+words when the turn shares a task word of the chain's name (size, check, breaker, fit/fill, derate,
+voltage drop as both words; "check" alone only for a chain whose one task it is) and its material; a
+name with no known task word needs its other words said. `RuleChainTool.notAskedRefusal` asks for one
+yes-or-no offer by name and never words to say; a short yes after it starts the chain (KD P2,
+unchanged). The list marks a column problem "can't start: step N (name) names a column of Table X
+printed under more than one heading" (`listMark`).
 
 ### P5 — A close ends the turn, and a turn finishes when the phone is put away (finding 11)
 
@@ -183,7 +237,8 @@ for the partner, sent as a handover and never committed.
 - A stock change, reading or task change made in a turn that also asks a question ends its result with
   the one line the reply must carry ("Say: one taken off the van"), like `set_job_reference`'s
   confirmation line. Scope: `van_stock` writes first (owner decision 7).
-- The Lennox section split from P0 goes to the retrieval rounds (KN/KO/KQ keys), not here.
+- The section split from P0 was added to P3 (a contents chunk is not a passage; a named section is
+  carried on). Measuring it on the retrieval keys is the KN/KO/KQ rounds'.
 
 ### P8 — Device re-run (owed)
 
@@ -209,7 +264,8 @@ one conversation in the export.
 
 ## Not in this plan
 
-- The Lennox heating-sequence chunking and the post-repair checkout: retrieval, measured on the phone in
-  the KN/KO/KQ rounds.
+- The heating-sequence section beyond P3's two narrow fixes, and the post-repair checkout: retrieval,
+  measured on the phone in the KN/KO/KQ rounds (a turn naming the heading whose search finds none of
+  the section is still not helped).
 - The ignitor resistance: not in the manuals; the labelled web figure was the right answer.
 - The connected-glasses retest: P8.
