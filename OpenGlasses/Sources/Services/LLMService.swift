@@ -5028,6 +5028,10 @@ class LLMService: ObservableObject {
         noting.appendUserNote = { [weak self] text in
             self?.conversationHistory.append(["role": "user", "content": text])
         }
+        // Plan KR P5: a read is not something done, so the turn's own closing words leave it out.
+        noting.readsOnly = { [weak self] call in
+            self?.callEffect(ofTool: call.name, args: call.arguments ?? [:]) == .readOnly
+        }
         return noting
     }
 

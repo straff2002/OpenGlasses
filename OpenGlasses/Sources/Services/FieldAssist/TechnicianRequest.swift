@@ -32,6 +32,19 @@ enum TechnicianRequest {
         return asksToEndJob(previousReply)
     }
 
+    /// Whether the words ask for the job's report too (Plan KR P5): "report" or "summary", or a
+    /// sending word ("close it and send it to the office"). Errs towards a request: wrongly passing
+    /// leaves the close's turn open for `deliver_report`, as before; wrongly refusing would end the
+    /// turn before a report the technician asked for.
+    static func asksForReport(_ said: String) -> Bool {
+        let words = self.words(said)
+        return words.contains(where: reportWords.contains)
+    }
+
+    private static let reportWords: Set<String> = [
+        "report", "reports", "summary", "send", "email", "mail", "forward", "deliver", "share",
+    ]
+
     private static let endWords: Set<String> = [
         "end", "ending", "close", "closing", "finish", "finishing", "finished",
         "cancel", "cancelling", "canceling", "cancelled", "canceled",

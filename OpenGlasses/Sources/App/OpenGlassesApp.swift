@@ -687,6 +687,8 @@ struct OpenGlassesApp: App {
                 AssistingService.shared.appWillResignActive()
                 // Plan JM P1: a transcript under review has nothing left to be read on.
                 appState.pendingTranscriptAppDidEnterBackground()
+                // Plan KR P5: a turn in flight finishes inside a background task.
+                appState.turnBackgroundTime.appLeftForeground()
                 appState.skillPackSideload.handleBackground()
                 appState.orgEnrolment.handleBackground()
                 appState.officeCommissioning.handleBackground()
@@ -724,6 +726,8 @@ struct OpenGlassesApp: App {
                 appState.prepareWaitingRecordings()
                 // A press of the "Ask Avenkin" control that brought the app forward.
                 appState.takePendingAskRequest(trigger: "active")
+                // Plan KR P5: a reply that finished unheard while the app was away is mentioned.
+                appState.sayReplyWaitingIfAny()
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
                 // brought back — but it runs the same gate, so a session the wearer stopped stays
                 // stopped and a repeated activation does not stack a second start on the first.
@@ -2601,6 +2605,9 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self, self.isProcessing else { return }
             self.speechService.startThinkingSound()
         })
+    /// Plan KR P5: a Direct turn in flight when the app leaves the foreground finishes inside a
+    /// background task, and a reply it could not speak while away is mentioned on return.
+    let turnBackgroundTime = TurnBackgroundTime()
     /// Whether `sendTextMessage` would take a turn now. It returns silently otherwise, so anything
     /// that records a turn as having happened must ask this first (Plan KH P1).
     var acceptsTypedTurn: Bool { !isProcessing && !spokenTurnGate.isReserved }
@@ -7520,6 +7527,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 var photoCaptured = false
                 self.didNarrateModelSwitchThisTurn = false
 
+                self.turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
                 self.currentLLMTask = Task { [self] in
                     await ConversationTurnRunner.run(.init(
                         send: {
@@ -7571,8 +7579,9 @@ class AppState: ObservableObject, AppStateProtocol {
                             guard self.conversationReset.isCurrent(turnGeneration) else { return }
                             // Start wake word listener during TTS so user can say "stop"
                             self.startStopListener()
-                            await self.speechService.speak(response, source: .reply)
+                            let outcome = await self.speechService.speakReporting(response, source: .reply)
                             self.stopStopListener()
+                            self.noteReplySpoken(outcome)
                         },
                         onCancelled: {
                             PrivacyLog.app(.turnCancelled, detail: PrivacyToken("photo"))
@@ -7598,6 +7607,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         finish: {
                             self.isProcessing = false
                             self.speechService.stopThinkingSound()
+                            self.turnBackgroundTime.turnEnded()
                             await self.resumeListeningOrReturnToWakeWord(ensureEngine: true)
                         },
                         waitForAnnouncement: { await self.turnAnnouncement.waitUntilSpoken() },
@@ -8033,6 +8043,23 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { @MainActor in await pass.run(turn, settings: settings) }
     }
 
+    /// Plan KR P5: how a Direct turn's reply ended, for `TurnBackgroundTime`. `nil` is a reply
+    /// whose outcome is not known (one streamed a sentence at a time). Heard through, or talked
+    /// over or stopped by the wearer, is spoken; anything else, with the app away, waits in the conversation.
+    func noteReplySpoken(_ outcome: SpeechDeliveryOutcome?) {
+        let spoken = outcome == .completed || outcome == .interrupted(by: .bargeIn)
+            || outcome == .interrupted(by: .stop)
+        turnBackgroundTime.replyFinished(spoken: spoken,
+                                         appInBackground: UIApplication.shared.applicationState == .background)
+    }
+
+    /// Plan KR P5: the app is in front again; a reply that finished unheard while it was away is
+    /// mentioned once.
+    func sayReplyWaitingIfAny() {
+        guard let notice = turnBackgroundTime.appReturnedToForeground() else { return }
+        Task { await speechService.speak(notice, source: .statusNotice) }
+    }
+
     func handleTranscription(_ transcript: String) async {
         // The electrical trade's spoken sizes, written as printed (Plan KD P0), before anything
         // reads the words — the job question, the commands and the model alike.
@@ -8346,6 +8373,8 @@ class AppState: ObservableObject, AppStateProtocol {
         let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId)
         // Plan KP P1: this reply's sentences collect into one answer card on the glasses.
         hudAnswerCard.beginTurn()
+        // Plan KR P5: the turn finishes even if the phone goes in a pocket now.
+        turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
 
         // Run the turn inside a tracked, cancellable task (Plan BG P2). Barge-in / stop / cancel
         // cancel it, so a normal text turn no longer speaks its now-stale response after the user
@@ -8522,12 +8551,16 @@ class AppState: ObservableObject, AppStateProtocol {
                         hudAnswerCard.finishTurn(reply: response)
                         await replyStream.finish(reply: response)
                         releaseReplyStreamStopListener(replyStream)
+                        // A streamed reply reports no outcome: away from the screen, it counts
+                        // as unheard, and the conversation holds it.
+                        noteReplySpoken(nil)
                         return
                     }
                     // Start wake word listener during TTS so user can say "stop"
                     startStopListener()
-                    await speechService.speak(response, source: .reply)
+                    let outcome = await speechService.speakReporting(response, source: .reply)
                     stopStopListener()
+                    noteReplySpoken(outcome)
                 },
                 onCancelled: { [self] in
                     _ = nativeToolRouter.takeTurnToolNames()
@@ -8556,6 +8589,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // After responding, stay in conversation — listen for follow-up
                     isProcessing = false
                     speechService.stopThinkingSound()
+                    turnBackgroundTime.turnEnded()
                     // Plan GE: a route change that waited for this turn applies now.
                     await connectivityHandoff.turnEnded()
                     await resumeListeningOrReturnToWakeWord(ensureEngine: true)

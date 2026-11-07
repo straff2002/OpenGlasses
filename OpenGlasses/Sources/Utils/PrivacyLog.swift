@@ -2304,6 +2304,9 @@ enum PrivacyLog {
         case operationSettledLate, chatReadbackUnconfigured, powerPosture
         case quickDisconnect
         case screenAppeared, screenDisappeared, tabSelected, listUpdated, memoryWarning
+        /// Plan KR P5: a Direct turn's background time — `detail` is "began", "ended", "expired"
+        /// or "replyWaiting" (the reply finished unspoken while the app was away).
+        case turnBackgroundTime
     }
 
     /// `detail` and `state` are fixed app vocabularies — a routing tier, a command label, a power
