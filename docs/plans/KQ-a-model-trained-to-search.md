@@ -1,8 +1,8 @@
 # Plan KQ — A Model Trained to Search (manual passages embedded by a retrieval model, measured before it answers)
 
-**Status:** 🚧 P2a built 2026-11-07 (headless): the wearer can choose Search-trained in Settings ›
-Field Assist, and the model downloads from its own public repo. P2b, the organisation pin, and P3, the
-phone pass, are owed. P1 run the same day: the bar is met. On the ten local answer keys, with the
+**Status:** 🚧 P2 built 2026-11-07. P2a: the wearer can choose Search-trained in Settings › Field Assist,
+and the model downloads from its own public repo. P2b: an organisation's profile can pin the choice. P3,
+the phone pass, is owed. P1 run the same day: the bar is met. On the ten local answer keys, with the
 shipped request and the code lead, at 768 dimensions and its own gate (floor 0.69, three terms at 0.5):
 - hit@4 243 of 331, against the contextual model's 213;
 - hit@1 158 against 139, and as sent 254 against 224;
@@ -346,10 +346,26 @@ The next pilot's manuals, or the P3 phone pass, re-read it.
 
   The route and privacy guards list the new route.
 - **Owed.**
-  - P2b: the organisation profile key that pins the choice. It is its own PR because the key also has to
-    land in the licence-issuance tool's profile contract.
   - A catalog sync for the new strings.
   - The phone pass (P3).
+
+**P2b built 2026-11-07 (headless).**
+- `SettingKey.organizationManualSearchModel` (profile-owned string: `standard`, `smarter` or
+  `searchTrained`; any other value is a named drop). It is listed with the other owned keys.
+- `Config.fieldAssistManualSearchModel` reads the organisation's pin first, then the wearer's own
+  (`userManualSearchModel`). The setter only ever writes the wearer's own.
+- Under a pin, Settings shows the model read-only with the managed-lock note, hidden from a technician as
+  other pinned rows are. A pinned Search-trained still shows its download row, so the phone can fetch the
+  model and leave Smarter.
+- A profile applied, replaced or removed (`orgPolicyDidChange`) loads the model if needed and starts the
+  one-time re-index, as the picker does.
+- The licence-issuance tool's `ProfileContract` allows the key (`owned:string`) and refuses a model the
+  app doesn't know, so an administrator finds out when minting rather than at enrolment.
+- Tests:
+  - app: the key's kind, an accepted pin that locks, a refused value that drops, and the wearer's own
+    choice with no profile;
+  - issuance tool: the allow-list entry, the three models accepted, and an unknown model and a wrong type
+    refused.
 
 ### P3 — the phone (device)
 

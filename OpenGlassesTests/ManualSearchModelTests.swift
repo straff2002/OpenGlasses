@@ -107,6 +107,31 @@ final class ManualSearchModelTests: XCTestCase {
         XCTAssertFalse(SearchModelRuntime.shouldWarmUp(choice: .searchTrained, vaultOpen: true, loaded: false))
     }
 
+    func testAnOrganisationCanPinTheModelOnlyToOneThisBuildKnows() {
+        XCTAssertEqual(SettingKey.organizationManualSearchModel.kind, .profileOwned(.string))
+        let profile = ConfigProfile(keyId: "k", profileId: "p", organizationName: "Org",
+                                    issued: Date(timeIntervalSince1970: 1_790_000_000), leaseDays: 30,
+                                    settings: ["organizationManualSearchModel": RawSetting(.string("searchTrained"), .default)])
+        let result = ProfileApplier.apply(profile: profile, resolvableVaultIds: [])
+        XCTAssertTrue(result.drops.isEmpty, "\(result.drops)")
+        XCTAssertEqual(result.effectiveValue(.organizationManualSearchModel, stored: .string("")), .string("searchTrained"))
+        XCTAssertTrue(result.isLocked(.organizationManualSearchModel))
+
+        let bad = ConfigProfile(keyId: "k", profileId: "p", organizationName: "Org",
+                                issued: Date(timeIntervalSince1970: 1_790_000_000), leaseDays: 30,
+                                settings: ["organizationManualSearchModel": RawSetting(.string("fastest"), .default)])
+        let dropped = ProfileApplier.apply(profile: bad, resolvableVaultIds: [])
+        XCTAssertEqual(dropped.drops.map(\.key), ["organizationManualSearchModel"])
+        XCTAssertFalse(dropped.isLocked(.organizationManualSearchModel))
+    }
+
+    func testWithNoProfileTheWearersOwnChoiceDecides() {
+        XCTAssertNil(Config.organizationManualSearchModel)
+        Config.fieldAssistManualSearchModel = .searchTrained
+        XCTAssertEqual(Config.userManualSearchModel, .searchTrained)
+        XCTAssertEqual(Config.fieldAssistManualSearchModel, .searchTrained)
+    }
+
     func testAVaultOnTheSearchModelGetsItsMeasuredGate() {
         XCTAssertEqual(RetrievalEvidencePolicy.default(for: Embedder.fieldAssist(choice: .searchTrained).modelId).similarityFloor,
                        RetrievalEvidencePolicy.default(for: Embedder.fieldAssist(choice: .smarter).modelId).similarityFloor,
