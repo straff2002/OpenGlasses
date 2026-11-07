@@ -146,6 +146,12 @@ final class GlassesDisplayService: ObservableObject {
     /// draws the newest version instead of the card cutting the notification short.
     private var flashingOverInteractive = false
 
+    /// The transient frame (a notification, a flash) last handed to the queue, until its auto-clear
+    /// runs or another frame replaces it. Plan KV P1 fix: a page view opened while one is showing
+    /// with nothing interactive under it goes under the notification, as it would over a held
+    /// card, and the notification's auto-clear draws it — rather than the view cutting it short.
+    private var transientShowing: RenderOp?
+
     /// Whether an answer may be shown as a card right now: the HUD is on, something can show it
     /// (a display or the mirror), and nothing but an answer card is held. Plan KV: a page's
     /// **Show here** cue gives way to an answer like a card does; an open page view takes the
@@ -196,8 +202,10 @@ final class GlassesDisplayService: ObservableObject {
     var drawsPictures: Bool { testDrawsPicturesOverride ?? activeBackend.drawsPictures }
 
     /// Hold a page screen on the lens (Plan KV §4): the page view or its cue. Not a press, so not
-    /// gated; while a notification is over a held screen, the screen is updated and the flash's
-    /// restore draws it. False — and nothing changes — while the HUD is off, there is no display,
+    /// gated; while a notification is showing — over a held screen or over nothing — the screen is
+    /// held and the notification's auto-clear draws it, so the notification stays up for its full
+    /// duration. A press on the view before then is stale (`heldScreenRevision` is older than the
+    /// notification) and is dropped, as one made under a notification always is. False — and nothing changes — while the HUD is off, there is no display,
     /// or another app has the Display (KP §8: the lens is not taken back).
     @discardableResult
     func presentPageView(_ screen: HUDScreen, kind: HeldPage, onSelect: @escaping (String) -> Void) -> Bool {
@@ -227,6 +235,7 @@ final class GlassesDisplayService: ObservableObject {
         isInteractive = true
         showsAnswerCard = false
         heldPage = kind
+        if transientShowing != nil { flashingOverInteractive = true }
         if !flashingOverInteractive { enqueue(.screen(screen)) }
         return true
     }
@@ -611,7 +620,10 @@ final class GlassesDisplayService: ObservableObject {
         let op = RenderOp.show(shaped)
         if transient && isInteractive { flashingOverInteractive = true }
         enqueue(.op(op))
-        if transient { scheduleAutoClear(for: op, after: duration) }
+        if transient {
+            transientShowing = op
+            scheduleAutoClear(for: op, after: duration)
+        }
     }
 
     private func scheduleAutoClear(for op: RenderOp, after duration: TimeInterval) {
@@ -620,8 +632,18 @@ final class GlassesDisplayService: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0, duration) * 1_000_000_000))
             guard let self, generation == self.autoClearGeneration else { return }
+            let wasShowing = self.transientShowing == op
+            if wasShowing { self.transientShowing = nil }
             // Only act if this frame is still what's on screen.
-            guard self.lastRendered == op else { return }
+            guard self.lastRendered == op else {
+                // Never drawn (a failed send), yet nothing replaced it: a page view held under it
+                // still goes up, rather than waiting for a frame that never comes.
+                if wasShowing, self.flashingOverInteractive, self.isInteractive, let screen = self.currentScreen {
+                    self.flashingOverInteractive = false
+                    self.enqueue(.screen(screen))
+                }
+                return
+            }
             if self.isInteractive, let screen = self.currentScreen {
                 self.flashingOverInteractive = false
                 self.enqueue(.screen(screen))     // restore the held screen after the flash
@@ -642,6 +664,8 @@ final class GlassesDisplayService: ObservableObject {
         }
         frameRevision &+= 1
         if case .screen = frame { heldScreenRevision = frameRevision }
+        // Any frame after a transient one replaces it (its own auto-clear included).
+        transientShowing = nil
         pending = frame
         guard !isRendering else { return }
         isRendering = true
