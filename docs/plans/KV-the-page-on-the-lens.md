@@ -2,9 +2,10 @@
 
 **Status:** 📝 Drafted 2026-11-08 from the partner's ask, made while ordering a Meta Ray-Ban Display for
 pilot demos. Nothing built. The owner took all nine recommended decisions the same day ("take all
-nine").
+nine"), and the same day added P4, a development-only simulated Display ("add it to KV").
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`). Field Assist and personal manuals:
-every page "show me the page" or an answer opens. Every phase except P4 is headless.
+every page "show me the page" or an answer opens. P0–P3 are headless; P4 runs on the iOS Simulator
+against Meta's simulated Display; P5 needs a real one.
 **Related:** Plan [KP](KP-answers-you-can-act-on.md) (the answer card, `frameRevision`, the band check,
 the preview to scale, the Display-in-use rule), Plan [KR](KR-the-page-it-says.md) (one page per turn:
 the page shown is the page said), Plan [EK](EK-manual-structure-and-figures.md) (the staged figure,
@@ -112,7 +113,7 @@ whole.
 crop: the cited lines' height in page points (from their selection bounds, or a 8 pt default for a
 drawing's labels) times lens pixels per page point. When the estimate is under the readable floor, the
 view shows a one-word hint ("Zoom in for labels"). The floor starts at KP's smallest text token
-estimate (22 px, `HUDCanvas.textSize(.meta)`) and is marked as an estimate until P4 measures it.
+estimate (22 px, `HUDCanvas.textSize(.meta)`) and is marked as an estimate until P5 measures it.
 
 ### 2 · Drawing for an additive lens
 
@@ -226,7 +227,7 @@ not involved. The privacy-logging gate applies to every new log line: page refer
   timing. A plan of its own, once the partner says which mode the demos run in.
 - **Pictures on the Even G2 and the web mirror** (§6).
 - **Pages in a task card.** A procedure or playbook step that cites a page could offer **Page** too. KV
-  opens the view from the answer card and from requests; the task-card route waits until P4 shows the
+  opens the view from the answer card and from requests; the task-card route waits until P5 shows the
   view reads well.
 - **Speech-synced page views**, the lens following the answer from passage to passage as it is spoken.
 
@@ -237,12 +238,12 @@ not involved. The privacy-logging gate applies to every new log line: page refer
    covers what they are looking at.*
 2. **Opening view:** the focus when one exists, else the whole page (§1); or always the whole page.
    *Recommended: the focus.*
-3. **Zoom steps:** fit, ×2, ×3, ×4 of the whole page fitted. *Recommended. P4 says whether ×4 is ever
+3. **Zoom steps:** fit, ×2, ×3, ×4 of the whole page fitted. *Recommended. P5 says whether ×4 is ever
    used.*
 4. **Pan:** a pushed arrow row (§3); or one **Move** button cycling tiles in reading order.
    *Recommended: the arrow row.*
 5. **Inversion:** always for line art, with a contrast stretch for photographed pages (§2); or a setting.
-   *Recommended: always, no setting until P4 shows a page that reads worse inverted.*
+   *Recommended: always, no setting until P5 shows a page that reads worse inverted.*
 6. **Marks:** outlines in the AI accent (§2). *Recommended.*
 7. **The question line** (§7): on whenever the card is. *Recommended.*
 8. **Even G2 and the web mirror:** the cue only (§6). *Recommended.*
@@ -251,7 +252,7 @@ not involved. The privacy-logging gate applies to every new log line: page refer
 
 ## Phases
 
-The whole plan is one PR, built after KR merges (P0–P3), with P4 owed to the partner's Display.
+The whole plan is one PR, built after KR merges (P0–P4), with P5 owed to the partner's Display.
 
 ### P0 — the pure core (headless)
 
@@ -297,7 +298,48 @@ The whole plan is one PR, built after KR merges (P0–P3), with P4 owed to the p
 - The `ManualFigureCue` doc comment is rewritten to say what KV found (a whole page isn't legible, a part
   is).
 
-### P4 — device pass (owed; the partner's Display)
+### P4 — the simulated Display (development only, on the iOS Simulator)
+
+Until now every Display phase (X, Y, KP and KV's P0–P3) has been checked only through test seams: a fake
+render sink and button actions called directly. Nothing has drawn the real `MWDATDisplay` views. DAT
+1.0.0's Mock Device Kit can: `MockDeviceKit.shared.enable()`, `pairGlasses(model: .metaRayBanDisplay)`,
+`powerOn()` and `don()` give the app a simulated Display, which draws the 600 × 600 lens from the views
+the app sends, either in a preview view inside the app (`services.display.createPreviewView()`) or in
+Chrome through Meta's simulator extension (`startTestServer(port:)`, then `http://127.0.0.1:9000/`, iOS
+Simulator only). Its direction pad and Select stand in for the band, and
+`MockDisplayKit.sendClick(identifier:)` presses a button from code. Meta's guidance is that the preview
+stays out of production builds.
+
+- **A lane that cannot ship.** `project.mock-display.yml` links `MWDATMockDevice` and defines
+  `DAT_MOCK_DISPLAY`. Only `AVENKIN_DAT_MOCK_DISPLAY=1 ./Scripts/generate-xcodeproj.sh` adds it, and the
+  script refuses the flag under Xcode Cloud or CI. Code that calls the mock lives only in
+  `Sources/Glasses/MockDisplay/`, wrapped in `#if DAT_MOCK_DISPLAY`. A guard test (in the style of
+  `TelemetryOptOutGuardTests`) fails on any `MWDATMockDevice` import or mock call outside that folder or
+  outside the `#if`, and on any committed spec other than `project.mock-display.yml` that names the mock
+  product. A flagged build is never archived, sent to TestFlight or submitted.
+- **A Developer switch.** Developer › **Simulated Display** (present only in a flagged build) enables the
+  kit, pairs simulated Display glasses, powers them on, puts them on and starts the test server. It shows
+  the in-app preview in a square floating panel the developer can hide, and it says the Chrome address.
+  The HUD then drives the simulated lens through the real `MetaDisplayBackend`, so the frames are the
+  ones a Display would get.
+- **A scripted walkthrough.** A Developer action (and a UI test where the mock's process allows it) asks
+  for a page of an invented test manual, then walks the view: opening view, **Zoom in** twice, **Move**
+  and an arrow, **Whole page**, **Close**. It also walks a three-page KP answer card and its **Actions**,
+  pressing each button through `sendClick(identifier:)`. P4 settles how the mock names a button (DAT's
+  `Button` takes no identifier, so a label or an internal id) and records it in the plan.
+- **Screenshots as evidence.** Each step's lens is captured (`simctl io screenshot`, the preview panel
+  cropped) and kept with the PR's notes, not in the repo. The checks: the picture is inverted, the marks
+  sit on the cited lines, labels read at the step `LensLegibility` predicts, the button row fits under
+  the picture, and a stale frame never overwrites a newer notification.
+- **First, a spike.** Whether the whole app runs in the Simulator with the mock enabled (the order
+  against `Wearables.configure()`, the permission gate, `GlassesConnectionService` reading a mock link as
+  `.connected`) is unknown. Thirty minutes decide it. If the app can't run, P4 falls back to a small host
+  screen in the same flagged lane that drives `MetaDisplayBackend` alone.
+
+The simulator doesn't replace P5: brightness, legibility against daylight, transfer time and the real
+band need the glasses.
+
+### P5 — device pass (owed; the partner's Display)
 
 On a Meta Display: ask for three pages (a wiring diagram, a table with a marked row, a text page with a
 cited passage), and one photographed page. For each: read the opening view, zoom in to the labels, move
@@ -306,7 +348,7 @@ whether inversion helped or hurt, how long a press took to show (from the suppor
 the band reached every button in the arrow row. Then do the same with the phone locked, and with another
 Display app open. Settle decisions 3 and 5.
 
-**Gates for the PR:** the full suite and a Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`, catalog
+**Gates for the PR:** the P4 walkthrough's screenshots reviewed, the full suite and a Release build green, `SWIFT_EMIT_LOC_STRINGS=NO`, catalog
 changes in their own commit, the security checks before opening it, the licensed-content leak check on
 every added line (fixtures use invented pages and captions only), and this Status line and the index row
 updated.
@@ -326,10 +368,10 @@ updated.
 
 ## Open
 
-- How long DAT takes to deliver a full-canvas image, and whether it compresses it (P4, from the support
+- How long DAT takes to deliver a full-canvas image, and whether it compresses it (P5, from the support
   report's send timings).
-- The real readable floor on the lens (P4), which replaces the 22 px estimate.
+- The real readable floor on the lens (P5), which replaces the 22 px estimate.
 - Whether the Display's colour makes an accent outline readable over inverted line art, or white reads
-  better (P4).
+  better (P5).
 - Whether stable DAT sends the band's back gesture to the app (KP's open question, JV's probe); until then
   **Close** and **Done** are on-screen buttons.
