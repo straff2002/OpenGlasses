@@ -144,9 +144,27 @@ struct StatusIndicator: View {
                 // Uncapped — the state of the session is the one thing this card exists to
                 // report and the line can be a whole error message — so it wraps, at word
                 // boundaries, and the model follows it rather than claiming a line of its own.
-                Text(statusLine)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // At accessibility sizes the run already wraps over several lines, so sharing one
+                // saves nothing — and one Text in two fonts is measured by the audit as if it were
+                // all the larger one, which it reports as clipped. There the two stack instead.
+                Group {
+                    if typeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(statusLabel)
+                                .font(.system(.headline, design: .rounded).weight(.semibold))
+                                .foregroundStyle(Color(.label))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(modeLabel)
+                                .font(.caption)
+                                .foregroundStyle(OGTheme.secondaryLabel)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Text(statusLine)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 // FD P0: a green dot and the word CAM used to appear on `isStreaming`
                 // alone, which a paused or stalled stream also satisfies — so the one
@@ -482,6 +500,9 @@ struct StatusIndicator: View {
         // Not a control, so no 44pt target; the row's height comes from the pills that are.
         .padding(.vertical, 2)
         .accessibilityElement(children: .ignore)
+        // Read-only, and said so: an element with no traits is audited as something to tap, and
+        // a drawn pill is smaller than a fingertip target by design.
+        .accessibilityAddTraits(.isStaticText)
         // Disconnected, the interpolation used to open with an empty string, so the line began
         // with a pause and read as " mode: OpenGlasses".
         .accessibilityLabel(isActive ? "Active mode: \(name)" : "Mode: \(name)")
