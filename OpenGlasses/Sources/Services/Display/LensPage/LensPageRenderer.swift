@@ -1,0 +1,296 @@
+import CoreGraphics
+import Foundation
+import PDFKit
+import UIKit
+
+// Plan KV §2 / P1 — the page as the lens draws it. The decisions are `LensPageRenderPlan`'s; this
+// file opens the PDF, rasterises the crop, runs the plan's tone over the pixels and strokes the
+// rectangles it placed. Everything here runs off the main actor, and no PDFKit object leaves the
+// task that opened its document.
+
+/// What the lens needs to know about one staged page before it can draw it: where to read it, and
+/// what is marked on it. Plain values, so it crosses into a detached task.
+struct LensPageRequest: Equatable {
+    let source: URL
+    /// The printed page (`StagedFigure.page`); the PDF page index is one less.
+    let page: Int
+    let citedPassages: [CitedPassage]
+    let pictureAreas: [ManualTable.PictureArea]
+    let tone: LensPageRenderPlan.Tone
+
+    var pageIndex: Int { page - 1 }
+
+    init(source: URL, page: Int, citedPassages: [CitedPassage] = [],
+         pictureAreas: [ManualTable.PictureArea] = [], tone: LensPageRenderPlan.Tone = .lineArt) {
+        self.source = source
+        self.page = page
+        self.citedPassages = citedPassages
+        self.pictureAreas = pictureAreas
+        self.tone = tone
+    }
+
+    init(staged: FieldSessionService.StagedFigure, source: URL) {
+        self.init(source: source, page: staged.page, citedPassages: staged.citedPassages,
+                  pictureAreas: staged.pictureAreas,
+                  tone: ManualFigureCue.isPhotographed(staged) ? .photographed : .lineArt)
+    }
+}
+
+/// One page laid out for the lens: its size, its marks as rectangles, where the view opens, and how
+/// legible its text is. Pure once made.
+struct LensPageLayout: Equatable {
+    let pageSize: CGSize
+    let marks: LensPageMarks?
+    /// The pictured table's outlined areas on this page, in top-down page points.
+    let pictureAreas: [CGRect]
+    let tone: LensPageRenderPlan.Tone
+    let focus: LensPageFocus
+    let legibility: LensLegibility
+
+    init(pageSize: CGSize, marks: LensPageMarks?, pictureAreas: [CGRect],
+         tone: LensPageRenderPlan.Tone, figure: CGRect? = nil) {
+        self.pageSize = pageSize
+        self.marks = marks.flatMap { $0.isEmpty ? nil : $0 }
+        self.pictureAreas = pictureAreas
+        self.tone = tone
+        focus = LensPageFocus.pick(pageSize: pageSize, passageRects: self.marks?.marks.map(\.bounds) ?? [],
+                                   pictureAreas: pictureAreas, figure: figure)
+        legibility = LensLegibility(lineRects: self.marks?.lineRects ?? [])
+    }
+
+    /// The view's opening viewport.
+    var openingViewport: LensPageViewport { LensPageViewport(opening: focus) }
+}
+
+enum LensPageRenderer {
+
+    // MARK: - Laying out
+
+    /// Open the page and lay it out, off the main actor. Nil when the page can't be opened.
+    static func layout(_ request: LensPageRequest) async -> LensPageLayout? {
+        await Task.detached(priority: .userInitiated) { () -> LensPageLayout? in
+            guard let document = PDFDocument(url: request.source),
+                  let page = pdfPage(document, index: request.pageIndex) else { return nil }
+            return layout(page, request: request)
+        }.value
+    }
+
+    /// The synchronous half, for a page already open.
+    static func layout(_ page: PDFPage, request: LensPageRequest) -> LensPageLayout {
+        let geometry = PDFKitPageTextGeometry(page: page)
+        let marks: LensPageMarks?
+        if request.citedPassages.isEmpty {
+            marks = nil
+        } else {
+            let passageMarks = PassageMarks(passages: request.citedPassages, page: request.page,
+                                            pageText: page.string)
+            marks = LensPageMarks(passageMarks, geometry: geometry)
+        }
+        let areas = request.pictureAreas.filter { $0.physical == request.page }.map(\.rect)
+        return LensPageLayout(pageSize: geometry.pageSize, marks: marks, pictureAreas: areas, tone: request.tone)
+    }
+
+    // MARK: - Drawing
+
+    /// Draw `plan` from the request's page, off the main actor.
+    static func render(_ request: LensPageRequest, plan: LensPageRenderPlan) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let document = PDFDocument(url: request.source),
+                  let page = pdfPage(document, index: request.pageIndex) else { return nil }
+            return draw(page, plan: plan)
+        }.value
+    }
+
+    /// The accent the marks are drawn in: the AI accent's value for a dark ground, since the lens
+    /// is one (`AccentColors.aiAccentDarkHex`, #E77F47).
+    static var accent: CGColor {
+        let hex = AccentColors.aiAccentDarkHex
+        return CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                       blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    }
+
+    /// Rasterise the crop at the plan's size, turn its tones for the lens, and draw the marks and
+    /// the position frame. Synchronous; the caller is off the main actor.
+    static func draw(_ page: PDFPage, plan: LensPageRenderPlan) -> UIImage? {
+        let width = Int(plan.outputSize.width.rounded())
+        let height = Int(plan.outputSize.height.rounded())
+        guard width > 0, height > 0, plan.scale > 0,
+              let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                      bytesPerRow: width * 4, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                          | CGBitmapInfo.byteOrder32Big.rawValue) else { return nil }
+
+        // Paper everywhere first: the part of the square past the page is paper too, so it turns
+        // black (clear on the lens) with the rest.
+        context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        // Page space (origin at the media box's bottom left, y up) onto output pixels (origin at
+        // the bottom left in Core Graphics): x' = (x − box.minX − crop.minX)·s and
+        // y' = h − (box.maxY − y − crop.minY)·s.
+        let box = page.bounds(for: .mediaBox)
+        let s = plan.scale
+        context.saveGState()
+        context.interpolationQuality = .high
+        context.setShouldAntialias(true)
+        context.translateBy(x: -(box.minX + plan.crop.minX) * s,
+                            y: CGFloat(height) - (box.maxY - plan.crop.minY) * s)
+        context.scaleBy(x: s, y: s)
+        if let reference = page.pageRef {
+            // The page's content only: none of the app's or anyone's annotations.
+            context.drawPDFPage(reference)
+        } else {
+            context.translateBy(x: box.minX, y: box.minY)
+            page.draw(with: .mediaBox, to: context)
+        }
+        context.restoreGState()
+
+        applyTone(plan.tone, to: context, width: width, height: height, page: plan.pageInOutput)
+        drawOverlays(plan, in: context, height: height)
+
+        guard let image = context.makeImage() else { return nil }
+        return UIImage(cgImage: image, scale: 1, orientation: .up)
+    }
+
+    /// Run every pixel through the plan's tone: a photographed page stretched to full range first
+    /// (its levels read from the page alone, not the paper-white margin past it), then lightness
+    /// inverted with the hue kept.
+    private static func applyTone(_ tone: LensPageRenderPlan.Tone, to context: CGContext, width: Int, height: Int,
+                                  page: CGRect) {
+        guard let base = context.data else { return }
+        let count = width * height
+        let pixels = base.bindMemory(to: UInt8.self, capacity: count * 4)
+        var levels: (black: UInt8, white: UInt8) = (0, 255)
+        if tone == .photographed {
+            var histogram = [Int](repeating: 0, count: 256)
+            let area = page.integral.intersection(CGRect(x: 0, y: 0, width: width, height: height))
+            if !area.isNull, area.width > 0, area.height > 0 {
+                // The bitmap's rows run top down, as the plan's output coordinates do.
+                for y in Int(area.minY)..<Int(area.maxY) {
+                    for x in Int(area.minX)..<Int(area.maxX) {
+                        let p = (y * width + x) * 4
+                        histogram[Int(LensPageRenderPlan.luma(pixels[p], pixels[p + 1], pixels[p + 2]))] += 1
+                    }
+                }
+            }
+            levels = LensPageRenderPlan.stretchLevels(histogram: histogram)
+        }
+        let stretches = levels.black > 0 || levels.white < 255
+        for index in 0..<count {
+            let p = index * 4
+            var r = pixels[p], g = pixels[p + 1], b = pixels[p + 2]
+            if stretches {
+                r = LensPageRenderPlan.stretch(r, black: levels.black, white: levels.white)
+                g = LensPageRenderPlan.stretch(g, black: levels.black, white: levels.white)
+                b = LensPageRenderPlan.stretch(b, black: levels.black, white: levels.white)
+            }
+            let turned = LensPageRenderPlan.invertLightness(r, g, b)
+            pixels[p] = turned.0
+            pixels[p + 1] = turned.1
+            pixels[p + 2] = turned.2
+            pixels[p + 3] = 255
+        }
+    }
+
+    /// The marks and the position frame, in the plan's top-down output pixels.
+    private static func drawOverlays(_ plan: LensPageRenderPlan, in context: CGContext, height: Int) {
+        guard !plan.marks.isEmpty || plan.positionFrame != nil else { return }
+        context.saveGState()
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        UIGraphicsPushContext(context)
+        defer {
+            UIGraphicsPopContext()
+            context.restoreGState()
+        }
+
+        let accent = Self.accent
+        context.setStrokeColor(accent)
+        context.setLineWidth(3)
+        for mark in plan.marks {
+            context.stroke(mark.rect)
+            if let number = mark.number {
+                let label = "\(number)" as NSString
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 22, weight: .bold),
+                    .foregroundColor: UIColor(cgColor: accent),
+                ]
+                let size = label.size(withAttributes: attributes)
+                let y = mark.rect.minY - size.height - 2 >= 0 ? mark.rect.minY - size.height - 2 : mark.rect.maxY + 2
+                label.draw(at: CGPoint(x: max(0, mark.rect.minX), y: y), withAttributes: attributes)
+            }
+        }
+
+        if let frame = plan.positionFrame {
+            // The page's outline dim, the crop in the accent: a map, not a second picture.
+            context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(frame.page)
+            context.setStrokeColor(CGColor(srgbRed: 0.55, green: 0.55, blue: 0.55, alpha: 1))
+            context.setLineWidth(1.5)
+            context.stroke(frame.page)
+            context.setStrokeColor(accent)
+            context.setLineWidth(2)
+            context.stroke(frame.crop)
+        }
+    }
+
+    private static func pdfPage(_ document: PDFDocument, index: Int) -> PDFPage? {
+        guard index >= 0, index < document.pageCount else { return nil }
+        return document.page(at: index)
+    }
+}
+
+/// The lens pictures already drawn, keyed by the page's identity and the crop (§2). Least recently
+/// used goes first. In memory only; nothing is written down.
+@MainActor
+final class LensPageRenderCache {
+    nonisolated static let defaultCapacity = 12
+
+    let capacity: Int
+    private var pictures: [String: HUDPicture] = [:]
+    private var order: [String] = []
+
+    init(capacity: Int = LensPageRenderCache.defaultCapacity) {
+        self.capacity = max(1, capacity)
+    }
+
+    var count: Int { pictures.count }
+    func contains(_ key: String) -> Bool { pictures[key] != nil }
+
+    func picture(for key: String) -> HUDPicture? {
+        guard let picture = pictures[key] else { return nil }
+        touch(key)
+        return picture
+    }
+
+    func store(_ picture: HUDPicture, for key: String) {
+        pictures[key] = picture
+        touch(key)
+        while order.count > capacity {
+            pictures[order.removeFirst()] = nil
+        }
+    }
+
+    func removeAll() {
+        pictures = [:]
+        order = []
+    }
+
+    private func touch(_ key: String) {
+        order.removeAll { $0 == key }
+        order.append(key)
+    }
+
+    /// What a picture shows: the page (`identity`), the crop to half a point, and how it is drawn.
+    /// Also the picture's `contentKey`, so the render queue skips a frame it already sent.
+    static func key(identity: String, plan: LensPageRenderPlan) -> String {
+        func half(_ value: CGFloat) -> String {
+            let rounded = (value * 2).rounded() / 2
+            return rounded == rounded.rounded() ? String(Int(rounded)) : String(format: "%.1f", Double(rounded))
+        }
+        let crop = plan.crop
+        return "\(identity)@\(half(crop.minX)),\(half(crop.minY)),\(half(crop.width)),\(half(crop.height))"
+            + ":\(plan.tone.rawValue):\(Int(plan.outputSize.width))"
+    }
+}

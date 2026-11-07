@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// SDK-free description of one interactive HUD screen (Display Phase 3 / Plan X).
 ///
@@ -91,11 +92,27 @@ struct HUDItem: Identifiable {
     }
 }
 
+/// A picture a screen draws above its button row (Plan KV §6): a manual page's crop, drawn by the
+/// phone for an additive lens. Only a backend that `drawsPictures` is ever handed one; the others
+/// render the screen's text lines as before.
+struct HUDPicture {
+    let image: UIImage
+    /// The image's size in pixels (the canvas it was drawn for).
+    let pixelSize: CGSize
+    /// What the picture shows — the page, the crop and how it was drawn — so the render queue's
+    /// de-duplication skips an identical frame without comparing pixels. Never page text.
+    let contentKey: String
+}
+
 /// One renderable interactive screen.
 struct HUDScreen {
     let title: String?
     let lines: [HUDLine]
     let items: [HUDItem]
+
+    /// Plan KV: the page view's picture, drawn above the button row by a backend that draws
+    /// pictures. Part of `renderKey` by its content key only.
+    var picture: HUDPicture?
 
     /// Plan KP P1: on an answer card's page, every page the card can show, each as its own
     /// screen, so a surface that turns pages by itself (the web mirror, which is read-only and
@@ -115,7 +132,8 @@ struct HUDScreen {
         let head = title ?? ""
         let body = lines.map { "\($0.emphasis):\($0.icon):\($0.text)" }.joined(separator: "¦")
         let acts = items.map { "\($0.id):\($0.style):\($0.icon):\($0.label)" }.joined(separator: "¦")
-        return "\(head)|\(body)|\(acts)"
+        guard let picture else { return "\(head)|\(body)|\(acts)" }
+        return "\(head)|\(body)|\(acts)|pic:\(picture.contentKey)"
     }
 }
 

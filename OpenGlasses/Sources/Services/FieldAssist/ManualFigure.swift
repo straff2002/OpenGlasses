@@ -94,10 +94,22 @@ enum ManualFigureAttachment {
 
 // MARK: - What the lens says
 
-/// The one line the in-lens display gets when a figure is staged. A lens display cannot make a
-/// wiring diagram legible — the HUD screen model has no image type and would not help if it did —
-/// so the lens says where the drawing is and nothing else.
+/// The line the in-lens display gets when a figure is staged: where the drawing is.
+///
+/// Plan KV found that a lens can show a manual page after all, in part. A whole letter page fitted
+/// to the 600 px lens draws its 8 pt labels about 8 px tall, which no one can read; a part of the
+/// page at ×3 draws them about 24 px, which is readable, and the cited passage or the marked table
+/// row is usually small enough to open at a readable step. So on a backend that draws pictures the
+/// page goes to the lens as the page view (`LensPageSession`): opened on the part the answer is
+/// about, with the whole page a press away. This line is what is left: the cue on a page the app
+/// put up by itself (on a card with **Show here**, so it never covers the lens unasked), and the
+/// whole message on a lens that draws text only (Even G2, the web mirror).
 enum ManualFigureCue {
+
+    /// A photographed page (Plan IF): its paper is grey, which the lens drawing stretches first.
+    static func isPhotographed(_ staged: FieldSessionService.StagedFigure) -> Bool {
+        staged.documentTitle.hasPrefix("Reviewed photographed manual · ") || staged.documentId.hasPrefix("captured:")
+    }
 
     /// "Figure 58, page 44, on your phone".
     static func line(for staged: FieldSessionService.StagedFigure) -> String {
@@ -113,7 +125,8 @@ enum ManualFigureCue {
     }
 
     /// Flash the cue over whatever the HUD is showing, replacing nothing persistent. A no-op when
-    /// the wearer has no display, which the service itself decides.
+    /// the wearer has no display, which the service itself decides. Used where the page view can't
+    /// open: a backend that draws text only, or a page with no PDF behind it.
     @MainActor
     static func show(_ staged: FieldSessionService.StagedFigure, on display: GlassesDisplayService) {
         display.showNotification(title: nil, body: line(for: staged), icon: .info, duration: 6)
