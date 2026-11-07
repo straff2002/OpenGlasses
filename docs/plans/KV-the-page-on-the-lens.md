@@ -1,4 +1,4 @@
-# Plan KU — The Page on the Lens (the manual page or diagram in the glasses, zoomed by band or voice, and the question above the answer)
+# Plan KV — The Page on the Lens (the manual page or diagram in the glasses, zoomed by band or voice, and the question above the answer)
 
 **Status:** 📝 Drafted 2026-11-08 from the partner's ask, made while ordering a Meta Ray-Ban Display for
 pilot demos. Nothing built. Nine decisions below, each with a recommendation; none taken yet.
@@ -73,7 +73,7 @@ the whole page one press away, and zoom and pan by band press or voice.
   pinches would come only through JV's Inputs lane, which is TestFlight-only. Whether the band can reach
   every button in a row is what KP's band check settles.
 - **The order of things.** KR (PR 996, open) fixes the page on the phone being re-chosen after every tool
-  round, so the page shown is the page the answer said. KU sends that same page to the lens. It builds on
+  round, so the page shown is the page the answer said. KV sends that same page to the lens. It builds on
   KR and must not land before it.
 
 ## Design
@@ -194,7 +194,7 @@ reference, never the page's text or pixels.
   renders it as `Image(image:sizePreset: .fill)` above the button row.
 - **Even G2:** false. Its panel is monochrome text cells, so it keeps the cue line
   and the page words of §3 do nothing there.
-- **The web mirror:** false in KU. The picture would make the mirror's payload a different kind of thing
+- **The web mirror:** false in KV. The picture would make the mirror's payload a different kind of thing
   (an image per frame instead of a few lines of text), which belongs with BP's own reachability work.
 - **The phone preview (KP P4):** shows the exact frame that was sent, picture included, so the whole view
   can be seen and tested without a Display.
@@ -206,7 +206,7 @@ meta style and prefixed "You:". It shows on the first page only, so a long answe
 after it. Hearing the question back answers a question the technician had no way to ask: whether the
 app misheard them. It isn't shown for a turn the app started (a proactive alert, a watcher) and is cut
 like any other line (`HUDTextShaper.condense`). The live modes still get no card; mirroring their
-transcript is a separate piece of work (see "What KU leaves out").
+transcript is a separate piece of work (see "What KV leaves out").
 
 ### 8 · Privacy and licensed pages
 
@@ -216,15 +216,15 @@ vault's page is shown exactly as it is on the phone today, to the person the vau
 photographed page is a reviewed, stored image, not a camera frame, so `OutboundFrameConsumer`'s roster is
 not involved. The privacy-logging gate applies to every new log line: page references and timings only.
 
-## What KU leaves out
+## What KV leaves out
 
-- **Pinch, scroll and free pan.** A store build gets button presses only. KU's zoom is steps and its pan
+- **Pinch, scroll and free pan.** A store build gets button presses only. KV's zoom is steps and its pan
   is half-crop moves.
 - **Live-mode conversation on the lens** (Gemini Live, OpenAI Realtime). Their replies are model audio;
   putting their transcripts on a card means mirroring two different transcript streams with their own
   timing. A plan of its own, once the partner says which mode the demos run in.
 - **Pictures on the Even G2 and the web mirror** (§6).
-- **Pages in a task card.** A procedure or playbook step that cites a page could offer **Page** too. KU
+- **Pages in a task card.** A procedure or playbook step that cites a page could offer **Page** too. KV
   opens the view from the answer card and from requests; the task-card route waits until P4 shows the
   view reads well.
 - **Speech-synced page views**, the lens following the answer from passage to passage as it is spoken.
@@ -293,7 +293,7 @@ The whole plan is one PR, built after KR merges (P0–P3), with P4 owed to the p
 - KP P4's preview draws the page view at the lens's shape, picture included, with **Zoom in**/**Move**
   working on the phone so a reviewer without a Display can walk it.
 - The help text for "show me the page" and the HUD settings row say the page can go to the glasses.
-- The `ManualFigureCue` doc comment is rewritten to say what KU found (a whole page isn't legible, a part
+- The `ManualFigureCue` doc comment is rewritten to say what KV found (a whole page isn't legible, a part
   is).
 
 ### P4 — device pass (owed; the partner's Display)
