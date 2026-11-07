@@ -165,7 +165,7 @@ final class JobTranscriptExportTests: XCTestCase {
         XCTAssertTrue(lines.contains("Exported 2026-09-26 14:03 (UTC+00:00)"))
         XCTAssertTrue(document.body.contains(JobTranscriptExport.preamble))
         XCTAssertTrue(lines.contains("Job 1005 · Resolved"))
-        XCTAssertTrue(lines.contains("Vault: Refrigeration"))
+        XCTAssertTrue(lines.contains("Vault: Refrigeration · Vault-only: off"))
         XCTAssertTrue(lines.contains("Started 2026-09-26 09:12 · Ended 10:40"))
         XCTAssertTrue(lines.contains("09:13  Technician: [with photo] What is this part?"))
         XCTAssertTrue(lines.contains("09:14  Assistant: That is the flame sensor."))
@@ -313,14 +313,16 @@ final class JobTranscriptExportTests: XCTestCase {
         XCTAssertFalse(body.contains("web search (tool call"), body)
     }
 
-    func testAJobWithoutTheSealKeepsTheLineItHad() {
+    /// Plan KR P6: the line says "off" too, so a report without the seal is told from one that
+    /// left it out.
+    func testAJobWithoutTheSealSaysItIsOff() {
         let session = Self.session("s1", startedAt: Self.date(26, 9, 12))
         let job = JobTranscriptExport.job(session: session, vaultName: "Acme Fridges", thread: nil, events: [])
         XCTAssertFalse(job.vaultOnly)
         let body = JobTranscriptExport.document(scope: .job(sessionId: "s1"), jobs: [job],
                                                 exportedAt: Self.date(26, 14, 0), timeZone: Self.utc).body
-        XCTAssertTrue(body.components(separatedBy: "\n").contains("Vault: Acme Fridges"), body)
-        XCTAssertFalse(body.contains("Vault-only"), body)
+        XCTAssertTrue(body.components(separatedBy: "\n").contains("Vault: Acme Fridges · Vault-only: off"), body)
+        XCTAssertFalse(body.contains("Vault-only: on"), body)
     }
 
     func testTheHeadingShowsTheModelAsStated() {

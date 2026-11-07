@@ -2001,7 +2001,8 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             return JobTranscriptExport.job(
                 session: session, vaultName: session.vaultId, thread: thread,
-                events: SessionLogger.readEvents(at: FieldSessionService.shared.sessionDirectory(sessionId: session.id))).lines
+                events: SessionLogger.readEvents(at: FieldSessionService.shared.sessionDirectory(sessionId: session.id)),
+                sharesThread: JobTranscriptExport.sharesThread(session, among: FieldSessionService.shared.history)).lines
         }
         EscalationCoordinator.shared.sends = jobSends
         // A tap on that notification lands on the Jobs list, where the send card is (Plan HC). The

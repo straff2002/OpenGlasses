@@ -910,6 +910,9 @@ final class FieldSessionService: ObservableObject {
         }
         logger?.append(.init(timestamp: Date(), kind: .jobNameSet, text: trimmed,
                              payload: previous.assetId.map { ["previous": AnyCodable($0)] }))
+        // The job's conversation takes the name (Plan KR P6): it was stored and never reached the
+        // title.
+        onJobIdentityChanged?()
         return true
     }
 
