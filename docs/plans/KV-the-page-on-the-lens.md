@@ -2,9 +2,10 @@
 
 **Status:** 📝 Drafted 2026-11-08 from the partner's ask, made while ordering a Meta Ray-Ban Display for
 pilot demos. Nothing built. The owner took all nine recommended decisions the same day ("take all
-nine"), and the same day added P4, a development-only simulated Display ("add it to KV").
+nine"), and the same day added P1b, finding the diagram on a page, and P4, a development-only simulated
+Display ("add it to KV").
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`). Field Assist and personal manuals:
-every page "show me the page" or an answer opens. P0–P3 are headless; P4 runs on the iOS Simulator
+every page "show me the page" or an answer opens. P0–P3 (with P1b) are headless; P4 runs on the iOS Simulator
 against Meta's simulated Display; P5 needs a real one.
 **Related:** Plan [KP](KP-answers-you-can-act-on.md) (the answer card, `frameRevision`, the band check,
 the preview to scale, the Display-in-use rule), Plan [KR](KR-the-page-it-says.md) (one page per turn:
@@ -58,6 +59,9 @@ the whole page one press away, and zoom and pan by band press or voice.
 - **Marks.** `PassageMarks` locates each cited passage as text ranges in the page's text. The phone turns
   those into highlights in the viewer. Turning them into rectangles needs only `PDFPage.selection(for:)`
   and its bounds, which work without a view.
+- **Where a diagram is.** Nothing does. The importer records a page's caption ("Figure 12") but never
+  where the drawing sits on the page; no figure bounds are stored anywhere. `LensPageFocus` has the slot
+  for one and nothing fills it, so without P1b "show me the diagram on page 7" opens the whole page.
 - **The lens.** `GlassesDisplayBackend` takes `showContent(title:body:icon:)` and `send(screen:)`.
   `HUDScreen` holds text lines, icons and buttons, with no image. `MetaDisplayBackend` builds
   `FlexBox`/`Text`/`Button`/`Icon` and never `Image`. The Even renderer draws text cells only. The web
@@ -102,8 +106,12 @@ It opens on the **focus**, picked by a pure `LensPageFocus` in this order:
 
 1. The cited passages' bounds on that page, united (IN's marks, turned into rectangles).
 2. The pictured table's outlined area (JN's `pictureAreas`).
-3. The figure the caption names, when its bounds are known.
+3. The diagram on the page, found by P1b's `PageFigureLocator` from the ink alone (no caption needed),
+   chosen by a named caption, the request's words, a position word, or else the largest.
 4. None: the whole page, fitted.
+
+When the request asked for a drawing ("show me the diagram on page 7", "show me figure 12", or
+`manual_figure`), the diagram moves to the top of that order, ahead of any cited passage.
 
 The focus is padded by a margin and given the lens's square shape. The zoom it opens at is the smallest
 step at which the focus fits. So a cited table row opens readable, and a whole wiring diagram opens
@@ -252,7 +260,7 @@ not involved. The privacy-logging gate applies to every new log line: page refer
 
 ## Phases
 
-The whole plan is one PR, built after KR merges (P0–P4), with P5 owed to the partner's Display.
+The whole plan is one PR, built after KR merges (P0–P4, with P1b), with P5 owed to the partner's Display.
 
 ### P0 — the pure core (headless)
 
@@ -282,6 +290,43 @@ The whole plan is one PR, built after KR merges (P0–P4), with P5 owed to the p
   `testCapabilityOverride`): the right page renders for a requested figure and only the cue for an auto
   one; a stale render is dropped; the phone preview shows the frame sent; the Even backend never gets a
   picture; the audit holds no page text.
+
+### P1b — finding the diagram (headless)
+
+- `PageFigureLocator` (pure core): from a coarse ink mask of the page (a grid of cells, each inked or
+  not) and the page's text-line rectangles, blank out the text, join neighbouring inked cells into
+  blocks (closing small gaps, so a diagram's thin lines hold together), and drop blocks too small or too
+  thin to be a drawing (a rule line, a table border alone, a logo). What is left are the page's
+  drawings, as rectangles in page points (P0's top-down convention).
+- **Finding needs no caption.** The locator works from ink alone, so a drawing with no caption, no
+  figure number and no title is found like any other. A caption only helps choose when a page holds
+  more than one.
+- **Choosing one**, in this order, each step used only when it decides:
+  1. **A named caption.** The request named one ("figure 12") and it is found on the page: the drawing
+     nearest it, above or below, as captions usually sit.
+  2. **The request's words.** Each drawing keeps the text lines that fall inside it (its own labels,
+     blanked out of the ink but not forgotten) and the heading or line just above it. The request's
+     content words ("the blower wiring", "the control board") are matched against those, the same
+     whole-word way `ManualFigureTool` matches today; a clear winner is chosen.
+  3. **A position.** "The top diagram", "the one at the bottom", "the left one", "the second diagram":
+     read by `HUDPageCommand`'s strict parse extended with position words, against the drawings in
+     reading order.
+  4. **Otherwise the largest**, with **Next diagram ›** after **Zoom in** on the opening view, cycling
+     the page's drawings in reading order (voice "next diagram"), so a wrong first pick is one press
+     from the right one.
+- **The thin edge.** `PageInkMask` renders the page small (about 72 dpi) through `PDFPageRasterizer` and
+  thresholds it into the mask; text lines come from `PDFPage.selection(for:)` line by line. Located
+  drawings are cached by document, page and source revision, so a page is analysed once.
+- **Where it doesn't apply.** Photographed pages and text-imported documents have no text layer to
+  blank out: they open on the whole page as before. A page that is all drawing (a wiring sheet) finds
+  one block the size of the page and opens fitted, which is right.
+- Wiring: `LensPageFocus` takes the located drawing as its figure rect; the request's kind (a drawing
+  asked for, or not) decides the order of §1.
+- Tests: invented pages drawn with `UIGraphicsPDFRenderer`, with a block diagram and text, two drawings
+  and two captions, two drawings with no captions told apart by their labels and by "the bottom one", a
+  drawing with no caption at all, a page of text only, a page that is all drawing, a table with only its border, and a
+  thin rule line. The right block is found and chosen, text never counts as ink, and the opening zoom
+  holds the whole drawing.
 
 ### P2 — the question above the answer (headless)
 
@@ -357,6 +402,10 @@ updated.
 
 - "Show me the page" with a Display on puts the page on the lens, opened on the part the answer is about,
   with the marks the phone shows.
+- "Show me the diagram on page 7" opens on the diagram itself, zoomed to hold the whole drawing, and
+  "figure 12" picks that figure when the page holds two. A drawing with no caption is found the same way,
+  and two uncaptioned drawings are told apart by their labels, by "the bottom one", or by **Next
+  diagram ›**.
 - From the glasses alone the technician can zoom in until labels are readable, move around the page, see
   the whole page, go to the next cited page, and close it.
 - The lens, the phone and the answer always name the same page.
