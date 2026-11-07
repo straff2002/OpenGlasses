@@ -111,7 +111,10 @@ It opens on the **focus**, picked by a pure `LensPageFocus` in this order:
 4. None: the whole page, fitted.
 
 When the request asked for a drawing ("show me the diagram on page 7", "show me figure 12", or
-`manual_figure`), the diagram moves to the top of that order, ahead of any cited passage.
+`manual_figure`), the diagram moves to the top of that order, ahead of any cited passage. The diagram is
+a focus at all only when a drawing was asked for, or when the app put the page up by itself for its
+figure. A request for the page ("show me page 7") with nothing cited on it opens the whole page, with
+**Next diagram ›** there to jump to a drawing.
 
 The focus is padded by a margin and given the lens's square shape. The zoom it opens at is the smallest
 step at which the focus fits. So a cited table row opens readable, and a whole wiring diagram opens
