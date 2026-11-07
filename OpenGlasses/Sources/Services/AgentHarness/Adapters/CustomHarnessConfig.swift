@@ -364,13 +364,13 @@ extension CustomHarnessConfig {
 /// response shape be mapped without code — "data.run.id" walks nested dictionaries. Pure + tested.
 enum JSONPath {
     /// The value at `path` ("a.b.c") in `json`, or `nil` if any segment is missing or not a dict.
+    ///
+    /// Walks through `RecipeJSONPath`, built from key segments only (`init(dotKeys:)`), so the
+    /// harness grammar is unchanged: components are literal keys (`"files[0]"` is a key, not an
+    /// index; `"*"` is a key, not a wildcard), empty components are skipped (`"a..b"` is `"a.b"`),
+    /// and an empty path is the whole object.
     static func value(at path: String, in json: [String: Any]) -> Any? {
-        var current: Any = json
-        for segment in path.split(separator: ".") {
-            guard let dict = current as? [String: Any], let next = dict[String(segment)] else { return nil }
-            current = next
-        }
-        return current
+        RecipeJSONPath(dotKeys: path).value(in: json)
     }
 
     /// The string array at `path` — `nil` when the path is unset/missing (**not reported**), an
