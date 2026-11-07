@@ -35,17 +35,25 @@ import SwiftUI
 /// point per lens pixel). Text is drawn at each token's *estimated* lens size, scaled with the
 /// canvas, so the answer card's pages show exactly as `HUDAnswerPager` cuts them and text length
 /// can be judged without hardware. VoiceOver hears that the sizes are estimates.
+///
+/// A screen's picture (the page view's crop, Plan KV P3) is drawn from the same `HUDPicture` the
+/// lens was sent. With `onPress`, the buttons work: each press goes out by the button's id
+/// (`HUDRouter.pressFromPreview`), so a reviewer without a Display can walk the page view.
 struct HUDPreviewView: View {
     let screen: HUDScreen
     /// The lens to draw; nil follows the display backend chosen in Settings.
     var canvas: HUDCanvas?
+    /// Where a button press goes; nil leaves the preview view-only.
+    var onPress: (@MainActor @Sendable (String) -> Void)?
 
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
     @Environment(\.displayScale) private var displayScale
 
-    init(screen: HUDScreen, canvas: HUDCanvas? = nil) {
+    init(screen: HUDScreen, canvas: HUDCanvas? = nil,
+         onPress: (@MainActor @Sendable (String) -> Void)? = nil) {
         self.screen = screen
         self.canvas = canvas
+        self.onPress = onPress
     }
 
     private var resolvedCanvas: HUDCanvas {
@@ -60,7 +68,7 @@ struct HUDPreviewView: View {
             .overlay {
                 GeometryReader { geometry in
                     let fit = HUDCanvasScale.fit(canvas, in: geometry.size, displayScale: displayScale)
-                    HUDCanvasView(screen: screen, fit: fit)
+                    HUDCanvasView(screen: screen, fit: fit, onPress: onPress)
                         .offset(x: fit.origin.x, y: fit.origin.y)
                 }
             }
@@ -76,15 +84,17 @@ struct HUDPreviewView: View {
 private struct HUDCanvasView: View {
     let screen: HUDScreen
     let fit: HUDCanvasScale
+    var onPress: (@MainActor @Sendable (String) -> Void)?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.black
             switch fit.canvas.backend {
             case .metaDisplay:
-                HUDDSLView(flexBox: GlassesDisplayService.previewFlexBox(for: screen))
+                HUDDSLView(flexBox: GlassesDisplayService.previewFlexBox(for: screen, onSelect: onPress))
                     .environment(\.hudCanvasFit, fit)
-                    .frame(width: fit.size.width, alignment: .topLeading)
+                    .environment(\.hudPicture, screen.picture?.image)
+                    .frame(width: fit.size.width, height: fit.size.height, alignment: .topLeading)
             case .evenG2:
                 EvenPanelView(screen: screen, fit: fit)
             }
@@ -131,10 +141,20 @@ private struct HUDCanvasFitKey: EnvironmentKey {
     static let defaultValue = HUDCanvasScale.fit(.metaDisplay, in: CGSize(width: 600, height: 600))
 }
 
+/// The picture the screen was sent with (Plan KV P3), drawn where its tree has a `.fill` image:
+/// the phone draws the very image the lens got, not a decode of the tree's copy.
+private struct HUDPictureKey: EnvironmentKey {
+    static let defaultValue: UIImage? = nil
+}
+
 private extension EnvironmentValues {
     var hudCanvasFit: HUDCanvasScale {
         get { self[HUDCanvasFitKey.self] }
         set { self[HUDCanvasFitKey.self] = newValue }
+    }
+    var hudPicture: UIImage? {
+        get { self[HUDPictureKey.self] }
+        set { self[HUDPictureKey.self] = newValue }
     }
 }
 
@@ -259,6 +279,7 @@ private struct FlexGrowModifier: ViewModifier {
 private struct ComponentView: View {
     let component: any MWDATDisplay.ViewComponent
     @Environment(\.hudCanvasFit) private var fit
+    @Environment(\.hudPicture) private var picture
 
     var body: some View {
         if let text = component as? MWDATDisplay.Text {
@@ -329,6 +350,23 @@ private struct ComponentView: View {
 
     @ViewBuilder
     private func imageView(_ image: MWDATDisplay.Image) -> some View {
+        if image.sizePreset == .fill, let picture {
+            // The page view's picture (Plan KV P3): the space the lines and the button row leave,
+            // at the picture's own square shape, as on the lens.
+            SwiftUI.Image(uiImage: picture)
+                .resizable()
+                .interpolation(.medium)
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(-1)
+                .accessibilityLabel(SwiftUI.Text("Manual page", comment: "HUD preview: the manual page picture shown on the lens."))
+        } else {
+            uriImageView(image)
+        }
+    }
+
+    @ViewBuilder
+    private func uriImageView(_ image: MWDATDisplay.Image) -> some View {
         let isIcon = image.sizePreset == .icon
         AsyncImage(url: URL(string: image.uri)) { phase in
             if let img = phase.image {
@@ -458,6 +496,8 @@ import SwiftUI
 /// Phone-side rendering uses the app's own screen data, without the Meta display DSL.
 struct HUDPreviewView: View {
     let screen: HUDScreen
+    /// Unused here: the phone-only build has no lens to walk.
+    var onPress: (@MainActor @Sendable (String) -> Void)? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let title = screen.title { Text(title).font(.headline) }

@@ -767,7 +767,7 @@ struct HardwarePrivacyView: View {
                             }
                         }
                     ),
-                    info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). Ray-Ban Display glasses only — no effect on glasses without a built-in display."
+                    info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). A manual page you ask to see can open on the lens too, where you can zoom in and move around it. Ray-Ban Display glasses only — no effect on glasses without a built-in display."
                 )
                 InfoToggle(
                     title: "HUD Choice Buttons",

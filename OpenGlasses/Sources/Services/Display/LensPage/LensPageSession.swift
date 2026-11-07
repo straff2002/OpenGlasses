@@ -307,6 +307,16 @@ final class LensPageSession: ObservableObject {
         }
     }
 
+    /// A press on the phone preview's copy of the frame (Plan KV P3, `HUDRouter.pressFromPreview`):
+    /// the button `id` of the frame last drawn, run exactly as a band press on it is. False when
+    /// nothing is held or the frame has no such button.
+    @discardableResult
+    func press(itemID id: String) -> Bool {
+        guard held != nil, let item = shownScreen?.items.first(where: { $0.id == id }) else { return false }
+        item.action()
+        return true
+    }
+
     /// A press issued against `revision`: dropped when another frame has been enqueued since.
     func handle(_ action: HUDPageAction, issuedAgainst revision: UInt64) {
         guard let held, display.heldPage == held else { return }

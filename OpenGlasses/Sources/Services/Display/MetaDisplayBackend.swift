@@ -258,7 +258,11 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     /// Build the interactive `FlexBox` for `screen`. Internal and free of SDK session
     /// state so tests can inspect the component tree and invoke each Button's `onClick`
     /// to simulate a Neural-Band selection.
-    func makeScreenView(_ screen: HUDScreen) -> FlexBox {
+    ///
+    /// `onSelect`, when given, is where a button's press goes instead of this backend's
+    /// `onItemSelected`: the phone preview's own presses (Plan KV P3). The lens never passes it.
+    func makeScreenView(_ screen: HUDScreen,
+                        onSelect: (@MainActor @Sendable (String) -> Void)? = nil) -> FlexBox {
         // Pre-shape all text and presentation here (MainActor context) so the
         // result-builder closure below never references anything actor-isolated.
         // Each button model carries only Sendable values — never the HUDItem, whose
@@ -306,7 +310,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                     for button in buttonModels {
                         let id = button.id
                         Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
-                            Task { @MainActor in self?.onItemSelected?(id) }
+                            Task { @MainActor in
+                                if let onSelect { onSelect(id) } else { self?.onItemSelected?(id) }
+                            }
                         })
                     }
                 }
@@ -472,11 +478,12 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
 extension GlassesDisplayService {
     /// Build the SDK view tree for `screen` for the on-phone preview/mirror
-    /// (`HUDPreviewView`). Session-free; the returned tree's button taps route nowhere.
-    /// Shares `makeScreenView` with the on-glasses path so the phone mirror is a single
-    /// source of truth. Lives here so the service file stays SDK-free (Plan AH).
-    static func previewFlexBox(for screen: HUDScreen) -> FlexBox {
-        MetaDisplayBackend().makeScreenView(screen)
+    /// (`HUDPreviewView`). Session-free; the returned tree's button taps go to `onSelect`, and
+    /// nowhere without one. Shares `makeScreenView` with the on-glasses path so the phone mirror
+    /// is a single source of truth. Lives here so the service file stays SDK-free (Plan AH).
+    static func previewFlexBox(for screen: HUDScreen,
+                               onSelect: (@MainActor @Sendable (String) -> Void)? = nil) -> FlexBox {
+        MetaDisplayBackend().makeScreenView(screen, onSelect: onSelect)
     }
 }
 
