@@ -11,10 +11,11 @@ import Foundation
 final class ManualFigureTool: NativeTool {
     let name = "manual_figure"
     let description = """
-    Show a numbered figure, table or page from the manuals loaded on this phone, or re-open the source a previous answer cited. Pass 'figure' ("Figure 58", or just \
+    Show a figure, table or page by its number from the manuals loaded on this phone. For "show \
+    me that" or "show me the table" after an answer, use show_source. Pass 'figure' ("Figure 58", or just \
     "58"), or 'printed_page' with the page number printed on the page ("printed page 57"), or \
     'page' with the PDF's own page number (the viewer's count, which may differ from the printed \
-    one), or 'again' to bring back the last figure or page shown ("show me that source", "show that figure again"). The page opens on the technician's phone and is \
+    one), or 'again' to bring back the last figure or page shown ("show that figure again"). The page opens on the technician's phone and is \
     attached to your next turn as an image when one is available, so you can read the drawing \
     yourself. Use it when the technician names a figure or asks to see a wiring diagram, and after \
     citing one. Say the page it reports it opened, PDF and printed, never the one you asked for. A manual imported as extracted text has no page to show — the tool says so, and \
@@ -75,6 +76,10 @@ final class ManualFigureTool: NativeTool {
         }
 
         guard VaultRegistry.shared.isUnlocked(store.manifest) else { return MyManualsPaywallCopy.locked }
+        // The table a lookup read opens as show_source opens it, its rows marked (Plan KR P2):
+        // asked for by its label, 'again' with the lookup the newest source, or nothing named
+        // right after a lookup.
+        if let reply = openLookedUpTable(args, session: session) { return reply }
         if (args["again"] as? Bool) == true {
             guard let staged = session.restageLastFigure(
                 origin: session.turnAskedForPage ? .requested : .automatic) else {
@@ -212,24 +217,73 @@ final class ManualFigureTool: NativeTool {
         return show(staged, session: session, opening: "Showing", openedLine: opened)
     }
 
+    /// The table `table_lookup` last read, presented through the noted lookup with its rows
+    /// marked, when the call asks for it: its label as 'figure', 'again' with the lookup newer than
+    /// the last page shown, or no figure or page on a turn right after the lookup. Nil when the
+    /// call asks for something else, or the lookup's source can no longer be opened.
+    private func openLookedUpTable(_ args: [String: Any], session: FieldSessionService) -> String? {
+        guard let looked = session.lookedUpTableLabel else { return nil }
+        let figure = (args["figure"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let namesPage = Self.integer(args["page"]) != nil || printedPage(args) != nil
+        let again = (args["again"] as? Bool) == true
+        let asks: Bool
+        if !figure.isEmpty {
+            asks = !namesPage && Self.namesTable(figure, looked)
+        } else if again {
+            asks = session.lookupIsLatestSource
+        } else {
+            asks = !namesPage && session.lookupIsRecent
+        }
+        guard asks else { return nil }
+        let document = (args["document"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let opened = ShowSourceTool(documentStore: documentStore, sessionService: session, currentUtterance: { nil })
+            .open(which: looked, document: document, session: session)
+        guard let first = opened.pages.first else { return nil }
+        session.stageForModelOnly(first)
+        var lines = [opened.reply]
+        lines.append(Self.openedPageLine(physical: first.page,
+                                         printed: documentStore?.pageLabels(documentId: first.documentId)
+                                             .printed(forPhysical: first.page),
+                                         documentTitle: first.documentTitle))
+        if ManualFigurePresenter(figure: first, sourceURL: session.sourcePDFURL(for: first)).hasPicture {
+            lines.append("The page is attached to your next turn as an image.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    /// Whether a requested 'figure' names the looked-up table: "Table 99", "table ninety-nine",
+    /// or its bare number. Pure.
+    static func namesTable(_ requested: String, _ looked: String) -> Bool {
+        if TableChecks.sameLabel(requested, looked) { return true }
+        if TableReference.labels(in: requested).contains(where: { TableChecks.sameLabel($0, looked) }) { return true }
+        return candidateLabels(for: requested).contains { TableChecks.sameLabel($0, looked) }
+    }
+
     /// The printed page the call or the technician's words ask for: `printed_page`, else "printed
     /// page 57" in the words this turn.
     private func printedPage(_ args: [String: Any]) -> String? {
         if let value = args["printed_page"] {
             let text = (value as? String) ?? (value as? NSNumber)?.stringValue ?? ""
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
+            // A page passed as the words it was said in ("three ninety-nine") is its number.
+            if !trimmed.isEmpty { return SpokenNumber.whole(trimmed).map(String.init) ?? trimmed }
         }
         return currentUtterance().flatMap(Self.printedPage(in:))
     }
 
-    /// "printed page 57", "printed page number iv", "page 57 printed" → the label. Pure.
+    /// "printed page 57", "printed page number iv", "page 57 printed", "printed page three
+    /// ninety-nine" → the label ("399" for words, Plan KR P1). Pure.
     static func printedPage(in said: String) -> String? {
+        let ns = said as NSString
         for pattern in [#"(?i)\bprinted\s+page\s+(?:number\s+|no\.?\s*)?([A-Za-z0-9][A-Za-z0-9-]*)"#,
                         #"(?i)\bpage\s+([A-Za-z0-9][A-Za-z0-9-]*)\s+(?:as\s+)?printed\b"#] {
             guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.firstMatch(in: said, range: NSRange(said.startIndex..., in: said)),
+                  let match = regex.firstMatch(in: said, range: NSRange(location: 0, length: ns.length)),
                   let range = Range(match.range(at: 1), in: said) else { continue }
+            // A number said in words is read whole; "iv" and "A-3" are labels and stay as printed.
+            if let spoken = SpokenNumber.read(in: ns, from: match.range(at: 1).location, digitGroups: true) {
+                return String(spoken.value)
+            }
             return String(said[range])
         }
         return nil

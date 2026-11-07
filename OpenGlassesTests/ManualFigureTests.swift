@@ -1,3 +1,4 @@
+import Combine
 import PDFKit
 import UIKit
 import XCTest
@@ -212,10 +213,11 @@ final class ManualFigureTests: XCTestCase {
         // Asked for a page, found the drawing on another one: it does not open.
         _ = service.promptContext(turn: "show me page 5, the one with 24VAXC")
         XCTAssertNil(service.stagedFigure, "the page named was 5; the drawing is on 2")
-        // Asked for the drawing's own page: it does.
+        // Asked for the drawing's own page: the model is handed it, and the phone waits for
+        // manual_figure, which opens a named page — printed or PDF — itself (Plan KR P1).
         _ = service.promptContext(turn: "show me page 2, the one with 24VAXC")
         XCTAssertEqual(service.stagedFigure?.figure, "Figure 3")
-        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, false)
     }
 
     func testAJobNumberIsNotSearchedAsACode() async throws {
@@ -357,6 +359,78 @@ final class ManualFigureTests: XCTestCase {
         _ = try await tool.execute(args: ["page": 2])
         XCTAssertEqual(center.presented?.pages.map(\.page), [2, 1], "a new turn adds to nothing")
         XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+    }
+
+    /// Plan KR P1: the search's page, then the page `manual_figure` opened, then three tool rounds
+    /// whose rebuilds each put the search's page back. The phone ends on the tool's page, and the
+    /// model's picture is never changed by a rebuild.
+    func testToolRoundsNeverPutTheSearchsPageBackOverTheToolsPage() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        var onPhone: [Int] = []
+        let token = service.$stagedFigure.compactMap { $0 }.filter(\.presentOnPhone).sink { onPhone.append($0.page) }
+        defer { token.cancel() }
+        let turn = "show me the wiring diagram for 24VAXC"
+        service.turnSourceID = "turn-1"
+
+        // The turn's first build: the search's drawing (page 2) opens.
+        _ = service.promptContext(turn: turn)
+        XCTAssertEqual(onPhone, [2])
+        // The model asks for page 1 by number.
+        _ = try await ManualFigureTool(documentStore: store, sessionService: service, currentUtterance: { nil })
+            .execute(args: ["page": 1])
+        XCTAssertEqual(onPhone, [2, 1])
+        let afterTool = try XCTUnwrap(service.stagedFigure)
+        XCTAssertEqual(afterTool.page, 1)
+
+        // Three tool rounds, each rebuilding the Field Assist block the way LLMService does.
+        for _ in 0..<3 {
+            let rebuilt = try XCTUnwrap(service.promptContext(turn: turn, stagesFigure: false))
+            XCTAssertTrue(rebuilt.contains("24VAXC"), "the passages still ride along")
+        }
+        XCTAssertEqual(onPhone, [2, 1], "no rebuild put a page on the phone")
+        XCTAssertEqual(service.stagedFigure, afterTool, "nor changed the model's picture")
+        // A full rebuild in the same turn (a retried request) leaves the tool's page too.
+        _ = service.promptContext(turn: turn)
+        XCTAssertEqual(onPhone, [2, 1])
+        XCTAssertEqual(service.stagedFigure, afterTool)
+
+        // The next turn decides its own page again.
+        service.turnSourceID = "turn-2"
+        _ = service.promptContext(turn: "what does 24VAXC connect to")
+        XCTAssertEqual(onPhone, [2, 1, 2])
+    }
+
+    /// Plan KR P1: a show-me that names nothing puts back the page last shown, not the search's
+    /// guess, and with nothing shown opens nothing and tells the model to ask.
+    func testAShowMeThatNamesNothingReopensTheLastPageOrNothing() async throws {
+        let store = makeStore()
+        let service = try await startSession(store: store, withTextManual: false)
+        let center = ShowSourceCenter()
+        center.isAppActive = { true }
+        service.sourceCenter = center
+
+        service.turnSourceID = "turn-1"
+        let nothing = try XCTUnwrap(service.promptContext(turn: "show me the"))
+        XCTAssertNil(service.stagedFigure, "nothing shown or cited: nothing opens")
+        XCTAssertNil(center.presented)
+        XCTAssertTrue(nothing.contains(FieldSessionService.nothingToReopenNote), nothing)
+
+        service.turnSourceID = "turn-2"
+        _ = try await ManualFigureTool(documentStore: store, sessionService: service, currentUtterance: { nil })
+            .execute(args: ["page": 1])
+        XCTAssertEqual(service.stagedFigure?.page, 1)
+
+        service.turnSourceID = "turn-3"
+        service.stageFigure(nil)
+        let reopened = try XCTUnwrap(service.promptContext(turn: "show me that"))
+        XCTAssertEqual(service.stagedFigure?.page, 1, "the page last shown, not the drawing the search found")
+        XCTAssertEqual(service.stagedFigure?.presentOnPhone, true)
+        XCTAssertEqual(service.stagedFigure?.origin, .requested)
+        XCTAssertTrue(reopened.contains("the last page shown"), reopened)
+        // The tool rounds that follow say the same.
+        let rebuilt = try XCTUnwrap(service.promptContext(turn: "show me that", stagesFigure: false))
+        XCTAssertTrue(rebuilt.contains("the last page shown"), rebuilt)
     }
 
     /// Plan KD P0: "printed page 57" opened PDF page 57. A printed page goes through the

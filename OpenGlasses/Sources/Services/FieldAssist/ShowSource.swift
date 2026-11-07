@@ -376,6 +376,11 @@ final class ShowSourceCenter: ObservableObject {
     static let shared = ShowSourceCenter()
 
     private(set) var memory = AnswerSourceMemory()
+    /// Counts each change to what the last answer cited (Plan KR P1), so the session can tell a
+    /// source cited after the last page it showed from one cited before it.
+    private(set) var citationsRevision = 0
+    /// The revision at which a table lookup last noted its citations (Plan KR P2).
+    private(set) var lookupRevision = 0
     /// The request the app should present now.
     @Published private(set) var presented: SourcePagesRequest?
     /// A request made while the app could not show it.
@@ -398,6 +403,7 @@ final class ShowSourceCenter: ObservableObject {
 
     func clearForAccessLoss() {
         memory = AnswerSourceMemory()
+        citationsRevision += 1
         presented = nil
         waiting = nil
     }
@@ -407,17 +413,25 @@ final class ShowSourceCenter: ObservableObject {
     }
 
     func noteLookup(_ passages: [VaultRetriever.Passage], sessionId: String?) {
+        let before = memory.citations
         memory.noteLookup(passages.compactMap(Self.retrieved), sessionId: sessionId)
+        if memory.citations != before { citationsRevision += 1 }
     }
 
     /// A table lookup answered (Plan JJ P1) with these citations, reading these row passages.
     func noteTableLookup(rows: [AnswerSourceMemory.Retrieved], citations: [Citation],
                          pictureAreas: [ManualTable.PictureArea] = [], sessionId: String?) {
         memory.noteTableLookup(rows: rows, citations: citations, pictureAreas: pictureAreas, sessionId: sessionId)
+        // Rows read again under the same citation are still a newer source.
+        guard !citations.isEmpty else { return }
+        citationsRevision += 1
+        lookupRevision = citationsRevision
     }
 
     func noteAnswer(_ text: String, sessionId: String?) {
+        let before = memory.citations
         memory.noteAnswer(CitationLineParser.parse(text), text: text, sessionId: sessionId)
+        if memory.citations != before { citationsRevision += 1 }
     }
 
     /// The regions to outline for a table citation a lookup read from a picture (Plan JN P2).
