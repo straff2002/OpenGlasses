@@ -27,8 +27,8 @@ struct StatusIndicator: View {
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
     /// tile keeps its proportion to the two lines of text beside it at every
     /// Dynamic Type size instead of shrinking against them.
-    @ScaledMetric(relativeTo: .body) private var statusTile: CGFloat = 48
-    @ScaledMetric(relativeTo: .title2) private var statusGlyph: CGFloat = 26
+    @ScaledMetric(relativeTo: .body) private var statusTile: CGFloat = 30
+    @ScaledMetric(relativeTo: .callout) private var statusGlyph: CGFloat = 17
     /// The connection pills' logo, which scales with the type beside it.
     @ScaledMetric(relativeTo: .caption) private var pillGlyph: CGFloat = 13
     @ScaledMetric(relativeTo: .caption2) private var statusDot: CGFloat = 5
@@ -110,10 +110,15 @@ struct StatusIndicator: View {
         .presentationDetents([.medium, .large])
     }
 
+    /// Two rows: the state and the model on one line beside a small tile, then every pill —
+    /// mode, wake word, job, glasses, OpenClaw — in one row that wraps only when it must. It used
+    /// to be four bands (a 48pt tile over two lines, a full-width wake-word line, a job row, a
+    /// footer), and the conversation under it — what a technician scrolls back through for a
+    /// number they missed — got what was left.
     private var fullCard: some View {
         VStack(spacing: 0) {
             // Status row
-            HStack(spacing: 14) {
+            HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(ringColor.opacity(OGTheme.Opacity.accentPillFill))
@@ -124,7 +129,7 @@ struct StatusIndicator: View {
                             LogoIcon(size: statusGlyph)
                         } else {
                             Image(systemName: iconName)
-                                .font(.title2)
+                                .font(.callout)
                         }
                     }
                     // The tile paints a hue on a wash of itself, which is the
@@ -135,53 +140,36 @@ struct StatusIndicator: View {
                 }
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(statusLabel)
-                        .font(.system(.headline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(Color(.label))
-                        // Uncapped. The state of the session is the one thing
-                        // this card exists to report, the line can be a whole
-                        // error message, and the card is free to grow — it is a
-                        // card on a screen, not a row in a list. A cap here only
-                        // ever buys a card that doesn't change height, and pays
-                        // for it by dropping the words.
-                        .fixedSize(horizontal: false, vertical: true)
+                // The state and the model as one run of text: "Ready  Voice · OpenAI (GPT)".
+                // Uncapped — the state of the session is the one thing this card exists to
+                // report and the line can be a whole error message — so it wraps, at word
+                // boundaries, and the model follows it rather than claiming a line of its own.
+                Text(statusLine)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    HStack(spacing: 6) {
-                        Text(modeLabel)
-                            .font(.caption)
-                            .foregroundStyle(OGTheme.secondaryLabel)
-                            // Wrap rather than truncate: this line shares its
-                            // row with the camera chip and its width with a
-                            // model name nobody chose for its length.
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        // FD P0: a green dot and the word CAM used to appear on `isStreaming`
-                        // alone, which a paused or stalled stream also satisfies — so the one
-                        // indicator on this card said the camera was fine in precisely the states
-                        // it was not. The chip now carries the phase, and the dot is green only
-                        // when pictures are actually flowing.
-                        if isRealtime, let chip = appState.cameraService.readiness.statusChip {
-                            HStack(spacing: 3) {
-                                Circle().fill(chip.isHealthy ? OGTheme.ok : OGTheme.warn)
-                                    .frame(width: statusDot, height: statusDot)
-                                    .accessibilityHidden(true)
-                                Text(chip.label)
-                                    .font(.system(.caption, design: .monospaced).weight(.bold))
-                                    .foregroundStyle(chip.isHealthy ? OGTheme.okLabel
-                                                                    : OGTheme.warnLabel)
-                            }
-                            .accessibilityLabel(chip.spoken)
-                        }
+                // FD P0: a green dot and the word CAM used to appear on `isStreaming`
+                // alone, which a paused or stalled stream also satisfies — so the one
+                // indicator on this card said the camera was fine in precisely the states
+                // it was not. The chip now carries the phase, and the dot is green only
+                // when pictures are actually flowing.
+                if isRealtime, let chip = appState.cameraService.readiness.statusChip {
+                    HStack(spacing: 3) {
+                        Circle().fill(chip.isHealthy ? OGTheme.ok : OGTheme.warn)
+                            .frame(width: statusDot, height: statusDot)
+                            .accessibilityHidden(true)
+                        Text(chip.label)
+                            .font(.system(.caption, design: .monospaced).weight(.bold))
+                            .foregroundStyle(chip.isHealthy ? OGTheme.okLabel
+                                                            : OGTheme.warnLabel)
                     }
+                    .accessibilityLabel(chip.spoken)
                 }
-
-                Spacer()
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-            // One stop, one sentence. Split across three Texts it read as "Listening…",
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            // One stop, one sentence. Split across several Texts it read as "Listening…",
             // "Voice middle dot Claude", "Camera streaming" — three swipes to assemble a fact
             // that is one glance for a sighted user. `.updatesFrequently` is the non-intrusive
             // half of the announcement design: VoiceOver re-reads this while focus is on it,
@@ -191,13 +179,6 @@ struct StatusIndicator: View {
             .accessibilityLabel(spokenStatus)
             .accessibilityAddTraits(.updatesFrequently)
 
-            // The wake phrase switched off somewhere else — Lock Screen, Control Center, a widget,
-            // Siri — while the card would otherwise still say "Ready" (`SessionCardWakeWordNotice`).
-            if SessionCardWakeWordNotice.shows(listeningEnabled: appState.listeningEnabled,
-                                               pushToTalk: pushToTalk) {
-                wakeWordOffNotice
-            }
-
             // Plan HY P1: a session that ended itself for want of the wearer says so, rather than
             // the card simply reading "Ready" with no account of where the session went.
             if let notice = liveEndNotice {
@@ -206,64 +187,55 @@ struct StatusIndicator: View {
                     .foregroundStyle(OGTheme.secondaryLabel)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
             }
 
             // Tool call / reconnecting
             if isGemini && session.toolCallStatus.isActive {
                 toolCallPill(session.toolCallStatus.displayText, color: accent)
-                    .padding(.bottom, 10)
+                    .padding(.top, 6)
             } else if !isRealtime && appState.llmService.toolCallStatus.isActive {
                 toolCallPill(appState.llmService.toolCallStatus.displayText, color: accent)
-                    .padding(.bottom, 10)
+                    .padding(.top, 6)
             }
 
             if isGemini && session.reconnecting {
-                reconnectingLabel.padding(.bottom, 10)
+                reconnectingLabel.padding(.top, 6)
             }
             if isOpenAI && openAISession.reconnecting {
-                reconnectingLabel.padding(.bottom, 10)
+                reconnectingLabel.padding(.top, 6)
             }
 
-            // An open job, running or paused (`SessionCardJobPill`). Its own row directly above
-            // the footer rather than inside it: the footer's one line is already spent at phone
-            // width — the mode badge and "Glasses attached" fill it between them — and a third
-            // capsule there would truncate the glasses pill's word or this one's, and "Job p…" is
-            // the one thing this pill must never be. Same capsule, same inset as the footer's
-            // pills, so it reads as one of them.
-            if jobPillPresentation != nil {
-                jobPill
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-            }
-
-            // Bottom row: active mode + the connection pills (formerly a separate band above
-            // the card — merged here so the home screen is one status surface, not two).
-            //
-            // Stacked at accessibility sizes: the badge on its own line, the pills under it. Sharing
-            // one line there left the persona name — one user-supplied word — too little width, and
-            // it broke mid-word ("Open-Glass-es"), with "Mode:" splitting from its colon a size
-            // later. The accessibility audit reports that as clipped text. `AnyLayout` rather than
-            // two branches, so the row's elements keep their identity across a text-size change;
-            // swapping subtrees reads to the audit as text that stopped scaling.
-            footerLayout {
+            // The pill row: the mode, then whatever is worth a tap — the wake word when it is off,
+            // an open job, the glasses when this phone has a pair, OpenClaw when it is set up.
+            // Formerly a footer plus two rows of their own; one flow now, which keeps every pill
+            // at its full word and moves a pill to a second line rather than cutting it ("Job p…"
+            // is the one thing the job pill must never read). At accessibility sizes the same
+            // flow simply wraps more — one layout throughout, so the pills keep their identity
+            // across a text-size change (swapping subtrees reads to the accessibility audit as
+            // text that stopped scaling).
+            PillFlowLayout(spacing: 6, lineSpacing: 0) {
                 activeModeBadge
-                if !typeSize.isAccessibilitySize {
-                    Spacer()
+                // The wake phrase switched off somewhere else — Lock Screen, Control Center, a
+                // widget, Siri — while the card would otherwise still say "Ready"
+                // (`SessionCardWakeWordNotice`).
+                if SessionCardWakeWordNotice.shows(listeningEnabled: appState.listeningEnabled,
+                                                   pushToTalk: pushToTalk) {
+                    wakeWordOffChip
                 }
+                // An open job, running or paused (`SessionCardJobPill`).
+                jobPill
                 glassesPill
                 if Config.isOpenClawConfigured {
                     openClawPill
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            // The pills now carry a full 44pt target, which is taller than the
-            // capsules they draw — so the row's own bottom padding comes off to
-            // pay for most of it and the card grows by a few points rather than
-            // by twenty.
-            .padding(.bottom, 4)
+            .padding(.horizontal, 12)
+            // The tappable pills carry a full 44pt target, taller than the capsules they draw,
+            // so the target is the row's breathing room and the row adds almost none of its own.
+            .padding(.bottom, 2)
         }
         .glassEffect(in: .rect(cornerRadius: 16))
         .padding(.horizontal, 20)
@@ -274,13 +246,26 @@ struct StatusIndicator: View {
         .accessibilityLabel("Session status")
     }
 
+    /// The status row's text: the state in the headline face, then the model in the caption face,
+    /// one run so it wraps as a sentence. An `AttributedString` rather than `Text` concatenation
+    /// (deprecated) or a localised format (a catalog key for two values the app already localises).
+    private var statusLine: AttributedString {
+        var state = AttributedString(statusLabel)
+        state.font = Font.system(.headline, design: .rounded).weight(.semibold)
+        state.foregroundColor = Color(.label)
+        var model = AttributedString("\u{2002}" + modeLabel)
+        model.font = Font.caption
+        model.foregroundColor = OGTheme.secondaryLabel
+        return state + model
+    }
+
     // MARK: - Connection pills (merged from the old StatusPillsRow)
 
-    /// `nil` when glasses have never been added — the footer then carries no glasses pill at all.
+    /// `nil` while this phone has no glasses added — the card then says nothing about glasses.
     private var glassesPillPresentation: SessionCardGlassesPill.Presentation? {
         SessionCardGlassesPill.presentation(link: appState.glassesPhase,
                                             stoodDown: appState.glassesStoodDown,
-                                            everAdded: appState.glassesAdded)
+                                            glassesSupported: GlassesSupportPolicy.isSupported)
     }
 
     @ViewBuilder
@@ -296,8 +281,7 @@ struct StatusIndicator: View {
                         .font(.caption)
                         .foregroundStyle(color)
                     // Hidden at accessibility sizes: the pill shrinks to the symbol alone rather
-                    // than forcing the footer row's `VStack` layout to find room for a sentence
-                    // beside "Mode: <persona>", which already claims its own line there.
+                    // than taking a line of the pill row for itself; the label still says it.
                     if !typeSize.isAccessibilitySize {
                         Text(presentation.word)
                             .font(.caption.weight(.medium))
@@ -314,7 +298,7 @@ struct StatusIndicator: View {
                 // The drawn capsule stays the size the signature draws it; what
                 // grows is the target around it. A pill that *looked* 44pt would be
                 // a different status card — this is the same card with a control a
-                // finger can actually land on, and it is the reason the footer row
+                // finger can actually land on, and it is the reason the pill row
                 // gave up its bottom padding above.
                 //
                 // A *floor*, and deliberately not a `@ScaledMetric` one. 44pt is an
@@ -376,8 +360,7 @@ struct StatusIndicator: View {
 
     /// The glasses pill's capsule, for the job. One difference: the word is never dropped at
     /// accessibility sizes. The glasses pill can fall back to its symbol because "glasses" is all
-    /// the symbol has to say; here the word *is* the news — running or paused — and the row is its
-    /// own, so it wraps instead.
+    /// the symbol has to say; here the word *is* the news — running or paused — so it wraps instead.
     @ViewBuilder
     private var jobPill: some View {
         if let presentation = jobPillPresentation {
@@ -449,20 +432,9 @@ struct StatusIndicator: View {
 
     // MARK: - Active Mode Badge
 
-    private var footerLayout: AnyLayout {
-        typeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
-            : AnyLayout(HStackLayout(spacing: 8))
-    }
-
-    /// The badge's own line break, for the same reason as the row's: at accessibility sizes the
-    /// name gets a line of its own under "Mode:", so it wraps at word boundaries or not at all.
-    private var badgeLayout: AnyLayout {
-        typeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
-            : AnyLayout(HStackLayout(spacing: 6))
-    }
-
+    /// The mode, as the first pill: dot, persona symbol, name. "Active mode:" / "Mode:" is no
+    /// longer drawn — the dot and the name's colour carry the state, and the line it cost was the
+    /// room the rest of the row needed — but VoiceOver still hears it, in the label.
     private var activeModeBadge: some View {
         let persona = appState.activePersona
         // No persona selected: the assistant's own name, which the wearer may have chosen. Read
@@ -481,37 +453,35 @@ struct StatusIndicator: View {
         let dotColor = dotFillColor(dot.tint)
         let nameColor = labelColor(dot.tint)
 
-        return badgeLayout {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: statusDot, height: statusDot)
-                    .accessibilityHidden(true)
-                Group {
-                    if icon == "AvenkinMark" {
-                        LogoIcon(size: pillGlyph)
-                    } else {
-                        Image(systemName: icon)
-                            .font(.caption.weight(.medium))
-                    }
-                }
-                .foregroundStyle(nameColor)
+        return HStack(spacing: 5) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: statusDot, height: statusDot)
                 .accessibilityHidden(true)
-                Text(isActive ? "Active mode:" : "Mode:")
-                    .font(.caption)
-                    .foregroundStyle(OGTheme.secondaryLabel)
-                    .fixedSize(horizontal: false, vertical: true)
+            Group {
+                if icon == "AvenkinMark" {
+                    LogoIcon(size: pillGlyph)
+                } else {
+                    Image(systemName: icon)
+                        .font(.caption.weight(.medium))
                 }
+            }
+            .foregroundStyle(nameColor)
+            .accessibilityHidden(true)
             Text(name)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(nameColor)
-                // The badge shares the footer row with the connection pills, and
-                // a persona name is user-supplied. Wrapping is the only honest
+                // A persona name is user-supplied. Wrapping is the only honest
                 // option: truncating loses the one word that says which mode is
                 // running.
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .accessibilityElement(children: .combine)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .glassEffect(in: .capsule)
+        // Not a control, so no 44pt target; the row's height comes from the pills that are.
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
         // Disconnected, the interpolation used to open with an empty string, so the line began
         // with a pause and read as " mode: OpenGlasses".
         .accessibilityLabel(isActive ? "Active mode: \(name)" : "Mode: \(name)")
@@ -744,11 +714,13 @@ struct StatusIndicator: View {
 
     // MARK: - Helpers
 
-    private var wakeWordOffNotice: some View {
+    /// The wake word is off and expected on (`SessionCardWakeWordNotice`): a chip in the pill row,
+    /// tinted like the card's other tappable text. One tap turns listening back on.
+    private var wakeWordOffChip: some View {
         Button {
             appState.setListeningEnabled(true)
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Image(systemName: "waveform.slash")
                     .accessibilityHidden(true)
                 Text(SessionCardWakeWordNotice.text)
@@ -756,11 +728,16 @@ struct StatusIndicator: View {
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(OGTheme.tintedAccentLabel(accent))
-            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .glassEffect(in: .capsule)
+            // The same 44pt floor as the glasses pill, for the same reasons (see there).
+            .frame(minWidth: OGMetrics.minTouchTarget, minHeight: OGMetrics.minTouchTarget)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 18)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(SessionCardWakeWordNotice.accessibilityLabel)
         .accessibilityHint(SessionCardWakeWordNotice.accessibilityHint)
     }

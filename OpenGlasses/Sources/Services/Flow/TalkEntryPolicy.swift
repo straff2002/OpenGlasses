@@ -77,8 +77,14 @@ enum SessionCardGlassesHeadline {
 ///
 /// Only when the wake phrase is *expected*: push-to-talk (`Config.silentMode`, the "Push-Talk"
 /// tile) is the wearer's own choice to talk by tapping, and the card says nothing extra then.
+///
+/// Drawn as a chip in the card's pill row rather than a full-width line of its own, so the card
+/// stays short and the conversation under it keeps the room. The chip is a button: one tap turns
+/// the wake phrase back on, as the line's did.
 enum SessionCardWakeWordNotice {
-    static let text = "Wake word off \u{2014} tap to turn on"
+    /// The chip's word — the state. It is tinted like the card's other tappable text, and the
+    /// VoiceOver hint names what the tap does.
+    static let text = "Wake word off"
     static let accessibilityLabel = "Wake word off"
     static let accessibilityHint = "Turns listening for the wake phrase back on."
 
@@ -205,11 +211,21 @@ enum SessionCardGlassesPill {
         let accessibilityHint: String
     }
 
-    /// `nil` when glasses have never been added (Plan FY P2) — the pill does not appear at all. A
-    /// pair nobody has ever added is not news.
+    /// Whether the card mentions glasses at all: only while this phone has a pair added — registered
+    /// or listed by the SDK — and only on a copy that offers glasses.
+    ///
+    /// Read from the live phase, not from `Config.glassesAdded`. That flag stays set forever once
+    /// any pair was registered, so a phone whose glasses had been removed went on saying "Glasses
+    /// away" on the main screen, about glasses that were no longer part of it. A pair nobody has
+    /// added (or that was removed) is not news.
+    static func shows(link: GlassesConnectionPhase, glassesSupported: Bool) -> Bool {
+        glassesSupported && link.glassesAdded
+    }
+
+    /// `nil` when `shows(link:glassesSupported:)` is false — the pill does not appear at all.
     static func presentation(link: GlassesConnectionPhase, stoodDown: Bool,
-                             everAdded: Bool) -> Presentation? {
-        guard everAdded else { return nil }
+                             glassesSupported: Bool) -> Presentation? {
+        guard shows(link: link, glassesSupported: glassesSupported) else { return nil }
 
         if link.isConnected {
             if stoodDown {
@@ -226,8 +242,7 @@ enum SessionCardGlassesPill {
                                 action: .none,
                                 accessibilityHint: "Glasses are linking up.")
         }
-        // `.addedDisconnected`, or `.noGlassesAdded` reached only through `Config.glassesAdded`
-        // (glasses that connected once, now unregistered) — either way: added, just not reachable.
+        // `.addedDisconnected`: added, just not reachable.
         return Presentation(word: "Glasses away", tint: .quiet, showsLiveDot: false,
                             action: .hint,
                             accessibilityHint: "Double-tap for help reconnecting the glasses.")
