@@ -121,6 +121,14 @@ struct Embedder {
         return backend?.embed(trimmed)
     }
 
+    /// Embed a question being searched with (Plan KQ). The same as `embed` for every model but one
+    /// trained for retrieval, which reads a question with its own prefix.
+    func embedQuery(_ text: String) -> [Float]? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return backend?.embedQuery(trimmed)
+    }
+
     /// Cosine similarity in [-1, 1]; 0 when dimensions differ or a vector is empty/zero.
     static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
         guard a.count == b.count, !a.isEmpty else { return 0 }

@@ -2,7 +2,7 @@
 # The local retrieval eval on a Mac, on the device's embedding model. See README.md.
 #
 #   RETRIEVAL_EVAL_VAULT=/path/to/vault RETRIEVAL_EVAL_ANSWER_KEY=/path/to/answers.jsonl \
-#     [RETRIEVAL_EVAL_WORKDIR=/path/outside/the/repo] [RETRIEVAL_EVAL_EMBEDDER=contextual] \
+#     [RETRIEVAL_EVAL_WORKDIR=/path/outside/the/repo] [RETRIEVAL_EVAL_EMBEDDER=contextual|eg2[:dim]] \
 #     [RETRIEVAL_EVAL_LABEL=name] [RETRIEVAL_EVAL_RECOGNISE=off|grid|words] Scripts/retrieval-eval/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -15,7 +15,7 @@ swiftc -O -parse-as-library -D RETRIEVAL_EVAL -target "$(uname -m)-apple-macos26
   "$here/main.swift" "$here/Stubs.swift" "$here/Tuning.swift" \
   "$root/OpenGlassesTests/RetrievalEval/RetrievalEvalCore.swift" \
   "$src/RAG/DocumentStore.swift" "$src/RAG/DocumentReconstructor.swift" "$src/RAG/DocumentChunker.swift" \
-  "$src/RAG/Embedder.swift" "$src/RAG/EmbeddingBackend.swift" "$src/RAG/EmbeddingVersion.swift" \
+  "$src/RAG/Embedder.swift" "$src/RAG/EmbeddingBackend.swift" "$src/RAG/CoreMLEmbeddingBackend.swift" "$here/SearchModel.swift" "$src/RAG/EmbeddingVersion.swift" \
   "$src/RAG/PassageLocation.swift" "$src/RAG/EmbeddingScript.swift" \
   "$src/Vault/VaultRetriever.swift" "$src/Vault/ClauseReference.swift" "$src/Vault/CodeTokenizer.swift" \
   "$src/Vault/LexicalSupport.swift" "$src/Vault/TermRule.swift" "$src/Vault/TermRuleStopwords.swift" \
