@@ -17,6 +17,8 @@ struct WeatherReport: Equatable, Sendable {
         var windKmh: Double
         /// 0...1, as WeatherKit reports it.
         var humidity: Double
+        /// WeatherKit's SF Symbol for the condition, for surfaces that draw it (Plan KS).
+        var symbolName: String? = nil
     }
 
     struct Day: Equatable, Sendable {
@@ -27,6 +29,8 @@ struct WeatherReport: Equatable, Sendable {
         var condition: WeatherCondition
         /// 0...1.
         var precipitationChance: Double
+        /// WeatherKit's SF Symbol for the day's condition.
+        var symbolName: String? = nil
     }
 
     struct Minute: Equatable, Sendable {

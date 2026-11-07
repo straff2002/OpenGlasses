@@ -15,6 +15,9 @@ targets:
       - path: OpenGlasses/Sources/Shared/GlanceSurface.swift
       - path: OpenGlasses/Sources/Shared/GlanceGeometry.swift
       - path: OpenGlasses/Sources/Shared/GlanceSurfaceCodec.swift
+      # Shared with iOS app (Plan KS) — the `today` payload (calendar items, weather, the weather
+      # credit), its codec, and the is-it-today / which-is-now rules. Foundation only.
+      - path: OpenGlasses/Sources/Shared/WatchToday.swift
     # The watch app writes listening/recording/connected state to the App Group suite and the
     # watch widget's complications read it back — two processes, so both need the group.
     entitlements:

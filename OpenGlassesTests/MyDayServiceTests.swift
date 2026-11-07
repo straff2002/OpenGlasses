@@ -20,6 +20,44 @@ final class MyDayServiceTests: XCTestCase {
         XCTAssertEqual(service.state, .loaded(snapshot))
     }
 
+    /// Plan KS: the watch's Today needs the calendar as gathered (end times, all-day, place) and
+    /// the weather report, which the composed rows no longer carry.
+    func testRefreshPublishesWhatItGatheredForTheWatch() async {
+        let now = Date(timeIntervalSince1970: 1_788_065_600)
+        let event = MyDayCalendarEvent(id: "event", title: "Stand-up", startDate: now.addingTimeInterval(900),
+                                       endDate: now.addingTimeInterval(1800), isAllDay: false, location: "Room 2")
+        let report = WeatherFixtures.report()
+        let sources = FakeDaySources(events: [event],
+                                     weather: .init(summary: "Rain.", isDecisionRelevant: true, report: report))
+        let service = MyDayService(calendarSource: sources, remindersSource: sources,
+                                   weatherSource: sources, sourceSelection: { .all })
+
+        _ = await service.refresh(now: now, channel: nil)
+
+        let gathered = try? XCTUnwrap(service.gathered)
+        XCTAssertEqual(gathered?.generatedAt, now)
+        XCTAssertEqual(gathered?.locked, false)
+        XCTAssertEqual(gathered?.events, [event])
+        XCTAssertEqual(gathered?.calendarState?.availability, .available)
+        XCTAssertEqual(gathered?.weather?.report, report)
+        XCTAssertTrue(gathered?.calendarIncluded == true && gathered?.weatherIncluded == true)
+    }
+
+    func testALockedRefreshGathersNothingAndSaysSo() async {
+        let event = MyDayCalendarEvent(id: "event", title: "Stand-up", startDate: Date(),
+                                       endDate: Date().addingTimeInterval(600), isAllDay: false, location: nil)
+        let sources = FakeDaySources(events: [event])
+        let service = MyDayService(calendarSource: sources, remindersSource: sources,
+                                   weatherSource: sources, sourceSelection: { .all })
+        service.protectedDataAvailable = { false }
+
+        _ = await service.refresh(channel: nil)
+
+        XCTAssertEqual(service.gathered?.locked, true)
+        XCTAssertEqual(service.gathered?.events, [])
+        XCTAssertEqual(sources.calendarLoadCount, 0)
+    }
+
     func testRefreshIsHonestWhenCalendarDenied() async {
         let sources = FakeDaySources()
         sources.calendarState = .denied(.calendar, message: "Calendar access is off.")

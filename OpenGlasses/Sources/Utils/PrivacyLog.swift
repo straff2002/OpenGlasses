@@ -2138,6 +2138,10 @@ enum PrivacyLog {
         /// case (`overBudget`, `encodingFailed`) and `count` the encoded bytes. Nothing about the
         /// card itself — no place name, no coordinate.
         case surfaceRefused
+        /// Plan KS. The watch's `today` value refused by its codec: `reason` is the case
+        /// (`overBudget`, `encodingFailed`), `count` the encoded bytes. Nothing about the day — no
+        /// title, place, time or temperature.
+        case todayRefused
         /// Plan KP §2. An answer card's page turn or press dropped because another frame (a
         /// notification, a clear) was enqueued after it was issued. `count` is how many frames
         /// came in between. Nothing about the card itself.

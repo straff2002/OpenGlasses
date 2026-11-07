@@ -80,6 +80,9 @@ struct WatchMainView: View {
                         // answer is what the wearer raised the wrist for.
                         WatchNowShowingRow(connectivity: connectivity, accent: accentColor)
 
+                        // Now Playing, today's calendar and the weather (Plan KS), one swipe apart.
+                        WatchTodayRow(connectivity: connectivity)
+
                         // The job in hand (Plan FO P3a). Read-only, and directly under the status,
                         // because on a service visit it is the thing being glanced at.
                         if let job = connectivity.job {

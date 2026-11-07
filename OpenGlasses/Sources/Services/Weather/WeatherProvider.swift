@@ -28,7 +28,8 @@ struct WeatherKitProvider: WeatherProviding {
                 apparentTemperatureC: current.apparentTemperature.converted(to: .celsius).value,
                 condition: current.condition,
                 windKmh: current.wind.speed.converted(to: .kilometersPerHour).value,
-                humidity: current.humidity
+                humidity: current.humidity,
+                symbolName: current.symbolName
             ),
             days: daily.forecast.prefix(4).map { day in
                 WeatherReport.Day(
@@ -36,7 +37,8 @@ struct WeatherKitProvider: WeatherProviding {
                     highC: day.highTemperature.converted(to: .celsius).value,
                     lowC: day.lowTemperature.converted(to: .celsius).value,
                     condition: day.condition,
-                    precipitationChance: day.precipitationChance
+                    precipitationChance: day.precipitationChance,
+                    symbolName: day.symbolName
                 )
             },
             minutes: minute.map { forecast in

@@ -40,6 +40,8 @@ final class WatchSurfacePublisher {
     private let session: WatchSessioning
     private let environment: Environment
     private let baseContext: () -> [String: Any]?
+    /// Today's calendar and weather (Plan KS), folded into every push like `surfaces`.
+    private let todayValue: () -> Data?
     private var held = GlanceSurfaceSet()
     private var busSubscription: AnyCancellable?
     private var expiryTask: Task<Void, Never>?
@@ -48,9 +50,11 @@ final class WatchSurfacePublisher {
     private(set) var lastPushedSet: GlanceSurfaceSet?
 
     init(session: WatchSessioning, environment: Environment = Environment(),
+         todayValue: @escaping () -> Data? = { nil },
          baseContext: @escaping () -> [String: Any]?) {
         self.session = session
         self.environment = environment
+        self.todayValue = todayValue
         self.baseContext = baseContext
     }
 
@@ -115,13 +119,14 @@ final class WatchSurfacePublisher {
         }
     }
 
-    /// Send the phone's status with the surfaces folded in. Skipped, before anything is gathered,
-    /// for a phone with no watch or a watch without the app.
+    /// Send the phone's status with the surfaces and today folded in
+    /// (`WatchApplicationContext.fold`). Skipped, before anything is gathered, for a phone with no
+    /// watch or a watch without the app.
     func push() {
         guard session.isActivated, session.isPaired, session.isWatchAppInstalled else { return }
-        guard var context = baseContext() else { return }
+        guard let base = baseContext() else { return }
         lastPushedSet = nil
-        if let value = contextValue() { context[Self.contextKey] = value }
+        let context = WatchApplicationContext.fold(base, surfaces: contextValue(), today: todayValue())
         try? session.updateApplicationContext(context)
         scheduleExpiry()
     }
