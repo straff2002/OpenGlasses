@@ -1,7 +1,25 @@
 # Plan KR — The Page It Says (one page per turn, the row marked, the size it read, guided work in the trade's words)
 
-**Status:** 📝 Drafted 2026-11-07 from the partner's retest on build 615 (2026-11-06: a furnace job and
-two electrical code-book jobs, gpt-6-luna, phone only). Nothing built. Seven owner decisions below.
+**Status:** 🚧 Drafted 2026-11-07 from the partner's retest on build 615 (2026-11-06: a furnace job and
+two electrical code-book jobs, gpt-6-luna, phone only). Owner decisions taken as recommended on
+2026-11-07 ("plan merged, build it"). **P1 and P2 built headless** on `feat/kr-page-it-says`: a tool
+round's rebuild stages no page, a page a tool put up stays for the turn, pages said in words are
+pages (a named page opens nothing by itself), a show-me with no object reopens the last source or
+asks, a show-me after a lookup this turn shows only that table, and `manual_figure` asked for the
+looked-up table opens it through `show_source`'s path, rows marked. **P0 measured** (simulator, the
+app's own import; findings kept local). **P3 and P4 built headless** on the same branch: an aught row
+says it is the size asked; the table hint reads the trade's words, demotes kilovolt-band tables for a
+question naming no voltage and names each table's conditions; a note-only heading yields, a heading
+heads only the columns it is centred over, and a column's own heading wins; "mm2" is "mm²"; a contents
+chunk is not a passage and a section named by its heading is carried on; a walk-through request starts
+the chosen chain, the refusal asks for a yes-or-no offer, and the list flags a column problem. **P5–P7
+built headless** on the same branch: a close the technician did not also ask the report of ends the
+turn on the outcome and billable time, "Done so far" leaves out what only read, and a Direct turn in
+flight when the app leaves the foreground finishes inside a background task; a rename reaches the
+job's title and the report heading, the report always says Vault-only on or off and the vault's
+settings screen shows it, two jobs in one conversation each print only their own part and keep their
+own AI turns, and a figure line says where the page went; every `van_stock` write ends with what the
+reply must say. **P1–P7 built headless; P8 device re-run owed.**
 **Track:** Field Assist. Every turn that opens a manual page; every table lookup; every rule chain;
 every job close; the support report.
 **Related:** Plan [GB](GB-field-test-round-3.md) P1 (`FigureAutoOpenPolicy`), Plan
@@ -94,6 +112,23 @@ vault's table catalogue and the tables these turns used, as extracted. On the Ma
 Output: an aggregate evidence note in this plan (counts and mechanisms only), and a corrected chain file
 for the partner, sent as a handover and never committed.
 
+**Measured 2026-11-07** (simulator, the app's own import of both editions; aggregate and generic only):
+- The hint for a plain aluminum-in-conduit sizing question named two medium-voltage buried-conduit
+  tables and a bonding table; the raceway table that answers it ranked sixth. The book prints
+  "raceway" where the technician says "conduit", the wrong tables print "conduit" and a "ground wire"
+  heading, and the right one shared only the material, the unit and "size". Asked in the book's own
+  words ("… in a raceway ampacity") there was no hint at all: "ampacity" was not a value word.
+- A temperature column whose heading line sat over only its own column took its note marker as its leaf,
+  and its heading spread over the two columns to its left as a middle level; the stub's heading
+  reached the first value column too.
+- A conduit-fill chain's area step was ambiguous over four columns because "mm2" did not match the
+  printed "mm²". Its fill-count step needs a heading row the extractor does not read; no chain-file
+  fix exists for it yet.
+- An aught size found its row (0000) by AWG form, and nothing in the result linked it to the asked size.
+- The furnace's sequence-of-operation section is fifteen chunks over three pages; asked for by name,
+  retrieval found its first chunk and a table-of-contents chunk; asked as "walk me through …", none
+  of it.
+
 ### P1 — One page per turn (findings 1–4)
 
 - The automatic figure is decided once, on the turn's first build of the Field Assist block. A refresh
@@ -101,8 +136,8 @@ for the partner, sent as a handover and never committed.
   `stagesFigure: Bool`; the refresh passes false).
 - A page a tool put up this turn (`manual_figure`, `show_source`, a lookup's table) is never replaced by
   the automatic path for the rest of the turn (`turnPages` or a turn flag on `FieldSessionService`).
-- `PageReference` reads spoken page numbers ("page three ninety-nine", "three hundred and ninety-nine",
-  "page four oh five", "page twelve") and keeps "printed" with the number. A turn that names a page
+- `PageReference` reads spoken page numbers ("page four twenty-seven", "four hundred and twenty-seven",
+  "page four oh eight", "page twelve") and keeps "printed" with the number. A turn that names a page
   presents nothing automatically; the page is `manual_figure`'s (`printed_page` when "printed" is said).
 - A show-me with no object ("show me", "show me the", "show me that", "show me it") reopens the last
   source the job cited (`lastShownFigure` or the noted lookup); with none, nothing opens and the model is
@@ -135,6 +170,29 @@ for the partner, sent as a handover and never committed.
 - Tests: the result line for an aught row; the hint over a catalogue of invented tables shaped like P0's
   (titles that differ by voltage band, no real cells).
 
+**Built 2026-11-07 (headless):**
+- `TableLookup.aughtNote`/`aughtReplyLine`: a row found by AWG basis reads "row 0000 (this table prints
+  4/0, four aught, as 0000: the size asked)", and the result says to give the size as the technician
+  said it. `mismatchLine` is unchanged and never fires on that basis.
+- `TableDirectory`: "ampacity", "ampacities" and "amperage" are value words. The hint's ranking
+  (`ranked(…, asTechnicianSaid: true)`, the hint only; `table_lookup`'s words are read as written)
+  counts "conduit" as "raceway" and "wire" as "conductor", and scores a kilovolt-band table at half
+  when the question names no voltage. `conditions(of:)` reads material, voltage band, where the
+  conductors run, how many, and ambient from a title (a kV band from the headings); the hint names
+  them per table and says to state the table and conditions assumed, and — when the offered tables
+  differ — to ask only the one that decides.
+- `TableExtractor`: a heading spreads over neighbouring columns only when it is centred over them
+  (`spanOffCentre`); a leaf that is only a note marker yields to the heading above it
+  (`withoutNoteLeaf`); a row-header column's heading is left out of a value column's path above its
+  own heading. `TableLookup` prefers, among columns matched alike, the one whose own heading (the
+  last that is not a note marker) holds the asked words, so tables already stored resolve too.
+- `TableLookup.tokens` folds ² and ³ to 2 and 3 on both sides.
+- Retrieval (added from P0): a chunk that is mostly table-of-contents lines is not a candidate
+  (`VaultRetriever.isContentsList`), and when the turn holds every content word of a passage's section
+  heading (three or more words), the section's following chunks follow that passage in order up to
+  4,200 characters (`continuingSection`, `DocumentStore.passages(after:)`, wired in `makeRetriever`).
+  A turn that names the heading but whose retrieval finds none of the section is not helped.
+
 ### P4 — Guided work in the trade's words (findings 9–10)
 
 - `TechnicianRequest` counts a guided-walk request as asking for the chain the model chose: "walk me
@@ -148,6 +206,14 @@ for the partner, sent as a handover and never committed.
 - Tests: invented sizing and fill requests, with and without walk-through words; the list line for a
   chain with an ambiguous column.
 
+**Built 2026-11-07 (headless):** `TechnicianRequest.asksToRunChain(_:chain:)` counts the walk-through
+words when the turn shares a task word of the chain's name (size, check, breaker, fit/fill, derate,
+voltage drop as both words; "check" alone only for a chain whose one task it is) and its material; a
+name with no known task word needs its other words said. `RuleChainTool.notAskedRefusal` asks for one
+yes-or-no offer by name and never words to say; a short yes after it starts the chain (KD P2,
+unchanged). The list marks a column problem "can't start: step N (name) names a column of Table X
+printed under more than one heading" (`listMark`).
+
 ### P5 — A close ends the turn, and a turn finishes when the phone is put away (finding 11)
 
 - `field_session end`'s result ends with the turn-end line: confirm in one sentence (outcome and billable
@@ -159,6 +225,27 @@ for the partner, sent as a handover and never committed.
   conversation and the next foreground says it's there.
 - Tests: a close followed by more tool calls stops after the end; the fallback over [end, status, activity]; the
   background-task wrapper through a seam.
+
+**Built 2026-11-07 (headless):**
+- `field_session end` returns `FieldSessionTool.endedResult`: when the turn's words did not also ask
+  for the report (`TechnicianRequest.asksForReport`: report, summary or a sending word), its last line
+  is `ToolTurnEnd.confirmLine` ("End of turn — confirm this … : Job closed: resolved, 45 min
+  billable."). `ToolTurnEnd` gained `.afterConfirming(summary:)`; the loop ends the round there, makes
+  the one request left with tools withheld, answers every later call as not run, and says the summary
+  if the model says nothing. Only `field_session`'s `end` may end a turn (`mayEndTurn(_ call:)`), not
+  its other actions, whose results carry vault and job text. With the report asked for, or no words
+  captured, the result is as before.
+- `ToolLoopBudget.spoken(from:readsOnly:)` skips a call that only read, through
+  `ProviderLoopAdapter.readsOnly`, which `LLMService.notingStalls` sets from `callEffect` for all five
+  providers. `field_session`'s "status", "list" and "vaults" are now read actions
+  (`ToolEffectClassifier.readActions`), so they count as reads for a hop too (KL P2).
+- `TurnBackgroundTime` (`Services/Flow`): the Direct turn and the photo turn call `turnBegan` and
+  `turnEnded`, the scene's background phase calls `appLeftForeground`, which claims one background
+  task through `BackgroundTaskRunning` (it gained `begin(name:onExpiry:)`; the system runner calls
+  it on expiry and ends the task in the handler, so the expiry is forgotten, never ended twice). A
+  reply whose speech did not complete (or a streamed reply, which reports no outcome) with the app
+  away is noted; the next active phase says "Your last answer is in the conversation." once. The
+  reply was already saved before it was spoken.
 
 ### P6 — The name, the setting and the report say what they mean (findings 12–13)
 
@@ -172,12 +259,35 @@ for the partner, sent as a handover and never committed.
 - "figure presented" lines say where it went: on the phone, to the model only, or nowhere.
 - Tests: two jobs in one thread export without overlap and each keeps its own turns; the title rule.
 
+**Built 2026-11-07 (headless):**
+- `setJobName` calls `onJobIdentityChanged`. `JobThreadTitle.title(reference:name:equipment:)` gives
+  "Job <reference> — <name>", or the name alone when it opens with the reference (or "Job
+  <reference>") as a whole word; the name stands in for the unit; with no name the rule is
+  unchanged. `isGenerated` also counts the name-alone form, so a later rename moves it; a title the
+  technician chose is still theirs. The report's job heading uses the same rule.
+- The Vault line reads "Vault: X · Vault-only: on|off". The vault's screen in Settings › Field Assist
+  (Reference Files → the vault, `VaultFilesEditorView`) has a read-only "Vault-only On/Off" row, "as
+  set by the vault".
+- `JobTranscriptExport.job(…, sharesThread:)` (the caller asks `sharesThread(_:among:)` over the
+  history) keeps only the thread's lines from the job's start to its end, a minute either side. AI
+  turns are claimed by session id for every job before any by thread, and by thread only a turn with
+  no session id inside the job's window when the thread is shared; a job alone in its thread is as
+  before.
+- A "figure presented" line ends "· on the phone", "· to the model only" or "· nowhere".
+
 ### P7 — What was done is said (finding 14)
 
 - A stock change, reading or task change made in a turn that also asks a question ends its result with
   the one line the reply must carry ("Say: one taken off the van"), like `set_job_reference`'s
   confirmation line. Scope: `van_stock` writes first (owner decision 7).
-- The Lennox section split from P0 goes to the retrieval rounds (KN/KO/KQ keys), not here.
+- The section split from P0 was added to P3 (a contents chunk is not a passage; a named section is
+  carried on). Measuring it on the retrieval keys is the KN/KO/KQ rounds'.
+
+**Built 2026-11-07 (headless):** every `van_stock` write that changed the van — load, use, remove,
+count, undo, a top-up to standard, a standard set, a part said not to be from the van — ends with one
+line, `VanStockService.saying(_:_:)`: "Say: 1 × <part> taken off the van for job <ref>. Put this in
+the reply, whatever else the technician asked this turn." Several parts in one call are one line.
+A read, a refusal and a write that matched nothing carry none. Scope: van stock only (decision 7).
 
 ### P8 — Device re-run (owed)
 
@@ -203,7 +313,8 @@ one conversation in the export.
 
 ## Not in this plan
 
-- The Lennox heating-sequence chunking and the post-repair checkout: retrieval, measured on the phone in
-  the KN/KO/KQ rounds.
+- The heating-sequence section beyond P3's two narrow fixes, and the post-repair checkout: retrieval,
+  measured on the phone in the KN/KO/KQ rounds (a turn naming the heading whose search finds none of
+  the section is still not helped).
 - The ignitor resistance: not in the manuals; the labelled web figure was the right answer.
 - The connected-glasses retest: P8.

@@ -37,6 +37,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// When tool definitions go on demand (Plan IU): `automatic`, `always` or `never`. Set and
     /// locked by the profile — the Settings row is then not the technician's to change.
     case organizationToolDefinitionsMode
+    /// The model Field Assist searches manuals with (Plan KQ P2b): `standard`, `smarter` or
+    /// `searchTrained`. Set and locked by the profile; the technician chooses otherwise. Pinned to
+    /// `searchTrained`, the phone still downloads the model once and searches with Smarter until then.
+    case organizationManualSearchModel
     /// The experts the organisation's technicians can call (Plan KM P0): a JSON array of
     /// `EscalationContact`, carried as one string. Set by the profile and, with a profile, by nothing
     /// else; with no profile the device owner sets the same key on the phone.
@@ -146,7 +150,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .workizReportFieldName: return .profileOwned(.string)
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
              .organizationReportTranscriptInternal, .organizationAccentColor, .technicianDisplayName, .capturedManualsPolicy,
-             .organizationToolDefinitionsMode, .technicianFullName, .technicianID, .organizationExperts,
+             .organizationToolDefinitionsMode, .organizationManualSearchModel, .technicianFullName, .technicianID, .organizationExperts,
              .expertHandoverTranscript, .expertHandoverRetentionDays:
             return .profileOwned(.string)
         case .expertHandoverIncludesAddress, .customerReportShowsExpertTime:
@@ -200,6 +204,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case (.organizationToolDefinitionsMode, .string(let raw)):
             // Deny by default: a mode this build does not know is a named drop, never a guess.
             return ToolDefinitionsMode(rawValue: raw) == nil ? "not one of automatic, always or never" : nil
+        case (.organizationManualSearchModel, .string(let raw)):
+            // Deny by default, as above: an unknown model is a named drop.
+            return ManualSearchModel(rawValue: raw) == nil ? "not one of standard, smarter or searchTrained" : nil
         case (.organizationExperts, .string(let text)):
             // Deny by default: one entry this build cannot read refuses the list, never half of it.
             if case .failure(let problem) = ExpertListCodec.decode(text) { return problem.message }

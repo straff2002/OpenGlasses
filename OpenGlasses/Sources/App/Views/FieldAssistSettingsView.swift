@@ -278,15 +278,23 @@ struct FieldAssistSettingsView: View {
                 // Three models, each falling back to the next until its own is on the phone;
                 // changing re-indexes the manuals once in the background, and search keeps the old
                 // index until the new one is complete.
+                // Plan KQ P2b: an organisation may pin the model. The choice is then read-only (and
+                // hidden from the technician), but a pinned Search-trained can still be downloaded.
+                let searchModelPresentation = adminGate.presentation(.key(.organizationManualSearchModel))
                 Section {
-                    Picker("Search with", selection: $manualSearchModel) {
-                        Text("Standard").tag(ManualSearchModel.standard)
-                        Text("Smarter").tag(ManualSearchModel.smarter)
-                        Text("Search-trained").tag(ManualSearchModel.searchTrained)
-                    }
-                    .onChange(of: manualSearchModel) { _, choice in
-                        Config.fieldAssistManualSearchModel = choice
-                        reindexManualsForSearchModel()
+                    if Config.organizationManualSearchModel == nil {
+                        Picker("Search with", selection: $manualSearchModel) {
+                            Text("Standard").tag(ManualSearchModel.standard)
+                            Text("Smarter").tag(ManualSearchModel.smarter)
+                            Text("Search-trained").tag(ManualSearchModel.searchTrained)
+                        }
+                        .onChange(of: manualSearchModel) { _, choice in
+                            Config.fieldAssistManualSearchModel = choice
+                            reindexManualsForSearchModel()
+                        }
+                    } else if searchModelPresentation.isShown {
+                        LabeledContent("Search with", value: manualSearchModel.label)
+                        ManagedLockNote(organization: ManagedLockReason.organization)
                     }
                     if manualSearchModel == .searchTrained {
                         searchModelRow
@@ -1461,6 +1469,17 @@ struct FieldAssistSettingsView: View {
 }
 
 // MARK: - Manual search model (Plan KQ P2)
+
+extension ManualSearchModel {
+    /// The name the Settings picker shows.
+    var label: String {
+        switch self {
+        case .standard: return String(localized: "Standard")
+        case .smarter: return String(localized: "Smarter")
+        case .searchTrained: return String(localized: "Search-trained")
+        }
+    }
+}
 
 extension FieldAssistSettingsView {
 

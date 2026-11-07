@@ -159,6 +159,24 @@ struct MyDayReminder: Equatable, Sendable {
 struct MyDayWeather: Equatable, Sendable {
     let summary: String
     let isDecisionRelevant: Bool
+    /// The report the summary was phrased from, for surfaces that draw numbers rather than speak a
+    /// sentence (the watch's Today weather, Plan KS). Nil from sources that have no report.
+    var report: WeatherReport? = nil
+}
+
+/// What one My Day refresh gathered, before the composer ranked and capped it (Plan KS). The
+/// watch's Today screens need the calendar as a calendar — start, end, all-day, place — which the
+/// composed card rows no longer carry.
+struct MyDayGathered: Equatable, Sendable {
+    let generatedAt: Date
+    /// The phone was locked, so nothing content-bearing was read.
+    let locked: Bool
+    let calendarIncluded: Bool
+    let events: [MyDayCalendarEvent]
+    let calendarState: MyDaySourceState?
+    let weatherIncluded: Bool
+    let weather: MyDayWeather?
+    let weatherState: MyDaySourceState?
 }
 
 enum MyDayTransportMode: String, CaseIterable, Codable, Equatable, Sendable {

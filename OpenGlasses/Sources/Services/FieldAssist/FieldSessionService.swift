@@ -422,6 +422,9 @@ final class FieldSessionService: ObservableObject {
         stagedFigure = nil
         lastShownFigure = nil
         lookedUpTableLabel = nil
+        lookupTurn = nil
+        toolPageTurn = nil
+        turnOpenNote = nil
         stagedDelivery = nil
         taskCue = nil
         deliveryLogger = logger
@@ -907,6 +910,9 @@ final class FieldSessionService: ObservableObject {
         }
         logger?.append(.init(timestamp: Date(), kind: .jobNameSet, text: trimmed,
                              payload: previous.assetId.map { ["previous": AnyCodable($0)] }))
+        // The job's conversation takes the name (Plan KR P6): it was stored and never reached the
+        // title.
+        onJobIdentityChanged?()
         return true
     }
 
@@ -1991,7 +1997,10 @@ final class FieldSessionService: ObservableObject {
                                                           accountID: ChatGPTOAuthService.shared.accountID)).context
     }
 
-    func promptContext(turn: String? = nil) -> String? {
+    /// `stagesFigure` is false for the rebuild after a tool round (`LLMService.refreshedFieldInstructions`):
+    /// the turn's automatic page is decided once, on its first build, and a rebuild keeps the
+    /// passages and stages nothing (Plan KR P1).
+    func promptContext(turn: String? = nil, stagesFigure: Bool = true) -> String? {
         guard let store = activeVault, hasCurrentWorkAccess,
               VaultRegistry.shared.isUnlocked(store.manifest) else { return nil }
         // What this turn is, for the page rules below and for `manual_figure` later in the turn.
@@ -2031,7 +2040,7 @@ final class FieldSessionService: ObservableObject {
         if let continuity = continuityContext(turn: turn) {
             context = (context.map { $0 + "\n\n" } ?? "") + continuity
         }
-        if let manuals = manualPassagesContext(turn: turn, store: store) {
+        if let manuals = manualPassagesContext(turn: turn, store: store, stagesFigure: stagesFigure) {
             context = (context.map { $0 + "\n\n" } ?? "") + manuals
         }
         // A paused job claims no conversation, and the model has to know that too: shown a job
@@ -2054,7 +2063,12 @@ final class FieldSessionService: ObservableObject {
 
     /// The `MANUAL PASSAGES` block for a turn, or nil when the vault has neither manuals nor
     /// published team learnings to retrieve from, or there is no turn to retrieve against.
-    func manualPassagesContext(turn: String?, store: VaultStore) -> String? {
+    ///
+    /// The page the turn opens by itself is decided here on the turn's first build only
+    /// (`stagesFigure`), and never once a tool put a page up this turn (Plan KR P1). On the retest
+    /// every tool round's rebuild put the search's page back over the one `manual_figure` had
+    /// opened, so the reply named one page and the phone showed another.
+    func manualPassagesContext(turn: String?, store: VaultStore, stagesFigure: Bool = true) -> String? {
         guard let documentStore,
               let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
         guard retrievableCorpus(store: store, documentStore: documentStore).any else { return nil }
@@ -2065,9 +2079,11 @@ final class FieldSessionService: ObservableObject {
         // answered by any passage in it, however well the words line up (Plan EL §3), so the block
         // becomes the scope sentence and the vault's rules relay it verbatim.
         var scopeNote: String?
+        // Whether this build decides the turn's page: its first, with no page a tool put up.
+        let decidesFigure = stagesFigure && !toolPutUpPageThisTurn
         switch equipmentScope(turn: searchTurn) {
         case .unknownEquipment(_, let sentence):
-            stageFigure(nil)
+            if decidesFigure { stageFigure(nil) }
             TurnRecorder.noteManualPassages([], refused: true)
             return VaultRetriever.promptBlock(.insufficient(reason: sentence))
         case .otherKnownModel(let token, let model):
@@ -2110,38 +2126,51 @@ final class FieldSessionService: ObservableObject {
         // asked for. Ranking is untouched — the passages below go to the model whatever is staged.
         // Read from what the turn found itself: a page added for the job's subject asked for
         // nothing to open.
-        let candidate = Self.bestFigure(in: ownOutcome.passages)
-        let passageKind = candidate.map { FigureAutoOpenPolicy.PassageKind($0.kind) }
-        var decision = FigureAutoOpenPolicy.decide(
-            turnKind: kind,
-            passageKind: passageKind,
-            tokenHits: candidate?.matchedTokens ?? [],
-            namedPages: PageReference.pages(in: searchTurn),
-            passagePage: candidate?.page)
-        // A table goes to the model as the turn's picture only under the label the technician
-        // named or table_lookup read, and no page under another label opens (Plan KD P3). The
-        // catalogue (for a table named by its title) is read only when a page would be staged.
-        if decision.stagesFigure {
-            decision = RetrievedFigureLabelGate.apply(
-                decision, passageKind: passageKind, passageLabel: candidate?.figure,
-                namedLabels: RetrievedFigureLabelGate.namedLabels(in: searchTurn,
-                                                                  catalogue: retriever.tableCatalogue?() ?? []),
-                lookedUpLabels: lookedUpTableLabel.map { [$0] } ?? [])
-        }
-        var staged = decision.stagesFigure ? makeStagedFigure(for: candidate, vaultId: store.manifest.id) : nil
-        staged?.origin = kind == .showMe ? .requested : .automatic
+        var openNote: String?
+        if decidesFigure, kind == .showMe, ManualTurnClassifier.hasNoObject(turn) {
+            // A show-me that names nothing (Plan KR P1): the last source shown or cited, not the
+            // search's guess — or nothing, and the model asks what to show.
+            openNote = reopenForObjectlessShowMe()
+        } else if decidesFigure {
+            let candidate = Self.bestFigure(in: ownOutcome.passages)
+            let passageKind = candidate.map { FigureAutoOpenPolicy.PassageKind($0.kind) }
+            var decision = FigureAutoOpenPolicy.decide(
+                turnKind: kind,
+                passageKind: passageKind,
+                tokenHits: candidate?.matchedTokens ?? [],
+                namedPages: PageReference.pages(in: searchTurn),
+                passagePage: candidate?.page)
+            // A table goes to the model as the turn's picture only under the label the technician
+            // named or table_lookup read, and no page under another label opens (Plan KD P3). The
+            // catalogue (for a table named by its title) is read only when a page would be staged.
+            if decision.stagesFigure {
+                decision = RetrievedFigureLabelGate.apply(
+                    decision, passageKind: passageKind, passageLabel: candidate?.figure,
+                    namedLabels: RetrievedFigureLabelGate.namedLabels(in: searchTurn,
+                                                                      catalogue: retriever.tableCatalogue?() ?? []),
+                    lookedUpLabels: lookedUpTableLabel.map { [$0] } ?? [],
+                    lookedUpThisTurn: lookedUpThisTurn)
+            }
+            var staged = decision.stagesFigure ? makeStagedFigure(for: candidate, vaultId: store.manifest.id) : nil
+            staged?.origin = kind == .showMe ? .requested : .automatic
 
-        // A code book opens when it is asked for through its citation (`show_source`), never off
-        // a turn's wording (Plan IN decisions 1 and 2). The passages still go to the model.
-        if let figure = staged, StandardDocumentOpenPolicy.keepsToRequest(
-            documentKind: StandardDocumentOpenPolicy.documentKind(of: figure.documentId, in: store.manifest)) {
-            staged = nil
+            // A code book opens when it is asked for through its citation (`show_source`), never off
+            // a turn's wording (Plan IN decisions 1 and 2). The passages still go to the model.
+            if let figure = staged, StandardDocumentOpenPolicy.keepsToRequest(
+                documentKind: StandardDocumentOpenPolicy.documentKind(of: figure.documentId, in: store.manifest)) {
+                staged = nil
+            }
+            staged?.presentOnPhone = decision.presentsOnPhone
+            stageFigure(staged)
+            logFigurePresentation(staged ?? candidate.flatMap { makeStagedFigure(for: $0, vaultId: store.manifest.id) },
+                                  decision: decision, turnKind: kind)
+        } else if let note = turnOpenNote, note.turn == turnKey() {
+            // A rebuild says what the first build put back, so the model is told it every round.
+            openNote = note.text
         }
-        staged?.presentOnPhone = decision.presentsOnPhone
-        stageFigure(staged)
-        logFigurePresentation(staged ?? candidate.flatMap { makeStagedFigure(for: $0, vaultId: store.manifest.id) },
-                              decision: decision, turnKind: kind)
+        if decidesFigure { turnOpenNote = openNote.map { (turnKey(), $0) } }
         var block = VaultRetriever.promptBlock(outcome, leadIn: disclosure?.leadIn)
+        if let openNote { block += "\n\n" + openNote }
         // A value a table would hold, asked in plain words with no table named (Plan JW P1b): the
         // passages rarely carry the table's rows, so name the one or two tables whose titles and
         // headings fit, for table_lookup to read. Nothing when no table clears the threshold.
@@ -2522,7 +2551,7 @@ final class FieldSessionService: ObservableObject {
         }
 
         let manualAvailable = VaultManualRemoval.availabilityCheck(forVault: vaultId, documentStore: documentStore, capturedCatalog:capturedManuals)
-        return VaultRetriever(query: { query, limit in
+        var retriever = VaultRetriever(query: { query, limit in
             searched.flatMap { space in
                 tagged(documentStore?.query(query, limit: limit, namespace: space.namespace,
                                             documentIds: ids(for: space)) ?? [], space)
@@ -2584,6 +2613,15 @@ final class FieldSessionService: ObservableObject {
                                                documentIds: ids(for: space), alsoWithin: within) ?? [], space)
             }
         }))
+        // A section the turn names carries on past the passage found in it (Plan KR P3): the
+        // manual's own chunks after it, read from the namespace that holds the document.
+        retriever.followingChunks = { passage, limit in
+            searched.filter { $0.source == .manual }.flatMap { space in
+                tagged(documentStore?.passages(after: passage.chunkIndex, documentId: passage.documentId,
+                                               namespace: space.namespace, limit: limit) ?? [], space)
+            }
+        }
+        return retriever
     }
 
     // MARK: - Team learnings at answer time (Plan FP P2)
@@ -2843,7 +2881,124 @@ final class FieldSessionService: ObservableObject {
     /// "show that again" reopened, though the technician had never seen it).
     func stageFigure(_ figure: StagedFigure?) {
         stagedFigure = figure
-        if let figure, figure.presentOnPhone { lastShownFigure = figure }
+        if let figure, figure.presentOnPhone { noteLastShown(figure) }
+    }
+
+    /// The figure "show that again" reopens, and when it went up against what the answers cited.
+    private func noteLastShown(_ figure: StagedFigure) {
+        lastShownFigure = figure
+        shownAtCitationsRevision = sourceCenter.citationsRevision
+    }
+
+    /// `sourceCenter.citationsRevision` when the phone last showed a page (Plan KR P1): a source
+    /// cited after it is the newer one.
+    private var shownAtCitationsRevision = 0
+
+    // MARK: One page per turn (Plan KR P1)
+
+    /// The turn in flight, keyed like a learning answer: the Direct turn's id, else the minute
+    /// (live modes).
+    func turnKey(now: Date = Date()) -> String {
+        turnSourceID ?? "live:\(Int(now.timeIntervalSince1970 / 60))"
+    }
+
+    /// The turn before the one in flight, for "right after a lookup" (Plan KR P2). Moved on
+    /// whenever `turnSourceID` names a new turn.
+    private(set) var previousTurnID: String?
+    private var currentTurnID: String?
+
+    private func turnSourceChanged() {
+        guard let id = turnSourceID, id != currentTurnID else { return }
+        previousTurnID = currentTurnID
+        currentTurnID = id
+    }
+
+    /// The turn in which a tool — `manual_figure`, `show_source` — put a page on the phone. For
+    /// the rest of that turn the automatic path stages nothing over it.
+    private var toolPageTurn: String?
+
+    /// Whether a tool put a page up this turn. Only a Direct turn, which has an id, is a turn
+    /// here: the minute a live mode is keyed by is not one, and its prompt has no per-turn page.
+    var toolPutUpPageThisTurn: Bool { turnSourceID != nil && toolPageTurn == turnSourceID }
+
+    private func noteToolPage() { toolPageTurn = turnKey() }
+
+    /// What the turn's first build told the model about a page it put back, repeated on rebuilds.
+    private var turnOpenNote: (turn: String, text: String)?
+
+    /// The turn `table_lookup` last read a table in.
+    private var lookupTurn: String?
+
+    /// The table `table_lookup` read in the turn in flight, if any: the only label a retrieved page
+    /// may open under on the phone this turn (`RetrievedFigureLabelGate`).
+    var lookedUpThisTurn: [String] {
+        guard let label = lookedUpTableLabel, turnSourceID != nil, lookupTurn == turnSourceID else { return [] }
+        return [label]
+    }
+
+    /// Whether the last table lookup was in this turn or the one before (Plan KR P2): what
+    /// `manual_figure` with no figure or page means "that table".
+    var lookupIsRecent: Bool {
+        guard lookedUpTableLabel != nil, let lookupTurn else { return false }
+        return lookupTurn == turnKey() || lookupTurn == previousTurnID
+    }
+
+    /// Whether a table lookup noted its citations after the phone last showed a page (Plan KR P2):
+    /// what `manual_figure` 'again' brings back is then the table with its rows marked.
+    var lookupIsLatestSource: Bool {
+        lookedUpTableLabel != nil && sourceCenter.lookupRevision > 0
+            && (lastShownFigure == nil || sourceCenter.lookupRevision > shownAtCitationsRevision)
+    }
+
+    /// What the model is told when a show-me named nothing and nothing has been shown or cited.
+    static let nothingToReopenNote = """
+        SHOW ME: the technician asked to see something without saying what, and nothing has been \
+        shown or cited on this job to bring back. Nothing was opened: ask what they want to see.
+        """
+
+    /// "Show me", "show me the", "show me that": put back the last source this job showed or
+    /// cited, else stage nothing. Returns what the model is told.
+    private func reopenForObjectlessShowMe() -> String {
+        guard let reopened = reopenLastSource() else {
+            stageFigure(nil)
+            return Self.nothingToReopenNote
+        }
+        logFigurePresentation(reopened.figure, decision: .present(reason: .reopenedLastSource), turnKind: .showMe)
+        return reopened.note
+    }
+
+    /// Put the last source back on the phone: the page last shown, unless an answer or a lookup
+    /// cited something after it, in which case the last answer's first source, marked as
+    /// `show_source` marks it. Nil when the job has shown and cited nothing (Plan KR P1).
+    func reopenLastSource() -> (figure: StagedFigure, note: String)? {
+        let citedSinceShown = lastShownFigure == nil || sourceCenter.citationsRevision > shownAtCitationsRevision
+        if !citedSinceShown, let figure = restageLastFigure(origin: .requested) {
+            return (figure, Self.reopenedNote(figure))
+        }
+        if !sourceCenter.memory.citations.isEmpty {
+            let opened = ShowSourceTool(documentStore: documentStore, sessionService: self, currentUtterance: { nil })
+                .open(which: nil, document: nil, session: self)
+            if let first = opened.pages.first {
+                stageForModelOnly(first)
+                return (first, "SHOW ME: the technician asked to see it without saying what, so the app opened the "
+                        + "last source cited. " + opened.reply)
+            }
+        }
+        if let figure = restageLastFigure(origin: .requested) { return (figure, Self.reopenedNote(figure)) }
+        return nil
+    }
+
+    private static func reopenedNote(_ figure: StagedFigure) -> String {
+        "SHOW ME: the technician asked to see it without saying what, so the app put back \(figure.citation), "
+            + "the last page shown. Say that is what's on the phone."
+    }
+
+    /// Hand a page `ShowSourceCenter` is presenting to the model as the turn's picture, without
+    /// opening the single-page sheet over the center's.
+    func stageForModelOnly(_ figure: StagedFigure) {
+        var attached = figure
+        attached.presentOnPhone = false
+        stageFigure(attached)
     }
 
     /// The pages `manual_figure` has put up this turn (Plan KE P2).
@@ -2854,7 +3009,9 @@ final class FieldSessionService: ObservableObject {
     /// what "show that again" reopens. Keyed like a learning answer: the Direct turn's id, else the
     /// minute (live modes).
     func stageTurnPage(_ figure: StagedFigure, now: Date = Date()) {
-        let pages = turnPages.adding(figure, turn: turnSourceID ?? "live:\(Int(now.timeIntervalSince1970 / 60))")
+        let pages = turnPages.adding(figure, turn: turnKey(now: now))
+        // A tool put this page up: nothing automatic replaces it this turn (Plan KR P1).
+        noteToolPage()
         guard pages.count > 1 else {
             stageFigure(figure)
             return
@@ -2870,7 +3027,8 @@ final class FieldSessionService: ObservableObject {
     /// A page `show_source` put on the phone, which it presents itself rather than through the
     /// staging: it is what "show that again" reopens (Plan KD P3).
     func noteShownOnPhone(_ figure: StagedFigure) {
-        lastShownFigure = figure
+        noteLastShown(figure)
+        noteToolPage()
     }
 
     /// The table `table_lookup` read (Plan KD P3). A later lookup replaces it; the session's end
@@ -2879,6 +3037,7 @@ final class FieldSessionService: ObservableObject {
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         lookedUpTableLabel = trimmed
+        lookupTurn = turnKey()
     }
 
     /// Put the session's last figure back on the turn ("show me that figure again").
@@ -2888,7 +3047,7 @@ final class FieldSessionService: ObservableObject {
         if last.documentId.hasPrefix("captured:") {
             guard capturedManuals.historical(citation: last.documentTitle) != nil,
                   manufacturerPDFURL(for: last) != nil else { return nil }
-            last.origin = origin; last.presentOnPhone = true; stageFigure(last)
+            last.origin = origin; last.presentOnPhone = true; stageFigure(last); noteToolPage()
             return last
         }
         // Put back on the phone, whatever the turn that found it did with it (Plan GB P1).
@@ -2905,6 +3064,8 @@ final class FieldSessionService: ObservableObject {
             return nil
         }
         stagedFigure = last
+        shownAtCitationsRevision = sourceCenter.citationsRevision
+        noteToolPage()
         return last
     }
 
@@ -3374,7 +3535,9 @@ final class FieldSessionService: ObservableObject {
     ///
     /// Read when a team learning is filed, so the turn that filed it can be withheld from the
     /// model's view of the job exactly — see `TeamLearningTurnWithholding`.
-    var turnSourceID: String?
+    var turnSourceID: String? {
+        didSet { turnSourceChanged() }
+    }
 
     /// `manual_lookup` searches that found nothing, in the turn in flight — keyed like a
     /// learning answer: the Direct turn's id, else the minute (live modes).

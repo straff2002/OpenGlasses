@@ -304,11 +304,14 @@ final class VanStockHandoverTests: XCTestCase {
 
     func testAStandardSetByVoiceIsThisTrucksOwnAndZeroClearsIt() {
         service.takeOver(.init(van: nil, log: van, exportedAt: nil, lineCount: 4, shortfalls: 1, needCounting: 0, refusals: []))
+        // Plan KR P7: the change ends with what the reply must say.
         XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: 1)),
-                       "The standard load for this truck is now 1 × Inducer motor.")
+                       "The standard load for this truck is now 1 × Inducer motor.\n"
+                       + "Say: the standard load set to 1 × Inducer motor. Put this in the reply, whatever else the technician asked this turn.")
         XCTAssertEqual(store.log.item(id: "motor")?.standardSetBy, .van)
         clock = time(1)
-        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: 0)), "Inducer motor has no standard load now.")
+        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: 0)),
+                       "Inducer motor has no standard load now.\nSay: no standard load for Inducer motor now. Put this in the reply, whatever else the technician asked this turn.")
         XCTAssertNil(store.log.item(id: "motor")?.standard)
         XCTAssertTrue(service.setStandard(.init(description: "inducer motor")).contains("Say how many"))
     }

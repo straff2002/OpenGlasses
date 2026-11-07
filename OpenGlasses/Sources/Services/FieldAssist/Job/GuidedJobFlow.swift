@@ -630,10 +630,10 @@ final class GuidedJobFlow: ObservableObject {
               let threadId = session.conversationThreadId,
               !session.conversationThreadDetached,
               let reference = session.jobReference,
-              let title = JobThreadTitle.title(reference: reference,
+              let title = JobThreadTitle.title(reference: reference, name: session.assetId,
                                                equipment: session.equipment?.stated) else { return }
         store.applyJobTitle(title, to: threadId) { existing in
-            JobThreadTitle.isGenerated(existing, reference: reference)
+            JobThreadTitle.isGenerated(existing, reference: reference, name: session.assetId)
         }
     }
 

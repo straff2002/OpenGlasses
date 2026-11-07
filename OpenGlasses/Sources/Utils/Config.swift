@@ -671,7 +671,14 @@ struct Config {
 
     /// All saved model configurations. Persisted in the Keychain because each
     /// `ModelConfig` embeds a provider `apiKey` (see `KeychainService`).
+    ///
+    /// The decoded list is kept in memory for as long as nothing has written to the Keychain since
+    /// it was read (`savedModelsCache`), so the many readers that ask for it, the active model, or
+    /// a role on every render don't each pay for a Keychain query and a decode.
     static var savedModels: [ModelConfig] {
+        // Noted before the read, so a write that lands during it leaves this copy stale.
+        let generation = KeychainService.writeGeneration
+        if let cached = savedModelsCache.value(at: generation) { return cached }
         guard let data = KeychainService.data(for: modelsKey),
               var models = try? JSONDecoder().decode([ModelConfig].self, from: data),
               !models.isEmpty else {
@@ -692,8 +699,14 @@ struct Config {
             }
         }
         if needsSave { setSavedModels(models) }
+        // A migration above wrote, so this copy is already stale and the next read decodes once
+        // more; nothing is kept for the legacy path, which has no stored list to be a copy of.
+        savedModelsCache.store(models, at: generation)
         return models
     }
+
+    /// The last decoded `savedModels`, valid while `KeychainService.writeGeneration` is unchanged.
+    private static let savedModelsCache = GenerationCache<[ModelConfig]>()
 
     /// Pre-configured Apple Intelligence model — zero setup, on-device.
     static let appleIntelligenceDefault = ModelConfig(
@@ -4264,15 +4277,26 @@ struct Config {
     /// contextual model above, the default) or Search-trained (downloaded when chosen). Before a
     /// choice is stored it reads the old switch, so no install changes model on upgrade, and
     /// setting it keeps the old switch in step (on for anything but Standard).
+    /// An organisation's profile pin wins (Plan KQ P2b); the setter only ever writes the wearer's own.
     static var fieldAssistManualSearchModel: ManualSearchModel {
-        get {
-            ManualSearchModel.resolve(stored: UserDefaults.standard.string(forKey: "fieldAssistManualSearchModel"),
-                                      legacySmarter: fieldAssistContextualSearchEnabled)
-        }
+        get { organizationManualSearchModel ?? userManualSearchModel }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: "fieldAssistManualSearchModel")
             fieldAssistContextualSearchEnabled = newValue != .standard
         }
+    }
+
+    /// The wearer's own choice, whatever the organisation pinned.
+    static var userManualSearchModel: ManualSearchModel {
+        ManualSearchModel.resolve(stored: UserDefaults.standard.string(forKey: "fieldAssistManualSearchModel"),
+                                  legacySmarter: fieldAssistContextualSearchEnabled)
+    }
+
+    /// The model the organisation's profile pins, or nil — no profile, or one that does not say.
+    /// Written only by a profile; there is no setter on purpose.
+    static var organizationManualSearchModel: ManualSearchModel? {
+        let stored = UserDefaults.standard.string(forKey: "organizationManualSearchModel") ?? ""
+        return ManualSearchModel(rawValue: PolicyEnvelope.string(.organizationManualSearchModel, stored: stored))
     }
 
     // MARK: - Model pricing overrides (Plan AU — Settings editor)

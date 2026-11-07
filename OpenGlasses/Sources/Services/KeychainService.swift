@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 
 /// Thin wrapper around the iOS Keychain for storing small secrets — provider
@@ -63,6 +64,20 @@ enum KeychainService {
         status == errSecInteractionNotAllowed || status == errSecAuthFailed
     }
 
+    // MARK: - Write generation
+
+    /// Advances after every write or delete made through this type, once the Keychain call has
+    /// returned. A reader that keeps a decoded copy of an item (see `Config.savedModels`) notes
+    /// the generation *before* it reads and treats the copy as current only while the generation
+    /// is unchanged, so a write that lands mid-read is never mistaken for the value it replaced.
+    static var writeGeneration: UInt64 { generation.withLock { $0 } }
+
+    private static let generation = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+
+    private static func noteWrite() {
+        generation.withLock { $0 &+= 1 }
+    }
+
     // MARK: - Throwing Data
 
     /// Read raw data, distinguishing "no item" (`nil`) from "cannot read right now" (throws
@@ -88,6 +103,7 @@ enum KeychainService {
 
     /// Store raw data under an explicit accessibility class. Empty data deletes the item.
     static func writeData(_ data: Data, for key: String, accessibility: Accessibility) throws {
+        defer { noteWrite() }
         try deleteItem(key)
         guard !data.isEmpty else { return }
 
@@ -109,6 +125,7 @@ enum KeychainService {
     static func upsertDataAtomically(_ data: Data, for key: String,
                                      accessibility: Accessibility) throws {
         guard !data.isEmpty else { throw KeychainError.writeFailed(errSecParam) }
+        defer { noteWrite() }
         let lookup: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: storageService,
@@ -136,6 +153,7 @@ enum KeychainService {
 
     /// Remove an item, throwing on anything other than success or a missing item.
     static func deleteItem(_ key: String) throws {
+        defer { noteWrite() }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: storageService,
@@ -175,6 +193,7 @@ enum KeychainService {
     /// Returns `true` on success (including the delete-on-empty case).
     @discardableResult
     static func setData(_ data: Data?, for key: String) -> Bool {
+        defer { noteWrite() }
         // Delete first so a re-set always replaces cleanly (matches the pattern
         // in ConversationEncryptionService and avoids errSecDuplicateItem).
         delete(key)
@@ -216,6 +235,7 @@ enum KeychainService {
     /// Remove the item for a key. Returns `true` if it was removed or did not exist.
     @discardableResult
     static func delete(_ key: String) -> Bool {
+        defer { noteWrite() }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: storageService,

@@ -85,10 +85,12 @@ enum ResponsesTranslator {
         return body
     }
 
-    /// Chat-format history → Responses input items.
+    /// Chat-format history → Responses input items. Messages another provider wrote (Anthropic
+    /// blocks, Gemini parts) are put into the chat shape first (`CrossProviderHistory`), so an
+    /// Anthropic `tool_use`/`tool_result` exchange arrives as a `function_call` and its output.
     static func inputItems(history: [[String: Any]]) -> [[String: Any]] {
         var items: [[String: Any]] = []
-        for message in history {
+        for message in CrossProviderHistory.normalisedHistory(history, for: .openAIChat) {
             let role = message["role"] as? String ?? "user"
             switch role {
             case "tool":

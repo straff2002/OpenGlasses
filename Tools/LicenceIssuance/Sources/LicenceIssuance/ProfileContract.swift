@@ -131,6 +131,8 @@ public enum ProfileContract {
                                              "tools", "connections", "capture", "display", "advanced", "diagnostics"]
     /// `ManagedLockdown.pinnedOpen` — never locked by an organisation.
     public static let pinnedOpenCategoryIds: Set<String> = ["accessibility", "look-and-feel", "diagnostics"]
+    /// The models `organizationManualSearchModel` may pin — `ManualSearchModel`'s raw values in the app.
+    public static let knownManualSearchModels: Set<String> = ["standard", "smarter", "searchTrained"]
     /// The trades `fieldAssistDefaultTrades` may name — `FieldTrade`'s raw values.
     public static let knownTrades: Set<String> = ["refrigeration_hvac", "electrical"]
     /// `AdminSecrets.iterationRange` in the app: fewer is too cheap to brute-force, more stalls the phone.
@@ -158,6 +160,7 @@ public enum ProfileContract {
         "supportReportEmail": "default:string",
         "organizationAccentColor": "owned:string",
         "organizationToolDefinitionsMode": "owned:string",
+        "organizationManualSearchModel": "owned:string",
         "accentColorName": "default:string",
         "refrigerationUnits": "default:string",
         "fieldAssistDefaultTrades": "default:strings",
@@ -177,6 +180,10 @@ public enum ProfileContract {
         default:
             guard setting.disposition == "default" else { throw Invalid(message: "\(key) may only be a default") }
             if setting.value.typeName != parts[1] { throw Invalid(message: "\(key) takes a \(parts[1])") }
+        }
+        if key == "organizationManualSearchModel", case .string(let model) = setting.value,
+           !knownManualSearchModels.contains(model) {
+            throw Invalid(message: "organizationManualSearchModel is \(model), which is not one of \(knownManualSearchModels.sorted().joined(separator: ", "))")
         }
         if key == "fieldAssistDefaultTrades", case .strings(let trades) = setting.value {
             for trade in trades where !knownTrades.contains(trade) {

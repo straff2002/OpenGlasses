@@ -21,6 +21,28 @@ with no date beats an old alias, and 3.8 Live is sent no thinking level (the doc
 omitted). No new host or path is called. Owed: the device checklist below; live list checks for the providers other than OpenAI and Anthropic (docs-based, by
 owner decision); the open questions below; Images later (Design 12). The strings from P0–P2 were
 synced into the catalog in 13 languages on 2026-10-30.
+**P3:** 🚧 built 2026-11-07 — the Vision handoff sends a history the Vision model accepts. From
+the owner's Field Assist turn that day (build of main plus Plan KQ P2a, a refrigerator vault, glasses
+attached, ChatGPT as the assistant, Claude Sonnet as the Vision model): two questions in a row
+failed with `Anthropic error 400: messages: Unexpected role "tool"`. Root cause, read from the
+phone's own log: no fallback fired. Each question matched smart camera's deictic `"that is"`
+("…tell me what that is"), so a glasses frame went with it, and a photo turn goes to the chosen
+Vision model by design (Design 10; the ChatGPT subscription never takes photos). The second
+question took the frame because the stream from the first was still live. The turn before them had
+run `manual_lookup` on ChatGPT, and the shared history kept its result as the chat shape's
+`role: "tool"` message, which the Anthropic request sent raw. Two fixes: a pure
+`CrossProviderHistory` converts, for each request, every message the target provider cannot read
+into its shape — chat `tool_calls`/`tool` ↔ Anthropic `tool_use`/`tool_result` paired by id
+(position where none), Gemini parts in either, image blocks between the three, a call left
+unanswered given the interrupted result, a result whose call is not in the request turned into
+text; Gemini takes a foreign exchange as text. Messages already in the target's shape go out
+byte for byte, and the stored history is not rewritten. It runs in `requestHistory(for:)`
+(Anthropic, Chat Completions, the OpenAI Responses route, Gemini) and in
+`ResponsesTranslator.inputItems` (ChatGPT); a conversion logs `historyConverted` with counts. And
+smart camera (Plan [JW](JW-vault-test-findings.md)'s `SmartCameraPolicy`) no longer takes a frame
+for a turn that names a fault code ("E4 error", "error 21") or the manuals while there are manuals
+to search, unless it names the camera or something in front of the wearer. The routing itself
+stands: a photo turn still goes to the Vision model. Owed: a device re-run of the reported turns.
 **P1:** 🚧 built 2026-10-30 — roles. `ModelRoleCatalog` (pure, tested headless) decides which
 roles a saved key offers (its provider's transports, less any its loaded list shows it can't do),
 each role's candidates across every saved key plus the on-phone options (Kokoro and the iOS voice,

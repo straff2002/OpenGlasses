@@ -21,6 +21,10 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     /// status and the surfaces always travel together.
     private(set) var surfacePublisher: WatchSurfacePublisher?
 
+    /// Today's calendar and weather on the wrist (Plan KS), folded into every push by the surface
+    /// publisher.
+    private(set) var todayPublisher: WatchTodayPublisher?
+
     /// The state the wrist shows, watched so the watch hears about a change it did not cause.
     private var stateObservers: Set<AnyCancellable> = []
 
@@ -53,9 +57,20 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         session.delegate = self
         session.activate()
         self.session = session
-        let publisher = WatchSurfacePublisher(session: session) { [weak self] in self?.statusContext() }
+        let today = WatchTodayPublisher(
+            environment: .init(
+                watchAppInstalled: { session.isPaired && session.isWatchAppInstalled },
+                sourceAccessReady: { [weak self] in self?.appState?.myDaySourceAccessReady ?? false }),
+            refresh: { [weak self] in _ = await self?.appState?.myDayService.refresh(channel: nil) },
+            onChange: { [weak self] in self?.sendStatusUpdate() })
+        todayPublisher = today
+        let publisher = WatchSurfacePublisher(
+            session: session,
+            todayValue: { [weak today] in today?.contextValue() },
+            baseContext: { [weak self] in self?.statusContext() })
         if let bus = appState?.glanceSurfaces { publisher.observe(bus) }
         surfacePublisher = publisher
+        if let myDay = appState?.myDayService { today.start(observing: myDay) }
         PrivacyLog.device(.watch, .sessionActivated)
         observeState()
     }
@@ -88,7 +103,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     }
 
     /// The phone's status as the watch reads it: flat keys, plus `job` while a job is open. The
-    /// surface publisher adds `surfaces`.
+    /// surface publisher adds `surfaces` and `today`.
     private func statusContext() -> [String: Any]? {
         guard let appState else { return nil }
 
@@ -190,6 +205,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
             self.refreshWatchAppInstalled(session)
             // A watch app installed since the last push has not seen the status or a card yet.
             self.sendStatusUpdate()
+            self.todayPublisher?.refreshIfDue()
         }
     }
 
@@ -226,7 +242,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             case "toggleRecord":
                 if appState.transcriptionService.isRecording {
-                    appState.transcriptionService.stopRecording()
+                    await appState.transcriptionService.stopRecordingAfterTail()
                 } else {
                     appState.wakeWordService.stopListening()
                     appState.transcriptionService.startRecording()
@@ -360,8 +376,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
             case "toggleRecord":
                 let isRecording = appState.transcriptionService.isRecording
                 if isRecording {
-                    // Stop transcription-only recording
-                    appState.transcriptionService.stopRecording()
+                    // Stop transcription-only recording, hearing out the last word
+                    await appState.transcriptionService.stopRecordingAfterTail()
                     PrivacyLog.device(.watch, .commandHandled,
                                       command: PrivacyToken("toggleRecord"), success: false)
                     replyHandler([

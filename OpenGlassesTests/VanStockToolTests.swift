@@ -110,7 +110,8 @@ final class VanStockToolTests: XCTestCase {
             entry(["description": "45/5 capacitor", "quantity": 6]),
         ]])
         let lines = answer.components(separatedBy: "\n")
-        XCTAssertEqual(lines.count, 2)
+        XCTAssertEqual(lines.count, 3, "two lines read back, then what the reply says (Plan KR P7)")
+        XCTAssertTrue(lines[2].hasPrefix("Say: 4 × flame sensor (62-23543-01) put on the van; 6 × 45/5 capacitor put on the van."), lines[2])
         XCTAssertTrue(lines[0].hasPrefix("Loaded 4 × flame sensor (62-23543-01). 4 × flame sensor (62-23543-01) on the van now."), lines[0])
         XCTAssertTrue(lines[0].contains("new line"), lines[0])
         XCTAssertFalse(lines[0].contains("dash"), "a verified number is not spelled out")
@@ -208,7 +209,8 @@ final class VanStockToolTests: XCTestCase {
         clock.addTimeInterval(60)
         job = .init(sessionID: "session-1", reference: "job-2031")
         let answer = try await run(["action": "use", "description": "igniter"])
-        XCTAssertEqual(answer, "Used 1 × Igniter on job job-2031. 1 left.")
+        XCTAssertEqual(answer, "Used 1 × Igniter on job job-2031. 1 left.\n"
+                       + "Say: 1 × Igniter taken off the van for job job-2031. Put this in the reply, whatever else the technician asked this turn.")
         XCTAssertEqual(store.log.movements.last?.jobSessionID, "session-1")
         XCTAssertEqual(store.log.movements.last?.kind, .used)
     }
@@ -259,7 +261,7 @@ final class VanStockToolTests: XCTestCase {
         _ = try await run(["action": "load", "description": "Igniter", "quantity": 9])
         clock.addTimeInterval(60)
         let counted = try await run(["action": "count", "description": "igniter", "quantity": 5])
-        XCTAssertEqual(counted, "Counted: 5 × Igniter on the van.")
+        XCTAssertEqual(counted, "Counted: 5 × Igniter on the van.\nSay: Igniter counted: 5 on the van. Put this in the reply, whatever else the technician asked this turn.")
         clock.addTimeInterval(3_600)
         let check = try await run(["action": "check", "description": "igniter"])
         XCTAssertTrue(check.hasPrefix("5 × Igniter on the van — counted today at"), check)

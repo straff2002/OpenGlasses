@@ -5,7 +5,7 @@ three open items: page reads are not camera turns, table values through `table_l
 me" marking only the cited table's rows; a rename on launch measured and left out); P1b built 2026-10-28
 (finding a table from plain words: a table directory scored on titles, headings and units names one
 or two tables beside a value question that names none, and `table_lookup` reads title words through
-it); P1 = partner re-run. Drafted 2026-10-27 from the partner's three
+it); P1 = partner re-run. Follow-up 2026-11-07 (with Plan [KA](KA-model-kinds-across-providers.md) P3): with manuals to search, a turn naming a fault code ("E4 error", "error 21") or the manuals takes no frame (`SmartCameraPolicy.asksToLookUpInManuals`) — "tell me what that is" after a code had matched the deictic `"that is"`. Drafted 2026-10-27 from the partner's three
 structured vault test sessions on build 564 (2026-10-26). No later build changes any of it:
 nothing merged between 564 and 570 touches table reading, page labels, `show_source`, the smart
 camera or `rule_chain`.

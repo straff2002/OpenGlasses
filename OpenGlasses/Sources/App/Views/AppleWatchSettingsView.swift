@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Settings › Devices & Privacy › Apple Watch (Plan GM): what the phone shows on the wrist.
+/// Settings › Devices & Privacy › Apple Watch (Plans GM, KS): what the phone shows on the wrist.
 struct AppleWatchSettingsView: View {
     @State private var mapCards = Config.watchMapCards
+    @State private var today = Config.watchTodayEnabled
 
     var body: some View {
         Form {
@@ -18,6 +19,20 @@ struct AppleWatchSettingsView: View {
                 }
             } footer: {
                 Text(Self.footer(for: mapCards))
+            }
+
+            Section {
+                Toggle("Today on Your Watch", isOn: $today)
+                    .onChange(of: today) { _, newValue in
+                        Config.watchTodayEnabled = newValue
+                        let manager = WatchConnectivityManager.shared
+                        manager.todayPublisher?.valueMayHaveChanged()
+                        if newValue { manager.todayPublisher?.refreshIfDue() }
+                    }
+            } footer: {
+                Text(today
+                     ? "Your next few events and today\u{2019}s weather, from My Day, on your watch beside Now Playing. They go only to your own watch, over the connection between your iPhone and your watch. With Medical Compliance on, the watch shows times but no event names or places."
+                     : "Nothing from your calendar or the weather is sent to your watch. Now Playing still works on the watch.")
             }
         }
         .navigationTitle("Apple Watch")

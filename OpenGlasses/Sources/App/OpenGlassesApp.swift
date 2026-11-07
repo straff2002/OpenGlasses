@@ -687,6 +687,8 @@ struct OpenGlassesApp: App {
                 AssistingService.shared.appWillResignActive()
                 // Plan JM P1: a transcript under review has nothing left to be read on.
                 appState.pendingTranscriptAppDidEnterBackground()
+                // Plan KR P5: a turn in flight finishes inside a background task.
+                appState.turnBackgroundTime.appLeftForeground()
                 appState.skillPackSideload.handleBackground()
                 appState.orgEnrolment.handleBackground()
                 appState.officeCommissioning.handleBackground()
@@ -724,6 +726,8 @@ struct OpenGlassesApp: App {
                 appState.prepareWaitingRecordings()
                 // A press of the "Ask Avenkin" control that brought the app forward.
                 appState.takePendingAskRequest(trigger: "active")
+                // Plan KR P5: a reply that finished unheard while the app was away is mentioned.
+                appState.sayReplyWaitingIfAny()
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
                 // brought back — but it runs the same gate, so a session the wearer stopped stays
                 // stopped and a repeated activation does not stack a second start on the first.
@@ -1997,7 +2001,8 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             return JobTranscriptExport.job(
                 session: session, vaultName: session.vaultId, thread: thread,
-                events: SessionLogger.readEvents(at: FieldSessionService.shared.sessionDirectory(sessionId: session.id))).lines
+                events: SessionLogger.readEvents(at: FieldSessionService.shared.sessionDirectory(sessionId: session.id)),
+                sharesThread: JobTranscriptExport.sharesThread(session, among: FieldSessionService.shared.history)).lines
         }
         EscalationCoordinator.shared.sends = jobSends
         // A tap on that notification lands on the Jobs list, where the send card is (Plan HC). The
@@ -2282,6 +2287,14 @@ class AppState: ObservableObject, AppStateProtocol {
     let nativeToolRegistry: NativeToolRegistry
     let nativeToolRouter: NativeToolRouter
     var myDayService: MyDayService { nativeToolRegistry.myDayService }
+
+    /// Every My Day source a refresh reads has had its permission answered, so a refresh nobody
+    /// asked for — a scheduled briefing, the watch's Today (Plan KS) — cannot put a sheet up.
+    var myDaySourceAccessReady: Bool {
+        let included = MyDaySourceSelection.current
+        return (!included.calendar || eventKitStore.calendarAuthorizationIsResolved)
+            && (!included.reminders || eventKitStore.remindersAuthorizationIsResolved)
+    }
     /// Installed skill packs (Plan BX). Actions merge into the registry below; re-merge after any
     /// install/remove/enable change via `refreshSkillPackTools()`.
     let skillPackStore: SkillPackStore
@@ -2593,6 +2606,9 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self, self.isProcessing else { return }
             self.speechService.startThinkingSound()
         })
+    /// Plan KR P5: a Direct turn in flight when the app leaves the foreground finishes inside a
+    /// background task, and a reply it could not speak while away is mentioned on return.
+    let turnBackgroundTime = TurnBackgroundTime()
     /// Whether `sendTextMessage` would take a turn now. It returns silently otherwise, so anything
     /// that records a turn as having happened must ask this first (Plan KH P1).
     var acceptsTypedTurn: Bool { !isProcessing && !spokenTurnGate.isReserved }
@@ -3597,6 +3613,15 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             await PassageLocationMigration.run(store: documentStore)
             VaultEmbeddingUpgrade.start(store: documentStore)
+        }
+        // Plan KQ P2b: a profile that pins (or stops pinning) the manual-search model moves the
+        // vaults as the Settings picker would; a pass with nothing to do changes nothing.
+        NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak documentStore] _ in
+            guard let documentStore else { return }
+            Task { @MainActor in
+                if Config.fieldAssistManualSearchModel == .searchTrained { await SearchModelRuntime.load() }
+                VaultEmbeddingUpgrade.start(store: documentStore)
+            }
         }
         StudyService.shared.configure(llm: llmService, documentStore: documentStore, tts: speechService, camera: cameraService)
 
@@ -4647,10 +4672,7 @@ class AppState: ObservableObject, AppStateProtocol {
             UIApplication.shared.isProtectedDataAvailable
         }
         myDayDelivery.sourceAccessReady = { [weak self] in
-            guard let self else { return false }
-            let included = MyDaySourceSelection.current
-            return (!included.calendar || self.eventKitStore.calendarAuthorizationIsResolved)
-                && (!included.reminders || self.eventKitStore.remindersAuthorizationIsResolved)
+            self?.myDaySourceAccessReady ?? false
         }
         myDayDelivery.onDelivery = { [weak self] slot, text, shouldSpeak, identifier in
             guard let self else { return }
@@ -7258,8 +7280,12 @@ class AppState: ObservableObject, AppStateProtocol {
     /// button and any explicit Push-to-Talk end. Stops the recorder (which otherwise
     /// only ends on silence) and resets conversation state.
     func endListeningSession() {
-        transcriptionService.stopRecording()
-        Task { await returnToWakeWord() }
+        // The press often lands on the last word: capture runs on for a beat so it is heard, and
+        // the turn's release (its tone, the engine down) waits for that, so the tone is not in it.
+        Task {
+            await transcriptionService.stopRecordingAfterTail()
+            await returnToWakeWord()
+        }
     }
 
     /// Whether the current conversation was started by an explicit user tap (not wake word).
@@ -7506,6 +7532,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 var photoCaptured = false
                 self.didNarrateModelSwitchThisTurn = false
 
+                self.turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
                 self.currentLLMTask = Task { [self] in
                     await ConversationTurnRunner.run(.init(
                         send: {
@@ -7557,8 +7584,9 @@ class AppState: ObservableObject, AppStateProtocol {
                             guard self.conversationReset.isCurrent(turnGeneration) else { return }
                             // Start wake word listener during TTS so user can say "stop"
                             self.startStopListener()
-                            await self.speechService.speak(response, source: .reply)
+                            let outcome = await self.speechService.speakReporting(response, source: .reply)
                             self.stopStopListener()
+                            self.noteReplySpoken(.reported(outcome))
                         },
                         onCancelled: {
                             PrivacyLog.app(.turnCancelled, detail: PrivacyToken("photo"))
@@ -7584,6 +7612,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         finish: {
                             self.isProcessing = false
                             self.speechService.stopThinkingSound()
+                            self.turnBackgroundTime.turnEnded()
                             await self.resumeListeningOrReturnToWakeWord(ensureEngine: true)
                         },
                         waitForAnnouncement: { await self.turnAnnouncement.waitUntilSpoken() },
@@ -7682,8 +7711,9 @@ class AppState: ObservableObject, AppStateProtocol {
     private func expectsCameraImage(for query: String) -> Bool {
         guard Config.hasVisionCapableModel else { return false }
         let context = smartCameraContext
-        // Plan JW P0: "show me the table" with cited pages to show is `show_source`'s turn.
-        if SmartCameraPolicy.isAboutCitedPages(query, context: context) { return false }
+        // Plan JW P0: "show me the table" with cited pages to show is `show_source`'s turn, and a
+        // fault code to look up in the manuals is the manuals' turn.
+        if SmartCameraPolicy.isManualTurn(query, context: context) { return false }
         if cameraService.readinessNow.hasFreshVisualEvidence { return true }
         let behavior = Config.activePresetCameraBehavior
         if behavior == "always" { return true }
@@ -7696,10 +7726,13 @@ class AppState: ObservableObject, AppStateProtocol {
     /// What smart camera knows about a turn beyond its words (Plan JW P0): whether the last answer
     /// cited manual pages `show_source` can open — in the active Field Assist session, or in the
     /// personal library's scope, which is where `ShowSourceCenter` keeps them — and whether a manual
-    /// page sheet is open on the phone now (Plan JW P1a). Read by `look_closely` and `vision_assess`
-    /// too, so the camera tools and smart camera decide alike.
+    /// page sheet is open on the phone now (Plan JW P1a), and whether there are manuals to look a
+    /// fault code up in (a Field Assist vault or the personal library). Read by `look_closely` and
+    /// `vision_assess` too, so the camera tools and smart camera decide alike.
     var smartCameraContext: SmartCameraPolicy.Context {
         var context = SmartCameraPolicy.Context(manualPageOnScreen: manualFigureRequest != nil)
+        context.manualsToSearch = (Config.fieldAssistActive && FieldSessionService.shared.activeVault != nil)
+            || (PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
         let memory = ShowSourceCenter.shared.memory
         guard !memory.citations.isEmpty, let scope = memory.sessionId else { return context }
         let session = FieldSessionService.shared
@@ -7723,9 +7756,10 @@ class AppState: ObservableObject, AppStateProtocol {
         if requiresVisionModel, !Config.hasVisionCapableModel { return nil }
 
         // Plan JW P0: a turn asking to see the cited pages takes no frame of any kind — not the
-        // live one, not a capture, not the cooldown's follow-up.
+        // live one, not a capture, not the cooldown's follow-up. Nor does a fault code to look up
+        // in the manuals there are to search.
         let context = smartCameraContext
-        if SmartCameraPolicy.isAboutCitedPages(query, context: context) { return nil }
+        if SmartCameraPolicy.isManualTurn(query, context: context) { return nil }
 
         // Already have a live frame? Use it (cheapest path).
         if let existing = currentVisionFrameDataIfAvailable(scope: scope,
@@ -8012,6 +8046,25 @@ class AppState: ObservableObject, AppStateProtocol {
             atSpendCap: llmService.timelineSpendCapReached())
         let pass = timelineSummaryPass
         Task { @MainActor in await pass.run(turn, settings: settings) }
+    }
+
+    /// Plan KR P5: how a Direct turn's reply ended, for `TurnBackgroundTime`. Whether it went
+    /// unheard is `TurnBackgroundTime.replyWentUnheard`: a reply the wearer muted or silenced is
+    /// not, and a streamed one (no outcome) only when it finished with the app away on the phone's
+    /// own speaker or earpiece.
+    func noteReplySpoken(_ delivery: TurnBackgroundTime.ReplyDelivery) {
+        let away = UIApplication.shared.applicationState == .background
+        let worn = TurnBackgroundTime.routePlaysWhileAway(
+            AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType))
+        let unheard = TurnBackgroundTime.replyWentUnheard(delivery, appInBackground: away, routePlaysWhileAway: worn)
+        turnBackgroundTime.replyFinished(spoken: !unheard, appInBackground: away)
+    }
+
+    /// Plan KR P5: the app is in front again; a reply that finished unheard while it was away is
+    /// mentioned once.
+    func sayReplyWaitingIfAny() {
+        guard let notice = turnBackgroundTime.appReturnedToForeground() else { return }
+        Task { await speechService.speak(notice, source: .statusNotice) }
     }
 
     func handleTranscription(_ transcript: String) async {
@@ -8327,6 +8380,8 @@ class AppState: ObservableObject, AppStateProtocol {
         let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId)
         // Plan KP P1: this reply's sentences collect into one answer card on the glasses.
         hudAnswerCard.beginTurn()
+        // Plan KR P5: the turn finishes even if the phone goes in a pocket now.
+        turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
 
         // Run the turn inside a tracked, cancellable task (Plan BG P2). Barge-in / stop / cancel
         // cancel it, so a normal text turn no longer speaks its now-stale response after the user
@@ -8503,12 +8558,16 @@ class AppState: ObservableObject, AppStateProtocol {
                         hudAnswerCard.finishTurn(reply: response)
                         await replyStream.finish(reply: response)
                         releaseReplyStreamStopListener(replyStream)
+                        // A streamed reply reports no outcome: away from the screen on the
+                        // phone's own speaker, it counts as unheard, and the conversation holds it.
+                        noteReplySpoken(.streamed(stoppedByWearer: replyStream.wasStopped))
                         return
                     }
                     // Start wake word listener during TTS so user can say "stop"
                     startStopListener()
-                    await speechService.speak(response, source: .reply)
+                    let outcome = await speechService.speakReporting(response, source: .reply)
                     stopStopListener()
+                    noteReplySpoken(.reported(outcome))
                 },
                 onCancelled: { [self] in
                     _ = nativeToolRouter.takeTurnToolNames()
@@ -8537,6 +8596,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // After responding, stay in conversation — listen for follow-up
                     isProcessing = false
                     speechService.stopThinkingSound()
+                    turnBackgroundTime.turnEnded()
                     // Plan GE: a route change that waited for this turn applies now.
                     await connectivityHandoff.turnEnded()
                     await resumeListeningOrReturnToWakeWord(ensureEngine: true)

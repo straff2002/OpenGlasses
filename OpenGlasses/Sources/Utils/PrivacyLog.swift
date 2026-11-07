@@ -1666,6 +1666,11 @@ enum PrivacyLog {
         // by its native name (any other is `other`), with its declared effect. Never an argument
         // or a result.
         case hopAfterTools, hopToolRan
+        // A request's history held messages another provider wrote (a photo turn on the Vision
+        // model, a hop, a change of model) and they were converted for it: the provider, how many
+        // messages were converted out of how many sent, and the shape (`anthropic`, `openAIChat`,
+        // `gemini`) as the detail. Counts only, never a message.
+        case historyConverted
     }
 
     /// How an utterance was classified. The utterance itself, and the classifier's free-form
@@ -2133,6 +2138,10 @@ enum PrivacyLog {
         /// case (`overBudget`, `encodingFailed`) and `count` the encoded bytes. Nothing about the
         /// card itself — no place name, no coordinate.
         case surfaceRefused
+        /// Plan KS. The watch's `today` value refused by its codec: `reason` is the case
+        /// (`overBudget`, `encodingFailed`), `count` the encoded bytes. Nothing about the day — no
+        /// title, place, time or temperature.
+        case todayRefused
         /// Plan KP §2. An answer card's page turn or press dropped because another frame (a
         /// notification, a clear) was enqueued after it was issued. `count` is how many frames
         /// came in between. Nothing about the card itself.
@@ -2295,6 +2304,9 @@ enum PrivacyLog {
         case operationSettledLate, chatReadbackUnconfigured, powerPosture
         case quickDisconnect
         case screenAppeared, screenDisappeared, tabSelected, listUpdated, memoryWarning
+        /// Plan KR P5: a Direct turn's background time — `detail` is "began", "ended", "expired"
+        /// or "replyWaiting" (the reply finished unspoken while the app was away).
+        case turnBackgroundTime
     }
 
     /// `detail` and `state` are fixed app vocabularies — a routing tier, a command label, a power

@@ -173,6 +173,10 @@ struct ProviderLoopAdapter {
     /// layer as silence. Off where `finalize` throws: that throw hops to the next model at once, and
     /// on a degraded provider an extra request first is a wait the technician hears.
     var asksAgainWhenSilent = false
+    /// Whether a call only read (Plan KR P5): its tool's declared effect, or the read action of a
+    /// tool declared by its write. A read is not something done, so the words a turn ends in when
+    /// the model has none of its own leave it out. Nil counts every call as a change.
+    var readsOnly: ((ToolInvocation) -> Bool)? = nil
 }
 
 /// Whether the request being built is the loop's wrap-up, which offers the model no tool.
@@ -273,7 +277,8 @@ func runToolLoop(
                 }
                 if toolsHaveAnswered {
                     setStatus(.idle)
-                    return try adapter.finalize(AssistantTurn(text: ToolLoopBudget.spoken(from: turnOutcomes)))
+                    return try adapter.finalize(AssistantTurn(
+                        text: ToolLoopBudget.spoken(from: turnOutcomes, readsOnly: adapter.readsOnly)))
                 }
             }
             let text = try adapter.finalize(turn)
@@ -337,7 +342,7 @@ func runToolLoop(
             // A result that ends the turn (Plan KD P2): nothing after it in this round runs, and
             // no further round is offered.
             if case .completed(let text) = outcome.outcome,
-               ToolTurnEnd.mayEndTurn(outcome.invocation.name), let end = ToolTurnEnd.parse(text) {
+               ToolTurnEnd.mayEndTurn(outcome.invocation), let end = ToolTurnEnd.parse(text) {
                 for unrun in turn.toolCalls.dropFirst(index + 1) {
                     outcomes.append(ToolDispatchOutcome(
                         invocation: unrun,
@@ -353,6 +358,11 @@ func runToolLoop(
                     return try adapter.finalize(AssistantTurn(text: words))
                 case .afterReply(let question):
                     endedOnQuestion = question
+                    break rounds
+                case .afterConfirming(let summary):
+                    // A close (Plan KR P5): confirmed in words, with tools withheld, and the
+                    // summary is what is said if the model says nothing.
+                    endedOnQuestion = summary
                     break rounds
                 }
             }
@@ -427,7 +437,7 @@ func runToolLoop(
                                 yieldReason: nil)
         })
     }
-    let fallback = endedOnQuestion ?? ToolLoopBudget.spoken(from: turnOutcomes)
+    let fallback = endedOnQuestion ?? ToolLoopBudget.spoken(from: turnOutcomes, readsOnly: adapter.readsOnly)
     return try adapter.finalize(AssistantTurn(text: said.isEmpty ? fallback : said))
 }
 
@@ -446,17 +456,40 @@ enum ToolTurnEnd: Equatable {
     /// The turn ends on these words, said and shown exactly as the tool wrote them; the model is
     /// not asked again.
     case saying(String)
+    /// The model confirms what was done in one sentence, with every tool withheld, and the turn
+    /// ends there (Plan KR P5: a job close). `summary` is what is said when the model says nothing.
+    case afterConfirming(summary: String)
 
     /// The only tools whose results may end the turn. A marker line in anything else — a web page,
     /// a document, a gateway or MCP result — is text like any other: honouring it would let that
     /// content end the turn and have its own words said aloud without the model reading them.
-    static let tools: Set<String> = ["rule_chain"]
+    static let tools: Set<String> = ["rule_chain", "field_session"]
 
     static func mayEndTurn(_ tool: String) -> Bool { tools.contains(tool) }
+
+    /// Whether this call's result may end the turn: any `rule_chain` call, and `field_session`'s
+    /// `end` only (Plan KR P5). Its other actions carry vault and job text the app did not write
+    /// for this purpose — a recalled note, a vault's name — so a marker in them ends nothing.
+    static func mayEndTurn(_ call: ToolInvocation) -> Bool {
+        guard mayEndTurn(call.name) else { return false }
+        guard call.name == "field_session" else { return true }
+        return (call.arguments?["action"] as? String)?.lowercased() == "end"
+    }
 
     /// Opens the line that ends the turn on a question; the question follows it.
     static let afterReplyPrefix = "End of turn — ask the technician this and stop; their answer comes in "
         + "their next turn, and no tool runs until then: "
+
+    /// Opens the line that ends the turn on a confirmation (Plan KR P5): the model says it in one
+    /// sentence, with every tool withheld; the summary follows it and is said if the model says
+    /// nothing.
+    static let confirmPrefix = "End of turn — confirm this to the technician in one sentence and call no "
+        + "other tool; anything more waits for their next turn: "
+
+    /// The line a result ends with to end the turn on a confirmation of `summary`.
+    static func confirmLine(_ summary: String) -> String {
+        confirmPrefix + summary
+    }
 
     /// The line before words that are said word for word.
     static let sayingLine = "Say this to the technician word for word, and nothing else; the turn ends with it:"
@@ -479,9 +512,15 @@ enum ToolTurnEnd: Equatable {
             let words = lines[(marker + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
             return words.isEmpty ? nil : .saying(words)
         }
-        for line in lines where line.hasPrefix(afterReplyPrefix) {
-            let question = String(line.dropFirst(afterReplyPrefix.count)).trimmingCharacters(in: .whitespaces)
-            return question.isEmpty ? nil : .afterReply(question: question)
+        for line in lines {
+            if line.hasPrefix(afterReplyPrefix) {
+                let question = String(line.dropFirst(afterReplyPrefix.count)).trimmingCharacters(in: .whitespaces)
+                return question.isEmpty ? nil : .afterReply(question: question)
+            }
+            if line.hasPrefix(confirmPrefix) {
+                let summary = String(line.dropFirst(confirmPrefix.count)).trimmingCharacters(in: .whitespaces)
+                return summary.isEmpty ? nil : .afterConfirming(summary: summary)
+            }
         }
         return nil
     }
@@ -614,10 +653,16 @@ enum ToolLoopBudget {
     /// distinct successful result, in the order they came, after "Done so far: ". Only when
     /// nothing succeeded is it the canned sentence — which used to replace everything the tools
     /// had returned, so a technician who had just closed a task heard only that it had stopped.
-    static func spoken(from outcomes: [ToolDispatchOutcome]) -> String {
+    ///
+    /// A call that only read is left out (Plan KR P5): a status or a day's activity count is not
+    /// something done, and the partner's close ended on the day's activity count. With nothing but
+    /// reads, it is the canned sentence too.
+    static func spoken(from outcomes: [ToolDispatchOutcome],
+                       readsOnly: ((ToolInvocation) -> Bool)? = nil) -> String {
         var seen: Set<String> = []
         var sentences: [String] = []
         for outcome in outcomes {
+            if let readsOnly, readsOnly(outcome.invocation) { continue }
             guard case .completed(let text) = outcome.outcome,
                   let sentence = firstSentence(of: text),
                   seen.insert(sentence).inserted else { continue }

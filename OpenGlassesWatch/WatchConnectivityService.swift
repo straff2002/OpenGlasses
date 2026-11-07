@@ -36,6 +36,10 @@ class WatchConnectivityService: NSObject, ObservableObject {
     @Published var surfaceTaps: Int = 0
     /// The card the last tap was for, so a repeat of the same context does not tap again.
     private var tappedSurfaceId: String?
+    /// Today's calendar and weather as the phone resolved them (Plan KS). Nil when the phone sent
+    /// none; the Today pages then say to open the app on the iPhone. Whether it is still today is
+    /// the views' call, against the watch's own clock (`WatchTodayFreshness`).
+    @Published var today: WatchTodayPayload?
 
     // Debounce: false→true immediately, true→false after 2 s
     private var reachabilityDebounceTask: Task<Void, Never>?
@@ -331,6 +335,9 @@ extension WatchConnectivityService: WCSessionDelegate {
             self.job = nil
         }
         applySurfaces(applicationContext[GlanceWire.contextKey] as? Data)
+        // An absent key clears it, as for `job` and `surfaces`.
+        let todayValue = (applicationContext[WatchTodayWire.contextKey] as? Data).flatMap(WatchTodayCodec.decode)
+        if todayValue != today { today = todayValue }
         // Persist to app group for complications
         self.persistSharedState()
     }

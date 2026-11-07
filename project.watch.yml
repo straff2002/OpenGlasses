@@ -15,6 +15,9 @@ targets:
       - path: OpenGlasses/Sources/Shared/GlanceSurface.swift
       - path: OpenGlasses/Sources/Shared/GlanceGeometry.swift
       - path: OpenGlasses/Sources/Shared/GlanceSurfaceCodec.swift
+      # Shared with iOS app (Plan KS) — the `today` payload (calendar items, weather, the weather
+      # credit), its codec, and the is-it-today / which-is-now rules. Foundation only.
+      - path: OpenGlasses/Sources/Shared/WatchToday.swift
     # The watch app writes listening/recording/connected state to the App Group suite and the
     # watch widget's complications read it back — two processes, so both need the group.
     entitlements:
@@ -30,7 +33,7 @@ targets:
         # project.local.yml when rebranding, or Watch install fails.
         WK_COMPANION_APP_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.11"
-        CURRENT_PROJECT_VERSION: "652"
+        CURRENT_PROJECT_VERSION: "655"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlassesWatch/Info.plist
@@ -67,7 +70,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
         MARKETING_VERSION: "2026.11"
-        CURRENT_PROJECT_VERSION: "652"
+        CURRENT_PROJECT_VERSION: "655"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: "YES"
