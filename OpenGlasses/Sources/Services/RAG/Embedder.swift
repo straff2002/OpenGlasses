@@ -133,6 +133,21 @@ struct Embedder {
         return backend?.embed(trimmed)
     }
 
+    /// Whether this instance embeds passages off the main thread (its backend allows it).
+    var embedsPassagesOffMainThread: Bool { backend?.isSafeOffMainThread ?? false }
+
+    /// `embed`, off the main thread when the backend allows it (Plan KQ P2), else exactly as
+    /// `embed`. For the store's passage loops: an import or re-index of thousands of passages.
+    /// Main-actor bound, so a backend that doesn't opt in keeps running on the main thread: a plain
+    /// `async` method here would run on the generic executor and move Apple's models too.
+    @MainActor
+    func embedPassage(_ text: String, priority: TaskPriority = .utility) async -> [Float]? {
+        guard let backend, backend.isSafeOffMainThread else { return embed(text) }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return await Task.detached(priority: priority) { backend.embed(trimmed) }.value
+    }
+
     /// Embed a question being searched with (Plan KQ). The same as `embed` for every model but one
     /// trained for retrieval, which reads a question with its own prefix.
     func embedQuery(_ text: String) -> [Float]? {

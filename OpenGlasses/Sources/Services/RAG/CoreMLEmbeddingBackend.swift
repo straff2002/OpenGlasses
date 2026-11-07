@@ -49,6 +49,11 @@ final class CoreMLEmbeddingBackend: EmbeddingBackend {
 
     func embed(_ text: String) -> [Float]? { vector(Self.documentPrefix, text) }
 
+    /// About 40 ms a passage on the phone's CPU: thousands of them on the main thread lock the
+    /// screen during an import (seen on the owner's phone). Core ML predictions and the tokenizer
+    /// are safe off it, and the store awaits each one, so they never overlap from one caller.
+    var isSafeOffMainThread: Bool { true }
+
     func embedQuery(_ text: String) -> [Float]? { vector(Self.queryPrefix, text) }
 
     // MARK: - Pure helpers

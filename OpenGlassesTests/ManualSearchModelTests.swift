@@ -115,3 +115,42 @@ final class ManualSearchModelTests: XCTestCase {
         XCTAssertEqual(RetrievalEvidencePolicy.default(for: Embedder.fieldAssist(choice: .searchTrained).modelId).similarityFloor, 0.69)
     }
 }
+
+/// Plan KQ P2: a slow backend that says it is safe off the main thread is embedded off it by the
+/// store's passage loops; every other backend runs where it always has.
+@MainActor
+final class PassageEmbeddingThreadTests: XCTestCase {
+
+    private final class ThreadRecorder: EmbeddingBackend, @unchecked Sendable {
+        let modelId = "thread-test.2"
+        let dimension = 2
+        let isSafeOffMainThread: Bool
+        private let lock = NSLock()
+        private var onMain: [Bool] = []
+        var calls: [Bool] { lock.lock(); defer { lock.unlock() }; return onMain }
+        init(offMain: Bool) { isSafeOffMainThread = offMain }
+        func embed(_ text: String) -> [Float]? {
+            lock.lock(); onMain.append(Thread.isMainThread); lock.unlock()
+            return [Float(text.count), 1]
+        }
+    }
+
+    func testAnOffMainBackendIsEmbeddedOffTheMainThread() async {
+        let model = ThreadRecorder(offMain: true)
+        let vector = await Embedder(backend: model).embedPassage("the drain pump")
+        XCTAssertEqual(vector, [14, 1])
+        XCTAssertEqual(model.calls, [false])
+    }
+
+    func testEveryOtherBackendStaysWhereItRuns() async {
+        let model = ThreadRecorder(offMain: false)
+        _ = await Embedder(backend: model).embedPassage("the drain pump")
+        XCTAssertEqual(model.calls, [true])
+        let blank = await Embedder(backend: model).embedPassage("   ")
+        XCTAssertNil(blank)
+    }
+
+    func testApplesModelsStayOnTheMainThread() {
+        XCTAssertFalse(Embedder(preference: .standard).embedsPassagesOffMainThread)
+    }
+}

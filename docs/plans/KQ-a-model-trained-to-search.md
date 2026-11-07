@@ -328,6 +328,12 @@ The next pilot's manuals, or the P3 phone pass, re-read it.
     is unchanged.
   - An out-of-scope question (a car's wheel-nut torque) was answered from general knowledge. With no
     manuals indexed, no gate was involved.
+  - **Importing a 44-manual vault froze the screen.** The store runs on the main actor and embedded each
+    passage there, at about 40 ms each on the new model, against a few for Apple's. A backend now
+    declares `isSafeOffMainThread`. Only `CoreMLEmbeddingBackend` does, so only it is embedded off the
+    main thread in the store's passage loops: import, page import, re-chunk, table rows, the vault
+    re-index and the non-vault re-index. Apple's models run exactly where they did, and a test pins
+    both sides.
 - **Tests.** `ManualSearchModelTests` (10) cover:
   - the old switch's mapping, and staying in step with it;
   - each choice's model ids;
