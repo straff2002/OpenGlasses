@@ -671,7 +671,14 @@ struct Config {
 
     /// All saved model configurations. Persisted in the Keychain because each
     /// `ModelConfig` embeds a provider `apiKey` (see `KeychainService`).
+    ///
+    /// The decoded list is kept in memory for as long as nothing has written to the Keychain since
+    /// it was read (`savedModelsCache`), so the many readers that ask for it, the active model, or
+    /// a role on every render don't each pay for a Keychain query and a decode.
     static var savedModels: [ModelConfig] {
+        // Noted before the read, so a write that lands during it leaves this copy stale.
+        let generation = KeychainService.writeGeneration
+        if let cached = savedModelsCache.value(at: generation) { return cached }
         guard let data = KeychainService.data(for: modelsKey),
               var models = try? JSONDecoder().decode([ModelConfig].self, from: data),
               !models.isEmpty else {
@@ -692,8 +699,14 @@ struct Config {
             }
         }
         if needsSave { setSavedModels(models) }
+        // A migration above wrote, so this copy is already stale and the next read decodes once
+        // more; nothing is kept for the legacy path, which has no stored list to be a copy of.
+        savedModelsCache.store(models, at: generation)
         return models
     }
+
+    /// The last decoded `savedModels`, valid while `KeychainService.writeGeneration` is unchanged.
+    private static let savedModelsCache = GenerationCache<[ModelConfig]>()
 
     /// Pre-configured Apple Intelligence model — zero setup, on-device.
     static let appleIntelligenceDefault = ModelConfig(
