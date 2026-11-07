@@ -9,11 +9,13 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-# Balanced using the last complete CI run: roughly 14 minutes of tests per group.
+# Balanced using the last complete CI run: roughly 14 minutes of tests per group. The Workiz
+# suites take 8-10 minutes each, so they are split across two groups: all four beside the Job
+# tab ran past the 35-minute step limit (run 42343315365) before the light ones started.
 GROUPS = {
-    "jobs": ["JobTabAccessibilityTests", "WorkizLightAccessibilityTests",
-             "WorkizDarkAccessibilityTests", "WorkizLargestLightAccessibilityTests",
-             "WorkizLargestDarkAccessibilityTests"],
+    "jobs": ["JobTabAccessibilityTests", "WorkizLightAccessibilityTests"],
+    "workiz": ["WorkizDarkAccessibilityTests", "WorkizLargestLightAccessibilityTests",
+               "WorkizLargestDarkAccessibilityTests"],
     "signoff-settings": ["JobSignOffScreenshotTests", "SettingsAccessibilityTests",
                          "DynamicTypeAccessibilityTests"],
     "day-debrief": ["GoalsActivityAccessibilityTests", "JobDebriefScreenshotTests",
