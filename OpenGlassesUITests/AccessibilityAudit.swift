@@ -333,6 +333,30 @@ class AccessibilityAuditCase: XCTestCase {
     /// `RootView` hides `MainView` while the splash is up, so an app button existing means the
     /// splash has gone. Match buttons across native navigation presentations, including a
     /// sidebar or vertical tab rail. The old text wait covers builds with an accessible splash.
+    /// A notification banner SpringBoard draws over the app is part of the screen the audit
+    /// renders but not part of the app's accessibility tree. On CI (run 42357265176) a fresh
+    /// simulator's "Ready for Apple Intelligence" banner sat over the Jobs list for about fifteen
+    /// seconds, three minutes after boot, and the audit reported its text as an unattributed
+    /// "potentially inaccessible text" finding. So a banner is pushed away, and waited out, before
+    /// any audit starts. Matched by SpringBoard's banner identifier, or by that banner's own
+    /// title in case the identifier changes; with neither on screen this costs one query.
+    private func waitForSystemBannersToClear() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let banner = springboard.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier == 'NotificationShortLookView' "
+                + "OR label CONTAINS 'Ready for Apple Intelligence'"
+        )).firstMatch
+        guard banner.exists else { return }
+        if banner.isHittable { banner.swipeUp() }
+        // A free-standing expectation, so a banner that outlasts the wait is logged rather than
+        // failing a test whose app did nothing wrong.
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"),
+                                             object: banner)
+        if XCTWaiter().wait(for: [gone], timeout: 20) != .completed {
+            print("[a11y-audit] a system banner was still on screen after 20 s; auditing anyway")
+        }
+    }
+
     private func waitForLaunchScreenToClear(_ app: XCUIApplication) {
         // HomeKit may ask on a fresh test simulator before any app controls are hittable.
         // These UI workflows use synthetic data and do not need access to a home.
@@ -366,6 +390,7 @@ class AccessibilityAuditCase: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        waitForSystemBannersToClear()
         XCTContext.runActivity(named: "Accessibility audit — \(screen)") { activity in
             var failures: [String] = []
             var deferred: [String] = []
