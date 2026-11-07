@@ -277,8 +277,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
              style: item.style.buttonStyle, iconName: item.icon.metaIconName)
         }
         // Plan KV §6: the page view's picture, built here so the builder closure captures only the
-        // Sendable `Image`, never the `UIImage`.
-        let picture = screen.picture.map { Image(image: $0.image, sizePreset: .fill) }
+        // Sendable `Image`, never the `UIImage`. Fitted into the space the frame leaves it
+        // (`LensPageFrame`, P4), so the lines, the picture and the button row all fit on the lens.
+        let picture = screen.picture.map { Image(image: LensPageFrame.fitted($0.image), sizePreset: .fill) }
 
         return FlexBox(
             direction: .column,

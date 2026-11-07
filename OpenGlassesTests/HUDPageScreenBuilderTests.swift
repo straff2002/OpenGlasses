@@ -66,7 +66,7 @@ final class HUDPageScreenBuilderTests: XCTestCase {
     /// Next page shows on the opening view, and only when another page follows.
     func testNextPageOnlyWithSeveralPagesAndOnlyOnTheOpeningView() {
         XCTAssertEqual(ids(state(zoomedOpening(), nextPage: true)),
-                       [ID.zoomIn, ID.wholePage, ID.move, ID.nextPage, ID.close])
+                       [ID.zoomIn, ID.wholePage, ID.nextPage, ID.close], "Move gives way: four at most (P4)")
         XCTAssertFalse(ids(state(zoomedOpening(), nextPage: false)).contains(ID.nextPage))
         XCTAssertEqual(ids(state(LensPageViewport(wholePage: page), nextPage: true)),
                        [ID.zoomIn, ID.nextPage, ID.close], "a whole-page opening view gets it too")
@@ -101,7 +101,11 @@ final class HUDPageScreenBuilderTests: XCTestCase {
         let record: (HUDPageAction) -> Void = { pressed.append($0) }
 
         HUDPageScreenBuilder.screen(state(zoomedOpening(), nextPage: true), onAction: record).items.forEach { $0.action() }
-        XCTAssertEqual(pressed, [.zoomIn, .wholePage, .move, .nextPage, .close])
+        XCTAssertEqual(pressed, [.zoomIn, .wholePage, .nextPage, .close])
+
+        pressed = []
+        HUDPageScreenBuilder.screen(state(zoomedOpening()), onAction: record).items.forEach { $0.action() }
+        XCTAssertEqual(pressed, [.zoomIn, .wholePage, .move, .close])
 
         pressed = []
         HUDPageScreenBuilder.screen(state(zoomedOpening(), moving: true), onAction: record).items.forEach { $0.action() }
@@ -126,5 +130,33 @@ final class HUDPageScreenBuilderTests: XCTestCase {
                    ID.right, ID.done, ID.nextPage, ID.close]
         XCTAssertEqual(Set(all).count, all.count)
         XCTAssertTrue(all.allSatisfy { $0.hasPrefix("kv.page.") })
+    }
+
+    /// P4: on the simulated Display a five-button row ran wider than the lens and DAT cut the labels
+    /// short. No state gets more than four; Move gives way first, then Next diagram ›, never Close.
+    func testNoRowHoldsMoreThanFourButtons() {
+        var crowded = HUDPageViewState(viewport: zoomedOpening(), legibility: LensLegibility(), hasNextPage: true,
+                                       diagramCount: 2, diagramIndex: 0)
+        XCTAssertEqual(ids(crowded), [ID.zoomIn, ID.wholePage, ID.nextPage, ID.close])
+        crowded.hasNextPage = false
+        XCTAssertEqual(ids(crowded), [ID.zoomIn, ID.nextDiagram, ID.wholePage, ID.close])
+
+        for zoom in LensPageViewport.Zoom.allCases {
+            for nextPage in [false, true] {
+                for diagrams in [0, 1, 3] {
+                    for moving in [false, true] {
+                        let viewport = LensPageViewport(pageSize: page, center: CGPoint(x: 306, y: 396), zoom: zoom)
+                        let state = HUDPageViewState(viewport: viewport, legibility: LensLegibility(), isMoving: moving,
+                                                     hasNextPage: nextPage, diagramCount: diagrams,
+                                                     diagramIndex: diagrams > 0 ? 0 : nil)
+                        let row = HUDPageScreenBuilder.items(state, { _ in })
+                        if !moving {
+                            XCTAssertLessThanOrEqual(row.count, HUDPageScreenBuilder.maxButtons, "\(zoom) \(nextPage) \(diagrams)")
+                            XCTAssertEqual(row.last?.id, ID.close)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

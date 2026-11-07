@@ -17,7 +17,11 @@ final class LensLegibilityTests: XCTestCase {
         XCTAssertEqual(legibility.floorPixels, HUDCanvas.metaDisplay.textSize(.meta).pixels)
         XCTAssertEqual(legibility.floorPixels, 22)
         XCTAssertTrue(legibility.isEstimate)
-        XCTAssertEqual(legibility.pictureSidePixels, 600)
+        // P4: the square picture as drawn under the frame's lines and above its button row, not the
+        // 600 px canvas (`LensPageFrame`).
+        XCTAssertEqual(legibility.pictureSidePixels, LensPageFrame.pictureSidePixels)
+        XCTAssertEqual(legibility.pictureSidePixels, 382)
+        XCTAssertEqual(LensLegibility(canvas: .evenG2).pictureSidePixels, 288, "a canvas with no page view keeps its side")
     }
 
     func testWithNoCitedLinesTheTextIsTakenAsEightPoints() {
@@ -26,12 +30,11 @@ final class LensLegibilityTests: XCTestCase {
         XCTAssertEqual(LensLegibility(textHeightPoints: 0).textHeightPoints, 8)
     }
 
-    /// The plan's own numbers: 8 pt labels draw about 6 px on a fitted letter page, and about
-    /// three times that at ×3.
+    /// 8 pt labels draw about 4 px on a fitted letter page, and three times that at ×3.
     func testTheEstimateIsTextHeightTimesLensPixelsPerPoint() {
         let legibility = LensLegibility()
-        XCTAssertEqual(legibility.estimatedPixels(at: view(.fit)), 8 * 600 / 792, accuracy: 0.001)
-        XCTAssertEqual(legibility.estimatedPixels(at: view(.x3)), 8 * 600 / 264, accuracy: 0.001)
+        XCTAssertEqual(legibility.estimatedPixels(at: view(.fit)), 8 * 382 / 792, accuracy: 0.001)
+        XCTAssertEqual(legibility.estimatedPixels(at: view(.x3)), 8 * 382 / 264, accuracy: 0.001)
         XCTAssertEqual(legibility.estimatedPixels(at: view(.x3)) / legibility.estimatedPixels(at: view(.fit)),
                        3, accuracy: 0.001)
     }
@@ -65,10 +68,13 @@ final class LensLegibilityTests: XCTestCase {
         XCTAssertFalse(tiny.needsZoomHint(at: view(.x4)))
     }
 
+    /// With the 382 px picture (P4), 8 pt labels stay under the estimated floor even at ×4 (about
+    /// 15 px); P5 measures both the floor and the picture on the glasses.
     func testTheReadableStepIsTheWidestThatReachesTheFloor() {
-        XCTAssertEqual(LensLegibility().readableZoom(pageSize: page), .x4)
-        XCTAssertEqual(LensLegibility(textHeightPoints: 12).readableZoom(pageSize: page), .x3)
-        XCTAssertEqual(LensLegibility(textHeightPoints: 30).readableZoom(pageSize: page), .fit)
+        XCTAssertNil(LensLegibility().readableZoom(pageSize: page))
+        XCTAssertEqual(LensLegibility(textHeightPoints: 12).readableZoom(pageSize: page), .x4)
+        XCTAssertEqual(LensLegibility(textHeightPoints: 30).readableZoom(pageSize: page), .x2)
+        XCTAssertEqual(LensLegibility(textHeightPoints: 46).readableZoom(pageSize: page), .fit)
         XCTAssertNil(LensLegibility(textHeightPoints: 2).readableZoom(pageSize: page))
     }
 }

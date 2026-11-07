@@ -110,8 +110,8 @@ final class LensPageDiagramTests: XCTestCase {
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
 
-        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.nextDiagram, ID.wholePage, ID.move, ID.close],
-                       "Next diagram › right after Zoom in")
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.nextDiagram, ID.wholePage, ID.close],
+                       "Next diagram › right after Zoom in; Move gives way to keep the row to four (P4)")
         XCTAssertEqual(rig.session.shownState?.diagramIndex, 0)
         XCTAssertTrue(rig.session.shownState?.viewport.cropRect.contains(Self.upper.rect) == true,
                       "opened on the whole first drawing")

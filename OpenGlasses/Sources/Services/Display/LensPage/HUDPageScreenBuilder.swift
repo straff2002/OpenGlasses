@@ -59,6 +59,8 @@ struct HUDPageViewState: Equatable {
 /// **Next diagram ›** goes in second, after **Zoom in** (or **Zoom out** at the deepest step), on
 /// the opening view and on the whole page, while it has somewhere to go (`hasNextDiagram`: another
 /// drawing, or any drawing from a view on none; Plan KV P1b).
+/// A row holds at most four buttons (`maxButtons`, P4): over that, **Move** and then **Next
+/// diagram ›** give way (`capped`).
 /// The arrow row is always all four arrows, so a press always does the same thing; one against the
 /// page's edge does nothing.
 enum HUDPageScreenBuilder {
@@ -147,6 +149,22 @@ enum HUDPageScreenBuilder {
             items.append(item(ItemID.nextPage, String(localized: "Next page ›"), .secondary, .nextPage, onAction))
         }
         items.append(item(ItemID.close, String(localized: "Close"), .outline, .close, onAction))
+        return capped(items)
+    }
+
+    /// The most buttons a page-view row holds. Measured on the simulated Display (P4): five buttons,
+    /// two of them **Next diagram ›** and **Whole page**, came to more than the lens is wide, and DAT
+    /// cut both labels short.
+    static let maxButtons = 4
+
+    /// A row over `maxButtons` loses **Move** first (one **Zoom in** brings it back, and an arrow
+    /// row on the opening view is rarely what's wanted), then **Next diagram ›** (still said as
+    /// "next diagram"). **Close** always stays.
+    static func capped(_ items: [HUDItem]) -> [HUDItem] {
+        var items = items
+        for id in [ItemID.move, ItemID.nextDiagram] where items.count > maxButtons {
+            items.removeAll { $0.id == id }
+        }
         return items
     }
 

@@ -82,7 +82,11 @@ final class LensPageFocusTests: XCTestCase {
         let rowView = LensPageViewport(opening: rowFocus)
         XCTAssertEqual(rowFocus.zoom, .x4)
         let rowText = LensLegibility(lineRects: [tableRow])
-        XCTAssertFalse(rowText.isUnderFloor(at: rowView))
+        // The deepest step: the most the view can do for the row, so no hint asks for more. (A 10 pt
+        // row draws about 19 px there in the 382 px picture P4 measured, under the 22 px estimate.)
+        XCTAssertTrue(rowView.isDeepest)
+        XCTAssertGreaterThan(rowText.estimatedPixels(at: rowView), rowText.estimatedPixels(
+            at: LensPageViewport(pageSize: page, center: rowView.center, zoom: .x3)))
         XCTAssertFalse(rowText.needsZoomHint(at: rowView))
 
         let drawing = CGRect(x: 30, y: 40, width: 552, height: 700)

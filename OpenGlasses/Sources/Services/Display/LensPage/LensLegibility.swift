@@ -15,8 +15,9 @@ struct LensLegibility: Equatable {
 
     /// The page's text height, in page points.
     let textHeightPoints: CGFloat
-    /// How many lens pixels the picture is across. The picture fills the canvas width (§1); the
-    /// button row below it is not counted against it.
+    /// How many lens pixels the square crop is across as drawn. On the Meta Display that is the
+    /// space the frame leaves the picture under its lines and above its button row
+    /// (`LensPageFrame`, measured in P4), not the canvas width.
     let pictureSidePixels: CGFloat
     /// The smallest text height the lens reads, in lens pixels.
     let floorPixels: CGFloat
@@ -30,7 +31,8 @@ struct LensLegibility: Equatable {
         } else {
             self.textHeightPoints = Self.defaultTextHeightPoints
         }
-        self.pictureSidePixels = CGFloat(min(canvas.widthPixels, canvas.heightPixels))
+        self.pictureSidePixels = canvas.backend == .metaDisplay
+            ? LensPageFrame.pictureSidePixels : CGFloat(min(canvas.widthPixels, canvas.heightPixels))
         self.floorPixels = floor.pixels
         self.isEstimate = floor.isEstimate
     }
