@@ -1,7 +1,13 @@
 # Plan KR — The Page It Says (one page per turn, the row marked, the size it read, guided work in the trade's words)
 
-**Status:** 📝 Drafted 2026-11-07 from the partner's retest on build 615 (2026-11-06: a furnace job and
-two electrical code-book jobs, gpt-6-luna, phone only). Nothing built. Seven owner decisions below.
+**Status:** 🚧 Drafted 2026-11-07 from the partner's retest on build 615 (2026-11-06: a furnace job and
+two electrical code-book jobs, gpt-6-luna, phone only). Owner decisions taken as recommended on
+2026-11-07 ("plan merged, build it"). **P1 and P2 built headless** on `feat/kr-page-it-says`: a tool
+round's rebuild stages no page, a page a tool put up stays for the turn, pages said in words are
+pages (a named page opens nothing by itself), a show-me with no object reopens the last source or
+asks, a show-me after a lookup this turn shows only that table, and `manual_figure` asked for the
+looked-up table opens it through `show_source`'s path, rows marked. **P0 owed** (needs the phone).
+P3–P8 not started.
 **Track:** Field Assist. Every turn that opens a manual page; every table lookup; every rule chain;
 every job close; the support report.
 **Related:** Plan [GB](GB-field-test-round-3.md) P1 (`FigureAutoOpenPolicy`), Plan
