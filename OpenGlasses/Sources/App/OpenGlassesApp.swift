@@ -3598,6 +3598,15 @@ class AppState: ObservableObject, AppStateProtocol {
             await PassageLocationMigration.run(store: documentStore)
             VaultEmbeddingUpgrade.start(store: documentStore)
         }
+        // Plan KQ P2b: a profile that pins (or stops pinning) the manual-search model moves the
+        // vaults as the Settings picker would; a pass with nothing to do changes nothing.
+        NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak documentStore] _ in
+            guard let documentStore else { return }
+            Task { @MainActor in
+                if Config.fieldAssistManualSearchModel == .searchTrained { await SearchModelRuntime.load() }
+                VaultEmbeddingUpgrade.start(store: documentStore)
+            }
+        }
         StudyService.shared.configure(llm: llmService, documentStore: documentStore, tts: speechService, camera: cameraService)
 
         // Reading companion (Plan BT) — camera frames for page turns, Study Mode for the
