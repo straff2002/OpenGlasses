@@ -124,6 +124,8 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         ).firstMatch
         XCTAssertTrue(capsule.waitForExistence(timeout: 60))
 
+        // The panel opens on things to try; the capsule is below it on every page.
+        showTheDockActions(in: app)
         // On the home page the grid's tiles are beside it; the capsule is not one of them. The
         // model tile leads the grid, so it is on the first page at any row count.
         let modelTile = app.buttons
@@ -152,8 +154,10 @@ final class SessionSurfaceAccessibilityTests: AccessibilityAuditCase {
         )
 
         // The dock no longer takes its tiles away for anything. Captions are not a turn, so the
-        // panel stays on its home page and both the content tiles and the controls are still
-        // there — the conversation is a swipe away rather than a thing that displaces them.
+        // panel's grid keeps both the content tiles and the controls — the conversation is a
+        // swipe away rather than a thing that displaces them. The panel opens on things to try,
+        // so the grid is asked for first.
+        showTheDockActions(in: app)
         let modelTile = app.buttons
             .matching(NSPredicate(format: "label BEGINSWITH 'Model: '")).firstMatch
         XCTAssertTrue(modelTile.exists, "A dock control vanished while captions ran")

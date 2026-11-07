@@ -534,6 +534,24 @@ class AccessibilityAuditCase: XCTestCase {
         return row
     }
 
+    /// Bring the dock panel to its grid of actions, and return once it is there.
+    ///
+    /// The panel opens on its conversation page while things to try are waiting there
+    /// (`DockPagerPolicy.openedForShelf`), which a configured launch always has, so a case that
+    /// wants the grid asks for it the way a wearer would: the page control's "Show actions".
+    func showTheDockActions(in app: XCUIApplication,
+                            file: StaticString = #filePath, line: UInt = #line) {
+        let showActions = app.buttons["Show actions"]
+        let showConversation = app.buttons["Show conversation"]
+        let either = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Show actions", "Show conversation"])).firstMatch
+        XCTAssertTrue(either.waitForExistence(timeout: 60),
+                      "The dock panel's page control never appeared", file: file, line: line)
+        if showActions.exists { showActions.tap() }
+        XCTAssertTrue(showConversation.waitForExistence(timeout: 10),
+                      "The dock panel did not move to its actions", file: file, line: line)
+    }
+
     /// Wait for a screen to settle on a marker element before auditing it.
     ///
     /// The timeout is generous on purpose. The first case in a run installs a large app and
