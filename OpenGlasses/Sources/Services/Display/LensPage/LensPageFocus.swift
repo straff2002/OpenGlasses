@@ -7,8 +7,13 @@ import Foundation
 /// The sources, in order — the first with any usable rectangle on the page wins:
 /// 1. the cited passages' rectangles, united (IN's marks, through `LensPageMarks`);
 /// 2. the pictured table's outlined areas, united (JN's `pictureAreas`);
-/// 3. the figure the caption names, when its bounds are known;
+/// 3. the drawing on the page (Plan KV P1b: found by `PageFigureLocator`, chosen by
+///    `PageFigureChoice`);
 /// 4. none: the whole page, fitted.
+///
+/// When the request asked for a drawing (`PageFigureAsk.asksForDrawing`, passed as `figureFirst`)
+/// the drawing moves to the top, ahead of any cited passage: "show me the wiring diagram" opens on
+/// the diagram even when the answer cited a line beside it.
 ///
 /// All rectangles are in top-down page points (see `LensPageViewport`). A rectangle is clipped to
 /// the page first; one empty after clipping is not counted, so a source whose rectangles all lie
@@ -44,13 +49,15 @@ struct LensPageFocus: Equatable {
     static func pick(pageSize: CGSize,
                      passageRects: [CGRect] = [],
                      pictureAreas: [CGRect] = [],
-                     figure: CGRect? = nil) -> LensPageFocus {
+                     figure: CGRect? = nil,
+                     figureFirst: Bool = false) -> LensPageFocus {
         let page = CGRect(origin: .zero, size: pageSize)
-        let candidates: [(Source, [CGRect])] = [
+        var candidates: [(Source, [CGRect])] = [
             (.citedPassages, passageRects),
             (.pictureArea, pictureAreas),
             (.figure, figure.map { [$0] } ?? []),
         ]
+        if figureFirst { candidates.insert(candidates.removeLast(), at: 0) }
         for (source, rects) in candidates {
             if let region = united(rects, inside: page) {
                 return focus(on: region, source: source, pageSize: pageSize)
@@ -67,11 +74,12 @@ struct LensPageFocus: Equatable {
                      marks: LensPageMarks?,
                      pictureAreas: [ManualTable.PictureArea],
                      physical: Int,
-                     figure: CGRect? = nil) -> LensPageFocus {
+                     figure: CGRect? = nil,
+                     figureFirst: Bool = false) -> LensPageFocus {
         pick(pageSize: pageSize,
              passageRects: marks?.marks.map(\.bounds) ?? [],
              pictureAreas: pictureAreas.filter { $0.physical == physical }.map(\.rect),
-             figure: figure)
+             figure: figure, figureFirst: figureFirst)
     }
 
     // MARK: Geometry

@@ -17,49 +17,90 @@ struct LensPageRequest: Equatable {
     let citedPassages: [CitedPassage]
     let pictureAreas: [ManualTable.PictureArea]
     let tone: LensPageRenderPlan.Tone
+    /// What the request said about the drawing it wants (Plan KV P1b).
+    let ask: PageFigureAsk
+    /// The page's key in `PageFigureCache` (document, page, revision, file); nil analyses the page
+    /// every time it is laid out.
+    let figureKey: String?
 
     var pageIndex: Int { page - 1 }
 
     init(source: URL, page: Int, citedPassages: [CitedPassage] = [],
-         pictureAreas: [ManualTable.PictureArea] = [], tone: LensPageRenderPlan.Tone = .lineArt) {
+         pictureAreas: [ManualTable.PictureArea] = [], tone: LensPageRenderPlan.Tone = .lineArt,
+         ask: PageFigureAsk = .none, figureKey: String? = nil) {
         self.source = source
         self.page = page
         self.citedPassages = citedPassages
         self.pictureAreas = pictureAreas
         self.tone = tone
+        self.ask = ask
+        self.figureKey = figureKey
     }
 
-    init(staged: FieldSessionService.StagedFigure, source: URL) {
+    init(staged: FieldSessionService.StagedFigure, source: URL, ask: PageFigureAsk = .none) {
         self.init(source: source, page: staged.page, citedPassages: staged.citedPassages,
                   pictureAreas: staged.pictureAreas,
-                  tone: ManualFigureCue.isPhotographed(staged) ? .photographed : .lineArt)
+                  tone: ManualFigureCue.isPhotographed(staged) ? .photographed : .lineArt,
+                  ask: ask,
+                  figureKey: PageFigureCache.key(documentId: staged.documentId, page: staged.page,
+                                                 sourceRevision: staged.sourceRevision,
+                                                 sourceFile: staged.sourceFile))
     }
 }
 
-/// One page laid out for the lens: its size, its marks as rectangles, where the view opens, and how
-/// legible its text is. Pure once made.
+/// One page laid out for the lens: its size, its marks as rectangles, its drawings, where the view
+/// opens, and how legible its text is. Pure once made.
 struct LensPageLayout: Equatable {
     let pageSize: CGSize
     let marks: LensPageMarks?
     /// The pictured table's outlined areas on this page, in top-down page points.
     let pictureAreas: [CGRect]
     let tone: LensPageRenderPlan.Tone
+    /// The page's drawings, in reading order (Plan KV P1b); empty where none were found.
+    let drawings: [PageDrawing]
+    /// The drawing `PageFigureChoice` chose, when there is one.
+    let figureIndex: Int?
     let focus: LensPageFocus
     let legibility: LensLegibility
 
+    /// `figure` is a known drawing's rectangle; without one, the chosen drawing's (`figureIndex`
+    /// into `drawings`). `figureFirst` puts the drawing ahead of the cited passages (§1).
     init(pageSize: CGSize, marks: LensPageMarks?, pictureAreas: [CGRect],
-         tone: LensPageRenderPlan.Tone, figure: CGRect? = nil) {
+         tone: LensPageRenderPlan.Tone, figure: CGRect? = nil,
+         drawings: [PageDrawing] = [], figureIndex: Int? = nil, figureFirst: Bool = false) {
         self.pageSize = pageSize
         self.marks = marks.flatMap { $0.isEmpty ? nil : $0 }
         self.pictureAreas = pictureAreas
         self.tone = tone
+        self.drawings = drawings
+        let chosen = figureIndex.flatMap { drawings.indices.contains($0) ? $0 : nil }
+        self.figureIndex = chosen
         focus = LensPageFocus.pick(pageSize: pageSize, passageRects: self.marks?.marks.map(\.bounds) ?? [],
-                                   pictureAreas: pictureAreas, figure: figure)
-        legibility = LensLegibility(lineRects: self.marks?.lineRects ?? [])
+                                   pictureAreas: pictureAreas, figure: figure ?? chosen.map { drawings[$0].rect },
+                                   figureFirst: figureFirst)
+        if focus.source == .figure, let chosen {
+            legibility = Self.legibility(of: drawings[chosen])
+        } else {
+            legibility = LensLegibility(lineRects: self.marks?.lineRects ?? [])
+        }
     }
 
     /// The view's opening viewport.
     var openingViewport: LensPageViewport { LensPageViewport(opening: focus) }
+
+    /// The drawing the view opened on, when it opened on one.
+    var openingDrawing: Int? { focus.source == .figure ? figureIndex : nil }
+
+    /// The view opened on drawing `index` (**Next diagram ›**, "the bottom one").
+    func viewport(onDrawing index: Int) -> LensPageViewport? {
+        guard drawings.indices.contains(index) else { return nil }
+        return LensPageViewport(opening: LensPageFocus.pick(pageSize: pageSize, figure: drawings[index].rect))
+    }
+
+    /// A drawing's legibility: its labels' height, or the default for a drawing's labels.
+    static func legibility(of drawing: PageDrawing) -> LensLegibility {
+        LensLegibility(lineRects: drawing.labels.map(\.rect))
+    }
 }
 
 enum LensPageRenderer {
@@ -87,7 +128,27 @@ enum LensPageRenderer {
             marks = LensPageMarks(passageMarks, geometry: geometry)
         }
         let areas = request.pictureAreas.filter { $0.physical == request.page }.map(\.rect)
-        return LensPageLayout(pageSize: geometry.pageSize, marks: marks, pictureAreas: areas, tone: request.tone)
+        let choice = figureChoice(page, request: request)
+        return LensPageLayout(pageSize: geometry.pageSize, marks: marks, pictureAreas: areas, tone: request.tone,
+                              drawings: choice.drawings, figureIndex: choice.index,
+                              figureFirst: request.ask.asksForDrawing)
+    }
+
+    /// The page's drawings and the one the request means (Plan KV P1b). A photographed page has no
+    /// text layer to blank out, so it finds none and opens as before.
+    static func figureChoice(_ page: PDFPage, request: LensPageRequest,
+                             cache: PageFigureCache = .shared) -> PageFigureChoice {
+        guard request.tone == .lineArt else { return PageFigureChoice.choose([], ask: request.ask) }
+        let drawings: [PageDrawing]
+        if let key = request.figureKey {
+            drawings = cache.drawings(for: key) { PageFigureAnalysis.drawings(on: page) }
+        } else {
+            drawings = PageFigureAnalysis.drawings(on: page)
+        }
+        let captions = drawings.count > 1
+            ? request.ask.captionNumber.map { PageFigureAnalysis.captionRects(number: $0, on: page) } ?? []
+            : []
+        return PageFigureChoice.choose(drawings, ask: request.ask, captionRects: captions)
     }
 
     // MARK: - Drawing
