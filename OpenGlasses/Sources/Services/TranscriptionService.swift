@@ -44,6 +44,32 @@ class TranscriptionService: ObservableObject {
     private let noSpeechTimeout: TimeInterval = 10.0
     private var didReceiveSpeech: Bool = false
 
+    // MARK: - The last word (stopped Apple turns)
+
+    /// An Apple Speech turn that has stopped capturing and is waiting, bounded, for the
+    /// recogniser's final result — the one that carries the word the partials were still holding.
+    private struct StoppedAppleTurn {
+        let generation: Int
+        var transcript: StoppedTurnTranscript
+        let heardSpeech: Bool
+        let task: SFSpeechRecognitionTask?
+        let stoppedAt: Date
+        var timeout: Task<Void, Never>?
+    }
+    private var stoppedAppleTurn: StoppedAppleTurn?
+    /// Which recognition task a result belongs to, so a stopped turn's late final is never taken
+    /// for the next turn's partial.
+    private var appleTurnGeneration = 0
+    /// How the recogniser ended this turn itself (its final result, or an error), when it did — a
+    /// stop then has nothing more to wait for.
+    private var appleRecognizerEnded: StoppedTurnTranscript.Settlement?
+
+    /// How long capture runs on after the wearer presses stop. The last word is often still on
+    /// its way when the press lands — a Bluetooth mic delivers audio a beat behind the voice — and
+    /// a stop that ends the request at once cuts it off. Short enough not to be felt.
+    static let wearerStopTail: TimeInterval = 0.35
+    private var pendingTailStop: Task<Void, Never>?
+
     // MARK: - Acoustic end-of-turn (Plan CU P2)
 
     /// The detector, when one is installed. Nil — or installed but unavailable — takes
@@ -199,6 +225,9 @@ class TranscriptionService: ObservableObject {
             PrivacyLog.speech(.dictation, .startSkippedAlreadyRecording)
             return
         }
+        // A stopped turn still waiting for its final result goes out first, with what it has, so
+        // turns are delivered in the order they were spoken.
+        settleStoppedAppleTurn(timedOut: true)
 
         // Plan FE P3: the one moment the window is chosen. Read the preference now, hold it for
         // the whole turn — a change made while the wearer is mid-sentence applies to the next one.
@@ -283,7 +312,26 @@ class TranscriptionService: ObservableObject {
         }
     }
 
+    /// The wearer pressed stop (the Tap to stop button, the watch): let the word they were finishing
+    /// reach the recogniser, then end the turn. Returns once the turn has stopped capturing — its
+    /// transcript is delivered when the recogniser settles, as for every stop.
+    func stopRecordingAfterTail() async {
+        guard isRecording else { return }
+        if pendingTailStop == nil {
+            pendingTailStop = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(Self.wearerStopTail * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                self.pendingTailStop = nil
+                self.stopRecording()
+            }
+        }
+        await pendingTailStop?.value
+    }
+
     func stopRecording() {
+        // Any stop supersedes a tail still running; the tail's own stop arrives here too.
+        pendingTailStop?.cancel()
+        pendingTailStop = nil
         guard isRecording else { return }
 
         // Plan CU P1: the mic went quiet when the silence window now expiring was ARMED, not when
@@ -317,21 +365,72 @@ class TranscriptionService: ObservableObject {
             finishCloudStreamingRecording()
             return
         case .appleStreaming:
-            break
+            finishAppleStreamingRecording()
         }
+    }
 
-        recognitionTask?.finish()
-        recognitionTask = nil
-        recognitionRequest?.endAudio()
-        recognitionRequest = nil
+    /// On stop, end the Apple request and wait (bounded) for the final result before delivering.
+    ///
+    /// The last partial is not the transcript: the recogniser holds back the word being spoken and
+    /// settles it only in the final result that `endAudio()` produces. Delivering the partial at
+    /// the stop dropped that word. When the recogniser has already ended the turn itself (its final
+    /// arrived, or it failed) there is nothing to wait for.
+    private func finishAppleStreamingRecording() {
+        // No more buffers: the request is about to end. The external stops used to leave the
+        // forwarder (or the dedicated engine) appending to an ended request until the next turn.
+        cleanupEngine()
         isRecording = false
+        let request = recognitionRequest
+        let task = recognitionTask
+        recognitionRequest = nil
+        recognitionTask = nil
 
-        if !currentTranscription.isEmpty {
-            let finalText = currentTranscription
-            currentTranscription = ""
-            PrivacyLog.speech(.dictation, .transcriptDelivered, characters: finalText.count)
+        var stopped = StoppedAppleTurn(generation: appleTurnGeneration,
+                                       transcript: StoppedTurnTranscript(shown: currentTranscription),
+                                       heardSpeech: didReceiveSpeech, task: task, stoppedAt: Date())
+        guard task != nil, appleRecognizerEnded == nil else {
+            if appleRecognizerEnded == .final {
+                stopped.transcript.noteResult(currentTranscription, isFinal: true)
+            } else {
+                stopped.transcript.noteEnded()
+            }
+            deliverStoppedAppleTurn(stopped)
+            return
+        }
+        request?.endAudio()
+        let generation = stopped.generation
+        stopped.timeout = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(StoppedTurnTranscript.finalResultTimeout * 1_000_000_000))
+            guard let self, !Task.isCancelled, self.stoppedAppleTurn?.generation == generation else { return }
+            self.settleStoppedAppleTurn(timedOut: true)
+        }
+        stoppedAppleTurn = stopped
+    }
+
+    /// Deliver the stopped turn now: with its final result if it came, else with what was heard.
+    private func settleStoppedAppleTurn(timedOut: Bool) {
+        guard var stopped = stoppedAppleTurn else { return }
+        stoppedAppleTurn = nil
+        stopped.timeout?.cancel()
+        if timedOut, !stopped.transcript.isSettled {
+            stopped.transcript.noteTimedOut()
+            stopped.task?.cancel()
+        }
+        deliverStoppedAppleTurn(stopped)
+    }
+
+    /// The one delivery for Apple turns — unchanged in what it does with the words: a transcript
+    /// goes to `onTranscriptionComplete`; a turn that never heard speech ends on the no-speech path.
+    private func deliverStoppedAppleTurn(_ stopped: StoppedAppleTurn) {
+        let finalText = stopped.transcript.text
+        // Only clear the live transcript when no new turn has started showing its own.
+        if !isRecording { currentTranscription = "" }
+        if !finalText.isEmpty {
+            PrivacyLog.speech(.dictation, .transcriptDelivered, characters: finalText.count,
+                              seconds: Date().timeIntervalSince(stopped.stoppedAt),
+                              detail: PrivacyToken(stopped.transcript.settlement?.rawValue ?? "shown"))
             onTranscriptionComplete?(finalText)
-        } else if !didReceiveSpeech {
+        } else if !stopped.heardSpeech {
             PrivacyLog.speech(.dictation, .noSpeechDetected, detail: PrivacyToken("silenceWindow"))
             onSilenceTimeout?()
         }
@@ -363,6 +462,9 @@ class TranscriptionService: ObservableObject {
 
         recognitionTask?.cancel()
         recognitionTask = nil
+        appleTurnGeneration += 1
+        appleRecognizerEnded = nil
+        let generation = appleTurnGeneration
 
         recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let recognitionRequest = recognitionRequest else {
@@ -439,7 +541,7 @@ class TranscriptionService: ObservableObject {
 
         recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             Task { @MainActor in
-                self?.handleRecognitionResult(result: result, error: error)
+                self?.handleRecognitionResult(result: result, error: error, generation: generation)
             }
         }
     }
@@ -701,7 +803,24 @@ class TranscriptionService: ObservableObject {
         }
     }
 
-    private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?) {
+    private func handleRecognitionResult(result: SFSpeechRecognitionResult?, error: Error?,
+                                         generation: Int) {
+        // A turn already stopped: these are the words it was waiting for.
+        if var stopped = stoppedAppleTurn, stopped.generation == generation {
+            if let result {
+                stopped.transcript.noteResult(result.bestTranscription.formattedString,
+                                              isFinal: result.isFinal)
+                if !isRecording { currentTranscription = stopped.transcript.text }
+            }
+            // After `endAudio()` an error is usually "no speech" — the words already heard stand.
+            if error != nil { stopped.transcript.noteEnded() }
+            stoppedAppleTurn = stopped
+            if stopped.transcript.isSettled { settleStoppedAppleTurn(timedOut: false) }
+            return
+        }
+        // A task from an earlier turn — cancelled, or settled on its timeout — has nothing to add.
+        guard generation == appleTurnGeneration, isRecording else { return }
+
         if let result = result {
             currentTranscription = result.bestTranscription.formattedString
             if !didReceiveSpeech {
@@ -712,13 +831,16 @@ class TranscriptionService: ObservableObject {
             resetSilenceTimer()
 
             if result.isFinal {
+                appleRecognizerEnded = .final
                 cleanupEngine()
                 stopRecording()
+                return
             }
         }
 
         if let error = error {
             PrivacyLog.speech(.dictation, .recognitionFailed, error: SafeErrorSummary(error))
+            appleRecognizerEnded = .ended
             cleanupEngine()
             stopRecording()
         }
