@@ -1,7 +1,8 @@
 # Plan KT — Cards Ready to Act (two or three things the app already knows, joined into one thing to do, with the message drafted and handed to you to send — on the phone, the Display, the watch and by voice; Gmail and Google Calendar connected on the phone)
 
-**Status:** 📝 Drafted 2026-11-07 from the owner's ask. Nothing built. Same day, the owner decided to add
-Gmail and Google Calendar sign-in to the app ("can we add gmail / calendar connection in app"). That
+**Status:** 📝 Drafted 2026-11-07 from the owner's ask. Nothing built. The owner took all thirteen
+recommended [decisions](#decisions-taken-2026-11-07-every-recommendation-below) the same day ("Take them all"). Earlier that day, the owner
+decided to add Gmail and Google Calendar sign-in to the app ("can we add gmail / calendar connection in app"). That
 reverses the "not yet" in `reports/Email access routes for Avenkin.md` (2026-10-31) for Gmail
 specifically, and it narrows Plan [JO](JO-watchers.md)'s decision 5 ("no mail") to watchers only. The
 report's safety rules still hold, and §9 carries them over. The owner also asked for the cards to work on
@@ -247,7 +248,7 @@ phase builds it.
 |---|---|---|---|---|---|
 | **Leave by** (`leaveBy`) | DY's leave-by for an event with a place, from 90 min before leave-by until the event starts | 📅 event time · 📍 "You're in {area}" · ☔ rain at the place, when there is any | Leave by · travel time and mode · arrive by | **Directions** · *Tell {name} you're on the way* · Later | When one other person at the event resolves to a phone or email: "On my way — there about {arrival}." |
 | **Running late** (`runningLate`) | Now + travel time > the event's start − 2 min, and the wearer is not at the place (more than 300 m away) | 📅 starts {time} · 🚗 {n} min away | Starts · arrive about · late by | **Text {name}** · Directions · Dismiss | "Running about {n} minutes late, sorry — there about {arrival}." n rounded up to 5 |
-| **Short night** (`shortNight`) | Opt-in (§12 decision 4). Last night's `asleep` < the wearer's threshold (default 6 h), *and* before the threshold time (default 09:30) there is a meeting the wearer didn't organise, with 1–3 others, *and* a free slot of the same length later that day | 😴 "Slept 5h 10m" · 📅 "Free from 10" | Meeting · proposed time | **Ask to move it** · Open event · Dismiss | To the organiser: "Could we move {meeting} to {slot}? It would suit me better today." Never mentions sleep |
+| **Short night** (`shortNight`) | Opt-in (decision 5). Last night's `asleep` < the wearer's threshold (default 6 h), *and* before the threshold time (default 09:30) there is a meeting the wearer didn't organise, with 1–3 others, *and* a free slot of the same length later that day | 😴 "Slept 5h 10m" · 📅 "Free from 10" | Meeting · proposed time | **Ask to move it** · Open event · Dismiss | To the organiser: "Could we move {meeting} to {slot}? It would suit me better today." Never mentions sleep |
 | **Meeting follow-up** (`meetingFollowUp`) | A meeting summary with at least one action item was saved within 2 hours of a calendar event that overlaps it and has other people with email addresses | 🎙 "3 things agreed" · 📅 event | Up to three action items | **Email recap** · Open note · Dismiss | To the attendees: one line of thanks, the action items as a list, a sign-off |
 | **Fit it in** (`fitItIn`) | A reminder due today, no time set, and a free gap of 30 min or more starting within the next hour | ✅ reminder · 📅 "Free till {time}" | Reminder · gap | **Done** · Open · Later | None |
 
@@ -827,7 +828,7 @@ names, addresses, text or times. It feeds §3.5's "turn a kind off" rule and the
 - **Outlook** until decision 9 says otherwise (P8 is written so it can be built next).
 - **Sleep from third-party wearables directly.** Only what reaches Apple Health.
 
-## Decisions (open — recommendations first)
+## Decisions (taken 2026-11-07: every recommendation below)
 
 1. **The Display, the watch and voice stage a send on the phone rather than sending.** Recommended: yes
    (§6.4). It is the only route iOS allows without the wearer tapping Send.
