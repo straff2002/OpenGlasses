@@ -9521,6 +9521,9 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     func returnToWakeWord() async {
+        // Last of all — after the re-arm — the car screen settles its audio session, so its release
+        // is the final word on a conversation that ended in the car.
+        defer { CarPlaySceneDelegate.current?.appFinishedEndingConversation() }
         // Capture whether we were in a conversation before resetting state.
         // If the user was actively talking, always restart wake word — even in
         // silent mode (silent mode only suppresses the *initial* auto-start).
