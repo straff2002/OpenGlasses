@@ -319,14 +319,15 @@ The next pilot's manuals, or the P3 phone pass, re-read it.
   connect to Wi-Fi instead. Once downloaded it can be removed. Every change re-indexes once.
 - `SearchModelPhoneCheck` stays as the developer check P3 uses for its timings.
 - **Tried on the owner's iPhone Air (Release build), 2026-11-07.**
-  - The download completed from the public repo, and the refrigeration vault answered the test questions
-    on the new choice.
+  - The download completed from the public repo, and the package compiled and loaded on the phone.
+  - **Search itself was not exercised.** The phone's document store held no manuals (0 documents). The
+    bundled refrigeration vault carries reference notes only, which don't go through manual search, so
+    the test questions were answered without it. P3 needs a vault or My Manuals with real manuals.
   - Progress sat at 0% and then jumped to 89%, because it moved per file and the weights are one 273 MB
     file. The search model's download now reports bytes as they arrive, in whole-percent steps; Kokoro's
     is unchanged.
-  - An out-of-scope question (a car's wheel-nut torque) was answered. That is expected on a vault that
-    isn't manuals-only, where the assistant may answer from general knowledge after the manuals refuse,
-    but P3 confirms which it was.
+  - An out-of-scope question (a car's wheel-nut torque) was answered from general knowledge. With no
+    manuals indexed, no gate was involved.
 - **Tests.** `ManualSearchModelTests` (10) cover:
   - the old switch's mapping, and staying in step with it;
   - each choice's model ids;
