@@ -115,7 +115,8 @@ final class LensPageReportTests: XCTestCase {
         let lines = LensPageReport.lines(for: stats)
         XCTAssertEqual(lines, [
             "Page on the lens (since the app started):",
-            "  metaRayBan: views opened 2, Show here cues 1 (pressed 1), zooms 4, moves 3, next pages 0, refused 0, stale presses dropped 0",
+            "  metaRayBan: views opened 2, Show here cues 1 (pressed 1), zooms 4, moves 3, next pages 0,"
+                + " reading views 0 (pages turned 0), refused 0, stale presses dropped 0",
             "    Render: 3, median 60 ms, largest 90 ms",
             "    Sent: 2, median 3 KB, largest 4 KB; send time 1, median 200 ms, largest 200 ms",
         ])
@@ -137,11 +138,21 @@ final class LensPageReportTests: XCTestCase {
         XCTAssertEqual(event.payload?["event"]?.value as? String, "cue_shown")
 
         let viewed = LensPageAuditLine(event: .zoomed, documentTitle: "Invented Unit Guide", page: 3, figure: "Figure 9",
-                                       crop: CGRect(x: 10.4, y: 20.6, width: 198, height: 198), zoom: 4,
-                                       route: "requested", backend: "metaRayBan")
+                                       crop: CGRect(x: 10.4, y: 20.6, width: 198, height: 159), zoom: 2.4567,
+                                       route: "requested", backend: "metaRayBan", view: .picture)
         let zoomed = FieldSessionService.pageOnGlassesEvent(viewed, at: Date(timeIntervalSince1970: 0))
-        XCTAssertEqual(zoomed.payload?["crop"]?.value as? String, "10,20,199,199")
-        XCTAssertEqual(zoomed.payload?["zoom"]?.value as? Int, 4)
+        XCTAssertEqual(zoomed.payload?["crop"]?.value as? String, "10,20,199,160")
+        XCTAssertEqual(zoomed.payload?["zoom"]?.value as? Double, 2.46, "the scale to two places")
+        XCTAssertEqual(zoomed.payload?["view"]?.value as? String, "picture")
+
+        // Reading mode: the page reference and the view, never a crop or the words.
+        let read = LensPageAuditLine(event: .readPage, documentTitle: "Invented Unit Guide", page: 3, figure: nil,
+                                     crop: .zero, zoom: 0, route: "requested", backend: "metaRayBan", view: .reading)
+        let reading = FieldSessionService.pageOnGlassesEvent(read, at: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(reading.payload?["view"]?.value as? String, "reading")
+        XCTAssertEqual(reading.payload?["event"]?.value as? String, "read_page")
+        XCTAssertNil(reading.payload?["crop"])
+        XCTAssertNil(reading.payload?["zoom"])
     }
 }
 #endif

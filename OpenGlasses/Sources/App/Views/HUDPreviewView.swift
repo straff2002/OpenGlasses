@@ -352,7 +352,7 @@ private struct ComponentView: View {
     private func imageView(_ image: MWDATDisplay.Image) -> some View {
         if image.sizePreset == .fill, let picture {
             // The page view's picture (Plan KV P3): the space the lines and the button row leave,
-            // at the picture's own square shape, as on the lens.
+            // at the picture's own shape (the box the frame left it), as on the lens.
             SwiftUI.Image(uiImage: picture)
                 .resizable()
                 .interpolation(.medium)

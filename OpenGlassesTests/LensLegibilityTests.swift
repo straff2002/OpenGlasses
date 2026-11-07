@@ -2,14 +2,16 @@ import CoreGraphics
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KV P0 — how tall a page's text draws on the lens, the floor, and the hint.
+/// Plan KV P0 — how tall a page's text draws on the lens, the floor, the hint and the zoom cap.
 final class LensLegibilityTests: XCTestCase {
 
     /// An invented portrait page, 612 × 792 points.
     private let page = CGSize(width: 612, height: 792)
+    /// The picture box with both lines over it: 576 × 382.
+    private let box = LensPageFrame.pictureBox(citation: true, hint: true)
 
-    private func view(_ zoom: LensPageViewport.Zoom) -> LensPageViewport {
-        LensPageViewport(pageSize: page, center: CGPoint(x: 306, y: 396), zoom: zoom)
+    private func view(_ pixelsPerPoint: CGFloat?) -> LensPageViewport {
+        LensPageViewport(pageSize: page, box: box, center: CGPoint(x: 306, y: 396), pixelsPerPoint: pixelsPerPoint)
     }
 
     func testTheFloorIsKPsMetaTokenAndAnEstimate() {
@@ -17,11 +19,7 @@ final class LensLegibilityTests: XCTestCase {
         XCTAssertEqual(legibility.floorPixels, HUDCanvas.metaDisplay.textSize(.meta).pixels)
         XCTAssertEqual(legibility.floorPixels, 22)
         XCTAssertTrue(legibility.isEstimate)
-        // P4: the square picture as drawn under the frame's lines and above its button row, not the
-        // 600 px canvas (`LensPageFrame`).
-        XCTAssertEqual(legibility.pictureSidePixels, LensPageFrame.pictureSidePixels)
-        XCTAssertEqual(legibility.pictureSidePixels, 382)
-        XCTAssertEqual(LensLegibility(canvas: .evenG2).pictureSidePixels, 288, "a canvas with no page view keeps its side")
+        XCTAssertEqual(legibility.readablePixelsPerPoint, 2.75, accuracy: 0.0001, "8 pt labels at 22 px")
     }
 
     func testWithNoCitedLinesTheTextIsTakenAsEightPoints() {
@@ -30,13 +28,16 @@ final class LensLegibilityTests: XCTestCase {
         XCTAssertEqual(LensLegibility(textHeightPoints: 0).textHeightPoints, 8)
     }
 
-    /// 8 pt labels draw about 4 px on a fitted letter page, and three times that at ×3.
+    /// The estimate is the text's height times lens pixels per page point: the picture box's width
+    /// over the crop's. 8 pt labels draw under 4 px on a whole letter page in the 382 px box.
     func testTheEstimateIsTextHeightTimesLensPixelsPerPoint() {
         let legibility = LensLegibility()
-        XCTAssertEqual(legibility.estimatedPixels(at: view(.fit)), 8 * 382 / 792, accuracy: 0.001)
-        XCTAssertEqual(legibility.estimatedPixels(at: view(.x3)), 8 * 382 / 264, accuracy: 0.001)
-        XCTAssertEqual(legibility.estimatedPixels(at: view(.x3)) / legibility.estimatedPixels(at: view(.fit)),
-                       3, accuracy: 0.001)
+        let whole = view(nil)
+        XCTAssertEqual(whole.pixelsPerPoint, 382.0 / 792, accuracy: 0.0001)
+        XCTAssertEqual(legibility.estimatedPixels(at: whole), 8 * 382.0 / 792, accuracy: 0.001)
+        XCTAssertEqual(legibility.estimatedPixels(at: view(3)), 24, accuracy: 0.001)
+        XCTAssertEqual(legibility.estimatedPixels(at: view(3)),
+                       8 * box.width / view(3).cropRect.width, accuracy: 0.001)
     }
 
     func testTheTextHeightIsTheMedianCitedLine() {
@@ -49,32 +50,28 @@ final class LensLegibilityTests: XCTestCase {
         XCTAssertEqual(LensLegibility.medianHeight(Array(lines.prefix(2))), 10)
     }
 
-    /// The hint shows exactly when the estimate is under the floor and a deeper step exists.
+    /// The hint shows exactly when the estimate is under the floor and the view can zoom in further.
     func testTheHintShowsExactlyWhenUnderTheFloor() {
         for height in [CGFloat(4), 6, 8, 10, 12, 16, 30] {
             let legibility = LensLegibility(textHeightPoints: height)
-            for zoom in LensPageViewport.Zoom.allCases {
-                let viewport = view(zoom)
+            for pixelsPerPoint in [nil, 1, 1.5, 2.25, 3.375, 4.125] as [CGFloat?] {
+                let viewport = view(pixelsPerPoint)
                 let under = legibility.estimatedPixels(at: viewport) < 22
                 XCTAssertEqual(legibility.isUnderFloor(at: viewport), under)
-                XCTAssertEqual(legibility.needsZoomHint(at: viewport), under && zoom != .x4, "\(height) pt at \(zoom)")
+                XCTAssertEqual(legibility.needsZoomHint(at: viewport), under && !viewport.isDeepest,
+                               "\(height) pt at \(String(describing: pixelsPerPoint))")
             }
         }
     }
 
-    func testNoHintAtTheDeepestStepEvenWhenUnreadable() {
+    /// At the cap 8 pt labels draw 33 px, over the floor; a smaller text left under it gets no hint
+    /// asking for a zoom the view can't do.
+    func testNoHintAtTheCapEvenWhenUnreadable() {
+        let deepest = view(LensLegibility.zoomCapPixelsPerPoint())
+        XCTAssertTrue(deepest.isDeepest)
+        XCTAssertFalse(LensLegibility().isUnderFloor(at: deepest))
         let tiny = LensLegibility(textHeightPoints: 2)
-        XCTAssertTrue(tiny.isUnderFloor(at: view(.x4)))
-        XCTAssertFalse(tiny.needsZoomHint(at: view(.x4)))
-    }
-
-    /// With the 382 px picture (P4), 8 pt labels stay under the estimated floor even at ×4 (about
-    /// 15 px); P5 measures both the floor and the picture on the glasses.
-    func testTheReadableStepIsTheWidestThatReachesTheFloor() {
-        XCTAssertNil(LensLegibility().readableZoom(pageSize: page))
-        XCTAssertEqual(LensLegibility(textHeightPoints: 12).readableZoom(pageSize: page), .x4)
-        XCTAssertEqual(LensLegibility(textHeightPoints: 30).readableZoom(pageSize: page), .x2)
-        XCTAssertEqual(LensLegibility(textHeightPoints: 46).readableZoom(pageSize: page), .fit)
-        XCTAssertNil(LensLegibility(textHeightPoints: 2).readableZoom(pageSize: page))
+        XCTAssertTrue(tiny.isUnderFloor(at: deepest))
+        XCTAssertFalse(tiny.needsZoomHint(at: deepest))
     }
 }

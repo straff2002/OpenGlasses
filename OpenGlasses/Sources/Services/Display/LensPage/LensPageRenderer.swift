@@ -49,7 +49,8 @@ struct LensPageRequest: Equatable {
 }
 
 /// One page laid out for the lens: its size, its marks as rectangles, its drawings, where the view
-/// opens, and how legible its text is. Pure once made.
+/// opens, how legible its text is, and — for a cited text passage — its words to read. Pure once
+/// made.
 struct LensPageLayout: Equatable {
     let pageSize: CGSize
     let marks: LensPageMarks?
@@ -62,15 +63,20 @@ struct LensPageLayout: Equatable {
     let figureIndex: Int?
     let focus: LensPageFocus
     let legibility: LensLegibility
+    /// The cited passages' own words, when the view opens on a cited text passage (reading mode,
+    /// `LensPageReading`); nil when it opens on anything else.
+    let reading: LensPageReading?
 
     /// `figure` is a known drawing's rectangle; without one, the chosen drawing's (`figureIndex`
     /// into `drawings`). `drawingFocus` says where the drawing stands in the order (§1): ahead of
     /// the cited passages (`.first`), after them (`.afterMarks`), or not a focus at all (`.none`,
-    /// a request for the page: the drawings are still kept for **Next diagram ›**).
+    /// a request for the page: the drawings are still kept for **Next diagram ›**). `reading` is
+    /// kept only when the view opens on the cited passages.
     init(pageSize: CGSize, marks: LensPageMarks?, pictureAreas: [CGRect],
          tone: LensPageRenderPlan.Tone, figure: CGRect? = nil,
          drawings: [PageDrawing] = [], figureIndex: Int? = nil,
-         drawingFocus: PageFigureAsk.DrawingFocus = .afterMarks) {
+         drawingFocus: PageFigureAsk.DrawingFocus = .afterMarks,
+         reading: LensPageReading? = nil) {
         self.pageSize = pageSize
         self.marks = marks.flatMap { $0.isEmpty ? nil : $0 }
         self.pictureAreas = pictureAreas
@@ -87,18 +93,41 @@ struct LensPageLayout: Equatable {
         } else {
             legibility = LensLegibility(lineRects: self.marks?.lineRects ?? [])
         }
+        self.reading = focus.source == .citedPassages && pictureAreas.isEmpty && tone == .lineArt ? reading : nil
     }
 
-    /// The view's opening viewport.
-    var openingViewport: LensPageViewport { LensPageViewport(opening: focus) }
+    /// The view's opening viewport, for its first frame (the citation line over it).
+    var openingViewport: LensPageViewport {
+        Self.viewport(opening: focus, legibility: legibility, citation: true)
+    }
 
     /// The drawing the view opened on, when it opened on one.
     var openingDrawing: Int? { focus.source == .figure ? figureIndex : nil }
 
-    /// The view opened on drawing `index` (**Next diagram ›**, "the bottom one").
+    /// The view opened on drawing `index` (**Next diagram ›**, "the bottom one"), on a later frame.
     func viewport(onDrawing index: Int) -> LensPageViewport? {
         guard drawings.indices.contains(index) else { return nil }
-        return LensPageViewport(opening: LensPageFocus.pick(pageSize: pageSize, figure: drawings[index].rect))
+        return Self.viewport(opening: LensPageFocus.pick(pageSize: pageSize, figure: drawings[index].rect),
+                             legibility: Self.legibility(of: drawings[index]), citation: false)
+    }
+
+    /// The picture opened on passage `number`'s mark (reading mode's **Page**), on a later frame;
+    /// all the marks when that one isn't on the page.
+    func viewport(onPassage number: Int?) -> LensPageViewport {
+        let mark = marks?.marks.first { $0.number == number }
+        let rects = mark.map { [$0.bounds] } ?? marks?.marks.map(\.bounds) ?? []
+        let lines = mark?.lineRects ?? marks?.lineRects ?? []
+        return Self.viewport(opening: LensPageFocus.pick(pageSize: pageSize, passageRects: rects),
+                             legibility: LensLegibility(lineRects: lines), citation: false)
+    }
+
+    /// `focus` fitted exactly into the box its frame leaves the picture: the citation line on the
+    /// first frame, and the hint when the opening needs it (`HUDPageViewState.showsZoomHint`).
+    static func viewport(opening focus: LensPageFocus, legibility: LensLegibility,
+                         citation: Bool) -> LensPageViewport {
+        let plain = LensPageViewport(opening: focus, box: LensPageFrame.pictureBox(citation: citation, hint: false))
+        guard HUDPageViewState.needsZoomHint(plain, legibility: legibility, citation: citation) else { return plain }
+        return LensPageViewport(opening: focus, box: LensPageFrame.pictureBox(citation: citation, hint: true))
     }
 
     /// A drawing's legibility: its labels' height, or the default for a drawing's labels.
@@ -135,7 +164,21 @@ enum LensPageRenderer {
         let choice = figureChoice(page, request: request)
         return LensPageLayout(pageSize: geometry.pageSize, marks: marks, pictureAreas: areas, tone: request.tone,
                               drawings: choice.drawings, figureIndex: choice.index,
-                              drawingFocus: request.ask.drawingFocus)
+                              drawingFocus: request.ask.drawingFocus,
+                              reading: reading(page, request: request))
+    }
+
+    /// The cited text passages' own words on the page, for reading mode (Plan KV §1): nil for a
+    /// photographed page, a pictured table, or a page whose cited passages include a table row
+    /// (located by its printed runs, so its words are a row of cells): those keep the picture.
+    static func reading(_ page: PDFPage, request: LensPageRequest) -> LensPageReading? {
+        guard request.tone == .lineArt,
+              !request.pictureAreas.contains(where: { $0.physical == request.page }) else { return nil }
+        let onPage = request.citedPassages.filter { $0.anchor.covers(request.page) }
+        guard !onPage.isEmpty, onPage.allSatisfy({ $0.anchor.printedRuns.isEmpty }) else { return nil }
+        let text = page.string
+        let marks = PassageMarks(passages: request.citedPassages, page: request.page, pageText: text)
+        return LensPageReading(marks, pageText: text)
     }
 
     /// The page's drawings and the one the request means (Plan KV P1b). A photographed page has no
@@ -186,7 +229,7 @@ enum LensPageRenderer {
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
                                           | CGBitmapInfo.byteOrder32Big.rawValue) else { return nil }
 
-        // Paper everywhere first: the part of the square past the page is paper too, so it turns
+        // Paper everywhere first: the part of the crop past the page is paper too, so it turns
         // black (clear on the lens) with the rest.
         context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
@@ -356,6 +399,6 @@ final class LensPageRenderCache {
         }
         let crop = plan.crop
         return "\(identity)@\(half(crop.minX)),\(half(crop.minY)),\(half(crop.width)),\(half(crop.height))"
-            + ":\(plan.tone.rawValue):\(Int(plan.outputSize.width))"
+            + ":\(plan.tone.rawValue):\(Int(plan.outputSize.width))x\(Int(plan.outputSize.height))"
     }
 }

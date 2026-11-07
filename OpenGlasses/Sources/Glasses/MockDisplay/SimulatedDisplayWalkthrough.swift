@@ -90,14 +90,27 @@ struct SimulatedDisplayWalkthrough {
         await pressPage(HUDPageScreenBuilder.ItemID.nextDiagram, "page1-next-diagram")
         await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page1-zoom-in")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page1-close")
-        // A cited passage on the text page: the view opens on it, marked.
+        // A cited passage on the text page: the view opens on its words (reading mode), pages them,
+        // shows the picture on its mark, and reads them again.
         await stage(SimulatedDisplayTestManual.staged(page: 4, cited: true), words: "how do I clear a latched fault")
-        await capture("page4-cited")
-        await pressPage(HUDPageScreenBuilder.ItemID.wholePage, "page4-whole")
+        await capture("page4-reading")
+        await pressPage(HUDPageScreenBuilder.ItemID.nextText, "page4-reading-next")
+        await pressPage(HUDPageScreenBuilder.ItemID.showPicture, "page4-picture")
+        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page4-picture-zoom-in")
+        await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-read-it")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page4-close")
-        // The table.
-        await stage(SimulatedDisplayTestManual.staged(page: 3, figure: "Table 1"), words: "show me table 1")
+        // Two cited passages on the page: numbered, one after the other.
+        await stage(SimulatedDisplayTestManual.staged(page: 4, citedTwice: true), words: "how do I clear a latched fault")
+        await capture("page4-two-passages")
+        while offered(HUDPageScreenBuilder.ItemID.nextText) {
+            await pressPage(HUDPageScreenBuilder.ItemID.nextText, "page4-two-next-\(lensPage.shownState?.readingIndex ?? 0)")
+        }
+        await pressPage(HUDPageScreenBuilder.ItemID.showPicture, "page4-two-picture")
+        await pressPage(HUDPageScreenBuilder.ItemID.close, "page4-two-close")
+        // The table, outlined as a pictured table: it keeps the picture and fills the width.
+        await stage(SimulatedDisplayTestManual.staged(page: 3, figure: "Table 1", pictured: true), words: "show me table 1")
         await capture("page3-table")
+        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page3-zoom-in")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page3-close")
     }
 
@@ -207,9 +220,15 @@ struct SimulatedDisplayWalkthrough {
     private func pageState() -> String {
         guard let state = lensPage.shownState else { return "held=\(String(describing: lensPage.held))" }
         let viewport = state.viewport
-        return "held=\(String(describing: lensPage.held)) zoom=x\(viewport.zoom.rawValue) "
+        let crop = viewport.cropRect.integral
+        let size = lensPage.shownScreen?.picture.map { "\(Int($0.pixelSize.width))x\(Int($0.pixelSize.height))" } ?? "none"
+        let mode = state.isReading
+            ? "reading=\(state.readingIndex + 1)/\(state.readingPages.count)"
+            : String(format: "scale=%.2f px/pt=%.2f", Double(viewport.scale), Double(viewport.pixelsPerPoint))
+                + " crop=\(Int(crop.minX)),\(Int(crop.minY)),\(Int(crop.width))x\(Int(crop.height))"
+        return "held=\(String(describing: lensPage.held)) \(mode) "
             + "whole=\(viewport.isWholePage) diagram=\(state.diagramIndex.map { "\($0 + 1)" } ?? "-")/\(state.diagramCount) "
-            + "moving=\(state.isMoving) buttons=\(labels(lensPage.shownScreen)) picture=\(lensPage.shownScreen?.picture != nil)"
+            + "moving=\(state.isMoving) buttons=\(labels(lensPage.shownScreen)) picture=\(size)"
     }
 
     private func labels(_ screen: HUDScreen?) -> String {
@@ -238,7 +257,7 @@ struct SimulatedDisplayWalkthrough {
         let script = """
         (() => {
           const r = e => { const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
-          const scroll = [...document.querySelectorAll('[data-scroll-view=true]')].map(e => [e.scrollHeight, e.clientHeight, Math.round(e.scrollTop)]);
+          const scroll = [...document.querySelectorAll('[data-scroll-view=true]')].filter(e => e.scrollHeight > e.clientHeight).map(e => [e.scrollHeight, e.clientHeight, Math.round(e.scrollTop)]);
           const app = document.getElementById('app');
           const img = [...app.querySelectorAll('img')].map(r);
           const buttons = [...app.querySelectorAll('[role=button]')].map(r);
@@ -261,7 +280,8 @@ struct SimulatedDisplayWalkthrough {
         let buttons = (layout["buttons"] as? [[Int]]) ?? []
         let images = (layout["img"] as? [[Int]]) ?? []
         let texts = (layout["texts"] as? [[Int]]) ?? []
-        // Everything drawn inside the 600 × 600 lens: nothing scrolled off or past an edge.
+        // Everything drawn inside the 600 × 600 lens: nothing scrolled off or past an edge. `scroll`
+        // lists only the scroll views whose content is taller than they are: empty when nothing scrolls.
         let boxesInside = (buttons + images).allSatisfy {
             $0.count == 4 && $0[0] >= 0 && $0[1] >= 0 && $0[0] + $0[2] <= 600 && $0[1] + $0[3] <= 600
         }

@@ -35,9 +35,16 @@ import UIKit
 /// "next diagram" cycle the page's drawings in reading order; "the bottom one" goes to the one a
 /// position names. Both are audited as moves.
 ///
-/// **What is recorded.** Each view, zoom, move and close goes to the page audit trail (`audit`) as
-/// the page reference and the crop; the support report counts views, zooms and moves and times
-/// renders and sends. Never the page's text or pixels.
+/// **Reading mode (§1).** A page opened on a cited text passage (`LensPageLayout.reading`) opens on
+/// the passage's own words as lens text, paged with the backend's geometry (`readingGeometry`), with
+/// **Page** to see the picture (opened on the passage's mark) and, on that picture, **Read it** to
+/// come back. While reading mode is up, "next" and "back" page the text and are taken even with
+/// nowhere to go, so a task card under the view never takes a step it isn't showing.
+///
+/// **What is recorded.** Each view, zoom, move, reading page and close goes to the page audit trail
+/// (`audit`) as the page reference and the crop (reading mode's lines carry none); the support
+/// report counts views, reading views, zooms and moves and times renders and sends. Never the
+/// page's text or pixels.
 @MainActor
 final class LensPageSession: ObservableObject {
 
@@ -85,6 +92,8 @@ final class LensPageSession: ObservableObject {
     var requestWords: @MainActor () -> String? = { TechnicianWords.current() }
     /// Lays out a page (PDFKit, off the main actor). A seam so tests can hold or fail it.
     var layoutPage: (LensPageRequest) async -> LensPageLayout? = { await LensPageRenderer.layout($0) }
+    /// How reading mode lays text out: the backend's lines and characters, as on the answer card.
+    var readingGeometry: () -> TeleprompterPaginator.Geometry = { HUDAnswerCard.activeGeometry() }
     /// Draws one picture (PDFKit and Core Graphics, off the main actor). A seam so tests can hold
     /// a render until a notification has landed.
     var renderPicture: (LensPageRequest, LensPageRenderPlan) async -> UIImage? = {
@@ -250,7 +259,7 @@ final class LensPageSession: ObservableObject {
         shownScreen = screen
         shownState = nil
         stats.update(backend()) { $0.cuesShown += 1 }
-        record(.cueShown, page: page, viewport: nil)
+        record(.cueShown, page: page, state: nil)
         armTimer(cueLifetime)
     }
 
@@ -268,7 +277,8 @@ final class LensPageSession: ObservableObject {
                 self.renderFailed(page)
                 return
             }
-            let state = Self.openingState(layout, page: page, hasNextPage: self.pageIndex + 1 < self.pages.count)
+            let state = Self.openingState(layout, page: page, hasNextPage: self.pageIndex + 1 < self.pages.count,
+                                          geometry: self.readingGeometry())
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request) else {
                 guard opening == self.generation else { return }
                 self.renderFailed(page)
@@ -282,10 +292,13 @@ final class LensPageSession: ObservableObject {
             self.held = .view
             self.shownState = state
             self.shownScreen = screen
-            self.stats.update(self.backend()) { $0.viewsOpened += 1 }
+            self.stats.update(self.backend()) { entry in
+                entry.viewsOpened += 1
+                if state.isReading { entry.readingViews += 1 }
+            }
             PrivacyLog.device(.hud, .lensPageOpened, state: PrivacyToken(route.rawValue),
                               detail: PrivacyToken(self.backend()))
-            self.record(.opened, page: page, viewport: state.viewport)
+            self.record(.opened, page: page, state: state)
             self.armTimer(self.viewLifetime)
         }
     }
@@ -361,8 +374,24 @@ final class LensPageSession: ObservableObject {
             return
         case .showHere:
             return
+        case .nextText:
+            guard shown.isReading, shown.readingIndex + 1 < shown.readingPages.count else { return }
+            next.readingIndex += 1; event = .readPage
+        case .previousText:
+            guard shown.isReading, shown.readingIndex > 0 else { return }
+            next.readingIndex -= 1; event = .readPage
+        case .showPicture:
+            guard shown.isReading, let layout = currentLayout else { return }
+            next = Self.pictureState(shown, layout: layout)
+            event = .picture
+        case .readIt:
+            guard !shown.isReading, shown.canRead else { return }
+            next.isReading = true
+            next.isMoving = false
+            event = .reading
         }
         next.isFirstFrame = false
+        next = next.framed()
         guard next != shown else { return }     // a move against an edge does nothing
         draw(next, event: event, issuedAgainst: revision)
     }
@@ -373,6 +402,7 @@ final class LensPageSession: ObservableObject {
     func handle(_ command: HUDPageCommand) -> Bool {
         guard isViewOnLens, let shown = shownState else { return false }
         let revision = display.heldScreenRevision
+        if shown.isReading { return handleWhileReading(command, shown: shown, revision: revision) }
         switch command {
         case .zoomIn:
             guard shown.viewport.canZoomIn else { return false }
@@ -390,6 +420,7 @@ final class LensPageSession: ObservableObject {
             var next = shown
             next.viewport.jump(to: corner)
             next.isFirstFrame = false
+            next = next.framed()
             guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
             draw(next, event: .moved, issuedAgainst: revision)
         case .nextPage:
@@ -406,6 +437,7 @@ final class LensPageSession: ObservableObject {
                   let viewport = layout.viewport(onDrawing: target) else { return false }
             var next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
             next.isFirstFrame = false
+            next = next.framed()
             guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
             draw(next, event: .moved, issuedAgainst: revision)
         case .back:
@@ -413,11 +445,49 @@ final class LensPageSession: ObservableObject {
                 handle(.doneMoving, issuedAgainst: revision)
             } else if !shown.viewport.isAtOpening {
                 handle(.backToPart, issuedAgainst: revision)
+            } else if shown.canRead {
+                handle(.readIt, issuedAgainst: revision)     // the picture of a passage: back to its words
             } else {
                 return false
             }
         case .close:
             close()
+        case .readIt:
+            guard shown.canRead else { return false }
+            handle(.readIt, issuedAgainst: revision)
+        case .next, .showPage:
+            // Picture words only in reading mode: "next" here is left to whatever is under the view.
+            return false
+        }
+        return true
+    }
+
+    /// The words while reading mode is up. "Next" and "back" page the text, and are taken even with
+    /// nowhere to go, so a task card under the view never takes a step it isn't showing; "show the
+    /// page" (or "whole page") goes to the picture; the picture's own words wait for it.
+    private func handleWhileReading(_ command: HUDPageCommand, shown: HUDPageViewState, revision: UInt64) -> Bool {
+        switch command {
+        case .next:
+            handle(.nextText, issuedAgainst: revision)
+        case .back:
+            handle(.previousText, issuedAgainst: revision)
+        case .showPage:
+            handle(.showPicture, issuedAgainst: revision)
+        case .wholePage:
+            guard let layout = currentLayout, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
+            var next = Self.pictureState(shown, layout: layout)
+            next.viewport.showWholePage()
+            next.isFirstFrame = false
+            draw(next.framed(), event: .picture, issuedAgainst: revision)
+        case .readIt:
+            break   // already reading
+        case .nextPage:
+            guard pageIndex + 1 < pages.count else { return false }
+            handle(.nextPage, issuedAgainst: revision)
+        case .close:
+            close()
+        case .zoomIn, .zoomOut, .move, .corner, .nextDiagram, .diagram:
+            return false
         }
         return true
     }
@@ -427,10 +497,30 @@ final class LensPageSession: ObservableObject {
 
     /// The view's first state on a page: its opening viewport, and its drawings for **Next
     /// diagram ›**.
-    static func openingState(_ layout: LensPageLayout, page: Page, hasNextPage: Bool) -> HUDPageViewState {
-        HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
-                         citation: citation(for: page.staged), hasNextPage: hasNextPage,
-                         diagramCount: layout.drawings.count, diagramIndex: layout.openingDrawing)
+    static func openingState(_ layout: LensPageLayout, page: Page, hasNextPage: Bool,
+                             geometry: TeleprompterPaginator.Geometry = .raybanDisplay) -> HUDPageViewState {
+        var state = HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
+                                     citation: citation(for: page.staged), hasNextPage: hasNextPage,
+                                     diagramCount: layout.drawings.count, diagramIndex: layout.openingDrawing)
+        if let reading = layout.reading {
+            state.readingPages = reading.pages(geometry: geometry)
+            state.isReading = !state.readingPages.isEmpty
+        }
+        return state.framed()
+    }
+
+    /// Reading mode's **Page**: the picture, opened on the mark of the passage the reading page
+    /// shows, fitted exactly. **Back to part** returns there.
+    static func pictureState(_ shown: HUDPageViewState, layout: LensPageLayout) -> HUDPageViewState {
+        var next = shown
+        let number = layout.reading?.passageNumber(atPage: shown.readingIndex, of: shown.readingPages)
+        next.viewport = layout.viewport(onPassage: number)
+        next.legibility = LensLegibility(lineRects: layout.marks?.marks.first { $0.number == number }?.lineRects
+                                         ?? layout.marks?.lineRects ?? [])
+        next.isReading = false
+        next.isMoving = false
+        next.isFirstFrame = false
+        return next.framed()
     }
 
     /// **Next diagram ›**: the drawing after the one shown, in reading order, round to the first;
@@ -473,7 +563,12 @@ final class LensPageSession: ObservableObject {
             case .moved?: self.stats.update(self.backend()) { $0.moves += 1 }
             default: break
             }
-            if let event { self.record(event, page: page, viewport: next.viewport) }
+            switch event {
+            case .reading?: self.stats.update(self.backend()) { $0.readingViews += 1 }
+            case .readPage?: self.stats.update(self.backend()) { $0.readingPages += 1 }
+            default: break
+            }
+            if let event { self.record(event, page: page, state: next) }
         }
     }
 
@@ -489,7 +584,8 @@ final class LensPageSession: ObservableObject {
         track { [weak self] in
             guard let self else { return }
             guard let layout = await self.layout(for: page, request: request) else { return }
-            let state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count)
+            let state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count,
+                                          geometry: self.readingGeometry())
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request),
                   drawing == self.generation else { return }
             guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
@@ -499,8 +595,11 @@ final class LensPageSession: ObservableObject {
             self.pageIndex = target
             self.shownState = state
             self.shownScreen = screen
-            self.stats.update(self.backend()) { $0.nextPages += 1 }
-            self.record(.nextPage, page: page, viewport: state.viewport)
+            self.stats.update(self.backend()) { entry in
+                entry.nextPages += 1
+                if state.isReading { entry.readingViews += 1 }
+            }
+            self.record(.nextPage, page: page, state: state)
         }
     }
 
@@ -510,12 +609,12 @@ final class LensPageSession: ObservableObject {
     func close() {
         guard let held else { return }
         let page = currentPage
-        let viewport = shownState?.viewport
+        let state = shownState
         reset()
         router.closePage()
         if held == .view, let page {
             PrivacyLog.device(.hud, .lensPageClosed, state: PrivacyToken(route.rawValue))
-            record(.closed, page: page, viewport: viewport)
+            record(.closed, page: page, state: state)
         }
     }
 
@@ -562,8 +661,17 @@ final class LensPageSession: ObservableObject {
         guard let request = page.request else { return }
         track { [weak self] in
             guard let self, let layout = await self.layout(for: page, request: request) else { return }
-            for viewport in [layout.openingViewport, LensPageViewport(wholePage: layout.pageSize)] {
-                _ = await self.picture(for: LensPageRenderPlan(layout: layout, viewport: viewport),
+            // The pictures the first presses want: the opening view (or, opening on the words, the
+            // picture **Page** shows) and the whole page, each in the box its frame leaves.
+            let opening = Self.openingState(layout, page: page, hasNextPage: false, geometry: self.readingGeometry())
+            var first = opening.isReading ? Self.pictureState(opening, layout: layout) : opening
+            var whole = first
+            whole.isFirstFrame = false
+            whole.viewport.showWholePage()
+            whole = whole.framed()
+            first = first.framed()
+            for state in [first, whole] {
+                _ = await self.picture(for: LensPageRenderPlan(layout: layout, viewport: state.viewport),
                                        page: page, request: request)
             }
         }
@@ -607,6 +715,8 @@ final class LensPageSession: ObservableObject {
 
     private func screen(for state: HUDPageViewState, page: Page, layout: LensPageLayout,
                         request: LensPageRequest) async -> HUDScreen? {
+        // Reading mode is text: nothing to draw.
+        if state.isReading { return HUDPageScreenBuilder.screen(state, onAction: onAction) }
         guard let picture = await picture(for: LensPageRenderPlan(layout: layout, viewport: state.viewport),
                                           page: page, request: request) else { return nil }
         var screen = HUDPageScreenBuilder.screen(state, onAction: onAction)
@@ -638,12 +748,16 @@ final class LensPageSession: ObservableObject {
     /// The support report's **Page on the lens** lines.
     var reportLines: [String] { LensPageReport.lines(for: stats) }
 
-    private func record(_ event: LensPageAuditLine.Event, page: Page, viewport: LensPageViewport?) {
+    /// One audit line: the page reference, and for a picture its crop and scale. A reading-mode
+    /// line says so and carries neither — and never the words.
+    private func record(_ event: LensPageAuditLine.Event, page: Page, state: HUDPageViewState?) {
+        let picture = state.flatMap { $0.isReading ? nil : $0.viewport }
         audit?(LensPageAuditLine(event: event, documentTitle: page.staged.documentTitle, page: page.staged.page,
-                                 figure: page.staged.figure, crop: viewport?.cropRect ?? .zero,
-                                 zoom: viewport?.zoom.rawValue ?? 0,
+                                 figure: page.staged.figure, crop: picture?.cropRect ?? .zero,
+                                 zoom: picture.map { Double($0.scale) } ?? 0,
                                  route: event == .cueShown ? Route.automatic.rawValue : route.rawValue,
-                                 backend: backend()))
+                                 backend: backend(),
+                                 view: state.map { $0.isReading ? .reading : .picture }))
     }
 
     // MARK: - Tests

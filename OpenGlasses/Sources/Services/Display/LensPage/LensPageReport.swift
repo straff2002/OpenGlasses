@@ -14,21 +14,48 @@ struct LensPageAuditLine: Equatable {
         /// The view went to another cited page.
         case nextPage = "next_page"
         case closed
+        /// Reading mode (§1): the view switched to the passage's words (**Read it**)…
+        case reading
+        /// …turned a page of them…
+        case readPage = "read_page"
+        /// …or switched to the picture (**Page**).
+        case picture
+    }
+
+    /// What the lens showed: the page's picture, or a cited passage's words as text (reading mode).
+    enum View: String, Equatable {
+        case picture
+        case reading
     }
 
     let event: Event
     let documentTitle: String
     let page: Int
     let figure: String?
-    /// What the lens shows, in top-down page points (zero for a cue).
+    /// What the lens shows, in top-down page points (zero for a cue and for reading mode).
     let crop: CGRect
-    /// The zoom step (1 = the whole page fitted; 0 for a cue).
-    let zoom: Int
+    /// The scale (1 = the whole page fitted; 0 for a cue and for reading mode).
+    let zoom: Double
     /// Why the page reached the lens: `requested`, `automatic` (opened with **Show here**) or
     /// `answer_card` (its **Page** action).
     let route: String
     /// The display backend's token.
     let backend: String
+    /// The picture or the words; nil for a cue.
+    var view: View? = nil
+
+    init(event: Event, documentTitle: String, page: Int, figure: String?, crop: CGRect, zoom: Double,
+         route: String, backend: String, view: View? = nil) {
+        self.event = event
+        self.documentTitle = documentTitle
+        self.page = page
+        self.figure = figure
+        self.crop = crop
+        self.zoom = zoom
+        self.route = route
+        self.backend = backend
+        self.view = view
+    }
 
     /// "x,y,w,h", whole page points.
     var cropText: String {
@@ -44,6 +71,10 @@ struct LensPageStats: Equatable {
         var cuesShown = 0
         var showHerePressed = 0
         var viewsOpened = 0
+        /// Views shown as a passage's words (reading mode): opened that way, or **Read it**.
+        var readingViews = 0
+        /// Reading-mode pages turned.
+        var readingPages = 0
         var zooms = 0
         var moves = 0
         var nextPages = 0
@@ -82,7 +113,8 @@ enum LensPageReport {
             let entry = stats[backend]
             lines.append("  \(backend): views opened \(entry.viewsOpened), Show here cues \(entry.cuesShown)"
                          + " (pressed \(entry.showHerePressed)), zooms \(entry.zooms), moves \(entry.moves),"
-                         + " next pages \(entry.nextPages), refused \(entry.refused),"
+                         + " next pages \(entry.nextPages), reading views \(entry.readingViews)"
+                         + " (pages turned \(entry.readingPages)), refused \(entry.refused),"
                          + " stale presses dropped \(entry.stalePressesDropped)")
             lines.append("    Render: " + summary(entry.renderMs, unit: "ms"))
             lines.append("    Sent: " + summary(entry.sentBytes.map { ($0 + 512) / 1024 }, unit: "KB")

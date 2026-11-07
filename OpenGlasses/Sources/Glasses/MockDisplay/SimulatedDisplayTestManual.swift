@@ -16,8 +16,10 @@ enum SimulatedDisplayTestManual {
     static let pageCount = 4
     static let letter = CGSize(width: 612, height: 792)
 
-    /// The sentence on page 4 the walkthrough's answer cites, so the page view marks its line.
+    /// The sentences on page 4 the walkthrough's answer cites, so the page view marks their lines and
+    /// reads them.
     static let citedSentence = "Hold the purge key for five seconds until the amber lamp blinks twice."
+    static let followingSentence = "Release the key and wait for the green lamp before closing the cover."
 
     static var url: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -38,13 +40,33 @@ enum SimulatedDisplayTestManual {
         return url
     }
 
-    /// A staged page of the manual, as `show_source` would stage it.
-    static func staged(page: Int, figure: String? = nil, cited: Bool = false) -> FieldSessionService.StagedFigure {
+    /// The second sentence page 4's two-passage answer cites.
+    static let secondCitedSentence = "Record the lamp colour in the service log before leaving the site."
+
+    /// The table on page 3, in top-down page points: where a pictured table's outline goes.
+    static let tableRect = CGRect(x: 54, y: 100, width: 490, height: 168)
+
+    /// A staged page of the manual, as `show_source` would stage it. `cited` cites page 4's
+    /// sentence; `citedTwice` cites it and a second one, so the passages are numbered;
+    /// `pictured` outlines page 3's table as a pictured table's area.
+    static func staged(page: Int, figure: String? = nil, cited: Bool = false, citedTwice: Bool = false,
+                       pictured: Bool = false) -> FieldSessionService.StagedFigure {
         var staged = FieldSessionService.StagedFigure(documentId: documentId, documentTitle: title, page: page,
                                                       figure: figure, sourceFile: fileName, origin: .requested)
         if cited {
             staged.citedPassages = [CitedPassage(number: 1, anchor: PassageAnchor(
-                documentId: documentId, chunkIndex: 0, text: citedSentence, page: page))]
+                documentId: documentId, chunkIndex: 0, text: citedSentence + " " + followingSentence, page: page))]
+        }
+        if citedTwice {
+            staged.citedPassages = [
+                CitedPassage(number: 1, anchor: PassageAnchor(documentId: documentId, chunkIndex: 0,
+                                                              text: citedSentence, page: page)),
+                CitedPassage(number: 2, anchor: PassageAnchor(documentId: documentId, chunkIndex: 1,
+                                                              text: secondCitedSentence, page: page)),
+            ]
+        }
+        if pictured {
+            staged.pictureAreas = [ManualTable.PictureArea(physical: page, rect: tableRect)]
         }
         return staged
     }
@@ -149,8 +171,8 @@ enum SimulatedDisplayTestManual {
         let text = [
             "The Q-7 board latches a fault when any test point stays outside its band for more than ten seconds. The amber lamp then stays lit and the output relay opens.",
             "Before clearing the fault, check the sensor line at the intake filter and confirm the cover switch is closed. A fault that latches again within a minute is not cleared by a purge.",
-            citedSentence + " Release the key and wait for the green lamp before closing the cover.",
-            "If the lamp does not change, remove power for thirty seconds and repeat the purge once. Record the lamp colour in the service log before leaving the site.",
+            citedSentence + " " + followingSentence,
+            "If the lamp does not change, remove power for thirty seconds and repeat the purge once. " + secondCitedSentence,
         ]
         var y: CGFloat = 100
         for block in text {

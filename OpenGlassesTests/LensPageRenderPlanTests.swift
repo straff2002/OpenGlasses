@@ -50,21 +50,32 @@ final class LensPageRenderPlanTests: XCTestCase {
 
     // MARK: - Crop and marks
 
-    func testTheCropFillsTheCanvasAt600() {
-        let crop = CGRect(x: 100, y: 200, width: 200, height: 200)
+    func testTheCropIsDrawnAtTheContentWidth() {
+        let crop = CGRect(x: 100, y: 200, width: 192, height: 96)
         let plan = LensPageRenderPlan(pageSize: page, crop: crop, tone: .lineArt, showsPosition: false)
-        XCTAssertEqual(plan.outputSize, CGSize(width: 600, height: 600))
-        XCTAssertEqual(plan.scale, 3, accuracy: 0.0001, "a 200 pt crop draws 3 px per point")
+        XCTAssertEqual(plan.outputSize, CGSize(width: 576, height: 288), "the column's width, the crop's shape")
+        XCTAssertEqual(plan.scale, 3, accuracy: 0.0001, "a 192 pt crop draws 3 px per point")
         XCTAssertEqual(plan.toOutput(CGRect(x: 150, y: 250, width: 10, height: 10)),
                        CGRect(x: 150, y: 150, width: 30, height: 30))
     }
 
+    /// A viewport's plan is drawn at its picture box, one lens pixel per image pixel.
+    func testAViewportsPlanIsDrawnAtItsPictureBox() {
+        let layout = LensPageLayout(pageSize: page, marks: nil, pictureAreas: [], tone: .lineArt)
+        for box in [LensPageFrame.pictureBox(citation: true, hint: true), LensPageFrame.pictureBox(citation: false, hint: false)] {
+            let plan = LensPageRenderPlan(layout: layout, viewport: LensPageViewport(wholePage: page, box: box))
+            XCTAssertEqual(plan.outputSize, box)
+        }
+    }
+
     func testTheWholePageLeavesBlackMarginsOnTheShortSide() {
         let viewport = LensPageViewport(wholePage: page)
-        let plan = LensPageRenderPlan(pageSize: page, crop: viewport.cropRect, tone: .lineArt, showsPosition: false)
+        let plan = LensPageRenderPlan(layout: LensPageLayout(pageSize: page, marks: nil, pictureAreas: [], tone: .lineArt),
+                                      viewport: viewport)
         let inOutput = plan.pageInOutput
-        XCTAssertEqual(inOutput.height, 600, accuracy: 0.01)
-        XCTAssertEqual(inOutput.minX, (600 - inOutput.width) / 2, accuracy: 0.01, "centred, margins either side")
+        XCTAssertEqual(inOutput.height, plan.outputSize.height, accuracy: 0.01)
+        XCTAssertEqual(inOutput.minX, (plan.outputSize.width - inOutput.width) / 2, accuracy: 0.01,
+                       "centred, margins either side")
         XCTAssertGreaterThan(inOutput.minX, 0)
     }
 
@@ -77,7 +88,7 @@ final class LensPageRenderPlanTests: XCTestCase {
             .init(number: 2, lineRects: [second], bounds: second),
             .init(number: 3, lineRects: [offCrop], bounds: offCrop),
         ], showsNumbers: true)
-        let crop = CGRect(x: 100, y: 200, width: 200, height: 200)
+        let crop = CGRect(x: 100, y: 200, width: 200, height: 160)
         let plan = LensPageRenderPlan(pageSize: page, crop: crop, tone: .lineArt, passageMarks: marks,
                                       showsPosition: false)
         XCTAssertEqual(plan.marks.map(\.number), [1, 2], "the mark outside the crop is not drawn")
@@ -109,10 +120,11 @@ final class LensPageRenderPlanTests: XCTestCase {
         let frame = try? XCTUnwrap(LensPageRenderPlan(layout: layout, viewport: zoomed).positionFrame)
         XCTAssertNotNil(frame)
         guard let frame else { return }
-        XCTAssertLessThanOrEqual(frame.page.maxX, 600)
-        XCTAssertLessThanOrEqual(frame.page.maxY, 600)
-        XCTAssertEqual(max(frame.page.width, frame.page.height), 600 * LensPageRenderPlan.positionFrameShare,
-                       accuracy: 0.01)
+        let output = LensPageRenderPlan(layout: layout, viewport: zoomed).outputSize
+        XCTAssertLessThanOrEqual(frame.page.maxX, output.width)
+        XCTAssertLessThanOrEqual(frame.page.maxY, output.height)
+        XCTAssertEqual(max(frame.page.width, frame.page.height),
+                       min(output.width, output.height) * LensPageRenderPlan.positionFrameShare, accuracy: 0.01)
         XCTAssertEqual(frame.crop.minX, frame.page.minX, accuracy: 0.01, "top left of the page")
         XCTAssertEqual(frame.crop.minY, frame.page.minY, accuracy: 0.01)
         XCTAssertTrue(frame.page.insetBy(dx: -0.01, dy: -0.01).contains(frame.crop))
@@ -129,13 +141,13 @@ final class LensPageRenderPlanTests: XCTestCase {
         return try XCTUnwrap(LensPageRenderer.draw(pdfPage, plan: plan))
     }
 
-    func testTheWholePageDrawsInvertedAtTheCanvasSize() throws {
+    func testTheWholePageDrawsInvertedAtThePictureBox() throws {
         let url = try LensPageFixtures.pdf()
         let crop = LensPageViewport(wholePage: page).cropRect
         let image = try draw(url, crop: crop)
-        XCTAssertEqual(image.cgImage?.width, 600)
-        XCTAssertEqual(image.cgImage?.height, 600)
-        let scale = 600 / crop.width
+        XCTAssertEqual(image.cgImage?.width, 576)
+        XCTAssertEqual(image.cgImage?.height, 462)
+        let scale = 576 / crop.width
         func pixel(_ point: CGPoint) -> (r: UInt8, g: UInt8, b: UInt8)? {
             LensPageFixtures.pixel(image, x: Int((point.x - crop.minX) * scale), y: Int((point.y - crop.minY) * scale))
         }
@@ -153,11 +165,11 @@ final class LensPageRenderPlanTests: XCTestCase {
     func testAZoomedCropIsRenderedAtTheLensResolution() throws {
         let url = try LensPageFixtures.pdf()
         // A crop across the ink block's right edge, at 6 px per point.
-        let crop = CGRect(x: 250, y: 150, width: 100, height: 100)
+        let crop = CGRect(x: 252, y: 150, width: 96, height: 96)
         let image = try draw(url, crop: crop)
-        XCTAssertEqual(image.cgImage?.width, 600)
-        let inside = try XCTUnwrap(LensPageFixtures.pixel(image, x: 270, y: 300))   // page x ≈ 295
-        let outside = try XCTUnwrap(LensPageFixtures.pixel(image, x: 330, y: 300))  // page x ≈ 305
+        XCTAssertEqual(image.cgImage?.width, 576)
+        let inside = try XCTUnwrap(LensPageFixtures.pixel(image, x: 258, y: 300))   // page x = 295
+        let outside = try XCTUnwrap(LensPageFixtures.pixel(image, x: 318, y: 300))  // page x = 305
         XCTAssertGreaterThan(inside.r, 240)
         XCTAssertLessThan(outside.r, 15, "the edge is crisp within a few pixels, not a blur")
     }
@@ -167,7 +179,7 @@ final class LensPageRenderPlanTests: XCTestCase {
         let ink = UIColor(white: 0.2, alpha: 1)
         let url = try LensPageFixtures.pdf(paper: grey, ink: ink)
         let crop = LensPageViewport(wholePage: page).cropRect
-        let scale = 600 / crop.width
+        let scale = 576 / crop.width
         let paperX = Int((450 - crop.minX) * scale), paperY = Int(300 * scale)
         let line = try XCTUnwrap(LensPageFixtures.pixel(try draw(url, crop: crop, tone: .lineArt), x: paperX, y: paperY))
         let photo = try XCTUnwrap(LensPageFixtures.pixel(try draw(url, crop: crop, tone: .photographed),
@@ -209,8 +221,9 @@ final class LensPageRenderPlanTests: XCTestCase {
         XCTAssertEqual(layout.pageSize, page)
         XCTAssertEqual(layout.pictureAreas, [area.rect], "only this page's areas")
         XCTAssertEqual(layout.focus.source, .pictureArea)
-        XCTAssertGreaterThan(layout.openingViewport.zoom, .fit)
+        XCTAssertFalse(layout.openingViewport.isWholePage)
         XCTAssertTrue(layout.openingViewport.cropRect.contains(area.rect))
+        XCTAssertNil(layout.reading, "a pictured table keeps the picture")
     }
 
     func testAPageThatIsNotThereLaysOutNothing() async throws {
@@ -238,7 +251,7 @@ final class LensPageRenderPlanTests: XCTestCase {
         XCTAssertEqual(a, LensPageRenderCache.key(identity: "page-a", plan: whole))
 
         func picture(_ key: String) -> HUDPicture {
-            HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 600, height: 600), contentKey: key)
+            HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 576, height: 462), contentKey: key)
         }
         cache.store(picture(a), for: a)
         cache.store(picture(b), for: b)

@@ -2,8 +2,8 @@ import CoreGraphics
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KV P0 — where the page view opens: the four sources in order, the padding, the square,
-/// and the step the focus fits at.
+/// Plan KV P0 — where the page view opens: the four sources in order, the padding, and the
+/// magnification that fits the padded focus into the picture box exactly.
 final class LensPageFocusTests: XCTestCase {
 
     /// An invented portrait page, 612 × 792 points.
@@ -38,8 +38,9 @@ final class LensPageFocusTests: XCTestCase {
         XCTAssertEqual(focus.source, .wholePage)
         XCTAssertNil(focus.region)
         XCTAssertFalse(focus.hasFocus)
-        XCTAssertEqual(focus.zoom, .fit)
+        XCTAssertNil(focus.padded)
         XCTAssertFalse(LensPageViewport(opening: focus).opensOnPart)
+        XCTAssertTrue(LensPageViewport(opening: focus).isWholePage)
     }
 
     /// A source whose rectangles are all off the page or empty falls through to the next.
@@ -56,44 +57,65 @@ final class LensPageFocusTests: XCTestCase {
         XCTAssertEqual(focus.region, tableRow.union(second))
     }
 
-    func testTheFocusIsPaddedAndSquare() throws {
+    func testTheFocusIsPadded() throws {
         let focus = LensPageFocus.pick(pageSize: page, pictureAreas: [pictured])
-        let square = try XCTUnwrap(focus.square)
-        XCTAssertEqual(square.width, square.height, accuracy: 0.001)
-        XCTAssertTrue(square.contains(pictured))
-        XCTAssertGreaterThan(square.width, pictured.width, "padded on every side")
+        let padded = try XCTUnwrap(focus.padded)
+        XCTAssertTrue(padded.contains(pictured))
+        XCTAssertGreaterThan(padded.width, pictured.width, "padded on every side")
+        XCTAssertGreaterThan(padded.height, pictured.height)
         XCTAssertEqual(focus.center, CGPoint(x: pictured.midX, y: pictured.midY))
     }
 
-    /// The opening step is the deepest one whose crop still holds the padded focus.
-    func testTheOpeningStepIsTheDeepestTheFocusFitsAt() throws {
-        let focus = LensPageFocus.pick(pageSize: page, pictureAreas: [pictured])
-        let square = try XCTUnwrap(focus.square)
-        let viewport = LensPageViewport(opening: focus)
-        XCTAssertEqual(focus.zoom, .x2)
-        XCTAssertGreaterThanOrEqual(viewport.cropSide, square.width)
-        XCTAssertLessThan(LensPageViewport.cropSide(zoom: .x3, pageSize: page), square.width)
-        XCTAssertTrue(viewport.cropRect.insetBy(dx: -0.001, dy: -0.001).contains(pictured))
+    /// The opening magnification fits the padded focus exactly: no rounding to a step. A focus
+    /// wider than the box's shape fills its width; a taller one fills its height.
+    func testTheOpeningFitsThePaddedFocusExactly() throws {
+        for box in [LensPageFrame.pictureBox(citation: true, hint: false),
+                    LensPageFrame.pictureBox(citation: true, hint: true),
+                    LensPageFrame.pictureBox(citation: false, hint: false)] {
+            for region in [pictured, tableRow, CGRect(x: 300, y: 100, width: 120, height: 400)] {
+                let focus = LensPageFocus.pick(pageSize: page, pictureAreas: [region])
+                let padded = try XCTUnwrap(focus.padded)
+                let viewport = LensPageViewport(opening: focus, box: box)
+                let crop = viewport.cropRect
+                XCTAssertTrue(crop.insetBy(dx: -0.01, dy: -0.01).contains(padded), "\(region) in \(box)")
+                let fillsWidth = abs(crop.width - padded.width) < 0.01
+                let fillsHeight = abs(crop.height - padded.height) < 0.01
+                XCTAssertTrue(fillsWidth || fillsHeight, "fitted exactly: \(crop) for \(padded)")
+                XCTAssertEqual(fillsWidth, padded.width / padded.height >= box.width / box.height - 0.0001)
+            }
+        }
     }
 
-    /// A cited table row opens at a step its text reads at; a whole drawing opens whole.
-    func testATableRowOpensReadableAndAWholeDrawingOpensAtFit() {
+    /// A cited table row and a wide diagram open filling the picture box's width, the row at a size
+    /// its text reads at.
+    func testATableRowAndADiagramOpenFillingTheBoxsWidth() throws {
+        let box = LensPageFrame.pictureBox(citation: true, hint: false)
         let rowFocus = LensPageFocus.pick(pageSize: page, passageRects: [tableRow])
-        let rowView = LensPageViewport(opening: rowFocus)
-        XCTAssertEqual(rowFocus.zoom, .x4)
+        let rowView = LensPageViewport(opening: rowFocus, box: box)
+        let rowPadded = try XCTUnwrap(rowFocus.padded)
+        XCTAssertEqual(rowPadded.width * rowView.pixelsPerPoint, box.width, accuracy: 0.01, "the row fills the width")
+        XCTAssertEqual(rowView.cropRect.minX, rowPadded.minX, accuracy: 0.01)
         let rowText = LensLegibility(lineRects: [tableRow])
-        // The deepest step: the most the view can do for the row, so no hint asks for more. (A 10 pt
-        // row draws about 19 px there in the 382 px picture P4 measured, under the 22 px estimate.)
-        XCTAssertTrue(rowView.isDeepest)
-        XCTAssertGreaterThan(rowText.estimatedPixels(at: rowView), rowText.estimatedPixels(
-            at: LensPageViewport(pageSize: page, center: rowView.center, zoom: .x3)))
+        XCTAssertGreaterThanOrEqual(rowText.estimatedPixels(at: rowView), 22, "a 10 pt row reads at the opening")
         XCTAssertFalse(rowText.needsZoomHint(at: rowView))
 
+        let diagram = CGRect(x: 60, y: 120, width: 480, height: 220)
+        let diagramFocus = LensPageFocus.pick(pageSize: page, figure: diagram)
+        let diagramView = LensPageViewport(opening: diagramFocus, box: box)
+        let diagramPadded = try XCTUnwrap(diagramFocus.padded)
+        XCTAssertEqual(diagramPadded.width * diagramView.pixelsPerPoint, box.width, accuracy: 0.01,
+                       "the diagram fills the width")
+        XCTAssertTrue(diagramView.cropRect.insetBy(dx: -0.01, dy: -0.01).contains(diagram))
+        XCTAssertFalse(diagramView.isWholePage)
+    }
+
+    /// A drawing as large as the page opens on the whole page, whose labels need zooming.
+    func testAWholeDrawingOpensOnTheWholePage() {
         let drawing = CGRect(x: 30, y: 40, width: 552, height: 700)
         let drawingFocus = LensPageFocus.pick(pageSize: page, figure: drawing)
         let drawingView = LensPageViewport(opening: drawingFocus)
-        XCTAssertEqual(drawingFocus.zoom, .fit)
         XCTAssertTrue(drawingView.isWholePage)
+        XCTAssertFalse(drawingView.opensOnPart)
         XCTAssertTrue(LensLegibility().needsZoomHint(at: drawingView), "a drawing's labels need zooming at fit")
     }
 

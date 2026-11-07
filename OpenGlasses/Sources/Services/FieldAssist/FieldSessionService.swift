@@ -3440,7 +3440,8 @@ final class FieldSessionService: ObservableObject {
         logger?.append(Self.pageOnGlassesEvent(line, at: Date()))
     }
 
-    /// The audit event for one lens line: the page reference, the crop and the zoom step.
+    /// The audit event for one lens line: the page reference, the view, and for a picture the crop
+    /// and the scale.
     nonisolated static func pageOnGlassesEvent(_ line: LensPageAuditLine, at date: Date) -> SessionLogger.Event {
         let label = PageEvidencePolicy.label(title: line.documentTitle, page: line.page, figure: line.figure)
         var payload: [String: AnyCodable] = [
@@ -3450,9 +3451,11 @@ final class FieldSessionService: ObservableObject {
             "route": AnyCodable(line.route),
             "backend": AnyCodable(line.backend),
         ]
-        if line.event != .cueShown {
+        if let view = line.view { payload["view"] = AnyCodable(view.rawValue) }
+        // A picture's crop and scale; a cue and a reading-mode line (the words) carry neither.
+        if line.event != .cueShown, line.view != .reading {
             payload["crop"] = AnyCodable(line.cropText)
-            payload["zoom"] = AnyCodable(line.zoom)
+            payload["zoom"] = AnyCodable((line.zoom * 100).rounded() / 100)
         }
         return SessionLogger.Event(timestamp: date, kind: .pageOnGlasses,
                                    text: "\(label), shown on the glasses", payload: payload)

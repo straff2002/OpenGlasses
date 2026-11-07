@@ -34,6 +34,22 @@ final class HUDPageCommandTests: XCTestCase {
         XCTAssertEqual(HUDPageCommand.parse("close"), .close)
     }
 
+    /// Reading mode's words (§1): "next" and "back" page the text, "show the page" goes to the
+    /// picture, "read it" back to the text. The session takes "next" only while reading.
+    func testTheReadingWords() {
+        XCTAssertEqual(HUDPageCommand.parse("next"), .next)
+        XCTAssertEqual(HUDPageCommand.parse("Next."), .next)
+        XCTAssertEqual(HUDPageCommand.parse("previous"), .back)
+        XCTAssertEqual(HUDPageCommand.parse("show the page"), .showPage)
+        XCTAssertEqual(HUDPageCommand.parse("Show me the page."), .showPage)
+        XCTAssertEqual(HUDPageCommand.parse("read it"), .readIt)
+        XCTAssertEqual(HUDPageCommand.parse("ok, read it"), .readIt)
+        XCTAssertEqual(HUDPageCommand.parse("show the text"), .readIt)
+        XCTAssertNil(HUDPageCommand.parse("read it to me slowly"))
+        XCTAssertNil(HUDPageCommand.parse("show the page about the blower"))
+        XCTAssertNil(HUDPageCommand.parse("next step"))
+    }
+
     func testFillerIsTolerated() {
         XCTAssertEqual(HUDPageCommand.parse("ok, zoom in"), .zoomIn)
         XCTAssertEqual(HUDPageCommand.parse("um, next page please"), .nextPage)
@@ -46,7 +62,6 @@ final class HUDPageCommandTests: XCTestCase {
         XCTAssertNil(HUDPageCommand.parse("what's on the next page"))
         XCTAssertNil(HUDPageCommand.parse("go to the next page of the manual"))
         XCTAssertNil(HUDPageCommand.parse("what is next"))
-        XCTAssertNil(HUDPageCommand.parse("next"))
         XCTAssertNil(HUDPageCommand.parse("is the top left terminal live"))
         XCTAssertNil(HUDPageCommand.parse("turn it up"))
         XCTAssertNil(HUDPageCommand.parse("close the valve"))

@@ -17,6 +17,13 @@ enum HUDPageCommand: Equatable {
     case diagram(PageFigurePosition)
     case back
     case close
+    /// Reading mode (§1): "next" — the next page of the passage's words. Taken only while reading
+    /// mode is up.
+    case next
+    /// "Show the page" — from reading mode to the picture.
+    case showPage
+    /// "Read it" — from the picture to reading mode.
+    case readIt
 
     static func parse(_ text: String) -> HUDPageCommand? {
         let stripped = text.lowercased()
@@ -57,8 +64,15 @@ enum HUDPageCommand: Equatable {
         case "next diagram", "the next diagram", "next drawing", "the next drawing", "next figure",
              "the next figure", "other diagram", "the other diagram", "another diagram":
             return .nextDiagram
-        case "back", "go back":
+        case "back", "go back", "previous":
             return .back
+        case "next":
+            return .next
+        case "show the page", "show page", "show me the page", "the page", "page", "picture",
+             "show the picture", "show me the picture":
+            return .showPage
+        case "read it", "read", "read that", "read the text", "show the text", "the text", "text":
+            return .readIt
         case "close", "close the page", "close page", "close it", "close that":
             return .close
         default:

@@ -118,7 +118,8 @@ final class LensPagePreviewTests: XCTestCase {
 
         XCTAssertTrue(rig.router.pressFromPreview(ID.zoomIn))
         await drain(rig)
-        XCTAssertGreaterThan(try XCTUnwrap(rig.session.shownState).viewport.zoom, opening.viewport.zoom)
+        XCTAssertGreaterThan(try XCTUnwrap(rig.session.shownState).viewport.pixelsPerPoint,
+                             opening.viewport.pixelsPerPoint)
         XCTAssertEqual(rig.session.stats["metaRayBan"].zooms, 1)
 
         // Through the tree the preview draws: its buttons press the session too.
@@ -126,11 +127,11 @@ final class LensPagePreviewTests: XCTestCase {
         let router = rig.router
         let tree = GlassesDisplayService.previewFlexBox(for: frame.screen,
                                                         onSelect: { id in router.pressFromPreview(id) })
-        XCTAssertEqual(frame.itemIDs, [ID.zoomOut, ID.move, ID.close], "the deepest step")
-        let index = try XCTUnwrap(frame.itemIDs.firstIndex(of: ID.zoomOut))
+        XCTAssertEqual(frame.itemIDs, [ID.zoomIn, ID.wholePage, ID.move, ID.close], "one rung in")
+        let index = try XCTUnwrap(frame.itemIDs.firstIndex(of: ID.wholePage))
         buttons(in: tree)[index].onClick?()
         await drain(rig)
-        XCTAssertEqual(try XCTUnwrap(rig.session.shownState).viewport.zoom, opening.viewport.zoom)
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState).viewport.isWholePage)
         XCTAssertEqual(rig.session.stats["metaRayBan"].zooms, 2)
 
         XCTAssertTrue(rig.router.pressFromPreview(ID.close))

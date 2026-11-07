@@ -11,8 +11,9 @@ final class HUDPageScreenBuilderTests: XCTestCase {
     private let page = CGSize(width: 612, height: 792)
     private let citation = "Figure 12 · p. 30"
 
+    /// A view opened on a part of the page, two presses short of the cap (2 → 3 → 4.125 px/pt).
     private func zoomedOpening() -> LensPageViewport {
-        LensPageViewport(pageSize: page, center: CGPoint(x: 300, y: 300), zoom: .x2)
+        LensPageViewport(pageSize: page, center: CGPoint(x: 300, y: 300), pixelsPerPoint: 2)
     }
 
     private func state(_ viewport: LensPageViewport, moving: Bool = false, firstFrame: Bool = false,
@@ -127,7 +128,8 @@ final class HUDPageScreenBuilderTests: XCTestCase {
 
     func testItemIdsAreStableAndPrefixed() {
         let all = [ID.zoomIn, ID.zoomOut, ID.wholePage, ID.backToPart, ID.move, ID.up, ID.down, ID.left,
-                   ID.right, ID.done, ID.nextPage, ID.close]
+                   ID.right, ID.done, ID.nextPage, ID.nextDiagram, ID.close, ID.showHere, ID.nextText,
+                   ID.previousText, ID.showPicture, ID.readIt]
         XCTAssertEqual(Set(all).count, all.count)
         XCTAssertTrue(all.allSatisfy { $0.hasPrefix("kv.page.") })
     }
@@ -141,22 +143,105 @@ final class HUDPageScreenBuilderTests: XCTestCase {
         crowded.hasNextPage = false
         XCTAssertEqual(ids(crowded), [ID.zoomIn, ID.nextDiagram, ID.wholePage, ID.close])
 
-        for zoom in LensPageViewport.Zoom.allCases {
+        for zoom in [nil, 1, 2, 4.125] as [CGFloat?] {
             for nextPage in [false, true] {
                 for diagrams in [0, 1, 3] {
                     for moving in [false, true] {
-                        let viewport = LensPageViewport(pageSize: page, center: CGPoint(x: 306, y: 396), zoom: zoom)
-                        let state = HUDPageViewState(viewport: viewport, legibility: LensLegibility(), isMoving: moving,
-                                                     hasNextPage: nextPage, diagramCount: diagrams,
-                                                     diagramIndex: diagrams > 0 ? 0 : nil)
-                        let row = HUDPageScreenBuilder.items(state, { _ in })
-                        if !moving {
-                            XCTAssertLessThanOrEqual(row.count, HUDPageScreenBuilder.maxButtons, "\(zoom) \(nextPage) \(diagrams)")
-                            XCTAssertEqual(row.last?.id, ID.close)
+                        for reading in [false, true] {
+                            let viewport = LensPageViewport(pageSize: page, center: CGPoint(x: 306, y: 396),
+                                                            pixelsPerPoint: zoom)
+                            var state = HUDPageViewState(viewport: viewport, legibility: LensLegibility(), isMoving: moving,
+                                                         hasNextPage: nextPage, diagramCount: diagrams,
+                                                         diagramIndex: diagrams > 0 ? 0 : nil)
+                            if reading { state.readingPages = readingPages(3) }
+                            let row = HUDPageScreenBuilder.items(state, { _ in })
+                            if !moving {
+                                XCTAssertLessThanOrEqual(row.count, HUDPageScreenBuilder.maxButtons,
+                                                         "\(String(describing: zoom)) \(nextPage) \(diagrams) \(reading)")
+                                XCTAssertEqual(row.last?.id, ID.close)
+                                XCTAssertEqual(row.contains { $0.id == ID.readIt }, reading, "Read it never gives way")
+                            }
                         }
                     }
                 }
             }
         }
+        for index in 0..<3 {
+            for nextPage in [false, true] {
+                var state = HUDPageViewState(viewport: zoomedOpening(), legibility: LensLegibility(),
+                                             hasNextPage: nextPage)
+                state.readingPages = readingPages(3)
+                state.readingIndex = index
+                state.isReading = true
+                let row = HUDPageScreenBuilder.items(state, { _ in })
+                XCTAssertLessThanOrEqual(row.count, HUDPageScreenBuilder.maxButtons)
+                XCTAssertEqual(row.last?.id, ID.close)
+            }
+        }
+    }
+
+    // MARK: - Reading mode
+
+    /// `count` invented reading pages of the Display's geometry.
+    private func readingPages(_ count: Int) -> [HUDAnswerPage] {
+        let words = (1...(count * 3)).map { "Invented step \($0) of the purge on the board." }.joined(separator: " ")
+        let pages = HUDAnswerPager.pages(for: words, geometry: .raybanDisplay, maxPages: count,
+                                         firstPageReservedLines: 1)
+        XCTAssertEqual(pages.count, count)
+        return pages
+    }
+
+    private func reading(_ index: Int, of count: Int, nextPage: Bool = false) -> HUDPageViewState {
+        var state = HUDPageViewState(viewport: zoomedOpening(), legibility: LensLegibility(),
+                                     citation: citation, hasNextPage: nextPage)
+        state.readingPages = readingPages(count)
+        state.readingIndex = index
+        state.isReading = true
+        return state
+    }
+
+    /// Reading mode: Next › while pages remain, Page, ‹ Back after the first page, Close.
+    func testTheReadingRows() {
+        XCTAssertEqual(ids(reading(0, of: 3)), [ID.nextText, ID.showPicture, ID.close])
+        XCTAssertEqual(ids(reading(1, of: 3)), [ID.nextText, ID.showPicture, ID.previousText, ID.close])
+        XCTAssertEqual(ids(reading(2, of: 3)), [ID.showPicture, ID.previousText, ID.close])
+        XCTAssertEqual(ids(reading(2, of: 3, nextPage: true)),
+                       [ID.showPicture, ID.previousText, ID.nextPage, ID.close])
+        let screen = HUDPageScreenBuilder.screen(reading(0, of: 3)) { _ in }
+        XCTAssertEqual(screen.items.map(\.label), ["Next ›", "Page", "Close"])
+
+        var pressed: [HUDPageAction] = []
+        HUDPageScreenBuilder.screen(reading(1, of: 3)) { pressed.append($0) }.items.forEach { $0.action() }
+        XCTAssertEqual(pressed, [.nextText, .showPicture, .previousText, .close])
+    }
+
+    /// The citation over the first reading page only, the page's lines, and its "1/3" footer.
+    func testTheReadingLines() {
+        let first = HUDPageScreenBuilder.lines(reading(0, of: 3))
+        let pages = readingPages(3)
+        XCTAssertEqual(first.map(\.text), [citation] + pages[0].lines + ["1/3"])
+        XCTAssertEqual(first.first?.emphasis, .meta)
+        XCTAssertEqual(first.last?.emphasis, .meta)
+        XCTAssertTrue(first.dropFirst().dropLast().allSatisfy { $0.emphasis == .primary })
+        let second = HUDPageScreenBuilder.lines(reading(1, of: 3))
+        XCTAssertEqual(second.map(\.text), pages[1].lines + ["2/3"], "no citation after the first page")
+        XCTAssertFalse(second.contains { $0.text == "Zoom in for labels" })
+        XCTAssertLessThanOrEqual(first.count, TeleprompterPaginator.Geometry.raybanDisplay.maxLines)
+    }
+
+    /// The picture of a page with words to read offers Read it, second, on every row.
+    func testThePictureOfAPassageOffersReadIt() {
+        var state = HUDPageViewState(viewport: zoomedOpening(), legibility: LensLegibility(textHeightPoints: 30))
+        state.readingPages = readingPages(2)
+        XCTAssertEqual(ids(state), [ID.zoomIn, ID.readIt, ID.wholePage, ID.close],
+                       "Move gives way to keep four")
+        state.viewport.showWholePage()
+        XCTAssertEqual(ids(state), [ID.zoomIn, ID.readIt, ID.backToPart, ID.close])
+        state.viewport.reset()
+        state.viewport.zoomIn()
+        state.viewport.zoomIn()
+        XCTAssertEqual(ids(state), [ID.zoomOut, ID.readIt, ID.move, ID.close])
+        state.isMoving = true
+        XCTAssertFalse(ids(state).contains(ID.readIt), "not on the arrow row")
     }
 }

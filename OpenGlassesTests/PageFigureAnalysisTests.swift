@@ -81,7 +81,7 @@ final class PageFigureAnalysisTests: XCTestCase {
         assertNear(found[0].rect, F.wholeSheet)
         let laid = try await layout(url, said: "show me the wiring diagram")
         XCTAssertEqual(laid.focus.source, .figure)
-        XCTAssertEqual(laid.openingViewport.zoom, .fit, "a page-sized drawing opens whole, which is right")
+        XCTAssertTrue(laid.openingViewport.isWholePage, "a page-sized drawing opens whole, which is right")
     }
 
     func testATableWithOnlyItsBorderIsNotADrawing() throws {
@@ -126,13 +126,13 @@ final class PageFigureAnalysisTests: XCTestCase {
         let bottom = try await layout(url, said: "the bottom diagram")
         XCTAssertEqual(bottom.figureIndex, 1)
         XCTAssertTrue(bottom.openingViewport.cropRect.contains(found[1].rect), "the opening zoom holds the whole drawing")
-        XCTAssertGreaterThan(bottom.openingViewport.zoom, .fit)
+        XCTAssertFalse(bottom.openingViewport.isWholePage)
     }
 
     func testTheOpeningZoomHoldsTheWholeDiagram() async throws {
         let laid = try await layout(try F.blockDiagramPage(), said: "show me the diagram")
         XCTAssertEqual(laid.focus.source, .figure)
-        XCTAssertGreaterThan(laid.openingViewport.zoom, .fit)
+        XCTAssertFalse(laid.openingViewport.isWholePage)
         XCTAssertTrue(laid.openingViewport.cropRect.contains(F.blockDiagram))
     }
 

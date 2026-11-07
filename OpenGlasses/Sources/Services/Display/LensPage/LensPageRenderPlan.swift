@@ -9,9 +9,10 @@ import Foundation
 /// additive lens, and where the marks and the position frame go — all in output pixels, top down.
 struct LensPageRenderPlan: Equatable {
 
-    /// The lens canvas is 600 px across (`HUDCanvas.metaDisplay`); the crop is rasterised at that
-    /// width, so a deeper zoom draws sharper rather than enlarging a whole-page render.
-    static let outputSide: CGFloat = 600
+    /// The picture is drawn one lens pixel per image pixel, at the box the frame leaves it
+    /// (`LensPageFrame.pictureBox`, through the viewport), so a deeper zoom draws sharper rather
+    /// than enlarging a whole-page render. A plan made from a bare crop is this wide.
+    static var defaultOutputWidth: CGFloat { LensPageFrame.contentWidthPixels }
 
     /// How the page's tones are turned (§2, decision 5): always inverted, so the paper goes clear
     /// and the drawing floats. A photographed page's paper is grey, and inverted grey is a dim
@@ -37,14 +38,14 @@ struct LensPageRenderPlan: Equatable {
 
     /// Outlines sit this far outside what they mark, in page points, so they never cross the text.
     static let markPaddingPoints: CGFloat = 2
-    /// The position frame's longer side, as a share of the output.
+    /// The position frame's longer side, as a share of the output's shorter side.
     static let positionFrameShare: CGFloat = 0.2
     /// Its distance from the output's edges, in pixels.
     static let positionFrameInset: CGFloat = 12
 
     let pageSize: CGSize
-    /// The crop, in top-down page points (square; may reach past the page on an axis the page is
-    /// shorter than, which is drawn black).
+    /// The crop, in top-down page points (the output's shape; may reach past the page on an axis
+    /// the page is shorter than, which is drawn black).
     let crop: CGRect
     let outputSize: CGSize
     let tone: Tone
@@ -57,13 +58,23 @@ struct LensPageRenderPlan: Equatable {
     /// Where the page itself lands in the output. Outside it is black (clear on the lens).
     var pageInOutput: CGRect { toOutput(CGRect(origin: .zero, size: pageSize)) }
 
+    /// `outputSize` defaults to `defaultOutputWidth` across and the crop's shape.
     init(pageSize: CGSize, crop: CGRect, tone: Tone,
          passageMarks: LensPageMarks? = nil, pictureAreas: [CGRect] = [],
-         showsPosition: Bool, outputSide: CGFloat = LensPageRenderPlan.outputSide) {
+         showsPosition: Bool, outputSize: CGSize? = nil) {
         self.pageSize = pageSize
         self.crop = crop.standardized
-        self.outputSize = CGSize(width: outputSide, height: outputSide)
+        let size: CGSize
+        if let outputSize {
+            size = CGSize(width: outputSize.width.rounded(), height: outputSize.height.rounded())
+        } else {
+            let width = Self.defaultOutputWidth
+            let shape = self.crop.width > 0 ? self.crop.height / self.crop.width : 1
+            size = CGSize(width: width, height: (width * shape).rounded())
+        }
+        self.outputSize = size
         self.tone = tone
+        let outputWidth = size.width
 
         let visible = self.crop
         let showsNumbers = passageMarks?.showsNumbers ?? false
@@ -71,25 +82,25 @@ struct LensPageRenderPlan: Equatable {
         for mark in passageMarks?.marks ?? [] {
             let padded = mark.bounds.insetBy(dx: -Self.markPaddingPoints, dy: -Self.markPaddingPoints)
             guard padded.intersects(visible) else { continue }
-            placed.append(Mark(rect: Self.toOutput(padded, crop: visible, side: outputSide),
+            placed.append(Mark(rect: Self.toOutput(padded, crop: visible, side: outputWidth),
                                number: showsNumbers ? mark.number : nil))
         }
         for area in pictureAreas {
             let padded = area.standardized.insetBy(dx: -Self.markPaddingPoints, dy: -Self.markPaddingPoints)
             guard padded.intersects(visible) else { continue }
-            placed.append(Mark(rect: Self.toOutput(padded, crop: visible, side: outputSide), number: nil))
+            placed.append(Mark(rect: Self.toOutput(padded, crop: visible, side: outputWidth), number: nil))
         }
         marks = placed
         positionFrame = showsPosition
-            ? Self.positionFrame(pageSize: pageSize, crop: visible, outputSide: outputSide)
+            ? Self.positionFrame(pageSize: pageSize, crop: visible, output: size)
             : nil
     }
 
-    /// The plan for one viewport of a laid-out page.
-    init(layout: LensPageLayout, viewport: LensPageViewport, outputSide: CGFloat = LensPageRenderPlan.outputSide) {
+    /// The plan for one viewport of a laid-out page: drawn at the viewport's picture box.
+    init(layout: LensPageLayout, viewport: LensPageViewport) {
         self.init(pageSize: layout.pageSize, crop: viewport.cropRect, tone: layout.tone,
                   passageMarks: layout.marks, pictureAreas: layout.pictureAreas,
-                  showsPosition: !viewport.isWholePage, outputSide: outputSide)
+                  showsPosition: !viewport.isWholePage, outputSize: viewport.box)
     }
 
     /// A rectangle in top-down page points, in output pixels.
@@ -105,14 +116,14 @@ struct LensPageRenderPlan: Equatable {
     }
 
     /// The position frame in the bottom-right corner: the page scaled so its longer side is
-    /// `positionFrameShare` of the output, and the crop inside it, clipped to the page.
-    static func positionFrame(pageSize: CGSize, crop: CGRect, outputSide: CGFloat) -> PositionFrame? {
+    /// `positionFrameShare` of the output's shorter side, and the crop inside it, clipped to the page.
+    static func positionFrame(pageSize: CGSize, crop: CGRect, output: CGSize) -> PositionFrame? {
         let longer = max(pageSize.width, pageSize.height)
         guard longer > 0 else { return nil }
-        let factor = outputSide * positionFrameShare / longer
+        let factor = min(output.width, output.height) * positionFrameShare / longer
         let size = CGSize(width: pageSize.width * factor, height: pageSize.height * factor)
-        let page = CGRect(x: outputSide - positionFrameInset - size.width,
-                          y: outputSide - positionFrameInset - size.height,
+        let page = CGRect(x: output.width - positionFrameInset - size.width,
+                          y: output.height - positionFrameInset - size.height,
                           width: size.width, height: size.height)
         let inPage = crop.intersection(CGRect(origin: .zero, size: pageSize))
         guard !inPage.isNull else { return PositionFrame(page: page, crop: .zero) }

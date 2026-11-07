@@ -158,7 +158,8 @@ final class LensPageDiagramTests: XCTestCase {
 
     func testTheDeepestOpeningPutsNextDiagramAfterZoomOut() {
         let page = LensPageFixtures.letter
-        let viewport = LensPageViewport(pageSize: page, center: CGPoint(x: 200, y: 200), zoom: .deepest)
+        let viewport = LensPageViewport(pageSize: page, center: CGPoint(x: 200, y: 200),
+                                        pixelsPerPoint: LensLegibility.zoomCapPixelsPerPoint())
         let state = HUDPageViewState(viewport: viewport, legibility: LensLegibility(), diagramCount: 3, diagramIndex: 0)
         XCTAssertEqual(HUDPageScreenBuilder.items(state, { _ in }).map(\.id),
                        [ID.zoomOut, ID.nextDiagram, ID.move, ID.close])
@@ -282,7 +283,8 @@ final class LensPageDiagramTests: XCTestCase {
         if case .content? = rig.box.frames.last { XCTFail("the view should be on the lens now") }
 
         await press(rig, ID.zoomIn)
-        XCTAssertNotEqual(rig.session.shownState?.viewport.zoom, opening.viewport.zoom, "and presses work again")
+        XCTAssertNotEqual(rig.session.shownState?.viewport.pixelsPerPoint, opening.viewport.pixelsPerPoint,
+                          "and presses work again")
     }
 
     func testWithNoNotificationTheViewOpensAtOnce() async throws {
