@@ -325,9 +325,34 @@ enum TableLookup {
         }
         switch match {
         case .one(let index): return .resolved([all[index]])
-        case .several(let indexes): return .ambiguous(indexes.map { columnName(table.columns[all[$0]]) })
+        case .several(let indexes):
+            if let leaf = byLeaf(asked, among: indexes.map { table.columns[all[$0]].path }) {
+                return .resolved([all[indexes[leaf]]])
+            }
+            return .ambiguous(indexes.map { columnName(table.columns[all[$0]]) })
         case .none: return .none
         }
+    }
+
+    /// Of several columns the asked words fit as well, the one whose own heading — the last of its
+    /// path that is not only a note marker — holds the most of them, when only one does (Plan KR
+    /// P3). A heading that spans several columns lands in each one's path; the column it heads has
+    /// it as its own: "Band 7" asked over [A › Band 7 › Band 5], [Band 7 › Band 6] and
+    /// [Band 7 › Note] is the third. Nil when no column's own heading holds more than another's.
+    private static func byLeaf(_ asked: String, among paths: [[String]]) -> Int? {
+        let words = significantWords(asked)
+        guard !words.isEmpty, paths.count > 1 else { return nil }
+        let shared = paths.map { path -> Int in
+            guard let leaf = ownHeading(path) else { return 0 }
+            return words.intersection(significantWords(leaf)).count
+        }
+        guard let best = shared.max(), best > 0, shared.filter({ $0 == best }).count == 1 else { return nil }
+        return shared.firstIndex(of: best)
+    }
+
+    /// A column's own heading: the last element of its path that is more than a note marker.
+    static func ownHeading(_ path: [String]) -> String? {
+        path.last { !TableExtractor.isNoteMarkerHeading($0) } ?? path.last
     }
 
     /// A heading or asked words with every bracketed unit taken out: "(A)", "[mm²]", "(°C)",
@@ -574,9 +599,16 @@ enum TableLookup {
 
     private static let filler: Set<String> = ["the", "of", "for", "in", "and", "row", "column", "at", "with", "to", "on"]
 
+    /// A superscript two or three, as in "mm²" and "m³", read as the digit (Plan KR P3): a chain or
+    /// a model writing "mm2" names the heading the book prints as "mm²".
+    private static func foldingPowers(_ text: String) -> String {
+        guard text.contains(where: { $0 == "\u{00B2}" || $0 == "\u{00B3}" }) else { return text }
+        return text.replacingOccurrences(of: "\u{00B2}", with: "2").replacingOccurrences(of: "\u{00B3}", with: "3")
+    }
+
     private static func tokens(_ text: String) -> [String] {
-        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                                  locale: Locale(identifier: "en_US_POSIX"))
+        let folded = foldingPowers(text).folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                                                 locale: Locale(identifier: "en_US_POSIX"))
             .replacingOccurrences(of: "\u{2013}", with: "-").replacingOccurrences(of: "\u{2014}", with: "-")
         let pattern = #"\d+(?:[.,]\d+)?(?:\s*-\s*\d+(?:[.,]\d+)?)?|\p{L}[\p{L}\p{N}]*|\p{N}+"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
@@ -759,6 +791,34 @@ enum TableLookup {
             + "Do not answer from it; ask which \(askedSize == nil ? "row" : "size")."
     }
 
+    /// What a row found by its AWG size in another printed form says about it (Plan KR P3), or nil
+    /// for a row found any other way: "this table prints 4/0, four aught, as 0000: the size asked".
+    /// The retest's model refused its own right row, 0000 for "4/0", because nothing linked the
+    /// two and `mismatchLine` teaches it to refuse a row that is not the one asked. Pure.
+    static func aughtNote(_ found: Found, row: ManualTable.Row) -> String? {
+        guard found.basis == .awg, let asked = found.askedRow, let size = AWGSize.find(in: asked),
+              let printed = row.path.first(where: { AWGSize.canonical($0) == size })?
+                .trimmingCharacters(in: .whitespaces) else { return nil }
+        let both = size + ", " + spokenAught(size)
+        let printedAs = printed.lowercased() == size.lowercased() ? "" : " as \(printed)"
+        return printedAs.isEmpty ? "\(both): the size asked" : "this table prints \(both),\(printedAs): the size asked"
+    }
+
+    /// The reply rule for a row found by its AWG size (Plan KR P3).
+    static func aughtReplyLine(_ found: Found) -> String? {
+        guard found.basis == .awg, let asked = found.askedRow?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !asked.isEmpty, AWGSize.find(in: asked) != nil else { return nil }
+        return "That row is the size asked, printed another way: give its value, and say the size as the technician "
+            + "said it (\"\(asked)\"), not as the table prints it."
+    }
+
+    /// "4/0" as said: "four aught".
+    private static func spokenAught(_ size: String) -> String {
+        let count = Int(size.prefix { $0.isNumber }) ?? 0
+        let words = ["one", "two", "three", "four", "five", "six"]
+        return (count >= 1 && count <= words.count ? words[count - 1] : String(count)) + " aught"
+    }
+
     /// Why a lookup on a table read from a picture gives no value (Plan JN P2).
     static func unclearReason(_ part: UnclearPart) -> String {
         switch part {
@@ -823,7 +883,8 @@ enum TableLookup {
                 let column = index < table.columns.count ? columnName(table.columns[index]) : "column \(index + 1)"
                 return "column \(column): \(cellText(cell))"
             }
-            let line = "row \(rowName(row)) (\(spokenPage(row.page))) — " + cells.joined(separator: "; ")
+            let aught = aughtNote(found, row: row).map { " (\($0))" } ?? ""
+            let line = "row \(rowName(row))\(aught) (\(spokenPage(row.page))) — " + cells.joined(separator: "; ")
             // Every row a picture gave says so (Plan JN P2), both rows of a between-rows answer too,
             // and who checked it against the page when someone has (Plan JN P3).
             guard pictured else { return line }
@@ -837,6 +898,7 @@ enum TableLookup {
                          + "or pick one: which row applies is the rule's call or the technician's.")
         } else {
             lines += found.rows.map(rowLine)
+            if let aught = aughtReplyLine(found) { lines.append(aught) }
         }
         let notes = notes(for: found)
         if !notes.isEmpty {

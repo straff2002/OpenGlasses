@@ -12,9 +12,9 @@ final class ShowSourceTool: NativeTool {
     let name = "show_source"
     let description = """
     Open the manual or code-book page your last answer cited, on the technician's phone, with the \
-    cited passage highlighted. Call it when the technician says "show me the page", "show me the \
+    cited passage highlighted. Call it when the technician says "show me that", "show me the page", "show me the \
     relevant pages", "show me clause 3.9.4", "show me the table", "show me the second one" or \
-    "where does it say that". Pass 'which': "first" (the default), "second", "last", "all" for \
+    "where does it say that": after an answer or a table_lookup it is the path that marks the row read. Pass 'which': "first" (the default), "second", "last", "all" for \
     every cited page as one paged sheet, a clause number as printed, "table" for the table the \
     answer cited (its row highlighted), or a table number such as "Table 99". Pass 'document' \
     when the technician names the book. It opens only what the last answer cited, so search with \
@@ -75,12 +75,25 @@ final class ShowSourceTool: NativeTool {
             return "No active Field Assist session. Start a session to show a page from its manuals."
         }
         guard VaultRegistry.shared.isUnlocked(store.manifest) else { return MyManualsPaywallCopy.locked }
+        return open(which: args["which"] as? String, document: args["document"] as? String, session: session).reply
+    }
+
+    /// What `open` put on the phone, and what the model is told.
+    struct Opened {
+        let reply: String
+        /// The pages presented, in order; empty when nothing opened.
+        let pages: [FieldSessionService.StagedFigure]
+    }
+
+    /// Resolve `which` against the last answer's sources and put the pages on the phone, each
+    /// marking what was cited — a table lookup's rows among them. Not gated on the turn's words:
+    /// `execute` checks those. `manual_figure` asked for the table a lookup read, and a show-me
+    /// that names nothing, come through here too, so all three mark the same rows (Plan KR).
+    func open(which: String?, document: String?, session: FieldSessionService) -> Opened {
         let center = session.sourceCenter
-        let which = args["which"] as? String
-        let document = args["document"] as? String
         let sources: [ShowSourceResolver.Source]
         switch ShowSourceResolver.resolve(which: which, document: document, memory: center.memory) {
-        case .problem(let sentence): return sentence
+        case .problem(let sentence): return Opened(reply: sentence, pages: [])
         case .sources(let found): sources = found
         }
 
@@ -115,17 +128,18 @@ final class ShowSourceTool: NativeTool {
             checked.append(check)
         }
         guard let first = pages.first else {
-            return Self.nothingOpened(removed: removed, notPages: notPages)
+            return Opened(reply: Self.nothingOpened(removed: removed, notPages: notPages), pages: [])
         }
 
         let rows = checked.reduce(into: RowMarks()) { $0.marked += $1.rows.marked; $0.unmarked += $1.rows.unmarked }
         let onScreen = center.present(pages, notice: ShowSourceCenter.noticeText(for: first.asCitation))
         // Put on the phone (or waiting for it to unlock): "show that again" reopens it (Plan KD P3).
         session.noteShownOnPhone(first)
-        return Self.reply(pages: pages, marks: checked.map(\.state), rows: rows, onScreen: onScreen,
-                          removed: removed, notPages: notPages,
-                          unmarkedPassages: checked.reduce(0) { $0 + $1.unmarkedText },
-                          retrievedRowsOf: retrievedRowsOf)
+        return Opened(reply: Self.reply(pages: pages, marks: checked.map(\.state), rows: rows, onScreen: onScreen,
+                                        removed: removed, notPages: notPages,
+                                        unmarkedPassages: checked.reduce(0) { $0 + $1.unmarkedText },
+                                        retrievedRowsOf: retrievedRowsOf),
+                      pages: pages)
     }
 
     /// What marking one staged page came to.

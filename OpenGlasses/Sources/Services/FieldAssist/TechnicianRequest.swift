@@ -32,6 +32,27 @@ enum TechnicianRequest {
         return asksToEndJob(previousReply)
     }
 
+    /// Whether the words ask for the job's report too (Plan KR P5): "report" or "summary", or a
+    /// sending word ("close it and send it to the office"). Errs towards a request: wrongly passing
+    /// leaves the close's turn open for `deliver_report`, as before; wrongly refusing would end the
+    /// turn before a report the technician asked for.
+    static func asksForReport(_ said: String) -> Bool {
+        let words = self.words(said)
+        return words.contains(where: reportWords.contains)
+    }
+
+    /// "Yes" to the assistant's question about the report: a short affirmative, after a reply that
+    /// itself asked about sending it ("Shall I close the job and send the report?"). The same
+    /// short-yes reading `confirmsEndingJob` gives a close.
+    static func confirmsReport(_ said: String, previousReply: String?) -> Bool {
+        guard isShortAffirmative(said), let previousReply else { return false }
+        return asksForReport(previousReply)
+    }
+
+    private static let reportWords: Set<String> = [
+        "report", "reports", "summary", "send", "email", "mail", "forward", "deliver", "share",
+    ]
+
     private static let endWords: Set<String> = [
         "end", "ending", "close", "closing", "finish", "finishing", "finished",
         "cancel", "cancelling", "canceling", "cancelled", "canceled",
@@ -183,11 +204,87 @@ enum TechnicianRequest {
     /// Whether the words ask to run a chain without naming one: "chain" with a verb that runs it
     /// ("run the chain", "use a chain for that", "start that chain").
     /// "What chains can I use?" asks about the chains, not to run one.
-    static func asksToRunChain(_ said: String) -> Bool {
+    ///
+    /// Given the chain the model chose (`chain`), a request to be walked through the work asks for
+    /// it too (Plan KR P4): "walk me through it", "step by step", "let's work it out", when the
+    /// turn carries the chain name's task words and, where the name has one, its material. The
+    /// retest's sizing request ended "walk me through it", and the refusal made the technician
+    /// repeat a set phrase. "How many can I fit?" stays a question.
+    static func asksToRunChain(_ said: String, chain name: String? = nil) -> Bool {
         let words = self.words(said)
+        if let name, asksToBeWalkedThrough(chain: name, words: words) { return true }
         guard let first = words.first, !chainQuestionOpeners.contains(first),
               words.contains(where: { $0 == "chain" || $0 == "chains" }) else { return false }
         return words.contains(where: runVerbs.contains)
+    }
+
+    /// A walk-through request whose task words, and material, are the chain's (Plan KR P4).
+    private static func asksToBeWalkedThrough(chain name: String, words: [String]) -> Bool {
+        guard containsPhrase(words, among: guidedWalkPhrases) else { return false }
+        let named = self.words(name).filter { !chainFiller.contains($0) }
+        let materials = Set(named.compactMap(material))
+        guard materials.isSubset(of: Set(words.compactMap(material))) else { return false }
+        let tasks = taskKeys(named)
+        guard !tasks.isEmpty else {
+            // A name with no task word the app knows: every other word of it, as said.
+            let rest = named.filter { material($0) == nil && !walkNameFiller.contains($0) }.map(stem)
+            return !rest.isEmpty && Set(rest).isSubset(of: Set(words.map(stem)))
+        }
+        let said = taskKeys(words, anyOrder: true)
+        // "Check" alone is any work's word: it counts only for a chain whose one task it is.
+        let weighed = tasks.count > 1 ? tasks.subtracting(["check"]) : tasks
+        return !weighed.isDisjoint(with: said)
+    }
+
+    /// How a technician asks to be taken through the work.
+    private static let guidedWalkPhrases: [[String]] = [
+        ["walk", "me", "through"], ["walk", "us", "through"], ["talk", "me", "through"], ["take", "me", "through"],
+        ["step", "me", "through"], ["guide", "me"], ["step", "by", "step"], ["lets", "work", "it", "out"],
+    ]
+
+    /// The task a word names, as one key: "sizing" and "size" are one task, "fit" and "fill"
+    /// another. "Voltage drop" is a task only as both words — in a name as a phrase, in a turn in
+    /// any order ("the drop in voltage").
+    private static func taskKeys(_ words: [String], anyOrder: Bool = false) -> Set<String> {
+        var keys = Set(words.compactMap { taskWords[$0] })
+        let joined = anyOrder ? (words.contains("voltage") && words.contains("drop"))
+            : containsPhrase(words, among: [["voltage", "drop"]])
+        if joined { keys.insert("voltage drop") }
+        return keys
+    }
+
+    private static let taskWords: [String: String] = [
+        "size": "size", "sizes": "size", "sized": "size", "sizing": "size",
+        "check": "check", "checks": "check", "checking": "check",
+        "breaker": "breaker", "breakers": "breaker",
+        "fit": "fill", "fits": "fill", "fitting": "fill", "fill": "fill", "fills": "fill", "filling": "fill",
+        "derate": "derate", "derating": "derate", "derated": "derate",
+    ]
+
+    /// A conductor material, as one key.
+    private static func material(_ word: String) -> String? {
+        switch word {
+        case "copper", "cu": return "copper"
+        case "aluminum", "aluminium", "al": return "aluminum"
+        default: return nil
+        }
+    }
+
+    /// Words a chain's name carries that say nothing about its task.
+    private static let walkNameFiller: Set<String> = ["a", "an", "for", "of", "on", "in", "to", "and", "with", "my", "your"]
+
+    /// A word with a common ending taken off, so "installed" meets "install".
+    private static func stem(_ word: String) -> String {
+        var out = word
+        for suffix in ["ing", "ed", "es", "s"] where out.count > suffix.count + 2 && out.hasSuffix(suffix) {
+            out = String(out.dropLast(suffix.count))
+            break
+        }
+        if out.count > 3, let last = out.last, let before = out.dropLast().last, last == before, !"aeiou".contains(last) {
+            out = String(out.dropLast())
+        }
+        if out.count > 3, out.hasSuffix("e") { out = String(out.dropLast()) }
+        return out
     }
 
     /// Whether the words ask what chains there are — "what chains can I use?", "list the rule

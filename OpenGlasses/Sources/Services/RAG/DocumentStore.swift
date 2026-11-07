@@ -419,6 +419,20 @@ final class DocumentStore: ObservableObject {
                 limit: limit)
     }
 
+    /// The chunks after `chunkIndex` in one document, in chunk order, at most `limit` (Plan KR P3):
+    /// what carries on a section the turn named past the passage the search found.
+    func passages(after chunkIndex: Int, documentId: String, namespace: String? = nil, limit: Int) -> [Passage] {
+        fetchChunks(namespace: namespace, documentIds: [documentId])
+            .filter { $0.chunkIndex > chunkIndex }
+            .sorted { $0.chunkIndex < $1.chunkIndex }
+            .prefix(max(limit, 0)).map {
+                Passage(documentId: $0.documentId, documentName: $0.documentName, chunkIndex: $0.chunkIndex,
+                        text: $0.text, similarity: 0, page: $0.page, section: $0.section,
+                        kind: $0.kind, figure: $0.figure, termRule: $0.termRule, vectorPending: $0.vectorPending,
+                        pageBreaks: $0.pageBreaks)
+            }
+    }
+
     /// Drawings first, then document then chunk order — a stable, embedding-free ordering for the
     /// lookups above, which are exact rather than scored.
     private func ordered(_ rows: [ChunkRow], limit: Int) -> [Passage] {

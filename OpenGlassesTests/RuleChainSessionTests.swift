@@ -148,6 +148,34 @@ final class RuleChainSessionTests: XCTestCase {
         XCTAssertLessThan(list.count, 400, list)
     }
 
+    /// Plan KR P4: a chain whose column its table's headings cannot settle is refused at start, so
+    /// the list says it can't start, with the step, as it does for a missing table.
+    func testAChainWhoseColumnCannotBeSettledIsListedAsUnableToStart() async throws {
+        let extra = RuleChainFixtures.chainsMarkdown + """
+
+
+        ## Read a banded factor
+        Answers: an invented factor for a band printed under both rating groups.
+
+        ```chain
+        ask ambient (°C) range 0..40: What is the ambient temperature?
+        lookup factor = Table 98 row {ambient} column Band B rule at_least
+        say "{factor}"
+        ```
+        """
+        let (service, store, _) = try await startSession(chains: extra)
+        let list = try await chain(["action": "list"], service, store)
+        XCTAssertTrue(list.contains("• Read a banded factor (can't start: step 2 (factor) names a column of Table 98 printed "
+                                    + "under more than one heading)"), list)
+        XCTAssertEqual(list.components(separatedBy: "can't start").count, 2, "only that chain is marked: \(list)")
+
+        let started = try await RuleChainTool(documentStore: store, sessionService: service,
+                                              currentUtterance: { "run the read a banded factor chain" }, previousReply: { nil })
+            .execute(args: ["action": "start", "chain": "Read a banded factor"])
+        XCTAssertTrue(started.contains("was not started"), started)
+        XCTAssertNil(service.activeChain)
+    }
+
     func testABadStepFailsTheImportWithItsLine() throws {
         let dir = try vaultFolder(chains: """
         ## Broken

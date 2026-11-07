@@ -39,6 +39,25 @@ enum ManualTurnClassifier {
         return asks ? .question : .statement
     }
 
+    /// Whether a show-me names nothing to show: "show me", "show me the", "show me that", "show
+    /// me it", "show me this" — the words left once the asking and the fillers are taken out
+    /// (Plan KR P1). A request cut off after "show me the" opened the search's guess, an
+    /// unrelated figure, two turns after an answer had cited the right page. Such a turn reopens
+    /// the last source instead, or opens nothing. Pure.
+    static func hasNoObject(_ turn: String) -> Bool {
+        let words = self.words(turn)
+        guard isShowMe(words) else { return false }
+        return words.allSatisfy(objectlessWords.contains)
+    }
+
+    /// What a show-me says around the thing it asks for, and nothing that names a thing.
+    private static let objectlessWords: Set<String> = [
+        "show", "me", "the", "that", "it", "this", "those", "them", "these", "one", "a", "an", "again",
+        "please", "can", "could", "would", "will", "you", "just", "now", "then", "here", "there",
+        "um", "uh", "er", "erm", "ok", "okay", "so", "hey", "yeah", "right", "pull", "bring", "put",
+        "up", "let", "see", "i", "what", "of", "for", "to", "on", "go", "ahead", "and",
+    ]
+
     /// Lowercased words with decimals kept whole ("0.28" is one word, not "0" and "28") and the
     /// apostrophes dropped so "what's" and "whats" compare alike.
     static func words(_ turn: String) -> [String] {
@@ -180,6 +199,16 @@ enum FigureAutoOpenPolicy {
         case reading = "reading"
         case nothingFound = "nothing_found"
         case otherPageNamed = "other_page_named"
+        /// The turn named a page, and this passage is on it: `manual_figure` opens a named page,
+        /// so it goes to the model at most (Plan KR P1).
+        case pageNamed = "page_named"
+        /// `table_lookup` read a table this turn, and this page carries another label (Plan KR P1).
+        case otherLabelLookedUp = "other_label_looked_up"
+        /// A show-me that named nothing: the last source shown or cited was put back instead
+        /// (Plan KR P1).
+        case reopenedLastSource = "reopened_last_source"
+        /// A show-me that named nothing, with nothing shown or cited to put back (Plan KR P1).
+        case nothingNamed = "nothing_named"
         /// The turn named a table or figure, and this page carries another label (Plan KD P3).
         case otherLabelNamed = "other_label_named"
         /// A table handed to the model whose label the turn named or `table_lookup` read.
@@ -195,6 +224,20 @@ enum FigureAutoOpenPolicy {
     static func decide(turnKind: ManualTurnKind, passageKind: PassageKind?,
                        tokenHits: [String], namedPages: Set<Int> = [],
                        passagePage: Int? = nil) -> Decision {
+        let decision = decideIgnoringNamedPage(turnKind: turnKind, passageKind: passageKind, tokenHits: tokenHits,
+                                               namedPages: namedPages, passagePage: passagePage)
+        // A turn that names a page opens nothing on the phone by itself (Plan KR P1). The page it
+        // named may be a printed one, and a passage's page is the PDF's: on the retest the search's
+        // page opened under a printed page asked for in words. The page is `manual_figure`'s to
+        // open (`printed_page` when "printed" is said); on the named page the model may still be
+        // handed it under the usual rules.
+        if !namedPages.isEmpty, case .present = decision { return .attachToModelOnly(reason: .pageNamed) }
+        return decision
+    }
+
+    private static func decideIgnoringNamedPage(turnKind: ManualTurnKind, passageKind: PassageKind?,
+                                                tokenHits: [String], namedPages: Set<Int>,
+                                                passagePage: Int?) -> Decision {
         switch turnKind {
         case .jobBookkeeping: return .none(reason: .jobBookkeeping)
         case .correction: return .none(reason: .correction)
@@ -240,7 +283,9 @@ enum FigureAutoOpenPolicy {
 /// - a turn that names a table or figure ("Table 98", "figure 3") opens or attaches no page with
 ///   another label, the way a named page excludes every other page;
 /// - a table (`isTable`) handed to the model alone needs its label among the labels the turn
-///   named or the one looked up.
+///   named or the one looked up;
+/// - after `table_lookup` read a table this turn, no page under another label opens on the phone
+///   (Plan KR P1).
 ///
 /// Labels are read the way the rest of the app reads them: tables through `TableReference`
 /// (number, letters, spoken numbers, or one table's title), figures as "Figure N" (the label
@@ -253,10 +298,16 @@ enum RetrievedFigureLabelGate {
                       passageKind: FigureAutoOpenPolicy.PassageKind?,
                       passageLabel: String?,
                       namedLabels: [String],
-                      lookedUpLabels: [String] = []) -> FigureAutoOpenPolicy.Decision {
+                      lookedUpLabels: [String] = [],
+                      lookedUpThisTurn: [String] = []) -> FigureAutoOpenPolicy.Decision {
         guard decision.stagesFigure else { return decision }
         if !namedLabels.isEmpty, !matches(passageLabel, any: namedLabels) {
             return .none(reason: .otherLabelNamed)
+        }
+        // A table `table_lookup` read this turn is the one on screen, the way a named one is
+        // (Plan KR P1): a retrieved page under another label never opens over it.
+        if decision.presentsOnPhone, !lookedUpThisTurn.isEmpty, !matches(passageLabel, any: lookedUpThisTurn) {
+            return .none(reason: .otherLabelLookedUp)
         }
         guard case .attachToModelOnly = decision, isTable(passageKind: passageKind, label: passageLabel) else {
             return decision

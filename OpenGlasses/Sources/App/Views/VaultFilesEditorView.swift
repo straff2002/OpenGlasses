@@ -33,6 +33,16 @@ struct VaultFilesEditorView: View {
                             }
                         }
                     }
+                    // Read-only: the vault's own manifest decides it, and nothing on the phone
+                    // changes it (Plan KR P6, owner decision 6). The job report says the same.
+                    Section {
+                        LabeledContent("Vault-only") {
+                            store.manifest.isVaultOnly ? Text("On") : Text("Off")
+                        }
+                        .accessibilityIdentifier("vault.vaultOnly")
+                    } footer: {
+                        Text("As set by the vault. When it's on, a job on this vault answers only from the vault's manuals and files, with no web search or other outside sources.")
+                    }
                 }
             } else {
                 ContentUnavailableView("Unavailable", systemImage: "lock")
