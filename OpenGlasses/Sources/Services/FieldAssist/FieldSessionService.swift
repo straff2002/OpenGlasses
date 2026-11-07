@@ -2548,7 +2548,7 @@ final class FieldSessionService: ObservableObject {
         }
 
         let manualAvailable = VaultManualRemoval.availabilityCheck(forVault: vaultId, documentStore: documentStore, capturedCatalog:capturedManuals)
-        return VaultRetriever(query: { query, limit in
+        var retriever = VaultRetriever(query: { query, limit in
             searched.flatMap { space in
                 tagged(documentStore?.query(query, limit: limit, namespace: space.namespace,
                                             documentIds: ids(for: space)) ?? [], space)
@@ -2610,6 +2610,15 @@ final class FieldSessionService: ObservableObject {
                                                documentIds: ids(for: space), alsoWithin: within) ?? [], space)
             }
         }))
+        // A section the turn names carries on past the passage found in it (Plan KR P3): the
+        // manual's own chunks after it, read from the namespace that holds the document.
+        retriever.followingChunks = { passage, limit in
+            searched.filter { $0.source == .manual }.flatMap { space in
+                tagged(documentStore?.passages(after: passage.chunkIndex, documentId: passage.documentId,
+                                               namespace: space.namespace, limit: limit) ?? [], space)
+            }
+        }
+        return retriever
     }
 
     // MARK: - Team learnings at answer time (Plan FP P2)

@@ -222,6 +222,10 @@ struct VaultRetriever {
     /// `DocumentStore.termStatistics(namespaces:)`. Nil ranks by shared-word count, as before.
     typealias TermStatisticsSource = () -> LexicalSupport.TermStatistics?
 
+    /// The chunks printed after a passage in its own document, in chunk order, at most `limit`
+    /// (Plan KR P3): how a section the turn named is carried on past the passage that was found.
+    typealias FollowingChunks = (_ passage: Passage, _ limit: Int) -> [DocumentStore.Passage]
+
     /// Whether a document (by id) was read by recognition. Nil means "unknown", treated as no.
     typealias Provenance = (_ documentId: String) -> Bool
 
@@ -318,6 +322,8 @@ struct VaultRetriever {
     var modelScope: ModelScope?
     var modelNames: ModelNames?
     var assignedSearch: AssignedSearch?
+    /// Set by the session's factory; nil carries no section on (`continuingSection`).
+    var followingChunks: FollowingChunks?
 
     init(query: @escaping QueryFunction, tokenSearch: TokenSearch? = nil,
          clauseSearch: ClauseSearch? = nil, termSearch: TermSearch? = nil,
@@ -354,7 +360,7 @@ struct VaultRetriever {
         guard let ranking = ranking(request, withFeatures: false) else {
             return .insufficient(reason: RetrievalEvidencePolicy.insufficientSentence)
         }
-        return decide(ranking, limit: request.limit)
+        return continuingSection(decide(ranking, limit: request.limit), turn: request.turn)
     }
 
     /// One candidate in today's order, with the numbers it was ranked by (Plan KN P1).
@@ -385,8 +391,77 @@ struct VaultRetriever {
             RankedCandidate(passage: $0, features: $1,
                             isEvidence: policy.isEvidence($0, bestSimilarity: best, question: ranking.gateQuestion))
         }
-        return (decide(ranking, limit: request.limit), candidates)
+        return (continuingSection(decide(ranking, limit: request.limit), turn: request.turn), candidates)
     }
+
+    // MARK: - A section the turn names (Plan KR P3)
+
+    /// The most a named section carries on past the passage found in it, in characters: about six
+    /// chunks of a prose manual.
+    static let sectionRunBudget = 4_200
+    /// The most chunks read past the passage to find them.
+    static let sectionRunChunks = 12
+
+    /// `outcome` with a section the turn names carried on (Plan KR P3). A furnace's sequence of
+    /// operation is fifteen chunks over three pages, and asking for it by name found its first
+    /// chunk alone: the rest of the sequence never reached the model. When the turn's words hold
+    /// every content word of a manual passage's section heading, and the heading has at least
+    /// `sectionHeadingTerms` of them, the chunks printed after that passage under the same heading
+    /// follow it, in order, up to `sectionRunBudget` characters. The first such passage only, and
+    /// only when the factory can read on (`followingChunks`). Every other turn is unchanged.
+    func continuingSection(_ outcome: RetrievalOutcome, turn: String?) -> RetrievalOutcome {
+        guard let followingChunks, let turn, case .sufficient(let passages) = outcome,
+              let anchorAt = passages.firstIndex(where: { passage in
+                  passage.source == .manual && passage.kind != .tableRow
+                      && Self.turnNamesSection(passage.section, turn: turn, rule: passage.termRule)
+              }) else { return outcome }
+        let anchor = passages[anchorAt]
+        var run: [Passage] = []
+        var used = 0
+        for raw in followingChunks(anchor, Self.sectionRunChunks) {
+            guard raw.documentId == anchor.documentId, raw.section == anchor.section,
+                  raw.chunkIndex == (run.last?.chunkIndex ?? anchor.chunkIndex) + 1,
+                  !Self.isContentsList(raw.text), used + raw.text.count <= Self.sectionRunBudget else { break }
+            used += raw.text.count
+            let key = "\(raw.documentId)#\(raw.chunkIndex)"
+            run.append(passages.first { Self.key($0) == key } ?? scored(raw, matched: []))
+        }
+        guard !run.isEmpty else { return outcome }
+        let carried = Set(run.map(Self.key))
+        var out = passages.filter { !carried.contains(Self.key($0)) }
+        let at = (out.firstIndex { Self.key($0) == Self.key(anchor) } ?? (out.count - 1)) + 1
+        out.insert(contentsOf: run, at: at)
+        return .sufficient(out)
+    }
+
+    /// How many content words a section heading needs before the turn naming it carries it on: a
+    /// one- or two-word heading ("Wiring", "Gas Piping") is said in passing.
+    static let sectionHeadingTerms = 3
+
+    /// Whether the turn's words hold every content word of `section`, a heading of at least
+    /// `sectionHeadingTerms` of them.
+    static func turnNamesSection(_ section: String?, turn: String, rule: TermRule = .english) -> Bool {
+        guard let section, !section.isEmpty else { return false }
+        let heading = LexicalSupport.contentTerms(section, rule: rule)
+        guard heading.count >= sectionHeadingTerms else { return false }
+        return heading.isSubset(of: LexicalSupport.contentTerms(turn, rule: rule))
+    }
+
+    /// Whether a chunk is mostly a table of contents (Plan KR P3): at least three lines, and most
+    /// of its lines, are an entry run out to a page number by dot leaders ("Gas Piping ....... 22").
+    /// Such a chunk names every section the book has, so it shares the words of any question
+    /// about one, and it answers none of them.
+    static func isContentsList(_ text: String) -> Bool {
+        let lines = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard lines.count >= 3 else { return false }
+        let entries = lines.filter { $0.range(of: contentsEntry, options: .regularExpression) != nil }.count
+        return entries >= 3 && Double(entries) >= contentsShare * Double(lines.count)
+    }
+
+    /// The share of a chunk's lines that must be contents entries.
+    static let contentsShare = 0.6
+    private static let contentsEntry = #"(?:(?:\.\s?){4,}|\x{2026}{2,}|_{4,})\s*\d{1,4}$"#
 
     /// The ranked candidates and what the gate compares them with. `features` only when asked for.
     private struct Ranking {
@@ -626,8 +701,10 @@ struct VaultRetriever {
         // The availability check runs here, after everything has been gathered and before anything
         // is decided: this is the last moment at which the answer can still be "that manual is
         // gone" rather than a quotation from it.
-        let candidates = availability.map { check in Array(merged.values).filter { check($0.documentId) } }
-            ?? Array(merged.values)
+        // A table of contents names every section, so it shares the words of any question about
+        // one and answers none (Plan KR P3): it is not a passage.
+        let candidates = (availability.map { check in Array(merged.values).filter { check($0.documentId) } }
+            ?? Array(merged.values)).filter { !Self.isContentsList($0.text) }
         //
         // A clause number ranks above both (Plan IN P3a), by how the passage holds the clause: the
         // passage that starts it, then its subclauses, then the text that carries it on, then the

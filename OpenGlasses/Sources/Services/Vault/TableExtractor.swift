@@ -1423,8 +1423,14 @@ enum TableExtractor {
             }
         }
         let first = groups[0]
+        // A row-header column's heading that reached a value column by the midpoints is the rows'
+        // heading, not a level of the column's (Plan KR P3): it is left out above the column's own.
+        let stubHeadings = Set(first.prefix(stubs[0]).flatMap { paths[$0] })
         let columns = first[stubs[0]...].map { index -> ManualTable.Column in
-            let path = Array(paths[index].dropFirst(drop))
+            var path = withoutNoteLeaf(Array(paths[index].dropFirst(drop)))
+            if path.count > 1 {
+                path = path.dropLast().filter { !stubHeadings.contains($0) } + [path[path.count - 1]]
+            }
             return ManualTable.Column(path: path, unit: unit(in: path))
         }
         let rowHeaders = first.prefix(stubs[0]).map { paths[$0].dropFirst(drop).joined(separator: " ") }
@@ -1735,6 +1741,8 @@ enum TableExtractor {
         let centers = segments.map { ($0.0 + $0.1) / 2 }
         let gaps = zip(segments, segments.dropFirst()).map { $1.0 - $0.1 }.sorted()
         let gap = gaps.isEmpty ? 0 : gaps[gaps.count / 2]
+        let pitches = zip(centers, centers.dropFirst()).map { $1 - $0 }.sorted()
+        let pitch = pitches.isEmpty ? 0 : pitches[pitches.count / 2]
         var paths = [[(text: String, columns: Set<Int>)]](repeating: [], count: segments.count)
         for line in header {
             let phrases = line.phrases.filter { !$0.text.isEmpty }
@@ -1751,7 +1759,19 @@ enum TableExtractor {
                 case (nil, nil): low = phrase.minX - gap; high = phrase.maxX + gap
                 }
                 var covered = Set(centers.indices.filter { centers[$0] >= low && centers[$0] <= high })
-                covered.formUnion(segments.indices.filter { min(phrase.maxX, segments[$0].1) - max(phrase.minX, segments[$0].0) > 0 })
+                let under = Set(segments.indices.filter {
+                    min(phrase.maxX, segments[$0].1) - max(phrase.minX, segments[$0].0) > 0
+                        || (centers[$0] >= phrase.minX && centers[$0] <= phrase.maxX)
+                })
+                covered.formUnion(under)
+                // A heading spreads over the columns either side of it only when it is set over their
+                // middle (Plan KR P3). One printed over the last of three columns, with a stub
+                // heading far to its left, reached back over the other two by the midpoints alone
+                // and became a level of their paths too.
+                if covered.count > 1, pitch > 0, !under.isEmpty {
+                    let middle = covered.map { centers[$0] }.reduce(0, +) / Double(covered.count)
+                    if abs(phrase.center - middle) > spanOffCentre * pitch { covered = under }
+                }
                 coverage.append(covered)
             }
             for column in segments.indices {
@@ -1767,6 +1787,31 @@ enum TableExtractor {
             }
         }
         return paths.map { $0.map(\.text) }
+    }
+
+    /// How far, in columns, a heading's centre may sit from the middle of the columns it would
+    /// spread over and still head them all. A heading centred over two columns, or set from the
+    /// left over two, sits at most half a column off; one printed over the last of three sits a
+    /// whole column off.
+    static let spanOffCentre = 0.75
+
+    /// A heading that only points to the notes: "Note", "Notes 2", "(note)", "*", "†"
+    /// (Plan KR P3). It names no column.
+    static func isNoteMarkerHeading(_ text: String) -> Bool {
+        let bare = text.lowercased()
+            .replacingOccurrences(of: #"\*+|"# + footnoteSigns + #"|[\x{00B9}\x{00B2}\x{00B3}\x{2070}-\x{2079}()\[\].,:;]"#,
+                                  with: " ", options: .regularExpression)
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        if bare.isEmpty { return !text.trimmingCharacters(in: .whitespaces).isEmpty }
+        return bare.range(of: #"^(see\s+)?notes?(\s+(\d{1,2}|[a-z]|below|above))?$"#, options: .regularExpression) != nil
+    }
+
+    /// A column's path with a last heading that is only a note marker left out, so the heading
+    /// above it is the column's own (Plan KR P3): a heading printed over a "Note" is the
+    /// column's name, not the pointer under it. A path of the marker alone is kept.
+    static func withoutNoteLeaf(_ path: [String]) -> [String] {
+        guard path.count > 1, let last = path.last, isNoteMarkerHeading(last) else { return path }
+        return Array(path.dropLast())
     }
 
     // MARK: - Cells
