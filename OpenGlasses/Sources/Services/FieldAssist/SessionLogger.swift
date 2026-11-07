@@ -100,6 +100,9 @@ final class SessionLogger {
             case pageShown = "page_shown"
             /// The technician asked for a page and it opened. Not a verification either.
             case pageOpened = "page_opened"
+            /// The page went to the glasses, or the part of it the lens shows changed (Plan KV §5):
+            /// the page reference and the crop, never the page's text or pixels. Not a verification.
+            case pageOnGlasses = "page_on_glasses"
             /// What the figure policy did with a turn's page — on the phone, to the model only,
             /// or neither — and why.
             case figurePresented = "figure_presented"

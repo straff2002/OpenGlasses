@@ -3433,6 +3433,31 @@ final class FieldSessionService: ObservableObject {
             payload: ["document": AnyCodable(title), "page": AnyCodable(page)]))
     }
 
+    /// Audit: the lens showed a page, or changed what part of it shows (Plan KV §5). Written to the
+    /// trail the figure sheet keeps, as "shown on the glasses"; touches no evidence list, because a
+    /// page on the lens is no more a verification than one on the phone.
+    func logPageOnGlasses(_ line: LensPageAuditLine) {
+        logger?.append(Self.pageOnGlassesEvent(line, at: Date()))
+    }
+
+    /// The audit event for one lens line: the page reference, the crop and the zoom step.
+    nonisolated static func pageOnGlassesEvent(_ line: LensPageAuditLine, at date: Date) -> SessionLogger.Event {
+        let label = PageEvidencePolicy.label(title: line.documentTitle, page: line.page, figure: line.figure)
+        var payload: [String: AnyCodable] = [
+            "document": AnyCodable(line.documentTitle),
+            "page": AnyCodable(line.page),
+            "event": AnyCodable(line.event.rawValue),
+            "route": AnyCodable(line.route),
+            "backend": AnyCodable(line.backend),
+        ]
+        if line.event != .cueShown {
+            payload["crop"] = AnyCodable(line.cropText)
+            payload["zoom"] = AnyCodable(line.zoom)
+        }
+        return SessionLogger.Event(timestamp: date, kind: .pageOnGlasses,
+                                   text: "\(label), shown on the glasses", payload: payload)
+    }
+
     /// Audit: a manual page went to the model as this turn's image.
     func logFigureSent(_ figure: StagedFigure) {
         logger?.append(SessionLogger.Event(

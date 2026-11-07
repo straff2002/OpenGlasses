@@ -1445,6 +1445,9 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var hudAnswerCard = HUDAnswerCard(display: glassesDisplay)
     /// The band check (Plan KP §5): Practise the band, on the lens and the phone page.
     lazy var bandPractice = BandPracticeSession(display: glassesDisplay)
+    /// The manual page on the lens (Plan KV): the view, zoomed by band or voice, and the
+    /// **Show here** cue for a page the app put up by itself.
+    lazy var lensPage = LensPageSession(display: glassesDisplay, router: hudRouter)
     /// Audio-paced HUD teleprompter (Teleprompter Phase 2): streams recognized speech into
     /// the `ScriptAligner` to keep your place, owns the display while active.
     let teleprompterStore = TeleprompterScriptStore()
@@ -2147,6 +2150,8 @@ class AppState: ObservableObject, AppStateProtocol {
         inConversation = false
         lastResponse = ""
         ShowSourceCenter.shared.clearForAccessLoss()
+        // Plan KV: a page from a withdrawn vault leaves the lens too, and nothing drawn from it is kept.
+        lensPage.forget()
     }
 
     private func removeLockedOrganisationConversations() {
@@ -2923,6 +2928,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in self?.addDebugEvent(message) }
         }
         wireAnswerCard()
+        wireLensPage()
 
         // Let the TTS engine selector know whether we're online, so a configured cloud voice
         // isn't preferred while offline (it'd fail the network call and fall back anyway).
@@ -4503,6 +4509,15 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         cancellables.append(sourcePagesToken)
 
+        // Plan KV §4: the same pages on the lens, at once — with the phone locked too, which is the
+        // case the lens view is most for. The phone sheet still waits for the app to be in front.
+        let lensPagesToken = ShowSourceCenter.shared.$lensRequest
+            .compactMap { $0 }
+            .sink { [weak self] request in
+                self?.presentOnLens(request.pages, opening: request.opening)
+            }
+        cancellables.append(lensPagesToken)
+
         // Field Assist: the lens says which machine the answers are for, and says so again when
         // the identity is corrected or forgotten — one transient line on the same path the figure
         // cue uses, and nothing persistent (Plan EL P2). The nil a session end publishes is not a
@@ -5933,11 +5948,14 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// Put a staged figure in front of the technician: the page on the phone, a one-line cue on
-    /// the lens, and a line in the session's audit log. Returns what the sheet will draw so a
-    /// caller (the `manual_figure` tool) can say whether a picture was available.
+    /// Put a staged figure in front of the technician: the page on the phone, the page (or its
+    /// **Show here** cue) on the lens, and a line in the session's audit log. Returns what the sheet
+    /// will draw so a caller (the `manual_figure` tool) can say whether a picture was available.
     @discardableResult
     func presentManualFigure(_ staged: FieldSessionService.StagedFigure) -> ManualFigurePresenter {
+        // Plan KV §4: the lens first, so a page asked for again after its view was closed opens
+        // again; the session itself ignores the page already in the view.
+        presentOnLens([staged], opening: 0)
         // Already on screen: staging the same drawing again (a follow-up question about it, or
         // "show that again" while it is still up) must not re-log it or blink the sheet.
         if let open = manualFigureRequest, open.id == ManualFigureRequest.identity(of: [staged]) { return open.presenter }
@@ -5945,9 +5963,15 @@ class AppState: ObservableObject, AppStateProtocol {
         manualFigureRequest = ManualFigureRequest(
             presenter: presenter,
             sheet: FieldSessionService.shared.manualPageSheet(for: staged))
-        // The lens says where the drawing is and nothing else — it cannot render one legibly.
-        ManualFigureCue.show(staged, on: glassesDisplay)
         return presenter
+    }
+
+    /// Plan KV §4: a staged page on the lens. A page the technician asked for opens the page view;
+    /// one the app put up by itself gets the **Show here** cue; a lens that can't draw it gets the
+    /// one-line cue, as before. The turn's answer card offers **Page** when the view can open.
+    func presentOnLens(_ pages: [FieldSessionService.StagedFigure], opening: Int = 0) {
+        lensPage.stage(pages, opening: opening)
+        if lensPage.canOpenOnLens() { hudAnswerCard.notePageStaged() }
     }
 
     /// Put several cited pages in front of the technician at once — "show me the relevant pages"
@@ -5964,7 +5988,8 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         manualFigureRequest = ManualFigureRequest(presenter: stops[0].presenter, sheet: stops[0].sheet,
                                                   others: Array(stops.dropFirst()), opening: opening)
-        ManualFigureCue.show(pages[opening], on: glassesDisplay)
+        // The lens got these pages when they were requested (`ShowSourceCenter.lensRequest`), so a
+        // request made with the phone locked was already on the glasses.
     }
 
     /// A manual has just been removed from an installed vault (Plan FN).
@@ -5979,6 +6004,10 @@ class AppState: ObservableObject, AppStateProtocol {
            open.presenter.figure.documentId == result.documentId
             || open.presenter.figure.sourceFile == result.file {
             manualFigureRequest = nil
+        }
+        // Plan KV: nor on the lens.
+        if lensPage.pages.contains(where: { $0.staged.documentId == result.documentId || $0.staged.sourceFile == result.file }) {
+            lensPage.forget()
         }
         FieldSessionService.shared.vaultDidRemoveManual(result)
     }
@@ -7951,6 +7980,20 @@ class AppState: ObservableObject, AppStateProtocol {
     ///   not rebuild the card.
     /// - Save runs `save_note` through the tool router — and so `ToolAuthorizationPolicy` — as a
     ///   tapped control (`.user`), never by writing the note directly.
+    /// Plan KV: the page on the lens. Its pages come from the vault session (or the personal
+    /// library), its audit lines go to the trail the figure sheet keeps, its voice words through
+    /// the HUD router, its send timings from the display, and the answer card's **Page** opens it.
+    private func wireLensPage() {
+        lensPage.sourceURL = { FieldSessionService.shared.sourcePDFURL(for: $0) }
+        lensPage.audit = { FieldSessionService.shared.logPageOnGlasses($0) }
+        hudRouter.pageView = lensPage
+        glassesDisplay.onPictureSent = { [weak self] bytes, ms in
+            self?.lensPage.notePictureSent(bytes: bytes, milliseconds: ms)
+        }
+        hudAnswerCard.pageCanOpen = { [weak self] in self?.lensPage.canOpenStaged ?? false }
+        hudAnswerCard.openPage = { [weak self] in self?.lensPage.openStaged() }
+    }
+
     private func wireAnswerCard() {
         speechService.answerCard = hudAnswerCard
         hudRouter.answerCard = hudAnswerCard

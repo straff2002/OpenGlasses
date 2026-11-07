@@ -385,6 +385,9 @@ final class ShowSourceCenter: ObservableObject {
     @Published private(set) var presented: SourcePagesRequest?
     /// A request made while the app could not show it.
     private(set) var waiting: SourcePagesRequest?
+    /// Every request, published at once whether or not the app is in front (Plan KV §4): the lens
+    /// shows the page with the phone locked, which is the case it is most for.
+    @Published private(set) var lensRequest: SourcePagesRequest?
 
     /// Seams for the tests: whether the app is in front, and how a waiting page is announced.
     var isAppActive: () -> Bool = { UIApplication.shared.applicationState == .active }
@@ -406,6 +409,7 @@ final class ShowSourceCenter: ObservableObject {
         citationsRevision += 1
         presented = nil
         waiting = nil
+        lensRequest = nil
     }
 
     func noteRetrieved(_ passages: [VaultRetriever.Passage], sessionId: String?) {
@@ -477,6 +481,7 @@ final class ShowSourceCenter: ObservableObject {
     func present(_ pages: [FieldSessionService.StagedFigure], notice: String, opening: Int = 0) -> Bool {
         guard !pages.isEmpty else { return false }
         let request = SourcePagesRequest(pages: pages, opening: opening)
+        lensRequest = request
         if isAppActive() {
             waiting = nil
             presented = request
