@@ -5883,7 +5883,24 @@ class LLMService: ObservableObject {
     /// point is to fit inside a few thousand tokens. Groq keeps the plain tail it has always used:
     /// `compactHistory` would also strip the tool exchange, and with tools *enabled* that changes
     /// an existing user's tool loop, which is not what a vision-image setting should do.
+    ///
+    /// The copy is in `provider`'s own shape: messages another provider wrote earlier in the
+    /// conversation — a ChatGPT turn's `role: "tool"` result reaching the Vision model's photo turn
+    /// on Anthropic, a cascade hop, a change of model — are converted for this request
+    /// (`CrossProviderHistory`). The stored history is left as it was written.
     private func requestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
+        let copy = budgetedRequestHistory(for: provider, smallContext: smallContext)
+        guard let shape = CrossProviderHistory.shape(for: provider) else { return copy }
+        let normalised = CrossProviderHistory.normalised(copy, for: shape)
+        if normalised.converted > 0 {
+            PrivacyLog.model(.historyConverted, provider: PrivacyToken(provider.rawValue),
+                             count: normalised.converted, total: copy.count,
+                             detail: PrivacyToken(shape.rawValue))
+        }
+        return normalised.history
+    }
+
+    private func budgetedRequestHistory(for provider: LLMProvider, smallContext: Bool) -> [[String: Any]] {
         lastRequestOmittedMessages = 0
         pendingTimeline = nil
         pendingTimelineSkip = .routeCarriesNoBlock
@@ -6051,6 +6068,12 @@ class LLMService: ObservableObject {
     /// Responses raw-items key in particular. Test-only.
     func rawConversationHistoryForTesting() -> [[String: Any]] {
         conversationHistory
+    }
+
+    /// Start a test from a history in any provider's wire shape — what an earlier turn on another
+    /// provider left behind. Test-only.
+    func seedRawConversationHistoryForTesting(_ history: [[String: Any]]) {
+        conversationHistory = history
     }
 
     /// The durable turn history as plain (role, text) pairs — what a regression asserts was, and

@@ -26,6 +26,18 @@ import Foundation
 /// "read the label" name no page and stay camera turns, and words that name something physical in
 /// front of the wearer ("the nameplate", "the gauge") keep one even beside "row" or "table".
 ///
+/// # "Look on the vault for an E4 error and tell me what that is"
+///
+/// `VisionIntentDetector` hears "that is" as pointing at something. With manuals to search — a
+/// Field Assist vault, or the personal library — "tell me what that is" after a fault code points
+/// back at the code, and "look it up" or "look in the manual" mean the manuals. The owner's trace
+/// (2026-11-07): "if you can look what that is on the refrigerator" took a glasses frame,
+/// so the turn became a photo turn for the Vision model on another provider, and the next turn took
+/// the live frame too. So a turn that names a fault code ("E4 error", "error 21", "code F3") or
+/// the manuals, with manuals to search, is the manual's turn: no frame of any kind. The camera
+/// words, and something physical in front of the wearer ("the code on the display"), keep it a
+/// camera turn; "what's this error" names no code and stays one.
+///
 /// # A link that is down
 ///
 /// Connected means `linkState == .connected` (`CameraService.isGlassesLinkUp`). A glasses capture
@@ -40,6 +52,9 @@ enum SmartCameraPolicy {
         var citedManualPagesOpen = false
         /// A manual page sheet is open on the phone (Plan JW P1a) — "this page" is that page.
         var manualPageOnScreen = false
+        /// There are manuals to look things up in: the active Field Assist session's vault, or the
+        /// personal library.
+        var manualsToSearch = false
 
         /// Whether a manual page is what "the page" or "the table" can mean in this turn.
         var hasManualPages: Bool { citedManualPagesOpen || manualPageOnScreen }
@@ -47,8 +62,66 @@ enum SmartCameraPolicy {
 
     /// Whether the turn needs the camera.
     static func intent(for query: String, context: Context) -> VisionIntentDetector.CameraIntent {
-        isAboutCitedPages(query, context: context) ? .textOnly : VisionIntentDetector.classify(query)
+        isManualTurn(query, context: context) ? .textOnly : VisionIntentDetector.classify(query)
     }
+
+    /// Whether the turn belongs to the manuals and takes no frame of any kind: it asks to see or
+    /// read the cited pages, or to look a fault code up in the manuals there are to search.
+    static func isManualTurn(_ query: String, context: Context) -> Bool {
+        isAboutCitedPages(query, context: context) || asksToLookUpInManuals(query, context: context)
+    }
+
+    /// "Look on the vault for an E4 error and tell me what that is", "look it up in the manual":
+    /// with manuals to search, a turn naming a fault code or the manuals, and nothing the camera
+    /// or the world in front of the wearer.
+    static func asksToLookUpInManuals(_ query: String, context: Context) -> Bool {
+        guard context.manualsToSearch else { return false }
+        let words = query.lowercased()
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+        guard !words.isEmpty else { return false }
+        let padded = " " + words.joined(separator: " ") + " "
+        if cameraWords.contains(where: { padded.contains(" \($0) ") }) { return false }
+        if words.contains(where: physicalThings.contains) { return false }
+        if words.contains(where: manualNouns.contains) { return true }
+        if lookUpPhrases.contains(where: { padded.contains(" \($0) ") }), !padded.contains(" look up at ") {
+            return true
+        }
+        return namesFaultCode(words)
+    }
+
+    /// A fault-code word ("error", "fault", "code", "alarm") with a code beside it: a short token of
+    /// letters then digits ("e4", "f21", "er10"), or a number straight after the word ("error 21").
+    static func namesFaultCode(_ words: [String]) -> Bool {
+        guard words.contains(where: faultWords.contains) else { return false }
+        for (index, word) in words.enumerated() {
+            if isCodeToken(word) { return true }
+            if faultWords.contains(word), index + 1 < words.count,
+               words[index + 1].allSatisfy(\.isNumber), words[index + 1].count <= 4 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func isCodeToken(_ word: String) -> Bool {
+        let letters = word.prefix(while: \.isLetter)
+        let rest = word.dropFirst(letters.count)
+        let digits = rest.prefix(while: \.isNumber)
+        let tail = rest.dropFirst(digits.count)
+        return (1...3).contains(letters.count) && (1...3).contains(digits.count)
+            && tail.count <= 1 && tail.allSatisfy(\.isLetter)
+    }
+
+    private static let faultWords: Set<String> = [
+        "error", "errors", "fault", "faults", "code", "codes", "alarm", "alarms",
+    ]
+
+    private static let manualNouns: Set<String> = [
+        "manual", "manuals", "vault", "vaults", "documentation", "datasheet", "datasheets",
+    ]
+
+    private static let lookUpPhrases = ["look up", "look it up", "look that up", "look this up", "looks up"]
 
     /// Whether the turn asks to see, or to read, the cited or open manual pages, so no frame of any
     /// kind goes with it.
