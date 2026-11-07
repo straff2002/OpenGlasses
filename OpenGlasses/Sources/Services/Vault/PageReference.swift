@@ -1,7 +1,7 @@
 import Foundation
 
 /// A page a technician names out loud — "page 34", "pages 34 and 35", "p. 12", and in words after
-/// "page" or "pages": "page three ninety-nine", "page four oh five", "page twelve" (Plan KR P1) —
+/// "page" or "pages": "page four twenty-seven", "page four oh eight", "page twelve" (Plan KR P1) —
 /// recognised in a turn so the number is read as a place in the manual rather than as a code.
 ///
 /// Field report, build 497: "check page 34 of the service manual, item number two" handed `34` to

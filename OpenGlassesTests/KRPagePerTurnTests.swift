@@ -12,9 +12,9 @@ final class KRPagePerTurnTests: XCTestCase {
     // MARK: - Pages said in words
 
     func testAPageSaidInWordsIsAPage() {
-        XCTAssertEqual(PageReference.pages(in: "go to page three ninety-nine"), [399])
-        XCTAssertEqual(PageReference.pages(in: "open page three hundred and ninety-nine please"), [399])
-        XCTAssertEqual(PageReference.pages(in: "page four oh five of the code book"), [405])
+        XCTAssertEqual(PageReference.pages(in: "go to page four twenty-seven"), [427])
+        XCTAssertEqual(PageReference.pages(in: "open page four hundred and twenty-seven please"), [427])
+        XCTAssertEqual(PageReference.pages(in: "page four oh eight of the code book"), [408])
         XCTAssertEqual(PageReference.pages(in: "show me page twelve"), [12])
         XCTAssertEqual(PageReference.pages(in: "turn to page one hundred"), [100])
         XCTAssertEqual(PageReference.pages(in: "page twenty one, the wiring"), [21])
@@ -35,21 +35,21 @@ final class KRPagePerTurnTests: XCTestCase {
     }
 
     func testThePageWordsAreBlankedOutAndEverythingElseStays() {
-        let removed = PageReference.removingReferences(from: "check page three ninety-nine for the QXRT rating")
+        let removed = PageReference.removingReferences(from: "check page four twenty-seven for the QXRT rating")
         XCTAssertFalse(removed.contains("three") || removed.contains("ninety"), removed)
         XCTAssertTrue(removed.contains("check page") && removed.contains("for the QXRT rating"), removed)
-        let both = PageReference.removingReferences(from: "page 34 and page four oh five")
+        let both = PageReference.removingReferences(from: "page 34 and page four oh eight")
         XCTAssertFalse(both.contains("34") || both.contains("four") || both.contains("five"), both)
         XCTAssertTrue(both.contains("and page"), both)
     }
 
     func testSpokenNumbersReadTheirDigitGroupsOnlyWhenAsked() {
-        XCTAssertEqual(SpokenNumber.whole("three ninety-nine"), 399)
-        XCTAssertEqual(SpokenNumber.whole("four oh five"), 405)
+        XCTAssertEqual(SpokenNumber.whole("four twenty-seven"), 427)
+        XCTAssertEqual(SpokenNumber.whole("four oh eight"), 408)
         XCTAssertEqual(SpokenNumber.whole("one hundred and two"), 102)
         XCTAssertEqual(SpokenNumber.whole("twenty one"), 21)
         XCTAssertNil(SpokenNumber.whole("three wires"))
-        XCTAssertEqual(SpokenNumber.whole("three ninety-nine", digitGroups: false), nil,
+        XCTAssertEqual(SpokenNumber.whole("four twenty-seven", digitGroups: false), nil,
                        "without groups the second word is not part of the number")
         // A table keeps reading as it did: "table three two" is Table 3.
         XCTAssertEqual(TableReference.labels(in: "table three two"), ["Table 3"])
@@ -58,7 +58,7 @@ final class KRPagePerTurnTests: XCTestCase {
     }
 
     func testAPrintedPageSaidInWordsIsItsNumber() {
-        XCTAssertEqual(ManualFigureTool.printedPage(in: "open printed page three ninety-nine"), "399")
+        XCTAssertEqual(ManualFigureTool.printedPage(in: "open printed page four twenty-seven"), "427")
         XCTAssertEqual(ManualFigureTool.printedPage(in: "printed page twelve"), "12")
         XCTAssertEqual(ManualFigureTool.printedPage(in: "printed page iv"), "iv", "a roman page stays as printed")
         XCTAssertEqual(ManualFigureTool.printedPage(in: "printed page A-3"), "A-3")
@@ -69,13 +69,13 @@ final class KRPagePerTurnTests: XCTestCase {
 
     func testATurnThatNamesAPageInWordsPutsNothingOnThePhone() {
         typealias P = FigureAutoOpenPolicy
-        let named = PageReference.pages(in: "go to printed page three ninety-nine")
-        XCTAssertEqual(ManualTurnClassifier.classify("go to printed page three ninety-nine"), .showMe)
+        let named = PageReference.pages(in: "go to printed page four twenty-seven")
+        XCTAssertEqual(ManualTurnClassifier.classify("go to printed page four twenty-seven"), .showMe)
         XCTAssertEqual(P.decide(turnKind: .showMe, passageKind: .captioned, tokenHits: [],
                                 namedPages: named, passagePage: 17),
                        .none(reason: .otherPageNamed), "the search's page is not the page asked for")
         XCTAssertEqual(P.decide(turnKind: .showMe, passageKind: .diagram, tokenHits: [],
-                                namedPages: named, passagePage: 399),
+                                namedPages: named, passagePage: 427),
                        .attachToModelOnly(reason: .pageNamed), "even on that page: it is manual_figure's to open")
         XCTAssertEqual(P.decide(turnKind: .question, passageKind: .diagram, tokenHits: ["24VAXC"],
                                 namedPages: [5], passagePage: 5),

@@ -265,14 +265,14 @@ final class ManualFigureTool: NativeTool {
         if let value = args["printed_page"] {
             let text = (value as? String) ?? (value as? NSNumber)?.stringValue ?? ""
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            // A page passed as the words it was said in ("three ninety-nine") is its number.
+            // A page passed as the words it was said in ("four twenty-seven") is its number.
             if !trimmed.isEmpty { return SpokenNumber.whole(trimmed).map(String.init) ?? trimmed }
         }
         return currentUtterance().flatMap(Self.printedPage(in:))
     }
 
-    /// "printed page 57", "printed page number iv", "page 57 printed", "printed page three
-    /// ninety-nine" → the label ("399" for words, Plan KR P1). Pure.
+    /// "printed page 57", "printed page number iv", "page 57 printed", "printed page four
+    /// twenty-seven" → the label ("427" for words, Plan KR P1). Pure.
     static func printedPage(in said: String) -> String? {
         let ns = said as NSString
         for pattern in [#"(?i)\bprinted\s+page\s+(?:number\s+|no\.?\s*)?([A-Za-z0-9][A-Za-z0-9-]*)"#,

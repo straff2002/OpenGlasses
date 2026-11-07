@@ -4,8 +4,8 @@ import Foundation
 /// sentence (Plan JJ P1, shared since Plan KR P1).
 ///
 /// `TableReference` reads a table's number this way; `PageReference` reads a page's, and a page
-/// is also said in digit groups the way page numbers are read aloud: "three ninety-nine" (399),
-/// "four oh five" (405), "three twelve" (312). Groups are read only when the caller asks
+/// is also said in digit groups the way page numbers are read aloud: "four twenty-seven" (427),
+/// "four oh eight" (408), "three twelve" (312). Groups are read only when the caller asks
 /// (`digitGroups`), because "table five A" and "table three two" are not three-digit tables.
 ///
 /// Pure and deterministic.
@@ -19,7 +19,7 @@ enum SpokenNumber {
     static let tens: [String: Int] = [
         "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
     ]
-    /// What a zero is said as inside a page number ("four oh five").
+    /// What a zero is said as inside a page number ("four oh eight").
     private static let zeros: Set<String> = ["oh", "o", "zero"]
 
     /// The next word, after spaces or a hyphen.
@@ -54,7 +54,7 @@ enum SpokenNumber {
             end = words[index - 1].end
             if word(index) == "and" { index += 1 }
         } else if digitGroups, let w = word(0), let u = units[w], u < 10, let group = trailingPair(words, from: 1) {
-            // "three ninety-nine", "three twelve", "four oh five": a digit, then the last two.
+            // "four twenty-seven", "three twelve", "four oh eight": a digit, then the last two.
             return (u * 100 + group.value, group.end)
         }
         // twenty–ninety [one–nine] | one–nineteen
@@ -89,7 +89,7 @@ enum SpokenNumber {
         return nil
     }
 
-    /// The whole of `text` read as one spoken number ("three ninety-nine"), or nil when anything
+    /// The whole of `text` read as one spoken number ("four twenty-seven"), or nil when anything
     /// but the number is in it.
     static func whole(_ text: String, digitGroups: Bool = true) -> Int? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

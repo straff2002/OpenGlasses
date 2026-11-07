@@ -130,8 +130,8 @@ for the partner, sent as a handover and never committed.
   `stagesFigure: Bool`; the refresh passes false).
 - A page a tool put up this turn (`manual_figure`, `show_source`, a lookup's table) is never replaced by
   the automatic path for the rest of the turn (`turnPages` or a turn flag on `FieldSessionService`).
-- `PageReference` reads spoken page numbers ("page three ninety-nine", "three hundred and ninety-nine",
-  "page four oh five", "page twelve") and keeps "printed" with the number. A turn that names a page
+- `PageReference` reads spoken page numbers ("page four twenty-seven", "four hundred and twenty-seven",
+  "page four oh eight", "page twelve") and keeps "printed" with the number. A turn that names a page
   presents nothing automatically; the page is `manual_figure`'s (`printed_page` when "printed" is said).
 - A show-me with no object ("show me", "show me the", "show me that", "show me it") reopens the last
   source the job cited (`lastShownFigure` or the noted lookup); with none, nothing opens and the model is
