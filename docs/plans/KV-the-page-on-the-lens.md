@@ -86,7 +86,10 @@ the whole page one press away, and zoom and pan by band press or voice.
 
 ### 1 · The page view
 
-A **page view** is a lens screen: one picture filling the canvas and one row of buttons under it.
+A **page view** is a lens screen: one picture, at most two short text lines over it, and one row of
+buttons under it. P4 measured the frame on the simulated Display: with the button row and the lines, the
+picture gets a box about **576 × 382 px**, not the whole 600 × 600 (`LensPageFrame` computes it from what
+is on the frame, so nothing scrolls). A cited **text passage** opens differently, as text (§1b).
 
 The picture is a crop of the page, chosen by a viewport:
 
@@ -94,8 +97,8 @@ The picture is a crop of the page, chosen by a viewport:
 struct LensPageViewport: Equatable {
     let pageSize: CGSize          // the page in PDF points
     var center: CGPoint           // in page points
-    var zoom: Zoom                // .fit, .x2, .x3, .x4 — relative to the whole page fitted
-    var cropRect: CGRect { … }    // what the lens shows, clamped inside the page
+    var scale: CGFloat            // relative to the whole page fitted in the picture box
+    var cropRect: CGRect { … }    // the picture box's shape, clamped inside the page
     mutating func zoomIn(); mutating func zoomOut()
     mutating func move(_ step: Step)   // .up, .down, .left, .right: half a crop at a time
     mutating func reset()              // back to the opening view
@@ -116,15 +119,36 @@ a focus at all only when a drawing was asked for, or when the app put the page u
 figure. A request for the page ("show me page 7") with nothing cited on it opens the whole page, with
 **Next diagram ›** there to jump to a drawing.
 
-The focus is padded by a margin and given the lens's square shape. The zoom it opens at is the smallest
-step at which the focus fits. So a cited table row opens readable, and a whole wiring diagram opens
-whole.
+The focus is padded by a margin and given the picture box's shape. The view opens at exactly the scale
+that fits it, so a marked table row or a diagram fills the box's width, and a whole wiring diagram opens
+whole. **Zoom in** and **Zoom out** move ×1.5 per press from there, up to a cap one press past the scale
+at which 8 pt labels reach the readable floor. **Whole page** is scale 1. As built, the cap is 4.125 lens px per page point (8 pt labels at the 22 px floor
+is 2.75, times one more press), so labels draw about 33 px at the deepest zoom. The picture box is 576
+px wide and 462, 426, 418 or 382 px tall for no lines, the citation, the hint, or both; a frame with a
+button row keeps 32 px under it for the focused button's glow. (First built as a square crop
+with four fixed steps, fit/×2/×3/×4; P4's screenshots showed portrait pages and tables opening a third
+of the box wide, and the owner had it changed on 2026-11-08.)
 
 **Legibility.** A pure `LensLegibility` estimates how tall the page's text draws on the lens at a given
 crop: the cited lines' height in page points (from their selection bounds, or a 8 pt default for a
 drawing's labels) times lens pixels per page point. When the estimate is under the readable floor, the
 view shows a one-word hint ("Zoom in for labels"). The floor starts at KP's smallest text token
 estimate (22 px, `HUDCanvas.textSize(.meta)`) and is marked as an estimate until P5 measures it.
+
+### 1b · Cited text opens as text
+
+A picture of body text can't be read on this lens: a manual's line spans the column, so even fitted to
+one line it draws about 9 px tall (P4's screenshots). So when the opening focus is a cited **text
+passage** (not a marked table row, a pictured table or a drawing) and the page has a text layer, the
+page view opens in **reading mode**: the passage's exact words, taken from the page text by the
+passage's located ranges (never the model's words), set as lens text with the backend's geometry and
+paged like KP's card ("1/2"), under the citation line. Several cited passages on a page follow one
+another, numbered as the marks are. Its row: **Next ›** while pages remain · **Page** (the picture,
+opened on the passage's mark) · **‹ Back** from page 2 · **Next page ›** on the last page when another
+cited page follows · **Close**, four at most. The picture view of such a page gets **Read it**, back to the
+text. Voice: "next" and "back" page the text while reading mode is up, "show the page" and "read it"
+switch. Photographed and text-imported pages, and table rows, keep the picture. This is also the
+owner's first aim for the Display: the exact manual content, readable, a card at a time.
 
 ### 2 · Drawing for an additive lens
 
@@ -156,6 +180,11 @@ The row under the picture (a pure `HUDPageScreenBuilder`, from the viewport stat
 | Whole page | **Zoom in** · **Back to part** (when there is a focus) · **Close** |
 | At the deepest zoom | **Zoom out** · **Move** · **Close** |
 | Move (pushed) | **↑** · **↓** · **←** · **→** · **Done** |
+| Reading mode (§1b) | **Next ›** (while pages remain) · **Page** · **‹ Back** · **Next page ›** · **Close** (four at most) |
+
+**Four buttons at most.** P4 found five-button rows clip on the lens ("Whole page" and "Next diagram ›"
+were cut). When a view would have five, **Move** drops first, then **Next diagram ›**, then **Whole page**; both stay
+reachable by voice, and **Move** comes back once the view is zoomed past its opening scale.
 
 **Move** pushes an arrow row rather than cycling through tiles, so the technician never loses their
 place and a press always does the same thing. Each arrow moves half a crop. With several pages ("show me
@@ -250,7 +279,8 @@ not involved. The privacy-logging gate applies to every new log line: page refer
 2. **Opening view:** the focus when one exists, else the whole page (§1); or always the whole page.
    *Recommended: the focus.*
 3. **Zoom steps:** fit, ×2, ×3, ×4 of the whole page fitted. *Recommended. P5 says whether ×4 is ever
-   used.*
+   used.* **Revised 2026-11-08 after P4:** the view opens at the exact scale that fits its focus, and
+   zoom moves ×1.5 per press (§1); the owner chose the fix.
 4. **Pan:** a pushed arrow row (§3); or one **Move** button cycling tiles in reading order.
    *Recommended: the arrow row.*
 5. **Inversion:** always for line art, with a contrast stretch for photographed pages (§2); or a setting.
@@ -373,8 +403,10 @@ stays out of production builds.
 - **A scripted walkthrough.** A Developer action (and a UI test where the mock's process allows it) asks
   for a page of an invented test manual, then walks the view: opening view, **Zoom in** twice, **Move**
   and an arrow, **Whole page**, **Close**. It also walks a three-page KP answer card and its **Actions**,
-  pressing each button through `sendClick(identifier:)`. P4 settles how the mock names a button (DAT's
-  `Button` takes no identifier, so a label or an internal id) and records it in the plan.
+  pressing each button through `sendClick(identifier:)`. **Found:** the mock addresses a button by the
+  identifier the SDK gives it when a frame is sent, `c<position>_<token>` (the token is stable for a
+  label); a label returns `true` but presses nothing. The identifiers are read from the test server's
+  frame (`POST /display/content`) before each press.
 - **Screenshots as evidence.** Each step's lens is captured (`simctl io screenshot`, the preview panel
   cropped) and kept with the PR's notes, not in the repo. The checks: the picture is inverted, the marks
   sit on the cited lines, labels read at the step `LensLegibility` predicts, the button row fits under
@@ -383,6 +415,17 @@ stays out of production builds.
   against `Wearables.configure()`, the permission gate, `GlassesConnectionService` reading a mock link as
   `.connected`) is unknown. Thirty minutes decide it. If the app can't run, P4 falls back to a small host
   screen in the same flagged lane that drives `MetaDisplayBackend` alone.
+
+**Built 2026-11-08.** The spike settled it: the full app runs on the mock. It configures the SDK as
+usual (telemetry block, then `Wearables.configure()`); the lab then enables the kit registered with the
+permission granted, pairs, powers on and dons, and the phase reads `.connected` with frames going
+through the real `MetaDisplayBackend`. No store-build code changed. `project.mock-display.yml` also
+carries a build phase that fails anything but a Debug Simulator build. Launch arguments
+`-AvenkinSimulatedDisplay` (and `-AvenkinSimulatedDisplayWalkthrough`) switch it on at launch. The first
+walkthrough found the lens scrolling (a square picture made the frame about 750 px tall), five-button
+rows clipping, cited text unreadable, and portrait pages and tables filling a third of the picture box:
+fixed by `LensPageFrame`, the four-button rule (§3), reading mode (§1b) and the fitted, continuous zoom
+(§1).
 
 The simulator doesn't replace P5: brightness, legibility against daylight, transfer time and the real
 band need the glasses.
