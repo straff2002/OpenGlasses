@@ -1,6 +1,8 @@
 # Plan KQ — A Model Trained to Search (manual passages embedded by a retrieval model, measured before it answers)
 
-**Status:** 🚧 P1 run 2026-11-07: the bar is met, and P2 is next. On the ten local answer keys, with the
+**Status:** 🚧 P2a built 2026-11-07 (headless): the wearer can choose Search-trained in Settings ›
+Field Assist, and the model downloads from its own public repo. P2b, the organisation pin, and P3, the
+phone pass, are owed. P1 run the same day: the bar is met. On the ten local answer keys, with the
 shipped request and the code lead, at 768 dimensions and its own gate (floor 0.69, three terms at 0.5):
 - hit@4 243 of 331, against the contextual model's 213;
 - hit@1 158 against 139, and as sent 254 against 224;
@@ -286,6 +288,68 @@ The next pilot's manuals, or the P3 phone pass, re-read it.
   - the gate entry is picked by id;
   - a vault never answers on a model with no gate entry.
 - Every other embedding user (`SemanticMemoryStore`, general documents, skills) stays on `Embedder()`.
+
+**P2a built 2026-11-07 (headless).** Everything above except the organisation pin, which is P2b.
+- **The choice.**
+  - `ManualSearchModel` (`standard`, `smarter`, `searchTrained`) is stored as
+    `Config.fieldAssistManualSearchModel`. Before a choice is stored it reads the old switch, and setting
+    it keeps the old switch in step, so no install changes model on upgrade.
+  - `Embedder.fieldAssist(choice:)` uses the search-trained model only when it is chosen, English and
+    loaded; otherwise Smarter's model, otherwise Standard.
+  - `VaultEmbeddingUpgrade` asks for the chosen model's asset whenever the target isn't on it yet.
+  - At launch, a wearer on Search-trained loads the model before the first re-index pass, so a vault
+    already on it isn't started towards the fallback during the load.
+- **The download.**
+  - `SearchModelBundle` points at the public Hugging Face repo `Skunk0/avenkin-search-eg2-text`: Apache
+    2.0, with the package, tokenizer files, `LICENSE`, a `NOTICE` of the changes and a model card. It is
+    306 MB, with checksums verified against the converted files. It was published 2026-11-07 with the
+    owner's approval.
+  - The download goes through the existing `ModelDownloader` (staged, verified, installed atomically), on
+    a new model-asset route, `searchModelDownload`. It is allowed in local-only mode like the other model
+    downloads, because it carries nothing about the wearer.
+  - `HuggingFaceModelInstaller` gained a generic per-file fetch for any bundle. Kokoro's path is
+    unchanged.
+- **The runtime.** `SearchModelRuntime` loads once per process, off the main thread: it compiles the
+  package to `compiled.mlmodelc` beside it on first use, then loads the tokenizer with `swift-transformers`.
+  `ready` is nil until the load finishes.
+- **The warm-up.** `handleWakeWordDetected` runs one tiny question embedding off the main thread when the
+  search-trained model is chosen and loaded and a Field Assist session is open.
+- **Settings › Field Assist › Manual Search** is a picker: Standard, Smarter, Search-trained. Choosing
+  Search-trained shows a download row with the size. On a cellular or hotspot connection it says to
+  connect to Wi-Fi instead. Once downloaded it can be removed. Every change re-indexes once.
+- `SearchModelPhoneCheck` stays as the developer check P3 uses for its timings.
+- **Tried on the owner's iPhone Air (Release build), 2026-11-07.**
+  - The download completed from the public repo, and the package compiled and loaded on the phone.
+  - **Search itself was not exercised.** The phone's document store held no manuals (0 documents). The
+    bundled refrigeration vault carries reference notes only, which don't go through manual search, so
+    the test questions were answered without it. P3 needs a vault or My Manuals with real manuals.
+  - Progress sat at 0% and then jumped to 89%, because it moved per file and the weights are one 273 MB
+    file. The search model's download now reports bytes as they arrive, in whole-percent steps; Kokoro's
+    is unchanged.
+  - An out-of-scope question (a car's wheel-nut torque) was answered from general knowledge. With no
+    manuals indexed, no gate was involved.
+  - **Importing a 44-manual vault froze the screen.** The store runs on the main actor and embedded each
+    passage there, at about 40 ms each on the new model, against a few for Apple's. A backend now
+    declares `isSafeOffMainThread`. Only `CoreMLEmbeddingBackend` does, so only it is embedded off the
+    main thread in the store's passage loops: import, page import, re-chunk, table rows, the vault
+    re-index and the non-vault re-index. Apple's models run exactly where they did, and a test pins
+    both sides.
+- **Tests.** `ManualSearchModelTests` (10) cover:
+  - the old switch's mapping, and staying in step with it;
+  - each choice's model ids;
+  - the fallback until the model is loaded, and Standard never using it;
+  - CPU-only compute units;
+  - the bundle's required files;
+  - the route's data class and its local-only rule;
+  - when a warm-up runs;
+  - the gate for a vault on the model, against the fallback's.
+
+  The route and privacy guards list the new route.
+- **Owed.**
+  - P2b: the organisation profile key that pins the choice. It is its own PR because the key also has to
+    land in the licence-issuance tool's profile contract.
+  - A catalog sync for the new strings.
+  - The phone pass (P3).
 
 ### P3 — the phone (device)
 

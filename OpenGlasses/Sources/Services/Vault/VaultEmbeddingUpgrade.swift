@@ -38,9 +38,10 @@ enum VaultEmbeddingUpgrade {
         let mine = generation
         running = Task { @MainActor in
             await run(store: store, manifests: manifests(), monitor: monitor) { generation == mine }
-            guard generation == mine, Config.fieldAssistContextualSearchEnabled,
-                  !target().version.modelId.hasPrefix("nl-contextual") else { return }
-            // Switched on but the model isn't here: ask for it, and re-index once it arrives.
+            let choice = Config.fieldAssistManualSearchModel
+            guard generation == mine, choice != .standard,
+                  !target().version.modelId.hasPrefix(choice.modelIdPrefix) else { return }
+            // Chosen but the model isn't here or loaded yet: ask for it, and re-index once it arrives.
             if await prepareAssets(), generation == mine {
                 await run(store: store, manifests: manifests(), monitor: monitor) { generation == mine }
             }

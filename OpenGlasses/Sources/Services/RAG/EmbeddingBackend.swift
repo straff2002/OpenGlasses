@@ -13,10 +13,15 @@ protocol EmbeddingBackend {
     /// A question being searched with (Plan KQ). A model trained for retrieval reads a question and
     /// a passage with different prefixes; every other model embeds both the same way.
     func embedQuery(_ text: String) -> [Float]?
+    /// Whether the store may embed with this backend off the main thread (Plan KQ P2). Apple's
+    /// models keep running where they always have; a backend says yes only when it is safe and
+    /// slow enough to matter.
+    var isSafeOffMainThread: Bool { get }
 }
 
 extension EmbeddingBackend {
     func embedQuery(_ text: String) -> [Float]? { embed(text) }
+    var isSafeOffMainThread: Bool { false }
 }
 
 /// The classic on-device path: `NLEmbedding.sentenceEmbedding` (preferred) with an averaged
