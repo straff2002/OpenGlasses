@@ -13,6 +13,7 @@ struct ConversationPageHeader: View {
     /// `appState`, so without this the header would keep naming a thread that had already ended.
     @ObservedObject var store: ConversationStore
     @Environment(\.appAccent) private var accent
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     @State private var showingSwitcher = false
     /// Raised when starting a new conversation would take the technician out of an open job.
@@ -22,62 +23,25 @@ struct ConversationPageHeader: View {
     private var hasThreads: Bool { !store.threads.isEmpty }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Button {
-                showingSwitcher = true
-            } label: {
-                HStack(spacing: 4) {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color(.label))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
+        Group {
+            // At accessibility sizes the title takes the header's full width, with the two buttons
+            // on a row of their own: beside them it had about half the width, and a word as long
+            // as "conversation" no longer fitted on a line.
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 0) {
+                    titleButton
+                    HStack(spacing: 6) {
+                        Spacer(minLength: 0)
+                        actionButtons
+                    }
                 }
-                .frame(minHeight: OGMetrics.minTouchTarget, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(store.isLocked)
-            .accessibilityLabel("Conversation: \(title)")
-            .accessibilityHint(hasThreads
-                               ? "Double-tap to switch to an earlier conversation."
-                               : "No earlier conversations yet.")
-
-            Spacer(minLength: 4)
-
-            // Only while nothing is active — after New conversation, a deletion, or a launch whose
-            // saved session had gone stale. Without it the last conversation is unreachable in one
-            // gesture.
-            if let resumable = ConversationContinuity.resumableThread(in: store) {
-                Button {
-                    resume(resumable.id)
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                        .font(.footnote.weight(.semibold))
-                        .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+            } else {
+                HStack(spacing: 6) {
+                    titleButton
+                    Spacer(minLength: 4)
+                    actionButtons
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(accent)
-                .accessibilityLabel("Carry on with \(resumable.title)")
-                .accessibilityHint("Picks the last conversation back up, with everything already said in context.")
             }
-
-            Button {
-                newConversation()
-            } label: {
-                Image(systemName: "square.and.pencil")
-                    .font(.footnote.weight(.semibold))
-                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(accent)
-            .disabled(store.isLocked)
-            .accessibilityLabel("New conversation")
-            .accessibilityHint("Ends this one. What you say next starts a fresh conversation.")
         }
         .padding(.horizontal, 8)
         .background(
@@ -96,6 +60,72 @@ struct ConversationPageHeader: View {
                 appState.activateConversationThread(id, confirmed: true)
             }
         }
+    }
+
+    /// Which conversation this is; a tap opens the switcher.
+    private var titleButton: some View {
+        Button {
+            showingSwitcher = true
+        } label: {
+            HStack(spacing: 4) {
+                // Wraps rather than truncating: a title cut to one line at large text sizes
+                // drops the words that say which conversation this is.
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(.label))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(store.isLocked)
+        .accessibilityLabel("Conversation: \(title)")
+        .accessibilityHint(hasThreads
+                           ? "Double-tap to switch to an earlier conversation."
+                           : "No earlier conversations yet.")
+    }
+
+    /// Carry on with the last conversation (only while nothing is active), and start a new one.
+    @ViewBuilder
+    private var actionButtons: some View {
+        // Only while nothing is active — after New conversation, a deletion, or a launch whose
+        // saved session had gone stale. Without it the last conversation is unreachable in one
+        // gesture.
+        if let resumable = ConversationContinuity.resumableThread(in: store) {
+            Button {
+                resume(resumable.id)
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.footnote.weight(.semibold))
+                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                    // Without a shape, the button's hit and accessibility area is the glyph alone.
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(accent)
+            .accessibilityLabel("Carry on with \(resumable.title)")
+            .accessibilityHint("Picks the last conversation back up, with everything already said in context.")
+        }
+
+        Button {
+            newConversation()
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.footnote.weight(.semibold))
+                .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(accent)
+        .disabled(store.isLocked)
+        .accessibilityLabel("New conversation")
+        .accessibilityHint("Ends this one. What you say next starts a fresh conversation.")
     }
 
     /// End the current thread cleanly and clear the model's context, so the next thing said
