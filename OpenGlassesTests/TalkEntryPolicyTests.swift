@@ -192,19 +192,38 @@ final class TalkEntryPolicyTests: XCTestCase {
 
     // MARK: - Session card glasses pill
 
-    func testNeverAddedGlassesShowNoPillInAnyPhaseOrStandDown() {
+    /// The card mentions glasses only while this phone has a pair added. With none added — never,
+    /// or removed since — there is no pill, whatever was true before.
+    func testThePillShowsOnlyWhileGlassesAreAdded() {
+        XCTAssertFalse(SessionCardGlassesPill.shows(link: .noGlassesAdded, glassesSupported: true),
+                       "no glasses on this phone: nothing about glasses on the card")
+        for link: GlassesConnectionPhase in [.addedDisconnected, .connecting, .connected] {
+            XCTAssertTrue(SessionCardGlassesPill.shows(link: link, glassesSupported: true), "\(link)")
+        }
+    }
+
+    func testACopyWithoutGlassesNeverShowsThePill() {
         for link in everyPhase {
+            XCTAssertFalse(SessionCardGlassesPill.shows(link: link, glassesSupported: false), "\(link)")
             for stoodDown in [false, true] {
                 XCTAssertNil(SessionCardGlassesPill.presentation(link: link, stoodDown: stoodDown,
-                                                                  everAdded: false),
-                             "\(link)/\(stoodDown): never added means no pill at all")
+                                                                  glassesSupported: false),
+                             "\(link)/\(stoodDown)")
             }
+        }
+    }
+
+    func testNoGlassesAddedShowsNoPillEvenStoodDown() {
+        for stoodDown in [false, true] {
+            XCTAssertNil(SessionCardGlassesPill.presentation(link: .noGlassesAdded, stoodDown: stoodDown,
+                                                              glassesSupported: true),
+                         "\(stoodDown): no glasses added means no pill at all")
         }
     }
 
     func testConnectedAndInUseReadsAttached() {
         let presentation = SessionCardGlassesPill.presentation(link: .connected, stoodDown: false,
-                                                                everAdded: true)
+                                                                glassesSupported: true)
         XCTAssertEqual(presentation, .init(word: "Glasses attached", tint: .ok, showsLiveDot: true,
                                            action: .disconnect,
                                            accessibilityHint: "Double-tap to disconnect the glasses."))
@@ -212,7 +231,7 @@ final class TalkEntryPolicyTests: XCTestCase {
 
     func testStoodDownReadsPausedAndResumesOnTap() {
         let presentation = SessionCardGlassesPill.presentation(link: .connected, stoodDown: true,
-                                                                everAdded: true)
+                                                                glassesSupported: true)
         XCTAssertEqual(presentation, .init(word: "Glasses paused", tint: .quiet, showsLiveDot: false,
                                            action: .resume,
                                            accessibilityHint: "Double-tap to resume the glasses."))
@@ -220,7 +239,7 @@ final class TalkEntryPolicyTests: XCTestCase {
 
     func testConnectingReadsConnectingAndDoesNothingOnTap() {
         let presentation = SessionCardGlassesPill.presentation(link: .connecting, stoodDown: false,
-                                                                everAdded: true)
+                                                                glassesSupported: true)
         XCTAssertEqual(presentation, .init(word: "Connecting…", tint: .warn, showsLiveDot: false,
                                            action: .none,
                                            accessibilityHint: "Glasses are linking up."))
@@ -229,22 +248,19 @@ final class TalkEntryPolicyTests: XCTestCase {
     /// The regression this pill redesign exists for: away (added, not connecting) must never carry
     /// the connect-and-wait action — only a plain hint.
     func testAddedButUnreachableReadsAwayAndOnlyHints() {
-        for link: GlassesConnectionPhase in [.addedDisconnected, .noGlassesAdded] {
-            let presentation = SessionCardGlassesPill.presentation(link: link, stoodDown: false,
-                                                                    everAdded: true)
-            XCTAssertEqual(presentation,
-                           .init(word: "Glasses away", tint: .quiet, showsLiveDot: false,
-                                 action: .hint,
-                                 accessibilityHint: "Double-tap for help reconnecting the glasses."),
-                           "\(link)")
-        }
+        let presentation = SessionCardGlassesPill.presentation(link: .addedDisconnected, stoodDown: false,
+                                                                glassesSupported: true)
+        XCTAssertEqual(presentation,
+                       .init(word: "Glasses away", tint: .quiet, showsLiveDot: false,
+                             action: .hint,
+                             accessibilityHint: "Double-tap for help reconnecting the glasses."))
     }
 
     func testEveryPresentationsAccessibilityLabelMatchesItsVisibleWord() {
         for link in everyPhase {
             for stoodDown in [false, true] {
                 guard let presentation = SessionCardGlassesPill.presentation(
-                    link: link, stoodDown: stoodDown, everAdded: true) else { continue }
+                    link: link, stoodDown: stoodDown, glassesSupported: true) else { continue }
                 XCTAssertEqual(presentation.accessibilityLabel, presentation.word, "\(link)/\(stoodDown)")
             }
         }
@@ -357,7 +373,8 @@ final class TalkEntryPolicyTests: XCTestCase {
 
     func testTheWakeWordNoticeSaysWhatATapDoes() {
         XCTAssertTrue(SessionCardWakeWordNotice.text.localizedCaseInsensitiveContains("wake word off"))
-        XCTAssertTrue(SessionCardWakeWordNotice.text.localizedCaseInsensitiveContains("tap to turn on"))
+        XCTAssertTrue(SessionCardWakeWordNotice.accessibilityHint.localizedCaseInsensitiveContains("back on"),
+                      "the chip is short, so the hint is where the tap's effect is said")
         XCTAssertFalse(SessionCardWakeWordNotice.accessibilityLabel.localizedCaseInsensitiveContains("tap"),
                        "VoiceOver's gesture is a double-tap; the spoken name should not instruct one")
         XCTAssertFalse(SessionCardWakeWordNotice.accessibilityHint.isEmpty)
