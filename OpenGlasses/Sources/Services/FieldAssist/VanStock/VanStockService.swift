@@ -128,17 +128,18 @@ final class VanStockService {
     func load(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
         write("load", lines) { log, line, batch, at in
             let quantity = line.quantity ?? 1
-            guard quantity >= 1 else { return "Nothing loaded for \(line.reference): the quantity has to be at least 1." }
+            guard quantity >= 1 else { return ("Nothing loaded for \(line.reference): the quantity has to be at least 1.", nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: true) {
-            case .failure(let message): return message
+            case .failure(let message): return (message, nil)
             case .success(let found):
                 let before = log.level(of: found.item.id)
                 let job = self.activeJob()
                 log.record(.loaded, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
                            source: source, id: self.makeID(), jobSessionID: job?.sessionID,
                            jobReference: job?.reference)
-                return self.composer.loaded(found.item, quantity: quantity, before: before,
-                                            after: log.level(of: found.item.id), created: found.created)
+                return (self.composer.loaded(found.item, quantity: quantity, before: before,
+                                             after: log.level(of: found.item.id), created: found.created),
+                        "\(found.item.phrase(quantity)) put on the van")
             }
         }
     }
@@ -146,9 +147,9 @@ final class VanStockService {
     func use(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
         write("use", lines) { log, line, batch, at in
             let quantity = line.quantity ?? 1
-            guard quantity >= 1 else { return "Nothing recorded for \(line.reference): the quantity has to be at least 1." }
+            guard quantity >= 1 else { return ("Nothing recorded for \(line.reference): the quantity has to be at least 1.", nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: false) {
-            case .failure(let message): return message
+            case .failure(let message): return (message, nil)
             case .success(let found):
                 let before = log.level(of: found.item.id)
                 let job = self.activeJob()
@@ -160,8 +161,9 @@ final class VanStockService {
                                                     description: found.item.description, quantity: quantity,
                                                     unit: found.item.unit, verified: found.item.verified, at: at))
                 }
-                return self.composer.used(found.item, quantity: quantity, before: before,
-                                          after: log.level(of: found.item.id), jobReference: job?.reference)
+                return (self.composer.used(found.item, quantity: quantity, before: before,
+                                           after: log.level(of: found.item.id), jobReference: job?.reference),
+                        "\(found.item.phrase(quantity)) taken off the van" + (job?.reference.map { " for job \($0)" } ?? ""))
             }
         }
     }
@@ -170,29 +172,32 @@ final class VanStockService {
                 source: VanStockMovement.Source = .spoken) -> String {
         write("remove:\(reason.rawValue)", lines) { log, line, batch, at in
             let quantity = line.quantity ?? 1
-            guard quantity >= 1 else { return "Nothing removed for \(line.reference): the quantity has to be at least 1." }
+            guard quantity >= 1 else { return ("Nothing removed for \(line.reference): the quantity has to be at least 1.", nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: false) {
-            case .failure(let message): return message
+            case .failure(let message): return (message, nil)
             case .success(let found):
                 let before = log.level(of: found.item.id)
                 log.record(.removed, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
                            source: source, id: self.makeID(), reason: reason)
-                return self.composer.removed(found.item, quantity: quantity, reason: reason, before: before,
-                                             after: log.level(of: found.item.id))
+                return (self.composer.removed(found.item, quantity: quantity, reason: reason, before: before,
+                                              after: log.level(of: found.item.id)),
+                        "\(found.item.phrase(quantity)) taken off the van (\(reason.rawValue))")
             }
         }
     }
 
     func count(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
         write("count", lines) { log, line, batch, at in
-            guard let quantity = line.quantity else { return "Say how many \(line.reference) were counted." }
-            guard quantity >= 0 else { return "Nothing counted for \(line.reference): a count cannot be below zero." }
+            guard let quantity = line.quantity else { return ("Say how many \(line.reference) were counted.", nil) }
+            guard quantity >= 0 else { return ("Nothing counted for \(line.reference): a count cannot be below zero.", nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: true) {
-            case .failure(let message): return message
+            case .failure(let message): return (message, nil)
             case .success(let found):
                 log.record(.counted, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
                            source: source, id: self.makeID())
-                return self.composer.counted(found.item, after: log.level(of: found.item.id), created: found.created)
+                let after = log.level(of: found.item.id)
+                return (self.composer.counted(found.item, after: after, created: found.created),
+                        "\(found.item.name) counted: \(after.onHand) on the van")
             }
         }
     }
@@ -206,7 +211,7 @@ final class VanStockService {
         guard let undone = undone ?? nil else { return composer.nothingToUndo() }
         let uses = Set(undone.movements.filter { $0.kind == .used }.map(\.id))
         if !uses.isEmpty { jobUses.remove(uses) }
-        return composer.undone(undone, items: store.log.items)
+        return Self.saying(composer.undone(undone, items: store.log.items), ["the last van stock entry taken back"])
     }
 
     // MARK: - The job's own account
@@ -225,7 +230,9 @@ final class VanStockService {
     func notFromVan(_ line: Line) -> String {
         guard let part = line.part else { return "Say which part did not come off the van, by its part number." }
         guard jobUses.notFromVan(part) else { return "There is no job open to say that about. Nothing was changed." }
-        return "Noted: \(VaultPartsIndex.normalise(part)) did not come off the van on this job. The van list is unchanged."
+        let number = VaultPartsIndex.normalise(part)
+        return Self.saying("Noted: \(number) did not come off the van on this job. The van list is unchanged.",
+                           ["\(number) noted as not from the van"])
     }
 
     // MARK: - From the screen
@@ -326,7 +333,8 @@ final class VanStockService {
             lines.append("Not on the van list, so not treated as an exception: " + unmatched.joined(separator: "; ") + ".")
         }
         if filled > 0 { lines.append("The technician can say 'undo that' to take the whole top-up back.") }
-        return lines.joined(separator: " ")
+        return Self.saying(lines.joined(separator: " "),
+                           filled > 0 ? ["\(filled) \(filled == 1 ? "line" : "lines") brought to the standard load"] : [])
     }
 
     /// Set what the van should carry of one line. Set by the technician, so it is this truck's own.
@@ -337,6 +345,7 @@ final class VanStockService {
         let at = now()
         let batch = makeID()
         var answer = composer.notOnVan(line.reference)
+        var done: [String] = []
         store.update { log in
             switch self.match(line, in: log) {
             case .several(let items): answer = self.composer.candidates(items, levels: log.levels)
@@ -346,9 +355,11 @@ final class VanStockService {
                          batch: batch, source: .spoken, id: self.makeID())
                 answer = quantity == 0 ? "\(item.name) has no standard load now."
                                        : "The standard load for this truck is now \(item.phrase(quantity))."
+                done = [quantity == 0 ? "no standard load for \(item.name) now"
+                                      : "the standard load set to \(item.phrase(quantity))"]
             }
         }
-        return answer
+        return Self.saying(answer, done)
     }
 
     /// What `send_to_base` says before anything is staged: parts with no stock entry, and the
@@ -456,8 +467,10 @@ final class VanStockService {
 
     // MARK: - One write
 
+    /// One spoken write: `apply` returns, per line, its answer and — when it changed the van — what
+    /// the reply must say was done (`saying(_:_:)`).
     private func write(_ action: String, _ lines: [Line],
-                       _ apply: (inout VanStockLog, Line, _ batch: String, _ at: Date) -> String) -> String {
+                       _ apply: (inout VanStockLog, Line, _ batch: String, _ at: Date) -> (answer: String, done: String?)) -> String {
         guard !store.isUnreadable else { return Self.unreadable }
         guard !lines.isEmpty else { return "Say which part, and how many." }
 
@@ -472,9 +485,25 @@ final class VanStockService {
 
         let batch = makeID()
         let answers = store.update { log in lines.map { apply(&log, $0, batch, at) } } ?? []
-        let answer = answers.joined(separator: "\n")
+        let answer = Self.saying(answers.map(\.answer).joined(separator: "\n"), answers.compactMap(\.done))
         lastWrite = (signature, at, answer)
         return answer
+    }
+
+    // MARK: - What the reply says was done (Plan KR P7)
+
+    /// Opens the line a stock change's result ends with.
+    static let sayPrefix = "Say: "
+
+    /// `answer`, ending with the one line the reply must carry when something on the van changed
+    /// (Plan KR P7, owner decision 7). In the partner's run a part came off the van in the same
+    /// breath as a question about a test; the stock was recorded and the reply answered only the
+    /// question. Worded like `set_job_reference`'s confirmation: what was done, said as done.
+    /// Nothing changed, nothing to say: `answer` unchanged.
+    static func saying(_ answer: String, _ done: [String]) -> String {
+        guard !done.isEmpty else { return answer }
+        return answer + "\n" + sayPrefix + done.joined(separator: "; ")
+            + ". Put this in the reply, whatever else the technician asked this turn."
     }
 
     // MARK: - Finding or making the line
