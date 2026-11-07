@@ -14,6 +14,8 @@ enum HUDPageAction: Equatable {
     /// Pop the arrow row.
     case doneMoving
     case nextPage
+    /// Plan KV P1b: the page's next drawing, in reading order, round to the first.
+    case nextDiagram
     case close
     /// On the cue for a page the app put up by itself (§4): open the view.
     case showHere
@@ -31,6 +33,13 @@ struct HUDPageViewState: Equatable {
     var citation: String?
     /// There is a further cited page after this one ("show me the relevant pages").
     var hasNextPage: Bool = false
+    /// How many drawings the page has (Plan KV P1b), and which one the view is on (nil when it
+    /// opened on something else: a cited passage, a table's area, the whole page).
+    var diagramCount: Int = 0
+    var diagramIndex: Int?
+
+    /// **Next diagram ›** has somewhere to go: the page has two drawings or more.
+    var hasNextDiagram: Bool { diagramCount >= 2 }
 }
 
 /// Builds the page view's lines and button row from its state (Plan KV §3). Pure: presses are
@@ -45,6 +54,8 @@ struct HUDPageViewState: Equatable {
 /// | Move (pushed) | ↑ · ↓ · ← · → · Done |
 ///
 /// **Next page ›** goes in before Close on the opening view, while another cited page follows.
+/// **Next diagram ›** goes in second, after **Zoom in** (or **Zoom out** at the deepest step), on
+/// the opening view of a page with two drawings or more (Plan KV P1b).
 /// The arrow row is always all four arrows, so a press always does the same thing; one against the
 /// page's edge does nothing.
 enum HUDPageScreenBuilder {
@@ -62,6 +73,7 @@ enum HUDPageScreenBuilder {
         static let right = "kv.page.right"
         static let done = "kv.page.done"
         static let nextPage = "kv.page.next"
+        static let nextDiagram = "kv.page.next-diagram"
         static let close = "kv.page.close"
         static let showHere = "kv.page.show-here"
     }
@@ -122,6 +134,11 @@ enum HUDPageScreenBuilder {
             items.append(item(ItemID.zoomIn, String(localized: "Zoom in"), .primary, .zoomIn, onAction))
             items.append(item(ItemID.wholePage, String(localized: "Whole page"), .secondary, .wholePage, onAction))
             items.append(item(ItemID.move, String(localized: "Move"), .secondary, .move, onAction))
+        }
+        if state.hasNextDiagram, viewport.isAtOpening, !items.isEmpty {
+            items.insert(item(ItemID.nextDiagram, String(localized: "Next diagram ›",
+                                                         comment: "Glasses: show the page's next drawing."),
+                              .secondary, .nextDiagram, onAction), at: 1)
         }
         if state.hasNextPage, viewport.isAtOpening {
             items.append(item(ItemID.nextPage, String(localized: "Next page ›"), .secondary, .nextPage, onAction))

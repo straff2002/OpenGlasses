@@ -28,6 +28,13 @@ import UIKit
 /// cache keyed by the page's identity and the crop; the opening view and the whole page are drawn
 /// as soon as a page is staged, so the press that opens it doesn't wait for PDFKit.
 ///
+/// **Drawings (P1b).** Each page's drawings are found from its ink (`PageFigureLocator`, through
+/// `PageFigureAnalysis` and `PageFigureCache`, so a page is analysed once) and one is chosen by
+/// what the turn said (`PageFigureAsk`, read from `requestWords` at `stage`; `PageFigureChoice`).
+/// A turn that asked for a drawing opens on it ahead of any cited passage. **Next diagram ›** and
+/// "next diagram" cycle the page's drawings in reading order; "the bottom one" goes to the one a
+/// position names. Both are audited as moves.
+///
 /// **What is recorded.** Each view, zoom, move and close goes to the page audit trail (`audit`) as
 /// the page reference and the crop; the support report counts views, zooms and moves and times
 /// renders and sends. Never the page's text or pixels.
@@ -50,6 +57,15 @@ final class LensPageSession: ObservableObject {
         /// The figure's identity: what the cache and the render queue key the page by. A hash, so
         /// it names no document.
         let identity: String
+        /// What the turn said about the drawing it wants (Plan KV P1b).
+        var ask: PageFigureAsk = .none
+
+        /// What its layout is kept by: the page, and the ask that chose its drawing.
+        var layoutKey: String { identity + "\u{1F}" + ask.key }
+
+        var request: LensPageRequest? {
+            source.map { LensPageRequest(staged: staged, source: $0, ask: ask) }
+        }
     }
 
     /// A page view with no press for this long closes, as Close would.
@@ -64,6 +80,9 @@ final class LensPageSession: ObservableObject {
 
     /// The PDF a staged page comes from (AppState: the session's or the personal library's).
     var sourceURL: (FieldSessionService.StagedFigure) -> URL? = { _ in nil }
+    /// The technician's words for the turn that staged the pages: what a drawing request is read
+    /// from (`PageFigureAsk.parse`). Nil outside a spoken or typed turn.
+    var requestWords: @MainActor () -> String? = { TechnicianWords.current() }
     /// Lays out a page (PDFKit, off the main actor). A seam so tests can hold or fail it.
     var layoutPage: (LensPageRequest) async -> LensPageLayout? = { await LensPageRenderer.layout($0) }
     /// Draws one picture (PDFKit and Core Graphics, off the main actor). A seam so tests can hold
@@ -165,11 +184,20 @@ final class LensPageSession: ObservableObject {
     /// put up by itself gets the **Show here** cue; where the lens can't draw it, the one-line cue.
     func stage(_ staged: [FieldSessionService.StagedFigure], opening: Int = 0) {
         guard staged.indices.contains(opening) else { return }
-        let next = staged.map { Page(staged: $0, source: sourceURL($0), identity: Self.identity(of: $0)) }
+        // Plan KV P1b: whether the turn asked for a drawing, and which, decides where the view
+        // opens on each page (`PageFigureAsk`).
+        let said = requestWords()
+        let next = staged.map {
+            Page(staged: $0, source: sourceURL($0), identity: Self.identity(of: $0),
+                 ask: PageFigureAsk.parse(said: said, caption: $0.figure, origin: $0.origin))
+        }
         let opened = next[opening]
         // The same page already in the view: a follow-up about it, or "show that again".
         if held == .view, let current = currentPage, current.identity == opened.identity {
-            pages = next
+            // The view keeps the ask it opened with, so its layout (and its drawings) stay found.
+            var kept = next
+            kept[opening] = current
+            pages = kept
             pageIndex = opening
             return
         }
@@ -229,11 +257,10 @@ final class LensPageSession: ObservableObject {
     // MARK: - Opening the view
 
     private func openView(route: Route) {
-        guard let page = currentPage, let source = page.source else { return }
+        guard let page = currentPage, let request = page.request else { return }
         self.route = route
         generation += 1
         let opening = generation
-        let request = LensPageRequest(staged: page.staged, source: source)
         track { [weak self] in
             guard let self else { return }
             guard let layout = await self.layout(for: page, request: request) else {
@@ -241,9 +268,7 @@ final class LensPageSession: ObservableObject {
                 self.renderFailed(page)
                 return
             }
-            let state = HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
-                                         citation: Self.citation(for: page.staged),
-                                         hasNextPage: self.pageIndex + 1 < self.pages.count)
+            let state = Self.openingState(layout, page: page, hasNextPage: self.pageIndex + 1 < self.pages.count)
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request) else {
                 guard opening == self.generation else { return }
                 self.renderFailed(page)
@@ -316,6 +341,11 @@ final class LensPageSession: ObservableObject {
         case .nextPage:
             goToNextPage(issuedAgainst: revision)
             return
+        case .nextDiagram:
+            guard let layout = currentLayout, let target = Self.nextDiagram(after: shown, in: layout),
+                  let viewport = layout.viewport(onDrawing: target) else { return }
+            next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
+            event = .moved
         case .close:
             close()
             return
@@ -355,6 +385,19 @@ final class LensPageSession: ObservableObject {
         case .nextPage:
             guard pageIndex + 1 < pages.count else { return false }
             handle(.nextPage, issuedAgainst: revision)
+        case .nextDiagram:
+            guard shown.hasNextDiagram, !shown.isMoving else { return false }
+            handle(.nextDiagram, issuedAgainst: revision)
+        case .diagram(let position):
+            // "The bottom one": the drawing that position names, when it names one other than
+            // the one already shown at its opening.
+            guard let layout = currentLayout,
+                  let target = PageFigureChoice.index(for: position, in: layout.drawings),
+                  let viewport = layout.viewport(onDrawing: target) else { return false }
+            var next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
+            next.isFirstFrame = false
+            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
+            draw(next, event: .moved, issuedAgainst: revision)
         case .back:
             if shown.isMoving {
                 handle(.doneMoving, issuedAgainst: revision)
@@ -369,12 +412,41 @@ final class LensPageSession: ObservableObject {
         return true
     }
 
+    /// The open page's layout, once laid out.
+    private var currentLayout: LensPageLayout? { currentPage.flatMap { layouts[$0.layoutKey] } }
+
+    /// The view's first state on a page: its opening viewport, and its drawings for **Next
+    /// diagram ›**.
+    static func openingState(_ layout: LensPageLayout, page: Page, hasNextPage: Bool) -> HUDPageViewState {
+        HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
+                         citation: citation(for: page.staged), hasNextPage: hasNextPage,
+                         diagramCount: layout.drawings.count, diagramIndex: layout.openingDrawing)
+    }
+
+    /// **Next diagram ›**: the drawing after the one shown, in reading order, round to the first;
+    /// from a view not on a drawing, the one the request chose.
+    static func nextDiagram(after shown: HUDPageViewState, in layout: LensPageLayout) -> Int? {
+        guard !layout.drawings.isEmpty else { return nil }
+        guard let current = shown.diagramIndex else { return layout.figureIndex ?? 0 }
+        return (current + 1) % layout.drawings.count
+    }
+
+    /// `shown` moved to open on drawing `index`: that drawing is now what **Back to part** returns to.
+    static func state(_ shown: HUDPageViewState, onDrawing index: Int, viewport: LensPageViewport,
+                      layout: LensPageLayout) -> HUDPageViewState {
+        var next = shown
+        next.viewport = viewport
+        next.legibility = LensPageLayout.legibility(of: layout.drawings[index])
+        next.diagramIndex = index
+        next.isMoving = false
+        return next
+    }
+
     private func draw(_ next: HUDPageViewState, event: LensPageAuditLine.Event?, issuedAgainst revision: UInt64) {
-        guard let page = currentPage, let source = page.source, let layout = layouts[page.identity] else { return }
+        guard let page = currentPage, let request = page.request, let layout = layouts[page.layoutKey] else { return }
         generation += 1
         let drawing = generation
         armTimer(viewLifetime)
-        let request = LensPageRequest(staged: page.staged, source: source)
         track { [weak self] in
             guard let self else { return }
             guard let screen = await self.screen(for: next, page: page, layout: layout, request: request),
@@ -399,18 +471,15 @@ final class LensPageSession: ObservableObject {
         guard pageIndex + 1 < pages.count else { return }
         let target = pageIndex + 1
         let page = pages[target]
-        guard let source = page.source else { return }
+        guard let request = page.request else { return }
         generation += 1
         let drawing = generation
         armTimer(viewLifetime)
         prepare(page)
-        let request = LensPageRequest(staged: page.staged, source: source)
         track { [weak self] in
             guard let self else { return }
             guard let layout = await self.layout(for: page, request: request) else { return }
-            let state = HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
-                                         citation: Self.citation(for: page.staged),
-                                         hasNextPage: target + 1 < self.pages.count)
+            let state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count)
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request),
                   drawing == self.generation else { return }
             guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
@@ -450,6 +519,7 @@ final class LensPageSession: ObservableObject {
         layoutTasks = [:]
         renderTasks = [:]
         cache.removeAll()
+        PageFigureCache.shared.removeAll()
     }
 
     /// Something else took the lens. Nothing is redrawn; whatever replaced the view owns it.
@@ -479,8 +549,7 @@ final class LensPageSession: ObservableObject {
 
     /// Lay the page out (once) and draw the opening view and the whole page ahead of the press.
     private func prepare(_ page: Page) {
-        guard let source = page.source else { return }
-        let request = LensPageRequest(staged: page.staged, source: source)
+        guard let request = page.request else { return }
         track { [weak self] in
             guard let self, let layout = await self.layout(for: page, request: request) else { return }
             for viewport in [layout.openingViewport, LensPageViewport(wholePage: layout.pageSize)] {
@@ -491,14 +560,15 @@ final class LensPageSession: ObservableObject {
     }
 
     private func layout(for page: Page, request: LensPageRequest) async -> LensPageLayout? {
-        if let known = layouts[page.identity] { return known }
-        if let running = layoutTasks[page.identity] { return await running.value }
+        let key = page.layoutKey
+        if let known = layouts[key] { return known }
+        if let running = layoutTasks[key] { return await running.value }
         let laying = layoutPage
         let task = Task { @MainActor in await laying(request) }
-        layoutTasks[page.identity] = task
+        layoutTasks[key] = task
         let layout = await task.value
-        layoutTasks[page.identity] = nil
-        if let layout { layouts[page.identity] = layout }
+        layoutTasks[key] = nil
+        if let layout { layouts[key] = layout }
         return layout
     }
 

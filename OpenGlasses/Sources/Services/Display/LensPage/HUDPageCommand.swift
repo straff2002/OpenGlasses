@@ -11,6 +11,10 @@ enum HUDPageCommand: Equatable {
     case move(LensPageViewport.Step)
     case corner(LensPageViewport.Corner)
     case nextPage
+    /// Plan KV P1b: "next diagram" — the page's next drawing.
+    case nextDiagram
+    /// "The bottom one", "the second diagram" — the drawing a position names.
+    case diagram(PageFigurePosition)
     case back
     case close
 
@@ -22,6 +26,8 @@ enum HUDPageCommand: Equatable {
         let filler: Set<String> = ["ok", "okay", "hey", "please", "uh", "um", "yeah", "yep", "now"]
         var core = Array(words.drop(while: { filler.contains($0) }))
         if core.last == "please" { core.removeLast() }
+
+        if let position = diagramPosition(core) { return .diagram(position) }
 
         switch core.joined(separator: " ") {
         case "zoom in", "closer", "zoom closer", "get closer":
@@ -48,6 +54,9 @@ enum HUDPageCommand: Equatable {
             return .corner(.bottomRight)
         case "next page", "the next page":
             return .nextPage
+        case "next diagram", "the next diagram", "next drawing", "the next drawing", "next figure",
+             "the next figure", "other diagram", "the other diagram", "another diagram":
+            return .nextDiagram
         case "back", "go back":
             return .back
         case "close", "close the page", "close page", "close it", "close that":
@@ -55,5 +64,23 @@ enum HUDPageCommand: Equatable {
         default:
             return nil
         }
+    }
+
+    /// "the bottom one", "top diagram", "the second drawing", "the one at the bottom", "the one on
+    /// the left". The noun (or "one") is required, so a bare "left" stays a move and "top left" a
+    /// corner.
+    private static func diagramPosition(_ words: [String]) -> PageFigurePosition? {
+        var core = words
+        if core.first == "the" { core.removeFirst() }
+        let nouns: Set<String> = ["one", "diagram", "drawing", "figure"]
+        if core.count == 2, nouns.contains(core[1]), let position = PageFigurePosition(word: core[0]) {
+            return position
+        }
+        // "one at the bottom", "one on the left"
+        if core.count == 4, core[0] == "one", ["at", "on"].contains(core[1]), core[2] == "the",
+           let position = PageFigurePosition(word: core[3]) {
+            return position
+        }
+        return nil
     }
 }
