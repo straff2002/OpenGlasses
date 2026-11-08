@@ -92,8 +92,19 @@ final class LensPageSession: ObservableObject {
     var requestWords: @MainActor () -> String? = { TechnicianWords.current() }
     /// Lays out a page (PDFKit, off the main actor). A seam so tests can hold or fail it.
     var layoutPage: (LensPageRequest) async -> LensPageLayout? = { await LensPageRenderer.layout($0) }
-    /// How reading mode lays text out: the backend's lines and characters, as on the answer card.
-    var readingGeometry: () -> TeleprompterPaginator.Geometry = { HUDAnswerCard.activeGeometry() }
+    /// How reading mode lays text out: the lens frame's lines and characters on the Display
+    /// (`LensPageFrame.readingGeometry`), the Even panel's own on Even.
+    var readingGeometry: () -> TeleprompterPaginator.Geometry = { LensPageSession.activeReadingGeometry() }
+
+    /// Reading mode's geometry for the backend that shows the HUD (the web mirror is the Display's
+    /// shape, as for the answer card).
+    static func activeReadingGeometry() -> TeleprompterPaginator.Geometry {
+        #if !AVENKIN_PHONE_ONLY
+        return LensPageFrame.readingGeometry(for: Config.displayBackend == .evenG2 ? .evenG2 : .metaDisplay)
+        #else
+        return LensPageFrame.readingGeometry(for: .metaDisplay)
+        #endif
+    }
     /// Draws one picture (PDFKit and Core Graphics, off the main actor). A seam so tests can hold
     /// a render until a notification has landed.
     var renderPicture: (LensPageRequest, LensPageRenderPlan) async -> UIImage? = {

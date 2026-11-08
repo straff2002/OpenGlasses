@@ -26,6 +26,9 @@ import Foundation
 /// | the hint (body) | 576 × 418 |
 /// | both | 576 × 382 |
 ///
+/// Reading mode has no picture: its frame is the citation (first page only), the text's body lines,
+/// the "1/2" footer and the row, and `readingGeometry` is the most body lines that budget holds.
+///
 /// The constants are `MetaDisplayBackend`'s own layout (its root `FlexBox` padding and spacing) and
 /// what DAT draws, as measured on the simulated Display in P4. P5 checks them on the glasses.
 enum LensPageFrame {
@@ -89,5 +92,44 @@ enum LensPageFrame {
     /// and the hint (a body line) when shown.
     static func pictureBox(citation: Bool, hint: Bool) -> CGSize {
         pictureBox(metaLines: citation ? 1 : 0, bodyLines: hint ? 1 : 0)
+    }
+
+    // MARK: - Reading mode
+
+    /// Reading mode's character advance: the answer card's estimate (Plan KP), 32 characters across
+    /// this 576 px column, so 18 px a character at the body token.
+    static var readingCharAdvancePixels: CGFloat {
+        contentWidthPixels / CGFloat(TeleprompterPaginator.Geometry.raybanDisplay.maxChars)
+    }
+
+    /// How many body lines a reading frame holds over the button row (and its glow padding) with
+    /// `metaLines` meta lines (the citation, the "1/2" footer): every pixel the frame leaves, one
+    /// body line (`bodyLinePixels`, the body token's 1.35× line) and its gap at a time.
+    static func readingBodyLines(metaLines: Int) -> Int {
+        let fixed = fixedHeight(Content(metaLines: metaLines, bodyLines: 0, hasPicture: false, hasButtons: true))
+        let room = CGFloat(canvas.heightPixels) - fixed
+        return max(1, Int((room / (bodyLinePixels + gapPixels)).rounded(.down)))
+    }
+
+    /// Reading mode's pager geometry on the Display, from this frame's budget rather than the
+    /// answer card's 4 × 32 (which left a reading page two lines of text and the top of the lens
+    /// empty). `HUDAnswerPager` counts a paged page's "1/2" footer as one of `maxLines` and gives a
+    /// single page no footer, so `maxLines` is whichever of the two fits fewer: 10 lines, 9 of text
+    /// and the footer. The citation over the first page takes one line of that
+    /// (`LensPageReading.pages`): 8 lines of text there. 32 characters a line.
+    static var readingGeometry: TeleprompterPaginator.Geometry {
+        let paged = readingBodyLines(metaLines: 1) + 1
+        let single = readingBodyLines(metaLines: 0)
+        return TeleprompterPaginator.Geometry(maxLines: min(paged, single),
+                                              maxChars: Int((contentWidthPixels / readingCharAdvancePixels).rounded(.down)))
+    }
+
+    /// Reading mode's geometry for `backend`: this frame's on the Display, the Even panel's own
+    /// geometry unchanged on Even.
+    static func readingGeometry(for backend: HUDCanvasBackend) -> TeleprompterPaginator.Geometry {
+        switch backend {
+        case .metaDisplay: return readingGeometry
+        case .evenG2: return .evenG2
+        }
     }
 }

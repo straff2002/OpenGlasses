@@ -491,13 +491,16 @@ final class LensPageSessionTests: XCTestCase {
 
     /// The invented cited line on page 3, in top-down page points.
     private static let citedLine = CGRect(x: 72, y: 420, width: 460, height: 11)
+    /// Long enough for two pages of the reading frame's geometry (8 lines under the citation, then 9).
     private static let citedWords = "Hold the invented purge key for five seconds until the amber lamp blinks twice, "
-        + "then release it and wait for the green lamp."
+        + "then release it and wait for the green lamp. If the green lamp does not light within a minute, "
+        + "close the invented isolation valve, note the reading on the gauge, and open the valve again slowly. "
+        + "Repeat the purge once more, then record both readings in the invented service log before you leave."
 
     /// A rig whose page opens on a cited text passage: one mark, and its words to read.
     private func makeReadingRig() -> Rig {
         let rig = makeRig()
-        rig.session.readingGeometry = { .raybanDisplay }
+        rig.session.readingGeometry = { LensPageFrame.readingGeometry }
         let marks = LensPageMarks(marks: [.init(number: 1, lineRects: [Self.citedLine], bounds: Self.citedLine)],
                                   showsNumbers: false)
         let reading = LensPageReading(passages: [.init(number: 1, words: Self.citedWords)], showsNumbers: false)
@@ -520,9 +523,11 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertTrue(state.isReading)
         XCTAssertNil(rig.session.shownScreen?.picture, "text, not a picture")
         XCTAssertFalse(try XCTUnwrap(rig.frames.lastScreenKey).contains("|pic:"))
-        let pages = HUDAnswerPager.pages(for: Self.citedWords, geometry: .raybanDisplay, firstPageReservedLines: 1)
+        let pages = HUDAnswerPager.pages(for: Self.citedWords, geometry: LensPageFrame.readingGeometry,
+                                         firstPageReservedLines: 1)
         XCTAssertEqual(state.readingPages, pages)
         XCTAssertEqual(pages.count, 2)
+        XCTAssertEqual(pages[0].lines.count, 8, "a full lens of text under the citation, not the card's two lines")
         let lines = try XCTUnwrap(rig.session.shownScreen?.lines.map(\.text))
         XCTAssertEqual(lines, ["Figure 9 · p. 3"] + pages[0].lines + ["1/2"])
         XCTAssertEqual(pages.flatMap(\.lines).joined(separator: " "), Self.citedWords, "the passage's own words")

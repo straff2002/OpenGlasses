@@ -182,10 +182,10 @@ final class HUDPageScreenBuilderTests: XCTestCase {
 
     // MARK: - Reading mode
 
-    /// `count` invented reading pages of the Display's geometry.
+    /// `count` invented reading pages of the reading frame's geometry on the Display.
     private func readingPages(_ count: Int) -> [HUDAnswerPage] {
-        let words = (1...(count * 3)).map { "Invented step \($0) of the purge on the board." }.joined(separator: " ")
-        let pages = HUDAnswerPager.pages(for: words, geometry: .raybanDisplay, maxPages: count,
+        let words = (1...(count * 8)).map { "Invented step \($0) of the purge on the board." }.joined(separator: " ")
+        let pages = HUDAnswerPager.pages(for: words, geometry: LensPageFrame.readingGeometry, maxPages: count,
                                          firstPageReservedLines: 1)
         XCTAssertEqual(pages.count, count)
         return pages
@@ -226,7 +226,9 @@ final class HUDPageScreenBuilderTests: XCTestCase {
         let second = HUDPageScreenBuilder.lines(reading(1, of: 3))
         XCTAssertEqual(second.map(\.text), pages[1].lines + ["2/3"], "no citation after the first page")
         XCTAssertFalse(second.contains { $0.text == "Zoom in for labels" })
-        XCTAssertLessThanOrEqual(first.count, TeleprompterPaginator.Geometry.raybanDisplay.maxLines)
+        XCTAssertLessThanOrEqual(first.count, LensPageFrame.readingGeometry.maxLines)
+        XCTAssertLessThanOrEqual(LensPageFrame.height(LensPageFrame.Content(metaLines: 2, bodyLines: first.count - 2)), 600,
+                                 "the first page fits the lens")
     }
 
     /// The picture of a page with words to read offers Read it, second, on every row.

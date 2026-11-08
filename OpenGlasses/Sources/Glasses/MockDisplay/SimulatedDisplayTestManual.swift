@@ -17,9 +17,12 @@ enum SimulatedDisplayTestManual {
     static let letter = CGSize(width: 612, height: 792)
 
     /// The sentences on page 4 the walkthrough's answer cites, so the page view marks their lines and
-    /// reads them.
+    /// reads them. Long enough for two full reading pages' worth on the lens (Plan KV P4: a reading
+    /// page holds about nine lines, so a two-sentence passage never showed a full one).
     static let citedSentence = "Hold the purge key for five seconds until the amber lamp blinks twice."
-    static let followingSentence = "Release the key and wait for the green lamp before closing the cover."
+    static let followingSentence = "Release the key and wait for the green lamp before closing the cover. "
+        + "If the green lamp does not light within a minute, check that the purge line is clear and the filter "
+        + "is seated, then hold the key again. Two failed purges in a row mean the bias supply needs testing."
 
     static var url: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]

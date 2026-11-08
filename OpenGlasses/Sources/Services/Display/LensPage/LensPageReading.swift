@@ -5,8 +5,9 @@ import Foundation
 /// A picture of body text can't be legible on the Display: a text line spans the column, so even
 /// fitted to the line it draws about 9 px tall. When the page view opens on a cited **text
 /// passage** — not a pictured table, a marked table row or a drawing — and the page has a text
-/// layer, it opens on the passage's own words instead, laid out as lens text with the backend's
-/// geometry and paged like the answer card (`HUDAnswerPager`, "1/2" footer).
+/// layer, it opens on the passage's own words instead, laid out as lens text and paged like the
+/// answer card (`HUDAnswerPager`, "1/2" footer) — but with the reading frame's own geometry
+/// (`LensPageFrame.readingGeometry`, about nine lines a page on the Display), not the card's.
 ///
 /// The words are the page's: taken from the page's text by each passage's located ranges, never
 /// the model's words or the cited chunk's. Several passages on a page follow one another in the
