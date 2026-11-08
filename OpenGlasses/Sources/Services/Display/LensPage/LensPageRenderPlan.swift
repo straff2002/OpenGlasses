@@ -171,12 +171,19 @@ struct LensPageRenderPlan: Equatable {
     /// One channel stretched so `black` maps to 0 and `white` to 255.
     static func stretch(_ value: UInt8, black: UInt8, white: UInt8) -> UInt8 {
         guard white > black else { return value }
-        let scaled = (Int(value) - Int(black)) * 255 / (Int(white) - Int(black))
+        let above: Int = Int(value) - Int(black)
+        let range: Int = Int(white) - Int(black)
+        let scaled: Int = above * 255 / range
         return UInt8(min(max(scaled, 0), 255))
     }
 
     /// Rec. 601 luma, for the histogram.
     static func luma(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> UInt8 {
-        UInt8((299 * Int(r) + 587 * Int(g) + 114 * Int(b)) / 1000)
+        // Split into typed steps: one chained expression timed out CI's type-checker.
+        let red: Int = 299 * Int(r)
+        let green: Int = 587 * Int(g)
+        let blue: Int = 114 * Int(b)
+        let sum: Int = red + green + blue
+        return UInt8(sum / 1000)
     }
 }
