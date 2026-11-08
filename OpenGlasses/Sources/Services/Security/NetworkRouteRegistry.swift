@@ -210,6 +210,8 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case webHUDMirrorListener
     case mcpGlassesListener
     case loopbackOAuthCallback
+    /// Development-only (`DAT_MOCK_DISPLAY`, Debug Simulator builds): the simulated Display's test server.
+    case simulatedDisplayTestServer
 }
 
 extension NetworkRoute {
@@ -282,6 +284,7 @@ extension NetworkRoute {
         case .webHUDMirrorListener: return "Serve the HUD mirror to a browser on the wearer's own network."
         case .mcpGlassesListener: return "Serve the glasses MCP tool surface to a client on the wearer's own network."
         case .loopbackOAuthCallback: return "Receive the OAuth redirect on 127.0.0.1 during account linking."
+        case .simulatedDisplayTestServer: return "Read the simulated Display's current frame from its test server on 127.0.0.1, in development-only Simulator builds."
         }
     }
 
@@ -357,6 +360,8 @@ extension NetworkRoute {
             return [.promptText, .frame]
         case .loopbackOAuthCallback:
             return [.credential]
+        case .simulatedDisplayTestServer:
+            return [.telemetryFree]
         }
     }
 
@@ -387,7 +392,7 @@ extension NetworkRoute {
              .openAICompatibleRealtimeSession:
             // The explicit compatible-server setting supports both LAN servers and TLS gateways.
             return .localNetwork
-        case .loopbackOAuthCallback:
+        case .loopbackOAuthCallback, .simulatedDisplayTestServer:
             return .loopback
         case .openClawGatewaySocket, .openClawBridgeRequest, .openClawEventStream,
              .gatewayConnectionTest, .openClawSkillCatalog:
@@ -404,6 +409,9 @@ extension NetworkRoute {
         case .loopbackOAuthCallback:
             return .allowedLocalOnly(
                 "An inbound listener bound to 127.0.0.1; the redirect never reaches a network interface.")
+        case .simulatedDisplayTestServer:
+            return .allowedLocalOnly(
+                "A request to 127.0.0.1 in a development-only Simulator build; it never reaches a network interface and the code is not compiled into a store or TestFlight build.")
         case .conversationRecallSummary:
             return .notApplicable(
                 "It owns no transport: it delegates to llmCompletion, which the model-routing policy already redirects to an on-device model instead of refusing. Blocking it would disable a feature whose bytes never leave the phone.")
@@ -508,6 +516,7 @@ extension NetworkRoute {
         case .webHUDMirrorListener: return ["WebHUDMirrorServer"]
         case .mcpGlassesListener: return ["MCPGlassesServer"]
         case .loopbackOAuthCallback: return ["LoopbackCallbackServer"]
+        case .simulatedDisplayTestServer: return ["SimulatedDisplayLab"]
         }
     }
 }

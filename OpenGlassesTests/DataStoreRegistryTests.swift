@@ -99,6 +99,9 @@ final class DataStoreRegistryTests: XCTestCase {
         // Test-only.
         "OpenGlasses/Sources/Utils/UITestSupport.swift":
             "Debug-only UI-test seeding",
+        "OpenGlasses/Sources/Glasses/MockDisplay/SimulatedDisplayWalkthrough.swift":
+            "Development-only simulated-Display walkthrough (DAT_MOCK_DISPLAY, Debug Simulator builds): "
+                + "screenshots of invented test pages, never in a store or TestFlight build",
     ]
 
     // MARK: - Exhaustiveness
