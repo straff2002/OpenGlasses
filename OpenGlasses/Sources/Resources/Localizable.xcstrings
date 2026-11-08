@@ -64799,6 +64799,88 @@
         }
       }
     },
+    "Back to part" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "العودة إلى الجزء"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volver a la parte"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour à la partie"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vissza a részlethez"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Torna alla parte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元の部分に戻る"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해당 부분으로"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terug naar deel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voltar à parte"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назад к фрагменту"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حصے پر واپس"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回局部"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回局部"
+          }
+        }
+      }
+    },
     "Background tasks that run automatically. Search, edit prompts, adjust schedules, and add new tasks." : {
       "localizations" : {
         "ar" : {
@@ -216187,6 +216269,89 @@
         }
       }
     },
+    "Manual page" : {
+      "comment" : "HUD preview: the manual page picture shown on the lens.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صفحة الدليل"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página del manual"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page du manuel"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kézikönyvoldal"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagina del manuale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マニュアルのページ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "매뉴얼 페이지"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Handleidingpagina"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página do manual"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Страница руководства"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مینوئل کا صفحہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手册页面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手冊頁面"
+          }
+        }
+      }
+    },
     "Manual removed from this vault. “%@” is no longer on this device; earlier answers may still quote it." : {
       "localizations" : {
         "ar" : {
@@ -232388,6 +232553,89 @@
         }
       }
     },
+    "Next diagram ›" : {
+      "comment" : "Glasses: show the page's next drawing.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الرسم التالي ›"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siguiente diagrama ›"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schéma suivant ›"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Következő ábra ›"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schema successivo ›"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次の図 ›"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 도면 ›"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volgend schema ›"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Próximo diagrama ›"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Следующая схема ›"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اگلا خاکہ ›"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一张图 ›"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一張圖 ›"
+          }
+        }
+      }
+    },
     "Next page" : {
       "localizations" : {
         "ar" : {
@@ -232466,6 +232714,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "下一頁"
+          }
+        }
+      }
+    },
+    "Next page ›" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الصفحة التالية ›"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página siguiente ›"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page suivante ›"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Következő oldal ›"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagina successiva ›"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次のページ ›"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 페이지 ›"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volgende pagina ›"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Próxima página ›"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Следующая страница ›"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اگلا صفحہ ›"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一页 ›"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一頁 ›"
           }
         }
       }
@@ -271530,6 +271860,89 @@
         }
       }
     },
+    "p. %lld" : {
+      "comment" : "Glasses: a manual page's number, e.g. 'p. 30'.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ص. %lld"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "p. %lld"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "p. %lld"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld. o."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "p. %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lldページ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld쪽"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "blz. %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "p. %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "стр. %lld"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صفحہ %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 页"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 頁"
+          }
+        }
+      }
+    },
     "Pace" : {
       "localizations" : {
         "ar" : {
@@ -272026,6 +272439,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "套件在安裝任何內容前會進行簽名和驗證。目錄本身已簽名 — 無法驗證的索引將被直接拒絕。"
+          }
+        }
+      }
+    },
+    "Page" : {
+      "comment" : "Answer card action: show the cited manual page on the glasses.\nGlasses: show the manual page itself, as a picture, instead of its words.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الصفحة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oldal"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagina"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ページ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "페이지"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagina"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Страница"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صفحہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "頁面"
           }
         }
       }
@@ -299591,6 +300087,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "從相同的狀態響應中讀取，因此跟隨一次運行不會產生額外請求。"
+          }
+        }
+      }
+    },
+    "Read it" : {
+      "comment" : "Glasses: show the cited passage on the manual page as text.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اقرأ"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leer"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elolvasás"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leggi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読む"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lezen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ler"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читать"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پڑھیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "阅读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閱讀"
           }
         }
       }
@@ -352497,6 +353076,89 @@
         }
       }
     },
+    "Show here" : {
+      "comment" : "Glasses: open the manual page on the lens.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اعرض هنا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar aquí"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher ici"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megjelenítés itt"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra qui"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここに表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기에 표시"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier tonen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar aqui"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать здесь"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہاں دکھائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此顯示"
+          }
+        }
+      }
+    },
     "Show it and read it in your own." : {
       "localizations" : {
         "ar" : {
@@ -354133,6 +354795,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示全螢幕頁面供客戶閱讀並簽署。您可以隨時停止。"
+          }
+        }
+      }
+    },
+    "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). A manual page you ask to see can open on the lens too, where you can zoom in and move around it. Ray-Ban Display glasses only — no effect on glasses without a built-in display." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعرض ردود الذكاء الاصطناعي والتعليقات المباشرة والإشعارات والإرشاد خطوة بخطوة على الشاشة داخل العدسة، ويشغّل بطاقات مهام تفاعلية تُكملها بدون استخدام اليدين عبر Neural Band أو الصوت («next» و«done» و«skip» و«back»). ويمكن أيضًا أن تُفتح على العدسة صفحةُ الدليل التي تطلب رؤيتها، حيث يمكنك تكبيرها والتنقّل فيها. نظارات Ray-Ban Display فقط — لا تأثير على النظارات التي بلا شاشة مدمجة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra respuestas de la IA, subtítulos en vivo, notificaciones e indicaciones paso a paso en la pantalla de los lentes, y ejecuta tarjetas de tareas interactivas que completas manos libres con el Neural Band o la voz (“next”, “done”, “skip”, “back”, en inglés). Una página del manual que pidas ver también puede abrirse en los lentes, donde puedes acercarla y moverte por ella. Solo para lentes Ray-Ban Display: no tiene efecto en lentes sin pantalla integrada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche les réponses de l’IA, les sous-titres en direct, les notifications et le guidage pas à pas sur l’affichage dans les verres, et exécute des cartes de tâches interactives que vous terminez mains libres avec le Neural Band ou la voix (« next », « done », « skip », « back », en anglais). Une page du manuel que vous demandez à voir peut aussi s’ouvrir dans les verres, où vous pouvez zoomer et vous y déplacer. Seulement pour les lunettes Ray-Ban Display — sans effet sur les lunettes sans affichage intégré."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az AI-válaszokat, élő feliratokat, értesítéseket és kanyarról kanyarra útmutatást a lencsén belüli kijelzőn mutatja, és interaktív feladatkártyákat futtat, amelyeket kéz nélkül teljesíthet a Neural Banddel vagy hanggal (angolul: „next”, „done”, „skip”, „back”). A kézikönyv kért oldala is megnyílhat a lencsén, ahol nagyíthatja, és mozoghat rajta. Csak Ray-Ban Display szemüvegekhez — a beépített kijelző nélküli szemüvegekre nincs hatása."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra le risposte dell'IA, i sottotitoli live, le notifiche e le indicazioni passo passo sul display nelle lenti, ed esegue schede di attività interattive che completi a mani libere con la Neural Band o con la voce («next», «done», «skip», «back», in inglese). Anche una pagina del manuale che chiedi di vedere può aprirsi sulle lenti, dove puoi ingrandirla e spostarti al suo interno. Solo per gli occhiali Ray-Ban Display: nessun effetto sugli occhiali senza display integrato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AIの応答、ライブ字幕、通知、ターンバイターンの案内をレンズ内ディスプレイに表示し、Neural Bandまたは音声（英語で「next」「done」「skip」「back」）でハンズフリーに操作するインタラクティブなタスクカードを実行します。見たいと頼んだマニュアルのページもレンズに開くことができ、拡大したり、ページ内を移動したりできます。Ray-Ban Displayグラス専用です。ディスプレイを内蔵していないメガネには影響しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI 응답, 실시간 자막, 알림, 턴 바이 턴 안내를 렌즈 내 디스플레이에 표시하고, Neural Band나 음성(영어로 \"next\", \"done\", \"skip\", \"back\")으로 핸즈프리로 완료하는 대화형 작업 카드를 실행합니다. 보고 싶다고 요청한 매뉴얼 페이지도 렌즈에 열 수 있으며, 확대하거나 페이지 안에서 이동할 수 있습니다. Ray-Ban Display 안경 전용이며, 내장 디스플레이가 없는 안경에는 영향이 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toont AI-antwoorden, live ondertitels, meldingen en routebeschrijvingen op het display in de lens, en voert interactieve taakkaarten uit die u handsfree afrondt met de Neural Band of met spraak (in het Engels “next”, “done”, “skip”, “back”). Een handleidingpagina die u wilt zien, kan ook op de lens openen, waar u kunt inzoomen en over de pagina kunt bewegen. Alleen voor Ray-Ban Display-brillen — geen effect op brillen zonder ingebouwd display."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra respostas da IA, legendas ao vivo, notificações e orientação passo a passo na tela da lente, e executa cartões de tarefas interativos que você conclui com as mãos livres pela Neural Band ou por voz (em inglês: \"next\", \"done\", \"skip\", \"back\"). Uma página do manual que você pedir para ver também pode abrir na lente, onde é possível ampliá-la e se mover por ela. Somente óculos Ray-Ban Display — sem efeito em óculos sem tela integrada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывает ответы ИИ, живые субтитры, уведомления и пошаговые подсказки маршрута на дисплее в линзах и запускает интерактивные карточки задач, которые вы выполняете без рук с помощью Neural Band или голоса (по-английски: «next», «done», «skip», «back»). Страница руководства, которую вы попросите показать, тоже может открыться в линзах — там её можно увеличить и перемещаться по ней. Только очки Ray-Ban Display — на очки без встроенного дисплея не влияет."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI جوابات، لائیو کیپشنز، اطلاعات اور موڑ بہ موڑ رہنمائی کو لینز کے اندر ڈسپلے پر دکھاتا ہے، اور ایسے انٹرایکٹو ٹاسک کارڈز چلاتا ہے جنہیں آپ Neural Band یا آواز (انگریزی میں “next”، “done”، “skip”، “back”) سے ہاتھوں کے بغیر مکمل کرتے ہیں۔ جس مینوئل صفحے کو آپ دیکھنا چاہیں وہ بھی لینز پر کھل سکتا ہے، جہاں آپ زوم اِن کر کے اس میں اِدھر اُدھر جا سکتے ہیں۔ صرف Ray-Ban Display عینک کے لیے — بلٹ اِن ڈسپلے کے بغیر عینک پر کوئی اثر نہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在镜内显示屏上显示 AI 回复、实时字幕、通知和逐向导航指引，并运行交互式任务卡片，你可以使用 Neural Band 或语音（用英语说“next”“done”“skip”“back”）免提完成。你要求查看的手册页面也可以在镜片上打开，你可以放大并在页面中移动。仅限 Ray-Ban Display 眼镜 — 对没有内置显示屏的眼镜无效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在鏡片內顯示器上顯示 AI 回應、即時字幕、通知與逐向導航，並執行互動式任務卡片，讓你用 Neural Band 或語音（用英語說「next」、「done」、「skip」、「back」）免持完成。你要求查看的手冊頁面也可以在鏡片上開啟，你可以放大並在頁面中移動。僅限 Ray-Ban Display 眼鏡 — 對沒有內建顯示器的眼鏡無效。"
           }
         }
       }
@@ -408907,6 +409651,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你在核准期間，組織設定已變更。請再次檢視。"
+          }
+        }
+      }
+    },
+    "The page's buttons work here too." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أزرار الصفحة تعمل هنا أيضًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los botones de la página también funcionan aquí."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les boutons de la page fonctionnent aussi ici."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az oldal gombjai itt is működnek."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I pulsanti della pagina funzionano anche qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ページのボタンはここでも使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "페이지의 버튼은 여기서도 작동합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De knoppen van de pagina werken hier ook."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os botões da página também funcionam aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Кнопки страницы работают и здесь."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صفحے کے بٹن یہاں بھی کام کرتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "页面上的按钮在这里也能用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "頁面上的按鈕在這裡也能用。"
           }
         }
       }
@@ -468835,6 +469661,88 @@
         }
       }
     },
+    "Whole page" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الصفحة كاملة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página completa"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page entière"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teljes oldal"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagina intera"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ページ全体"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전체 페이지"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hele pagina"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página inteira"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вся страница"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پورا صفحہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整页"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整頁"
+          }
+        }
+      }
+    },
     "Why can't this run?" : {
       "localizations" : {
         "ar" : {
@@ -473640,6 +474548,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你告訴我"
+          }
+        }
+      }
+    },
+    "You:" : {
+      "comment" : "Glasses: starts the line showing what the app heard the wearer ask, e.g. 'You: what size breaker'.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أنت:"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tú:"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous :"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te:"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなた："
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나:"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jij:"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você:"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы:"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你："
           }
         }
       }
@@ -479474,6 +480465,252 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "零基礎設施：當升級時，技術人員的裝置會開啟此會議，專家將收到同一個連結。您的會議工具（Zoom/Teams/Meet/Whereby）主持通話——您無需執行任何操作。"
+          }
+        }
+      }
+    },
+    "Zoom in" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تكبير"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acercar"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom avant"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nagyítás"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingrandisci"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拡大"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확대"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inzoomen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ampliar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увеличить"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "زوم اِن"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放大"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放大"
+          }
+        }
+      }
+    },
+    "Zoom in for labels" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كبّر لرؤية التسميات"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca para ver las etiquetas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoomez pour lire les étiquettes"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nagyítson a feliratokhoz"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingrandisci per leggere le etichette"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拡大してラベルを表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "확대하면 라벨이 보입니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom in voor de labels"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amplie para ver os rótulos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увеличьте, чтобы прочитать подписи"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لیبل دیکھنے کے لیے زوم اِن کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放大查看标注"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "放大查看標註"
+          }
+        }
+      }
+    },
+    "Zoom out" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تصغير"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alejar"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom arrière"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kicsinyítés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riduci"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "縮小"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "축소"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uitzoomen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reduzir"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уменьшить"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "زوم آؤٹ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缩小"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "縮小"
           }
         }
       }
