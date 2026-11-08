@@ -1,9 +1,19 @@
 # Plan KV — The Page on the Lens (the manual page or diagram in the glasses, zoomed by band or voice, and the question above the answer)
 
-**Status:** 📝 Drafted 2026-11-08 from the partner's ask, made while ordering a Meta Ray-Ban Display for
-pilot demos. Nothing built. The owner took all nine recommended decisions the same day ("take all
-nine"), and the same day added P1b, finding the diagram on a page, and P4, a development-only simulated
-Display ("add it to KV").
+**Status:** 🚧 P0–P4 built 2026-11-08 (with P1b); P5, the device pass on a real Display, is owed, and the
+catalog sync for the new lens wording follows in its own PR. Built: the pure core (`LensPageViewport`
+with a fitted, continuous ×1.5 zoom, `LensPageFocus`, `LensLegibility`, `LensPageFrame`,
+`HUDPageScreenBuilder`, `HUDPageCommand`, `LensPageMarks`); the picture (`LensPageRenderPlan`,
+`LensPageRenderer`, inverted, marks in the accent, a position frame), `HUDPicture` on the Meta backend
+(Even and the web mirror keep text), `LensPageSession` and the routes (requested pages open on the lens,
+with the phone locked too; automatic pages get **Show here**; **Page** on KP's card; the opening frame
+waits for a showing notification); reading mode for cited text (§1b); finding the diagram from the ink
+(`PageFigureLocator`, `PageFigureChoice`, **Next diagram ›**), a focus only when a drawing is asked for;
+the question above the answer; the page view in the phone preview; and the simulated-Display lane
+(`project.mock-display.yml`, Developer › Simulated Display with example pages and a walkthrough, guarded
+by `MockDisplayLaneGuardTests`), which the owner tried on the simulator before the PR. Drafted 2026-11-08
+from the partner's ask, made while ordering a Meta Ray-Ban Display for pilot demos; the owner took all
+nine recommended decisions the same day and added P1b and P4.
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`). Field Assist and personal manuals:
 every page "show me the page" or an answer opens. P0–P3 (with P1b) are headless; P4 runs on the iOS Simulator
 against Meta's simulated Display; P5 needs a real one.
