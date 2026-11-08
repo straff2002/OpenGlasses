@@ -17,13 +17,18 @@ final class GoalsActivityAccessibilityTests: AccessibilityAuditCase {
 
     // MARK: - Getting there
 
-    /// Settings → AI & Personality, then the row, scrolled into reach.
+    /// Settings → Everyday, the Memory group's details unfolded, then the row, scrolled into reach.
+    /// Goals and Activity are links in the Memory group, which is a switch with its rows folded
+    /// under "Details" until opened.
     private func open(_ row: String, in app: XCUIApplication,
                       file: StaticString = #filePath, line: UInt = #line) {
         openTab("Settings", in: app, file: file, line: line)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub", file: file, line: line)
-        tapRow(startingWith: "AI & Personality", in: app, file: file, line: line)
-        awaitScreen(app.navigationBars["AI & Personality"], named: "AI & Personality", file: file, line: line)
+        tapRow(startingWith: "Everyday", in: app, file: file, line: line)
+        awaitScreen(app.navigationBars["Everyday"], named: "Everyday", file: file, line: line)
+        let details = app.buttons["Memory details"]
+        reach(details, in: app, named: "The Memory group's details", file: file, line: line)
+        details.tap()
         let link = app.buttons[row]
         reach(link, in: app, named: "The \(row) row", file: file, line: line)
         link.tap()

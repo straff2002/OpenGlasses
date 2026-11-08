@@ -140,7 +140,9 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
               deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
 
         // The send sheet comes before any composer: who the report is for, and whether the
-        // conversation goes with it.
+        // conversation goes with it. The audit's Dynamic Type sweep reflows the list and can leave
+        // the button scrolled out of the built rows, so it is reached again before the tap.
+        scrollUntilVisible(send, in: app, named: "Send report…")
         send.tap()
         let transcriptToggle = app.switches["Include transcript (internal)"]
         awaitScreen(transcriptToggle, named: "The send sheet")
@@ -317,11 +319,13 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
         let number = app.staticTexts["Job 1005"]
         awaitScreen(number, named: "The open job with a clip")
 
-        let record = app.buttons["Record a clip"]
-        scrollUntilVisible(record, in: app, named: "Record a clip")
-        // The share button says what it actually hands out once a clip is on the job.
-        XCTAssertTrue(app.buttons["Share full-size photos and clips"].exists,
-                      "a job with a clip must not offer to share only its photographs")
+        // The share button says what it actually hands out once a clip is on the job. It is the
+        // section's last row, below Record a clip and the photo rows, and a `List` builds only the
+        // rows it has reached — so it is scrolled to itself.
+        let shareAll = app.buttons["Share full-size photos and clips"]
+        scrollUntilVisible(shareAll, in: app, named: "Share full-size photos and clips")
+        XCTAssertTrue(shareAll.exists, "a job with a clip must not offer to share only its photographs")
+        XCTAssertTrue(app.buttons["Record a clip"].exists, "the job's own recorder sits above the share button")
         XCTAssertFalse(app.buttons["Share full-size photos"].exists)
 
         audit(app, screen: "Job tab — photos and clips on the job",

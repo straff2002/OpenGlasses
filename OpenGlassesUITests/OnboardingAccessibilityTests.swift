@@ -22,10 +22,10 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         audit(app, screen: "Onboarding 1/5 — Welcome",
               deferring: [.secondaryCopyContrast, .appBehindTheOverlay,
                           .decorativePageIndicator])
-        app.buttons["Get Started"].tap()
 
         // Page 2 — Choose your AI
-        awaitScreen(app.staticTexts["Choose your AI"], named: "The provider page")
+        tap(app.buttons["Get Started"], until: app.staticTexts["Choose your AI"],
+            named: "The provider page")
         audit(app, screen: "Onboarding 2/5 — Choose your AI",
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry,
                           .appBehindTheOverlay, .decorativePageIndicator])
@@ -33,26 +33,26 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         // hardware that can't run it, and a page that may not be there is not a route a
         // regression gate can walk.
         tapRow(startingWith: "Anthropic", in: app)
-        app.buttons["Continue"].tap()
 
         // Page 3 — Connect Claude. Audited with the key field empty, which is the state the page
         // is in for as long as it takes to read it.
-        awaitScreen(app.staticTexts["Connect Claude"], named: "The access-key page")
+        tap(app.buttons["Continue"], until: app.staticTexts["Connect Claude"],
+            named: "The access-key page")
         audit(app, screen: "Onboarding 3/5 — Access key",
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry,
                           .appBehindTheOverlay, .decorativePageIndicator])
-        app.buttons["I'll add it later"].tap()
 
         // Page 4 — Optional services
-        awaitScreen(app.staticTexts["Enhance your experience"], named: "The services page")
+        tap(app.buttons["I'll add it later"], until: app.staticTexts["Enhance your experience"],
+            named: "The services page")
         audit(app, screen: "Onboarding 4/5 — Services",
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry,
                           .appBehindTheOverlay, .decorativePageIndicator])
-        app.buttons["Continue"].tap()
 
         // Page 5 — Permissions. Audited without granting anything: tapping Grant raises a system
         // alert, and the ungranted state is the one every first-run user reads first.
-        awaitScreen(app.staticTexts["Permissions"], named: "The permissions page")
+        tap(app.buttons["Continue"], until: app.staticTexts["Permissions"],
+            named: "The permissions page")
         audit(app, screen: "Onboarding 5/5 — Permissions",
               deferring: [.secondaryCopyContrast, .systemFormChrome, .singleLineTextEntry,
                           .appBehindTheOverlay, .decorativePageIndicator])
@@ -85,9 +85,8 @@ final class OnboardingAccessibilityTests: AccessibilityAuditCase {
         XCTAssertFalse(app.buttons["Back"].exists,
                        "There is nothing behind the first page to go back to")
 
-        app.buttons["Get Started"].tap()
         let providerTitle = app.staticTexts["Choose your AI"]
-        awaitScreen(providerTitle, named: "The provider page")
+        tap(app.buttons["Get Started"], until: providerTitle, named: "The provider page")
 
         XCTAssertEqual(providerTitle.value as? String, "Page 2 of 8",
                        "The page position did not follow the page change")

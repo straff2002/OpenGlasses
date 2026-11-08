@@ -27,14 +27,15 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
               deferring: [.secondaryCopyContrast, .contentUnderTheTabBar(of: app)])
     }
 
-    /// Every category is a reachable row, whatever the phone has been used for.
+    /// Every row the hub draws is reachable, whatever the phone has been used for. The hub draws
+    /// eight rows (`SettingsHub.rows(on:)`), each holding one or more categories; which category
+    /// sits under which row is asserted headlessly in `SettingsHubRowTests`.
     func testEveryCategoryIsARow() {
         let app = launch([.configured])
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
-        for title in ["AI & Personality", "Voice & Triggers", "Devices & Privacy", "Accessibility",
-                      "Field Assist", "Look & Feel", "Tools & Actions", "Connections",
-                      "Capture & Streaming", "Display & HUD", "Advanced", "Diagnostics & Support"] {
+        for title in ["Assistant", "Everyday", "Devices & Privacy", "Connections",
+                      "Accessibility", "Field Assist", "Look & Feel", "Advanced & Support"] {
             XCTAssertTrue(scrollUntilFound(labelStartingWith: title, in: app).exists,
                           "\(title) is not a row on the settings hub")
         }
@@ -184,14 +185,14 @@ final class SettingsAccessibilityTests: AccessibilityAuditCase {
 
     // MARK: The model editor
 
-    /// Reached through AI & Personality, the first row of the hub.
+    /// Reached through Assistant, the first row of the hub, whose page holds the models.
     func testModelEditorPassesAccessibilityAudit() {
         let app = launch([.configured])
         openTab("Settings", in: app)
         awaitScreen(app.navigationBars["Settings"], named: "The settings hub")
 
-        tapRow(startingWith: "AI & Personality", in: app)
-        awaitScreen(app.navigationBars["AI & Personality"], named: "The AI & Personality category")
+        tapRow(startingWith: "Assistant", in: app)
+        awaitScreen(app.navigationBars["Assistant"], named: "The Assistant page")
 
         // A model row is one combined element: name, provider, whether it holds a key, whether it
         // takes images. Addressed by its leading name for that reason.

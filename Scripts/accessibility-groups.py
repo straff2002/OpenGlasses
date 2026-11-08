@@ -9,9 +9,13 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-# Balanced using the last complete CI run: roughly 14 minutes of tests per group.
+# Balanced using the last complete CI run: roughly 14 minutes of tests per group. The Workiz
+# suites take 8-10 minutes each, so they are split across two groups: all four beside the Job
+# tab ran past the 35-minute step limit (run 42343315365) before the light ones started.
 GROUPS = {
-    "jobs": ["JobTabAccessibilityTests"],
+    "jobs": ["JobTabAccessibilityTests", "WorkizLightAccessibilityTests"],
+    "workiz": ["WorkizDarkAccessibilityTests", "WorkizLargestLightAccessibilityTests",
+               "WorkizLargestDarkAccessibilityTests"],
     "signoff-settings": ["JobSignOffScreenshotTests", "SettingsAccessibilityTests",
                          "DynamicTypeAccessibilityTests"],
     "day-debrief": ["GoalsActivityAccessibilityTests", "JobDebriefScreenshotTests",
@@ -23,13 +27,24 @@ GROUPS = {
 
 
 def validate():
-    declaration = re.compile(
-        r"^\s*(?:final\s+)?class\s+(\w+)\s*:\s*[^\{]*\b(?:AccessibilityAuditCase|XCTestCase)\b",
-        re.MULTILINE,
-    )
-    discovered = set()
+    # Every class with its superclass, so a suite that inherits from a shared case (which
+    # itself inherits from AccessibilityAuditCase) is found too.
+    declaration = re.compile(r"^\s*(?:final\s+)?class\s+(\w+)\s*:\s*(\w+)", re.MULTILINE)
+    parents = {}
     for path in (ROOT / "OpenGlassesUITests").glob("*.swift"):
-        discovered.update(declaration.findall(path.read_text()))
+        parents.update(declaration.findall(path.read_text()))
+
+    def is_test_case(name, seen=()):
+        parent = parents.get(name)
+        if parent in ("AccessibilityAuditCase", "XCTestCase"):
+            return True
+        return parent in parents and parent not in seen and is_test_case(parent, seen + (name,))
+
+    test_cases = {name for name in parents if is_test_case(name)}
+    # A shared case that other suites subclass holds no tests of its own: selecting it would
+    # run nothing, so its subclasses are what get grouped.
+    bases = {parents[name] for name in test_cases}
+    discovered = test_cases - bases
     discovered.discard("AccessibilityAuditCase")
     assigned = collections.Counter(name for names in GROUPS.values() for name in names)
     missing = sorted(discovered - assigned.keys())

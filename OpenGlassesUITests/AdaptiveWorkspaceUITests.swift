@@ -22,12 +22,12 @@ final class AdaptiveWorkspaceUITests: AccessibilityAuditCase {
         XCTAssertFalse(context.buttons["Evidence"].exists)
         XCTAssertFalse(context.buttons["adaptive-workspace-open-job"].exists)
 
-        context.buttons["My Day"].tap()
-        awaitScreen(context.scrollViews["adaptive-workspace-my-day"], named: "Personal My Day")
+        tap(context.buttons["My Day"], until: context.scrollViews["adaptive-workspace-my-day"],
+            named: "Personal My Day")
         XCTAssertTrue(context.buttons["My Day"].isSelected)
 
-        context.buttons["Conversation"].tap()
-        awaitScreen(conversation, named: "Return to personal conversation")
+        tap(context.buttons["Conversation"], until: conversation,
+            named: "Return to personal conversation")
         XCTAssertTrue(context.buttons["Conversation"].isSelected)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "adaptive-personal-conversation-and-my-day"
@@ -84,16 +84,15 @@ final class AdaptiveWorkspaceUITests: AccessibilityAuditCase {
     func testRotationPreservesTheDockPageAndConversation() {
         XCUIDevice.shared.orientation = .portrait
         let app = launch([.configured, .seedConversations])
-        let conversation = app.buttons["Show conversation"]
-        awaitScreen(conversation, named: "Conversation control")
-        conversation.tap()
-        let actions = app.buttons["Show actions"]
-        awaitScreen(actions, named: "Actions control")
+        // The panel opens on its conversation page while things to try are waiting there, so the
+        // page the wearer picks is the actions; rotation must keep it.
+        showTheDockActions(in: app)
+        let onActions = app.buttons["Show conversation"]
 
         XCUIDevice.shared.orientation = .landscapeLeft
         waitForOrientation(app, landscape: true)
         awaitScreen(app.otherElements["adaptive-workspace-context"], named: "Landscape context")
-        XCTAssertTrue(actions.waitForExistence(timeout: 10), "Rotation reset the selected dock page")
+        XCTAssertTrue(onActions.waitForExistence(timeout: 10), "Rotation reset the selected dock page")
         let landscape = XCTAttachment(screenshot: app.screenshot())
         landscape.name = "adaptive-conversation-landscape"
         landscape.lifetime = .keepAlways
@@ -101,7 +100,7 @@ final class AdaptiveWorkspaceUITests: AccessibilityAuditCase {
 
         XCUIDevice.shared.orientation = .portrait
         waitForOrientation(app, landscape: false)
-        XCTAssertTrue(actions.waitForExistence(timeout: 10), "Returning to portrait reset the dock")
+        XCTAssertTrue(onActions.waitForExistence(timeout: 10), "Returning to portrait reset the dock")
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "adaptive-portrait"
         attachment.lifetime = .keepAlways
@@ -146,6 +145,7 @@ final class AdaptiveWorkspaceUITests: AccessibilityAuditCase {
     func testTypedDraftSurvivesBothLandscapeDirections() {
         XCUIDevice.shared.orientation = .portrait
         let app = launch([.configured])
+        showTheDockActions(in: app)
         awaitScreen(app.buttons["Type"], named: "Type action")
         app.buttons["Type"].tap()
         let field = app.descendants(matching: .any)["chat-message-composer"]
