@@ -409,9 +409,6 @@ extension NetworkRoute {
         case .loopbackOAuthCallback:
             return .allowedLocalOnly(
                 "An inbound listener bound to 127.0.0.1; the redirect never reaches a network interface.")
-        case .simulatedDisplayTestServer:
-            return .allowedLocalOnly(
-                "A request to 127.0.0.1 in a development-only Simulator build; it never reaches a network interface and the code is not compiled into a store or TestFlight build.")
         case .conversationRecallSummary:
             return .notApplicable(
                 "It owns no transport: it delegates to llmCompletion, which the model-routing policy already redirects to an on-device model instead of refusing. Blocking it would disable a feature whose bytes never leave the phone.")
