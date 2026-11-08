@@ -154,7 +154,13 @@ struct AmbientCaptionOverlay: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { historyContentHeight = $0 }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    historyContentHeight = height
+                    // Lines can settle taller after the window has reached the bottom — a wrap
+                    // that lands late, a text-size change — which leaves it short of the newest
+                    // line with half of it showing. While following, it goes back to the bottom.
+                    if follow.followsNewTurn { historyPosition.scrollTo(edge: .bottom) }
+                }
             }
             .scrollPosition($historyPosition)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
