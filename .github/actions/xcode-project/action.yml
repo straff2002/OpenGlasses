@@ -29,6 +29,25 @@ runs:
     # repository states. XcodeGen writes the project file every build compiles, so the pinned,
     # sha256-verified install is the same standard the vendored binaries already meet. The
     # script appends its bin directory to $GITHUB_PATH, so later steps just find it.
+    #
+    # The install is cached because the release asset is a single point of failure: on
+    # 2026-11-08 GitHub's release download answered 504 to every runner for over half an hour,
+    # and every macOS job died here before compiling anything. A restored cache is not trusted —
+    # the script reuses an install only when the cached zip still matches XCODEGEN_SHA256, and
+    # downloads afresh otherwise. The key is the pin file, so a version or digest bump misses.
+    - name: Read the XcodeGen pin
+      id: xcodegen-pin
+      shell: bash
+      run: |
+        . Scripts/xcodegen-pin.env
+        echo "version=$XCODEGEN_VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Cache XcodeGen
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .ci-tools/xcodegen-${{ steps.xcodegen-pin.outputs.version }}
+        key: xcodegen-${{ runner.os }}-${{ hashFiles('Scripts/xcodegen-pin.env') }}
+
     - name: Install XcodeGen (pinned, checksum-verified)
       shell: bash
       run: ./Scripts/install-xcodegen.sh
