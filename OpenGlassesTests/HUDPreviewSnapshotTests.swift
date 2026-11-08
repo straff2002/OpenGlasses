@@ -85,6 +85,27 @@ final class HUDPreviewSnapshotTests: XCTestCase {
         }
     }
 
+    /// Plan KV P3: the page view's picture is drawn in the preview, inside the lens, with the
+    /// button row under it. A white invented picture lights far more of the lens than text does.
+    func testThePageViewDrawsItsPictureInTheLens() async throws {
+        let white = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 600)).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 600, height: 600))
+        }
+        let picture = HUDPicture(image: white, pixelSize: CGSize(width: 600, height: 600), contentKey: "invented")
+        var screen = HUDScreen(title: nil, lines: [],
+                               items: [HUDItem(id: "zoom", label: "Zoom in", style: .primary) {},
+                                       HUDItem(id: "close", label: "Close", style: .outline) {}])
+        let textOnly = try await renderedBrightFraction(screen, canvas: .metaDisplay)
+        screen.picture = picture
+        let withPicture = try await renderedBrightFraction(screen, canvas: .metaDisplay)
+        XCTAssertGreaterThan(withPicture, 0.2, "the picture fills much of the lens")
+        XCTAssertGreaterThan(withPicture, textOnly * 5)
+        let image = try await renderedImage(screen, canvas: .metaDisplay, size: CGSize(width: 320, height: 400))
+        let lens = try XCTUnwrap(Self.opaqueBounds(image))
+        XCTAssertEqual(CGFloat(lens.width) / CGFloat(lens.height), 1, accuracy: 0.03, "still the lens's square")
+    }
+
     private func renderedBrightFraction(_ screen: HUDScreen, canvas: HUDCanvas) async throws -> Double {
         Self.brightFraction(try await renderedImage(screen, canvas: canvas, size: CGSize(width: 320, height: 320)))
     }

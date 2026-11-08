@@ -19,6 +19,9 @@ import Foundation
 /// - **A page prefers to end at a sentence.** When a page's last line holds a sentence end
 ///   before its last word, the page ends there and the rest of that line moves to the next page.
 /// - **Past `maxPages`** the last page keeps one line for `moreOnPhoneLine` ("… more on phone").
+/// - **The first page can be budgeted shorter** (`firstPageReservedLines`): the card's question
+///   line (Plan KV §7) sits above the first page only, so that page carries that many lines fewer
+///   and the page count is the count the wearer turns through.
 ///
 /// Streaming: pages are stable on prefixes. When an answer grows by whole words or sentences
 /// (separated from what came before by whitespace, as sentence-streamed speech delivers them),
@@ -34,28 +37,33 @@ enum HUDAnswerPager {
 
     static func pages(for text: String,
                       geometry: TeleprompterPaginator.Geometry,
-                      maxPages: Int = defaultMaxPages) -> [HUDAnswerPage] {
+                      maxPages: Int = defaultMaxPages,
+                      firstPageReservedLines: Int = 0) -> [HUDAnswerPage] {
         var tokens = tokenize(text)
         guard !tokens.isEmpty else { return [] }
         let maxChars = max(1, geometry.maxChars)
         let maxLines = max(1, geometry.maxLines)
+        let reserved = max(0, firstPageReservedLines)
 
         // One page, exactly as a non-answer caller would show it: an answer short enough that
         // `condense` doesn't cut it, so the body is the whole answer.
         let collapsedLength = tokens.reduce(-1) { $0 + 1 + $1.text.count }
-        let whole = layout(tokens, from: 0, maxChars: maxChars, limit: maxLines)
-        if whole.count <= maxLines && collapsedLength <= HUDTextShaper.maxBodyLength {
+        let singleLines = max(1, maxLines - reserved)
+        let whole = layout(tokens, from: 0, maxChars: maxChars, limit: singleLines)
+        if whole.count <= singleLines && collapsedLength <= HUDTextShaper.maxBodyLength {
             return [HUDAnswerPage(body: HUDTextShaper.condense(text), lines: whole.map(\.text),
                                   index: 0, count: 1, isCapped: false)]
         }
 
-        // Paged: one line on every page is the footer.
-        let contentLines = max(1, maxLines - 1)
+        // Paged: one line on every page is the footer, and the first page gives up its reserved
+        // lines too.
+        let pageLines = max(1, maxLines - 1)
         let cap = max(1, maxPages)
         var bodies: [[String]] = []
         var capped = false
         var start = 0
         while start < tokens.count {
+            let contentLines = bodies.isEmpty ? max(1, pageLines - reserved) : pageLines
             let laid = layout(tokens, from: start, maxChars: maxChars, limit: contentLines)
             if laid.count <= contentLines {          // the rest fits: this is the last page
                 bodies.append(laid.map(\.text))

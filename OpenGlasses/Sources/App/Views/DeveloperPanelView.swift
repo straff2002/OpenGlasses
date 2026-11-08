@@ -26,6 +26,11 @@ struct DeveloperPanelView: View {
 
     var body: some View {
         OGScrollPage {
+            #if DAT_MOCK_DISPLAY
+            // Plan KV P4: only in a project generated with AVENKIN_DAT_MOCK_DISPLAY=1 (Simulator only).
+            SimulatedDisplaySection(appState: appState)
+            #endif
+
             OGSection(
                 header: "Field Assist",
                 footer: "During a Field Assist job, only field tools are offered to the model, which cuts cost per request. Turn off to offer every tool."

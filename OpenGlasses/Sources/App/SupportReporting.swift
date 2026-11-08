@@ -229,6 +229,10 @@ extension AppState {
         // Plan KP §5: the last band check — lessons passed, presses that didn't arrive, wrong and
         // stale presses, the time between presses, the backend. Counts and case names only.
         phone += BandCheckReport.lines(for: bandPractice.lastResult)
+        // Plan KV §5: the page on the lens since the app started — views opened, zooms, moves, the
+        // Show here cues, render and send timings and bytes sent, by backend. Counts and timings
+        // only; never a page, its text or its pixels.
+        phone += lensPage.reportLines
         // Which radio link carried the glasses video, as far as the glasses software's own log
         // says, and what the stream delivered. Always present: "not known" is an answer too.
         // A level and three numbers; no device is named.

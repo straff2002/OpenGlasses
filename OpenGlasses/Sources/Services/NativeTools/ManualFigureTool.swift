@@ -15,7 +15,7 @@ final class ManualFigureTool: NativeTool {
     me that" or "show me the table" after an answer, use show_source. Pass 'figure' ("Figure 58", or just \
     "58"), or 'printed_page' with the page number printed on the page ("printed page 57"), or \
     'page' with the PDF's own page number (the viewer's count, which may differ from the printed \
-    one), or 'again' to bring back the last figure or page shown ("show that figure again"). The page opens on the technician's phone and is \
+    one), or 'again' to bring back the last figure or page shown ("show that figure again"). The page opens on the technician's phone (and on glasses with a display) and is \
     attached to your next turn as an image when one is available, so you can read the drawing \
     yourself. Use it when the technician names a figure or asks to see a wiring diagram, and after \
     citing one. Say the page it reports it opened, PDF and printed, never the one you asked for. A manual imported as extracted text has no page to show — the tool says so, and \

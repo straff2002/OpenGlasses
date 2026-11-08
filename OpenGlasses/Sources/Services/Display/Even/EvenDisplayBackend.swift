@@ -52,6 +52,10 @@ final class EvenDisplayBackend: GlassesDisplayBackend {
 
     var isAvailable: Bool { Config.evenPairingConfigured }
 
+    /// Plan KV §6: monochrome text cells. A screen's picture is never drawn here; the screen's
+    /// text lines are, as before.
+    var drawsPictures: Bool { false }
+
     func showContent(title: String?, body: String, icon: HUDIcon) async throws {
         try await push(EvenScreenRenderer.render(title: title, body: body, icon: icon))
         currentItemIds = []

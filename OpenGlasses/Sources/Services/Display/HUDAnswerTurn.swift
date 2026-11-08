@@ -15,11 +15,22 @@ import Foundation
 /// The text only ever grows, so pages the wearer has seen keep their words (`HUDAnswerPager` is
 /// stable on prefixes). Once the reply is final, later sentences of the same turn are already in
 /// it and are ignored.
+///
+/// **The question (Plan KV §7).** A turn the technician opened carries what the app heard
+/// (`question`), which the card shows above the answer's first page. A turn the app started (a
+/// proactive alert, a watcher, an answer spoken outside a Direct-mode turn) has none.
 struct HUDAnswerTurn: Equatable {
+    /// What the app heard the technician ask, trimmed; nil for a turn the app started.
+    let question: String?
     /// Streamed sentences in the order they were spoken.
     private(set) var sentences: [String] = []
     /// The whole answer once the reply is final; nil while it is still streaming.
     private(set) var finalText: String?
+
+    init(question: String? = nil) {
+        let trimmed = question?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.question = (trimmed?.isEmpty ?? true) ? nil : trimmed
+    }
 
     var isFinished: Bool { finalText != nil }
     var isEmpty: Bool { text.isEmpty }

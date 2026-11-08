@@ -1,0 +1,25 @@
+# The simulated Ray-Ban Display, for development on the iOS Simulator only (Plan KV P4).
+#
+# Added by `AVENKIN_DAT_MOCK_DISPLAY=1 ./Scripts/generate-xcodeproj.sh` and never otherwise; the
+# script refuses the flag under CI or Xcode Cloud. It links DAT's Mock Device Kit and defines
+# `DAT_MOCK_DISPLAY`, which compiles `OpenGlasses/Sources/Glasses/MockDisplay/` (Developer ›
+# Simulated Display). Meta's guidance is that the mock and its preview stay out of production
+# builds, so the build phase below fails anything but a Debug build for the Simulator: a flagged
+# build can't be archived, sent to TestFlight or put on a phone. `MockDisplayLaneGuardTests` fails
+# on any other spec naming the mock product, and on mock code outside that folder or its `#if`.
+targets:
+  OpenGlasses:
+    dependencies:
+      - package: meta-wearables-dat-ios
+        product: MWDATMockDevice
+    settings:
+      base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DAT_MOCK_DISPLAY"
+    preBuildScripts:
+      - name: Simulated Display is Debug and Simulator only
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "${CONFIGURATION}" != "Debug" ] || [ "${PLATFORM_NAME}" != "iphonesimulator" ] || [ "${ACTION}" = "install" ]; then
+            echo "error: this project was generated with AVENKIN_DAT_MOCK_DISPLAY=1 (the simulated Display). It builds only Debug for the iOS Simulator. Regenerate without the flag: ./Scripts/generate-xcodeproj.sh"
+            exit 1
+          fi

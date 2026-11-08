@@ -28,6 +28,11 @@ import Foundation
 /// Actions screen (`HUDAnswerCardBuilder`). Only a reply that came back whole carries them: a turn
 /// cut short (an error, a barge-in) shows none, and a new answer's card starts with none.
 ///
+/// **The question (Plan KV §7).** A turn opened with the technician's words (`beginTurn(question:)`)
+/// shows what the app heard over its first page, "You: …", in the meta style and cut to one line;
+/// the pager gives that page one line fewer. A card for an answer outside such a turn (a proactive
+/// alert, a watcher, a photo answer) has none.
+///
 /// **Lifetime.** Until Close, a new answer, or `idleLifetime` (60 s) with no press and no change to
 /// the answer — so a long answer still being spoken never clears under the wearer. In memory only.
 ///
@@ -74,6 +79,10 @@ final class HUDAnswerCard {
     /// Run `save_note` with a title and the answer through the tool router (and so the
     /// authorization policy). True when it saved.
     var saveNote: ((_ title: String, _ content: String) async -> Bool)?
+    /// Plan KV §4: whether the page the turn staged can open on the lens now (a backend that draws
+    /// pictures, the HUD on), and opening it.
+    var pageCanOpen: () -> Bool = { false }
+    var openPage: (() -> Void)?
 
     // MARK: State
 
@@ -83,6 +92,10 @@ final class HUDAnswerCard {
     private var turnHasCard = false
     /// The open turn's suggested follow-ups, from its reply's tail (Plan KP P2).
     private var turnFollowUps: [String] = []
+    /// The open turn staged a manual page (Plan KV §4).
+    private var turnStagedPage = false
+    /// The card's turn staged a page: its Actions offer **Page** while the lens can show it.
+    private(set) var hasPage = false
 
     /// The card's answer, pages and position.
     private(set) var answer = ""
@@ -91,6 +104,8 @@ final class HUDAnswerCard {
     private(set) var isOnActions = false
     /// The card's suggested follow-ups (Plan KP P2): its turn's, and none for any other card.
     private(set) var followUps: [String] = []
+    /// What the app heard the card's turn ask (Plan KV §7); nil for a turn the app started.
+    private(set) var question: String?
     /// The answer is final: every page may be read.
     private var answerIsComplete = false
     /// The screen last handed to the display, for routing a band press back by id.
@@ -105,10 +120,13 @@ final class HUDAnswerCard {
     init(display: GlassesDisplayService) {
         self.display = display
         display.onLensReturnedToAnswerCard = { [weak self] in self?.displayReturned() }
+        display.onAnswerCardReturnedFromPage = { [weak self] in self?.returnedFromPage() }
     }
 
     /// The card is on the glasses (or held under a notification).
     var isShowing: Bool { display.showsAnswerCard }
+    /// The card is on the glasses, or held under a notification or the page view (Plan KV).
+    var isHeld: Bool { isShowing || display.holdsAnswerCardUnderPage }
     /// The screen last handed to the display, buttons and all: what a band press acts on. Read
     /// by tests, which check a card's buttons without waiting on the render queue.
     var screenOnLens: HUDScreen? { shownScreen }
@@ -151,10 +169,24 @@ final class HUDAnswerCard {
     // MARK: - The answer turn
 
     /// A Direct-mode reply is starting. Nothing changes on the HUD until its card can show.
-    func beginTurn() {
-        turn = HUDAnswerTurn()
+    /// `question` is what the app heard the technician ask (Plan KV §7): the card shows it over
+    /// the first page. Nil for a turn the app started.
+    func beginTurn(question: String? = nil) {
+        turn = HUDAnswerTurn(question: question)
         turnHasCard = false
         turnFollowUps = []
+        turnStagedPage = false
+    }
+
+    /// Plan KV §4: the open turn staged a manual page. Its card's Actions offer **Page**.
+    func notePageStaged() {
+        guard turn != nil else { return }
+        turnStagedPage = true
+        guard turnHasCard, !hasPage else { return }
+        hasPage = true
+        guard isOnActions, isShowing else { return }
+        let screen = currentScreen()
+        if display.presentAnswerCard(screen, onSelect: selectionHandler) { shownScreen = screen }
     }
 
     /// Plan KP P2: the open turn's reply came back with these follow-ups (its tail, already taken
@@ -214,10 +246,14 @@ final class HUDAnswerCard {
 
     private func update() {
         guard let turn, !turn.isEmpty else { return }
-        let laid = HUDAnswerPager.pages(for: turn.text, geometry: geometry())
+        let shape = geometry()
+        let questionLine = HUDAnswerCardBuilder.questionLine(for: turn.question, maxChars: shape.maxChars)
+        let laid = HUDAnswerPager.pages(for: turn.text, geometry: shape,
+                                        firstPageReservedLines: questionLine == nil ? 0 : 1)
         guard !laid.isEmpty else { return }
         if !turnHasCard {
             guard turn.isFinished || HUDAnswerPager.settledPageCount(laid) > 0 else { return }
+            question = questionLine
             answer = turn.text
             answerMadeAt = now()
             pages = laid
@@ -225,6 +261,7 @@ final class HUDAnswerCard {
             pageIndex = 0
             isOnActions = false
             followUps = turn.isFinished ? turnFollowUps : []
+            hasPage = turnStagedPage
             cardSerial += 1
             let screen = currentScreen()
             guard display.presentAnswerCard(screen, onSelect: selectionHandler) else { return }
@@ -237,8 +274,10 @@ final class HUDAnswerCard {
             pages = laid
             answerIsComplete = turn.isFinished
             followUps = turn.isFinished ? turnFollowUps : []
-            // The wearer closed it: more of the answer doesn't bring it back.
-            guard isShowing else { return }
+            hasPage = hasPage || turnStagedPage
+            // The wearer closed it: more of the answer doesn't bring it back. Under the page view
+            // it is still held, and kept current for when the view closes (Plan KV).
+            guard isHeld else { return }
             let screen = currentScreen()
             if display.presentAnswerCard(screen, onSelect: selectionHandler) {
                 shownScreen = screen
@@ -301,6 +340,9 @@ final class HUDAnswerCard {
             close()
         case .followUp(_, let text):
             submitTurn?(text)
+        case .page:
+            guard hasPage, pageCanOpen() else { return }
+            openPage?()
         }
     }
 
@@ -308,12 +350,15 @@ final class HUDAnswerCard {
     func close() {
         idleGeneration += 1
         let wasShowing = isShowing
+        if !wasShowing, display.holdsAnswerCardUnderPage { display.dropAnswerCardUnderPage() }
         answer = ""
         pages = []
         pageIndex = 0
         isOnActions = false
         followUps = []
+        question = nil
         answerIsComplete = false
+        hasPage = false
         shownScreen = nil
         answerMadeAt = nil
         if wasShowing { display.endInteractive() }
@@ -330,6 +375,15 @@ final class HUDAnswerCard {
         }
         let screen = currentScreen()
         if display.presentAnswerCard(screen, onSelect: selectionHandler) { shownScreen = screen }
+    }
+
+    /// Plan KV: the page view closed and this card, held under it, is on the lens again. Its
+    /// lifetime starts over: the wearer was reading the page, not ignoring the answer.
+    func returnedFromPage() {
+        guard isShowing else { return }
+        let screen = currentScreen()
+        if display.presentAnswerCard(screen, onSelect: selectionHandler) { shownScreen = screen }
+        armIdleTimer()
     }
 
     private func show(page: Int, actions: Bool, _ revision: UInt64) {
@@ -389,11 +443,13 @@ final class HUDAnswerCard {
     private func currentScreen() -> HUDScreen {
         let onAction = self.onAction
         if isOnActions {
-            return HUDAnswerCardBuilder.actions(pages, followUps: followUps, onAction: onAction)
+            return HUDAnswerCardBuilder.actions(pages, followUps: followUps,
+                                                hasPage: hasPage && pageCanOpen(), onAction: onAction)
         }
         let readable = max(1, min(visiblePageCount, pages.count))
         let screens = (0..<readable).compactMap {
-            HUDAnswerCardBuilder.page(pages, index: $0, followUps: followUps, onAction: onAction)
+            HUDAnswerCardBuilder.page(pages, index: $0, followUps: followUps, question: question,
+                                      onAction: onAction)
         }
         let index = min(pageIndex, readable - 1)
         var screen = screens.indices.contains(index) ? screens[index] : HUDScreen()

@@ -11,8 +11,8 @@ import PDFKit
 final class ShowSourceTool: NativeTool {
     let name = "show_source"
     let description = """
-    Open the manual or code-book page your last answer cited, on the technician's phone, with the \
-    cited passage highlighted. Call it when the technician says "show me that", "show me the page", "show me the \
+    Open the manual or code-book page your last answer cited, on the technician's phone (and on \
+    glasses with a display, where it can be zoomed), with the cited passage highlighted. Call it when the technician says "show me that", "show me the page", "show me the \
     relevant pages", "show me clause 3.9.4", "show me the table", "show me the second one" or \
     "where does it say that": after an answer or a table_lookup it is the path that marks the row read. Pass 'which': "first" (the default), "second", "last", "all" for \
     every cited page as one paged sheet, a clause number as printed, "table" for the table the \

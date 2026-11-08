@@ -60,6 +60,26 @@ if [[ "$phone_only" != "0" && "$phone_only" != "1" ]]; then
   echo "OPENGLASSES_PHONE_ONLY must be 0 or 1" >&2
   exit 1
 fi
+# Plan KV P4: the simulated Display (DAT's Mock Device Kit), a development lane that never ships.
+# Refused wherever a build could go out: CI, Xcode Cloud, and the phone-only store product.
+mock_display="${AVENKIN_DAT_MOCK_DISPLAY:-0}"
+if [[ "$mock_display" != "0" && "$mock_display" != "1" ]]; then
+  echo "AVENKIN_DAT_MOCK_DISPLAY must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "$mock_display" == "1" ]]; then
+  for marker in CI CI_XCODE_CLOUD CI_WORKFLOW CI_BUILD_ID CI_XCODEBUILD_ACTION CI_PRODUCT CI_PRIMARY_REPOSITORY_PATH GITHUB_ACTIONS; do
+    if [[ -n "${!marker:-}" ]]; then
+      echo "AVENKIN_DAT_MOCK_DISPLAY=1 is for development on the Simulator only; it is refused here ($marker is set)." >&2
+      exit 1
+    fi
+  done
+  if [[ "$phone_only" == "1" ]]; then
+    echo "AVENKIN_DAT_MOCK_DISPLAY=1 needs the glasses SDK; it can't be combined with OPENGLASSES_PHONE_ONLY=1." >&2
+    exit 1
+  fi
+fi
+
 if [[ "$phone_only" == "1" ]]; then
   python3 Scripts/prepare-phone-only-build.py
 fi
@@ -85,6 +105,9 @@ spec_file=.xcodegen-spec.yml
       exit 1
     fi
     echo "  - project.office-transport.yml"
+  fi
+  if [[ "$mock_display" == "1" ]]; then
+    echo "  - project.mock-display.yml"
   fi
   if [[ -f project.local.yml ]]; then
     echo "  - project.local.yml"
