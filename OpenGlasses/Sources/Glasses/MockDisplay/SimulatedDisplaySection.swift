@@ -27,6 +27,17 @@ struct SimulatedDisplaySection: View {
                     OGDivider()
                     OGRow("Chrome address", icon: "globe", verbatimValue: address, showsChevron: false)
                 }
+                ForEach(SimulatedDisplayExample.allCases) { example in
+                    OGDivider()
+                    Button {
+                        lab.previewVisible = true
+                        example.open(on: appState)
+                    } label: {
+                        OGRow(LocalizedStringKey(example.title), icon: example.icon, showsChevron: false)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(walking)
+                }
                 OGDivider()
                 Button {
                     walking = true
