@@ -31,8 +31,8 @@ final class PageFigureChoiceTests: XCTestCase {
                      "show me the drawing", "the picture of the board please"] {
             XCTAssertTrue(PageFigureAsk.parse(said: said, caption: nil, origin: .requested).asksForDrawing, said)
         }
-        for said in ["show me the page", "what does the relay do", "show me table 16"] {
-            XCTAssertFalse(PageFigureAsk.parse(said: said, caption: "Table 16", origin: .requested).asksForDrawing, said)
+        for said in ["show me the page", "what does the relay do", "show me table 99"] {
+            XCTAssertFalse(PageFigureAsk.parse(said: said, caption: "Table 99", origin: .requested).asksForDrawing, said)
         }
     }
 
@@ -46,7 +46,7 @@ final class PageFigureChoiceTests: XCTestCase {
                       "the figure's number on its own")
         XCTAssertFalse(PageFigureAsk.parse(said: "show me page 12", caption: "Figure 12", origin: .requested).asksForDrawing,
                        "a page number is not the figure's")
-        XCTAssertNil(PageFigureAsk.parse(said: nil, caption: "Table 16", origin: .requested).captionNumber,
+        XCTAssertNil(PageFigureAsk.parse(said: nil, caption: "Table 99", origin: .requested).captionNumber,
                      "a table's caption is not a drawing's")
     }
 
@@ -54,7 +54,7 @@ final class PageFigureChoiceTests: XCTestCase {
         XCTAssertTrue(PageFigureAsk.parse(said: nil, caption: "Figure 12", origin: .requested).asksForDrawing)
         XCTAssertTrue(PageFigureAsk.parse(said: "  ", caption: "Fig. 3", origin: .requested).asksForDrawing)
         XCTAssertFalse(PageFigureAsk.parse(said: nil, caption: "Figure 12", origin: .automatic).asksForDrawing)
-        XCTAssertFalse(PageFigureAsk.parse(said: nil, caption: "Table 4", origin: .requested).asksForDrawing)
+        XCTAssertFalse(PageFigureAsk.parse(said: nil, caption: "Table 98", origin: .requested).asksForDrawing)
         XCTAssertFalse(PageFigureAsk.parse(said: nil, caption: nil, origin: .requested).asksForDrawing)
     }
 
@@ -185,7 +185,7 @@ final class PageFigureChoiceTests: XCTestCase {
                        .afterMarks, "the app put the page up for its figure")
         XCTAssertEqual(PageFigureAsk.parse(said: "what does the relay do", caption: "Figure 9",
                                            origin: .automatic).drawingFocus, .afterMarks)
-        XCTAssertEqual(PageFigureAsk.parse(said: nil, caption: "Table 4", origin: .automatic).drawingFocus, .none,
+        XCTAssertEqual(PageFigureAsk.parse(said: nil, caption: "Table 98", origin: .automatic).drawingFocus, .none,
                        "a table's page is not a figure's")
         XCTAssertEqual(PageFigureAsk.none.drawingFocus, .none)
         XCTAssertNotEqual(PageFigureAsk.parse(said: "show me page 7", caption: "Figure 9", origin: .automatic).key,
