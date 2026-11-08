@@ -43,11 +43,12 @@ struct AmbientCaptionOverlay: View {
     @State private var historyContentHeight: CGFloat = 0
     @ScaledMetric(relativeTo: .subheadline) private var historyWindow: CGFloat = 96
 
-    /// The line caps that keep the stack a fixed number of lines are a density
-    /// choice, and density stops being the right trade at accessibility sizes:
-    /// a reader who has asked for larger text is the reader this overlay exists
-    /// for, and a caption they can only read half of is worse than a taller
-    /// panel. So above the threshold every cap here comes off.
+    /// The line caps that keep the live line and the original-language ribbon a
+    /// fixed number of lines are a density choice, and density stops being the
+    /// right trade at accessibility sizes: a reader who has asked for larger text
+    /// is the reader this overlay exists for, and a caption they can only read
+    /// half of is worse than a taller panel. So above the threshold every cap here
+    /// comes off. (Past lines are never capped: their window scrolls.)
     private var capsLines: Bool { !typeSize.isAccessibilitySize }
 
     private var isRenaming: Binding<Bool> {
@@ -77,6 +78,12 @@ struct AmbientCaptionOverlay: View {
                     .foregroundStyle(OGTheme.onMedia)
                     .lineLimit(capsLines ? 3 : nil)
                     .multilineTextAlignment(.center)
+                    // Always its full height for its width. The panel's height is part of the
+                    // height the dock sizes itself from, and the dock's size decides the height
+                    // this line is offered — so a line that could be squeezed to fewer lines fed
+                    // back into itself. On a short phone the accessibility audit's text-size check
+                    // set it flipping between one line and two on every frame, and never settled.
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15),
                                value: captionService.currentCaption)
@@ -243,8 +250,12 @@ struct AmbientCaptionOverlay: View {
                     .font(.system(size: historySize, weight: .regular))
                     .foregroundStyle(newest ? OGTheme.onMedia
                                             : OGTheme.onMedia.opacity(OGTheme.Opacity.onMediaSecondary))
-                    .lineLimit(capsLines ? 2 : nil)
+                    // Never capped: the history is a fixed window that scrolls, so a past line
+                    // wrapping in full costs the panel no height. A two-line cap only cut lines
+                    // off — on a narrow phone a diarized line already used both beside its
+                    // speaker chip, and at the larger standard text sizes it lost its end.
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 // Show-original ribbon (BY P2): the source-language words under the translation.
                 if Config.translationShowOriginal, let original = entry.original {
                     Text(original)
