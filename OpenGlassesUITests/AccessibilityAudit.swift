@@ -559,6 +559,32 @@ class AccessibilityAuditCase: XCTestCase {
         return row
     }
 
+    /// Tap `control` until `result` appears, up to `attempts` taps.
+    ///
+    /// On a loaded CI simulator a single tap is occasionally lost: the onboarding's Get Started
+    /// (run 42455776772) and the landscape context's Conversation (run 42462704177) each left the
+    /// next screen absent once, on runs where every other case passed, and passed on the rerun.
+    /// A wearer whose tap does nothing taps again; so does this, and says so in the log. A control
+    /// that never works still fails, after the last attempt.
+    func tap(_ control: XCUIElement, until result: XCUIElement, named name: String,
+             attempts: Int = 3, timeout: TimeInterval = 15,
+             file: StaticString = #filePath, line: UInt = #line) {
+        for attempt in 1...attempts {
+            if control.waitForExistence(timeout: 10) {
+                // Some controls never report hittable — the landscape context's segment buttons
+                // among them — though a tap at their centre works, as a plain `tap()` did.
+                if control.isHittable {
+                    control.tap()
+                } else {
+                    control.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                }
+            }
+            if result.waitForExistence(timeout: timeout) { return }
+            print("[a11y-audit] \(name) had not appeared after tap \(attempt) of \(attempts)")
+        }
+        XCTFail("\(name) never appeared", file: file, line: line)
+    }
+
     /// Bring the dock panel to its grid of actions, and return once it is there.
     ///
     /// The panel opens on its conversation page while things to try are waiting there
@@ -572,9 +598,9 @@ class AccessibilityAuditCase: XCTestCase {
             NSPredicate(format: "label IN %@", ["Show actions", "Show conversation"])).firstMatch
         XCTAssertTrue(either.waitForExistence(timeout: 60),
                       "The dock panel's page control never appeared", file: file, line: line)
-        if showActions.exists { showActions.tap() }
-        XCTAssertTrue(showConversation.waitForExistence(timeout: 10),
-                      "The dock panel did not move to its actions", file: file, line: line)
+        guard !showConversation.exists else { return }
+        tap(showActions, until: showConversation, named: "The dock panel's actions",
+            file: file, line: line)
     }
 
     /// Wait for a screen to settle on a marker element before auditing it.

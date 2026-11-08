@@ -22,12 +22,12 @@ final class AdaptiveWorkspaceUITests: AccessibilityAuditCase {
         XCTAssertFalse(context.buttons["Evidence"].exists)
         XCTAssertFalse(context.buttons["adaptive-workspace-open-job"].exists)
 
-        context.buttons["My Day"].tap()
-        awaitScreen(context.scrollViews["adaptive-workspace-my-day"], named: "Personal My Day")
+        tap(context.buttons["My Day"], until: context.scrollViews["adaptive-workspace-my-day"],
+            named: "Personal My Day")
         XCTAssertTrue(context.buttons["My Day"].isSelected)
 
-        context.buttons["Conversation"].tap()
-        awaitScreen(conversation, named: "Return to personal conversation")
+        tap(context.buttons["Conversation"], until: conversation,
+            named: "Return to personal conversation")
         XCTAssertTrue(context.buttons["Conversation"].isSelected)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "adaptive-personal-conversation-and-my-day"
