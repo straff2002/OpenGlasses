@@ -335,7 +335,9 @@ enum RecognisedGrid {
            TableExtractor.numberedHeadingRow(prints: { anchored(headerRows, $0).map { !read[$0].printed.isEmpty } ?? false },
                                              numeric: { anchored(headerRows, $0).map(isNumber) ?? false },
                                              paths: columnPaths),
-           multiRows().filter({ $0 > headerRows }).count >= TableExtractor.minimumBodyRows {
+           TableExtractor.numberedRowHeads(rowsUnder: multiRows().filter({ $0 > headerRows }).count,
+                                           namesARow: anchored(headerRows, 0).map { !read[$0].printed.isEmpty } ?? false,
+                                           counts: (1..<columnCount).map { anchored(headerRows, $0).map { read[$0].text } ?? "" }) {
             headerRows += 1
             columnPaths = paths(headerRows: headerRows)
         }

@@ -566,7 +566,9 @@ final class TableExtractorTests: XCTestCase {
 
     func testARowOfNumbersOverHeadingWordsHeadsTheColumns() throws {
         let table = try only(L.numberedColumnHeadings())
-        XCTAssertEqual(table.rows.map(\.path), [["W2"], ["W4"], ["W6"], ["W8"]])
+        // The heading set alone over the rows heads them (Plan KR follow-up), not the columns.
+        XCTAssertEqual(table.rows.map(\.path), [["Plain widgets", "W2"], ["Plain widgets", "W4"], ["Plain widgets", "W6"],
+                                                ["Plain widgets", "W8"]])
         XCTAssertEqual(table.columns.count, 4)
         for index in 0..<4 {
             XCTAssertTrue(table.columns[index].path.contains("\(index + 1) Area, mm\u{00B2}"),
