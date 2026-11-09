@@ -4,6 +4,8 @@ import SwiftUI
 /// stage change repaints even though the service hangs off `AppState`.
 struct OrgEnrolmentOverlay: View {
     @ObservedObject var service: OrgEnrolmentService
+    /// A move's review offers the organisation being left its waiting reports and job records.
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         Color.clear
@@ -12,6 +14,7 @@ struct OrgEnrolmentOverlay: View {
                 get: { service.stage != .idle },
                 set: { if !$0 { service.dismiss() } })) {
                 OrgEnrolmentSheet(service: service)
+                    .environmentObject(appState)
             }
     }
 }
@@ -20,6 +23,8 @@ struct OrgEnrolmentOverlay: View {
 /// who it is from, what it locks, what it sets, and what this version of the app could not use.
 struct OrgEnrolmentSheet: View {
     @ObservedObject var service: OrgEnrolmentService
+    /// Why a move did not go ahead (the device owner's check was not passed).
+    @State private var moveProblem: String?
 
     var body: some View {
         NavigationStack {
@@ -48,6 +53,27 @@ struct OrgEnrolmentSheet: View {
         switch service.stage {
         case .applied, .failed: return true
         default: return false
+        }
+    }
+
+    /// Applying a move removes the current organisation's profile, so it asks for the device
+    /// owner first, exactly as Remove Profile does; that one check is the move's only confirmation.
+    private func apply(_ review: OrgProfileReview) {
+        guard let move = review.move else {
+            service.confirm()
+            return
+        }
+        moveProblem = nil
+        let from = move.organizationName
+        let to = review.organizationName
+        OwnerGateAuth.authenticate(reason: String(localized: "Move this phone from \(from) to \(to)")) { granted in
+            Task { @MainActor in
+                guard granted else {
+                    moveProblem = String(localized: "Couldn't verify it's you — this phone stays with \(from).")
+                    return
+                }
+                service.confirm()
+            }
         }
     }
 
@@ -90,7 +116,7 @@ struct OrgEnrolmentSheet: View {
             .accessibilityLabel(Text("Fetching the profile"))
 
         case .reviewing(let review):
-            OrgProfileReviewList(review: review) { service.confirm() }
+            OrgProfileReviewList(review: review, problem: moveProblem) { apply(review) }
 
         case .modelKey(let model, let organization):
             OrgModelKeyPage(model: model, organization: organization,
@@ -127,10 +153,16 @@ struct OrgEnrolmentSheet: View {
 /// The review itself, split out so the sheet body stays one switch.
 struct OrgProfileReviewList: View {
     let review: OrgProfileReview
+    /// Shown above the apply button, when applying did not go ahead.
+    var problem: String? = nil
     let apply: () -> Void
 
     var body: some View {
         List {
+            if let move = review.move {
+                moveSections(move)
+            }
+
             Section {
                 Text(verbatim: review.organizationName)
                     .font(.headline)
@@ -214,12 +246,137 @@ struct OrgProfileReviewList: View {
                 }
             }
 
+            if let problem {
+                Section {
+                    Label { Text(verbatim: problem) } icon: { Image(systemName: "exclamationmark.triangle") }
+                }
+            }
+
             Section {
-                Button("Apply the profile", action: apply)
+                if review.move != nil {
+                    Button("Move to \(review.organizationName)", role: .destructive, action: apply)
+                } else {
+                    Button("Apply the profile", action: apply)
+                }
             } footer: {
-                Text("The device owner can remove the profile later from Settings, which lifts its locks and puts your own settings back.")
+                if let move = review.move {
+                    Text("You'll confirm it's you, then \(move.organizationName)'s profile is removed and \(review.organizationName)'s is applied. The device owner can remove it later from Settings.")
+                } else {
+                    Text("The device owner can remove the profile later from Settings, which lifts its locks and puts your own settings back.")
+                }
             }
         }
+    }
+
+    /// A move (another organisation's profile is in force): what leaving it does — Remove Profile's
+    /// own consequences and the departure's — and its records, offered before anything is removed.
+    @ViewBuilder
+    private func moveSections(_ move: OrgProfileReview.Move) -> some View {
+        let from = move.organizationName
+        let to = review.organizationName
+        Section {
+            Text("Move this phone from \(from) to \(to)")
+                .font(.headline)
+        } footer: {
+            Text("This phone is with \(from) now. Applying \(to)'s profile leaves \(from) first.")
+        }
+        Section {
+            Label("\(from)'s profile is removed: its locks lift, the settings it chose go back to yours, and a licence it brought is removed.",
+                  systemImage: "xmark.circle")
+            if move.keepsPack {
+                Label("\(from)'s content is erased from this phone, apart from the vault pack \(to) installs as well.",
+                      systemImage: "trash")
+            } else {
+                Label("\(from)'s content is erased from this phone: its manuals, upcoming jobs and staged exports.",
+                      systemImage: "trash")
+            }
+            Label("Job records and waiting reports from your time with \(from) go to it automatically if it has a report endpoint, and are erased from this phone either way.",
+                  systemImage: "tray.and.arrow.up")
+            OrgOwedRecordsRows(organization: from, enrolledAt: move.enrolledAt, style: .list)
+        } header: {
+            Text("Leaving \(from)")
+        } footer: {
+            Text(verbatim: OrgDepartureService.erasureLimits)
+        }
+    }
+}
+
+/// What a phone leaving an organisation still holds that is the organisation's (Plan CT PR 4): the
+/// reports waiting to be sent and the job records of the managed period, each with the action
+/// that sends it. Offered, never forced. The organisation's page shows these under Leave before
+/// Remove Profile, and a move's review shows them before the move is applied; nothing is drawn when
+/// nothing is owed.
+struct OrgOwedRecordsRows: View {
+    enum Style { case page, list }
+
+    let organization: String
+    let enrolledAt: Date
+    let style: Style
+
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var fieldSessions = FieldSessionService.shared
+    @State private var recordsShare: ShareItem?
+    @State private var exportProblem: String?
+
+    /// The job records from the managed period, as the departure will count them.
+    static func owedSessions(since enrolledAt: Date) -> [String] {
+        OrgDepartureService.managedSessionIds(FieldSessionService.shared.history, since: enrolledAt)
+    }
+
+    var body: some View {
+        let reports = appState.jobSends.stagedCount
+        let sessions = Self.owedSessions(since: enrolledAt)
+        if reports > 0 {
+            row("Send \(reports) Waiting Reports", icon: "paperplane") { _ = appState.jobSends.sendAll() }
+        }
+        if !sessions.isEmpty {
+            row("Share Job Records for \(organization)", icon: "square.and.arrow.up") { shareRecords(sessions) }
+                .sheet(item: $recordsShare) { item in
+                    ShareSheet(items: item.items)
+                }
+        }
+        if let exportProblem {
+            switch style {
+            case .page:
+                OGDivider()
+                OGStatusLabel(exportProblem, kind: .error)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+            case .list:
+                Label { Text(verbatim: exportProblem) } icon: { Image(systemName: "exclamationmark.triangle") }
+                    .foregroundStyle(OGTheme.errorLabel)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(_ title: LocalizedStringKey, icon: String, action: @escaping () -> Void) -> some View {
+        switch style {
+        case .page:
+            OGDivider()
+            Button(action: action) {
+                OGRow(title, icon: icon, showsChevron: false) { EmptyView() }
+            }
+            .buttonStyle(.plain)
+        case .list:
+            Button(action: action) {
+                Label(title, systemImage: icon)
+            }
+        }
+    }
+
+    /// Each managed session's record, as the job export writes it, handed to the share sheet at once.
+    private func shareRecords(_ sessionIds: [String]) {
+        exportProblem = nil
+        var files: [URL] = []
+        for id in sessionIds {
+            do {
+                files += try FieldSessionService.shared.exportSession(id: id).map(\.fileURL)
+            } catch {
+                exportProblem = String(localized: "Couldn't export every job record: \(error.localizedDescription)")
+            }
+        }
+        if !files.isEmpty { recordsShare = ShareItem(items: files) }
     }
 }
 
@@ -415,8 +572,6 @@ struct OrganisationProfilePage: View {
     @Environment(\.dismiss) private var dismiss
     /// Plan CT PR 4: the step before removal that offers the firm its records.
     @State private var leaving = false
-    @State private var recordsShare: ShareItem?
-    @State private var exportProblem: String?
     /// Re-draws the ended notice when a job opens or closes.
     @ObservedObject private var fieldSessions = FieldSessionService.shared
     /// Where the ended notice scrolls to.
@@ -563,7 +718,7 @@ struct OrganisationProfilePage: View {
     private var owedReports: Int { appState.jobSends.stagedCount }
 
     private func owedSessions(_ record: OrgEnrolmentRecord) -> [String] {
-        OrgDepartureService.managedSessionIds(FieldSessionService.shared.history, since: record.enrolledAt)
+        OrgOwedRecordsRows.owedSessions(since: record.enrolledAt)
     }
 
     /// Before the profile goes: the reports still waiting to be sent, and the job records from the
@@ -574,34 +729,7 @@ struct OrganisationProfilePage: View {
         OGNotice(text: "Before you remove \(organization)'s profile, send it what is still its own. Anything you don't send goes to \(organization) automatically if it has a report endpoint, and is erased from this phone either way.",
                  systemImage: "tray.and.arrow.up")
             .padding(12)
-        if owedReports > 0 {
-            OGDivider()
-            Button {
-                _ = appState.jobSends.sendAll()
-            } label: {
-                OGRow("Send \(owedReports) Waiting Reports", icon: "paperplane", showsChevron: false) { EmptyView() }
-            }
-            .buttonStyle(.plain)
-        }
-        let sessions = owedSessions(record)
-        if !sessions.isEmpty {
-            OGDivider()
-            Button {
-                shareRecords(sessions)
-            } label: {
-                OGRow("Share Job Records for \(organization)", icon: "square.and.arrow.up", showsChevron: false) { EmptyView() }
-            }
-            .buttonStyle(.plain)
-            .sheet(item: $recordsShare) { item in
-                ShareSheet(items: item.items)
-            }
-        }
-        if let exportProblem {
-            OGDivider()
-            OGStatusLabel(exportProblem, kind: .error)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-        }
+        OrgOwedRecordsRows(organization: organization, enrolledAt: record.enrolledAt, style: .page)
         OGDivider()
         Button(role: .destructive) {
             confirmingRemoval = true
@@ -612,25 +740,10 @@ struct OrganisationProfilePage: View {
         OGDivider()
         Button {
             leaving = false
-            exportProblem = nil
         } label: {
             OGRow("Not Now", icon: "arrow.uturn.backward", showsChevron: false) { EmptyView() }
         }
         .buttonStyle(.plain)
-    }
-
-    /// Each managed session's record, as the job export writes it, handed to the share sheet at once.
-    private func shareRecords(_ sessionIds: [String]) {
-        exportProblem = nil
-        var files: [URL] = []
-        for id in sessionIds {
-            do {
-                files += try FieldSessionService.shared.exportSession(id: id).map(\.fileURL)
-            } catch {
-                exportProblem = String(localized: "Couldn't export every job record: \(error.localizedDescription)")
-            }
-        }
-        if !files.isEmpty { recordsShare = ShareItem(items: files) }
     }
 
     private func remove() {

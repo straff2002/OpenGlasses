@@ -170,6 +170,28 @@ final class OrgEnrolmentService: ObservableObject {
         }
     }
 
+    /// What a code read by the in-app scanner is, wherever the scanner opened from: the welcome
+    /// page's "Set up with my company" and Settings › Field Assist both decide it here.
+    enum ScannedCode: Equatable {
+        /// An office's code (passed on exactly as scanned: the office transport checks the text), an
+        /// enrolment link or a profile address. `AppState.openScannedOrganisationCode` takes it.
+        case link(String)
+        /// Anything else is an activation key — the QR on a company's activation card is the bare
+        /// key — or a full licence code: looked up with `resolveEntry` as if typed, then opened
+        /// with `openLicence`.
+        case key(String)
+    }
+
+    static func classifyScan(_ code: String) -> ScannedCode {
+        if OfficeCommissioning.isCommissioningCode(code) { return .link(code) }
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = trimmed.lowercased()
+        if lowered.hasPrefix("openglasses:") || lowered.hasPrefix("avenkin:") || lowered.hasPrefix("https:") {
+            return .link(trimmed)
+        }
+        return .key(trimmed)
+    }
+
     /// What entering a licence key should do (Plan CT 3a).
     enum LicenceRoute: Equatable {
         /// No `profile` claim, or not a readable licence: activate it the way a licence always has
@@ -220,7 +242,7 @@ final class OrgEnrolmentService: ObservableObject {
                 profileKeys: profileKeys, licenceKey: licenceKey, now: now())
             settingUpFor = pair.licence.licensee
             switch manager.review(document: profileDocument, source: .office,
-                                  enteredLicence: licenceCode) {
+                                  enteredLicence: licenceCode, allowingMove: true) {
             case .success(let review): stage = .reviewing(review)
             case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
             }
@@ -344,7 +366,7 @@ final class OrgEnrolmentService: ObservableObject {
             return
         }
         switch manager.review(document: document, source: source, sourceURL: target,
-                              enteredLicence: enteredLicence) {
+                              enteredLicence: enteredLicence, allowingMove: true) {
         case .success(let review): stage = .reviewing(review)
         case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
         }
