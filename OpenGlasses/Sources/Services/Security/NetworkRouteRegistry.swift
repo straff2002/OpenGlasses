@@ -418,9 +418,6 @@ extension NetworkRoute {
              .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload:
             return .allowedLocalOnly(
                 "The outbound half is a model identifier and a range request; no captured content leaves, and these downloads are what make on-device inference possible in the first place.")
-        case .licenceSeatLease:
-            return .allowedLocalOnly(
-                "A licence check that carries no captured content: an enrolment id, a public key, a build number and a profile id. Blocking it would lock the organisation's licence on a phone that is otherwise in order.")
         case .loopbackOAuthCallback:
             return .allowedLocalOnly(
                 "An inbound listener bound to 127.0.0.1; the redirect never reaches a network interface.")

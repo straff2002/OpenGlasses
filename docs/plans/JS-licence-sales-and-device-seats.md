@@ -620,7 +620,9 @@ built from `SeatPolicy`.
 - **Disclosure.** It shares this pull request, per the telemetry rule: the route `licenceSeatLease`
   (data class `deviceIdentifier`), a `DeviceID` entry in `PrivacyInfo.xcprivacy`, whose header no
   longer says the app has no developer-operated backend, and a sentence in both Privacy footers.
-  `TelemetryOptOutGuardTests` pins all three. The store is registered as `licenceSeat`.
+  `TelemetryOptOutGuardTests` pins all three. The store is registered as `licenceSeat`. The route
+  is blocked under Medical Local Only, like every route outside the pinned exceptions. Seat checks are
+  for Field Assist only (*Non-goals*), so a phone in that mode does not renew its seat.
 - **The third key** is Curve25519: public half in `DeviceSeatLease.productionPublicKeys`,
   private half a 0600 file beside the vendor's other signing keys. It is minted with the generator's
   `keygen` and never printed.
