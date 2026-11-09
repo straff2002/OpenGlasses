@@ -89,6 +89,77 @@ final class ActivationKeyTests: XCTestCase {
         XCTAssertEqual(names.count, 200)
     }
 
+    // MARK: - Formatting as it is typed
+
+    func testAKeyIsUpperCasedAndGroupedInFoursAsItIsTyped() {
+        XCTAssertEqual(ActivationKey.formatEntry("k7q3x9pdm2va8rtz"), vector)
+        var shown = ""
+        for character in "k7q3x9pdm2va8rtz" {
+            shown = ActivationKey.formatEntry(shown + String(character), previous: shown)
+        }
+        XCTAssertEqual(shown, vector, "one character at a time ends in the same place")
+        XCTAssertEqual(ActivationKey.formatEntry(""), "")
+    }
+
+    func testAPastedKeyIsGroupedWhateverItCameWith() {
+        for pasted in ["K7Q3X9PDM2VA8RTZ", "k7q3-x9pd-m2va-8rtz", "K7Q3 X9PD M2VA 8RTZ", " k7q3-x9pd m2va8rtz\n",
+                       "K7Q-3X9-PDM-2VA-8RTZ"] {
+            XCTAssertEqual(ActivationKey.formatEntry(pasted), vector, pasted)
+            XCTAssertEqual(ActivationKey.formatEntry(pasted, previous: "K7Q3"), vector, "pasted over a partial key")
+        }
+    }
+
+    func testAPartialKeyIsGroupedAsFarAsItGoes() {
+        XCTAssertEqual(ActivationKey.formatEntry("k"), "K")
+        XCTAssertEqual(ActivationKey.formatEntry("k7q3"), "K7Q3")
+        XCTAssertEqual(ActivationKey.formatEntry("k7q3x"), "K7Q3-X")
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3-X9PD-M2"), "K7Q3-X9PD-M2")
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3-"), "K7Q3", "a dash with nothing after it goes")
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3-X9PD-M2VA-8RTZZ"), "K7Q3-X9PD-M2VA-8RTZ-Z",
+                       "a key typed one too long still reads as an attempt, and `read` says how long it is")
+    }
+
+    func testLookalikeLettersStayAsTyped() {
+        XCTAssertEqual(ActivationKey.formatEntry("oil0-u"), "OIL0-U", "read maps O, I and L and refuses U")
+        let data = "01ABCDEFGHJKMNP"
+        let values = data.map { ActivationKey.alphabet.firstIndex(of: $0)! }
+        let check = String(ActivationKey.alphabet[ActivationKey.checkValue(values)])
+        let shown = ActivationKey.formatEntry("ol" + data.dropFirst(2).lowercased() + check)
+        XCTAssertTrue(shown.hasPrefix("OLAB-"), shown)
+        XCTAssertEqual(ActivationKey.read(shown), ActivationKey.read(data + check))
+    }
+
+    func testBackspacingOverADashTakesTheCharacterBeforeIt() {
+        // The cursor just after the dash in "K7Q3-X9PD"; backspace removes the dash alone.
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3X9PD", previous: "K7Q3-X9PD"), "K7QX-9PD")
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3-X9PDM2VA-8RTZ", previous: vector), "K7Q3-X9PM-2VA8-RTZ")
+        // Backspacing the last character would leave a trailing dash, which goes with it.
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3-", previous: "K7Q3-X"), "K7Q3")
+        // Any other edit is formatted as it stands.
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q-X9PD", previous: "K7Q3-X9PD"), "K7QX-9PD")
+        XCTAssertEqual(ActivationKey.formatEntry("K7Q3-X9P", previous: "K7Q3-X9PD"), "K7Q3-X9P")
+        XCTAssertEqual(ActivationKey.formatEntry("", previous: "K"), "")
+    }
+
+    func testALicenceCodeIsLeftExactlyAsPasted() {
+        let code = "eyJmZWF0dXJlIjoiZmllbGRfYXNzaXN0In0.c2lnbmF0dXJl"
+        XCTAssertEqual(ActivationKey.formatEntry(code), code)
+        XCTAssertEqual(ActivationKey.formatEntry(code, previous: String(code.dropLast())), code)
+        let long = String(repeating: "eyJmZWF0dXJlIjoiZmllbGRfYXNzaXN0In0", count: 11) + ".c2lnbmF0dXJl-_A"
+        XCTAssertEqual(ActivationKey.formatEntry(long), long, "a code of about 400 characters is never reshaped")
+        XCTAssertEqual(ActivationKey.formatEntry("abc.def"), "abc.def", "a dot is never part of a key")
+        XCTAssertEqual(ActivationKey.formatEntry("k7q3-x9pd-m2va-8rtz-k7q3-x9pd-m"), "k7q3-x9pd-m2va-8rtz-k7q3-x9pd-m",
+                       "past the longest attempt it is not a key, whatever its characters")
+    }
+
+    func testAFormattedKeyStillReadsAsTheSameKey() {
+        for _ in 0..<50 {
+            let key = ActivationKey.generate()
+            XCTAssertEqual(ActivationKey.formatEntry(key.canonical.lowercased()), key.display)
+            XCTAssertEqual(ActivationKey.read(ActivationKey.formatEntry(key.canonical.lowercased())), .key(key))
+        }
+    }
+
     // MARK: - The sealed file
 
     func testTheFileNameMatchesTheVector() throws {

@@ -78,11 +78,8 @@ struct ActivationKey: Equatable, Sendable {
     // MARK: - Reading what was typed
 
     static func read(_ text: String) -> Reading {
-        let compact = text.uppercased().filter { !$0.isWhitespace && $0 != "-" }
-        guard !compact.isEmpty, compact.count <= longestAttempt,
-              compact.allSatisfy({ alphabet.contains($0) || "OILU".contains($0) }) else {
-            return .notAKey
-        }
+        let compact = compacted(text)
+        guard isAttempt(compact) else { return .notAKey }
         guard compact.count == length else { return .invalid(.length(compact.count)) }
         var values: [Int] = []
         for character in compact {
@@ -93,6 +90,53 @@ struct ActivationKey: Equatable, Sendable {
             return .invalid(.mistyped)
         }
         return .key(ActivationKey(canonical: String(values.map { alphabet[$0] })))
+    }
+
+    /// Upper case, with spaces, line breaks and dashes taken out.
+    private static func compacted<S: StringProtocol>(_ text: S) -> String {
+        text.uppercased().filter { !$0.isWhitespace && $0 != "-" }
+    }
+
+    /// Whether compacted text is an attempt at a key: short enough, and only the alphabet or the
+    /// letters people type for it (`O`, `I`, `L`, `U`).
+    private static func isAttempt(_ compact: String) -> Bool {
+        !compact.isEmpty && compact.count <= longestAttempt
+            && compact.allSatisfy { alphabet.contains($0) || "OILU".contains($0) }
+    }
+
+    // MARK: - Formatting as it is typed
+
+    /// What a key field shows once `text` is typed or pasted into it, `previous` being what it
+    /// showed before the edit.
+    ///
+    /// While the text reads as an attempt at a key (`read` would not say `.notAKey`), it is upper
+    /// cased and grouped in fours, `K7Q3-X9PD-…`, whatever spaces or dashes it came with. Lookalike
+    /// letters stay as typed, since `read` maps them, so the field never shows a character the
+    /// person did not type. Anything else, a pasted licence code above all, comes back exactly as
+    /// it is.
+    ///
+    /// Backspacing over a dash would only have the dash put straight back, so it takes the
+    /// character before the dash instead.
+    static func formatEntry(_ text: String, previous: String = "") -> String {
+        var characters = Array(compacted(text))
+        guard isAttempt(String(characters)) else { return text }
+        if let dash = deletedDash(from: previous, leaving: text) {
+            let before = compacted(previous.prefix(dash)).count
+            if before > 0 { characters.remove(at: before - 1) }
+        }
+        return stride(from: 0, to: characters.count, by: 4)
+            .map { String(characters[$0..<min($0 + 4, characters.count)]) }
+            .joined(separator: "-")
+    }
+
+    /// The offset in `previous` of a single dash deleted to leave `text`, or nil for any other edit.
+    private static func deletedDash(from previous: String, leaving text: String) -> Int? {
+        let old = Array(previous)
+        let new = Array(text)
+        guard old.count == new.count + 1 else { return nil }
+        let at = zip(old, new).prefix(while: { $0.0 == $0.1 }).count
+        guard old[at] == "-", old[(at + 1)...].elementsEqual(new[at...]) else { return nil }
+        return at
     }
 
     /// A character's value, reading `O` as `0` and `I`/`L` as `1`. `U` has none.
