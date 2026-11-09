@@ -46,7 +46,9 @@ final class DeviceSeatKeychainStore: DeviceSeatKeyStore, @unchecked Sendable {
 
     func existing() -> DeviceSeatKey? {
         if let cached = cache.withLock({ $0 }) { return cached }
-        let key = load()
+        // Only a key found is cached: before the first unlock after a reboot the Keychain reads as
+        // empty, and caching that would hold a seat-checked licence locked until the next launch.
+        guard let key = load() else { return nil }
         cache.withLock { $0 = .some(key) }
         return key
     }
@@ -78,7 +80,7 @@ final class DeviceSeatKeychainStore: DeviceSeatKeyStore, @unchecked Sendable {
 
     func remove() {
         try? KeychainService.deleteItem(Self.keychainAccount)
-        cache.withLock { $0 = .some(nil) }
+        cache.withLock { $0 = nil }
     }
 
     private func load() -> DeviceSeatKey? {
