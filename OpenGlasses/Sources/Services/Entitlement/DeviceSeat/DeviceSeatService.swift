@@ -94,6 +94,13 @@ final class DeviceSeatService: ObservableObject {
 
     private var seams: Seams
     private var inFlight = false
+    /// A check-in asked for while one was out: run next, so a forced claim (a move) is never dropped.
+    private var pending: (enrolment: DeviceSeatEnrolment, force: Bool)?
+    /// Bumped by every release, so an answer that arrives after it is thrown away.
+    private var generation = 0
+    /// The release still on its way; a claim waits for it, so a move into a full licence on the same
+    /// seat service does not race its own seat.
+    private var releaseTask: Task<Void, Never>?
 
     init(seams: Seams = Seams()) {
         self.seams = seams
@@ -111,21 +118,35 @@ final class DeviceSeatService: ObservableObject {
     /// each profile renewal attempt at launch and on foreground. Does nothing for a licence that
     /// does not count seats, so no other phone ever makes this call.
     func checkIn(_ enrolment: DeviceSeatEnrolment?, force: Bool = false) async {
-        guard let enrolment, let (code, payload) = seatCheckedLicence(),
-              let origin = DeviceSeatLease.seatOrigin(profileAddress: payload.profile) else { return }
-        guard !inFlight else { return }
+        guard let enrolment else { return }
+        if inFlight {
+            pending = (enrolment, force || (pending?.force ?? false))
+            return
+        }
         inFlight = true
-        defer { inFlight = false }
+        var next: (enrolment: DeviceSeatEnrolment, force: Bool)? = (enrolment, force)
+        while let run = next {
+            pending = nil
+            await checkInOnce(run.enrolment, force: run.force)
+            next = pending
+        }
+        inFlight = false
+    }
+
+    private func checkInOnce(_ enrolment: DeviceSeatEnrolment, force: Bool) async {
+        guard let (code, payload) = seatCheckedLicence(),
+              let origin = DeviceSeatLease.seatOrigin(profileAddress: payload.profile) else { return }
+        let startedIn = generation
 
         var record = seams.loadRecord()
         if record?.enrolmentId != enrolment.enrolmentId || record?.profileId != enrolment.profileId {
             record = DeviceSeatRecord(enrolmentId: enrolment.enrolmentId, profileId: enrolment.profileId)
         }
         guard var current = record else { return }
-        let now = seams.now()
+        let now = wholeSeconds(seams.now())
         let licenseIDHash = LiveFieldAssistEntitlementProvider.licenseIDHash(for: code)
         let before = DeviceSeatLease.verdict(lease: current.lease, keys: seams.leaseKeys,
-                                             deviceKeyHash: seams.keys.currentKeyHash(),
+                                             deviceKeyHash: (try? seams.keys.existing()).map { DeviceSeatLease.deviceKeyHash(publicKeyX963: $0.publicKeyX963) },
                                              enrolmentId: current.enrolmentId, licenseIDHash: licenseIDHash,
                                              clockHighWater: current.clockHighWater, now: now)
         if before != .clockWoundBack { current.clockHighWater = max(current.clockHighWater ?? now, now) }
@@ -141,11 +162,12 @@ final class DeviceSeatService: ObservableObject {
         current.origin = origin.absoluteString
         save(current, verdict: before)
 
+        // A key is made only when the Keychain says there is none: a read that fails (locked, or
+        // unavailable) must not replace the key and orphan the seat it holds.
         let key: DeviceSeatKey
-        do { key = try seams.keys.existing() ?? seams.keys.create() } catch {
-            save(current, verdict: before)
-            return
-        }
+        do { key = try seams.keys.existing() ?? seams.keys.create() } catch { return }
+        if let releasing = releaseTask { await releasing.value }
+        guard generation == startedIn else { return }
         // A stored lease that names this phone's key is renewed (the service finds the seat by
         // it, whichever licence it named); anything else claims.
         let ownLease = current.lease.flatMap { DeviceSeatLease.open($0, keys: seams.leaseKeys) }
@@ -158,18 +180,24 @@ final class DeviceSeatService: ObservableObject {
             reply = await exchange(.claim, claimRequest(enrolment, key: key), key: key, origin: origin)
         }
 
-        // The phone may have left or re-enrolled while the request was out.
-        guard seams.loadRecord().map({ $0.enrolmentId == current.enrolmentId }) ?? true else { return }
+        // The phone may have left (a release) or re-enrolled while the request was out: then the
+        // answer belongs to an enrolment that is gone, and is dropped.
+        guard generation == startedIn,
+              seams.loadRecord().map({ $0.enrolmentId == current.enrolmentId }) ?? false else { return }
         if let reply {
             if let lease = reply.lease,
+               let opened = DeviceSeatLease.open(lease, keys: seams.leaseKeys),
                DeviceSeatLease.verdict(lease: lease, keys: seams.leaseKeys,
                                        deviceKeyHash: DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963),
                                        enrolmentId: current.enrolmentId, licenseIDHash: licenseIDHash,
-                                       now: seams.now()).isLive {
+                                       now: wholeSeconds(seams.now())).isLive {
                 current.lease = lease
-                current.lastRenewed = seams.now()
+                current.lastRenewed = wholeSeconds(seams.now())
                 current.refusal = nil
                 current.refusedSeats = nil
+                // The service's clock signed the lease: it, not a clock once set ahead, is the
+                // latest time seen. A phone whose clock jumped forward recovers here.
+                current.clockHighWater = opened.issued
             } else if let refusal = reply.refusal, refusal != .badNonce, refusal != .badRequest {
                 current.refusal = refusal
                 current.refusedSeats = reply.seats
@@ -178,8 +206,13 @@ final class DeviceSeatService: ObservableObject {
         let after = DeviceSeatLease.verdict(lease: current.lease, keys: seams.leaseKeys,
                                             deviceKeyHash: DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963),
                                             enrolmentId: current.enrolmentId, licenseIDHash: licenseIDHash,
-                                            clockHighWater: current.clockHighWater, now: seams.now())
+                                            clockHighWater: current.clockHighWater, now: wholeSeconds(seams.now()))
         save(current, verdict: after)
+    }
+
+    /// Records keep whole seconds (ISO-8601), so a time compares equal after a round trip.
+    private func wholeSeconds(_ date: Date) -> Date {
+        Date(timeIntervalSince1970: date.timeIntervalSince1970.rounded(.down))
     }
 
     /// Give the seat back and forget the key: the phone's owner removed the organisation (or moved
@@ -187,8 +220,9 @@ final class DeviceSeatService: ObservableObject {
     /// arrives the seat frees when its lease and grace run out.
     @discardableResult
     func release() -> Task<Void, Never>? {
+        generation += 1
         let record = seams.loadRecord()
-        let key = seams.keys.existing()
+        let key = try? seams.keys.existing()
         let origin = record?.origin.flatMap { DeviceSeatLease.seatOrigin(profileAddress: $0) }
         seams.saveRecord(nil)
         seams.keys.remove()
@@ -199,9 +233,11 @@ final class DeviceSeatService: ObservableObject {
         guard let lease = record?.lease, let key, let origin,
               let payload = DeviceSeatLease.open(lease, keys: seams.leaseKeys),
               payload.deviceKeyHash == DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963) else { return nil }
-        return Task { [weak self] in
+        let task = Task { [weak self] in
             _ = await self?.exchange(.release, DeviceSeatLease.ReleaseRequest(lease: lease), key: key, origin: origin)
         }
+        releaseTask = task
+        return task
     }
 
     // MARK: - One exchange

@@ -13,8 +13,10 @@ protocol DeviceSeatKey: Sendable {
 }
 
 protocol DeviceSeatKeyStore: Sendable {
-    /// The key this phone already made, if any.
-    func existing() -> DeviceSeatKey?
+    /// The key this phone already made, or nil when it has made none. Throws when the store cannot
+    /// be read (locked, unavailable), which is not the same as no key: the caller must not make a
+    /// new one then, or it orphans the seat the old key holds.
+    func existing() throws -> DeviceSeatKey?
     /// Make a new key, replacing any old one.
     func create() throws -> DeviceSeatKey
     /// Forget the key (the phone left its organisation).
@@ -24,7 +26,7 @@ protocol DeviceSeatKeyStore: Sendable {
 extension DeviceSeatKeyStore {
     /// The hash a lease must name, or nil when the phone has no key.
     func currentKeyHash() -> String? {
-        existing().map { DeviceSeatLease.deviceKeyHash(publicKeyX963: $0.publicKeyX963) }
+        (try? existing())?.map { DeviceSeatLease.deviceKeyHash(publicKeyX963: $0.publicKeyX963) }
     }
 }
 
@@ -44,11 +46,11 @@ final class DeviceSeatKeychainStore: DeviceSeatKeyStore, @unchecked Sendable {
 
     private let cache = OSAllocatedUnfairLock<DeviceSeatKey??>(initialState: nil)
 
-    func existing() -> DeviceSeatKey? {
-        if let cached = cache.withLock({ $0 }) { return cached }
-        // Only a key found is cached: before the first unlock after a reboot the Keychain reads as
-        // empty, and caching that would hold a seat-checked licence locked until the next launch.
-        guard let key = load() else { return nil }
+    func existing() throws -> DeviceSeatKey? {
+        if let cached = cache.withLock({ $0 }), let key = cached { return key }
+        // Only a key found is cached: before the first unlock after a reboot the Keychain cannot be
+        // read, and caching that would hold a seat-checked licence locked until the next launch.
+        guard let key = try load() else { return nil }
         cache.withLock { $0 = .some(key) }
         return key
     }
@@ -83,8 +85,10 @@ final class DeviceSeatKeychainStore: DeviceSeatKeyStore, @unchecked Sendable {
         cache.withLock { $0 = nil }
     }
 
-    private func load() -> DeviceSeatKey? {
-        guard let stored = try? KeychainService.readData(for: Self.keychainAccount), stored.count > 3 else { return nil }
+    /// Nil when there is no item, or the item holds no usable key (a handle no Secure Enclave on this
+    /// phone can open is gone for good, so it is replaced). Throws when the Keychain cannot be read.
+    private func load() throws -> DeviceSeatKey? {
+        guard let stored = try KeychainService.readData(for: Self.keychainAccount), stored.count > 3 else { return nil }
         let prefix = String(decoding: stored.prefix(3), as: UTF8.self)
         let body = stored.dropFirst(3)
         switch prefix {

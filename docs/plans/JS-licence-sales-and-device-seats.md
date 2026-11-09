@@ -614,6 +614,12 @@ built from `SeatPolicy`.
   capability, so Workiz stops; Field Assist locks; the open job closes for handover as it does on
   expiry; the team-learning tools say why; nothing is erased. The office's inline route refuses a
   seat-checked licence as not in force. A licence whose own term has run out still reads as expired.
+- **Check-ins are serial, and a release wins.** A check-in asked for while one is out runs next,
+  so a forced claim on a move is never dropped. A claim waits for a release still on its way. An answer
+  that arrives after a release is discarded. A Keychain that cannot be read (before first unlock)
+  never causes a new key to be made, since that would orphan the seat. The lease the service signs
+  resets the clock high-water mark to the service's time, so a phone whose clock once ran ahead
+  recovers on its next lease.
 - **Unsigned refusals never take a lease away.** A refusal (full, freed, lapsed) only words a lock that
   already exists for want of a live lease, so a freed phone keeps working until its lease and grace run
   out.

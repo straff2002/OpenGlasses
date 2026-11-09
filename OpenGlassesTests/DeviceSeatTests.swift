@@ -11,6 +11,8 @@ final class EphemeralSeatKeyStore: DeviceSeatKeyStore, @unchecked Sendable {
     private let lock = NSLock()
     private var held: P256.Signing.PrivateKey?
     var created = 0
+    /// The Keychain cannot be read (before first unlock): `existing()` throws.
+    var unreadable = false
 
     struct Key: DeviceSeatKey, @unchecked Sendable {
         let software: P256.Signing.PrivateKey
@@ -18,7 +20,13 @@ final class EphemeralSeatKeyStore: DeviceSeatKeyStore, @unchecked Sendable {
         func sign(_ data: Data) throws -> Data { try software.signature(for: data).derRepresentation }
     }
 
-    func existing() -> DeviceSeatKey? { lock.withLock { held.map(Key.init(software:)) } }
+    struct Unreadable: Error {}
+    func existing() throws -> DeviceSeatKey? {
+        try lock.withLock {
+            if unreadable { throw Unreadable() }
+            return held.map(Key.init(software:))
+        }
+    }
     func create() throws -> DeviceSeatKey {
         lock.withLock {
             let made = P256.Signing.PrivateKey()
@@ -43,6 +51,8 @@ actor StubSeatService: DeviceSeatServer {
     var received: [(DeviceSeatLease.Action, Data)] = []
     /// Answer every nonce request with a stale one first, to exercise the retry.
     var staleNonceOnce = false
+    /// Run once, while the next request is out (before its answer), to race the phone against itself.
+    var whileOut: (@Sendable () async -> Void)?
 
     init(licence: SeatLicence, profileId: String, now: Date) {
         self.licence = licence
@@ -55,6 +65,7 @@ actor StubSeatService: DeviceSeatServer {
     func set(reachable: Bool) { self.reachable = reachable }
     func set(licence: SeatLicence) { self.licence = licence }
     func set(staleNonceOnce: Bool) { self.staleNonceOnce = staleNonceOnce }
+    func set(whileOut: (@Sendable () async -> Void)?) { self.whileOut = whileOut }
     func free(all: Bool = true) { for i in seats.indices { seats[i].freedAt = now } }
     func occupy(_ count: Int) {
         for _ in 0..<count {
@@ -82,6 +93,10 @@ actor StubSeatService: DeviceSeatServer {
             return reply(.refuse(.badRequest))
         }
         received.append((action, body))
+        if let hook = whileOut {
+            whileOut = nil
+            await hook()
+        }
         let decoder = SeatWire.decoder()
         switch coreAction {
         case .claim:
@@ -398,11 +413,67 @@ final class DeviceSeatTests: XCTestCase {
         let task = try XCTUnwrap(seats.release())
         await task.value
         XCTAssertNil(world.record)
-        XCTAssertNil(keys.existing())
+        XCTAssertNil(try keys.existing())
         let received = await server.received
         XCTAssertEqual(received.last?.0, .release)
         let freed = await server.seats.first?.freedAt
         XCTAssertNotNil(freed)
+    }
+
+    // MARK: - Races and failures (review findings)
+
+    func testAReleaseWhileACheckInIsOutIsNotUndoneByItsAnswer() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 2)
+        await server.set(whileOut: { await MainActor.run { _ = seats.release() } })
+        await seats.checkIn(enrolment)
+        XCTAssertNil(world.record, "the renewal's answer arrived after the release, and is dropped")
+        XCTAssertNil(try keys.existing())
+    }
+
+    func testAForcedClaimAskedForWhileOneIsOutStillRuns() async throws {
+        let seats = service()
+        let other = DeviceSeatEnrolment(profileId: enrolment.profileId, enrolmentId: "e5f6a7b8")
+        await server.set(whileOut: { await seats.checkIn(other, force: true) })
+        await seats.checkIn(enrolment, force: true)
+        let claims = await server.received.filter { $0.0 == .claim }.compactMap {
+            (try? JSONSerialization.jsonObject(with: $0.1) as? [String: Any])?["enrolmentId"] as? String
+        }
+        XCTAssertEqual(claims, ["a1b2c3d4", "e5f6a7b8"], "the second, asked for mid-flight, ran after the first")
+        XCTAssertEqual(world.record?.enrolmentId, "e5f6a7b8")
+    }
+
+    func testAnUnreadableKeychainNeverReplacesTheSeatKey() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        let original = try XCTUnwrap(keys.currentKeyHash())
+        keys.unreadable = true
+        await advance(days: 2)
+        await seats.checkIn(enrolment, force: true)
+        keys.unreadable = false
+        XCTAssertEqual(keys.created, 1)
+        XCTAssertEqual(keys.currentKeyHash(), original)
+        let received = await server.received
+        XCTAssertEqual(received.count, 1, "nothing is sent without the key")
+    }
+
+    func testAPhoneWhoseClockRanAheadRecoversOnItsNextLease() async {
+        let seats = service()
+        world.now = t0.addingTimeInterval(10 * 86_400)   // the phone's clock, ten days ahead of the service's
+        await seats.checkIn(enrolment, force: true)
+        world.now = t0.addingTimeInterval(3_600)         // corrected
+        XCTAssertTrue(decision().isGranted, "the lease the service signed at its own time is the high-water mark")
+    }
+
+    func testAMoveWaitsForItsReleaseBeforeClaimingOnAFullLicence() async throws {
+        await server.set(licence: SeatLicence(licenseIDHash: SeatWire.licenseIDHash(code: world.code!), seats: 1,
+                                              seatCheck: true, expires: t0.addingTimeInterval(365 * 86_400)))
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        seats.release()
+        await seats.checkIn(DeviceSeatEnrolment(profileId: enrolment.profileId, enrolmentId: "e5f6a7b8"), force: true)
+        XCTAssertTrue(decision().isGranted, "the release reached the service first, so the one seat was free")
     }
 
     // MARK: - Contract with the licence core
