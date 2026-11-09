@@ -40,6 +40,8 @@ struct SettingsCategoryScreen: View {
             AccessibilitySettingsView().environmentObject(appState)
         case .fieldAssist:
             FieldAssistSettingsView().environmentObject(appState)
+        case .assisting:
+            AssistingView()
         case .myManuals:
             MyManualsView().environmentObject(appState)
         case .lookAndFeel:
@@ -71,7 +73,7 @@ struct SettingsHubRowScreen: View {
 
     private var children: [SettingsCategoryID] {
         SettingsHub.visibleRows(simpleMode: Config.simpleModeEnabled, in: adminGate.settingsContext,
-                                on: .current)
+                                on: .current, assistingPresent: AssistingPresenceFeed.shared.presence.isPresent)
             .first { $0.id == row }?.children.map(\.id) ?? []
     }
 
@@ -108,7 +110,7 @@ struct SettingsHubRowScreen: View {
             }
             .navigationTitle(SettingsHub.row(row, on: .current).title)
             .ogFormStyle()
-        case .everyday, .fieldAssist, .accessibility, .lookAndFeel:
+        case .everyday, .fieldAssist, .assisting, .accessibility, .lookAndFeel:
             // `SettingsHub.page(for:showing:)` never merges these.
             SettingsCategoryScreen(appState: appState, id: children[0])
         }

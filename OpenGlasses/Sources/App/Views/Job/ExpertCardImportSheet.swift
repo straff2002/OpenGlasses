@@ -11,6 +11,12 @@ struct ExpertCardImportSheet: View {
 
     private var entitled: Bool { FieldAssistEntitlement.shared.has(.fieldWork) }
 
+    /// The invite this phone sent that the card answers (Plan KW §4), while it is still open.
+    private var answered: SentExpertInvite? {
+        guard let id = pending.answering else { return nil }
+        return ExpertListStore.shared.sentInvites().first { $0.id == id }
+    }
+
     var body: some View {
         let card = pending.card
         NavigationStack {
@@ -24,6 +30,10 @@ struct ExpertCardImportSheet: View {
                     }
                 } header: {
                     Text("Expert card")
+                } footer: {
+                    if let answered {
+                        Text("This answers the invite you sent \(answered.inviteeName.isEmpty ? "" : answered.inviteeName + " ")on \(answered.sentAt.formatted(date: .abbreviated, time: .omitted)).")
+                    }
                 }
 
                 if !card.licences.isEmpty {
@@ -41,7 +51,11 @@ struct ExpertCardImportSheet: View {
                         Text(outcome)
                     } else if entitled {
                         Button("Add to Experts") {
-                            outcome = ExpertCardImport.message(ExpertCardImport.apply(card, to: .shared), name: card.name)
+                            let result = ExpertCardImport.apply(card, to: .shared)
+                            outcome = ExpertCardImport.message(result, name: card.name)
+                            if case .refused = result {} else if let id = pending.answering {
+                                ExpertListStore.shared.removeSentInvite(id: id)
+                            }
                         }
                     } else {
                         Text("Experts are part of Field Assist. Unlock Field Assist to add this expert to your list.")

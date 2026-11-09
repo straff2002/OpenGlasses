@@ -18,6 +18,12 @@ final class ExpertListStore: @unchecked Sendable {
     static let organizationKey = SettingKey.organizationExperts.rawValue
     static let personalKey = "fieldAssistPersonalExperts"
     static let rotaKey = "fieldAssistExpertRotaLastCalled"
+    /// Invites sent asking an expert for their card (Plan KW §4), until a card answers one or it
+    /// runs out.
+    static let sentInvitesKey = "fieldAssistExpertInvitesSent"
+    /// What the invite sheet remembers of the sender between invites: their name and where cards
+    /// come back.
+    static let inviteSenderKeys = ["expertInviteSenderName", "expertInviteReplyTo"]
     static let maxPersonal = 50
 
     private let defaults: UserDefaults
@@ -127,13 +133,43 @@ final class ExpertListStore: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Self.rotaKey) }
     }
 
+    // MARK: - Invites sent (Plan KW §4)
+
+    /// The invites still open, newest first.
+    func sentInvites(at now: Date = Date()) -> [SentExpertInvite] {
+        guard let data = defaults.data(forKey: Self.sentInvitesKey),
+              let list = try? JSONDecoder().decode([SentExpertInvite].self, from: data) else { return [] }
+        return SentExpertInvite.kept(list, at: now)
+    }
+
+    func recordSentInvite(_ invite: SentExpertInvite, at now: Date = Date()) {
+        var list = sentInvites(at: now).filter { $0.id != invite.id }
+        list.append(invite)
+        writeSentInvites(SentExpertInvite.kept(list, at: now))
+    }
+
+    func removeSentInvite(id: String, at now: Date = Date()) {
+        writeSentInvites(sentInvites(at: now).filter { $0.id != id })
+    }
+
+    private func writeSentInvites(_ list: [SentExpertInvite]) {
+        if list.isEmpty {
+            defaults.removeObject(forKey: Self.sentInvitesKey)
+        } else if let data = try? JSONEncoder().encode(list) {
+            defaults.set(data, forKey: Self.sentInvitesKey)
+        }
+    }
+
     // MARK: - Erasure
 
-    /// Remove the technician's own experts, the device owner's list and the rota position. A
+    /// Remove the technician's own experts, the device owner's list, the rota position, the invites
+    /// sent and what the invite sheet remembers. A
     /// profile's list is the profile's, and goes when the profile does.
     func removeAll() {
         defaults.removeObject(forKey: Self.personalKey)
         defaults.removeObject(forKey: Self.organizationKey)
         defaults.removeObject(forKey: Self.rotaKey)
+        defaults.removeObject(forKey: Self.sentInvitesKey)
+        Self.inviteSenderKeys.forEach(defaults.removeObject(forKey:))
     }
 }

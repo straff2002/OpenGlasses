@@ -75,7 +75,9 @@ enum SystemPromptBuilder {
         - Your name, the wake phrase, push-to-talk and hands-free triggers: Settings > \(title(.voice)).
         - The AI model, personas and system prompt: Settings > \(title(.intelligence)).
         - Agent Mode and remote agents: Settings > \(title(.intelligence)) > Agentic Features.
-        - Memory, My Day, navigation, parking, home control, music, messaging, translation and health: Settings > \(title(.everyday)).
+        - Memory, My Day, navigation, parking, home control, music, podcasts, messaging, translation and health: Settings > \(title(.everyday)).
+        - Simple Mode and Lock Settings: Settings > \(title(.diagnostics)). While Simple Mode is on, Leave Simple Mode is on the Settings screen itself.
+        - Jobs sent to the user as an expert, and their expert card: Settings > \(title(.assisting)), once they have a card, a job or an invite; before that, Things to Try > Help other technicians.
         - Tools and quick actions: Settings > \(title(.tools)).
         - \(devices): Settings > \(title(.devices)).
         - Theme and languages: Settings > \(title(.lookAndFeel)).

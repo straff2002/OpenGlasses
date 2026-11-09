@@ -503,10 +503,12 @@ struct OpenGlassesApp: App {
                         return
                     }
                     // An expert's card (Plan KM P2), for the organisation's review before it goes
-                    // on the experts list. Nothing is added from the file alone.
+                    // on the experts list. Nothing is added from the file alone. An invite asking
+                    // this phone's owner for their card (Plan KW §4) shares the extension and goes
+                    // to Assisting instead, which needs no Field Assist.
                     if ExpertCardCodec.isCardFile(url) {
                         Task { @MainActor in
-                            if let refusal = ExpertCardInbox.shared.open(url) {
+                            if let refusal = ExpertCardInbox.shared.open(url, onInvite: { AssistingService.shared.openInvite($0) }) {
                                 NoticeCenter.shared.post(refusal, severity: .advisory, source: .app)
                             }
                         }

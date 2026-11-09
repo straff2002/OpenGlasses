@@ -1,8 +1,9 @@
 # Plan KW — Assisting Where Experts Find It (an invite for the expert card, Assisting shown once it's yours, Podcasts beside Music)
 
-**Status:** 📝 Drafted 2026-11-09. Nothing built. The owner asked why Assisting sits under Everyday, and whether
-Podcasts belongs under Home, Music & Messages. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-09, headless (one PR, with the Simple Mode split below); P2 device pass owed.
+Drafted the same day from the owner's questions, and built at the owner's word ("do KW as part of this PR")
+with every [decision](#decisions-for-greig-taken) taken as recommended. See [as built](#as-built-2026-11-09)
+for where the build differs from the draft.
 **Track:** Settings and Home placement. Field Assist only for the inviting side (§4); the expert's side needs no
 Field Assist, as in KM.
 **Builds on:** Plan [KM](KM-expert-on-the-job.md) (Assisting mode §7, `AssistingService`, `AssistingHandoverStore`,
@@ -206,7 +207,7 @@ Assisting card on Home; any podcast wording on the Music screen.
   people look for them.
 - Renaming the Home, Music & Messages group.
 
-## Decisions for Greig (open)
+## Decisions for Greig (taken)
 
 1. **The invite as a file, sent from Field Assist › Experts.** Recommended. A link would need a domain and a
    server; the file goes by the same Messages, Mail or AirDrop routes as an `.ogcase`.
@@ -222,6 +223,40 @@ Assisting card on Home; any podcast wording on the Music screen.
 6. **The invite expires in 30 days.** Recommended, the same as a handover's default after Done.
 7. **Music & Podcasts shows the two voice switches as well as Works with your iPhone.** Recommended. The
    alternative, moving them, leaves Works with your iPhone two Apple apps short.
+
+All seven taken as recommended on 2026-11-09, when the owner asked for KW to be built in this PR.
+
+## As built (2026-11-09)
+
+- **Presence** is `AssistingPresence` (pure, `Services/Assisting/`), published by `AssistingService` into
+  `AssistingPresenceFeed`. The hub, Home and Things to Try read the feed, never `AssistingService` or the
+  store, so `AssistingIsolationTests`' rule on who may name those holds unchanged (it now names
+  `OpenInvite` too). Dismissal is a field on the held handover and the open invite (`homeDismissed`), not a
+  preference key, so it goes with the record.
+- **The invite** is `ExpertInvite` / `ExpertInviteCodec` (`openglasses.expert-invite` in an `.ogexpert` file);
+  a card file answering one carries `answeringInvite` beside the card, which an older app ignores. Open
+  invites live in `AssistingHandoverStore` (`Assisting/invites.json`, cap 50), inside the store already
+  registered, retained and walked by the erasure, rather than a new store.
+- **Sending is the share sheet, not a pre-addressed compose**, on both sides: the invite from
+  Field Assist › Experts › Invite an Expert (`ExpertInviteComposeSheet`), and the card from the expert's
+  Send Card. The card form says where to send it ("Send it to Pat, pat@…"). There is no contact picker:
+  the share sheet picks the recipient, and the sheet asks only a name for the list, the sender's name and
+  where cards come back (remembered). Only a completed share records the invite or answers it.
+- **The organisation's side** keeps sent invites in `ExpertListStore` (`fieldAssistExpertInvitesSent`), shown
+  as an Invited section until a card answering one is imported, it runs out, or it is swiped away.
+- **The hub row** is category `assisting` (raw value pinned) and row `.assisting` after Field Assist,
+  `shownInSimpleMode: true`, in `ManagedLockdown.pinnedOpen`. `ProfileContract` (the licence-issuance tool's
+  copy of the ids) gained it too; the Avenkin Office copy of the contract, if it keeps one, needs the same.
+- **Home** is the Voice tab only, under the day card; Field Assist mode's Home is the same tab, so there is no
+  second place. A long press removes it, as My Day's does; a running clock can't be removed.
+- **Things to Try** draws Help other technicians while there is no card (`ExpertCardLink`), via
+  `ExpertCardEditor`.
+- **Music & Podcasts:** `ToolSwitchRows` and `AppleIntegration` are lifted out of
+  `AppleIntegrationsSettingsScreen`; Works with your iPhone and the Music screen's By Voice section both draw
+  them.
+- **The system prompt** names podcasts under Everyday, Assisting, and where Simple Mode now lives.
+- **Also in this PR (not KW):** Simple Mode and Lock Settings moved from the hub to Advanced & Support ›
+  Handing It Over, with a Leave Simple Mode row on the hub while it is on (`SimpleModeControlsPlacement`).
 
 ## Phases (one PR)
 
@@ -277,6 +312,5 @@ seen off in Works with your iPhone.
 
 ## Open
 
-- Whether the hub row should carry a live value (e.g. "1 job") like other rows' summaries. Not in KW unless
-  decision 5 says so.
+- Whether the hub row should carry a live value (e.g. "1 job") like other rows' summaries. Not built.
 - The catalog sync for the new strings goes in its own PR, as usual.

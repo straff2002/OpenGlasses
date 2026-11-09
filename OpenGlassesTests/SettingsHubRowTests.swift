@@ -42,11 +42,13 @@ final class SettingsHubRowTests: XCTestCase {
 
     func testTheHubHasEightRowsInTheAgreedOrder() {
         for phone in phones {
+            // Plan KW: Assisting is a ninth, drawn only on an expert's phone (see below).
             XCTAssertEqual(Hub.rows(on: phone).map(\.title), [
                 "Assistant", "Everyday", "Devices & Privacy", "Connections", "Accessibility",
-                "Field Assist", "Look & Feel", "Advanced & Support",
+                "Field Assist", "Assisting", "Look & Feel", "Advanced & Support",
             ])
-            XCTAssertEqual(rowIDs(on: phone), SettingsHubRowID.allCases)
+            XCTAssertEqual(Hub.visibleRows(simpleMode: false, in: .unmanaged, on: phone).count, 8)
+            XCTAssertEqual(rowIDs(on: phone), SettingsHubRowID.allCases.filter { $0 != .assisting })
         }
     }
 
@@ -69,6 +71,7 @@ final class SettingsHubRowTests: XCTestCase {
         XCTAssertEqual(children(.connections), [.connections, .tools])
         XCTAssertEqual(children(.accessibility), [.accessibility])
         XCTAssertEqual(children(.fieldAssist), [.fieldAssist])
+        XCTAssertEqual(children(.assisting), [.assisting])
         XCTAssertEqual(children(.lookAndFeel), [.lookAndFeel])
         XCTAssertEqual(children(.advancedSupport), [.advanced, .diagnostics])
     }
@@ -88,18 +91,18 @@ final class SettingsHubRowTests: XCTestCase {
     /// Everything a profile names. The rows are not in this list on purpose.
     func testEveryRawValueIsPinned() {
         XCTAssertEqual(SettingsCategoryID.allCases.map(\.rawValue), [
-            "intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "my-manuals",
+            "intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "assisting", "my-manuals",
             "look-and-feel", "tools", "connections", "capture", "display", "advanced", "diagnostics",
         ])
         XCTAssertEqual(ProfileContract.settingsCategoryIds, SettingsCategoryID.allCases.map(\.rawValue))
-        XCTAssertEqual(ManagedLockdown.pinnedOpen, [.accessibility, .lookAndFeel, .diagnostics])
+        XCTAssertEqual(ManagedLockdown.pinnedOpen, [.accessibility, .lookAndFeel, .diagnostics, .assisting])
         XCTAssertEqual(ManagedLockdown.openByDefault, [.fieldAssist])
     }
 
     func testTheCatalogStillListsEveryCategoryInItsOwnOrder() {
         XCTAssertEqual(SettingsCatalog.all.map(\.id), SettingsCategoryID.allCases)
         XCTAssertEqual(SettingsCatalog.visible(simpleMode: true).map(\.id),
-                       [.voice, .devices, .accessibility, .myManuals, .lookAndFeel, .diagnostics])
+                       [.voice, .devices, .accessibility, .assisting, .myManuals, .lookAndFeel, .diagnostics])
     }
 
     // MARK: - The same categories as before
@@ -110,7 +113,8 @@ final class SettingsHubRowTests: XCTestCase {
             XCTAssertEqual(Set(visible(simpleMode: true, on: phone).map(\.id)),
                            [.voice, .devices, .accessibility, .myManuals, .lookAndFeel, .diagnostics])
         }
-        XCTAssertEqual(Set(visible(on: personal).map(\.id)), Set(SettingsCategoryID.allCases))
+        // Plan KW: Assisting is the one category drawn only where it is the owner's.
+        XCTAssertEqual(Set(visible(on: personal).map(\.id)), Set(SettingsCategoryID.allCases).subtracting([.assisting]))
     }
 
     func testTheStandardLockdownShowsTheSameCategories() {
@@ -130,8 +134,9 @@ final class SettingsHubRowTests: XCTestCase {
 
     func testAnAdministratorAndACeilingsOnlyProfileLoseNothing() {
         for context in [administrator(), ceilingsOnly] {
-            XCTAssertEqual(Set(visible(in: context, on: personal).map(\.id)), Set(SettingsCategoryID.allCases))
-            XCTAssertEqual(rowIDs(in: context, on: personal), SettingsHubRowID.allCases)
+            XCTAssertEqual(Set(visible(in: context, on: personal).map(\.id)),
+                           Set(SettingsCategoryID.allCases).subtracting([.assisting]))
+            XCTAssertEqual(rowIDs(in: context, on: personal), SettingsHubRowID.allCases.filter { $0 != .assisting })
         }
     }
 
@@ -265,9 +270,42 @@ final class SettingsHubRowTests: XCTestCase {
     // MARK: - Opening a category from elsewhere
 
     func testEveryCategoryOpensAsItselfWhereItIsVisible() {
+        let expert = Hub.visibleCategories(simpleMode: false, in: .unmanaged, on: personal, assistingPresent: true)
         for id in SettingsCategoryID.allCases {
-            XCTAssertEqual(Hub.route(id, visible: visible(on: personal)), .category(id), id.rawValue)
+            XCTAssertEqual(Hub.route(id, visible: expert), .category(id), id.rawValue)
         }
+    }
+
+    // MARK: - Assisting (Plan KW)
+
+    func testAssistingIsDrawnOnlyWhereItIsTheOwners() {
+        for phone in phones {
+            XCTAssertFalse(rowIDs(on: phone).contains(.assisting))
+            let expert = Hub.visibleRows(simpleMode: false, in: .unmanaged, on: phone, assistingPresent: true)
+            XCTAssertEqual(expert.map(\.id).filter { $0 == .assisting }, [.assisting])
+            XCTAssertEqual(expert.first { $0.id == .assisting }?.page, .category(.assisting))
+            XCTAssertEqual(Hub.route(.assisting, visible: visible(on: phone)), .hub,
+                           "a shortcut to Assisting on a phone that isn't an expert's lands on the hub")
+        }
+    }
+
+    func testAssistingStaysInSimpleModeAndUnderEveryLockdown() {
+        let contexts: [ManagedSettingsContext] = [
+            .unmanaged, technician(), administrator(), ceilingsOnly,
+            technician(ManagedLockdown(opening: [], locking: Set(SettingsCategoryID.allCases), closedTools: [])),
+        ]
+        for context in contexts {
+            for simpleMode in [false, true] {
+                let ids = Hub.visibleRows(simpleMode: simpleMode, in: context, on: personal, assistingPresent: true)
+                    .map(\.id)
+                XCTAssertTrue(ids.contains(.assisting), "simpleMode=\(simpleMode) \(context)")
+            }
+        }
+    }
+
+    func testAProfileCantLockAssisting() {
+        let lockdown = ManagedLockdown(opening: [], locking: [.assisting], closedTools: [])
+        XCTAssertFalse(lockdown.lockedCategories.contains(.assisting))
     }
 
     func testAShortcutDoesNotGetRoundSimpleModeOrALockdown() {

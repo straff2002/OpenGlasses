@@ -57,15 +57,7 @@ struct EverydaySettingsScreen: View {
                                           subtitle: String(localized: "Ideas for what to do with it"),
                                           icon: "sparkles")
                     }
-                    // Plan KM P2: jobs sent to you for your advice, and your expert card. Needs no
-                    // Field Assist, so it lives here rather than under it.
-                    NavigationLink {
-                        AssistingView()
-                    } label: {
-                        SettingsLinkLabel(title: String(localized: "Assisting"),
-                                          subtitle: String(localized: "Jobs sent to you for advice, and your expert card"),
-                                          icon: "person.2.wave.2")
-                    }
+                    // Assisting is its own hub row on an expert's phone (Plan KW), not a row here.
                     if SettingsHub.showsMyManuals(on: .everyday) {
                         NavigationLink {
                             MyManualsView().environmentObject(appState)
@@ -300,7 +292,7 @@ struct EverydaySettingsScreen: View {
             NavigationLink {
                 MusicSettingsView()
             } label: {
-                Label("Music", systemImage: "music.note")
+                Label("Music & Podcasts", systemImage: "music.note")
             }
         case .homeAssistant:
             NavigationLink {

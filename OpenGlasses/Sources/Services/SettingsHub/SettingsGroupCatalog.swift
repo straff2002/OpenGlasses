@@ -142,7 +142,7 @@ enum SettingsGroupCatalog {
                       onFirstTime: true, feature: .smartHomeControl),
                 .init(id: .messaging, title: String(localized: "AI Messaging"), kind: .follows, onFirstTime: true,
                       feature: .messaging, hardDisabledInMedicalMode: true),
-                .init(id: .music, title: String(localized: "Music"), kind: .link),
+                .init(id: .music, title: String(localized: "Music & Podcasts"), kind: .link),
                 .init(id: .homeAssistant, title: String(localized: "Home Assistant"), kind: .link),
             ])
         case .translate:

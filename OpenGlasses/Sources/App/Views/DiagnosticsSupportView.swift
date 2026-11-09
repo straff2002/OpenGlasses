@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Settings → Advanced & Support: the self-test and the bug-report path.
+/// Settings → Advanced & Support: the self-test, the bug-report path, and Handing It Over (Simple
+/// Mode and Lock Settings, while Simple Mode is off).
 ///
 /// Deliberately a top-level category rather than a page inside Advanced, because
 /// Simple Mode hides Advanced — and the wearers most likely to need diagnostics are
@@ -47,6 +48,10 @@ struct DiagnosticsSupportView: View {
                     .buttonStyle(.plain)
                 }
             }
+
+            // Simple Mode and Lock Settings, while Simple Mode is off. The hub has Leave Simple
+            // Mode while it is on (`SimpleModeControlsPlacement`).
+            HandOverSection()
 
             OGSection(
                 header: "Send to Support",

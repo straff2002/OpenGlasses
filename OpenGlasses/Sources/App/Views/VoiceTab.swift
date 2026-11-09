@@ -36,6 +36,8 @@ struct VoiceTab: View {
     @ObservedObject private var store = StoreKitService.shared
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var manualLibrary = PersonalManualLibrary.shared
+    /// Plan KW: an expert's one Assisting card — a clock running, jobs sent, or an invite.
+    @ObservedObject private var assisting = AssistingPresenceFeed.shared
     /// Observed for the pending first turn the Ready page leaves (Plan KH P1).
     @ObservedObject private var scenarios = ScenarioProgressStore.shared
     /// Observed so the opening below is looked at again when the overlay above this tab finishes.
@@ -414,6 +416,13 @@ struct VoiceTab: View {
                         }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
+
+                // Plan KW: under the day card, and yielding the zone the way My Day does. Tested
+                // here rather than inside the card, because an empty child still costs a gap.
+                if !showsContext, assisting.presence.homeCard != nil,
+                   HomeSurfaceVisibility.showsMyDay(state: voiceState, captionsActive: captionsActive) {
+                    AssistingHomeCard { appState.openSettings(.assisting) }
                 }
 
                 if PersonalManualLibrary.canManage, !FieldAssistEntitlement.shared.has(.fieldWork), manualLibrary.manuals.isEmpty {

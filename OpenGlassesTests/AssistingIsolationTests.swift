@@ -225,7 +225,11 @@ final class AssistingIsolationTests: XCTestCase {
         ]
         let held = ["AssistingHandoverStore", "HeldHandover", "AssistingService",
                     // Plan KM P4: the expert's own ledger is held apart the same way.
-                    "ExpertLedgerStore", "ExpertLedger", "ExpertLedgerEntry"]
+                    "ExpertLedgerStore", "ExpertLedger", "ExpertLedgerEntry",
+                    // Plan KW: the invites asking for the card, held beside the handovers. The hub,
+                    // Home and Things to Try read `AssistingPresenceFeed` instead, which says only
+                    // whether to draw a row or a card.
+                    "OpenInvite"]
         for url in Self.swiftFiles(under: "") {
             let relative = Self.relative(url)
             if Self.assistingFolders.contains(where: { relative.hasPrefix($0 + "/") }) || allowed.contains(relative) { continue }
@@ -323,7 +327,9 @@ final class AssistingIsolationTests: XCTestCase {
                         "coachingDraft", "noteDraft", "coachingSentAt",
                         // Plan KM P4: the coaching replies sent, by id, and the calls seen while the
                         // clock ran — times only.
-                        "coachingRepliesSent", "observedCalls"])
+                        "coachingRepliesSent", "observedCalls",
+                        // Plan KW: swiped off the Home screen — a flag, nothing that leaves.
+                        "homeDismissed"])
     }
 
     /// Medical Compliance (§8 never offers the *sending*): Assisting reads no mode at all — it is a

@@ -306,6 +306,8 @@ final class ExpertCardInbox: ObservableObject {
     struct Pending: Identifiable, Equatable {
         let id = UUID()
         let card: ExpertCard
+        /// The invite the card says it answers (Plan KW §4), or nil.
+        var answering: String? = nil
     }
 
     @Published var pending: Pending?
@@ -313,7 +315,11 @@ final class ExpertCardInbox: ObservableObject {
     init() {}
 
     /// A card file iOS handed the app. Returns what to tell the user when it can't be read.
-    func open(_ url: URL) -> String? {
+    ///
+    /// An `.ogexpert` can also be an invite asking this phone's owner for their card (Plan KW §4).
+    /// That isn't the organisation's to review: it goes to `onInvite`, which the app's wiring
+    /// points at Assisting, and its answer is what to tell the user.
+    func open(_ url: URL, onInvite: (Data) -> String? = { _ in nil }) -> String? {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         defer { Self.discardInboxCopy(url) }
@@ -321,7 +327,8 @@ final class ExpertCardInbox: ObservableObject {
         guard size <= ExpertCardCodec.maximumBytes, let data = try? Data(contentsOf: url) else {
             return ExpertCardCodec.describe(.tooLarge)
         }
-        return offer(ExpertCardCodec.read(data))
+        if ExpertInviteCodec.isInvite(data) { return onInvite(data) }
+        return offer(ExpertCardCodec.read(data), answering: ExpertInviteCodec.answeredInvite(in: data))
     }
 
     /// A scanned code's text.
@@ -329,11 +336,11 @@ final class ExpertCardInbox: ObservableObject {
         offer(ExpertCardCodec.read(code: text))
     }
 
-    private func offer(_ result: Result<ExpertCard, ExpertCardCodec.ReadError>) -> String? {
+    private func offer(_ result: Result<ExpertCard, ExpertCardCodec.ReadError>, answering: String? = nil) -> String? {
         switch result {
         case .failure(let error): return ExpertCardCodec.describe(error)
         case .success(let card):
-            pending = Pending(card: card)
+            pending = Pending(card: card, answering: answering)
             return nil
         }
     }

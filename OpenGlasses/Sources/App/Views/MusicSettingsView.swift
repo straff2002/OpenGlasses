@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Settings → Everyday → Home, Music & Messages → Music (Plan GS P2): where music plays by default, Apple Music access and
+/// Settings → Everyday → Home, Music & Messages → Music & Podcasts (Plan GS P2, Plan KW §1): the
+/// Music and Podcasts voice switches, where music plays by default, Apple Music access and
 /// catalogue status, and which Home Assistant speakers Avenkin may use. A general setting, not a
 /// glasses one — the phone and a speaker are enough.
 struct MusicSettingsView: View {
@@ -19,6 +20,15 @@ struct MusicSettingsView: View {
 
     var body: some View {
         Form {
+            // Plan KW §1: the same switches as Connections › Works with your iPhone, here because
+            // this is where people look for them.
+            Section {
+                ToolSwitchRows(integrations: AppleIntegration.voicePlayback)
+            } header: {
+                Text("By Voice")
+            } footer: {
+                Text("Podcasts open in Apple Podcasts; there's nothing to sign in to. These are the same switches as in Connections › Works with your iPhone.")
+            }
             defaultSection
             appleMusicSection
             if homeAssistant.isConfigured {
@@ -26,7 +36,7 @@ struct MusicSettingsView: View {
             }
             otherAppsSection
         }
-        .navigationTitle("Music")
+        .navigationTitle("Music & Podcasts")
         .ogFormStyle()
         .task {
             await refreshAppleMusic()
