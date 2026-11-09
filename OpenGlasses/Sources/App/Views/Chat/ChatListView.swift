@@ -4,6 +4,7 @@ import SwiftUI
 /// Subsumes the old read-only History tab: tap a thread to keep chatting, or start a new one.
 struct ChatListView: View {
     @EnvironmentObject var appState: AppState
+    @EnvironmentObject private var strip: TabStripModel
     @State private var path: [String] = []
     /// When on, the list shows only the active project's (Persona's) threads (Plan AN).
     @State private var projectScoped = false
@@ -59,6 +60,13 @@ struct ChatListView: View {
             .navigationDestination(for: String.self) { id in
                 ChatThreadView(threadId: id)
             }
+        }
+        // The bottom strip (Plan KY): New conversation, unless the store is locked, and out of the
+        // way over an open conversation, which has its own composer.
+        .onChange(of: store.isLocked, initial: true) { _, locked in strip.facts.historyLocked = locked }
+        .onChange(of: path.isEmpty, initial: true) { _, atList in strip.facts.historyThreadOpen = !atList }
+        .onChange(of: strip.request) { _, _ in
+            if strip.take(.newConversation) { Task { await startNewChat() } }
         }
         .onChange(of: sortedThreads.map(\.id), initial: true) { _, _ in
             // Structure only: no thread ids, titles, or conversation content leave the store.

@@ -38,6 +38,7 @@ private struct JobTabContent: View {
     /// said out loud, has to appear on this screen without a navigation.
     @ObservedObject var upcoming: UpcomingJobStore
     @ObservedObject var workizDeliveries: WorkizSyncSink
+    @EnvironmentObject private var strip: TabStripModel
     @StateObject private var sessions = FieldSessionService.shared
     /// The list's facts, composed (Plan HC).
     @StateObject private var feed: JobListFeed
@@ -146,6 +147,11 @@ private struct JobTabContent: View {
                 }
         }
         .onChange(of: search) { _, query in feed.query = query }
+        // The bottom strip (Plan KY): New job, or Open job while one is open — on the list only.
+        // The panel embedded in the workspace is not the tab, and reports nothing.
+        .onChange(of: path.isEmpty, initial: true) { _, atList in
+            if !embedded { strip.facts.jobsAtRoot = atList }
+        }
         // A link from elsewhere — the job-day card, a notification, the Field Assist tab — lands
         // here, against what is on the phone now (`JobListRouting`).
         .onAppear { if !embedded { takeRequest() } }

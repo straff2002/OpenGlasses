@@ -28,6 +28,9 @@ struct FieldAssistModeTab: View {
     @State private var procedures: [Procedure] = []
     @State private var previewURL: URL?
     @State private var askingManual: FieldAssistManualShelf.Manual?
+    /// The manuals offered by the strip's Ask a manual when more than one can be asked (Plan KY).
+    @State private var choosingManual = false
+    @EnvironmentObject private var strip: TabStripModel
 
     // MARK: - Facts
 
@@ -63,6 +66,11 @@ struct FieldAssistModeTab: View {
         FieldAssistManualShelf.manuals(vaults: shelf, activeVaultId: faVaultId)
     }
 
+    /// The shelf's manuals that can be asked now — the open job's vault, as the rows' Ask buttons.
+    private var askableManuals: [FieldAssistManualShelf.Manual] {
+        manuals.filter { FieldAssistManualShelf.canAsk($0, openJobVaultId: openSession?.vaultId) }
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -85,6 +93,18 @@ struct FieldAssistModeTab: View {
         }
         .sheet(item: $askingManual) { manual in
             ManualAskSheet(manual: manual) { question in ask(manual, question) }
+        }
+        // The bottom strip's Ask a manual (Plan KY): straight to the one manual that can be asked,
+        // or a choice of them.
+        .onChange(of: askableManuals.count, initial: true) { _, count in strip.facts.askableManuals = count }
+        .onChange(of: strip.request) { _, _ in
+            guard strip.take(.askManual) else { return }
+            if askableManuals.count == 1 { askingManual = askableManuals.first } else { choosingManual = true }
+        }
+        .confirmationDialog("Ask a manual", isPresented: $choosingManual, titleVisibility: .visible) {
+            ForEach(askableManuals) { manual in
+                Button(manual.title) { askingManual = manual }
+            }
         }
         .alert("Can't start that scenario",
                isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {

@@ -18,6 +18,9 @@ struct MainView: View {
     @StateObject private var manualPresentation = ManualFigurePresentation()
     /// The Voice tab's dock, shared with the tab view's bottom accessory where its controls ride.
     @StateObject private var voiceDock = VoiceDockModel()
+    /// Every tab's bottom strip (Plan KY): what each tab reports, and the strip's taps for the tab
+    /// that answers them.
+    @StateObject private var tabStrip = TabStripModel()
     @State private var showOnboarding = Config.needsOnboarding
     /// The manual page last opened in place on the Voice tab. It stays there — rather than turning
     /// into a sheet over whatever tab the wearer moves to next — until it is closed or replaced.
@@ -137,10 +140,11 @@ struct MainView: View {
             // included (the owner's call, 2026-11-10: the same gesture as Settings) — and the
             // accessory below slides in beside it.
             .tabBarMinimizeBehavior(.onScrollDown)
-            // The Voice tab's mic and buttons button, in Apple's bottom strip: above the tab bar,
-            // and beside the mark when the bar shrinks. Off while the typed bar is open, which
-            // takes the bottom of the tab for itself.
-            .modifier(VoiceDockAccessoryModifier(enabled: showsVoiceDock))
+            // The bottom strip, in Apple's accessory: above the tab bar, and beside it when the bar
+            // shrinks. Avenkin's is the mic, the buttons button and typing (off while the typed
+            // bar is open, which takes the bottom of the tab for itself); every other tab's is the
+            // mic and that tab's own action (Plan KY).
+            .modifier(TabStripAccessoryModifier(enabled: showsStrip, tab: selectedTab, facts: stripFacts))
             .tint(accent)
             // Onboarding is drawn *over* the tabs, not instead of them, so without this the whole
             // session surface stays in the accessibility tree behind it: a VoiceOver user on the
@@ -292,6 +296,7 @@ struct MainView: View {
         .environmentObject(workspace)
         .environmentObject(manualPresentation)
         .environmentObject(voiceDock)
+        .environmentObject(tabStrip)
         .onChange(of: appState.manualFigureRequest?.id) { _, requestID in
             if requestID != nil, selectedTab == .voice, !showOnboarding { inlineManualID = requestID }
             if requestID == nil {
@@ -303,12 +308,22 @@ struct MainView: View {
         }
     }
 
-    /// The accessory is the Voice tab's, and gives the bottom of the screen to the typed bar.
-    private var showsVoiceDock: Bool {
-        guard selectedTab == .voice, !showOnboarding else { return false }
+    /// Whether the strip is up on this tab (`TabStripPolicy.showsStrip`). On Avenkin it gives the
+    /// bottom of the screen to the typed bar.
+    private var showsStrip: Bool {
         let typing = (voiceDock.showChatInput || appState.pendingTranscript != nil)
             && !appState.currentMode.isRealtime
-        return !typing
+        return TabStripPolicy.showsStrip(on: selectedTab, facts: stripFacts,
+                                         onboarding: showOnboarding, typingOnVoice: typing)
+    }
+
+    /// What the tabs reported, with the parts this view already holds.
+    private var stripFacts: TabStripFacts {
+        var facts = tabStrip.facts
+        facts.modesIsFieldAssist = modesPresentation.isFieldAssist
+        facts.activeModeName = appState.activePersona?.name
+        facts.jobOpen = sessions.activeSession.map { $0.endedAt == nil && $0.outcome != .cancelled } ?? false
+        return facts
     }
 
     private var manualSheetRequest: Binding<AppState.ManualFigureRequest?> {
