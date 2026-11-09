@@ -189,8 +189,11 @@ public struct CustomerOrder: Codable, Equatable {
     public var packs: [String]
     public var plan: String
     public var reference: String
-    public init(seats: Int, termDays: Int, packs: [String] = [], plan: String = "team", reference: String) {
+    /// Plan JS P2: mint the code with the signed `seatCheck` claim, so its phones are counted.
+    public var seatCheck: Bool?
+    public init(seats: Int, termDays: Int, packs: [String] = [], plan: String = "team", reference: String, seatCheck: Bool? = nil) {
         self.seats = seats; self.termDays = termDays; self.packs = packs; self.plan = plan; self.reference = reference
+        self.seatCheck = seatCheck
     }
 }
 
@@ -295,7 +298,7 @@ extension SalesBook {
         _ = try preset.input(profileId: new.profileId, organizationName: new.licensee, selection: new.selection, grant: grant,
                              licenceCode: nil, adminPasscode: false)
         let request = IssuanceRequest(licensee: new.licensee, plan: order.plan, seats: order.seats, termDays: order.termDays,
-                                      packs: order.packs, reference: order.reference, profile: address)
+                                      packs: order.packs, reference: order.reference, profile: address, seatCheck: order.seatCheck)
         let (sale, invoice, first) = try prepareOrder(id: orderId, request: request, grant: grant, catalog: catalog, profileId: new.profileId,
                                                       bankDetails: bankDetails, renewalOf: nil, customerId: new.customerId,
                                                       operatorId: operatorId, now: now, signer: signer)
@@ -324,7 +327,8 @@ extension SalesBook {
             throw CustomerRefusal.liveCodeExists
         }
         let request = IssuanceRequest(licensee: c.licensee, plan: order.plan, seats: order.seats, termDays: order.termDays,
-                                      packs: order.packs, reference: order.reference, profile: c.profileAddress)
+                                      packs: order.packs, reference: order.reference, profile: c.profileAddress,
+                                      seatCheck: order.seatCheck)
         let (sale, invoice, issued) = try prepareOrder(id: id, request: request, grant: grant, catalog: catalog, profileId: c.profileId,
                                                        bankDetails: bankDetails, renewalOf: renewalOf, customerId: customerId,
                                                        operatorId: operatorId, now: now, signer: signer)
@@ -345,8 +349,9 @@ extension SalesBook {
         }
         let (total, overflow) = live.seats.addingReportingOverflow(additionalSeats)
         guard !overflow, total <= grant.maxSeatsPerCode else { throw IssuanceRefusal.seatsPerCodeExceeded(grant.maxSeatsPerCode) }
+        // A seat increase keeps the live code's seat check: more seats, counted the same way.
         let request = IssuanceRequest(licensee: c.licensee, seats: additionalSeats, termDays: term, packs: live.packs,
-                                      reference: id, profile: c.profileAddress)
+                                      reference: id, profile: c.profileAddress, seatCheck: liveOrder.request.seatCheck)
         _ = try IssuancePolicy.validate(request, grant: grant, ledger: ledger, catalog: catalog, now: now).get()
         guard !grant.prices.currency.isEmpty, !grant.prices.taxTreatment.isEmpty,
               let unit = grant.prices.perSeatByTermDays[term], unit > 0 else { throw IssuanceRefusal.missingPrice }

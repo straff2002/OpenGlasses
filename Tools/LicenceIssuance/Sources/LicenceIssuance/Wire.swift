@@ -19,12 +19,17 @@ public struct IssuedLicensePayload: Codable, Equatable {
     public var profile: String?
     public var organizationID: String?
     public var profileID: String?
+    /// Plan JS P2: the phones using this code are counted against `seats` (`SeatWire`). Only with a
+    /// `profile`, whose origin is the seat service. Absent on every code minted before P2.
+    public var seatCheck: Bool?
     public init(feature: String = "field_assist", licensee: String, issued: Date, expires: Date?,
                 tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
-                packs: [String]? = nil, profile: String? = nil, organizationID: String? = nil, profileID: String? = nil) {
+                packs: [String]? = nil, profile: String? = nil, organizationID: String? = nil, profileID: String? = nil,
+                seatCheck: Bool? = nil) {
         self.feature = feature; self.licensee = licensee; self.issued = issued; self.expires = expires
         self.tier = tier; self.plan = plan; self.seats = seats; self.reference = reference
         self.packs = packs; self.profile = profile; self.organizationID = organizationID; self.profileID = profileID
+        self.seatCheck = seatCheck
     }
 }
 

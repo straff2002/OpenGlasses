@@ -29,6 +29,19 @@ final class CoreTests: XCTestCase {
         guard case .failure(let error) = result else { return XCTFail("expected refusal", file: file, line: line) }
         XCTAssertEqual(error, expected, file: file, line: line)
     }
+
+    /// Plan JS P2: a seat-checked code is minted with the signed claim, and only with a profile,
+    /// whose origin is the seat service.
+    func testASeatCheckedRequestCarriesTheClaimAndNeedsAProfile() throws {
+        var r = request
+        r.seatCheck = true
+        guard case .success(let payload) = validate(r) else { return XCTFail("expected a payload") }
+        XCTAssertEqual(payload.seatCheck, true)
+        r.profile = nil
+        refusal(validate(r), .invalidRequest)
+        guard case .success(let plain) = validate(request) else { return XCTFail("expected a payload") }
+        XCTAssertNil(plain.seatCheck)
+    }
     func testEnterpriseNeverDelegatesEvenWithMalformedGrant() { var r = request; r.tier = "enterprise"; var g = grant; g.tiers.insert("enterprise"); refusal(validate(r, g), .tierNotDelegated) }
     func testSoloRefused() { var r = request; r.tier = "solo"; refusal(validate(r), .tierNotDelegated) }
     func testEnterprisePlanRefused() { var r = request; r.plan = "enterprise"; refusal(validate(r), .tierNotDelegated) }

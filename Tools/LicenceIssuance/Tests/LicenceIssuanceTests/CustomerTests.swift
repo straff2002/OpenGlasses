@@ -153,6 +153,27 @@ final class CustomerTests: XCTestCase {
         XCTAssertThrowsError(try increase("lapsed", 1, at: 365)) { XCTAssertEqual($0 as? CustomerRefusal, .noPaidLiveCode) }
     }
 
+    /// Plan JS P2: a customer signed up seat-checked keeps the claim on every code it is issued —
+    /// the provisional code, the paid one, and a seat increase's replacement.
+    func testASeatCheckedCustomerKeepsTheClaimThroughPaymentAndIncrease() throws {
+        var book = try SalesBook()
+        let s = try book.signUp(newCustomer, orderId: "o1",
+                                order: .init(seats: 2, termDays: 365, packs: ["hvac"], reference: "partner-ref", seatCheck: true),
+                                preset: preset, profileBase: "https://fixture.invalid", grant: grant, catalog: catalog,
+                                bankDetails: "FIXTURE BANK", operatorId: "fixture-partner-user", now: now, signer: key.signature(for:))
+        XCTAssertEqual(s.code.payload.seatCheck, true)
+        let paid = try XCTUnwrap(pay(&book))
+        XCTAssertEqual(paid.payload.seatCheck, true)
+        try book.increaseSeats(id: "more", customerId: "c1", additionalSeats: 1, grant: grant, catalog: catalog,
+                               bankDetails: "FIXTURE BANK", operatorId: "fixture", now: date(100))
+        let raised = try XCTUnwrap(pay(&book, "INV-000002", amount: 73, day: 110, id: "p2"))
+        XCTAssertEqual(raised.payload.seatCheck, true)
+        XCTAssertEqual(raised.payload.seats, 3)
+        // Without the order's flag, nothing changes.
+        var plain = try SalesBook()
+        XCTAssertNil(try signUp(&plain).code.payload.seatCheck)
+    }
+
     func testPresetRefusesAnythingItDoesNotList() throws {
         func refused(_ change: (inout NewCustomer) -> Void, preset p: ProfilePreset? = nil, _ expected: PresetRefusal, line: UInt = #line) {
             var book = try! SalesBook(); var c = newCustomer; change(&c)

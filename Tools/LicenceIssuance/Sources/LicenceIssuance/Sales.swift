@@ -90,7 +90,8 @@ public struct SalesBook {
             let expiry = request.plan == "pilot" ? fullExpiry : now.addingTimeInterval(35 * IssuancePolicy.day)
             let payload = IssuedLicensePayload(licensee: request.licensee, issued: now, expires: expiry,
                                                tier: request.tier, plan: request.plan, seats: request.seats, reference: id,
-                                               packs: request.packs.isEmpty ? nil : request.packs.sorted(), profile: request.profile)
+                                               packs: request.packs.isEmpty ? nil : request.packs.sorted(), profile: request.profile,
+                                               seatCheck: request.seatCheck == true ? true : nil)
             issued = try mint(payload, id: id + "/initial", grant: grant, operatorId: operatorId, replaces: nil,
                               orderId: id, phase: request.plan == "pilot" ? .pilot : .provisional, signer: signer)
         }
@@ -124,7 +125,8 @@ public struct SalesBook {
             let payload = IssuedLicensePayload(licensee: order.request.licensee, issued: now, expires: order.fullExpiry,
                                                tier: order.request.tier, plan: order.request.plan, seats: seats,
                                                reference: order.id, packs: order.request.packs.isEmpty ? nil : order.request.packs.sorted(),
-                                               profile: order.request.profile)
+                                               profile: order.request.profile,
+                                               seatCheck: order.request.seatCheck == true ? true : nil)
             let previous = base ?? ledger.issuances.last { $0.orderId == order.id }
             issued = try mint(payload, id: order.id + "/full", grant: order.grant, operatorId: operatorId,
                               replaces: previous?.issuanceId, orderId: order.id, phase: .full, signer: signer)

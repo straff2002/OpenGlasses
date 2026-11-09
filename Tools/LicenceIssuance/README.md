@@ -178,6 +178,28 @@ nothing re-sealed) is proven in `LicenceIssuanceIntegrationTests` against the ap
 Not in P0b: the setup link and the administrator contact it uses (P1), renaming a customer, presets that
 carry an `officeAuthority`, and terminal commands for customers (the service is their caller).
 
+## Device seats (P2)
+
+`Seats.swift` is the contract between a phone and the seat service, and the rule that counts seats.
+
+- **Codes.** `IssuanceRequest.seatCheck` / `CustomerOrder.seatCheck` (and `--seat-check` on the generator)
+  sign `seatCheck: true` into the code. It needs a `profile`, because the seat service is that address's
+  origin. A seat increase keeps the claim of the code it raises. Absent, the payload bytes are unchanged.
+- **Wire.** `POST <origin>/seats/nonce` returns a single-use nonce (`SeatNonceReply`, five minutes). Then
+  `POST /seats/claim`, `/seats/renew` or `/seats/release` sends a `SeatEnvelope`: the request's JSON
+  (`SeatClaimRequest` has exactly `build`, `devicePublicKey`, `enrolmentId` and `profileId`), the nonce, and
+  the phone's ECDSA P-256 signature over `SeatWire.signedBytes` (domain, action, nonce, request). The reply
+  is always a `SeatReply`: a lease, or a `SeatRefusalCode`.
+- **Lease.** `SeatLeasePayload` (`deviceKeyHash`, `enrolmentId`, `issued`, `licenseIDHash`, `notAfter`),
+  Ed25519-signed under `openglasses.seat-lease.v1\n` with the seat-lease key, a third key. It runs 30 days
+  and is honoured for 14 more (`SeatWire.leaseDays`, `graceDays`).
+- **Counting.** `SeatPolicy.claim` / `renew`: a seat is held while it is not freed and its lease plus
+  grace has not run out. The same key claiming again keeps its seat. A full licence is refused with
+  `.full` and its seat count. A lapsed or non-seat-checked licence gets no lease. A freed seat's renewal
+  is `.freed`.
+
+The app's verifier (`DeviceSeatLease`) is held to these bytes by `DeviceSeatTests` in the app's test bundle.
+
 ## Validation (2026-10-23)
 
 Local Xcode 27.2 / Swift 6.4.2: 33 package/terminal tests, 17 signing-key checks and the
