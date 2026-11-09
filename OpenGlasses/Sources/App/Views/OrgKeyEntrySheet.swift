@@ -16,6 +16,9 @@ struct OrgKeyEntrySheet: View {
     }
 
     let service: OrgEnrolmentService
+    /// "Set Up with Your Company" on the welcome page; Settings names it for a phone that may
+    /// already be with a company.
+    var title: LocalizedStringKey = "Set Up with Your Company"
     let finish: (Outcome) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -75,7 +78,7 @@ struct OrgKeyEntrySheet: View {
                     .disabled(isLookingUp || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-            .navigationTitle("Set Up with Your Company")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -110,23 +113,17 @@ struct OrgKeyEntrySheet: View {
         }
     }
 
-    /// A scanned enrolment link or profile address goes to the link's path; anything else is a key
-    /// or a code, put in the field and looked up as if typed.
+    /// An office's code, an enrolment link or a profile address goes to the link's path; anything
+    /// else is a key or a code — the QR on an activation card is the bare key — put in the field and
+    /// looked up as if typed (`OrgEnrolmentService.classifyScan`).
     private func handleScan(_ code: String) {
-        // An office's code is passed on exactly as scanned: the office transport checks the text.
-        if OfficeCommissioning.isCommissioningCode(code) {
-            finish(.scanned(code))
+        switch OrgEnrolmentService.classifyScan(code) {
+        case .link(let link):
+            finish(.scanned(link))
             dismiss()
-            return
-        }
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lowered = trimmed.lowercased()
-        if lowered.hasPrefix("openglasses:") || lowered.hasPrefix("https:") {
-            finish(.scanned(trimmed))
-            dismiss()
-        } else {
-            text = OrgFirstRun.formatKeyEntry(trimmed)
-            submit(trimmed)
+        case .key(let key):
+            text = OrgFirstRun.formatKeyEntry(key)
+            submit(key)
         }
     }
 }

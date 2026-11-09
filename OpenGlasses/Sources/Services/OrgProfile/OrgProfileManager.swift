@@ -83,6 +83,21 @@ struct OrgProfileReview: Identifiable, Equatable {
     /// The licence enrolment will activate, when it is the entered key rather than the profile's
     /// own code (Plan CT 3a: the later-issued of the two).
     var licenceToActivate: String? = nil
+    /// Set when the profile is another organisation's than the one in force: applying it moves the
+    /// phone, removing the current profile exactly as Remove Profile does and then enrolling.
+    var move: Move? = nil
+
+    /// The organisation a move takes the phone away from, as it stood when the review was built.
+    struct Move: Equatable {
+        let organizationName: String
+        /// The enrolment being left. Applying refuses if a different one is in force by then.
+        let enrolmentId: String
+        /// When it began: the job records from then on are that organisation's.
+        let enrolledAt: Date
+        /// Both profiles name the same vault pack, so leaving does not erase it only to install it
+        /// again.
+        let keepsPack: Bool
+    }
 
     var organizationName: String { profile.organizationName }
 
@@ -155,6 +170,11 @@ final class OrgProfileManager: ObservableObject {
         case revocation
         /// A different organisation's profile is already in force; it has to be removed first.
         case managedByAnother(String)
+        /// A different organisation's profile is in force, and device management applied it, so it
+        /// cannot be removed — or moved away from — on the phone.
+        case managedByDevice(String)
+        /// The organisation a move was reviewed against is no longer the one in force.
+        case moveChanged
         /// The licence key entered and the profile it points at name different organisations.
         case differentOrganisation(entered: String, profile: String)
         case licence(String)
@@ -169,6 +189,8 @@ final class OrgProfileManager: ObservableObject {
             case .verification(let failure): return failure.errorDescription
             case .revocation: return "That link carries a revocation, not a profile. There is nothing to apply."
             case .managedByAnother(let name): return "This phone is already managed by \(name). Remove that first, from Settings."
+            case .managedByDevice(let name): return "This phone is managed by \(name) through your organisation's device management, so it can only be moved to another organisation there."
+            case .moveChanged: return "The organisation managing this phone changed while you were reviewing the move. Enter the key again."
             case .differentOrganisation(let entered, let profile):
                 return "This licence is for \(entered), but the profile it points to is for \(profile). Ask your organisation for a new key."
             case .licence(let message): return message
@@ -315,8 +337,14 @@ final class OrgProfileManager: ObservableObject {
     // MARK: - Enrolment
 
     /// Verify a fetched document and build what the person is shown. Nothing is written.
+    ///
+    /// Another organisation's profile is refused while one is in force, unless `allowingMove`: then
+    /// the review is a move (`OrgProfileReview.move`) and applying it leaves the current
+    /// organisation first. Only a review sheet that shows the move passes it. A profile device
+    /// management applied is never moved away from here, since it cannot be removed here.
     func review(document: String, source: ProfileSource,
-                sourceURL: URL? = nil, enteredLicence: String? = nil) -> Result<OrgProfileReview, Refusal> {
+                sourceURL: URL? = nil, enteredLicence: String? = nil,
+                allowingMove: Bool = false) -> Result<OrgProfileReview, Refusal> {
         let verified: ConfigProfile
         do {
             switch try ProfileVerification.verify(document, keys: seams.verificationKeys) {
@@ -339,8 +367,20 @@ final class OrgProfileManager: ObservableObject {
                     profileKeys: seams.verificationKeys, licenceKey: seams.licenceKey,
                     now: seams.now())) != nil else { return .failure(.officePackage) }
         }
+        var move: OrgProfileReview.Move?
         if let current = profile, current.profileId != verified.profileId {
-            return .failure(.managedByAnother(current.organizationName))
+            if let currentRecord = record, !currentRecord.source.isLocallyRemovable {
+                return .failure(.managedByDevice(current.organizationName))
+            }
+            guard allowingMove, let currentRecord = record else {
+                return .failure(.managedByAnother(current.organizationName))
+            }
+            let keepsPack = current.vaultPack?.packId != nil
+                && current.vaultPack?.packId == verified.vaultPack?.packId
+            move = OrgProfileReview.Move(organizationName: current.organizationName,
+                                         enrolmentId: currentRecord.enrolmentId,
+                                         enrolledAt: currentRecord.enrolledAt,
+                                         keepsPack: keepsPack)
         }
         // A licence key that pointed here must name the same organisation as the profile's own
         // licence, and the later-issued of the two is the one activated — so a renewal re-minted at
@@ -362,8 +402,9 @@ final class OrgProfileManager: ObservableObject {
         let result = ProfileApplier.apply(profile: verified,
                                           resolvableVaultIds: resolvableIncludingPack(verified))
         return .success(OrgProfileReview(document: document, source: source, profile: verified,
-                                         result: result, replacesCurrent: profile != nil,
-                                         sourceURL: sourceURL, licenceToActivate: licenceToActivate))
+                                         result: result, replacesCurrent: profile != nil && move == nil,
+                                         sourceURL: sourceURL, licenceToActivate: licenceToActivate,
+                                         move: move))
     }
 
     /// The enrolment identifier a phone joining an office by its code names in its redemption
@@ -380,6 +421,11 @@ final class OrgProfileManager: ObservableObject {
     /// (`enrolmentIDForCommissioning`). It must still be this phone's own: an enrolment already in
     /// force keeps its identifier, so a preset that differs from it is refused before anything is
     /// written.
+    ///
+    /// A move (`review.move`) activates the new licence, then removes the profile in force exactly
+    /// as `remove()` does — its licence is cleared only if it is still the stored one, so the new
+    /// licence stays — and then enrols as on an unmanaged phone. Nothing is removed unless every
+    /// check before it has passed and the new licence has activated.
     func apply(_ review: OrgProfileReview, enrolmentID preset: String? = nil) -> Result<Void, Refusal> {
         if let preset {
             guard OfficeManualAssignment.safeIdentifier(preset),
@@ -398,7 +444,23 @@ final class OrgProfileManager: ObservableObject {
             return .failure(.verification(refusal))
         }
 
-        var activatedLicence = record?.activatedLicence ?? false
+        // Another organisation's profile is in force: only a reviewed move replaces it, and only
+        // the enrolment it was reviewed against.
+        var leaving: OrgEnrolmentRecord?
+        if let current = profile, current.profileId != review.profile.profileId {
+            if let currentRecord = record, !currentRecord.source.isLocallyRemovable {
+                return .failure(.managedByDevice(current.organizationName))
+            }
+            guard let move = review.move, let currentRecord = record else {
+                return .failure(.managedByAnother(current.organizationName))
+            }
+            guard preset == nil, move.enrolmentId == currentRecord.enrolmentId else {
+                return .failure(.moveChanged)
+            }
+            leaving = currentRecord
+        }
+
+        var activatedLicence = leaving == nil ? (record?.activatedLicence ?? false) : false
         let licence = review.licenceToActivate ?? review.profile.licenceCode
         if let code = licence {
             do {
@@ -407,6 +469,10 @@ final class OrgProfileManager: ObservableObject {
             } catch {
                 return .failure(.licence(error.localizedDescription))
             }
+        }
+
+        if let leaving {
+            leave(leaving, keepingPackFor: review.profile)
         }
 
         // Step 3 before step 4: with a pack still to install, the default vault and the Field Assist
@@ -827,7 +893,14 @@ final class OrgProfileManager: ObservableObject {
     func remove() -> Result<Void, Refusal> {
         guard let current = record else { return .success(()) }
         guard current.source.isLocallyRemovable else { return .failure(.notRemovable) }
+        leave(current, keepingPackFor: nil)
+        return .success(())
+    }
 
+    /// Removal itself, shared by Remove Profile and a move. A move passes the profile it moves to:
+    /// when that installs the same vault pack, the departure leaves the pack in place rather than
+    /// erasing it from under the new enrolment.
+    private func leave(_ current: OrgEnrolmentRecord, keepingPackFor next: ConfigProfile?) {
         for name in current.wroteStartingKeys {
             guard let key = SettingKey(rawValue: name) else { continue }
             seams.writeSetting(key, current.priorStartingValues[name])
@@ -846,7 +919,11 @@ final class OrgProfileManager: ObservableObject {
         seams.forgetAdminCard()
         // Removal is treated exactly as revocation, or removing would be the way to keep the
         // firm's manuals.
-        seams.beginDeparture(.removed, current, profile)
+        var departing = profile
+        if let packId = departing?.vaultPack?.packId, packId == next?.vaultPack?.packId {
+            departing?.vaultPack = nil
+        }
+        seams.beginDeparture(.removed, current, departing)
         seams.saveRecord(nil)
         record = nil
         profile = nil
@@ -855,7 +932,6 @@ final class OrgProfileManager: ObservableObject {
         contentLocked = false
         seams.withholdLicence(nil)
         seams.clearEnvelope()
-        return .success(())
     }
 
     /// The licence inside a stored document that no longer verifies — read without trusting it,

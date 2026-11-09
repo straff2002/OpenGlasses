@@ -328,6 +328,7 @@ struct OpenGlassesApp: App {
 
                 // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
                 OrgEnrolmentOverlay(service: appState.orgEnrolment)
+                    .environmentObject(appState)
 
                 // An office's code scanned in the app (Contracts/commissioning.md) — invisible until
                 // one is scanned. Nothing is applied before the organisation's own review.

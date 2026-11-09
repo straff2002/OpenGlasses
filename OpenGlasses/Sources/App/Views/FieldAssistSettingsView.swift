@@ -32,11 +32,14 @@ struct FieldAssistSettingsView: View {
     /// Field Assist — and so not shown to the technician. The rest of this screen follows the
     /// organisation's per-key policy.
     @ObservedObject private var adminGate = AdminGate.shared
-    @State private var showingOrgScanner = false
+    /// The scan-or-type sheet first run uses ("Set up with my company"), opened from Settings.
+    @State private var showingOrgKeyEntry = false
+    @State private var orgEntryOutcome: OrgKeyEntrySheet.Outcome?
+    @State private var orgEntryMessage: String?
+    @State private var orgEntryMessageIsError = false
     @State private var showingOfficeSetupImporter = false
     @State private var showingOfficePairing = false
     @State private var officeImportError: String?
-    @State private var scannedOrgCode: String?
     @State private var licenseCode = ""
     @State private var licenseMessage: String?
     @State private var licenseMessageIsError = false
@@ -180,12 +183,25 @@ struct FieldAssistSettingsView: View {
             }
 
             // ──────────────── Organisation code (Plan CT PR 3)
-            if !orgProfile.isManaged {
-                Section {
-                    Button("Scan an Organisation Code") { showingOrgScanner = true }
-                    Button("Import Avenkin Office Setup File") { showingOfficeSetupImporter = true }
-                } footer: {
-                    Text("Scan your organisation's code, or the code Avenkin Office shows when it adds a device, or import its signed setup file. You'll review the settings before anything changes.")
+            // Shown on a managed phone too: a company's activation card is how a phone already
+            // with one company moves to another, and the review says what the move removes.
+            Section {
+                Button(orgProfile.isManaged ? LocalizedStringKey("Move to Another Company")
+                                            : LocalizedStringKey("Scan or Enter a Company Key")) {
+                    orgEntryMessage = nil
+                    showingOrgKeyEntry = true
+                }
+                Button("Import Avenkin Office Setup File") { showingOfficeSetupImporter = true }
+                if let orgEntryMessage {
+                    Text(verbatim: orgEntryMessage)
+                        .font(.caption)
+                        .foregroundStyle(orgEntryMessageIsError ? OGTheme.errorLabel : OGTheme.okLabel)
+                }
+            } footer: {
+                if let organization = orgProfile.profile?.organizationName {
+                    Text("This phone is with \(organization). To move it to another company, scan that company's activation card or enter its key. You'll see what leaving \(organization) removes before anything changes.")
+                } else {
+                    Text("Scan your company's activation card or the code Avenkin Office shows when it adds a device, type the activation key, or import a signed setup file. You'll review the settings before anything changes.")
                 }
             }
             #if AVENKIN_OFFICE_TRANSPORT
@@ -561,13 +577,20 @@ struct FieldAssistSettingsView: View {
             }
         }
         .navigationTitle("Field Assist")
-        .sheet(isPresented: $showingOrgScanner, onDismiss: {
-            if let code = scannedOrgCode {
-                scannedOrgCode = nil
-                appState.openScannedOrganisationCode(code)
+        .sheet(isPresented: $showingOrgKeyEntry, onDismiss: {
+            // Acted on only once the entry sheet has gone, so the organisation's review sheet is not
+            // asked to present over it — as on the welcome page.
+            guard let outcome = orgEntryOutcome else { return }
+            orgEntryOutcome = nil
+            switch outcome {
+            case .licence(let code): enterOrganisationLicence(code)
+            case .scanned(let code): appState.openScannedOrganisationCode(code)
             }
         }) {
-            OrgCodeScannerView { code in scannedOrgCode = code }
+            OrgKeyEntrySheet(service: appState.orgEnrolment,
+                             title: orgProfile.isManaged ? "Move to Another Company" : "Set Up with Your Company") {
+                orgEntryOutcome = $0
+            }
         }
         #if AVENKIN_OFFICE_TRANSPORT
         .sheet(isPresented: $showingOfficePairing) { OfficePairingSheet(field: appState.officeField) }
@@ -1447,6 +1470,35 @@ struct FieldAssistSettingsView: View {
         } catch {
             licenseMessageIsError = true
             licenseMessage = error.localizedDescription
+        }
+    }
+
+    /// A key or licence code from the scan-or-type sheet, already looked up. One that names its
+    /// company's profile goes to that company's review — a move, on a phone with another company —
+    /// and its licence activates when the review is confirmed. A licence naming no company activates
+    /// as one typed below does, except on a managed phone, where it would only sit under the
+    /// company's own licence without moving anything.
+    private func enterOrganisationLicence(_ code: String) {
+        switch appState.orgEnrolment.openLicence(code) {
+        case .enrolling:
+            orgEntryMessage = nil
+        case .refused(let message):
+            orgEntryMessageIsError = true
+            orgEntryMessage = message
+        case .plain:
+            if let organization = orgProfile.profile?.organizationName {
+                orgEntryMessageIsError = true
+                orgEntryMessage = String(localized: "That key doesn't name a company, so it can't move this phone from \(organization). Ask the company you're moving to for its activation card.")
+                return
+            }
+            do {
+                let payload = try license.activate(code: code)
+                orgEntryMessageIsError = false
+                orgEntryMessage = String(localized: "Activated — licensed to \(payload.licensee).")
+            } catch {
+                orgEntryMessageIsError = true
+                orgEntryMessage = error.localizedDescription
+            }
         }
     }
 
