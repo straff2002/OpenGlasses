@@ -80,17 +80,20 @@ public enum ProfileContract {
         public var adminCard: String?
         public var lockdown: Lockdown?
         public var officeAuthority: OfficeAuthority?
+        /// Sealed company credentials by name (`Credential`), never a readable key.
+        public var credentials: [String: String]?
         public init(profileId: String, organizationName: String, leaseDays: Int, policyExpiry: String? = nil,
                     eraseAfterLapseDays: Int? = nil, undeliveredEraseDays: Int? = nil, licenceCode: String? = nil,
                     vaultPack: VaultPack? = nil, skillPacks: [String]? = nil, revokedEnrolmentIds: [String]? = nil,
                     settings: [String: Setting]? = nil, aiModel: AIModel? = nil, edition: String? = nil,
-                    adminCard: String? = nil, lockdown: Lockdown? = nil, officeAuthority: OfficeAuthority? = nil) {
+                    adminCard: String? = nil, lockdown: Lockdown? = nil, officeAuthority: OfficeAuthority? = nil,
+                    credentials: [String: String]? = nil) {
             self.profileId = profileId; self.organizationName = organizationName; self.leaseDays = leaseDays
             self.policyExpiry = policyExpiry; self.eraseAfterLapseDays = eraseAfterLapseDays
             self.undeliveredEraseDays = undeliveredEraseDays; self.licenceCode = licenceCode; self.vaultPack = vaultPack
             self.skillPacks = skillPacks; self.revokedEnrolmentIds = revokedEnrolmentIds; self.settings = settings
             self.aiModel = aiModel; self.edition = edition; self.adminCard = adminCard; self.lockdown = lockdown
-            self.officeAuthority = officeAuthority
+            self.officeAuthority = officeAuthority; self.credentials = credentials
         }
     }
 
@@ -116,6 +119,7 @@ public enum ProfileContract {
         public let adminCard: String?
         public let lockdown: Lockdown?
         public let officeAuthority: OfficeAuthority?
+        public let credentials: [String: String]?
         public let settings: [String: Setting]
     }
 
@@ -155,6 +159,7 @@ public enum ProfileContract {
         "mcpServerEnabled": "ceiling:false",
         "agentModeEnabled": "ceiling:false",
         "fieldAssistEnabled": "default:bool",
+        "workizEnabled": "owned:bool",
         "fieldAssistDefaultVaultId": "default:string",
         "fieldAssistDefaultMode": "default:string",
         "supportReportEmail": "default:string",
@@ -260,6 +265,7 @@ public enum ProfileContract {
             }
         }
         if let model = input.aiModel { try checkAIModel(model) }
+        if let boxes = input.credentials { try Credential.checkBoxes(boxes) }
         for (key, setting) in input.settings ?? [:] { try checkSetting(key, setting) }
     }
 
@@ -278,6 +284,6 @@ public enum ProfileContract {
                  vaultPack: input.vaultPack, skillPacks: input.skillPacks, revokedEnrolmentIds: input.revokedEnrolmentIds,
                  aiModel: input.aiModel, edition: input.edition, adminPasscode: adminPasscode,
                  adminCard: input.adminCard?.lowercased(), lockdown: input.lockdown,
-                 officeAuthority: input.officeAuthority, settings: input.settings ?? [:])
+                 officeAuthority: input.officeAuthority, credentials: input.credentials, settings: input.settings ?? [:])
     }
 }

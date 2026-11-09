@@ -9,8 +9,11 @@ import CryptoKit
 ///
 /// - the static host already serving the catalogs holds one file per key, named
 ///   hex(SHA-256(`"openglasses.activation-id.v1\n"` + key));
-/// - the file is the licence code sealed with AES-GCM under HKDF-SHA256(key, info
-///   `"openglasses.activation-key.v1"`), base64 encoded.
+/// - the file is sealed with AES-GCM under HKDF-SHA256(key, info `"openglasses.activation-key.v1"`),
+///   base64 encoded. Version 1's plaintext is the bare licence code; version 2's is sorted-key JSON
+///   `{"companySecret", "format": "openglasses.activation", "licenceCode", "version": 2}`, whose
+///   company secret opens the credentials the profile carries sealed (`OrgCredentialSeal`). Both
+///   are read; `ActivationKeyMint` in Tools/LicenceIssuance writes version 2.
 ///
 /// Nothing on the host maps back to a key, and what it serves still has to verify against the
 /// embedded licence key, so the host can withhold a licence but never forge one.
@@ -78,11 +81,8 @@ struct ActivationKey: Equatable, Sendable {
     // MARK: - Reading what was typed
 
     static func read(_ text: String) -> Reading {
-        let compact = text.uppercased().filter { !$0.isWhitespace && $0 != "-" }
-        guard !compact.isEmpty, compact.count <= longestAttempt,
-              compact.allSatisfy({ alphabet.contains($0) || "OILU".contains($0) }) else {
-            return .notAKey
-        }
+        let compact = compacted(text)
+        guard isAttempt(compact) else { return .notAKey }
         guard compact.count == length else { return .invalid(.length(compact.count)) }
         var values: [Int] = []
         for character in compact {
@@ -93,6 +93,53 @@ struct ActivationKey: Equatable, Sendable {
             return .invalid(.mistyped)
         }
         return .key(ActivationKey(canonical: String(values.map { alphabet[$0] })))
+    }
+
+    /// Upper case, with spaces, line breaks and dashes taken out.
+    private static func compacted<S: StringProtocol>(_ text: S) -> String {
+        text.uppercased().filter { !$0.isWhitespace && $0 != "-" }
+    }
+
+    /// Whether compacted text is an attempt at a key: short enough, and only the alphabet or the
+    /// letters people type for it (`O`, `I`, `L`, `U`).
+    private static func isAttempt(_ compact: String) -> Bool {
+        !compact.isEmpty && compact.count <= longestAttempt
+            && compact.allSatisfy { alphabet.contains($0) || "OILU".contains($0) }
+    }
+
+    // MARK: - Formatting as it is typed
+
+    /// What a key field shows once `text` is typed or pasted into it, `previous` being what it
+    /// showed before the edit.
+    ///
+    /// While the text reads as an attempt at a key (`read` would not say `.notAKey`), it is upper
+    /// cased and grouped in fours, `K7Q3-X9PD-…`, whatever spaces or dashes it came with. Lookalike
+    /// letters stay as typed, since `read` maps them, so the field never shows a character the
+    /// person did not type. Anything else, a pasted licence code above all, comes back exactly as
+    /// it is.
+    ///
+    /// Backspacing over a dash would only have the dash put straight back, so it takes the
+    /// character before the dash instead.
+    static func formatEntry(_ text: String, previous: String = "") -> String {
+        var characters = Array(compacted(text))
+        guard isAttempt(String(characters)) else { return text }
+        if let dash = deletedDash(from: previous, leaving: text) {
+            let before = compacted(previous.prefix(dash)).count
+            if before > 0 { characters.remove(at: before - 1) }
+        }
+        return stride(from: 0, to: characters.count, by: 4)
+            .map { String(characters[$0..<min($0 + 4, characters.count)]) }
+            .joined(separator: "-")
+    }
+
+    /// The offset in `previous` of a single dash deleted to leave `text`, or nil for any other edit.
+    private static func deletedDash(from previous: String, leaving text: String) -> Int? {
+        let old = Array(previous)
+        let new = Array(text)
+        guard old.count == new.count + 1 else { return nil }
+        let at = zip(old, new).prefix(while: { $0.0 == $0.1 }).count
+        guard old[at] == "-", old[(at + 1)...].elementsEqual(new[at...]) else { return nil }
+        return at
     }
 
     /// A character's value, reading `O` as `0` and `I`/`L` as `1`. `U` has none.
@@ -169,9 +216,37 @@ struct ActivationKey: Equatable, Sendable {
                                outputByteCount: 32)
     }
 
-    /// The file's contents: base64 of AES-GCM's combined nonce, ciphertext and tag.
+    /// The `format` of a version 2 file's plaintext.
+    static let contentsFormat = "openglasses.activation"
+
+    /// What a file opens to. A version 1 file carries no company secret.
+    struct Contents: Equatable, Sendable {
+        let licenceCode: String
+        let companySecret: Data?
+    }
+
+    private struct Version2: Codable {
+        var format = ActivationKey.contentsFormat
+        var version = 2
+        let licenceCode: String
+        let companySecret: String
+    }
+
+    /// A version 1 file: base64 of AES-GCM's combined nonce, ciphertext and tag over the bare code.
     func seal(_ licenceCode: String) throws -> String {
-        guard let combined = try AES.GCM.seal(Data(licenceCode.utf8), using: sealingKey).combined else {
+        try seal(plain: Data(licenceCode.utf8))
+    }
+
+    /// A version 2 file, as the licence service writes it (tests and fixtures only on the phone).
+    func seal(_ licenceCode: String, companySecret: Data) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try seal(plain: encoder.encode(Version2(licenceCode: licenceCode,
+                                                       companySecret: companySecret.base64EncodedString())))
+    }
+
+    private func seal(plain: Data) throws -> String {
+        guard let combined = try AES.GCM.seal(plain, using: sealingKey).combined else {
             throw CryptoKitError.incorrectParameterSize
         }
         return combined.base64EncodedString()
@@ -179,13 +254,29 @@ struct ActivationKey: Equatable, Sendable {
 
     /// The licence code inside a fetched file, or nil when the file is not one this key sealed.
     func open(_ file: Data) -> String? {
+        openContents(file)?.licenceCode
+    }
+
+    /// Either version's contents, or nil when the file is not one this key sealed. A version 2 file
+    /// whose secret is not 32 bytes is not one the service wrote, and is refused whole.
+    func openContents(_ file: Data) -> Contents? {
         guard let text = String(data: file, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               let combined = Data(base64Encoded: text),
               let box = try? AES.GCM.SealedBox(combined: combined),
               let plain = try? AES.GCM.open(box, using: sealingKey) else {
             return nil
         }
-        return String(data: plain, encoding: .utf8)
+        if plain.first == UInt8(ascii: "{") {
+            guard let v2 = try? JSONDecoder().decode(Version2.self, from: plain),
+                  v2.format == Self.contentsFormat, v2.version == 2, !v2.licenceCode.isEmpty,
+                  let secret = Data(base64Encoded: v2.companySecret),
+                  secret.count == OrgCredentialSeal.secretLength else {
+                return nil
+            }
+            return Contents(licenceCode: v2.licenceCode, companySecret: secret)
+        }
+        guard let code = String(data: plain, encoding: .utf8), !code.isEmpty else { return nil }
+        return Contents(licenceCode: code, companySecret: nil)
     }
 }
 
@@ -221,6 +312,12 @@ struct ActivationKeyResolver: Sendable {
     var fetch: Fetch = ActivationKeyResolver.boundedFetch
 
     func resolve(_ key: ActivationKey) async throws -> String {
+        try await resolveContents(key).licenceCode
+    }
+
+    /// The licence code and, from a version 2 file, the company secret. The secret is kept only once
+    /// the enrolment it came with has been applied (`OrgEnrolmentService.confirm`).
+    func resolveContents(_ key: ActivationKey) async throws -> ActivationKey.Contents {
         let address = directory.appendingPathComponent(key.fileName)
         let reply: (status: Int, body: Data)
         do {
@@ -235,8 +332,8 @@ struct ActivationKeyResolver: Sendable {
         }
         switch reply.status {
         case 200...299:
-            guard let code = key.open(reply.body) else { throw Failure.unreadable }
-            return code
+            guard let contents = key.openContents(reply.body) else { throw Failure.unreadable }
+            return contents
         case 404, 410:
             throw Failure.unknownKey
         default:

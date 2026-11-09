@@ -34,27 +34,7 @@ final class OrgFirstRunTests: XCTestCase {
         XCTAssertEqual(OrgFirstRun.pageBefore(0, organisationChoseModel: false), 0)
     }
 
-    // MARK: - The key field
-
-    func testAKeyIsGroupedInFoursAsItIsTyped() {
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry("k7q3"), "K7Q3")
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry("k7q3x"), "K7Q3-X")
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry("K7Q3-X9PDM2VA8RTZ"), "K7Q3-X9PD-M2VA-8RTZ")
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry("K7Q3-"), "K7Q3", "deleting past a dash takes the dash")
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry(""), "")
-    }
-
-    func testALicenceCodeIsLeftExactlyAsPasted() {
-        let code = "eyJmZWF0dXJlIjoiZmllbGRfYXNzaXN0In0.c2lnbmF0dXJl"
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry(code), code)
-        XCTAssertEqual(OrgFirstRun.formatKeyEntry("K7Q3-X9PD-M2VA-8RTZ-EXTRA"), "K7Q3-X9PD-M2VA-8RTZ-EXTRA",
-                       "past sixteen characters it is not a key, so it is not reshaped")
-    }
-
-    func testAFormattedKeyStillReadsAsTheSameKey() {
-        let key = ActivationKey.generate()
-        XCTAssertEqual(ActivationKey.read(OrgFirstRun.formatKeyEntry(key.canonical.lowercased())), .key(key))
-    }
+    // The key field's formatting is `ActivationKey.formatEntry`, tested in `ActivationKeyTests`.
 
     func testTheCompanyRouteContinuesPastTheWelcomePageOnceTheProfileIsInForce() {
         XCTAssertTrue(OrgFirstRun.continuesFromWelcome(tookCompanyRoute: true, onWelcomePage: true,

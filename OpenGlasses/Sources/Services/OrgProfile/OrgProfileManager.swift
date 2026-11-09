@@ -238,6 +238,9 @@ final class OrgProfileManager: ObservableObject {
         /// enrolment), and give it back on removal. No-ops by default — `production` wires them.
         var seatCheckIn: @MainActor (_ enrolment: DeviceSeatEnrolment, _ force: Bool) async -> Void = { _, _ in }
         var releaseSeat: @MainActor () -> Void = {}
+        /// The profile's sealed company credentials into the Keychain, on every apply, renewal and
+        /// launch (`OrgCredentialSync`). Does nothing by default; `production` wires it.
+        var syncCredentials: @MainActor (ConfigProfile) -> Void = { _ in }
 
         /// The app's seams: every default above, and the departure wired to `OrgDepartureService`.
         static var production: Seams {
@@ -254,8 +257,10 @@ final class OrgProfileManager: ObservableObject {
             seams.endLapseDeparture = { OrgDepartureService.shared.cancelLapse(enrolmentId: $0) }
             seams.seatCheckIn = { await DeviceSeatService.shared.checkIn($0, force: $1) }
             seams.releaseSeat = { DeviceSeatService.shared.release() }
+            seams.syncCredentials = { OrgCredentialSync.shared.apply($0) }
             seams.beginDeparture = { reason, record, profile in
                 AppStateProvider.shared?.workiz.remove()
+                OrgCredentialSync.shared.forget()
                 PilotReportStore.shared.clear()
                 AppStateProvider.shared?.pilotReportDays = []
                 if AppStateProvider.shared?.supportReportRequest?.pilotDay != nil {
@@ -322,6 +327,7 @@ final class OrgProfileManager: ObservableObject {
             } else {
                 let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
                 seams.installEnvelope(result, verified.organizationName)
+                seams.syncCredentials(verified)
             }
         } catch {
             profile = nil
@@ -523,6 +529,7 @@ final class OrgProfileManager: ObservableObject {
         profile = review.profile
         loadProblem = nil
         seams.installEnvelope(review.result, review.profile.organizationName)
+        seams.syncCredentials(review.profile)
         evaluateLease()
         if let enrolment = seatEnrolment {
             // Plan JS P2: a seat-checked licence claims its seat now; nothing else does anything.
@@ -873,6 +880,8 @@ final class OrgProfileManager: ObservableObject {
         record = current
         profile = renewed
         seams.installEnvelope(result, renewed.organizationName)
+        // A replaced or removed Workiz key arrives here, silently.
+        seams.syncCredentials(renewed)
     }
 
     // MARK: - An office's renewal and removal (Contracts/office-check-in.md)

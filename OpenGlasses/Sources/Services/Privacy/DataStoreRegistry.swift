@@ -90,6 +90,8 @@ enum SensitiveStore: String, CaseIterable {
     case jobDeliveryQueue
     case upcomingJobs
     case workizConnection
+    /// The company secret from the activation file, which opens the profile's sealed credentials.
+    case orgCompanySecret
     case vanStock
     case learningCandidates
     case capturedManuals
@@ -743,6 +745,16 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .notSubjectLinked, owner: "WorkizConnection",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Workiz/WorkizConnection.swift"],
                           location: "Keychain workizDirectCredential: key, generation and selected technician; options in UserDefaults")
+        case .orgCompanySecret:
+            // The 32-byte secret a version 2 activation file carries. It opens the company
+            // credentials the organisation profile carries sealed (today the Workiz key, which goes
+            // to `workizConnection`); it is no record of anyone. Removed when the phone leaves the firm.
+            return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true,
+                          retention: .none, deleteAll: .api("CompanySecretStore.erase()"),
+                          deleteSubject: .notSubjectLinked, owner: "CompanySecretStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OrgProfile/OrgCredential.swift"],
+                          location: "Keychain orgCompanySecret: the company secret only")
         case .upcomingJobs:
             // Jobs ahead of the technician (Plan FO P3c): typed, spoken, or opened from an `.ogjob`
             // file the office sent. It carries the customer's name, the site address and a contact

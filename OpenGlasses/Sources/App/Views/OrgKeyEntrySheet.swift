@@ -48,8 +48,8 @@ struct OrgKeyEntrySheet: View {
                         .autocorrectionDisabled()
                         .keyboardType(.asciiCapable)
                         .font(.system(.title3, design: .monospaced))
-                        .onChange(of: text) { _, value in
-                            let formatted = OrgFirstRun.formatKeyEntry(value)
+                        .onChange(of: text) { previous, value in
+                            let formatted = ActivationKey.formatEntry(value, previous: previous)
                             if formatted != value { text = formatted }
                         }
                         .accessibilityLabel("Licence key")
@@ -122,7 +122,7 @@ struct OrgKeyEntrySheet: View {
             finish(.scanned(link))
             dismiss()
         case .key(let key):
-            text = OrgFirstRun.formatKeyEntry(key)
+            text = ActivationKey.formatEntry(key)
             submit(key)
         }
     }
