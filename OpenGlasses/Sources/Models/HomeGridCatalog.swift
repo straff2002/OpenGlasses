@@ -342,13 +342,13 @@ enum DockGridMetrics {
     static let defaultRowsWithoutMeasurement = 3
 
     /// **The one vertical rhythm.** Every gap between two stacked modules on the Voice tab is this,
-    /// and there is no second number: status card ↕ My Day ↕ panel ↕ capsule. A surface whose gaps
+    /// and there is no second number: status card ↕ My Day ↕ conversation. A surface whose gaps
     /// are 16, 16 and then whatever the arithmetic happened to leave over does not read as a
     /// rhythm, it reads as a mistake — which is exactly what the sub-row remainder looked like when
     /// it rendered *between* the card and the panel rather than inside the glass.
     static let moduleGap: CGFloat = 16
-    /// Below the capsule, where the next thing is the tab bar rather than another module. Not a
-    /// module gap, so deliberately not `moduleGap`: the capsule belongs nearest the thumb.
+    /// Below the dock's control row, where the next thing is the tab bar rather than another
+    /// module. Not a module gap, so deliberately not `moduleGap`: the mic belongs nearest the thumb.
     static let dockBottomPadding: CGFloat = 8
 
     /// **The one curve every height change on this surface settles on.**
@@ -362,12 +362,27 @@ enum DockGridMetrics {
     /// The panel's own inset, inside its glass.
     static let panelInset: CGFloat = 14
 
-    /// The hero capsule's glyph box and the padding around it, at the default text size — the
-    /// capsule's height before a real one has been measured, on the same terms as the tile's.
-    /// `ActionCapsule` draws 14 pt of padding above and below its content and floors the result at
-    /// the touch-target minimum.
-    static let capsuleGlyphBox: CGFloat = 22
-    static let capsuleVerticalPadding: CGFloat = 28
+    /// The mic's diameter at the default text size — the dock's primary control, so the biggest
+    /// target on the row by a clear margin.
+    static let micButtonSize: CGFloat = 64
+    /// The buttons button and the cog beside the mic.
+    static let secondaryButtonSize: CGFloat = 52
+    /// The mic and the buttons button inside the tab view's bottom accessory, whose height the
+    /// system sets: as large as fits that strip comfortably, and still past the 44 pt floor for
+    /// the buttons button through its tap target.
+    static let accessoryMicSize: CGFloat = 44
+    static let accessoryButtonSize: CGFloat = 44
+    /// How far the dock's round buttons grow with Dynamic Type. Half again their size, and no more:
+    /// four of them share one row, and uncapped at AX5 they would not fit across the screen.
+    static let dockButtonMaxScale: CGFloat = 1.5
+    /// The grid's page body — the room above its dots — when it fills an area of `areaHeight` in
+    /// the conversation's place: the area less the panel's inset above and below and the dots,
+    /// and never under one minimum row, so a short area still has its controls and simply pages
+    /// further.
+    static func gridPageBodyHeight(areaHeight: CGFloat, minimumTileHeight: CGFloat) -> CGFloat {
+        guard areaHeight.isFinite else { return minimumTileHeight }
+        return max(minimumTileHeight, areaHeight - panelInset * 2 - pageIndicatorHeight)
+    }
 
     /// The panel's pages: everything the screen has left, and nothing else in the expression.
     ///

@@ -721,4 +721,22 @@ final class HomeGridTests: XCTestCase {
         XCTAssertTrue(HomeGridCatalog.entries(arrangement: arrangement,
                                               quickActions: speedDial).isEmpty)
     }
+
+    // MARK: - The grid in the conversation's place
+
+    /// The grid fills the area it is given, less its inset and dots, and the fit fills that with
+    /// whole rows.
+    func testTheGridFillsTheConversationsPlace() {
+        let body = DockGridMetrics.gridPageBodyHeight(areaHeight: 600, minimumTileHeight: 56)
+        XCTAssertEqual(body, 600 - DockGridMetrics.panelInset * 2 - DockGridMetrics.pageIndicatorHeight)
+        let fit = HomeGridPaging.fit(height: body, minimumTileHeight: 56, naturalTileHeight: 80)
+        XCTAssertLessThanOrEqual(DockGridMetrics.gridHeight(rows: fit.rows, tileHeight: fit.tileHeight),
+                                 body + 0.5)
+    }
+
+    /// A short area still has a row of keys; the grid pages further rather than slicing one.
+    func testTheGridKeepsAtLeastOneRow() {
+        XCTAssertEqual(DockGridMetrics.gridPageBodyHeight(areaHeight: 60, minimumTileHeight: 56), 56)
+        XCTAssertEqual(DockGridMetrics.gridPageBodyHeight(areaHeight: .infinity, minimumTileHeight: 56), 56)
+    }
 }

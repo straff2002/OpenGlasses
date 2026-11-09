@@ -348,11 +348,14 @@ final class WakeListenerFailurePolicyTests: XCTestCase {
 
     private typealias Policy = WakeListenerFailurePolicy
 
-    func testTheMessageNamesTapAndTalkAndOnlyShowsInFront() {
+    func testTheMessageNamesTheMicAndOnlyShowsInFront() {
         XCTAssertEqual(Policy.message(appActive: true), Policy.messageText)
         XCTAssertNil(Policy.message(appActive: false), "no tap instruction for a phone in a pocket")
-        XCTAssertTrue(Policy.messageText.contains(TalkEntryPolicy.tapAndTalk))
-        XCTAssertTrue(Policy.headline.contains(TalkEntryPolicy.tapAndTalk))
+        // The control the wearer taps is the round mic beside the buttons button now; the
+        // full-width "Tap & Talk" capsule it names no longer exists.
+        XCTAssertTrue(Policy.messageText.contains("the mic"))
+        XCTAssertTrue(Policy.headline.contains("the mic"))
+        XCTAssertFalse(Policy.messageText.contains(TalkEntryPolicy.tapAndTalk))
         XCTAssertFalse(Policy.messageText.contains("Test Microphone"))
     }
 

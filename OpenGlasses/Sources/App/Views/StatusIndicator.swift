@@ -27,8 +27,8 @@ struct StatusIndicator: View {
     /// The status tile, and the glyph inside it. Scaled rather than fixed so the
     /// tile keeps its proportion to the two lines of text beside it at every
     /// Dynamic Type size instead of shrinking against them.
-    @ScaledMetric(relativeTo: .body) private var statusTile: CGFloat = 30
-    @ScaledMetric(relativeTo: .callout) private var statusGlyph: CGFloat = 17
+    @ScaledMetric(relativeTo: .body) private var statusTile: CGFloat = 52
+    @ScaledMetric(relativeTo: .callout) private var statusGlyph: CGFloat = 28
     /// The connection pills' logo, which scales with the type beside it.
     @ScaledMetric(relativeTo: .caption) private var pillGlyph: CGFloat = 13
     @ScaledMetric(relativeTo: .caption2) private var statusDot: CGFloat = 5
@@ -110,36 +110,19 @@ struct StatusIndicator: View {
         .presentationDetents([.medium, .large])
     }
 
-    /// Two rows: the state and the model on one line beside a small tile, then every pill —
+    /// Two rows: the state and the model on one line, then every pill — beside them, on the right,
+    /// the status mark (`statusMark`). Once a small tile at the start of the first row; then every pill —
     /// mode, wake word, job, glasses, OpenClaw — in one row that wraps only when it must. It used
     /// to be four bands (a 48pt tile over two lines, a full-width wake-word line, a job row, a
     /// footer), and the conversation under it — what a technician scrolls back through for a
     /// number they missed — got what was left.
     private var fullCard: some View {
+        // The text and the pills on the left, the status mark large on the right beside both rows:
+        // the card's spare width used to sit empty at the end of the status line.
+        HStack(alignment: .center, spacing: 0) {
         VStack(spacing: 0) {
             // Status row
             HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(ringColor.opacity(OGTheme.Opacity.accentPillFill))
-                        .frame(width: statusTile, height: statusTile)
-
-                    Group {
-                        if iconName == "AvenkinMark" {
-                            LogoIcon(size: statusGlyph)
-                        } else {
-                            Image(systemName: iconName)
-                                .font(.callout)
-                        }
-                    }
-                    // The tile paints a hue on a wash of itself, which is the
-                    // case `tintedAccentLabel` exists for: it nudges any hue to
-                    // the nearest value that clears AA on its own tint, against
-                    // the *stronger* wash, so the 0.12 pill fill is covered too.
-                    .foregroundStyle(OGTheme.tintedAccentLabel(ringColor))
-                }
-                .accessibilityHidden(true)
-
                 // The state and the model as one run of text: "Ready  Voice · OpenAI (GPT)".
                 // Uncapped — the state of the session is the one thing this card exists to
                 // report and the line can be a whole error message — so it wraps, at word
@@ -255,6 +238,10 @@ struct StatusIndicator: View {
             // so the target is the row's breathing room and the row adds almost none of its own.
             .padding(.bottom, 2)
         }
+            statusMark
+                .padding(.trailing, 14)
+                .padding(.vertical, 10)
+        }
         .glassEffect(in: .rect(cornerRadius: 16))
         .padding(.horizontal, 20)
         // A group *name*, not a summary. The card's label used to restate the status and the
@@ -262,6 +249,34 @@ struct StatusIndicator: View {
         // sentence on entering the group and then again on the first swipe inside it.
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session status")
+    }
+
+    /// The session's mark: the Avenkin logo while it is ready, the state's own glyph otherwise, on a
+    /// wash of the state's hue with a ring of it — the card's connection indicator at a glance.
+    /// Capped at half again its size, so at accessibility text sizes the text keeps the width.
+    private var statusMark: some View {
+        let side = min(statusTile, 52 * 1.5)
+        return ZStack {
+            Circle()
+                .fill(ringColor.opacity(OGTheme.Opacity.accentPillFill))
+            Circle()
+                .strokeBorder(ringColor.opacity(0.55), lineWidth: 2)
+            Group {
+                if iconName == "AvenkinMark" {
+                    LogoIcon(size: min(statusGlyph, 28 * 1.5))
+                } else {
+                    Image(systemName: iconName)
+                        .font(.title2.weight(.semibold))
+                }
+            }
+            // The tile paints a hue on a wash of itself, which is the
+            // case `tintedAccentLabel` exists for: it nudges any hue to
+            // the nearest value that clears AA on its own tint, against
+            // the *stronger* wash, so the 0.12 pill fill is covered too.
+            .foregroundStyle(OGTheme.tintedAccentLabel(ringColor))
+        }
+        .frame(width: side, height: side)
+        .accessibilityHidden(true)
     }
 
     /// The status row's text: the state in the headline face, then the model in the caption face,

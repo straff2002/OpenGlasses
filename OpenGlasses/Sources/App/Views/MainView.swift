@@ -16,7 +16,12 @@ struct MainView: View {
     #endif
     @StateObject private var workspace = AdaptiveWorkspaceState()
     @StateObject private var manualPresentation = ManualFigurePresentation()
+    /// The Voice tab's dock, shared with the tab view's bottom accessory where its controls ride.
+    @StateObject private var voiceDock = VoiceDockModel()
     @State private var showOnboarding = Config.needsOnboarding
+    /// The manual page last opened in place on the Voice tab. It stays there — rather than turning
+    /// into a sheet over whatever tab the wearer moves to next — until it is closed or replaced.
+    @State private var inlineManualID: String?
     /// The wearer's own Field Assist switch. Read reactively so turning it off in Settings takes
     /// the tab away in the same breath.
     @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled: Bool = false
@@ -128,7 +133,14 @@ struct MainView: View {
             .id(departures.departure?.startedAt)
             .id(orgProfile.contentLocked)
             .tabViewStyle(.sidebarAdaptable)
-            .tabBarMinimizeBehavior(.onScrollDown)
+            // Settings and the lists scroll down from their top; the Voice tab's conversation opens
+            // on its newest line and is read by scrolling *up* through it, so that is the direction
+            // that shrinks the bar to the mark there — and the accessory below slides in beside it.
+            .tabBarMinimizeBehavior(selectedTab == .voice ? .onScrollUp : .onScrollDown)
+            // The Voice tab's mic and buttons button, in Apple's bottom strip: above the tab bar,
+            // and beside the mark when the bar shrinks. Off while the typed bar is open, which
+            // takes the bottom of the tab for itself.
+            .modifier(VoiceDockAccessoryModifier(enabled: showsVoiceDock))
             .tint(accent)
             // Onboarding is drawn *over* the tabs, not instead of them, so without this the whole
             // session surface stays in the accessibility tree behind it: a VoiceOver user on the
@@ -279,7 +291,9 @@ struct MainView: View {
         }
         .environmentObject(workspace)
         .environmentObject(manualPresentation)
+        .environmentObject(voiceDock)
         .onChange(of: appState.manualFigureRequest?.id) { _, requestID in
+            if requestID != nil, selectedTab == .voice, !showOnboarding { inlineManualID = requestID }
             if requestID == nil {
                 manualPresentation.reset()
                 if workspace.section == .reference { workspace.section = .job }
@@ -289,17 +303,36 @@ struct MainView: View {
         }
     }
 
+    /// The accessory is the Voice tab's, and gives the bottom of the screen to the typed bar.
+    private var showsVoiceDock: Bool {
+        guard selectedTab == .voice, !showOnboarding else { return false }
+        let typing = (voiceDock.showChatInput || appState.pendingTranscript != nil)
+            && !appState.currentMode.isRealtime
+        return !typing
+    }
+
     private var manualSheetRequest: Binding<AppState.ManualFigureRequest?> {
         return Binding(
-            get: { presentsManualInline ? nil : appState.manualFigureRequest },
+            get: {
+                guard let request = appState.manualFigureRequest else { return nil }
+                return presentsManualInline(request) ? nil : request
+            },
             set: { request in
                 // Expanding dismisses the system sheet in favour of the pane. That dismissal
                 // must not clear the citation that the pane is about to display.
-                if request != nil || !presentsManualInline { appState.manualFigureRequest = request }
+                if let request {
+                    appState.manualFigureRequest = request
+                } else if let current = appState.manualFigureRequest, !presentsManualInline(current) {
+                    appState.manualFigureRequest = nil
+                }
             })
     }
 
-    private var presentsManualInline: Bool {
-        workspace.isExpanded && selectedTab == .voice && !showOnboarding
+    /// The Voice tab draws a cited page itself — in the context pane when the workspace is
+    /// expanded, under the answer in its feed when it is not — so the sheet is only for a page
+    /// asked for on another tab.
+    private func presentsManualInline(_ request: AppState.ManualFigureRequest) -> Bool {
+        guard !showOnboarding else { return false }
+        return selectedTab == .voice || inlineManualID == request.id
     }
 }
