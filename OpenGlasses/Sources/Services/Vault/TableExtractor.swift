@@ -1139,6 +1139,10 @@ enum TableExtractor {
         /// nil for none. Lets a table read from recognised words find each cell's words again, to
         /// judge how clearly they were read. Never stored.
         var cellBoxes: [[CGRect?]] = []
+        /// The caption's page printed a heading over its rows under the columns' headings
+        /// (`headsRows`): a page that carries the table on may print the next one in the same
+        /// place, above its first row (Plan KR follow-up).
+        var headsRowGroups = false
 
         var segments: [(Double, Double)] { Array(zip(lows, highs)) }
     }
@@ -1195,9 +1199,18 @@ enum TableExtractor {
         // columns' own headings printed as numbers, which read as the first row. When most value
         // columns have no heading of their own and the first row fills every one of them with a
         // number, that row heads them.
+        // A heading set under the columns' own headings, over the rows, heads those rows (Plan KR
+        // follow-up): it is not a level of the columns it happens to sit over.
+        var rowGroup: String?
+        if header.count >= 2, let last = header.last, headsRows(last, under: Array(header.dropLast()), segments: segments) {
+            rowGroup = last.phrases.first?.printed
+            header.removeLast()
+        }
         var paths = columnPaths(header: header, segments: segments)
-        if numberedHeadingRow(placed.first, paths: paths, header: header),
-           placed.dropFirst().filter({ $0.line.phrases.count >= 2 }).count >= minimumBodyRows {
+        if let first = placed.first, numberedHeadingRow(first, paths: paths, header: header),
+           numberedRowHeads(rowsUnder: placed.dropFirst().filter({ $0.line.phrases.count >= 2 }).count,
+                            namesARow: first.cells.first.map { $0 != nil } ?? false,
+                            counts: first.cells.dropFirst().map { $0?.text ?? "" }) {
             header.append(placed[0].line)
             placed.removeFirst()
             paths = columnPaths(header: header, segments: segments)
@@ -1213,6 +1226,7 @@ enum TableExtractor {
         var rows: [ManualTable.Row] = []
         var boxes: [[CGRect?]] = []
         var groups = laid.groups
+        if let rowGroup { for index in groups.indices { groups[index].carry.group = rowGroup } }
         for index in groups.indices {
             let read = self.rows(placed, group: groups[index], units: units, page: page)
             rows += read.rows
@@ -1230,7 +1244,7 @@ enum TableExtractor {
                         units: units, headings: Set(header.map { headingKey($0.text) }),
                         gap: gaps.isEmpty ? body[0].size : gaps[gaps.count / 2],
                         runsToFoot: regionStart + region.count == all.count && trailing <= trailingAllowance,
-                        cellBoxes: boxes)
+                        cellBoxes: boxes, headsRowGroups: rowGroup != nil)
         return (.table(ManualTable(label: caption.label, title: layout.title, page: page, rowHeaders: laid.rowHeaders,
                                    columns: laid.columns, rows: rows, notes: notes.notes, continues: caption.continues)),
                 grid)
@@ -1353,6 +1367,61 @@ enum TableExtractor {
         return spans && bare.count * 2 >= values.count
     }
 
+    /// Whether a row the numbered-heading rule fits heads the columns, by what it prints at the
+    /// left and how many rows of the table follow it (Plan KR follow-up). As a rule
+    /// `minimumBodyRows` must follow, so a table's first row that happens to count up stays a row.
+    /// A row that names no row — nothing in the row-header column — and counts up in whole
+    /// numbers, the last perhaps in words ("1 2 3 Over 3"), heads the columns however few rows
+    /// follow it: a table of fill by how many conductors share a run may have two. `counts` are
+    /// the row's value cells, left to right.
+    static func numberedRowHeads(rowsUnder: Int, namesARow: Bool, counts: [String]) -> Bool {
+        if rowsUnder >= minimumBodyRows { return true }
+        return rowsUnder >= 1 && !namesARow && countsUp(counts)
+    }
+
+    /// Cells that count up: whole numbers with no unit, each larger than the one before, at least
+    /// two of them, the last cell perhaps words with a number ("Over 3", "5 or more").
+    static func countsUp(_ cells: [String]) -> Bool {
+        var counts: [Double] = []
+        for (index, text) in cells.enumerated() {
+            let cell = parseCell(text, markers: [], columnUnit: nil)
+            if index == cells.count - 1, text.contains(where: \.isLetter) { break }
+            guard let value = cell.value, cell.unit == nil, value >= 0, value == value.rounded() else { return false }
+            counts.append(value)
+        }
+        return counts.count >= 2 && zip(counts, counts.dropFirst()).allSatisfy { $0 < $1 }
+    }
+
+    /// The last heading line is a heading over the rows under it rather than over columns (Plan KR
+    /// follow-up): one phrase of words, wider than one value column and clear of the row-header
+    /// column (`spansValueColumns`), not wrapping on from the line above, under headings that
+    /// already give every value column a heading over it alone ("Plain widgets" centred under "Area, mm²" printed over each column). Headings nest
+    /// from the top down, so a line spanning several columns below each column's own heading
+    /// cannot be one of theirs; it starts a group of rows, as a heading set alone at the left
+    /// does.
+    static func headsRows(_ line: Line, under above: [Line], segments: [(Double, Double)]) -> Bool {
+        guard let previous = above.last, spansValueColumns(line, segments: segments) != nil,
+              let phrase = line.phrases.first else { return false }
+        // A heading wrapping on from the line above is that heading, not one over the rows.
+        guard !previous.phrases.contains(where: { continuesHeading(phrase, on: line, from: $0, on: previous) }) else {
+            return false
+        }
+        return columnHeadings(header: above, segments: segments).dropFirst().allSatisfy { $0.last?.columns.count == 1 }
+    }
+
+    /// A line of one phrase of words set over value columns and clear of the first, row-header
+    /// column, wider than one column: over two or more columns' values, or wider than the space
+    /// from one column's middle to the next. Its words, or nil.
+    static func spansValueColumns(_ line: Line, segments: [(Double, Double)]) -> String? {
+        guard segments.count >= 3, line.phrases.count == 1, let phrase = line.phrases.first,
+              !isNumeric(phrase), !isNoteMarkerHeading(phrase.text), phrase.minX > segments[0].1 else { return nil }
+        let over = segments.indices.filter { min(phrase.maxX, segments[$0].1) - max(phrase.minX, segments[$0].0) > 0 }
+        let centers = segments.map { ($0.0 + $0.1) / 2 }
+        let pitches = zip(centers, centers.dropFirst()).map { $1 - $0 }.sorted()
+        let pitch = pitches[pitches.count / 2]
+        return over.count >= 2 || phrase.maxX - phrase.minX > pitch ? phrase.printed : nil
+    }
+
     /// How many of a group's columns head its rows: the first, and any after it that never hold a
     /// number. A table of words throughout has no numbers to tell its row headers by: only its
     /// first column heads the rows (Plan JJ P1).
@@ -1425,11 +1494,16 @@ enum TableExtractor {
         let first = groups[0]
         // A row-header column's heading that reached a value column by the midpoints is the rows'
         // heading, not a level of the column's (Plan KR P3): it is left out above the column's own.
+        // A row-header heading that wrapped is one level of its own column; a value column may
+        // hold its first line alone, which is that heading all the same.
         let stubHeadings = Set(first.prefix(stubs[0]).flatMap { paths[$0] })
+        func isStubHeading(_ level: String) -> Bool {
+            stubHeadings.contains { $0 == level || $0.hasPrefix(level + " ") }
+        }
         let columns = first[stubs[0]...].map { index -> ManualTable.Column in
             var path = withoutNoteLeaf(Array(paths[index].dropFirst(drop)))
             if path.count > 1 {
-                path = path.dropLast().filter { !stubHeadings.contains($0) } + [path[path.count - 1]]
+                path = path.dropLast().filter { !isStubHeading($0) } + [path[path.count - 1]]
             }
             return ManualTable.Column(path: path, unit: unit(in: path))
         }
@@ -1699,6 +1773,14 @@ enum TableExtractor {
 
         var out: [ManualTable.Row] = []
         var next = grid
+        // A table whose rows run in groups headed over the value columns (`headsRows`): the line
+        // set straight above this page's first row, among the lines before it, heads the next
+        // group (Plan KR follow-up), in place of the group carried on from the page before.
+        if grid.headsRowGroups, first > 0, !grid.headings.contains(headingKey(lines[first - 1].text)),
+           lines[first].top - lines[first - 1].bottom < 1.5 * lines[first].size,
+           let heading = spansValueColumns(lines[first - 1], segments: segments) {
+            for index in next.groups.indices { next.groups[index].carry = Grid.Carry(group: heading) }
+        }
         for index in next.groups.indices {
             let read = self.rows(placed, group: next.groups[index], units: grid.units, page: page)
             out += read.rows
@@ -1738,12 +1820,18 @@ enum TableExtractor {
     /// three. Stacked phrases over the same columns are one heading wrapped onto two lines and are
     /// joined; a phrase over more columns than the one below it is a level of the path.
     static func columnPaths(header: [Line], segments: [(Double, Double)]) -> [[String]] {
+        columnHeadings(header: header, segments: segments).map { $0.map(\.text) }
+    }
+
+    /// Each column's headings, top down, each with the columns it heads.
+    static func columnHeadings(header: [Line], segments: [(Double, Double)]) -> [[(text: String, columns: Set<Int>)]] {
         let centers = segments.map { ($0.0 + $0.1) / 2 }
         let gaps = zip(segments, segments.dropFirst()).map { $1.0 - $0.1 }.sorted()
         let gap = gaps.isEmpty ? 0 : gaps[gaps.count / 2]
         let pitches = zip(centers, centers.dropFirst()).map { $1 - $0 }.sorted()
         let pitch = pitches.isEmpty ? 0 : pitches[pitches.count / 2]
         var paths = [[(text: String, columns: Set<Int>)]](repeating: [], count: segments.count)
+        var above: (line: Line, phrases: [Phrase], owners: [Int: Int])?
         for line in header {
             let phrases = line.phrases.filter { !$0.text.isEmpty }
             var coverage: [Set<Int>] = []
@@ -1777,19 +1865,49 @@ enum TableExtractor {
                 }
                 coverage.append(covered)
             }
+            // A heading that wrapped onto this line heads the columns its first line heads, and
+            // only those (Plan KR follow-up): "… or multi-" over "widget bundles", which alone is
+            // narrower and would reach only some of them — or, under a row-header heading, wider.
+            var wraps: [Int: Int] = [:]
+            if let above {
+                for index in phrases.indices {
+                    guard let wrapped = above.phrases.indices.first(where: {
+                        continuesHeading(phrases[index], on: line, from: above.phrases[$0], on: above.line)
+                    }) else { continue }
+                    let headed = Set(above.owners.filter { $0.value == wrapped }.keys)
+                    guard !headed.isEmpty else { continue }
+                    coverage[index] = headed
+                    wraps[index] = wrapped
+                }
+            }
+            var owners: [Int: Int] = [:]
             for column in segments.indices {
-                let owners = phrases.indices.filter { coverage[$0].contains(column) }
-                guard let owner = owners.min(by: { abs(phrases[$0].center - centers[column]) < abs(phrases[$1].center - centers[column]) })
+                let candidates = phrases.indices.filter { coverage[$0].contains(column) }
+                guard let owner = candidates.min(by: { abs(phrases[$0].center - centers[column]) < abs(phrases[$1].center - centers[column]) })
                 else { continue }
+                owners[column] = owner
                 let text = phrases[owner].printed
-                if let last = paths[column].last, last.columns == coverage[owner] {
+                if let last = paths[column].last, wraps[owner] != nil || last.columns == coverage[owner] {
                     paths[column][paths[column].count - 1].text += " " + text
                 } else {
                     paths[column].append((text, coverage[owner]))
                 }
             }
+            above = (line, phrases, owners)
         }
-        return paths.map { $0.map(\.text) }
+        return paths
+    }
+
+    /// `phrase` carries on the heading `first` on the line above: set straight under it, from the
+    /// same left edge and no wider, and reading on from it — it starts with a small letter, or the
+    /// line above breaks a word with a hyphen. A heading under another that starts with a capital
+    /// is a heading of its own, even set from the same edge.
+    static func continuesHeading(_ phrase: Phrase, on line: Line, from first: Phrase, on firstLine: Line) -> Bool {
+        let slack = 0.5 * line.size
+        guard abs(phrase.minX - first.minX) <= slack, phrase.maxX <= first.maxX + slack,
+              line.top - firstLine.bottom < 0.6 * line.size,
+              let start = phrase.text.first(where: { $0.isLetter || $0.isNumber }) else { return false }
+        return start.isLowercase || first.text.hasSuffix("-")
     }
 
     /// How far, in columns, a heading's centre may sit right of the middle of the columns it would

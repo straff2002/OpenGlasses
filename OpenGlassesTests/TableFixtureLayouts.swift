@@ -543,14 +543,14 @@ enum TableFixtureLayouts {
     /// Table 98 on a page set in one weight, its value columns headed by a group heading over a
     /// row of numbers ("1 2 3 4") with a row of words under it ("Area,", "mm²"), a heading set
     /// alone over the rows, then rows of numbers.
-    static func numberedColumnHeadings() -> Page {
+    static func numberedColumnHeadings(group: String = "Plain widgets") -> Page {
         var items = [Item(text: "Table 98 Invented widget areas", x: 200, y: 60, size: 12),
                      Item(text: "Widget", x: 73, y: 90),
                      Item(text: "Number of widgets", x: 260, y: 100)]
         items += row(114, [("1", 160), ("2", 220), ("3", 280), ("4", 340)])
         items += row(126, [("Widget size", 73), ("Area,", 155), ("Area,", 215), ("Area,", 275), ("Area,", 335)])
         items += row(136, [("grade", 73), ("mm\u{00B2}", 157), ("mm\u{00B2}", 217), ("mm\u{00B2}", 277), ("mm\u{00B2}", 337)])
-        items.append(Item(text: "Plain widgets", x: 230, y: 150))
+        items.append(Item(text: group, x: 230, y: 150))
         for (index, key) in ["W2", "W4", "W6", "W8"].enumerated() {
             let base = 5 + 2 * index
             // Spelled out in steps: as one expression it exceeds CI's type-check time limit.
@@ -562,6 +562,50 @@ enum TableFixtureLayouts {
             let y: Double = 166 + Double(index) * 14
             items += row(y, cells)
         }
+        return items
+    }
+
+    /// Table 98 carried on to a second page (Plan KR follow-up): the page of
+    /// `numberedColumnHeadings` with its heading over the rows set wider than a column, then a page
+    /// that prints its headings again under a "(Concluded)" caption — or, `captioned` false, under
+    /// no caption — and a second heading set alone over its rows, over rows that print the same
+    /// widget sizes again.
+    static func groupedRowsOverTwoPages(captioned: Bool) -> [Page] {
+        let first = numberedColumnHeadings(group: "Plain widgets of every grade")
+        var next: Page = captioned ? [Item(text: "Table 98 (Concluded)", x: 200, y: 30, size: 12)] : []
+        next += first.filter { $0.y >= 90 && $0.y < 150 }
+        next.append(Item(text: "Ringed widgets of every grade", x: 210, y: 150))
+        for (index, key) in ["W2", "W4", "W6"].enumerated() {
+            var cells: [(String, Double)] = [(key, 73)]
+            for column in 1...4 {
+                let x: Double = 152 + 60 * Double(column - 1)
+                cells.append((String(100 + 10 * index + column), x))
+            }
+            let y: Double = 166 + Double(index) * 14
+            next += row(y, cells)
+        }
+        return [first, next]
+    }
+
+    // MARK: - A short table under counted headings (Plan KR follow-up)
+
+    /// Table 97 on a page set in one weight, laid out like a table of fill by how many widgets share
+    /// a run: a title under the caption; a heading over every value column whose second line
+    /// wraps ("… or multi-" over "widget bundles", narrower, set from the same edge); the columns'
+    /// own headings a row of counts with nothing at the left ("1 2 3 Over 3"); and only two rows,
+    /// each name wrapping onto a line of its own. `rowNamed` prints a word at the left of the
+    /// counts, as a table's own first row would.
+    static func countedFillTable(rowNamed: Bool = false) -> Page {
+        var items = [Item(text: "Table 97", x: 285, y: 383, size: 12),
+                     Item(text: "Invented most widget fill", x: 240, y: 397, size: 12),
+                     Item(text: "Most fill of a widget run, %", x: 271, y: 441, size: 11),
+                     Item(text: "Number of widgets or multi-", x: 271, y: 458, size: 11),
+                     Item(text: "widget bundles", x: 271, y: 470, size: 11)]
+        items += row(487, [(rowNamed ? "Counted" : "", 117), ("1", 271), ("2", 318), ("3", 364), ("Over 3", 411)], size: 11)
+        items += row(504, [("Plain widgets or multi-", 117), ("51", 271), ("33", 318), ("42", 364), ("44", 411)], size: 11)
+        items.append(Item(text: "widget bundles (plain)", x: 117, y: 516, size: 11))
+        items += row(533, [("Ringed widgets or", 117), ("57", 271), ("29", 318), ("41", 364), ("37", 411)], size: 11)
+        items.append(Item(text: "widget bundles", x: 117, y: 545, size: 11))
         return items
     }
 

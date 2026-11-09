@@ -19,7 +19,10 @@ flight when the app leaves the foreground finishes inside a background task; a r
 job's title and the report heading, the report always says Vault-only on or off and the vault's
 settings screen shows it, two jobs in one conversation each print only their own part and keep their
 own AI turns, and a figure line says where the page went; every `van_stock` write ends with what the
-reply must say. **P1–P7 built headless; P8 device re-run owed.**
+reply must say. **P1–P7 built headless; P8 device re-run owed.** **Follow-up built 2026-11-09:** the
+conduit-fill chain starts — a short table's counted headings, a heading that wraps and a heading over
+the rows are read (measured on the simulator's import of both editions); the corrected chain file is
+local, for the owner to send with the build that carries it.
 **Track:** Field Assist. Every turn that opens a manual page; every table lookup; every rule chain;
 every job close; the support report.
 **Related:** Plan [GB](GB-field-test-round-3.md) P1 (`FigureAutoOpenPolicy`), Plan
@@ -123,7 +126,7 @@ for the partner, sent as a handover and never committed.
   reached the first value column too.
 - A conduit-fill chain's area step was ambiguous over four columns because "mm2" did not match the
   printed "mm²". Its fill-count step needs a heading row the extractor does not read; no chain-file
-  fix exists for it yet.
+  fix exists for it yet. (Read since the follow-up after P7, with its conductor-area step's row groups.)
 - An aught size found its row (0000) by AWG form, and nothing in the result linked it to the asked size.
 - The furnace's sequence-of-operation section is fifteen chunks over three pages; asked for by name,
   retrieval found its first chunk and a table-of-contents chunk; asked as "walk me through …", none
@@ -288,6 +291,39 @@ count, undo, a top-up to standard, a standard set, a part said not to be from th
 line, `VanStockService.saying(_:_:)`: "Say: 1 × <part> taken off the van for job <ref>. Put this in
 the reply, whatever else the technician asked this turn." Several parts in one call are one line.
 A read, a refusal and a write that matched nothing carry none. Scope: van stock only (decision 7).
+
+### Follow-up — the conduit-fill chain's other steps (finding 10)
+
+P3's "mm2" fold settled the chain's area step; its fill and conductor-area steps were the extractor's.
+
+**Built 2026-11-09 (headless; measured on the simulator's import):**
+- A row of counts under a heading over the value columns, nothing printed at its left and the last
+  count perhaps in words ("1 2 3 Over 3"), heads the columns however few rows follow it
+  (`TableExtractor.numberedRowHeads`, shared with the recognised-grid reader). The numbered-heading
+  rule wanted three rows under it and a fill table has two, so the counts were read as an unnamed row
+  and every column was named by the heading over them alone. A first row that names a row at its left
+  still needs three rows under it.
+- A heading that wraps onto the next line — set straight under it from the same edge, no wider, and
+  reading on (a small letter, or a word broken with a hyphen) — heads exactly the columns its first
+  line heads (`continuesHeading`). Its second line alone was narrower and reached only some of them.
+  A row-header heading's first line left alone in a value column is still the rows' heading.
+- A heading set alone under the columns' own headings, wider than one column and clear of the
+  row-header column, heads the rows under it, not the columns it sits over (`headsRows`): a
+  conductor-area table's stranded group had become a level of three columns, and its rows printed the
+  same sizes twice with nothing to tell the two groups apart. A "(Concluded)" page, or a page carrying
+  the table on with no caption, starts the group its own heading names.
+- Measured: both editions read again on the simulator (iOS PDFKit, the import's own extractor), every
+  stored table's headings and row names compared before and after. The fill table reads five count
+  columns and two rows; six conductor-area tables group their rows; in about forty more a wrapped
+  heading line joins the line above (mostly a unit line under its quantity: the same words, fewer
+  levels, and a few stray fragments gone); in a few, a heading that already reached a neighbour column
+  carries its wrapped words there too, or gives a word up. Every chain in the partner's file resolves as before, and the conduit-fill chain runs to its
+  answer for five sizes with the file as supplied. The corrected file names the printed headings and
+  needs a build later than 657; it stays local and the owner sends it.
+- Tests: an invented fill table (counted headings, a wrapped heading, two rows), the same through a
+  PDF text layer, a first row that names a row, the wrap rule's cases, a group heading over the rows on
+  one page and on a concluded or carried-on page, and a chain over the fill table that starts — and
+  is flagged in the list when the counts are not read.
 
 ### P8 — Device re-run (owed)
 
