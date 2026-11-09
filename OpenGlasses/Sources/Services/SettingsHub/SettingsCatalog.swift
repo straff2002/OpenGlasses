@@ -29,6 +29,11 @@ enum SettingsCategoryID: String, CaseIterable, Codable, Sendable {
     case devices
     case accessibility
     case fieldAssist = "field-assist"
+    /// Plan KW: the jobs sent to this phone's owner as an expert, and their card. Needs no Field
+    /// Assist, is shown only once it is the owner's (`AssistingPresence`), stays in Simple Mode,
+    /// and is never locked by an organisation (`ManagedLockdown.pinnedOpen`): the expert's side
+    /// belongs to no organisation.
+    case assisting
     case myManuals = "my-manuals"
     case lookAndFeel = "look-and-feel"
     case tools
@@ -131,6 +136,10 @@ enum SettingsCatalog {
             return .category(id, title: String(localized: "Field Assist"), icon: "wrench.adjustable",
                              subtitle: String(localized: "Jobs, vaults, reports, and expert help"),
                              shownInSimpleMode: false)
+        case .assisting:
+            return .category(id, title: String(localized: "Assisting"), icon: "person.2.wave.2",
+                             subtitle: String(localized: "Jobs sent to you for advice, and your expert card"),
+                             shownInSimpleMode: true)
         case .myManuals:
             return .category(id, title: String(localized: "My Manuals"), icon: "books.vertical",
                              subtitle: String(localized: "Your manuals, asked by voice with the page cited"),

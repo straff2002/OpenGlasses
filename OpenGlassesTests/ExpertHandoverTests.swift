@@ -664,6 +664,9 @@ final class ExpertHandoverTests: XCTestCase {
         let settings = try String(contentsOf: root.appendingPathComponent("OpenGlasses/Sources/App/Views/SettingsView.swift"), encoding: .utf8)
         XCTAssertEqual(settings.components(separatedBy: "Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet.").count - 1, 2,
                        "both builds' Privacy footers say it")
+        // Plan KW: and what an invitation for an expert's card carries.
+        XCTAssertEqual(settings.components(separatedBy: "An invitation asking an expert for their card carries only your organisation's name, yours and where to reply.").count - 1, 2,
+                       "both builds' Privacy footers say what an invite carries")
         let manifest = try String(contentsOf: root.appendingPathComponent("OpenGlasses/Sources/Resources/PrivacyInfo.xcprivacy"), encoding: .utf8)
         XCTAssertTrue(manifest.contains("A job handover to an expert"))
     }

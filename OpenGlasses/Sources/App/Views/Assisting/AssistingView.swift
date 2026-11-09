@@ -3,8 +3,9 @@ import SwiftUI
 /// Assisting (Plan KM §7, P2): the jobs sent to this phone's owner for their advice, and their
 /// expert card.
 ///
-/// Reached from Everyday whatever else is installed — it needs no Field Assist — and shown on its
-/// own when a handover is opened. One section per organisation, newest first, and nothing that
+/// Reached from the hub's Assisting row once it is the owner's (Plan KW: a card, a handover, time
+/// on the ledger or an open invite) — it needs no Field Assist — and shown on its own when a
+/// handover or an invite is opened. One section per organisation, newest first, and nothing that
 /// searches across them. Each row opens a read-only view of that one handover.
 struct AssistingView: View {
     @ObservedObject var service: AssistingService
@@ -19,7 +20,7 @@ struct AssistingView: View {
         Form {
             Section {
                 NavigationLink {
-                    ExpertCardView(cards: service.cards)
+                    ExpertCardView(cards: service.cards, onChange: { service.refreshPresence() })
                 } label: {
                     SettingsLinkLabel(title: String(localized: "Your Expert Card"),
                                       subtitle: service.cards.card == nil
@@ -36,6 +37,23 @@ struct AssistingView: View {
                 }
             } footer: {
                 Text("Organisations you advise add you to their experts list from your card. Your rate is agreed with each of them; the card never carries one.")
+            }
+
+            // Plan KW §4: organisations asking for the card, until it is sent or they run out.
+            if !store.invites.isEmpty {
+                Section {
+                    ForEach(store.invites.sorted { $0.receivedAt > $1.receivedAt }) { open in
+                        Button {
+                            service.showInvite(open.id)
+                        } label: {
+                            SettingsLinkLabel(title: open.invite.senderName,
+                                              subtitle: String(localized: "Asked for your card. Runs out \(open.invite.expires.formatted(date: .abbreviated, time: .omitted))"),
+                                              icon: "envelope.open")
+                        }
+                    }
+                } header: {
+                    Text("Invites")
+                }
             }
 
             if store.held.isEmpty {

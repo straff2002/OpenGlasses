@@ -18,46 +18,16 @@ import SwiftUI
 /// than by tool id. Third-party and self-hosted integrations stay in their own
 /// tiers.
 struct AppleIntegrationsSettingsScreen: View {
-    /// title, tool id, icon, and what it does in one line.
-    private struct Integration: Identifiable {
-        let id: String
-        let title: String
-        let icon: String
-        let detail: String
-    }
-
-    private static let integrations: [Integration] = [
-        Integration(id: "smart_home", title: String(localized: "Home"), icon: "house",
-                    detail: String(localized: "Lights, locks, and scenes through HomeKit.")),
-        Integration(id: "calendar", title: String(localized: "Calendar"), icon: "calendar",
-                    detail: String(localized: "Check what's on, and add events by voice.")),
-        Integration(id: "reminder", title: String(localized: "Reminders"), icon: "checklist",
-                    detail: String(localized: "Add to your lists and hear what's due.")),
-        Integration(id: "lookup_contact", title: String(localized: "Contacts"), icon: "person.crop.circle",
-                    detail: String(localized: "Look someone up to call or message them.")),
-        Integration(id: "music_control", title: String(localized: "Music"), icon: "music.note",
-                    detail: String(localized: "Play, pause, skip, and ask what's playing.")),
-        Integration(id: "play_podcast", title: String(localized: "Podcasts"), icon: "antenna.radiowaves.left.and.right",
-                    detail: String(localized: "Open a show or its latest episode in Apple Podcasts.")),
-        Integration(id: "get_directions", title: String(localized: "Maps Directions"), icon: "map",
-                    detail: String(localized: "Get directions to a place, opened in Maps.")),
-        Integration(id: "set_alarm", title: String(localized: "Alarms"), icon: "alarm",
-                    detail: String(localized: "Set an alarm for a time you say out loud.")),
-    ]
-
-    @State private var disabledTools: Set<String> = Config.disabledTools
-    @State private var permissionDeniedTool: String?
     /// Plan HA C4: an app switch the organisation closed is not shown to the technician.
     @ObservedObject private var adminGate = AdminGate.shared
 
     var body: some View {
         Form {
-            let shownIntegrations = Self.integrations.filter { adminGate.presentation(.tool($0.id)).isShown }
-            if !shownIntegrations.isEmpty {
+            // The rows, their permission requests and the closed-tool rule are `ToolSwitchRows`,
+            // shared with the Music & Podcasts screen (Plan KW §1).
+            if !ToolSwitchRows.shown(AppleIntegration.all, adminGate: adminGate).isEmpty {
                 Section {
-                    ForEach(shownIntegrations) { integration in
-                        integrationRow(integration)
-                    }
+                    ToolSwitchRows(integrations: AppleIntegration.all)
                 } header: {
                     Text("Apple Apps")
                 } footer: {
@@ -79,70 +49,6 @@ struct AppleIntegrationsSettingsScreen: View {
         }
         .navigationTitle("Works with your iPhone")
         .ogFormStyle()
-        .alert("Permission Denied", isPresented: Binding(
-            get: { permissionDeniedTool != nil },
-            set: { if !$0 { permissionDeniedTool = nil } }
-        )) {
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-                permissionDeniedTool = nil
-            }
-            Button("Cancel", role: .cancel) { permissionDeniedTool = nil }
-        } message: {
-            Text("\(permissionDeniedTool ?? "Permission") was denied. You can grant it in iPhone Settings → Apps → Avenkin.")
-        }
-    }
-
-    private func integrationRow(_ integration: Integration) -> some View {
-        integrationToggle(integration)
-            // Plan HA C4: only an administrator still sees a closed tool here — off and read-only.
-            .disabled(!adminGate.presentation(.tool(integration.id)).isEditable)
-    }
-
-    private func integrationToggle(_ integration: Integration) -> some View {
-        Toggle(isOn: Binding(
-            get: { !disabledTools.contains(integration.id) },
-            set: { setEnabled($0, for: integration.id) }
-        )) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(integration.title)
-                        .font(.body)
-                    Text(integration.detail)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } icon: {
-                Image(systemName: integration.icon)
-                    .accessibilityHidden(true)
-            }
-        }
-    }
-
-    /// The same write the full tool list performs, including the permission
-    /// request, so the two screens can never disagree about what a switch means.
-    private func setEnabled(_ enabled: Bool, for toolName: String) {
-        guard enabled else {
-            disabledTools.insert(toolName)
-            Config.setDisabledTools(disabledTools)
-            return
-        }
-        guard let permission = ToolPermissionGate.permissionName(for: toolName) else {
-            disabledTools.remove(toolName)
-            Config.setDisabledTools(disabledTools)
-            return
-        }
-        Task {
-            if await ToolPermissionGate.requestPermission(for: toolName) {
-                disabledTools.remove(toolName)
-                Config.setDisabledTools(disabledTools)
-            } else {
-                permissionDeniedTool = permission
-            }
-        }
     }
 }
 

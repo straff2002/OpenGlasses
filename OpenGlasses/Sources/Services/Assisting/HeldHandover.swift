@@ -33,6 +33,8 @@ struct HeldHandover: Codable, Equatable, Identifiable, Sendable {
     /// Calls this phone saw connect and end while this handover's clock ran (Plan KM P4): the time
     /// reply's call minutes. Nil when none was seen — the reply then carries no call minutes.
     var observedCalls: [AssistingObservedCall]?
+    /// Swiped off the Home screen (Plan KW §2). It stays in Assisting; only the Home card goes.
+    var homeDismissed: Bool?
 
     /// The observed calls' total, in whole minutes; nil when none was seen.
     var observedCallMinutes: Int? {

@@ -33,8 +33,17 @@ final class AssistingHandoverStore: ObservableObject {
     /// Grouped by organisation, newest first inside each.
     @Published private(set) var held: [HeldHandover]
 
+    /// Invites asking for the expert's card, not yet answered or declined (Plan KW §4). Kept here,
+    /// beside the handovers, because they are the same kind of thing: another organisation's
+    /// words, sent to this phone's owner, held apart and walked by the same retention and erasure.
+    @Published private(set) var invites: [OpenInvite]
+
+    /// More than this many open invites is not an expert's phone; the oldest go first.
+    nonisolated static let inviteCap = 50
+
     private let directory: URL
     private let indexURL: URL
+    private let invitesURL: URL
     private let now: () -> Date
 
     nonisolated static func defaultDirectory() -> URL {
@@ -50,7 +59,9 @@ final class AssistingHandoverStore: ObservableObject {
         self.now = now
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         indexURL = self.directory.appendingPathComponent("handovers.json")
+        invitesURL = self.directory.appendingPathComponent("invites.json")
         held = Self.read(indexURL) ?? []
+        invites = Self.readInvites(invitesURL) ?? []
         protect(self.directory)
         recoverClocksAfterRelaunch()
     }
@@ -232,6 +243,48 @@ final class AssistingHandoverStore: ObservableObject {
         save()
     }
 
+    // MARK: - Home
+
+    /// Take a handover off the Home screen (Plan KW §2). A running clock's card isn't swiped away;
+    /// `AssistingPresence` never offers it.
+    func dismissFromHome(id: String) { mutate(id) { $0.homeDismissed = true } }
+
+    // MARK: - Invites (Plan KW §4)
+
+    enum InviteOutcome: Equatable {
+        case added
+        case alreadyHeld
+        case expired
+        case couldNotSave
+    }
+
+    func invite(id: String) -> OpenInvite? { invites.first { $0.id == id } }
+
+    /// Keep an invite this phone was sent. One already held is left as it is.
+    func openInvite(_ invite: ExpertInvite) -> InviteOutcome {
+        let at = now()
+        guard !invite.isExpired(at: at) else { return .expired }
+        guard !invites.contains(where: { $0.id == invite.inviteId }) else { return .alreadyHeld }
+        invites.append(OpenInvite(invite: invite, receivedAt: at))
+        if invites.count > Self.inviteCap {
+            invites = Array(invites.sorted { $0.receivedAt > $1.receivedAt }.prefix(Self.inviteCap))
+        }
+        return saveInvites() ? .added : .couldNotSave
+    }
+
+    /// Answered (the card's share completed) or declined: either way it goes.
+    func removeInvite(id: String) {
+        guard invites.contains(where: { $0.id == id }) else { return }
+        invites.removeAll { $0.id == id }
+        saveInvites()
+    }
+
+    func dismissInviteFromHome(id: String) {
+        guard let index = invites.firstIndex(where: { $0.id == id }), invites[index].homeDismissed != true else { return }
+        invites[index].homeDismissed = true
+        saveInvites()
+    }
+
     // MARK: - Removing
 
     /// The expert's own delete, and the one retention and erasure use.
@@ -244,8 +297,10 @@ final class AssistingHandoverStore: ObservableObject {
 
     /// Everything — what the registry's "delete all" column names.
     func removeAll() {
-        let count = held.count
+        let count = held.count + invites.count
         held = []
+        invites = []
+        saveInvites()
         try? FileManager.default.removeItem(at: directory.appendingPathComponent("photos", isDirectory: true))
         save()
         if count > 0 { PrivacyLog.store(.assistingHandovers, .cleared, count: count) }
@@ -257,7 +312,9 @@ final class AssistingHandoverStore: ObservableObject {
         let instant = at ?? now()
         let doomed = held.filter { $0.isExpired(at: instant) }.map(\.id)
         doomed.forEach(remove(id:))
-        return doomed.count
+        let expiredInvites = invites.filter { $0.invite.isExpired(at: instant) }.map(\.id)
+        expiredInvites.forEach(removeInvite(id:))
+        return doomed.count + expiredInvites.count
     }
 
     /// The subject erasure's call: every handover whose words mention `token` goes whole, photos
@@ -273,7 +330,13 @@ final class AssistingHandoverStore: ObservableObject {
             return String(decoding: data, as: UTF8.self).localizedCaseInsensitiveContains(needle)
         }.map(\.id)
         doomed.forEach(remove(id:))
-        return doomed.count
+        let inviteEncoder = ExpertInviteCodec.encoder()
+        let doomedInvites = invites.filter { entry in
+            guard let data = try? inviteEncoder.encode(entry) else { return false }
+            return String(decoding: data, as: UTF8.self).localizedCaseInsensitiveContains(needle)
+        }.map(\.id)
+        doomedInvites.forEach(removeInvite(id:))
+        return doomed.count + doomedInvites.count
     }
 
     // MARK: - Storage
@@ -283,6 +346,32 @@ final class AssistingHandoverStore: ObservableObject {
 
     /// The folder this store keeps its files in; the expert's ledger lives beside them.
     var storeDirectory: URL { directory }
+
+    /// Where the invites live, for the attribute-truth test.
+    var invitesLocation: URL { invitesURL }
+
+    private static func readInvites(_ url: URL) -> [OpenInvite]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        do {
+            return try ExpertInviteCodec.decoder().decode([OpenInvite].self, from: data)
+        } catch {
+            PrivacyLog.store(.assistingHandovers, .loadFailed, error: SafeErrorSummary(error))
+            return nil
+        }
+    }
+
+    @discardableResult
+    private func saveInvites() -> Bool {
+        guard let data = try? ExpertInviteCodec.encoder().encode(invites) else { return false }
+        do {
+            try data.write(to: invitesURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            protect(invitesURL)
+            return true
+        } catch {
+            PrivacyLog.store(.assistingHandovers, .saveFailed, error: SafeErrorSummary(error))
+            return false
+        }
+    }
 
     private static func read(_ url: URL) -> [HeldHandover]? {
         guard let data = try? Data(contentsOf: url) else { return nil }

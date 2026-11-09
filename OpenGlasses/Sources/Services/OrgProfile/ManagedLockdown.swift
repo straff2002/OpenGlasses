@@ -25,7 +25,9 @@ struct ManagedLockdown: Equatable, Sendable {
     /// Categories no profile may lock: the assistive surface (free forever, never withheld), the
     /// basics a technician reads the app with (theme, text and accent colour, language), and the
     /// self-test and problem report a technician needs to prove a managed phone has stopped working.
-    static let pinnedOpen: Set<SettingsCategoryID> = [.accessibility, .lookAndFeel, .diagnostics]
+    /// And Assisting (Plan KW decision 2): the jobs sent to this phone's owner as an expert. A
+    /// technician under one organisation's profile may advise another, so no profile hides it.
+    static let pinnedOpen: Set<SettingsCategoryID> = [.accessibility, .lookAndFeel, .diagnostics, .assisting]
 
     /// Open unless the profile locks it. Field Assist is the product the organisation bought; its
     /// own settings follow the organisation's per-key policy (`SettingKey` ceilings and starting
@@ -127,8 +129,9 @@ enum ManagedArea: String, CaseIterable, Sendable {
     /// Field Assist › Enable Field Assist — locked inside an open Field Assist: the edition implies
     /// Field Assist, and a technician switching it off would strand the phone's whole purpose.
     case fieldAssistSwitch
-    /// The hub's owner controls — Simple Mode and Lock Settings. Locked under the edition; the
-    /// technician's view is already simpler than Simple Mode (Plan CT 3b).
+    /// The owner controls — Simple Mode and Lock Settings (on Advanced & Support, and Leave Simple
+    /// Mode on the hub). Locked under the edition; the technician's view is already simpler than
+    /// Simple Mode (Plan CT 3b).
     case ownerControls
 
     /// The category the area sits in, or nil for the hub's own rows.

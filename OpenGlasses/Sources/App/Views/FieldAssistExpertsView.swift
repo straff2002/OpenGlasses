@@ -25,6 +25,9 @@ struct FieldAssistExpertsView: View {
     @State private var importingCard = false
     @State private var scanningCard = false
     @State private var showsExpertTime = false
+    /// Plan KW §4: invites sent asking an expert for their card, and the sheet that sends one.
+    @State private var sentInvites: [SentExpertInvite] = []
+    @State private var composingInvite = false
     @ObservedObject private var cardInbox = ExpertCardInbox.shared
 
     var body: some View {
@@ -39,6 +42,9 @@ struct FieldAssistExpertsView: View {
             }
             timeSection
             cardSection
+            if !sentInvites.isEmpty {
+                invitedSection
+            }
             if let problem {
                 Section {
                     Label(problem, systemImage: "exclamationmark.triangle")
@@ -61,7 +67,14 @@ struct FieldAssistExpertsView: View {
         .onChange(of: cardInbox.pending) { _, pending in if pending == nil { reload() } }
         .fileImporter(isPresented: $importingCard,
                       allowedContentTypes: [UTType(ExpertCard.utiIdentifier) ?? .json]) { result in
-            if case .success(let url) = result { problem = cardInbox.open(url) }
+            if case .success(let url) = result {
+                problem = cardInbox.open(url) { _ in
+                    String(localized: "That's an invite asking for an expert's card, not a card. The expert opens it on their own phone.")
+                }
+            }
+        }
+        .sheet(isPresented: $composingInvite, onDismiss: reload) {
+            ExpertInviteComposeSheet(experts: store)
         }
         .sheet(isPresented: $scanningCard) {
             OrgCodeScannerView(title: "Expert Card Code",
@@ -75,6 +88,11 @@ struct FieldAssistExpertsView: View {
     /// their replies match the entry exactly.
     private var cardSection: some View {
         Section {
+            Button {
+                composingInvite = true
+            } label: {
+                Label("Invite an Expert…", systemImage: "envelope")
+            }
             Button {
                 importingCard = true
             } label: {
@@ -201,7 +219,31 @@ struct FieldAssistExpertsView: View {
 
     // MARK: - Changes
 
+    /// Invites waiting for a card (Plan KW §4). A card that answers one clears it when imported;
+    /// otherwise it goes when it runs out, or here.
+    private var invitedSection: some View {
+        Section {
+            ForEach(sentInvites) { invite in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(invite.inviteeName.isEmpty ? String(localized: "Invited expert") : invite.inviteeName)
+                    Text("Invited \(invite.sentAt.formatted(date: .abbreviated, time: .omitted)), runs out \(invite.expires.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .onDelete { offsets in
+                offsets.map { sentInvites[$0].id }.forEach { store.removeSentInvite(id: $0) }
+                reload()
+            }
+        } header: {
+            Text("Invited")
+        } footer: {
+            Text("When their card comes back, open it and add them. It says which invite it answers.")
+        }
+    }
+
     private func reload() {
+        sentInvites = store.sentInvites()
         managed = store.organizationListIsManaged
         organization = store.organizationExperts
         personal = store.personalExperts

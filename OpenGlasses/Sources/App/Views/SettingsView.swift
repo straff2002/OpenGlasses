@@ -11,25 +11,30 @@ struct SettingsView: View {
     /// with Dynamic Type rather than pinning it to a literal point size.
     @ScaledMetric(relativeTo: .largeTitle) private var lockGlyphSize: CGFloat = 44
 
-    @State private var simpleModeEnabled = Config.simpleModeEnabled
+    /// Written by Advanced & Support › Handing It Over and by Leave Simple Mode, so the hub redraws.
+    @AppStorage("simpleModeEnabled") private var simpleModeEnabled = false
     /// Plan CT 3b / HA C2: the Field Assist edition's lockdown, lifted by an administrator session.
     @ObservedObject private var adminGate = AdminGate.shared
     @ObservedObject private var orgProfile = OrgProfileManager.shared
+    /// Plan KW: the Assisting row is drawn only where it is the owner's.
+    @ObservedObject private var assisting = AssistingPresenceFeed.shared
     @AppStorage("appAppearance") private var appearance: String = "system"
     @AppStorage("wakePhrase") private var wakePhrase = Config.defaultWakePhrase
     @AppStorage("activeModelId") private var activeModelId = ""
     @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
     @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled = false
 
-    // Owner gate (BM P10): Simple-Mode exit always asks; Settings entry asks when the flag is on.
-    @State private var settingsOwnerGateEnabled = Config.settingsOwnerGateEnabled
+    // Owner gate (BM P10): Settings entry asks when Lock Settings is on. Leaving Simple Mode always
+    // asks, in `LeaveSimpleModeSection`.
     @State private var settingsLocked = Config.settingsOwnerGateEnabled
-    @State private var exitGate = OwnerGateMachine()
     @State private var entryGate = OwnerGateMachine()
 
     // The individual settings live in per-category screens (SettingsScreens.swift and
     // SettingsCategoryScreens.swift); this view is the hub (Plan HA): the hero device card, the
-    // eight rows of `SettingsHub` (Plan KH P2), then Simple Mode and About.
+    // rows of `SettingsHub` (Plan KH P2; Assisting only on an expert's phone, Plan KW), Leave Simple
+    // Mode while it is on, then About.
+    // Simple Mode and Lock Settings themselves are on Advanced & Support
+    // (`SimpleModeControlsPlacement`).
     //
     // A row draws categories together and decides nothing about them. Simple Mode filters the
     // owner-configuration categories out. On a managed phone, a category the organisation locked
@@ -37,14 +42,14 @@ struct SettingsView: View {
     // Organisation section says so, and an administrator session shows it again.
 
     private var visibleCategories: [SettingsCategory] {
-        SettingsHub.visibleCategories(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current)
+        SettingsHub.visibleCategories(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current,
+                                      assistingPresent: assisting.presence.isPresent)
     }
 
     private var visibleRows: [SettingsHub.VisibleRow] {
-        SettingsHub.visibleRows(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current)
+        SettingsHub.visibleRows(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current,
+                                assistingPresent: assisting.presence.isPresent)
     }
-
-    private var organization: String { ManagedLockReason.organization }
 
     private var heroDevice: SettingsHeroDevice {
         SettingsHeroDevice.resolve(phase: appState.glassesPhase, glassesAdded: appState.glassesAdded)
@@ -98,11 +103,12 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: Simple Mode (the owner's hand-off switch, behind the owner gate). Under an
-            // organisation's edition it is locked with everything else the owner configures, so the
-            // technician is not shown it (Plan HA C4).
-            if ownerControls.isShown {
-                simpleModeSection
+            // The owner's hand-off switches are on Advanced & Support while Simple Mode is off, and
+            // Simple Mode hides that page, so the way out is here while it is on. Under an
+            // organisation's edition both are locked and the technician sees neither (Plan HA C4).
+            if SimpleModeControlsPlacement.place(simpleModeOn: simpleModeEnabled,
+                                                 ownerControlsShown: ownerControls.isShown) == .leaveRowOnHub {
+                LeaveSimpleModeSection(isEditable: ownerControls.isEditable)
             }
 
             // Plan KH P1: not a category. Scenarios are not settings, and a category id is a
@@ -204,37 +210,6 @@ struct SettingsView: View {
     // MARK: - Simple Mode
 
     private var ownerControls: SettingPresentation { adminGate.presentation(.area(.ownerControls)) }
-    private var ownerControlsLocked: Bool { !ownerControls.isEditable }
-
-    private var simpleModeSection: some View {
-        OGSection(footer: "Simple Mode hides model, persona, behavior, tool, integration, Field Assist and advanced settings — for handing the device to someone who just needs it to work. Leaving it asks for Face ID or your passcode. Lock Settings asks every time Settings opens.") {
-            OGRow(
-                "Simple Mode",
-                isOn: Binding(
-                    get: { simpleModeEnabled },
-                    set: { requestSimpleModeChange(to: $0) }
-                ),
-                icon: "dial.low"
-            )
-            .disabled(ownerControlsLocked)
-            OGDivider()
-            OGRow("Lock Settings", isOn: $settingsOwnerGateEnabled, icon: "faceid")
-                .disabled(ownerControlsLocked)
-                .onChange(of: settingsOwnerGateEnabled) { _, v in Config.settingsOwnerGateEnabled = v }
-            if ownerControlsLocked {
-                OGDivider()
-                ManagedLockNote(organization: organization)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-            }
-            if exitGate.lastFailed {
-                OGDivider()
-                OGStatusLabel("Couldn't verify it's you — Simple Mode stays on.", kind: .error)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-            }
-        }
-    }
 
     // MARK: - Row rendering
 
@@ -288,7 +263,7 @@ struct SettingsView: View {
         case .accessibility: return Config.accessibilityModeEnabled ? String(localized: "On") : nil
         case .display: return glassesDisplayEnabled ? String(localized: "On") : nil
         case .advanced: return String(localized: "Test panel")
-        case .everyday, .tools, .connections, .capture, .diagnostics: return nil
+        case .everyday, .assisting, .tools, .connections, .capture, .diagnostics: return nil
         }
     }
 
@@ -352,24 +327,6 @@ struct SettingsView: View {
             entryGate.finish(success: granted)
             if entryGate.consume() {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { settingsLocked = false }
-            }
-        }
-    }
-
-    /// Simple-Mode toggle path: turning it ON is immediate; turning it OFF (re-exposing the owner
-    /// surface, incl. decrypted API-key fields) needs a fresh device-owner grant every time.
-    private func requestSimpleModeChange(to newValue: Bool) {
-        guard OwnerGatePolicy.requiresGate(togglingSimpleModeTo: newValue, currentlyEnabled: simpleModeEnabled) else {
-            simpleModeEnabled = newValue
-            Config.simpleModeEnabled = newValue
-            return
-        }
-        guard exitGate.begin() else { return }
-        OwnerGateAuth.authenticate(reason: String(localized: "Verify it's you to leave Simple Mode")) { granted in
-            exitGate.finish(success: granted)
-            if exitGate.consume() {
-                simpleModeEnabled = false
-                Config.simpleModeEnabled = false
             }
         }
     }
@@ -926,9 +883,9 @@ struct HardwarePrivacyView: View {
                 Text("Privacy")
             } footer: {
                 #if AVENKIN_PHONE_ONLY
-                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred picture is what an AI provider receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS).")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred picture is what an AI provider receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS).")
                 #else
-                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
+                Text("Bystander Face Blur runs entirely on-device: faces are found and blurred on your phone, and the blurred frame is what an AI provider, recording, broadcast or expert call receives. Share Health Data with AI (under Everyday) is off by default: Apple Health numbers are sent to your AI provider only when you turn it on. Cloud dictation is off by default: only when you choose Deepgram or OpenAI as the recognizer does the audio of each question go to that vendor. Sending a job to an expert sends its details, and the photos you pick with faces blurred, only to the expert you choose, by your own Messages, Mail or share sheet. An invitation asking an expert for their card carries only your organisation's name, yours and where to reply. A job sent to you as an expert stays on this phone only, for the days its organisation set, and never reaches the assistant or its memory; your time reply goes only when you share it. Avenkin has no analytics or crash reporting of its own (Apple may share crash reports with us from TestFlight, or if you allow it in iOS), and the glasses SDK's own analytics are opted out and blocked on this phone.")
                 #endif
             }
 

@@ -5,8 +5,17 @@ import UIKit
 /// The expert's card (Plan KM §7, P2): filled in once, shared as a file or a QR code with every
 /// organisation the expert works for. The card is the expert's; each organisation adds its own
 /// kind, hours and rate on its own list, so there is no field for them here.
+///
+/// Opened from an invite (Plan KW §4), it says who asked above the form, and Send Card sends the
+/// card back carrying the invite's id, so the inviter's list matches it.
 struct ExpertCardView: View {
     let cards: ExpertCardStore
+    /// The invite this card answers, when it was opened from one.
+    var answering: ExpertInvite? = nil
+    /// The card was saved or deleted: Assisting's presence follows it.
+    var onChange: () -> Void = {}
+    /// The card's share to the inviter completed.
+    var onAnswered: () -> Void = {}
 
     @State private var name = ""
     @State private var phone = ""
@@ -23,6 +32,17 @@ struct ExpertCardView: View {
 
     var body: some View {
         Form {
+            if let answering {
+                Section {
+                    Text("\(answering.senderName) asked you to be one of their experts. Fill in your card once; it works for every company you help.")
+                    if let replyTo = answering.replyTo {
+                        LabeledContent("Send it to", value: answering.invitedBy.isEmpty ? replyTo : "\(answering.invitedBy), \(replyTo)")
+                    }
+                } footer: {
+                    Text("The invite unlocks nothing else in the app, and your card carries no rate.")
+                }
+            }
+
             Section {
                 TextField("Name", text: $name)
                     .textContentType(.name)
@@ -57,7 +77,11 @@ struct ExpertCardView: View {
 
             Section {
                 Button("Save Card") { save() }
-                if let saved {
+                if let saved, let answering {
+                    Button("Send Card to \(answering.senderName)…") { share(saved, answering: answering.inviteId) }
+                    Button("Show Card Code") { showingCode = true }
+                        .disabled(ExpertCardCodec.codeText(saved) == nil)
+                } else if let saved {
                     Button("Share Card File…") { share(saved) }
                     Button("Show Card Code") { showingCode = true }
                         .disabled(ExpertCardCodec.codeText(saved) == nil)
@@ -86,6 +110,7 @@ struct ExpertCardView: View {
                             Button("Delete", role: .destructive) {
                                 cards.remove()
                                 load()
+                                onChange()
                             }
                         } message: {
                             Text("Organisations that already added you keep their entry. A new card has a new id, so they'd need it again.")
@@ -128,23 +153,26 @@ struct ExpertCardView: View {
         } else {
             problem = nil
             load()
+            onChange()
         }
     }
 
     /// The card goes as a small file from the share sheet; the file is written to the temporary
     /// folder and removed when the share ends.
-    private func share(_ card: ExpertCard) {
+    private func share(_ card: ExpertCard, answering inviteId: String? = nil) {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ExpertCard-\(UUID().uuidString)", isDirectory: true)
         let url = folder.appendingPathComponent(ExpertCardCodec.fileName(card))
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try ExpertCardCodec.fileData(card).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try ExpertInviteCodec.cardFileData(card, answering: inviteId)
+                .write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             problem = String(localized: "The card file couldn't be written. Try again.")
             return
         }
-        sharing = ShareItem(items: [url]) { _ in
+        sharing = ShareItem(items: [url]) { completed in
             try? FileManager.default.removeItem(at: folder)
+            if completed, inviteId != nil { onAnswered() }
         }
     }
 }
@@ -192,5 +220,15 @@ struct ExpertCardCodeView: View {
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
               let cgImage = CIContext().createCGImage(output, from: output.extent) else { return nil }
         return UIImage(cgImage: cgImage)
+    }
+}
+
+/// The card editor wired to Assisting, for screens outside it (Things to Try, Plan KW §5) that may
+/// not name `AssistingService`: saving or deleting the card moves Assisting's presence.
+struct ExpertCardEditor: View {
+    private let service = AssistingService.shared
+
+    var body: some View {
+        ExpertCardView(cards: service.cards, onChange: { service.refreshPresence() })
     }
 }

@@ -61,10 +61,10 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
 
     func testTheTechnicianHubLeavesOutEveryWhollyLockedCategory() {
         XCTAssertEqual(Policy.hubCategories(simpleMode: false, in: technician()).map(\.id),
-                       [.devices, .accessibility, .fieldAssist, .lookAndFeel, .diagnostics],
+                       [.devices, .accessibility, .fieldAssist, .assisting, .lookAndFeel, .diagnostics],
                        "hub order kept; Devices & Privacy stays because Glasses and the disclosure are open")
         XCTAssertEqual(Policy.hubCategories(simpleMode: true, in: technician()).map(\.id),
-                       [.devices, .accessibility, .lookAndFeel, .diagnostics],
+                       [.devices, .accessibility, .assisting, .lookAndFeel, .diagnostics],
                        "Simple Mode's filter and the lockdown's compose")
         for id in ManagedLockdown.standard.lockedCategories where id != .devices {
             XCTAssertEqual(Policy.presentation(.category(id), in: technician()), .hidden, id.rawValue)
@@ -195,7 +195,9 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
         for context in [ManagedSettingsContext.unmanaged, technician(), administrator(), ceilingsOnly([.agentModeEnabled])] {
             for simpleMode in [false, true] {
                 let policy = Policy.hubCategories(simpleMode: simpleMode, in: context).map(\.id)
-                let drawn = SettingsHub.visibleRows(simpleMode: simpleMode, in: context, on: phone)
+                // Plan KW: on an expert's phone, so Assisting is drawn wherever the policy shows it.
+                let drawn = SettingsHub.visibleRows(simpleMode: simpleMode, in: context, on: phone,
+                                                    assistingPresent: true)
                     .flatMap(\.children).map(\.id)
                 XCTAssertEqual(Set(drawn), Set(policy).subtracting(context.restricted ? [.myManuals] : []))
             }

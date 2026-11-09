@@ -1,6 +1,7 @@
 import Foundation
 
-// The settings hub's eight rows (Plan KH P2). A drawing layer on top of `SettingsCategoryID`, and
+// The settings hub's rows (Plan KH P2): eight, and a ninth, Assisting, only on an expert's phone
+// (Plan KW). A drawing layer on top of `SettingsCategoryID`, and
 // nothing else: pure data and pure functions, like `SettingsCatalog`.
 //
 // **An organisation profile never sees this file.** `SettingsCategoryID`, its raw values, what a
@@ -23,6 +24,8 @@ enum SettingsHubRowID: String, CaseIterable, Sendable {
     case connections
     case accessibility
     case fieldAssist
+    /// Plan KW: drawn only where Assisting is the owner's (`AssistingPresence`).
+    case assisting
     case lookAndFeel
     case advancedSupport
 }
@@ -86,6 +89,8 @@ enum SettingsHub {
                 id: id, title: fieldAssist.title, icon: fieldAssist.icon, mutedIcon: false,
                 subtitle: fieldAssist.subtitle,
                 children: [.fieldAssist])
+        case .assisting:
+            return single(id, .assisting)
         case .lookAndFeel:
             return single(id, .lookAndFeel)
         case .advancedSupport:
@@ -126,12 +131,14 @@ enum SettingsHub {
 
     /// The categories this person can reach. `SettingsVisibilityPolicy` decides, per category; this
     /// adds only what the hub has always added: no My Manuals in the technician's view, and no
-    /// display settings on a copy that does not offer glasses.
+    /// display settings on a copy that does not offer glasses. Plan KW: Assisting only where it is
+    /// the owner's — a card, a handover, ledger time or an open invite (`AssistingPresence`).
     static func visibleCategories(simpleMode: Bool, in context: ManagedSettingsContext,
-                                  on phone: SettingsHubPhone) -> [SettingsCategory] {
+                                  on phone: SettingsHubPhone, assistingPresent: Bool = false) -> [SettingsCategory] {
         SettingsVisibilityPolicy.hubCategories(simpleMode: simpleMode, in: context)
             .filter { $0.id != .myManuals || !context.restricted }
             .filter { phone.glassesSupported || $0.id != .display }
+            .filter { assistingPresent || $0.id != .assisting }
     }
 
     /// A row as this person sees it.
@@ -151,8 +158,9 @@ enum SettingsHub {
     }
 
     static func visibleRows(simpleMode: Bool, in context: ManagedSettingsContext,
-                            on phone: SettingsHubPhone) -> [VisibleRow] {
-        let visible = visibleCategories(simpleMode: simpleMode, in: context, on: phone)
+                            on phone: SettingsHubPhone, assistingPresent: Bool = false) -> [VisibleRow] {
+        let visible = visibleCategories(simpleMode: simpleMode, in: context, on: phone,
+                                        assistingPresent: assistingPresent)
         return rows(on: phone).compactMap { row in
             let children = row.children.compactMap { id in visible.first { $0.id == id } }
             return children.isEmpty ? nil : VisibleRow(row: row, children: children)
@@ -174,7 +182,7 @@ enum SettingsHub {
         guard let first = children.first else { return .merged([]) }
         guard children.count > 1 else { return .category(first) }
         switch row {
-        case .everyday, .fieldAssist, .accessibility, .lookAndFeel: return .category(first)
+        case .everyday, .fieldAssist, .assisting, .accessibility, .lookAndFeel: return .category(first)
         case .assistant, .devicesPrivacy, .connections, .advancedSupport: return .merged(children)
         }
     }

@@ -654,13 +654,16 @@ enum SensitiveStore: String, CaseIterable {
             // recipients in `fieldDeliverySettings` are, not people observed — so the linkage is
             // the wearer's. A contact is a snapshot, never a Contacts identifier. Each row is
             // removed in Settings › Field Assist › Experts; a profile's list lives in the profile.
+            // Plan KW: the invites sent asking for a card (an id, the name typed for the list,
+            // the dates; they lapse after 30 days) and the sender's own name and reply address the
+            // invite sheet remembers.
             return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
                           protection: .platformDefault, backupExcluded: false, retention: .none,
                           deleteAll: .api("ExpertListStore.removeAll()"),
                           deleteSubject: .notSubjectLinked,
                           owner: "ExpertListStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Experts/ExpertListStore.swift"],
-                          location: "preferences keys `organizationExperts`, `fieldAssistPersonalExperts`, `fieldAssistExpertRotaLastCalled`")
+                          location: "preferences keys `organizationExperts`, `fieldAssistPersonalExperts`, `fieldAssistExpertRotaLastCalled`, `fieldAssistExpertInvitesSent`, `expertInviteSenderName`, `expertInviteReplyTo`")
 
         case .assistingHandovers:
             // Job handovers another organisation's technician sent to this phone's owner as an
@@ -672,6 +675,9 @@ enum SensitiveStore: String, CaseIterable {
             // call), kept out of backup, and never read by the assistant, its memory, search or
             // team learnings. Each handover carries its own retention period, which the retention
             // scheduler applies; the expert deletes one or all in Assisting.
+            // Plan KW: the open invites asking for the expert's card sit beside them under the same
+            // rules (another organisation's name, who sent it, where to reply); each lapses 30 days
+            // after it was made, and answering or declining removes it.
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .thirdPartySubject,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
                           retention: .policy("each handover's own retention days after Done (30 at most); cap \(AssistingHandoverStore.entryCap)"),
@@ -679,7 +685,7 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .api("AssistingHandoverStore.deleteMatching(_:)"),
                           owner: "AssistingHandoverStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Assisting/AssistingHandoverStore.swift"],
-                          location: "Application Support/Assisting/handovers.json and Assisting/photos/{digest}/NN.jpg")
+                          location: "Application Support/Assisting/handovers.json, Assisting/invites.json and Assisting/photos/{digest}/NN.jpg")
 
         case .expertLedger:
             // The expert's own ledger (Plan KM P4): one row per time reply whose share completed —

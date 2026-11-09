@@ -7,6 +7,8 @@ struct ThingsToTryView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var store = ScenarioProgressStore.shared
+    /// Plan KW §5: the way in to the expert card before anyone asks.
+    @ObservedObject private var assisting = AssistingPresenceFeed.shared
     /// Set when this page is pushed inside the Voice tab's sheet. Everything that goes somewhere
     /// else leaves through it, because nothing can open from under a sheet and `dismiss` here would
     /// only pop back to it.
@@ -58,6 +60,20 @@ struct ThingsToTryView: View {
                     } label: {
                         OGRow("Stream live", icon: "dot.radiowaves.left.and.right",
                               subtitle: "Open the preview and go live.")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            // Plan KW §5: outside the catalogue, like Stream live, and on every phone: the expert's
+            // side needs no Field Assist and belongs to no organisation. Gone once there's a card,
+            // when the hub's Assisting row is the way in.
+            if ExpertCardLink.isVisible(hasCard: assisting.hasCard) {
+                OGCard {
+                    NavigationLink {
+                        ExpertCardEditor()
+                    } label: {
+                        OGRow("Help other technicians", icon: "person.2.wave.2",
+                              subtitle: "Make your expert card so companies can send you jobs.")
                     }
                     .buttonStyle(.plain)
                 }

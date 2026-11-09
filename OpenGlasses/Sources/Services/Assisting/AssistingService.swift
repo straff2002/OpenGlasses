@@ -42,6 +42,17 @@ final class AssistingService: ObservableObject {
     /// A handover the app just opened, for the sheet that shows it.
     @Published var presented: Presented?
 
+    /// An invite the app just opened, or Home asked for, for the sheet that shows it (Plan KW §4).
+    @Published var presentedInvite: OpenInvite?
+
+    /// Whether Assisting is this phone's owner's, and what Home says about it (Plan KW §2). The hub
+    /// and Home read this, never the store.
+    @Published private(set) var presence: AssistingPresence = .absent
+
+    private var watchers: Set<AnyCancellable> = []
+    /// Where the rest of the app reads presence from (Plan KW §2).
+    let feed: AssistingPresenceFeed
+
     struct Presented: Identifiable, Equatable {
         let id: String
         /// What opening it said: "Update 2 replaced the earlier one: 2 new readings."
@@ -52,12 +63,107 @@ final class AssistingService: ObservableObject {
     ///   here — one beside that store's files, so a test's handovers and ledger stay together.
     init(store: AssistingHandoverStore? = nil, cards: ExpertCardStore = .shared,
          replies: StagedExportCoordinator = .assistingReply, ledger: ExpertLedgerStore? = nil,
-         now: @escaping () -> Date = Date.init) {
+         feed: AssistingPresenceFeed? = nil, now: @escaping () -> Date = Date.init) {
         self.store = store ?? .shared
         self.cards = cards
         self.replies = replies
         self.ledger = ledger ?? (store.map { ExpertLedgerStore(directory: $0.storeDirectory, now: now) } ?? .shared)
         self.now = now
+        // A test's service gets its own feed, so it never draws the app's hub.
+        self.feed = feed ?? (store == nil ? .shared : AssistingPresenceFeed())
+        refreshPresence()
+        // Any change to what makes Assisting the owner's redraws the hub and Home.
+        self.store.$held.dropFirst().sink { [weak self] _ in Task { @MainActor in self?.refreshPresence() } }
+            .store(in: &watchers)
+        self.store.$invites.dropFirst().sink { [weak self] _ in Task { @MainActor in self?.refreshPresence() } }
+            .store(in: &watchers)
+        self.ledger.$entries.dropFirst().sink { [weak self] _ in Task { @MainActor in self?.refreshPresence() } }
+            .store(in: &watchers)
+    }
+
+    // MARK: - Presence (Plan KW §2)
+
+    /// Recompute `presence` from what is held now. The card is a preference, not a published
+    /// store, so its editor calls this when it saves or deletes.
+    func refreshPresence() {
+        let at = now()
+        let held = store.held.filter { !$0.isExpired(at: at) }.map { entry in
+            AssistingPresence.HeldFact(id: entry.id, organisation: entry.organisationName,
+                                       taken: entry.clock != nil, running: entry.clock?.isRunning == true,
+                                       receivedAt: entry.lastReceivedAt, dismissed: entry.homeDismissed == true)
+        }
+        let invites = store.invites.filter { !$0.invite.isExpired(at: at) }.map { entry in
+            AssistingPresence.InviteFact(id: entry.id, organisation: entry.invite.senderName,
+                                         receivedAt: entry.receivedAt, dismissed: entry.homeDismissed == true)
+        }
+        let next = AssistingPresence.make(hasCard: cards.card != nil, held: held,
+                                          hasLedger: !ledger.entries.isEmpty, invites: invites)
+        if next != presence { presence = next }
+        feed.publish(next, hasCard: cards.card != nil)
+    }
+
+    /// The minutes on a handover's clock, for Home's running card.
+    func clockMinutes(for id: String, at date: Date) -> Int? {
+        store.handover(id: id)?.clock?.minutes(at: date)
+    }
+
+    /// Put a held handover on screen, as opening its file does.
+    func show(handoverId id: String) {
+        guard store.handover(id: id) != nil else { return }
+        presented = Presented(id: id, message: "")
+    }
+
+    /// Put a held invite on screen.
+    func showInvite(_ id: String) {
+        guard let invite = store.invite(id: id) else { return }
+        presentedInvite = invite
+    }
+
+    /// The Home card's Remove from Home. It hides the card for what it shows now; a new job or
+    /// invite brings it back.
+    func dismissFromHome(_ card: AssistingPresence.HomeCard) {
+        switch card {
+        case .clock: return
+        case .newJobs(let ids, _): ids.forEach { store.dismissFromHome(id: $0) }
+        case .invite(let id, _): store.dismissInviteFromHome(id: id)
+        }
+    }
+
+    // MARK: - Invites (Plan KW §4)
+
+    /// An invite file's bytes, from the app's file opening. Keeps it and shows the card form.
+    /// Returns what to tell the expert when it can't be shown.
+    @discardableResult
+    func openInvite(_ data: Data) -> String? {
+        switch ExpertInviteCodec.read(data) {
+        case .failure(.refused(let why)):
+            return String(localized: "That invite can't be used: \(why).")
+        case .failure:
+            return String(localized: "That isn't an invite this app can read.")
+        case .success(let invite):
+            switch store.openInvite(invite) {
+            case .added, .alreadyHeld:
+                presentedInvite = store.invite(id: invite.inviteId)
+                return nil
+            case .expired:
+                return String(localized: "That invite has run out. Ask \(invite.senderName) to send a new one.")
+            case .couldNotSave:
+                return String(localized: "The invite couldn't be saved on this phone. Try opening it again.")
+            }
+        }
+    }
+
+    /// The card's share to the inviter completed.
+    func answerInvite(_ id: String) {
+        store.removeInvite(id: id)
+        if presentedInvite?.id == id { presentedInvite = nil }
+        refreshPresence()
+    }
+
+    /// Declined: dropped, and nothing is sent.
+    func declineInvite(_ id: String) {
+        store.removeInvite(id: id)
+        if presentedInvite?.id == id { presentedInvite = nil }
     }
 
     // MARK: - Opening a handover

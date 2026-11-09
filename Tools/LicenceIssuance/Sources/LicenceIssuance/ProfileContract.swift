@@ -127,10 +127,10 @@ public enum ProfileContract {
                                                      "mistral", "zai", "qwen", "minimax", "xai", "openrouter", "custom", "local",
                                                      "appleOnDevice"]
     /// `SettingsCategoryID` raw values, in hub order. Must stay identical to the app's enum.
-    public static let settingsCategoryIds = ["intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "my-manuals", "look-and-feel",
+    public static let settingsCategoryIds = ["intelligence", "voice", "everyday", "devices", "accessibility", "field-assist", "assisting", "my-manuals", "look-and-feel",
                                              "tools", "connections", "capture", "display", "advanced", "diagnostics"]
     /// `ManagedLockdown.pinnedOpen` — never locked by an organisation.
-    public static let pinnedOpenCategoryIds: Set<String> = ["accessibility", "look-and-feel", "diagnostics"]
+    public static let pinnedOpenCategoryIds: Set<String> = ["accessibility", "look-and-feel", "diagnostics", "assisting"]
     /// The models `organizationManualSearchModel` may pin — `ManualSearchModel`'s raw values in the app.
     public static let knownManualSearchModels: Set<String> = ["standard", "smarter", "searchTrained"]
     /// The trades `fieldAssistDefaultTrades` may name — `FieldTrade`'s raw values.

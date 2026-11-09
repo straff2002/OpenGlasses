@@ -381,20 +381,25 @@ struct AssistingHandoverView: View {
     }
 }
 
-/// Puts a handover the app just opened on screen, wherever the app is.
+/// Puts a handover the app just opened on screen, wherever the app is, and an invite the same way.
 struct AssistingSheetHost: ViewModifier {
     @ObservedObject var service: AssistingService
 
     func body(content: Content) -> some View {
         content.sheet(item: $service.presented) { presented in
             NavigationStack {
-                AssistingHandoverView(service: service, handoverId: presented.id, openingMessage: presented.message)
+                AssistingHandoverView(service: service, handoverId: presented.id,
+                                      openingMessage: presented.message.isEmpty ? nil : presented.message)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Close") { service.presented = nil }
                         }
                     }
             }
+        }
+        // Plan KW §4: an invite asking for the expert's card, opened from its file or from Home.
+        .sheet(item: $service.presentedInvite) { invite in
+            ExpertInviteSheet(service: service, invite: invite)
         }
     }
 }
