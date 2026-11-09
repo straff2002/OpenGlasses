@@ -1,6 +1,6 @@
 # Plan JS — Licence Sales and Device Seats (a partner orders codes, pays by bank transfer, and a code counts its phones)
 
-**Status:** 🚧 P0 merged 2026-10-23 (PR 838); validation recorded in `Tools/LicenceIssuance/README.md`. Hosting for P1 decided the same day (*Hosting*). **P0b built 2026-10-26** (PR 847; customers, presets, co-termed seat increases, key rotation, the key-for-life test; *P0b implementation notes*). **P1 built 2026-10-26** in the private service repository, after the package's Linux build (PR 853); not deployed yet. P2–P3 remain unimplemented.
+**Status:** 🚧 P0 merged 2026-10-23 (PR 838); validation recorded in `Tools/LicenceIssuance/README.md`. Hosting for P1 decided the same day (*Hosting*). **P0b built 2026-10-26** (PR 847; customers, presets, co-termed seat increases, key rotation, the key-for-life test; *P0b implementation notes*). **P1 built 2026-10-26** in the private service repository, after the package's Linux build (PR 853); not deployed yet. **P2 built 2026-11-09** (PR 1010; device seats: the app side and the shared seat contract in this repository, the service's endpoints in the private one; not deployed; *P2 implementation notes*). The owner settled the lease at **30 days plus 14 days' grace** the same day. P3 remains unimplemented.
 **Origin:** the pilot partner resells Field Assist team licences and needs to order and pay for them
 without waiting on the vendor. The owner asked whether a licence could be held to a number of
 devices, and whether one server could produce the code and its QR, and let the partner buy and be
@@ -316,8 +316,10 @@ the phone, so that objection does not apply.
    phone's Secure Enclave key and has not passed `notAfter` plus a grace period. A copied lease fails
    on another phone because that phone does not hold the key.
 4. **Renewal rides the daily profile fetch.** The phone presents its lease and gets a new
-   `notAfter`. Leaning: a 14-day lease with 7 days' grace, so a phone in a plant room for a fortnight
-   keeps working and a lost phone frees its seat within three weeks.
+   `notAfter`. **Decided 2026-11-09: a 30-day lease with 14 days' grace** (the leaning was 14 + 7).
+   A phone back from a month's holiday renews the moment it has signal, and one that then spends a
+   fortnight out of signal still works. A lost phone frees its seat within 44 days. The seat lease
+   is separate from the profile lease (`leaseDays`, 60–365) and from the licence's term.
 5. **Seats come back** when the partner (or the vendor) frees one in the portal, when the phone's
    owner-gated removal releases it, or when a lease is not renewed. A freed phone keeps working until
    its current lease runs out. Leases are verified offline, so that overlap is the honest bound, and
@@ -517,7 +519,8 @@ lapse. Bank-statement import to match payments by reference. Emailing invoices f
 - **Short payments and bank fees** on international transfers: treat an invoice as paid within a set
   tolerance, or keep it open until the balance arrives?
 - **Who may free a seat:** the partner only, or also the customer's administrator phone (CT 3b)?
-- **Lease length and grace** for P2. Leaning 14 + 7 days.
+- ~~**Lease length and grace** for P2.~~ **Resolved 2026-11-09:** 30 days plus 14 days' grace.
+  Holidays are covered, and a freed phone stops within 44 days.
 - **Whether to require a minimum build** for seat-checked licences, and how the app would say so.
 - ~~**Where the service runs**, and in what language.~~ **Resolved 2026-10-23:** OrbStack on the
   vendor's Mac behind a Cloudflare Tunnel, with the portal behind Cloudflare Access, and Swift on
@@ -578,3 +581,58 @@ In `Tools/LicenceIssuance` (`Customers.swift`, `ProfileContract.swift`); the pac
   `officeAuthority` (the second pilot preset's office route still needs the office's key per customer), and
   terminal commands for customers.
 
+## P2 implementation notes (2026-11-09)
+
+**Owner decisions:** the app side is built first. Its pull request defines the wire contract, and the
+service builds against it at the commit its `core.lock` names. The lease is 30 days plus 14 days' grace.
+
+**The contract is in the core.** `Tools/LicenceIssuance/Sources/LicenceIssuance/Seats.swift` defines
+`SeatWire` (signing domains, the four endpoints under the origin of the licence's signed `profile`
+address, the envelope, replies and refusals) and `SeatPolicy` (the one rule that counts seats). The
+app restates the format in `DeviceSeatLease`, because no production verifier depends on the package.
+`DeviceSeatTests` holds the two to the same bytes, and runs the whole path against a stub service
+built from `SeatPolicy`.
+
+- **Codes.** `seatCheck: true` is a signed claim (`IssuanceRequest.seatCheck`, `CustomerOrder.seatCheck`,
+  `--seat-check` on the generator). It is accepted only with a `profile`, whose origin is the seat
+  service. A seat increase keeps the claim of the code it raises. A code without the claim encodes
+  and behaves exactly as before.
+- **The phone.** On enrolment (`OrgProfileManager.apply`), a seat-checked licence claims a seat with a
+  Secure Enclave P-256 key, kept in the Keychain this-device-only and so never in a backup
+  (`DeviceSeatKeychainStore`). The claim sends exactly `{profileId, enrolmentId, devicePublicKey,
+  build}`, signed over a single-use nonce from the service. The signed bytes include the action, so a
+  claim cannot be replayed as a release. The lease is renewed on every `renewIfDue` pass after the
+  profile, at most daily while live, and every ten minutes while not live, so a newly delivered
+  full-term code is renewed onto the same seat at once. Removal releases the seat to the service
+  the lease came from, then forgets the key.
+- **The gate.** `LiveFieldAssistEntitlementProvider` withholds a seat-checked licence's evidence unless
+  `DeviceSeatGate` finds a live lease. A live lease verifies under the embedded seat-lease key with its
+  own domain, and names this phone's key hash, this enrolment and the stored code's `licenseIDHash`.
+  It must be before `notAfter` plus the grace, judged against a clock high-water mark. Without one,
+  the decision is `.seatUnavailable(DeviceSeatHold)`: *"All N seats for ⟨licensee⟩ are in use. Ask
+  your administrator to free one."*, or the check-in message. This is handled like a lapse: no
+  capability, so Workiz stops; Field Assist locks; the open job closes for handover as it does on
+  expiry; the team-learning tools say why; nothing is erased. The office's inline route refuses a
+  seat-checked licence as not in force. A licence whose own term has run out still reads as expired.
+- **Check-ins are serial, and a release wins.** A check-in asked for while one is out runs next,
+  so a forced claim on a move is never dropped. A claim waits for a release still on its way. An answer
+  that arrives after a release is discarded. A Keychain that cannot be read (before first unlock)
+  never causes a new key to be made, since that would orphan the seat. The lease the service signs
+  resets the clock high-water mark to the service's time, so a phone whose clock once ran ahead
+  recovers on its next lease.
+- **Unsigned refusals never take a lease away.** A refusal (full, freed, lapsed) only words a lock that
+  already exists for want of a live lease, so a freed phone keeps working until its lease and grace run
+  out.
+- **Disclosure.** It shares this pull request, per the telemetry rule: the route `licenceSeatLease`
+  (data class `deviceIdentifier`), a `DeviceID` entry in `PrivacyInfo.xcprivacy`, whose header no
+  longer says the app has no developer-operated backend, and a sentence in both Privacy footers.
+  `TelemetryOptOutGuardTests` pins all three. The store is registered as `licenceSeat`. The route
+  is blocked under Medical Local Only, like every route outside the pinned exceptions. Seat checks are
+  for Field Assist only (*Non-goals*), so a phone in that mode does not renew its seat.
+- **The third key** is Curve25519: public half in `DeviceSeatLease.productionPublicKeys`,
+  private half a 0600 file beside the vendor's other signing keys. It is minted with the generator's
+  `keygen` and never printed.
+- **Not built:** a minimum-build requirement (still an open question), a seat row on the phone's licence
+  screen beyond the footer note, and the administrator phone freeing seats (the open question on who may
+  free one: the partner and the vendor can, in the portal). The service is not deployed; `seatCheck` stays
+  off in its settings until a build that claims seats is on the App Store.

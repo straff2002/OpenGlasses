@@ -32,6 +32,12 @@ enum FieldAssistEntitlementEvaluator {
         if let best {
             return .granted(source: best.source, tier: best.tier, expiresAt: best.expiration)
         }
+        // A seat-checked licence whose own term has run out is an expired licence, not a seat.
+        if let hold = set.seatHold, let expiry = hold.licenceExpires, expiry <= now {
+            latestLapse = max(latestLapse ?? expiry, expiry)
+        } else if let hold = set.seatHold {
+            return .denied(.seatUnavailable(hold))
+        }
         if let latestLapse {
             return .denied(.expired(latestLapse))
         }

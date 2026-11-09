@@ -80,9 +80,15 @@ struct FieldAssistEntitlementEvidenceSet: Equatable, Sendable {
     /// A stored license code was present but failed signature, feature, or format verification.
     var hasUnverifiableLicense: Bool
 
-    init(evidence: [FieldAssistEntitlementEvidence] = [], hasUnverifiableLicense: Bool = false) {
+    /// A seat-checked licence verified, but this phone holds no live seat lease for it (Plan JS
+    /// P2). Its evidence is withheld; this says why.
+    var seatHold: DeviceSeatHold?
+
+    init(evidence: [FieldAssistEntitlementEvidence] = [], hasUnverifiableLicense: Bool = false,
+         seatHold: DeviceSeatHold? = nil) {
         self.evidence = evidence
         self.hasUnverifiableLicense = hasUnverifiableLicense
+        self.seatHold = seatHold
     }
 
     static let empty = FieldAssistEntitlementEvidenceSet()
@@ -106,6 +112,10 @@ struct FieldAssistEntitlementDecision: Equatable, Sendable {
         case expired(Date)
         /// A license code was stored but did not verify.
         case unverifiableLicense
+        /// A seat-checked licence is in force, but this phone holds no live seat on it (Plan JS
+        /// P2): all seats are in use, or the phone has not checked in. Handled exactly like a
+        /// lapse — no office or job-system connection, Field Assist locked, nothing removed.
+        case seatUnavailable(DeviceSeatHold)
     }
 
     let isGranted: Bool

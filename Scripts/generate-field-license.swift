@@ -16,6 +16,7 @@ import LicenceIssuance
 //       [--tier team|enterprise] [--plan pilot|team|enterprise] [--seats N] [--reference PO-123] [--days 90]
 //       [--pack hvac_rtu ...]   vault packs the licence includes, by licence key (Plan EG)
 //       [--profile https://…]   the organisation's hosted profile; entering the code enrols the phone (Plan CT 3a)
+//       [--seat-check]          count the phones using this code against --seats (Plan JS P2); needs --profile
 //       [--organization-id ID --profile-id ID]  desktop-managed inline profile binding; both required
 //       [--activation-key [--activation-dir activation]]
 //                               also mint a short activation key and write its sealed file (Plan CT 3a)
@@ -180,7 +181,7 @@ let usage = """
 usage: generate-field-license.swift "<Licensee>" [expiresISO8601]
          [--key-file <path|->]
          [--tier team|enterprise] [--plan pilot|team|enterprise]
-         [--seats N] [--reference TEXT] [--days N] [--pack KEY ...] [--profile https://…]
+         [--seats N] [--reference TEXT] [--days N] [--pack KEY ...] [--profile https://…] [--seat-check]
          [--organization-id ID --profile-id ID]
          [--activation-key [--activation-dir DIR]]
        generate-field-license.swift keygen <privateKeyFile>
@@ -207,6 +208,7 @@ var packs: [String] = []
 var profileAddress: String?
 var organizationID: String?
 var profileID: String?
+var seatCheck = false
 var mintActivationKey = false
 var activationDirectory = "activation"
 var keyFile: String?
@@ -245,6 +247,8 @@ while let arg = iterator.next() {
         organizationID = value(arg)
     case "--profile-id":
         profileID = value(arg)
+    case "--seat-check":
+        seatCheck = true
     case "--activation-key":
         mintActivationKey = true
     case "--activation-dir":
@@ -277,6 +281,11 @@ if let days {
 }
 if plan == "pilot" && expires == nil { fail("a pilot code must expire — pass --days or an expiry") }
 if plan == "enterprise" && tier == nil { tier = "enterprise" }
+if seatCheck {
+    // The seat service is the origin of the profile address, and a seat is a count of something.
+    guard profileAddress != nil else { fail("--seat-check needs --profile: the seat service is the profile's host") }
+    guard seats != nil else { fail("--seat-check needs --seats: the number of phones the code may run on") }
+}
 if organizationID != nil || profileID != nil {
     func safeID(_ id: String?) -> Bool {
         guard let id, !id.isEmpty, id.utf8.count <= 80, id != ".", id != ".." else { return false }
@@ -301,7 +310,8 @@ do {
                                  tier: tier, plan: plan, seats: seats, reference: reference,
                                  packs: packs.isEmpty ? nil : packs.sorted(),
                                  profile: profileAddress,
-                                 organizationID: organizationID, profileID: profileID)
+                                 organizationID: organizationID, profileID: profileID,
+                                 seatCheck: seatCheck ? true : nil)
 
     let code = try IssuanceWire.code(payload, signer: privateKey.signature(for:))
     print(code)

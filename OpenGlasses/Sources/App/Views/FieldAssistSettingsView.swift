@@ -1257,6 +1257,10 @@ struct FieldAssistSettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                case .seatUnavailable(let hold):
+                    Text(hold.message)
+                        .font(.caption)
+                        .foregroundStyle(OGTheme.errorLabel)
                 case .unverifiableLicense:
                     Text(FieldAssistPaywallCopy.unverifiable)
                         .font(.caption)
@@ -1430,7 +1434,9 @@ struct FieldAssistSettingsView: View {
             // The licence page names the tier as it is sold (Plan FY P2).
             Text(FieldAssistPaywallCopy.poweredBy)
         } footer: {
-            if license.activeLicense?.seats != nil {
+            if license.activeLicense?.isSeatChecked == true {
+                Text(FieldAssistPaywallCopy.seatCheckedNote)
+            } else if license.activeLicense?.seats != nil {
                 Text(FieldAssistPaywallCopy.seatsNote)
             }
         }

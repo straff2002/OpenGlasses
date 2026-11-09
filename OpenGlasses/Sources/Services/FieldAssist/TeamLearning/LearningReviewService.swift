@@ -63,6 +63,7 @@ final class LearningReviewService {
         case .notIncluded: refusal = FieldAssistPaywallCopy.teamLearningsReviewNotIncluded
         case .denied(.expired(_)): refusal = FieldAssistPaywallCopy.teamLearningsReviewLapsed
         case .denied(.unverifiableLicense): refusal = FieldAssistPaywallCopy.unverifiable
+        case .denied(.seatUnavailable(let hold)): refusal = "Not reviewed: " + hold.message
         case .denied(.noEvidence): refusal = FieldAssistPaywallCopy.teamLearningsReviewLocked
         }
         return LearningReview.Context(isReviewerDevice: isReviewerDevice(), entitlementRefusal: refusal,

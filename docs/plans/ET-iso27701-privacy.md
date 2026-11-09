@@ -106,6 +106,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | learningCandidates | `LearningCandidateStore` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | cap 500 | `LearningCandidateStore.removeAll()` | `LearningCandidateStore.deleteMatching(_:)` |
 | learningEntries | `LearningEntryStore` | operationalAudit | thirdPartySubject | completeUntilFirstUserAuthentication | yes | none | `LearningEntryStore.removeAll()` | `LearningEntryStore.deleteMatching(_:)` |
 | licence | `LicenseService` | credential | wearer | platformDefault | no | none | none — the licence is the wearer's entitlement, cleared by unlicensing | n/a — no subject linkage |
+| licenceSeat | `DeviceSeatService` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | `DeviceSeatService.release()` | n/a — no subject linkage |
 | manualAdditionHistory | `ManualAdditionHistoryStore` | operationalAudit | wearer | operatingSystemManaged | no | none | `ManualAdditionHistoryStore.eraseAll()` | none — the wearer's own additions; it holds no other person |
 | medicalExports | `MedicalExportFileStore` | exportArtifact | thirdPartySubject | complete | yes | TTL sweep | `MedicalExportFileStore.revokeAll()` | none — an export is a lease, released rather than searched |
 | notificationDigest | `NotificationDigestService` | personalMemory | wearer | platformDefault | no | none | none — the digest is rebuilt from the current window | n/a — no subject linkage |

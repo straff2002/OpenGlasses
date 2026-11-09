@@ -145,6 +145,7 @@ enum SensitiveStore: String, CaseIterable {
     case preferences
     case scenarioProgress
     case licence
+    case licenceSeat
 
     // Keychain, by item family
     case keychainProviderKeys
@@ -1299,6 +1300,21 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "LicenseService",
                           ownerPaths: ["OpenGlasses/Sources/Services/LicenseService.swift"],
                           location: "preferences key `fieldAssistLicenseCode`")
+
+        case .licenceSeat:
+            // Plan JS P2: this phone's seat on a seat-checked licence — the signed lease, ids and
+            // dates in preferences, and the Secure Enclave key's opaque handle in the Keychain
+            // (this device only, never backed up). Removing the organisation releases the seat and
+            // deletes both.
+            return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true, retention: .none,
+                          deleteAll: .api("DeviceSeatService.release()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "DeviceSeatService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatService.swift",
+                                       "OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatLease.swift",
+                                       "OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatKey.swift"],
+                          location: "preferences key `licenceSeat`; Keychain item `licenceSeatDeviceKey`")
 
         case .keychainProviderKeys:
             return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,

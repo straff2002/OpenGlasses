@@ -322,6 +322,7 @@ final class LearningBundleIntake: ObservableObject {
         case .notIncluded: return FieldAssistPaywallCopy.teamLearningsBundleNotIncluded
         case .denied(.expired(_)): return FieldAssistPaywallCopy.teamLearningsBundleLapsed
         case .denied(.unverifiableLicense): return FieldAssistPaywallCopy.unverifiable
+        case .denied(.seatUnavailable(let hold)): return "Not exchanged: " + hold.message
         case .denied(.noEvidence): return FieldAssistPaywallCopy.teamLearningsBundleLocked
         }
     }
