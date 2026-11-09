@@ -58,10 +58,19 @@ extension CustomerTests {
         XCTAssertEqual(ActivationKeyMint.open(v2, canonical: canonical), .init(licenceCode: "fixture.licence.code", companySecret: secret))
         XCTAssertNil(ActivationKeyMint.open(v2, canonical: ActivationKeyMint.generate()))
         XCTAssertThrowsError(try ActivationKeyMint.seal("x", companySecret: Data(count: 31), canonical: canonical))
-        // The version 2 plaintext is the sorted-key JSON the app reads.
+        // The version 2 plaintext is the sorted-key JSON object the app reads (JSONEncoder escapes "/" in the base64).
         let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: XCTUnwrap(Data(base64Encoded: v2))), using: ActivationKeyMint.sealingKey(canonical: canonical))
-        XCTAssertEqual(String(decoding: plain, as: UTF8.self),
-                       "{\"companySecret\":\"\(secret.base64EncodedString())\",\"format\":\"openglasses.activation\",\"licenceCode\":\"fixture.licence.code\",\"version\":2}")
+        XCTAssertEqual(String(decoding: plain, as: UTF8.self).components(separatedBy: "\"").filter { ["companySecret", "format", "licenceCode", "version"].contains($0) },
+                       ["companySecret", "format", "licenceCode", "version"], "keys in sorted order")
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: plain) as? [String: Any])
+        XCTAssertEqual(object.count, 4)
+        XCTAssertEqual(object["companySecret"] as? String, secret.base64EncodedString())
+        XCTAssertEqual(object["format"] as? String, "openglasses.activation")
+        XCTAssertEqual(object["licenceCode"] as? String, "fixture.licence.code")
+        XCTAssertEqual((object["version"] as? NSNumber)?.intValue, 2)
+        // Pinned against a secret containing "/" and "+", the characters JSON may escape.
+        let slashed = Data(base64Encoded: "//+/" + String(repeating: "A", count: 39) + "=")!
+        XCTAssertEqual(ActivationKeyMint.open(try ActivationKeyMint.seal("c", companySecret: slashed, canonical: canonical), canonical: canonical)?.companySecret, slashed)
     }
 
     func testTheProfileCarriesTheWorkizKeySealedNeverReadable() throws {

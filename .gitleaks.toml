@@ -47,6 +47,18 @@ regexes = ['''Curve25519\.Signing\.(Private|Public)Key''']
 
 [[allowlists]]
 description = """
+Invented Workiz API keys in the sealed-credential tests (OrgCredentialTests, and the core's
+CredentialTests). They are never sent anywhere: the tests seal them into a profile and check that
+nothing but the sealed box, and its last four characters, is written or shown. Scoped to the two
+literal strings, so a real Workiz key pasted into any test still fires.
+"""
+regexes = [
+  '''wz_fixture_0123456789abcdefa1b2''',
+  '''wz_fixture_fedcba9876543210c3d4''',
+]
+
+[[allowlists]]
+description = """
 The privacy-canary fixtures. PrivacyCanaryTests and DiagnosticExportTests plant deliberately
 credential-shaped strings and then assert that the export and log paths refuse to emit them —
 being secret-shaped is the whole point of the fixture, and a scanner flagging them is the
