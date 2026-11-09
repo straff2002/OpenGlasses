@@ -133,10 +133,10 @@ struct MainView: View {
             .id(departures.departure?.startedAt)
             .id(orgProfile.contentLocked)
             .tabViewStyle(.sidebarAdaptable)
-            // Settings and the lists scroll down from their top; the Voice tab's conversation opens
-            // on its newest line and is read by scrolling *up* through it, so that is the direction
-            // that shrinks the bar to the mark there — and the accessory below slides in beside it.
-            .tabBarMinimizeBehavior(selectedTab == .voice ? .onScrollUp : .onScrollDown)
+            // Scrolling down shrinks the bar to the mark on every tab, the Voice tab's conversation
+            // included (the owner's call, 2026-11-10: the same gesture as Settings) — and the
+            // accessory below slides in beside it.
+            .tabBarMinimizeBehavior(.onScrollDown)
             // The Voice tab's mic and buttons button, in Apple's bottom strip: above the tab bar,
             // and beside the mark when the bar shrinks. Off while the typed bar is open, which
             // takes the bottom of the tab for itself.

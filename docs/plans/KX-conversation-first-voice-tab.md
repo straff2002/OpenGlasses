@@ -33,7 +33,7 @@ phone (below).
 4. **Apple's bottom accessory carries them** (`VoiceDockAccessory`, iOS 26.1+). Full width above the tab bar
    its free width is a "Type a request" entry that opens the typed bar (the cog while the buttons are up;
    nothing in a live session, which has no typed turn); when the conversation scrolls
-   up the bar shrinks to the mark with the system's own motion and the strip moves into its row, controls
+   down the bar shrinks to the mark with the system's own motion and the strip moves into its row, controls
    trailing. On iOS 26.0, where the accessory cannot be switched per tab, the two float over the feed instead.
    The typed bar takes the bottom for itself and switches the accessory off.
 5. **The buttons take the conversation's place**, not a band under it: the buttons button swaps them, the
