@@ -260,8 +260,11 @@ public struct KeyRotation {
     public let customer: Customer
     public let activationKey: String
     public let sealedFile: String
-    /// The secret the new file carries: the customer's own, or a new one when it had none.
+    /// The secret the new file carries: the customer's own, or a new one when it had none or asked for one.
     public let companySecret: Data
+    /// The secret is new: credentials sealed under the old one no longer open for this customer, so drop them, and
+    /// every phone needs the new key once to receive the credentials sealed from now on.
+    public let newCompanySecret: Bool
     /// To delete from the public site.
     public let retiredFile: String
 }
@@ -413,33 +416,39 @@ extension SalesBook {
 
     /// A lost or leaked key: a new key sealing the current code, and the old file listed for deletion.
     ///
-    /// The new file carries the customer's company secret, so phones already enrolled keep opening the profile's
-    /// credentials: pass the secret from the service's protected state. A customer signed up before sealed
-    /// credentials has none, and gets a new one here (pass nil); its phones receive it when they enter the new key.
+    /// By default the new file carries the customer's company secret, so phones already enrolled keep opening the
+    /// profile's credentials: pass the secret from the service's protected state. That suits a lost card.
+    ///
+    /// `newCompanySecret` re-keys instead, for a leak or a leaver: whoever ever opened an activation file holds the old
+    /// secret and could open every credential sealed under it. A new secret is made (pass nil for `companySecret`, which
+    /// is not consulted), so the caller must drop every credential sealed under the old one; each phone then enters the
+    /// new key once. A customer signed up before sealed credentials has no secret and always gets a new one here.
     public mutating func rotateActivationKey(customerId: String, currentCode: String, companySecret: Data? = nil,
+                                             newCompanySecret: Bool = false,
                                              operatorId: String, now: Date) throws -> KeyRotation {
         guard var c = ledger.customers[customerId] else { throw CustomerRefusal.unknownCustomer }
         guard ledger.currentIssuance(for: customerId)?.licenseDigest == IssuanceWire.digest(Data(currentCode.utf8)) else {
             throw CustomerRefusal.notCurrentCode
         }
         let secret: Data
-        if let id = c.companySecretId {
+        if let id = c.companySecretId, !newCompanySecret {
             guard let companySecret, ProfileContract.Credential.secretId(companySecret) == id else {
                 throw CustomerRefusal.companySecretMismatch
             }
             secret = companySecret
         } else {
-            guard companySecret == nil else { throw CustomerRefusal.companySecretMismatch }
+            guard newCompanySecret || companySecret == nil else { throw CustomerRefusal.companySecretMismatch }
             secret = ProfileContract.Credential.newSecret()
             c.companySecretId = ProfileContract.Credential.secretId(secret)
         }
         let key = ActivationKeyMint.generate()
         let sealed = try ActivationKeyMint.seal(currentCode, companySecret: secret, canonical: key)
         let retired = c.activationFile
+        let isNew = c.companySecretId != ledger.customers[customerId]?.companySecretId
         c.activationFile = ActivationKeyMint.fileName(key)
         try record(c, .keyRotated(retiredFile: retired), operatorId: operatorId, now: now)
         return KeyRotation(customer: c, activationKey: ActivationKeyMint.display(key), sealedFile: sealed, companySecret: secret,
-                           retiredFile: retired)
+                           newCompanySecret: isNew, retiredFile: retired)
     }
 
     /// A company credential sealed for this customer's profile, checked against the secret the journal names.

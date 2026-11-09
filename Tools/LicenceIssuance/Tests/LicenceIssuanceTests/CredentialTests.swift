@@ -138,9 +138,53 @@ extension CustomerTests {
         }
         let rotated = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, operatorId: "fixture", now: date(3))
         XCTAssertEqual(rotated.customer.companySecretId, ProfileContract.Credential.secretId(rotated.companySecret))
+        XCTAssertTrue(rotated.newCompanySecret)
         XCTAssertEqual(ActivationKeyMint.open(rotated.sealedFile, canonical: rotated.activationKey.replacingOccurrences(of: "-", with: ""))?.companySecret,
                        rotated.companySecret)
         XCTAssertNoThrow(try book.sealCredential(fixtureKey, name: "workiz", customerId: "c1", companySecret: rotated.companySecret))
+    }
+
+    /// A leak or a leaver: whoever ever opened an activation file holds the old secret, so a re-key makes a new one and
+    /// nothing sealed under the old one opens with it.
+    func testReKeyingMakesANewSecretThatOldBoxesDoNotOpenUnder() throws {
+        var book = try SalesBook(); let s = try signUp(&book)
+        let full = try XCTUnwrap(pay(&book))
+        let old = try book.sealCredential(fixtureKey, name: "workiz", customerId: "c1", companySecret: s.companySecret)
+        let rekeyed = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, newCompanySecret: true,
+                                                   operatorId: "fixture", now: date(2))
+        XCTAssertTrue(rekeyed.newCompanySecret)
+        XCTAssertEqual(rekeyed.companySecret.count, 32); XCTAssertNotEqual(rekeyed.companySecret, s.companySecret)
+        XCTAssertEqual(rekeyed.customer.companySecretId, ProfileContract.Credential.secretId(rekeyed.companySecret))
+        XCTAssertNotEqual(rekeyed.customer.companySecretId, s.customer.companySecretId)
+        XCTAssertEqual(rekeyed.retiredFile, s.customer.activationFile)
+        XCTAssertEqual(ActivationKeyMint.open(rekeyed.sealedFile, canonical: rekeyed.activationKey.replacingOccurrences(of: "-", with: "")),
+                       .init(licenceCode: full.code, companySecret: rekeyed.companySecret))
+        // The journal now names the new secret, also after a reload; the old one is refused.
+        let reloaded = try SalesBook(ledger: book.ledger)
+        XCTAssertEqual(reloaded.ledger.customers["c1"]?.companySecretId, rekeyed.customer.companySecretId)
+        XCTAssertThrowsError(try reloaded.sealCredential(fixtureKey, name: "workiz", customerId: "c1", companySecret: s.companySecret)) {
+            XCTAssertEqual($0 as? CustomerRefusal, .companySecretMismatch)
+        }
+        let fresh = try reloaded.sealCredential(fixtureKey, name: "workiz", customerId: "c1", companySecret: rekeyed.companySecret)
+        XCTAssertEqual(try ProfileContract.Credential.open(fresh, name: "workiz", profileId: "fixture-profile", companySecret: rekeyed.companySecret), fixtureKey)
+        XCTAssertThrowsError(try ProfileContract.Credential.open(old, name: "workiz", profileId: "fixture-profile", companySecret: rekeyed.companySecret),
+                             "a phone holding only the new secret cannot open the old box")
+        // A later lost card keeps the new secret, and the old secret no longer passes for it.
+        XCTAssertThrowsError(try book.rotateActivationKey(customerId: "c1", currentCode: full.code, companySecret: s.companySecret,
+                                                          operatorId: "fixture", now: date(3))) {
+            XCTAssertEqual($0 as? CustomerRefusal, .companySecretMismatch)
+        }
+        let lost = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, companySecret: rekeyed.companySecret,
+                                                operatorId: "fixture", now: date(3))
+        XCTAssertFalse(lost.newCompanySecret); XCTAssertEqual(lost.companySecret, rekeyed.companySecret)
+        XCTAssertEqual(book.ledger.retiredActivationFiles(for: "c1"), [s.customer.activationFile, rekeyed.customer.activationFile])
+        // Re-keying still needs the current code, and never journals a secret.
+        XCTAssertThrowsError(try book.rotateActivationKey(customerId: "c1", currentCode: s.code.code, newCompanySecret: true,
+                                                          operatorId: "fixture", now: date(4))) {
+            XCTAssertEqual($0 as? CustomerRefusal, .notCurrentCode)
+        }
+        let json = String(decoding: try IssuanceWire.encoder().encode(book.ledger), as: UTF8.self)
+        for secret in [s.companySecret, rekeyed.companySecret] { XCTAssertFalse(json.contains(secret.base64EncodedString())) }
     }
 
     func testWorkizEnabledIsAProfileOwnedFlag() throws {

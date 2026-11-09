@@ -243,6 +243,7 @@ final class CustomerTests: XCTestCase {
         XCTAssertEqual(ActivationKeyMint.open(rotated.sealedFile, canonical: rotated.activationKey.replacingOccurrences(of: "-", with: "")),
                        .init(licenceCode: full.code, companySecret: s.companySecret))
         XCTAssertEqual(rotated.customer.companySecretId, s.customer.companySecretId)
+        XCTAssertFalse(rotated.newCompanySecret)
         XCTAssertEqual(rotated.retiredFile, s.customer.activationFile); XCTAssertNotEqual(rotated.customer.activationFile, s.customer.activationFile)
         XCTAssertEqual(book.ledger.customers["c1"]?.activationFile, rotated.customer.activationFile)
         XCTAssertEqual(book.ledger.retiredActivationFiles(for: "c1"), [s.customer.activationFile])

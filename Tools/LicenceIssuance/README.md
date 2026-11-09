@@ -171,7 +171,9 @@ only the file name. Later rows are `.customerChange` (preset, administrator veri
 - `setAdminPasscode` accepts `{salt, iterations, hash}` only, with the app's `AdminSecrets` bounds.
 - `rotateActivationKey` seals the **current** code under a new key and lists the old file for deletion.
   It carries the customer's company secret over (pass it from protected state); a customer signed up before sealed
-  credentials gets its first secret here.
+  credentials gets its first secret here. With `newCompanySecret: true` (a leak, or someone left) it makes a new
+  secret instead and `KeyRotation.newCompanySecret` says so: every credential sealed under the old one must be
+  dropped, and each phone enters the new key once before it can open credentials sealed from then on.
 
 ## Sealed company credentials
 
@@ -191,7 +193,8 @@ prints `licenceCode` in clear, so nothing derived from the licence could hide it
   `workiz` is the only name. `ProfileContract.Credential` mirrors `OrgCredentialSeal` in the app.
 - Anyone holding the activation key can open the file and so the box: the key is what technicians type, and
   this keeps the Workiz key off screens and out of the public profile, not out of a determined technician's
-  reach. The gateway in avenkin-licence's `docs/plans/integration-gateway.md` is the step that takes it off phones.
+  reach. Re-keying (`rotateActivationKey(…, newCompanySecret: true)`) ends that for the holder of an old file;
+  the gateway in avenkin-licence's `docs/plans/integration-gateway.md` is the step that takes it off phones.
 - `profileDocument` builds and signs the customer's profile from its preset, choices, verifier and current code
   through `ProfileContract`, the same contract `make-org-profile` uses, so both produce the same bytes.
 
