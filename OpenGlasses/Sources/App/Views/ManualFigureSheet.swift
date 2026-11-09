@@ -30,6 +30,24 @@ struct ManualFigureSheet: View {
     }
 }
 
+/// The cited manual page, opened in place under the answer on the Voice tab rather than over it in
+/// a sheet. The same page — its own header, paging and Close — on a card the feed scrolls with.
+struct InlineManualPage: View {
+    let request: AppState.ManualFigureRequest
+    let height: CGFloat
+    let onClose: () -> Void
+
+    var body: some View {
+        ManualFigureSheet(request: request, onClose: onClose)
+            .frame(height: height)
+            .background(OGTheme.canvas)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.separator, lineWidth: 0.5))
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Manual page")
+    }
+}
+
 /// One cited page in the sheet.
 private struct ManualSourcePage: View {
     let stop: AppState.ManualFigureRequest.Stop

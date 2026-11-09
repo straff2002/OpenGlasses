@@ -1,14 +1,15 @@
 import SwiftUI
 import Combine
 
-/// Voice tab — the primary interaction screen, kept to three zones:
+/// Voice tab — the primary interaction screen:
 ///
-///   1. Status (top): one StatusIndicator card — state, mode, persona, and the
-///      glasses/OpenClaw connection pills merged into its footer row
-///   2. Conversation (center): My Day, ambient captions, transcript — scrolls, so the dock
-///      below it always gets its height
-///   3. Controls (bottom): the grid panel of controls and content tiles, then the hero capsule
-///      beneath it on its own glass — the biggest, most-used target nearest the thumb
+///   1. Status (top, pinned): the StatusIndicator card and the conversation's header — which
+///      conversation this is, a new one, an earlier one
+///   2. Feed (the rest): My Day, captions and notices, then the conversation itself, as long as it
+///      is, with a manual page an answer cited opened in place under it. One scroll view, so the
+///      tab bar shrinks to the mark as it scrolls
+///   3. Controls (floating at the bottom): the mic and the buttons button side by side in the
+///      thumb's corner; the buttons button raises the grid of controls and tiles over the feed
 struct VoiceTab: View {
     @EnvironmentObject var appState: AppState
     @EnvironmentObject private var workspace: AdaptiveWorkspaceState
@@ -17,13 +18,16 @@ struct VoiceTab: View {
     @ScaledMetric(relativeTo: .body) private var minimumPrimaryWidth: CGFloat = 340
     @ScaledMetric(relativeTo: .body) private var minimumContextWidth: CGFloat = 280
     @ObservedObject private var fieldSessions = FieldSessionService.shared
-    @State private var dockPager = DockPagerState()
+    /// Which of the conversation and the buttons is up, the typed bar, and a reply waiting behind
+    /// the buttons — shared with the tab view's bottom accessory, where the controls ride.
+    @EnvironmentObject private var dock: VoiceDockModel
     @State private var showPreview = false
     /// The preview asked for streaming setup, which cannot be opened from under its cover.
     @State private var previewLeavingToSetup = false
     @State private var showModelPicker = false
     @State private var showPersonaPicker = false
-    @State private var showChatInput = false
+    /// The grid is up in the conversation's place.
+    private var showsGrid: Bool { dock.pager.page == .actions }
     @State private var captionsActive = false
     @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
     /// The card's placement, separate from My Day being on — see `MyDayHomePlacement`. The same key
@@ -50,18 +54,7 @@ struct VoiceTab: View {
     @State private var showingScenarioIntro = false
     @State private var scenarioIntroExit: ScenarioSheetExit?
 
-    /// What the surface above the dock actually drew — the recording badge, the status card, My Day
-    /// in whatever state the wearer left it, and the captions and notices held down against the
-    /// dock. Summed from every module group that reports one; `nil` until the first layout.
-    ///
-    /// The dock used to take a *share* of the tab instead, margined so that the tallest plausible
-    /// My Day card could never be clipped. Whenever the real card came in shorter than that
-    /// reservation, the slack rendered as dead glass between the card and the panel — which is the
-    /// gap this replaces. Measuring cannot over-reserve, because the number is the height.
-    @State private var surfaceAboveDock: CGFloat?
-
-    /// The zone's top padding, above the first module. The gaps *between* modules — and the gap
-    /// down to the dock — are all `DockGridMetrics.moduleGap`, which is the tab's one rhythm.
+    /// Above the status card, at the top of the tab.
     private static let conversationZoneTopPadding: CGFloat = 12
 
     private var session: GeminiLiveSessionManager { appState.geminiLiveSession }
@@ -78,11 +71,8 @@ struct VoiceTab: View {
         ZStack {
             VoiceAmbience(state: voiceState, activity: activity).ignoresSafeArea()
 
-            // The tab's usable height, read once and handed down to the dock, which sizes its
-            // resting rows from it minus what the surface above it measured. One-way: the panel
-            // decides from the screen, the conversation zone takes what is left. The measurement
-            // does not make that circular — what is measured is the modules' own heights, which
-            // answer to the width they are given and not to what the panel does with the height.
+            // The tab's usable height, read once: the risen grid takes at most a share of it, and
+            // an inline manual page is sized from it.
             GeometryReader { tab in
             let placement = AdaptiveWorkspacePlacement.resolve(
                 size: tab.size, minimumPrimaryWidth: minimumPrimaryWidth,
@@ -93,67 +83,77 @@ struct VoiceTab: View {
             // The primary column keeps the same structural identity at every size. Rebuilding
             // it in separate portrait/landscape branches would discard drafts and dock position.
             WorkspaceRegionLayout(size: tab.size, placement: placement) {
-            VStack(spacing: 0) {
-                // Recording indicator
-                if appState.videoRecorder.isRecording {
-                    recordingBadge
-                        .padding(.top, 8)
-                        .background(surfaceHeightReader)
-                }
-
-                conversationZone(voiceState, layout: layout)
-
-                // Chat input bar (when active) or the control dock — the grid panel with the
-                // capsule beneath it. Pinned below the zone above and laid out first: the primary
-                // control is the last thing that should need scrolling to, and the zone takes
-                // whatever height is left over.
-                Group {
-                    // A transcript under review (Plan JM P1) opens the bar by itself.
-                    if (showChatInput || appState.pendingTranscript != nil) && !isRealtime {
-                        ChatInputBar(showChatInput: $showChatInput)
-                    } else {
+            // The feed is the tab's own scroll view, edge to edge, with the status on a bar above
+            // it and the dock on a bar below. Being the root scroll view is what lets the tab bar
+            // track it and shrink to the mark, as it does on Settings.
+            ZStack {
+                // Kept alive under the grid, so the buttons button brings the conversation back
+                // where it was left.
+                homeFeed(voiceState, layout: layout, tabHeight: placement.primary.height)
+                    .opacity(showsGrid ? 0 : 1)
+                    .allowsHitTesting(!showsGrid)
+                    .accessibilityHidden(showsGrid)
+                    // A sideways swipe brings up the buttons, as on the old panel; the scroll
+                    // keeps the vertical axis.
+                    .simultaneousGesture(swipeToButtons)
+                // The grid in the conversation's place, not stacked under it: one or the other.
+                if showsGrid {
+                    GeometryReader { area in
                         VoiceTabControls(
                             session: session,
                             openAISession: openAISession,
                             showPreview: $showPreview,
                             showModelPicker: $showModelPicker,
-                            showChatInput: $showChatInput,
-                            pager: $dockPager,
+                            showChatInput: $dock.showChatInput,
+                            pager: $dock.pager,
                             showsActions: HomeSurfaceVisibility.showsActionTiles(
                                 mode: appState.currentMode),
                             voiceState: voiceState,
                             availableHeight: placement.primary.height,
-                            heightAboveDock: layout.dockReservation(
-                                availableHeight: placement.primary.height, measuredSurface: surfaceAboveDock)
+                            gridAreaHeight: area.size.height,
+                            unseenReply: dock.unseenReply
+                        )
+                    }
+                    .transition(.opacity)
+                }
+            }
+                .safeAreaBar(edge: .top) {
+                    VStack(spacing: 0) {
+                        if appState.videoRecorder.isRecording {
+                            recordingBadge
+                                .padding(.top, 8)
+                        }
+                        pinnedStatus(compact: layout.showsContext && layout.isShort)
+                    }
+                    .padding(.bottom, 8)
+                }
+                // The mic and the buttons button float over the bottom of the feed — no band, no
+                // edge blur: the conversation scrolls on beneath them, and the inset only makes
+                // sure its last line can be scrolled clear of them.
+                // The typed bar, when it is open; and the controls themselves only where the tab
+                // view's bottom accessory cannot carry them (iOS 26.0). Floating either way — no
+                // band, the conversation scrolls on beneath.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // A transcript under review (Plan JM P1) opens the typed bar by itself.
+                    if (dock.showChatInput || appState.pendingTranscript != nil) && !isRealtime {
+                        ChatInputBar(showChatInput: $dock.showChatInput)
+                    } else if !VoiceDockModel.usesSystemAccessory {
+                        VoiceTabControls(
+                            session: session,
+                            openAISession: openAISession,
+                            showPreview: $showPreview,
+                            showModelPicker: $showModelPicker,
+                            showChatInput: $dock.showChatInput,
+                            pager: $dock.pager,
+                            showsActions: HomeSurfaceVisibility.showsActionTiles(
+                                mode: appState.currentMode),
+                            voiceState: voiceState,
+                            availableHeight: placement.primary.height,
+                            unseenReply: dock.unseenReply
                         )
                     }
                 }
-                // Stated, not inferred: the dock is laid out at its full height first and the zone
-                // above takes what is left. Both children of this stack are flexible in the
-                // vertical axis, and leaving the split to the default meant the dock could be
-                // squeezed — which is the shape the overflow regression took.
-                .layoutPriority(1)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Every module group above the dock reports its own height and they sum here, so the
-            // panel divides the screen by what was drawn.
-            .onPreferenceChange(ConversationSurfaceHeightKey.self) { total in
-                guard total > 0 else { return }
-                // Sub-point jitter under an animating ambience is not a layout change.
-                if let current = surfaceAboveDock, abs(current - total) < 0.5 { return }
-
-                guard surfaceAboveDock != nil else {
-                    // The opening guess giving way to the first real measurement. The one height
-                    // change on this surface with no motion of its own to ride, so it settles.
-                    withAnimation(DockGridMetrics.heightSettle) { surfaceAboveDock = total }
-                    return
-                }
-                // Every later change is already inside somebody's animation — My Day growing, a
-                // caption arriving — and tracking it *without* a second animation is what makes
-                // the two surfaces one motion. The card takes the height and the panel gives it
-                // back on the same frame, because together they are always the whole screen.
-                surfaceAboveDock = total
-            }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             if layout.showsContext {
                 AdaptiveWorkspaceContext(showsJobs: showsJobContext,
                                          showsMyDay: showsDayContext,
@@ -168,13 +168,27 @@ struct VoiceTab: View {
             }
             }
         }
+        .onChange(of: dock.pager.page) { _, page in
+            if page == .conversation { dock.unseenReply = false }
+        }
         // Plan KH P1: the dock opens on the grid, so with cards waiting it starts on them instead.
         .onChange(of: opensOnShelf(voiceState), initial: true) { _, opens in
             guard opens else { return }
             scenarios.settleShelfOpening()
-            dockPager = DockPagerPolicy.openedForShelf(dockPager)
+            dock.pager = DockPagerPolicy.openedForShelf(dock.pager)
         }
-        .onChange(of: voiceState) { _, state in
+        .onChange(of: voiceState) { previous, state in
+            // The panel's own flips (`DockPagerPolicy`): to the conversation as a turn starts and
+            // as its reply arrives, never against the wearer's own move.
+            let advanced = DockPagerPolicy.advance(dock.pager, from: previous, to: state)
+            if advanced != dock.pager {
+                withAnimation(.easeInOut(duration: 0.25)) { dock.pager = advanced }
+            }
+            // A reply arriving — speech starting, or a silent turn finishing — while the buttons
+            // are up and the wearer chose to stay there.
+            if showsGrid, state == .speaking || (previous == .thinking && state == .idle) {
+                withAnimation(.snappy) { dock.unseenReply = true }
+            }
             if DockPagerPolicy.isTurnActive(state) { scenarios.settleShelfOpening() }
             runPendingFirstScenario()
         }
@@ -195,7 +209,7 @@ struct VoiceTab: View {
             runPendingFirstScenario()
         }
         // The wearer's own move ends the chance to open on the cards, for this launch.
-        .onChange(of: dockPager.userMovedThisTurn) { _, moved in
+        .onChange(of: dock.pager.userMovedThisTurn) { _, moved in
             if moved { scenarios.settleShelfOpening() }
         }
         .fullScreenCover(isPresented: $showPreview, onDismiss: leavePreview) {
@@ -269,7 +283,7 @@ struct VoiceTab: View {
     /// Whether the panel should start on the cards now (`ScenarioShelfPolicy.opensOnConversation`).
     private func opensOnShelf(_ voiceState: VoiceVisualState) -> Bool {
         ScenarioShelfPolicy.opensOnConversation(
-            pager: dockPager, voiceState: voiceState,
+            pager: dock.pager, voiceState: voiceState,
             directMode: HomeSurfaceVisibility.showsActionTiles(mode: appState.currentMode),
             onboardingDone: onboardingDone, alreadySettled: scenarios.shelfOpeningSettled,
             conversationIsEmpty: ConversationContinuity.pageContent(
@@ -317,84 +331,78 @@ struct VoiceTab: View {
         return []
     }
 
-    /// Status card, then My Day, then captions and the transcript — one order and one 16 pt scale
-    /// at every text size, with the dock pinned below it.
-    ///
-    /// The zone is a scroll view inside a `GeometryReader`, and that combination is the fix for a
-    /// functional regression, not a nicety. The zone used to be a fixed `VStack` sharing one
-    /// column with the dock: when a long reply arrived and the dock was two rows tall, the column's
-    /// intrinsic height exceeded the tab and a `VStack` in that position does not clip or scroll —
-    /// it overflows. The overflow pushed the bottom of the dock past the tab bar, so the capsule
-    /// stayed visible while the tiles under it were outside the hittable area. A scroll view
-    /// accepts any height down to zero, so the dock always gets its intrinsic height first and
-    /// every tile stays on screen and tappable; the `minHeight` keeps the old top-aligned rhythm,
-    /// with the flexible spacer holding the transcript against the dock whenever the content is
-    /// short enough for that to mean anything.
-    ///
-    /// **One flow, one rhythm.** Every module sits in the same stack at the same `moduleGap`, and
-    /// the gap down to the dock is that same number, produced by the dock's own top padding. There
-    /// is no flexible spacer any more: the panel's glass absorbs whatever the screen has left, so
-    /// there is nothing left over for a spacer to hold. Captions and notices join the flow rather
-    /// than being pinned to the bottom of the zone — with the leftover gone, "pinned to the bottom"
-    /// and "next in the flow" are the same place, and the flow keeps the gaps even.
-    ///
-    /// The whole stack reports one height, which is the number the panel subtracts.
+    /// The status card, with the sign-in row under it while the assistant model has none (Plan KL
+    /// P0), and the conversation's header. Pinned above the feed: the state of the session and
+    /// "which conversation, a new one, an earlier one" have to be reachable from the bottom of a
+    /// long reply, not only from the top of it.
     @ViewBuilder
-    private func conversationZone(_ voiceState: VoiceVisualState, layout: AdaptiveWorkspaceLayout) -> some View {
-        GeometryReader { proxy in
-            let showsThread = layout.showsContext && !layout.isShort
-                && (showsJobContext || (showsDayContext && workspace.personalSection == .myDay)
-                    || appState.manualFigureRequest != nil)
-            VStack(spacing: showsThread ? 12 : 0) {
-            ScrollView {
-                zoneModules(voiceState, showsContext: layout.showsContext,
-                            compactStatus: layout.showsContext && layout.isShort)
-                    // Exactly the viewport when the content is shorter, so a short surface stays
-                    // top-aligned and does not become a scroll view for no reason.
-                    .frame(minHeight: showsThread ? 0 : proxy.size.height, alignment: .top)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            // And when it scrolls, it says so. A surface whose only cue was a flush-cut card is
-            // the surface this fix exists for.
-            .scrollIndicators(.automatic)
-            .frame(maxHeight: showsThread
-                   ? min(surfaceAboveDock ?? 220, proxy.size.height * 0.55) : .infinity)
-            if showsThread {
-                VStack(spacing: 8) {
-                    ConversationPageHeader(store: appState.conversationStore)
-                    ConversationPageBody(store: appState.conversationStore,
-                                         session: session, openAISession: openAISession)
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-            }
-            }
-        }
-    }
-
-    /// The zone's modules, in order, at the one rhythm — and the height the panel is sized from.
-    @ViewBuilder
-    private func zoneModules(_ voiceState: VoiceVisualState, showsContext: Bool,
-                             compactStatus: Bool) -> some View {
-        VStack(spacing: 0) {
-            VStack(spacing: DockGridMetrics.moduleGap) {
-                // Status card — one status surface: state, mode, persona, and the connection
-                // pills (formerly their own band above the card).
-                //
-                // Plan KL P0: under it, while the assistant model has no usable sign-in or key, the
-                // row that says which, one tap from the fix. A live mode does not use that model.
-                // The pair is one module, and the row carries its own gap, so absent it costs
-                // nothing (see the notice below).
-                VStack(spacing: 0) {
-                    StatusIndicator(session: session, openAISession: openAISession,
-                                    openClawBridge: appState.openClawBridge, compact: compactStatus)
-                    if !isRealtime {
-                        CredentialSignInRow(llmService: appState.llmService) {
-                            appState.openSettings(.intelligence)
-                        }
+    private func pinnedStatus(compact: Bool) -> some View {
+        VStack(spacing: 8) {
+            VStack(spacing: 0) {
+                StatusIndicator(session: session, openAISession: openAISession,
+                                openClawBridge: appState.openClawBridge, compact: compact)
+                if !isRealtime {
+                    CredentialSignInRow(llmService: appState.llmService) {
+                        appState.openSettings(.intelligence)
                     }
                 }
+            }
+            ConversationPageHeader(store: appState.conversationStore)
+                .padding(.horizontal, 16)
+        }
+        .padding(.top, Self.conversationZoneTopPadding)
+    }
 
+    /// Everything below the pinned status, in one scroll: the day card and the other modules, then
+    /// the conversation, then a cited manual page opened in place.
+    ///
+    /// In the expanded workspace the manual opens in the context pane beside it instead, so it is
+    /// drawn here only when there is no pane.
+    @ViewBuilder
+    private func homeFeed(_ voiceState: VoiceVisualState, layout: AdaptiveWorkspaceLayout,
+                          tabHeight: CGFloat) -> some View {
+        let inlineManual = layout.showsContext ? nil : appState.manualFigureRequest
+        ConversationFeed(store: appState.conversationStore, session: session,
+                         openAISession: openAISession, trailID: inlineManual?.id) {
+            feedModules(voiceState, showsContext: layout.showsContext)
+        } trail: {
+            if let request = inlineManual {
+                InlineManualPage(request: request, height: Self.inlineManualHeight(tabHeight: tabHeight)) {
+                    appState.manualFigureRequest = nil
+                }
+                .padding(.horizontal, 12)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(DockGridMetrics.heightSettle, value: inlineManual?.id)
+    }
+
+    /// A deliberate sideways swipe across the conversation — against the reading direction, as the
+    /// buttons sat to the right of it on the old panel — brings the buttons up.
+    private var swipeToButtons: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let forward = layoutDirection == .rightToLeft ? value.translation.width
+                                                              : -value.translation.width
+                guard forward > 80, forward > abs(value.translation.height) * 2 else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    dock.pager = DockPagerPolicy.userMoved(dock.pager, to: .actions)
+                }
+            }
+    }
+
+    /// A cited page tall enough to read a drawing on, short enough that the answer above it stays
+    /// in view.
+    static func inlineManualHeight(tabHeight: CGFloat) -> CGFloat {
+        guard tabHeight > 0, tabHeight.isFinite else { return 480 }
+        return min(560, max(320, tabHeight * 0.62))
+    }
+
+    /// The modules above the conversation, in order, at the one rhythm.
+    @ViewBuilder
+    private func feedModules(_ voiceState: VoiceVisualState, showsContext: Bool) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: DockGridMetrics.moduleGap) {
                 // One day card (Plan HB): the job-day card whenever Field Assist mode is on — My
                 // Day's switch then only governs the personal items folded into it — and My Day's
                 // own card otherwise. Never both.
@@ -410,8 +418,6 @@ struct VoiceTab: View {
                         service: appState.myDayService,
                         compact: voiceState == .listening,
                         onRemoveFromHome: {
-                            // The card leaving is the motion; the panel tracks the measured
-                            // height and its rows per page recompute from it on the same frame.
                             withAnimation(DockGridMetrics.heightSettle) { myDayOnHome = false }
                         }
                     )
@@ -435,15 +441,16 @@ struct VoiceTab: View {
                 }
 
                 // Plan JM P1: speech has failed twice running — the typed bar, one tap away.
-                if appState.showTypeInstead && !isRealtime && !showChatInput
+                if appState.showTypeInstead && !isRealtime && !dock.showChatInput
                     && appState.pendingTranscript == nil {
-                    TypeInsteadChip { showChatInput = true }
+                    TypeInsteadChip { dock.showChatInput = true }
                         .transition(.opacity)
                 }
             }
 
             // Plan KH: things to try for anyone who has a conversation on the page. Outside the
-            // spaced stack for the same reason as the notice below.
+            // spaced stack, because a `VStack` allocates its spacing around every child it holds —
+            // including one whose body resolves to nothing.
             ScenarioIntroSlot(conversations: appState.conversationStore,
                               surfaceFree: HomeSurfaceVisibility.showsMyDay(state: voiceState,
                                                                             captionsActive: captionsActive)
@@ -451,21 +458,10 @@ struct VoiceTab: View {
                 showingScenarioIntro = true
             }
 
-            // The transcript moved into the dock's conversation page. The error card did not: the
-            // panel pages, and a failure the wearer has to see must not be one swipe from
-            // invisible.
-            //
-            // Outside the spaced stack, because a `VStack` allocates its spacing around every child
-            // it holds — including one whose body resolves to nothing. Left in there, a *silent*
-            // notice still cost a 16 pt gap, which is precisely the uneven rhythm this pass exists
-            // to remove. The card carries its own leading gap instead, so absent it costs nothing
-            // and present it matches every other module. The overlay keeps its own observation of
-            // the sessions and the notice centre; gating it from here would have moved that
-            // decision to a view that does not watch either.
+            // The error card, which carries its own leading gap so that absent it costs nothing.
             SessionNoticeOverlay(session: session, openAISession: openAISession)
         }
-        .padding(.top, Self.conversationZoneTopPadding)
-        .background(surfaceHeightReader)
+        .padding(.top, 4)
     }
 
     /// What a row of the day view asked for, once the view has gone: the Jobs tab, or a report's
@@ -521,13 +517,6 @@ struct VoiceTab: View {
         } ?? false
     }
 
-    private var surfaceHeightReader: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: ConversationSurfaceHeightKey.self,
-                                   value: proxy.size.height)
-        }
-    }
-
     // MARK: - Recording Badge
 
     private var recordingBadge: some View {
@@ -553,23 +542,6 @@ struct VoiceTab: View {
         .accessibilityLabel("Recording video")
         .accessibilityValue(appState.videoRecorder.formattedDuration)
         .accessibilityAddTraits(.updatesFrequently)
-    }
-}
-
-// MARK: - Measured surface height
-
-/// The height of the surface above the dock, summed from every module group that reports one.
-///
-/// Sums rather than takes the first, because the surface is two groups with a flexible gap between
-/// them and the panel needs the whole of what they drew — a group left out of the total is a group
-/// the panel would grow over. The reduction is the whole reason this is a preference key and not a
-/// single `GeometryReader`: the groups do not know about each other, and the total arrives at the
-/// one view that has to hand it down.
-private struct ConversationSurfaceHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value += nextValue()
     }
 }
 
@@ -608,7 +580,7 @@ enum HomeSurfaceVisibility {
     }
 }
 
-// MARK: - Voice Tab Controls (hero capsule + secondary buttons)
+// MARK: - Voice Tab Controls (mic, buttons button and the grid)
 
 /// Bottom controls for the Voice tab — reuses the original BottomControlBar patterns.
 private struct VoiceTabControls: View {
@@ -623,7 +595,8 @@ private struct VoiceTabControls: View {
     let showsActions: Bool
     let voiceState: VoiceVisualState
     let availableHeight: CGFloat
-    let heightAboveDock: CGFloat?
+    var gridAreaHeight: CGFloat? = nil
+    var unseenReply: Bool = false
 
     var body: some View {
         BottomControlBar(
@@ -636,7 +609,8 @@ private struct VoiceTabControls: View {
             showsActions: showsActions,
             voiceState: voiceState,
             availableHeight: availableHeight,
-            heightAboveDock: heightAboveDock,
+            gridAreaHeight: gridAreaHeight,
+            unseenReply: unseenReply,
             pager: $pager
         )
     }
@@ -644,7 +618,7 @@ private struct VoiceTabControls: View {
 
 // MARK: - Chat Input Bar
 
-/// Voice-tab inline chat input — the hero capsule's typed-message alternative.
+/// Voice-tab inline chat input — the mic's typed-message alternative.
 /// A thin wrapper over the shared `ChatComposer`: the mic button switches back to voice,
 /// and sends route through the standard voice pipeline (spoken reply preserved).
 struct ChatInputBar: View {

@@ -18,10 +18,10 @@ import Foundation
 enum WakeListenerFailurePolicy {
 
     /// The banner for a start that failed in front of the wearer.
-    static var messageText: String { String(localized: "Microphone stopped — tap Tap & Talk to try again") }
+    static var messageText: String { String(localized: "Microphone stopped — tap the mic to try again") }
 
     /// The session card's headline while the listener is down.
-    static var headline: String { String(localized: "Not listening — tap Tap & Talk") }
+    static var headline: String { String(localized: "Not listening — tap the mic") }
 
     /// The banner for a failed start, or nil when the app is not in front.
     static func message(appActive: Bool) -> String? { appActive ? messageText : nil }

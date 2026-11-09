@@ -225,7 +225,7 @@ struct VoiceTriggersSettingsScreen: View {
                             Config.singleQuestionPerActivation = newValue
                         }
                     ),
-                    info: "On, each answer ends the conversation: say the wake phrase or tap Tap & Talk to ask the next thing. When the answer asks you something back, the microphone stays open for your reply. Off, the microphone opens again after every answer so you can carry on talking. On by default with Field Assist."
+                    info: "On, each answer ends the conversation: say the wake phrase or tap the mic to ask the next thing. When the answer asks you something back, the microphone stays open for your reply. Off, the microphone opens again after every answer so you can carry on talking. On by default with Field Assist."
                 )
             } header: {
                 Text("Pause & Interruptions")
