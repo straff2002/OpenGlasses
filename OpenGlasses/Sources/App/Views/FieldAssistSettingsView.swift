@@ -1335,6 +1335,10 @@ struct FieldAssistSettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.system(.footnote, design: .monospaced))
+                .onChange(of: licenseCode) { previous, value in
+                    let formatted = ActivationKey.formatEntry(value, previous: previous)
+                    if formatted != value { licenseCode = formatted }
+                }
             Button("Activate Licence") { activateLicense() }
                 .disabled(licenseCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLookingUpKey)
             if isLookingUpKey {
