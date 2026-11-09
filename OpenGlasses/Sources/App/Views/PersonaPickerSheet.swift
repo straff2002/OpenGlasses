@@ -140,6 +140,7 @@ struct PersonaPickerTab: View {
     var fieldAssistShortcut: ModesTabPresentation.FieldAssistShortcut? = nil
 
     @State private var editingPersona: Persona? = nil
+    @EnvironmentObject private var strip: TabStripModel
 
     var body: some View {
         List {
@@ -164,6 +165,10 @@ struct PersonaPickerTab: View {
         .ogFormStyle()
         .sheet(item: $editingPersona) { persona in
             PersonaDetailView(persona: persona, appState: appState)
+        }
+        // The bottom strip names the active mode and opens its details (Plan KY).
+        .onChange(of: strip.request) { _, _ in
+            if strip.take(.activeMode) { editingPersona = appState.activePersona }
         }
     }
 }

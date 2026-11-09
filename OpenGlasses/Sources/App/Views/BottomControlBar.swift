@@ -51,6 +51,11 @@ struct BottomControlBar: View {
     /// A reply arrived while the grid was up: the conversation button carries a dot until the
     /// conversation is shown again.
     var unseenReply: Bool = false
+    /// Another tab's own strip action (Plan KY), drawn before the mic.
+    var tabLead: TabStripLeadControl? = nil
+    /// Avenkin's strip carries the buttons button and typing; another tab's carries only the mic
+    /// and its own action.
+    var isHomeTab: Bool = true
 
     @State private var runningActionId: String?
     @Binding var pager: DockPagerState
@@ -187,7 +192,7 @@ struct BottomControlBar: View {
             if gridAreaHeight != nil {
                 panel
             } else if let accessoryPlacement {
-                accessoryRow(accessoryPlacement)
+                if isHomeTab { accessoryRow(accessoryPlacement) } else { tabStripRow(accessoryPlacement) }
             } else {
                 controlRow
                     .padding(.top, 8)
@@ -264,18 +269,7 @@ struct BottomControlBar: View {
                     Spacer(minLength: 0)
                 }
             }
-            MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState,
-                      onSystemGlass: true)
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5).onEnded { _ in appState.micMuted.toggle() }
-                )
-                .accessibilityHint(appState.micMuted
-                                   ? "Double-tap and hold to unmute the microphone."
-                                   : "Double-tap and hold to mute the microphone.")
-                .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
-                                                              : "Mute microphone") {
-                    appState.micMuted.toggle()
-                }
+            accessoryMic
             RoundDockButton(icon: showsGrid ? "text.bubble" : "square.grid.2x2",
                             size: DockGridMetrics.accessoryButtonSize,
                             label: showsGrid ? DockPage.conversation.showActionName
@@ -289,6 +283,44 @@ struct BottomControlBar: View {
         .padding(.horizontal, placement == .expanded ? 14 : 6)
         // Shrunk beside the mark, the two controls keep to the strip's trailing end — where the
         // thumb finds them in both placements.
+        .frame(maxWidth: .infinity, alignment: placement == .expanded ? .leading : .trailing)
+    }
+
+    // MARK: - Another tab's strip
+
+    /// Another tab's strip (Plan KY): its own action at the leading edge — words and symbol while
+    /// the strip is full width, the symbol alone beside the shrunk tab bar — and the mic trailing,
+    /// where the thumb finds it on every tab.
+    @ViewBuilder
+    private func tabStripRow(_ placement: TabViewBottomAccessoryPlacement) -> some View {
+        HStack(spacing: 10) {
+            if let tabLead {
+                if placement == .expanded {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        tabLead.action()
+                    } label: {
+                        Label(tabLead.title, systemImage: tabLead.lead.systemImage)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
+                                   alignment: .leading)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    RoundDockButton(icon: tabLead.lead.systemImage,
+                                    size: DockGridMetrics.accessoryButtonSize,
+                                    label: tabLead.title, hint: "",
+                                    onSystemGlass: true, action: tabLead.action)
+                }
+            } else if placement == .expanded {
+                Spacer(minLength: 0)
+            }
+            accessoryMic
+        }
+        .padding(.horizontal, placement == .expanded ? 14 : 6)
         .frame(maxWidth: .infinity, alignment: placement == .expanded ? .leading : .trailing)
     }
 
@@ -497,6 +529,22 @@ struct BottomControlBar: View {
     }
 
     // MARK: - Mic
+
+    /// The mic on the accessory's glass, with the same long-press mute as the floating one.
+    private var accessoryMic: some View {
+        MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState,
+                  onSystemGlass: true)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5).onEnded { _ in appState.micMuted.toggle() }
+            )
+            .accessibilityHint(appState.micMuted
+                               ? "Double-tap and hold to unmute the microphone."
+                               : "Double-tap and hold to mute the microphone.")
+            .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
+                                                          : "Mute microphone") {
+                appState.micMuted.toggle()
+            }
+    }
 
     /// The primary control, round and thumb-sized, beside the buttons button.
     private var micButton: some View {
