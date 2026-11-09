@@ -154,6 +154,10 @@ public struct Customer: Codable, Equatable {
     public var selection: PresetSelection
     /// Set by the company's own administrator through the setup link; nil until then (no administrator view).
     public var adminPasscode: ProfileContract.PasscodeVerifier?
+    /// `ProfileContract.Credential.secretId` of the company secret its activation file carries. Never the secret,
+    /// which lives only in the file and the service's protected state. Nil for a customer signed up before
+    /// sealed credentials: its file is version 1, and its first key rotation makes a secret.
+    public var companySecretId: String?
 }
 
 public struct CustomerChange: Codable, Equatable {
@@ -204,6 +208,10 @@ public enum CustomerRefusal: Error, Equatable {
     case noPaidLiveCode
     /// The code offered is not this customer's current one.
     case notCurrentCode
+    /// The company secret offered is not the one this customer's activation file carries.
+    case companySecretMismatch
+    /// Sealed credentials need a company secret, which a customer signed up before them gets at its next key rotation.
+    case noCompanySecret
 }
 
 extension Ledger {
@@ -244,12 +252,16 @@ public struct SignUp {
     public let activationKey: String
     /// For the public activation directory under `customer.activationFile`.
     public let sealedFile: String
+    /// For the service's protected state only: it seals the company's credentials into its profile.
+    public let companySecret: Data
 }
 
 public struct KeyRotation {
     public let customer: Customer
     public let activationKey: String
     public let sealedFile: String
+    /// The secret the new file carries: the customer's own, or a new one when it had none.
+    public let companySecret: Data
     /// To delete from the public site.
     public let retiredFile: String
 }
@@ -301,13 +313,16 @@ extension SalesBook {
                                                       operatorId: operatorId, now: now, signer: signer)
         guard let first else { throw SalesError.invalidOrder }
         let key = ActivationKeyMint.generate()
-        let sealed = try ActivationKeyMint.seal(first.code, canonical: key)
+        let secret = ProfileContract.Credential.newSecret()
+        let sealed = try ActivationKeyMint.seal(first.code, companySecret: secret, canonical: key)
         let customer = Customer(customerId: new.customerId, partnerId: grant.partnerId, licensee: new.licensee,
                                 organizationID: new.organizationID, profileId: new.profileId, profileAddress: address,
                                 activationFile: ActivationKeyMint.fileName(key), presetId: preset.id, presetVersion: preset.version,
-                                presetDigest: try preset.digest(), selection: new.selection, adminPasscode: nil)
+                                presetDigest: try preset.digest(), selection: new.selection, adminPasscode: nil,
+                                companySecretId: ProfileContract.Credential.secretId(secret))
         try ledger.append(.signUp(customer, sale, invoice, first.record))
-        return SignUp(customer: customer, code: first, activationKey: ActivationKeyMint.display(key), sealedFile: sealed)
+        return SignUp(customer: customer, code: first, activationKey: ActivationKeyMint.display(key), sealedFile: sealed,
+                      companySecret: secret)
     }
 
     /// A later order for a customer: a renewal of its current code, or a fresh order once that code has lapsed.
@@ -397,34 +412,70 @@ extension SalesBook {
     }
 
     /// A lost or leaked key: a new key sealing the current code, and the old file listed for deletion.
-    public mutating func rotateActivationKey(customerId: String, currentCode: String, operatorId: String, now: Date) throws -> KeyRotation {
+    ///
+    /// The new file carries the customer's company secret, so phones already enrolled keep opening the profile's
+    /// credentials: pass the secret from the service's protected state. A customer signed up before sealed
+    /// credentials has none, and gets a new one here (pass nil); its phones receive it when they enter the new key.
+    public mutating func rotateActivationKey(customerId: String, currentCode: String, companySecret: Data? = nil,
+                                             operatorId: String, now: Date) throws -> KeyRotation {
         guard var c = ledger.customers[customerId] else { throw CustomerRefusal.unknownCustomer }
         guard ledger.currentIssuance(for: customerId)?.licenseDigest == IssuanceWire.digest(Data(currentCode.utf8)) else {
             throw CustomerRefusal.notCurrentCode
         }
+        let secret: Data
+        if let id = c.companySecretId {
+            guard let companySecret, ProfileContract.Credential.secretId(companySecret) == id else {
+                throw CustomerRefusal.companySecretMismatch
+            }
+            secret = companySecret
+        } else {
+            guard companySecret == nil else { throw CustomerRefusal.companySecretMismatch }
+            secret = ProfileContract.Credential.newSecret()
+            c.companySecretId = ProfileContract.Credential.secretId(secret)
+        }
         let key = ActivationKeyMint.generate()
-        let sealed = try ActivationKeyMint.seal(currentCode, canonical: key)
+        let sealed = try ActivationKeyMint.seal(currentCode, companySecret: secret, canonical: key)
         let retired = c.activationFile
         c.activationFile = ActivationKeyMint.fileName(key)
         try record(c, .keyRotated(retiredFile: retired), operatorId: operatorId, now: now)
-        return KeyRotation(customer: c, activationKey: ActivationKeyMint.display(key), sealedFile: sealed, retiredFile: retired)
+        return KeyRotation(customer: c, activationKey: ActivationKeyMint.display(key), sealedFile: sealed, companySecret: secret,
+                           retiredFile: retired)
+    }
+
+    /// A company credential sealed for this customer's profile, checked against the secret the journal names.
+    /// The service keeps the box, never the value, and passes it to `profileDocument` on every publish.
+    public func sealCredential(_ value: String, name: String, customerId: String, companySecret: Data) throws -> String {
+        guard let c = ledger.customers[customerId] else { throw CustomerRefusal.unknownCustomer }
+        guard let id = c.companySecretId else { throw CustomerRefusal.noCompanySecret }
+        guard ProfileContract.Credential.secretId(companySecret) == id else { throw CustomerRefusal.companySecretMismatch }
+        return try ProfileContract.Credential.seal(value, name: name, profileId: c.profileId, companySecret: companySecret)
     }
 
     /// The customer's profile input with its current code — the same input `make-org-profile make` takes.
-    public func profileInput(customerId: String, code: String, preset: ProfilePreset, grant: PartnerGrant) throws -> ProfileContract.Input {
+    /// `credentials` are boxes from `sealCredential`, by name; empty means the profile carries none.
+    public func profileInput(customerId: String, code: String, preset: ProfilePreset, grant: PartnerGrant,
+                             credentials: [String: String] = [:]) throws -> ProfileContract.Input {
         guard let c = ledger.customers[customerId] else { throw CustomerRefusal.unknownCustomer }
         try checkPreset(preset, for: c)
         guard ledger.currentIssuance(for: customerId)?.licenseDigest == IssuanceWire.digest(Data(code.utf8)) else {
             throw CustomerRefusal.notCurrentCode
         }
-        return try preset.input(profileId: c.profileId, organizationName: c.licensee, selection: c.selection, grant: grant,
-                                licenceCode: code, adminPasscode: c.adminPasscode != nil)
+        guard credentials.isEmpty || c.companySecretId != nil else { throw CustomerRefusal.noCompanySecret }
+        var input = try preset.input(profileId: c.profileId, organizationName: c.licensee, selection: c.selection, grant: grant,
+                                     licenceCode: code, adminPasscode: c.adminPasscode != nil)
+        if !credentials.isEmpty {
+            do { try ProfileContract.Credential.checkBoxes(credentials) }
+            catch let invalid as ProfileContract.Invalid { throw PresetRefusal.invalidPreset(invalid.message) }
+            input.credentials = credentials
+        }
+        return input
     }
 
     /// The signed profile to publish at the customer's address. Pass a whole-second `issued`, as the manual tool does.
     public func profileDocument(customerId: String, code: String, preset: ProfilePreset, grant: PartnerGrant,
+                                credentials: [String: String] = [:],
                                 keyID: String, issued: Date, signer: ByteSigner) throws -> String {
-        let input = try profileInput(customerId: customerId, code: code, preset: preset, grant: grant)
+        let input = try profileInput(customerId: customerId, code: code, preset: preset, grant: grant, credentials: credentials)
         guard !keyID.isEmpty else { throw IssuanceWire.WireError.invalidProfile }
         let document = ProfileContract.document(input, keyId: keyID, issued: issued, adminPasscode: ledger.customers[customerId]?.adminPasscode)
         return try IssuanceWire.profile(document, signer: signer)

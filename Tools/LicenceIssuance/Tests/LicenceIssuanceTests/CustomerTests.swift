@@ -60,12 +60,15 @@ final class CustomerTests: XCTestCase {
         XCTAssertEqual(s.customer.profileAddress, "https://fixture.invalid/p/fixture-profile")
         XCTAssertEqual(s.code.payload.profile, s.customer.profileAddress); XCTAssertEqual(s.code.payload.licensee, "Fixture Ltd")
         XCTAssertEqual(s.code.payload.expires, date(35)); XCTAssertEqual(s.code.record.phase, .provisional)
-        XCTAssertEqual(try open(s.sealedFile, key: s.activationKey), s.code.code)
+        let opened = try XCTUnwrap(ActivationKeyMint.open(s.sealedFile, canonical: s.activationKey.replacingOccurrences(of: "-", with: "")))
+        XCTAssertEqual(opened, .init(licenceCode: s.code.code, companySecret: s.companySecret))
+        XCTAssertEqual(s.customer.companySecretId, ProfileContract.Credential.secretId(s.companySecret))
         XCTAssertEqual(s.customer.activationFile, ActivationKeyMint.fileName(s.activationKey.replacingOccurrences(of: "-", with: "")))
         XCTAssertEqual(book.ledger.entries.count, 1); XCTAssertEqual(book.ledger.invoices.count, 1)
         XCTAssertEqual(book.ledger.orders.first?.customerId, "c1"); XCTAssertEqual(book.ledger.customers["c1"], s.customer)
         let json = String(decoding: try IssuanceWire.encoder().encode(book.ledger), as: UTF8.self)
-        for secret in [s.activationKey, s.activationKey.replacingOccurrences(of: "-", with: ""), s.sealedFile, s.code.code] {
+        for secret in [s.activationKey, s.activationKey.replacingOccurrences(of: "-", with: ""), s.sealedFile, s.code.code,
+                       s.companySecret.base64EncodedString()] {
             XCTAssertFalse(json.contains(secret))
         }
         let reopened = try IssuanceWire.decoder().decode(Ledger.self, from: IssuanceWire.encoder().encode(book.ledger))
@@ -232,8 +235,14 @@ final class CustomerTests: XCTestCase {
         XCTAssertThrowsError(try book.rotateActivationKey(customerId: "c1", currentCode: s.code.code, operatorId: "fixture", now: date(2))) {
             XCTAssertEqual($0 as? CustomerRefusal, .notCurrentCode)
         }
-        let rotated = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, operatorId: "fixture", now: date(2))
-        XCTAssertEqual(try open(rotated.sealedFile, key: rotated.activationKey), full.code)
+        XCTAssertThrowsError(try book.rotateActivationKey(customerId: "c1", currentCode: full.code, operatorId: "fixture", now: date(2))) {
+            XCTAssertEqual($0 as? CustomerRefusal, .companySecretMismatch, "a customer with a secret keeps it")
+        }
+        let rotated = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, companySecret: s.companySecret,
+                                                   operatorId: "fixture", now: date(2))
+        XCTAssertEqual(ActivationKeyMint.open(rotated.sealedFile, canonical: rotated.activationKey.replacingOccurrences(of: "-", with: "")),
+                       .init(licenceCode: full.code, companySecret: s.companySecret))
+        XCTAssertEqual(rotated.customer.companySecretId, s.customer.companySecretId)
         XCTAssertEqual(rotated.retiredFile, s.customer.activationFile); XCTAssertNotEqual(rotated.customer.activationFile, s.customer.activationFile)
         XCTAssertEqual(book.ledger.customers["c1"]?.activationFile, rotated.customer.activationFile)
         XCTAssertEqual(book.ledger.retiredActivationFiles(for: "c1"), [s.customer.activationFile])

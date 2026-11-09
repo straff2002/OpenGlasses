@@ -69,6 +69,10 @@ final class OrgEnrolmentService: ObservableObject {
     private let profileKeys: [String: String]
     private let now: () -> Date
     private let activationResolver: ActivationKeyResolver
+    /// The company secret a version 2 activation file carried, with the licence code it came with.
+    /// Kept (`OrgCredentialSync.keep`) only when the enrolment that code starts is applied.
+    private var resolvedSecret: (licenceCode: String, secret: Data)?
+    private let credentials: OrgCredentialSync
     /// Tells the app the active model changed, so what it shows follows.
     private let modelDidChange: @MainActor () -> Void
 
@@ -83,7 +87,9 @@ final class OrgEnrolmentService: ObservableObject {
          profileKeys: [String: String] = ProfileVerification.productionKeys,
          now: @escaping () -> Date = Date.init,
          activationResolver: ActivationKeyResolver = ActivationKeyResolver(),
+         credentials: OrgCredentialSync = .shared,
          modelDidChange: @escaping @MainActor () -> Void = {}) {
+        self.credentials = credentials
         self.manager = manager
         self.licenceKey = licenceKey
         self.profileKeys = profileKeys
@@ -290,7 +296,11 @@ final class OrgEnrolmentService: ObservableObject {
             return .refused(problem.errorDescription ?? "")
         case .key(let key):
             do {
-                return .licence(try await activationResolver.resolve(key))
+                let contents = try await activationResolver.resolveContents(key)
+                resolvedSecret = contents.companySecret.map {
+                    (contents.licenceCode.trimmingCharacters(in: .whitespacesAndNewlines), $0)
+                }
+                return .licence(contents.licenceCode)
             } catch {
                 return .refused((error as? LocalizedError)?.errorDescription ?? "")
             }
@@ -354,6 +364,13 @@ final class OrgEnrolmentService: ObservableObject {
         guard case .reviewing(let review) = stage else { return }
         switch manager.apply(review) {
         case .success:
+            // The activation key's company secret, now that its enrolment is in force; then the
+            // profile's sealed credentials, which the apply could not open without it.
+            if let resolved = resolvedSecret, resolved.licenceCode == enteredLicence {
+                credentials.keep(resolved.secret)
+                if let profile = manager.profile { credentials.apply(profile) }
+            }
+            resolvedSecret = nil
             if manager.needsModelSetup, let model = manager.organizationModel {
                 stage = .modelKey(model, organization: review.organizationName)
             } else {
@@ -389,6 +406,7 @@ final class OrgEnrolmentService: ObservableObject {
 
     func dismiss() {
         reset()
+        resolvedSecret = nil
         stage = .idle
     }
 

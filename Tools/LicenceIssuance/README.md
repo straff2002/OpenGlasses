@@ -170,6 +170,28 @@ only the file name. Later rows are `.customerChange` (preset, administrator veri
   `leaseDays` is 60–365.
 - `setAdminPasscode` accepts `{salt, iterations, hash}` only, with the app's `AdminSecrets` bounds.
 - `rotateActivationKey` seals the **current** code under a new key and lists the old file for deletion.
+  It carries the customer's company secret over (pass it from protected state); a customer signed up before sealed
+  credentials gets its first secret here.
+
+## Sealed company credentials
+
+A company's Workiz API key reaches its phones in the profile, but never readable: the profile is public and
+prints `licenceCode` in clear, so nothing derived from the licence could hide it. Instead:
+
+- Sign-up makes a **company secret** (32 random bytes) and seals it into the activation file next to the licence
+  code. The file's plaintext is then version 2, sorted-key JSON
+  `{"companySecret", "format": "openglasses.activation", "licenceCode", "version": 2}` under the same
+  HKDF `openglasses.activation-key.v1` key; a version 1 file (the bare code, still what the manual generator
+  writes) keeps opening. `ActivationKeyMint.open` reads both. `SignUp.companySecret` and
+  `KeyRotation.companySecret` are returned for the service's protected state only; the journal records
+  `Customer.companySecretId` (a domain-separated SHA-256), never the secret.
+- `sealCredential` seals a value under HKDF-SHA256(company secret, info `openglasses.org-credential.v1`) with
+  AES-GCM, authenticating `openglasses.org-credential.v1\n<profileId>\n<name>`. The profile carries the
+  boxes as `credentials: {"workiz": <base64>}`; `profileDocument(…, credentials:)` puts them there. Today
+  `workiz` is the only name. `ProfileContract.Credential` mirrors `OrgCredentialSeal` in the app.
+- Anyone holding the activation key can open the file and so the box: the key is what technicians type, and
+  this keeps the Workiz key off screens and out of the public profile, not out of a determined technician's
+  reach. The gateway in avenkin-licence's `docs/plans/integration-gateway.md` is the step that takes it off phones.
 - `profileDocument` builds and signs the customer's profile from its preset, choices, verifier and current code
   through `ProfileContract`, the same contract `make-org-profile` uses, so both produce the same bytes.
 
