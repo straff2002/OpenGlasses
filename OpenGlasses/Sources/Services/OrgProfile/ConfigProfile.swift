@@ -3,7 +3,8 @@ import Foundation
 /// Plan CT P1 — an organisation's configuration profile: what this device may do, signed by the
 /// vendor's profile key and verified by `ProfileVerification`.
 ///
-/// A profile sets values and bounds; it never carries code, prompts or secrets. Its settings are
+/// A profile sets values and bounds; it never carries code, prompts or readable secrets (a company
+/// credential travels sealed, in `credentials`, and only the activation file's secret opens it). Its settings are
 /// decoded **lossily** — a profile is written against one app version and scanned on another, so
 /// an unknown key or a malformed value is the normal case, and `ProfileApplier` names every one it
 /// drops instead of failing the whole profile.
@@ -72,6 +73,9 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     /// Schema 2 only. The vendor authorises an organisation administrator to bind office
     /// peers; this carries no office private key, job-signing key or route URL.
     var officeAuthority: OfficeAuthority?
+    /// Company credentials sealed under the company secret (`OrgCredentialSeal`), by name: today
+    /// `workiz`. Never readable from the profile; `OrgCredentialSync` opens them on the phone.
+    var credentials: SealedCredentials?
     /// The settings, keyed by the raw `SettingKey` name. Raw on purpose: see `RawSetting`.
     var settings: [String: RawSetting]
 
@@ -152,6 +156,23 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         }
     }
 
+    /// `{name: base64 box}`, decoded without failing: anything but a string-to-string object reads
+    /// as no credentials, so a malformed entry never refuses the profile.
+    struct SealedCredentials: Codable, Equatable, Sendable {
+        var boxes: [String: String]
+
+        init(_ boxes: [String: String]) { self.boxes = boxes }
+
+        init(from decoder: Decoder) throws {
+            boxes = (try? decoder.singleValueContainer().decode([String: String].self)) ?? [:]
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(boxes)
+        }
+    }
+
     struct VaultPackReference: Codable, Equatable, Sendable {
         let packId: String
         /// An organisation-hosted location for its own documents. A pointer, never bytes.
@@ -166,6 +187,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          edition: String? = nil, adminPasscode: PasscodeVerifier? = nil, adminCard: String? = nil,
          lockdown: LockdownSpec? = nil,
          officeAuthority: OfficeAuthority? = nil,
+         credentials: SealedCredentials? = nil,
          settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
          schemaVersion: Int = 1) {
@@ -189,6 +211,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.adminCard = adminCard
         self.lockdown = lockdown
         self.officeAuthority = officeAuthority
+        self.credentials = credentials
         self.settings = settings
     }
 }

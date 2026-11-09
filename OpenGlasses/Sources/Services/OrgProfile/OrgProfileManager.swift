@@ -234,6 +234,9 @@ final class OrgProfileManager: ObservableObject {
         /// A renewal heard after a lapse erasure: the phone is the firm's again, so the records
         /// still owed from that erasure are no longer to be erased.
         var endLapseDeparture: @MainActor (_ enrolmentId: String) -> Void = { _ in }
+        /// The profile's sealed company credentials into the Keychain, on every apply, renewal and
+        /// launch (`OrgCredentialSync`). Does nothing by default; `production` wires it.
+        var syncCredentials: @MainActor (ConfigProfile) -> Void = { _ in }
 
         /// The app's seams: every default above, and the departure wired to `OrgDepartureService`.
         static var production: Seams {
@@ -248,8 +251,10 @@ final class OrgProfileManager: ObservableObject {
                 sessions.lockManagedRecords(ids: Set(ids))
             }
             seams.endLapseDeparture = { OrgDepartureService.shared.cancelLapse(enrolmentId: $0) }
+            seams.syncCredentials = { OrgCredentialSync.shared.apply($0) }
             seams.beginDeparture = { reason, record, profile in
                 AppStateProvider.shared?.workiz.remove()
+                OrgCredentialSync.shared.forget()
                 PilotReportStore.shared.clear()
                 AppStateProvider.shared?.pilotReportDays = []
                 if AppStateProvider.shared?.supportReportRequest?.pilotDay != nil {
@@ -316,6 +321,7 @@ final class OrgProfileManager: ObservableObject {
             } else {
                 let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
                 seams.installEnvelope(result, verified.organizationName)
+                seams.syncCredentials(verified)
             }
         } catch {
             profile = nil
@@ -517,6 +523,7 @@ final class OrgProfileManager: ObservableObject {
         profile = review.profile
         loadProblem = nil
         seams.installEnvelope(review.result, review.profile.organizationName)
+        seams.syncCredentials(review.profile)
         evaluateLease()
         return .success(())
     }
@@ -850,6 +857,8 @@ final class OrgProfileManager: ObservableObject {
         record = current
         profile = renewed
         seams.installEnvelope(result, renewed.organizationName)
+        // A replaced or removed Workiz key arrives here, silently.
+        seams.syncCredentials(renewed)
     }
 
     // MARK: - An office's renewal and removal (Contracts/office-check-in.md)

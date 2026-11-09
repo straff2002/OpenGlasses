@@ -1641,6 +1641,33 @@ nothing new.
 the office signs and pushes; and renewal from the office, which is what would let an
 office-commissioned phone's lease mean something. Each waits for office renewal and removal to exist.
 
+### Revision 2026-11-09 — the sealed company credential
+
+A partner sets a company's Workiz API key once, centrally, and replaces it when it leaks; technicians
+never see it. The rule above still holds — no key travels readable in the licence, the profile or any
+request to the profile's address — so the key travels **sealed**:
+
+- **The company secret.** Sign-up makes 32 random bytes and puts them in the activation file. The
+  file's plaintext becomes version 2, sorted-key JSON `{"companySecret", "format":
+  "openglasses.activation", "licenceCode", "version": 2}`, under the same HKDF key; version 1 files
+  (the bare licence code) keep opening. The phone keeps the secret in the device-only Keychain
+  (`orgCompanySecret`) once the enrolment it came with is applied, and erases it on departure.
+- **The box.** The profile carries `credentials: {"workiz": <base64>}`: AES-GCM under
+  HKDF-SHA256(company secret, info `"openglasses.org-credential.v1"`), authenticating
+  `"openglasses.org-credential.v1\n<profileId>\nworkiz"`. Not the licence code: the profile prints it
+  in clear, so anything derived from it would be readable from the public address.
+- **On the phone.** Every apply, renewal and launch opens the box and writes the key through
+  `WorkizConnection`'s Keychain item with no prompt (`OrgCredentialSync`); a profile that stops
+  carrying it deletes it; a pasted key is left alone until the profile carries one. Technicians see
+  "Workiz connected by ⟨company⟩", an administrator "Key set · ends in …a1b2". "Which one are you?"
+  is answered once from the Workiz technician list, fills the Field Assist name and technician ID,
+  and is asked again when a new key's account no longer has that ID.
+- **What it is not.** The activation key opens the file and so the box: it keeps the key off screens
+  and out of the public profile, not out of reach of someone who takes the app apart. A phone set up
+  from a link, or from a version 1 file, has no secret; its administrator is told to enter the
+  activation key again. The gateway in avenkin-licence's `docs/plans/integration-gateway.md` is the
+  step after this, where phones never hold the key.
+
 ### Deferred, and why
 
 | Deferred | Why not now |

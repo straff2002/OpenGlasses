@@ -6,7 +6,10 @@ struct WorkizSettingsView: View {
     @ObservedObject var connection: WorkizConnection
     @ObservedObject private var gate = AdminGate.shared
     @ObservedObject private var profile = OrgProfileManager.shared
+    @ObservedObject private var sealed = OrgCredentialSync.shared
     @State private var key = ""
+    /// The technician picked in "Which one are you?", waiting for the one-time confirmation.
+    @State private var confirming: WorkizUser?
     @State private var problem: String?
     @State private var unlocking = false
     @AppStorage("workizEnabled") private var enabled = true
@@ -14,6 +17,7 @@ struct WorkizSettingsView: View {
     @AppStorage("workizClientNotes") private var notes = false
     @AppStorage("workizAccountTimeZone") private var timeZone = TimeZone.current.identifier
     private var canEditKey: Bool { !PolicyEnvelope.isManaged || gate.isSessionLive || gate.isAdministratorPhone }
+    private var administrator: Bool { gate.isSessionLive || gate.isAdministratorPhone }
     var body: some View {
         Form {
             if connection.officeRoute {
@@ -25,54 +29,63 @@ struct WorkizSettingsView: View {
                 } footer: {
                     Text("The key can access the whole company. This phone shows only the technician's assigned jobs. Use an expiry and rotate the key when a phone leaves the company.")
                 }
-                Section {
-                    if connection.credential != nil {
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            Image(systemName: "key.fill").accessibilityHidden(true)
-                            Text("Key stored on this phone").fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                if connection.isManagedKey {
+                    managedKeySection
+                    technicianConfirmationSection
+                } else {
+                    Section {
+                        if sealed.workizNeedsActivationKey && administrator {
+                            Text("Your company has set a Workiz key, but this phone can't open it. Enter the company's activation key again in Settings › Field Assist to receive it.")
+                                .accessibilityIdentifier("workiz.needsActivationKey")
                         }
+                        if connection.credential != nil {
+                            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                                Image(systemName: "key.fill").accessibilityHidden(true)
+                                Text("Key stored on this phone").fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        SecureField("API key", text: $key)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .disabled(!canEditKey).accessibilityIdentifier("workiz.key")
+                        Button("Save key") {
+                            do {
+                                try connection.pasteKey(key, administrator: canEditKey)
+                                controller.keyChanged()
+                                key = ""; problem = nil
+                                Task { await appState.syncEngine.flush() }
+                            } catch { key = ""; problem = String(localized: "The Workiz key could not be saved. Check administrator access and unlock this phone.") }
+                        }.disabled(key.isEmpty || !canEditKey).accessibilityIdentifier("workiz.save")
+                        if !canEditKey {
+                            if let policy = gate.policy, gate.offersUnlock {
+                                Button("Unlock Administrator Settings") { unlocking = true }
+                                    .sheet(isPresented: $unlocking) { AdminUnlockSheet(gate: gate, policy: policy) }
+                            } else { Text("Your administrator must open an administrator session to change this key.").foregroundStyle(.secondary) }
+                        }
+                        Button { Task { await controller.testConnection() } } label: { Text(controller.testing ? "Testing…" : "Test connection").fixedSize(horizontal: false, vertical: true) }
+                            .disabled(!connection.isRunning || controller.testing)
+                            .accessibilityIdentifier("workiz.test")
+                        if let line = problem ?? connection.problem ?? controller.message ?? controller.connectionMessage { Text(line).accessibilityIdentifier("workiz.message") }
+                    } header: { Text("Workiz API key") } footer: {
+                        Text("In Workiz, open Feature center → Developer API, then Settings → Developer → v2 → Create New API Key. Allow Jobs: Read & Write, Users: Read, Custom fields: Read. Allow Clients: Read & Write only for client notes. Set an expiry. The key stays in this phone's device-only Keychain.")
                     }
-                    SecureField("API key", text: $key)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .disabled(!canEditKey).accessibilityIdentifier("workiz.key")
-                    Button("Save key") {
-                        do {
-                            try connection.pasteKey(key, administrator: canEditKey)
-                            controller.keyChanged()
-                            key = ""; problem = nil
-                            Task { await appState.syncEngine.flush() }
-                        } catch { key = ""; problem = String(localized: "The Workiz key could not be saved. Check administrator access and unlock this phone.") }
-                    }.disabled(key.isEmpty || !canEditKey).accessibilityIdentifier("workiz.save")
-                    if !canEditKey {
-                        if let policy = gate.policy, gate.offersUnlock {
-                            Button("Unlock Administrator Settings") { unlocking = true }
-                                .sheet(isPresented: $unlocking) { AdminUnlockSheet(gate: gate, policy: policy) }
-                        } else { Text("Your administrator must open an administrator session to change this key.").foregroundStyle(.secondary) }
-                    }
-                    Button { Task { await controller.testConnection() } } label: { Text(controller.testing ? "Testing…" : "Test connection").fixedSize(horizontal: false, vertical: true) }
-                        .disabled(!connection.isRunning || controller.testing)
-                        .accessibilityIdentifier("workiz.test")
-                    if let line = problem ?? connection.problem ?? controller.message ?? controller.connectionMessage { Text(line).accessibilityIdentifier("workiz.message") }
-                } header: { Text("Workiz API key") } footer: {
-                    Text("In Workiz, open Feature center → Developer API, then Settings → Developer → v2 → Create New API Key. Allow Jobs: Read & Write, Users: Read, Custom fields: Read. Allow Clients: Read & Write only for client notes. Set an expiry. The key stays in this phone's device-only Keychain.")
-                }
-                if !controller.users.isEmpty || connection.credential?.technicianID != nil {
-                    Section("Who are you in Workiz?") {
-                        if let name = connection.credential?.technicianName { Text("You're \(name) in Workiz.") }
-                        ForEach(controller.users) { user in
-                            Button {
-                                Task {
-                                    do { try await controller.choose(user) }
-                                    catch { problem = String(localized: "The technician choice could not be saved.") }
-                                }
-                            } label: {
-                                HStack {
-                                    Text(user.name).fixedSize(horizontal: false, vertical: true)
-                                    Spacer()
-                                    if user.id == connection.credential?.technicianID { Image(systemName: "checkmark").accessibilityLabel("Selected") }
-                                }
-                            }.accessibilityIdentifier("workiz.user." + user.id)
+                    if !controller.users.isEmpty || connection.credential?.technicianID != nil {
+                        Section("Who are you in Workiz?") {
+                            if let name = connection.credential?.technicianName { Text("You're \(name) in Workiz.") }
+                            ForEach(controller.users) { user in
+                                Button {
+                                    Task {
+                                        do { try await controller.choose(user) }
+                                        catch { problem = String(localized: "The technician choice could not be saved.") }
+                                    }
+                                } label: {
+                                    HStack {
+                                        Text(user.name).fixedSize(horizontal: false, vertical: true)
+                                        Spacer()
+                                        if user.id == connection.credential?.technicianID { Image(systemName: "checkmark").accessibilityLabel("Selected") }
+                                    }
+                                }.accessibilityIdentifier("workiz.user." + user.id)
+                            }
                         }
                     }
                 }
@@ -102,17 +115,93 @@ struct WorkizSettingsView: View {
                     }.accessibilityIdentifier("workiz.timezone")
                     Text("Use the same time zone as your Workiz account so booked times appear correctly.").font(.footnote)
                 }
-                if connection.credential != nil {
+                if connection.credential != nil && !connection.isManagedKey {
                     Section { Button(role: .destructive) { controller.remove() } label: { Text("Remove Workiz key").fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }.buttonStyle(.plain).foregroundStyle(OGTheme.errorLabel).disabled(!canEditKey).accessibilityIdentifier("workiz.remove") }
                 }
             }
         }
         .ogFormStyle().navigationTitle("Workiz")
+        .confirmationDialog("Which one are you?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
+                            titleVisibility: .visible, presenting: confirming) { user in
+            Button("I'm \(user.name)") {
+                Task {
+                    do { try await controller.confirm(user, administrator: administrator) }
+                    catch { problem = String(localized: "The technician choice could not be saved.") }
+                }
+            }.accessibilityIdentifier("workiz.confirm")
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This sets your name and technician ID from Workiz. It's set once; ask your administrator to change it.")
+        }
         .onChange(of: enabled) { _, _ in controller.client.cancel() }
         .onReceive(NotificationCenter.default.publisher(for: .orgPolicyDidChange)) { _ in
             key = ""; controller.enforceRoute()
         }
         .onDisappear { key = "" }
+    }
+}
+
+extension WorkizSettingsView {
+    /// The key came from the company's profile: nobody sees it, an administrator sees its last four
+    /// characters, and nothing here replaces or removes it — the partner does, centrally.
+    @ViewBuilder
+    private var managedKeySection: some View {
+        let company = connection.credential?.managedBy ?? ManagedLockReason.organization
+        Section {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Image(systemName: "checkmark.seal.fill").accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Workiz connected by \(company)").fixedSize(horizontal: false, vertical: true)
+                    if administrator, let ending = connection.keyEnding {
+                        Text("Key set · ends in …\(ending)").font(.footnote).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("workiz.keyEnding")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.accessibilityIdentifier("workiz.managed")
+            if administrator {
+                Button { Task { await controller.testConnection() } } label: { Text(controller.testing ? "Testing…" : "Test connection").fixedSize(horizontal: false, vertical: true) }
+                    .disabled(!connection.isRunning || controller.testing)
+                    .accessibilityIdentifier("workiz.test")
+            }
+            if let line = problem ?? connection.problem ?? controller.message ?? (administrator ? controller.connectionMessage : nil) {
+                Text(line).accessibilityIdentifier("workiz.message")
+            }
+        } header: { Text("Workiz API key") } footer: {
+            if administrator {
+                Text("Your partner set this key for \(company) and replaces it when it changes. It is never shown on a phone.")
+            } else {
+                Text("Your company connects this phone to Workiz.")
+            }
+        }
+    }
+
+    /// "Which one are you?", answered once for a key the company set.
+    @ViewBuilder
+    private var technicianConfirmationSection: some View {
+        Section {
+            if connection.technicianPinned, let name = connection.credential?.technicianName {
+                Text("You're \(name) in Workiz.").accessibilityIdentifier("workiz.technician")
+                if administrator {
+                    Button("Choose the technician again") {
+                        do { try controller.chooseAgain(); Task { await controller.testConnection() } }
+                        catch { problem = String(localized: "The technician choice could not be saved.") }
+                    }.accessibilityIdentifier("workiz.chooseAgain")
+                } else {
+                    Text("Ask your administrator to change it.").font(.footnote).foregroundStyle(.secondary)
+                }
+            } else if controller.users.isEmpty {
+                Button { Task { await controller.testConnection() } } label: {
+                    Text(controller.testing ? "Loading technicians…" : "Find me in Workiz").fixedSize(horizontal: false, vertical: true)
+                }.disabled(!connection.isRunning || controller.testing).accessibilityIdentifier("workiz.loadUsers")
+            } else {
+                ForEach(controller.users) { user in
+                    Button { confirming = user } label: {
+                        Text(user.name).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }.accessibilityIdentifier("workiz.user." + user.id)
+                }
+            }
+        } header: { Text("Which one are you?") }
     }
 }
 

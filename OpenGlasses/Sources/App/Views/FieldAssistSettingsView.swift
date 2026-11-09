@@ -849,6 +849,12 @@ struct FieldAssistSettingsView: View {
     /// usually is — and an organisation profile is where they will come from; the merge rule is
     /// already written (`DeliverySettings.applying(organisation:)`), so this screen becomes the
     /// override rather than the source.
+    /// "Which one are you?" was confirmed for the Workiz key the company set: the name and ID are
+    /// set once, and only an administrator session changes them.
+    private var workizPinsIdentity: Bool {
+        appState.workizConnection.technicianPinned && !(adminGate.isSessionLive || adminGate.isAdministratorPhone)
+    }
+
     @ViewBuilder
     private var jobReportSection: some View {
         Section {
@@ -872,7 +878,7 @@ struct FieldAssistSettingsView: View {
             TextField("Full name", text: $technicianFullName)
                 .textContentType(.name)
                 .autocorrectionDisabled()
-                .disabled(!adminGate.presentation(.key(.technicianFullName)).isEditable)
+                .disabled(!adminGate.presentation(.key(.technicianFullName)).isEditable || workizPinsIdentity)
                 .onChange(of: technicianFullName) { _, value in Config.technicianFullName = value }
                 .onSubmit { technicianFullName = Config.technicianFullName }
             if PolicyEnvelope.isLocked(.technicianFullName) {
@@ -881,11 +887,15 @@ struct FieldAssistSettingsView: View {
             TextField("Technician ID", text: $technicianID)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
-                .disabled(!adminGate.presentation(.key(.technicianID)).isEditable)
+                .disabled(!adminGate.presentation(.key(.technicianID)).isEditable || workizPinsIdentity)
                 .onChange(of: technicianID) { _, value in Config.technicianID = value }
                 .onSubmit { technicianID = Config.technicianID }
             if PolicyEnvelope.isLocked(.technicianID) {
                 ManagedLockNote(organization: ManagedLockReason.organization)
+            }
+            if workizPinsIdentity {
+                Text("Your name and technician ID were set from Workiz. Ask your administrator to change them.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             TextField("office@example.com, dispatch@example.com", text: $emailRecipientsText)
                 .textInputAutocapitalization(.never)
