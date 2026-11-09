@@ -23,6 +23,9 @@ enum NetworkDataClass: String, CaseIterable, Sendable {
     case modelAsset
     /// Carries no user-derived content at all — a fixed catalog or health-check request.
     case telemetryFree
+    /// An identifier for this phone the app made itself: the seat key's public half and the
+    /// enrolment id a seat-checked licence's check-in sends (Plan JS P2). Never a vendor id.
+    case deviceIdentifier
 }
 
 extension NetworkDataClass {
@@ -47,6 +50,8 @@ extension NetworkDataClass {
             return nil
         case .telemetryFree:
             return nil
+        case .deviceIdentifier:
+            return "NSPrivacyCollectedDataTypeDeviceID"
         }
     }
 }
@@ -200,6 +205,11 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case fhirExport
     case fhirConnectionTest
 
+    // MARK: Licensing
+    /// Plan JS P2: a seat-checked organisation licence claims, renews and releases this phone's
+    /// seat with the vendor's licence service.
+    case licenceSeatLease
+
     // MARK: Account linking
     case claudeOAuthToken
     case chatGPTOAuthToken
@@ -261,6 +271,7 @@ extension NetworkRoute {
         case .expertBridgeWebhook: return "Notify a Field Assist expert endpoint that help was requested."
         case .expertSignaling: return "Exchange WebRTC signaling so an expert can see the wearer's camera."
         case .webRTCBrowserStreaming: return "Relay camera frames to a browser viewer through the signaling server."
+        case .licenceSeatLease: return "Claim, renew or release this phone's seat on a seat-checked organisation licence with the vendor's licence service, about once a day: the enrolment id, a public key made for this phone, the app build and the profile id, and nothing else."
         case .workizAPI: return "Read assigned jobs and write a confirmed work report to the technician’s Workiz account."
         case .offlineEndpointSync: return "Flush queued offline records to the configured sync endpoint."
         case .twitchChatSocket: return "Read and post broadcast chat messages."
@@ -343,6 +354,7 @@ extension NetworkRoute {
         case .jobRecordingOfficeSync:
             return [.frame, .audio, .transcript]
         case .workizAPI: return [.transcript, .healthFact, .credential, .contactData]
+        case .licenceSeatLease: return [.deviceIdentifier]
         case .offlineEndpointSync:
             return [.transcript, .healthFact, .credential]
         case .twitchChatSocket:
@@ -382,7 +394,7 @@ extension NetworkRoute {
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken,
              .localModelRepositoryMetadata, .localModelDownload, .ttsVoiceModelDownload,
              .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload, .localizationCatalogDownload,
-             .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark:
+             .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark, .licenceSeatLease:
             return .firstPartyCloud
         case .webSearch, .newsHeadlines, .podcastDirectory, .currencyRates,
              .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep:
@@ -406,6 +418,9 @@ extension NetworkRoute {
              .asrModelDownload, .fingerspellingModelDownload, .searchModelDownload:
             return .allowedLocalOnly(
                 "The outbound half is a model identifier and a range request; no captured content leaves, and these downloads are what make on-device inference possible in the first place.")
+        case .licenceSeatLease:
+            return .allowedLocalOnly(
+                "A licence check that carries no captured content: an enrolment id, a public key, a build number and a profile id. Blocking it would lock the organisation's licence on a phone that is otherwise in order.")
         case .loopbackOAuthCallback:
             return .allowedLocalOnly(
                 "An inbound listener bound to 127.0.0.1; the redirect never reaches a network interface.")
@@ -490,6 +505,7 @@ extension NetworkRoute {
         case .expertBridgeWebhook: return ["WebhookExpertNotifier"]
         case .expertSignaling: return ["ExpertSignalingClient"]
         case .workizAPI: return ["URLSessionWorkizTransport"]
+        case .licenceSeatLease: return ["DeviceSeatHTTPClient"]
         case .offlineEndpointSync: return ["EndpointSyncSink"]
         case .webRTCBrowserStreaming: return ["WebRTCStreamingService"]
         case .twitchChatSocket: return ["URLSessionChatSocket"]

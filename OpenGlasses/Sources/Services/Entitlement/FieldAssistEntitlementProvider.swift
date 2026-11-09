@@ -93,19 +93,34 @@ final class VerifiedStorePurchaseRecorder: @unchecked Sendable {
 /// The license *code* is the evidence, not the cached "valid" flag — the signature and feature claim
 /// are re-checked on every read, and the signed expiry claim is handed to the evaluator rather than
 /// applied here, so the clock lives in one place.
+///
+/// A seat-checked code (Plan JS P2) is evidence only while this phone's seat lease is live: the
+/// lease is re-verified on every read, like the code, against the phone's own key. Its clock is
+/// the seat's (a lease is a time-bounded fact the evaluator does not otherwise see).
 struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
+    /// What the seat check reads. Injected so tests use ephemeral keys and a fixed clock.
+    struct SeatInputs: Sendable {
+        var record: @Sendable () -> DeviceSeatRecord? = { DeviceSeatRecord.load() }
+        var deviceKeyHash: @Sendable () -> String? = { DeviceSeatKeychainStore.shared.currentKeyHash() }
+        var leaseKeys: [String] = DeviceSeatLease.productionPublicKeys
+        var now: @Sendable () -> Date = { Date() }
+    }
+
     private let storePurchases: VerifiedStorePurchaseRecorder
     private let licensePublicKeyBase64: String
     private let licenseCode: @Sendable () -> String?
+    private let seat: SeatInputs
 
     init(storePurchases: VerifiedStorePurchaseRecorder = .shared,
          licensePublicKeyBase64: String = LicenseService.productionPublicKeyBase64,
          licenseCode: @escaping @Sendable () -> String? = {
              UserDefaults.standard.string(forKey: LicenseService.storageKey)
-         }) {
+         },
+         seat: SeatInputs = SeatInputs()) {
         self.storePurchases = storePurchases
         self.licensePublicKeyBase64 = licensePublicKeyBase64
         self.licenseCode = licenseCode
+        self.seat = seat
     }
 
     func evidence() -> FieldAssistEntitlementEvidenceSet {
@@ -118,6 +133,15 @@ struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
             // An organisation's licence whose lease has run out, or been revoked, is not evidence
             // (Plan CT PR 2b): its content locks, and a renewal puts it back.
             if let payload = try? LicenseService.decode(code: raw, publicKeyBase64: licensePublicKeyBase64) {
+                // A seat-checked code without a live lease on this phone grants nothing; the hold
+                // says why, and the evaluator words it like a lapse.
+                if payload.isSeatChecked,
+                   let hold = DeviceSeatGate.hold(for: payload, code: raw, record: seat.record(),
+                                                  deviceKeyHash: seat.deviceKeyHash(), keys: seat.leaseKeys,
+                                                  now: seat.now()) {
+                    set.seatHold = hold
+                    return set
+                }
                 set.evidence.append(.verifiedOrganizationLicense(
                     licenseIDHash: Self.licenseIDHash(for: raw),
                     expiration: payload.expires,

@@ -48,6 +48,8 @@ struct FieldAssistEntitlementStatus: Equatable {
         case none
         case unverifiableLicense
         case expired(Date)
+        /// A seat-checked licence with no live seat on this phone (Plan JS P2).
+        case seatUnavailable(DeviceSeatHold)
         case granted(Grant)
     }
 
@@ -63,6 +65,7 @@ struct FieldAssistEntitlementStatus: Equatable {
             switch decision.denial {
             case .expired(let date): return .expired(date)
             case .unverifiableLicense: return .unverifiableLicense
+            case .seatUnavailable(let hold): return .seatUnavailable(hold)
             case .noEvidence, nil: return .none
             }
         }
@@ -133,6 +136,8 @@ enum FieldAssistPaywallCopy {
     static let subscriptionLapsed = "Your Field Assist subscription has lapsed. Manage it in your App Store subscriptions."
     static let manageSubscription = "Manage Subscription"
     static let seatsNote = "Seats are recorded for your records; this device does not enforce them."
+    /// A seat-checked licence (Plan JS P2): what the phone does, and what it sends to do it.
+    static let seatCheckedNote = "This licence counts the phones that use it. This phone holds one of its seats and checks in with Avenkin's licence service about once a day, sending only its enrolment id, a key made for this phone, the app build and the profile id. Offline, it keeps working for up to 44 days."
 
     static func expiring(_ warning: FieldAssistEntitlementStatus.Warning) -> String {
         switch warning {

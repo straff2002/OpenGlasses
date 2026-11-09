@@ -41,6 +41,11 @@ enum OfficeInlineEntitlement {
             throw Refusal.missingOrWrongBinding
         }
         guard licence.profile == nil else { throw Refusal.hostedProfileRoute }
+        // Plan JS P2: a seat-checked licence is live only with this phone's seat lease, which the
+        // office's inline route cannot carry. Refused as not in force, so the connection stops as
+        // it does for a lapse. (Seat-checked codes are minted only with a hosted profile, which
+        // the line above already refuses; this holds if one is ever minted without.)
+        guard !licence.isSeatChecked else { throw Refusal.notCurrentlyValid }
         if let embedded = profile.licenceCode,
            embedded.trimmingCharacters(in: .whitespacesAndNewlines)
             != licenceCode.trimmingCharacters(in: .whitespacesAndNewlines) {
