@@ -517,6 +517,18 @@ final class DeviceSeatTests: XCTestCase {
         await seats.checkIn(enrolment, force: true)
         XCTAssertEqual(world.record?.clockHighWater, mark, "a lease no newer than the stored one keeps the mark")
         XCTAssertFalse(decision().isGranted, "the wound-back clock is still caught")
+        // The replay was not stored, so a second one — newer than the first, older than the lease
+        // held — cannot walk the mark down a step at a time.
+        let held = try XCTUnwrap(world.record?.lease)
+        let later = SeatLeasePayload(deviceKeyHash: try XCTUnwrap(keys.currentKeyHash()), enrolmentId: enrolment.enrolmentId,
+                                     issued: t0.addingTimeInterval(5 * 86_400), licenseIDHash: SeatWire.licenseIDHash(code: world.code!),
+                                     notAfter: t0.addingTimeInterval(35 * 86_400))
+        await server.set(replayOnce: DeviceSeatLease.Reply(lease: try await server.signedLease(later), refusal: nil, seats: nil))
+        world.now = t0.addingTimeInterval(6 * 86_400)
+        await seats.checkIn(enrolment, force: true)
+        XCTAssertEqual(world.record?.lease, held, "an older lease never replaces the one held")
+        XCTAssertEqual(world.record?.clockHighWater, mark)
+        XCTAssertFalse(decision().isGranted)
     }
 
     func testANewerLeaseCorrectsAMarkAClockSetAheadRaised() async {

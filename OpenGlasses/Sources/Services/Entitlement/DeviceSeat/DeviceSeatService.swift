@@ -203,17 +203,24 @@ final class DeviceSeatService: ObservableObject {
                 // from a lease newer than the one it holds: an older one (a replay, with the clock
                 // wound back to fit it) must never lower the mark.
                 let storedIssued = current.lease.flatMap { DeviceSeatLease.open($0, keys: seams.leaseKeys) }?.issued
-                if storedIssued.map({ opened.issued > $0 }) ?? true {
-                    current.clockHighWater = opened.issued
+                if let storedIssued, opened.issued < storedIssued {
+                    // Older than the lease already held: the service never signs backwards, so
+                    // this is a replay. It is not stored either — held, it would become the
+                    // lease the next replay only has to be newer than, and the mark could be
+                    // walked down a step at a time.
                 } else {
-                    current.clockHighWater = max(current.clockHighWater ?? opened.issued, opened.issued)
+                    if storedIssued.map({ opened.issued > $0 }) ?? true {
+                        current.clockHighWater = opened.issued
+                    } else {
+                        current.clockHighWater = max(current.clockHighWater ?? opened.issued, opened.issued)
+                    }
+                    current.lease = lease
+                    current.lastRenewed = wholeSeconds(seams.now())
+                    current.refusal = nil
+                    current.refusedSeats = nil
+                    // The new lease names the code in force: the bridge for the replaced one ends.
+                    current.previousLicenseIDHash = nil
                 }
-                current.lease = lease
-                current.lastRenewed = wholeSeconds(seams.now())
-                current.refusal = nil
-                current.refusedSeats = nil
-                // The new lease names the code in force: the bridge for the replaced one ends.
-                current.previousLicenseIDHash = nil
             } else if let refusal = reply.refusal, refusal != .badNonce, refusal != .badRequest {
                 current.refusal = refusal
                 current.refusedSeats = reply.seats

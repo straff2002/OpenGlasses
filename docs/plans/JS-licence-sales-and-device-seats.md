@@ -653,7 +653,9 @@ mark mishandled. Status unchanged (P2 built, not deployed). All headless, in `De
   renewed at the ten-minute retry, not a day later.
 - **The clock mark never moves back.** A reply lease resets the mark to its signed `issued` only when it is
   newer than the stored lease; otherwise the mark keeps its maximum, so an old lease replayed with the clock
-  wound back to fit it is still caught. A phone whose clock ran ahead still recovers on its next lease.
+  wound back to fit it is still caught. A lease older than the stored one is not stored either, so a
+  series of replays cannot lower the mark a step at a time. A phone whose clock ran ahead still recovers
+  on its next lease.
 - **A release while a renewal is out stays released.** After a `.freed` renewal, the re-claim is sent only
   if no release happened meanwhile.
 - **The gate checks the enrolment in force.** `LiveFieldAssistEntitlementProvider` passes the stored
