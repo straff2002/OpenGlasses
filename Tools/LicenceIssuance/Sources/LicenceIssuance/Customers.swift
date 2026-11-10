@@ -16,8 +16,12 @@ public struct ProfilePreset: Codable, Equatable {
         public var vaultPacks: [PackOption]
         public var aiModels: [ProfileContract.AIModel]
         public var settings: [String: SettingOption]
-        public init(vaultPacks: [PackOption] = [], aiModels: [ProfileContract.AIModel] = [], settings: [String: SettingOption] = [:]) {
-            self.vaultPacks = vaultPacks; self.aiModels = aiModels; self.settings = settings
+        /// Settings sections (`SettingsCategoryID`) the partner may open or close on the company's phones. Each is
+        /// written into the profile's lockdown either way; a company with no pick carries `lockdown` as written.
+        public var sections: [String]?
+        public init(vaultPacks: [PackOption] = [], aiModels: [ProfileContract.AIModel] = [], settings: [String: SettingOption] = [:],
+                    sections: [String]? = nil) {
+            self.vaultPacks = vaultPacks; self.aiModels = aiModels; self.settings = settings; self.sections = sections
         }
     }
     /// A vault pack the profile may install. `licensePack` is its resale key, which must be in the partner's grant.
@@ -58,6 +62,16 @@ public struct ProfilePreset: Codable, Equatable {
                 guard !Self.carriesKey(model) else { throw PresetRefusal.aiModelCarriesKey }
                 guard !choices.aiModels[..<i].contains(model) else { throw invalid("an AI model is listed twice") }
             }
+            if let sections = choices.sections {
+                guard edition != nil else { throw invalid("sections only apply with an edition") }
+                for (i, id) in sections.enumerated() {
+                    guard ProfileContract.settingsCategoryIds.contains(id) else {
+                        throw invalid("\(id) is not a settings category (\(ProfileContract.settingsCategoryIds.joined(separator: ", ")))")
+                    }
+                    guard !ProfileContract.pinnedOpenCategoryIds.contains(id) else { throw invalid("\(id) is always open") }
+                    guard !sections[..<i].contains(id) else { throw invalid("\(id) is listed twice") }
+                }
+            }
             for (i, pack) in choices.vaultPacks.enumerated() {
                 guard !pack.packId.isEmpty, !pack.licensePack.isEmpty, !choices.vaultPacks[..<i].contains(where: { $0.packId == pack.packId }) else {
                     throw invalid("each vault pack needs a distinct packId and its licensePack")
@@ -88,12 +102,36 @@ public struct ProfilePreset: Codable, Equatable {
             guard !Self.carriesKey(model) else { throw PresetRefusal.aiModelCarriesKey }
             guard choices.aiModels.contains(model) else { throw PresetRefusal.aiModelNotOffered }
         }
+        if let open = selection.openSections {
+            for id in open where !(choices.sections ?? []).contains(id) { throw PresetRefusal.sectionNotOffered(id) }
+        }
         let input = ProfileContract.Input(profileId: profileId, organizationName: organizationName, leaseDays: leaseDays,
                                           eraseAfterLapseDays: eraseAfterLapseDays, licenceCode: licenceCode, vaultPack: vaultPack,
-                                          settings: chosen, aiModel: selection.aiModel, edition: edition, lockdown: lockdown)
+                                          settings: chosen, aiModel: selection.aiModel, edition: edition, lockdown: lockdown(for: selection))
         do { try ProfileContract.check(input, adminPasscode: adminPasscode, now: .distantPast) }
         catch let invalid as ProfileContract.Invalid { throw PresetRefusal.invalidPreset(invalid.message) }
         return input
+    }
+
+    /// The lockdown a company's profile carries: the preset's, with each offered section the partner picked moved
+    /// to `open` and every other offered section to `lock`. Without a pick, the preset's lockdown as written.
+    public func lockdown(for selection: PresetSelection) -> ProfileContract.Lockdown? {
+        guard let picked = selection.openSections else { return lockdown }
+        let offered = choices.sections ?? []
+        let open = (lockdown?.open ?? []).filter { !offered.contains($0) } + offered.filter { picked.contains($0) }
+        let lock = (lockdown?.lock ?? []).filter { !offered.contains($0) } + offered.filter { !picked.contains($0) }
+        let closedTools = lockdown?.closedTools
+        if open.isEmpty, lock.isEmpty, closedTools == nil { return nil }
+        return .init(open: open.isEmpty ? nil : open, lock: lock.isEmpty ? nil : lock, closedTools: closedTools)
+    }
+
+    /// The offered sections a company's phones show, as the app's `ManagedLockdown` reads the lockdown: every
+    /// section is closed except Field Assist, then `lock` closes and `open` opens.
+    public func openSections(for selection: PresetSelection) -> [String] {
+        let resolved = lockdown(for: selection)
+        return (choices.sections ?? []).filter { id in
+            (resolved?.open ?? []).contains(id) || (id == "field-assist" && !(resolved?.lock ?? []).contains(id))
+        }
     }
 
     /// A model names a provider and a model, never a key: no query string, and nothing shaped like a secret.
@@ -114,15 +152,18 @@ public struct PresetSelection: Codable, Equatable {
     public var vaultPack: String?
     public var aiModel: ProfileContract.AIModel?
     public var settings: [String: ProfileContract.Value]
-    public init(vaultPack: String? = nil, aiModel: ProfileContract.AIModel? = nil, settings: [String: ProfileContract.Value] = [:]) {
-        self.vaultPack = vaultPack; self.aiModel = aiModel; self.settings = settings
+    /// The offered sections (`ProfilePreset.Choices.sections`) the company's phones show; nil keeps the preset's lockdown.
+    public var openSections: [String]?
+    public init(vaultPack: String? = nil, aiModel: ProfileContract.AIModel? = nil, settings: [String: ProfileContract.Value] = [:],
+                openSections: [String]? = nil) {
+        self.vaultPack = vaultPack; self.aiModel = aiModel; self.settings = settings; self.openSections = openSections
     }
 }
 
 public enum PresetRefusal: Error, Equatable {
     case invalidPreset(String), unknownPreset, presetChanged
     case settingNotOffered(String), valueNotOffered(String), packNotOffered(String), packNotInGrant(String)
-    case aiModelNotOffered, aiModelCarriesKey, invalidVerifier
+    case aiModelNotOffered, aiModelCarriesKey, invalidVerifier, sectionNotOffered(String)
 }
 
 extension ProfileContract {

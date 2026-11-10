@@ -197,6 +197,11 @@ prints `licenceCode` in clear, so nothing derived from the licence could hide it
   the gateway in avenkin-licence's `docs/plans/integration-gateway.md` is the step that takes it off phones.
 - `profileDocument` builds and signs the customer's profile from its preset, choices, verifier and current code
   through `ProfileContract`, the same contract `make-org-profile` uses, so both produce the same bytes.
+- A preset may offer settings sections (`choices.sections`, `SettingsCategoryID` raw values, never one of the
+  always-open four) for the partner to open or close per company. The pick is `PresetSelection.openSections`;
+  `lockdown(for:)` writes each offered section into the profile's `open` or `lock`, and a company with no pick
+  carries the preset's `lockdown` as written. `openSections(for:)` reads it back the way `ManagedLockdown` does,
+  for the portal's checkboxes. Neither field is encoded when absent, so existing presets keep their digests.
 
 The key-for-life path (key → sealed expired first code → enrolment → the profile's current code active,
 nothing re-sealed) is proven in `LicenceIssuanceIntegrationTests` against the app's own enrolment.
