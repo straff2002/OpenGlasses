@@ -72,6 +72,9 @@ final class TurnBackgroundTime {
         /// Streamed a sentence at a time, which reports no outcome; `stoppedByWearer` when the
         /// wearer talked over it or said "stop".
         case streamed(stoppedByWearer: Bool)
+        /// Plan LA: the turn ended with the done tone. Nothing was owed to the wearer's ears — the
+        /// reply is on the screen and can be asked for — so it is never counted as unheard.
+        case quiet
     }
 
     /// Whether a reply that finished went unheard, so the next foreground should say it waits in
@@ -98,6 +101,8 @@ final class TurnBackgroundTime {
             }
         case .streamed(let stoppedByWearer):
             return !stoppedByWearer && !routePlaysWhileAway
+        case .quiet:
+            return false
         }
     }
 

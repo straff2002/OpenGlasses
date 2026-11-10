@@ -2313,6 +2313,11 @@ enum PrivacyLog {
         /// Plan KR P5: a Direct turn's background time — `detail` is "began", "ended", "expired"
         /// or "replyWaiting" (the reply finished unspoken while the app was away).
         case turnBackgroundTime
+        /// Plan LA: the quiet-ending verdict for a Direct turn. `detail` is "quiet" or the speak
+        /// reason ("lookup", "notAllDone"…); `count` the tool calls judged. Never words.
+        case quietTurnJudged
+        /// Plan LA: "what was that?" replayed a quiet turn's reply. `characters` is its length.
+        case quietTurnReplayed
     }
 
     /// `detail` and `state` are fixed app vocabularies — a routing tier, a command label, a power

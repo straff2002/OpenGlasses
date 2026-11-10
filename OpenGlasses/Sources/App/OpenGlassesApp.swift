@@ -1293,6 +1293,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// `TechnicianWords.currentTurn()`).
     private(set) var turnSerial = 0
     @Published var lastResponse: String = ""
+    /// Plan LA: the last quiet turn's reply, for "what was that?" in the 30 seconds after it.
+    var quietReplay = QuietReplayWindow()
     /// In-flight assistant reply for the Chat tab, streamed token-by-token where the provider
     /// supports it (on-device models today). The Chat thread renders this as a live bubble, then
     /// swaps it for the persisted message on completion. Nil when no reply is streaming.
@@ -7509,6 +7511,20 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
+            // Plan LA decision 7: "what was that?" in the 30 seconds after a quiet turn says the
+            // reply that was not spoken — the stored text, no model call. Before the bystander
+            // filter, which would read a bare "say it" as filler.
+            VoiceCommandHandler(label: "quiet-replay") { [weak self] text in
+                guard let self, let reply = self.quietReplayReply(for: text) else { return false }
+                PrivacyLog.app(.quietTurnReplayed, characters: reply.count)
+                self.quietReplay.close()
+                self.startStopListener()
+                let outcome = await self.speechService.speakReporting(reply, source: .reply)
+                self.stopStopListener()
+                self.noteReplySpoken(.reported(outcome))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
             // Intent classification — filter bystander/filler speech.
             VoiceCommandHandler(label: "intent-ignore") { [weak self] text in
                 guard let self, self.intentClassifier.isEnabled,
@@ -8427,12 +8443,17 @@ class AppState: ObservableObject, AppStateProtocol {
         let turnGeneration = conversationReset.currentGeneration
         // Plan HZ P1: with the switch on, the reply is spoken a sentence at a time as it is written.
         // Nil — today's path, unchanged — when it is off.
-        let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId)
+        let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId,
+                                                spokenTurn: true)
         // Plan KP P1: this reply's sentences collect into one answer card on the glasses, with what
         // the app heard over its first page (Plan KV §7).
         hudAnswerCard.beginTurn(question: turnUtterance)
         // Plan KR P5: the turn finishes even if the phone goes in a pocket now.
         turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
+        // Plan LA: the quiet-ending verdict, decided once in `accept` (so the saved reply carries
+        // its mark) and acted on in `speak`. Stays nil with the setting off.
+        let quietEnding = QuietEndingBox()
+        let ledgerGenerationAtStart = llmService.turnToolLedger.generation
 
         // Run the turn inside a tracked, cancellable task (Plan BG P2). Barge-in / stop / cancel
         // cancel it, so a normal text turn no longer speaks its now-stale response after the user
@@ -8583,12 +8604,21 @@ class AppState: ObservableObject, AppStateProtocol {
 
                     let usedToolNames = nativeToolRouter.takeTurnToolNames()
 
+                    // Plan LA §2: the judge runs once, on the final reply, before any of it is said.
+                    // A brain that keeps no ledger (the Hermes agent runs its own tools) left the
+                    // ledger as an earlier turn's: nothing is concluded from it, and the reply speaks.
+                    let ledgerIsThisTurns = llmService.turnToolLedger.generation != ledgerGenerationAtStart
+                    quietEnding.verdict = !ledgerIsThisTurns ? nil : judgeQuietEnding(
+                        utterance: query, reply: response,
+                        hasFollowUps: !llmService.replyFollowUps.isEmpty || quietEnding.sawFollowUps)
+
                     // Save to conversation store — in the thread the question went into, which in
                     // push-to-talk is no longer guaranteed to be the active one by now.
                     if Config.conversationPersistenceEnabled {
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
                                                         toolNames: usedToolNames,
+                                                        endedQuietly: quietEnding.verdict?.isQuiet == true,
                                                         toThread: turnThreadId)
                     }
 
@@ -8602,6 +8632,20 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 speak: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else { return }
+                    // Plan LA §4–§6: everything asked for happened — the done tone instead of the
+                    // reply. The reply still shows on the phone and the glasses, untouched.
+                    if case .quiet = quietEnding.verdict {
+                        hudAnswerCard.finishTurn(reply: response)
+                        if let replyStream {
+                            await replyStream.finishQuietly()
+                            releaseReplyStreamStopListener(replyStream)
+                        }
+                        guard conversationReset.isCurrent(turnGeneration), !Task.isCancelled else { return }
+                        await playQuietEnding(reply: response)
+                        noteReplySpoken(.quiet)
+                        return
+                    }
+                    quietReplay.close()
                     // Plan HZ P1: the reply has been speaking since its first sentence (and the
                     // stop listener with it) — say what is left of it.
                     if let replyStream, replyStream.didStream {
@@ -8657,9 +8701,20 @@ class AppState: ObservableObject, AppStateProtocol {
                 // them (`RelativeTimeGuard`).
                 utterance: query,
                 // Plan KP P2: a tail the spine took off (another brain's reply) goes to the card.
-                onFollowUps: { [self] questions in hudAnswerCard.offerFollowUps(questions) }
+                onFollowUps: { [self] questions in
+                    quietEnding.sawFollowUps = true
+                    hudAnswerCard.offerFollowUps(questions)
+                }
             ))
         }
+    }
+
+    /// Plan LA: one Direct turn's quiet-ending verdict, shared by its `accept` and `speak` stages.
+    @MainActor
+    final class QuietEndingBox {
+        var verdict: QuietTurnVerdict?
+        /// The spine took a follow-ups tail off the reply (another brain's).
+        var sawFollowUps = false
     }
 
     // MARK: - Text Message Input
@@ -9078,18 +9133,29 @@ class AppState: ObservableObject, AppStateProtocol {
     // MARK: - Sentence-streamed replies (Plan HZ P1)
 
     /// A streamed reply for one Direct turn, or nil when the switch is off — today's path.
+    /// `spokenTurn`: a turn the wearer spoke, the only kind that can end with the done tone (Plan
+    /// LA rule 1). A typed turn's stream keeps today's rules whatever the setting says.
     private func makeReplySpeechStream(turnGeneration: UInt64,
-                                       threadId: String?) -> DirectReplySpeechStream? {
+                                       threadId: String?,
+                                       spokenTurn: Bool = false) -> DirectReplySpeechStream? {
         guard Config.directSentenceStreamingEnabled else { return nil }
         // Held whole, as today: a reply post-processing rewrites (memory commands), and one opening
         // with a choice list while the buttons are on, so the spoken options and the buttons agree.
         let choiceButtons = Config.hudChoiceButtonsEnabled
-        let rules = StreamSpeechGate.Rules(
+        var rules = StreamSpeechGate.Rules(
             holdWholeReply: StreamSpeechGate.looksLikeMemoryCommand,
             looksLikeChoiceList: { choiceButtons && StreamSpeechGate.looksLikeChoiceListOpening($0) })
+        // Plan LA §3/§4: with Quiet After Actions on, a round of reviewed actions says no preamble,
+        // and a round that all reported done holds the reply whole until the judge has decided.
+        // Off, the rules are exactly today's.
+        if spokenTurn, quietAfterActionsActive {
+            rules.holdPreamble = QuietTurnJudge.holdsPreamble(forRound:)
+            rules.holdNextIteration = QuietTurnJudge.holdsNextIteration(afterRound:)
+        }
         let stream = DirectReplySpeechStream(
             speaker: speechService, rules: rules,
-            isCurrent: { [weak self] in self?.conversationReset.isCurrent(turnGeneration) ?? false })
+            isCurrent: { [weak self] in self?.conversationReset.isCurrent(turnGeneration) ?? false },
+            turnCalls: { [weak self] in self?.quietTurnCalls() ?? [] })
         // The wearer can say "stop" from the first sentence on, as from the start of `speak`.
         stream.onSpeechBegan = { [weak self] in self?.startStopListener() }
         // Open question 1: a preamble said before a tool runs stays in the transcript as its own

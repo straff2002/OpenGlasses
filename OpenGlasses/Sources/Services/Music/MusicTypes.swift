@@ -123,6 +123,9 @@ struct MusicCommandResult: Equatable, Sendable {
 
     let spoken: String
     let outcome: Outcome
+    /// Plan LA: the request was handed to another app to finish (Spotify's search page) — `done`
+    /// for the router, but nothing plays until the wearer taps.
+    var handedToApp = false
 
     static func done(_ spoken: String) -> MusicCommandResult { .init(spoken: spoken, outcome: .done) }
     static func unsupported(_ spoken: String) -> MusicCommandResult { .init(spoken: spoken, outcome: .unsupported) }
