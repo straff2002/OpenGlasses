@@ -46,13 +46,23 @@ final class DirectReplySpeechStream {
     var onPreamble: ((String) -> Void)?
     /// The stop listener was started for this reply and is owed a stop.
     var holdsStopListener = false
+    /// Plan LA: every tool call of the turn so far, as the quiet-ending judge reads them. Read at
+    /// each stream reset; the calls since the previous reset are the round the gate is told about.
+    private let turnCalls: @MainActor () -> [QuietTurnCall]
+    /// How many of `turnCalls` an earlier reset already accounted for.
+    private var accountedCalls = 0
 
     init(speaker: any StreamedReplySpeaking, rules: StreamSpeechGate.Rules = .default,
-         isCurrent: @escaping @MainActor () -> Bool = { true }) {
+         isCurrent: @escaping @MainActor () -> Bool = { true },
+         turnCalls: @escaping @MainActor () -> [QuietTurnCall] = { [] }) {
         self.speaker = speaker
         self.gate = StreamSpeechGate(rules: rules)
         self.isCurrent = isCurrent
+        self.turnCalls = turnCalls
     }
+
+    /// Plan LA §4: the final iteration is being held whole for the quiet-ending verdict.
+    var isHoldingForVerdict: Bool { gate.holdReason == .quietCandidate }
 
     /// Streaming ran for this turn: at least one sentence went to the queue.
     var didStream: Bool { queue != nil }
@@ -75,7 +85,10 @@ final class DirectReplySpeechStream {
 
     /// `onStreamReset`.
     func streamDidReset() {
-        let tail = gate.endIteration()
+        let calls = turnCalls()
+        let round = Array(calls.dropFirst(accountedCalls))
+        accountedCalls = calls.count
+        let tail = gate.endIteration(roundCalls: round)
         if !Task.isCancelled, !wasStopped, isCurrent() { enqueue(tail) }
         let said = spokenThisIteration
         if !said.isEmpty {
@@ -121,6 +134,14 @@ final class DirectReplySpeechStream {
             let rest = StreamSpeechGate.reconcile(reply: reply, spoken: heard).remainder
             if !rest.isEmpty { await speaker.speakWholeReply(rest) }
         }
+    }
+
+    /// Plan LA: the turn ends with the done tone. Nothing more of the reply is said; anything a
+    /// queue already holds (a sentence released before the last tool round) plays out, so the tone
+    /// that follows does not cut it off.
+    func finishQuietly() async {
+        guard let queue, !wasStopped, !queue.isCancelled else { return }
+        await queue.finish()
     }
 
     // MARK: - Internals

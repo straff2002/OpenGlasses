@@ -42,6 +42,8 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     var reasoning: String?
     /// The OpenAI endpoint token (Plan GC). Optional: traces written before it decode as nil.
     var route: String?
+    /// Plan LA: the quiet-ending verdict token. Optional: traces written before it decode as nil.
+    var quietVerdict: String?
     var promptBlocks: [TurnTimeline.PromptBlock]
     var manualPassages: [String]
     var manualRefused: Bool
@@ -87,6 +89,7 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         appPrompt = timeline.appPrompt ? true : nil
         reasoning = timeline.reasoning
         route = timeline.route
+        quietVerdict = timeline.quietVerdict
         promptBlocks = timeline.promptBlocks
         manualPassages = timeline.manualPassages
         manualRefused = timeline.manualRefused

@@ -102,6 +102,14 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         surfacePublisher?.push()
     }
 
+    /// Plan LA P3: a Direct turn ended with the done tone. The wrist taps once (`.success`) — only
+    /// while the watch app is reachable, because a tap delivered later would confirm nothing. The
+    /// message carries no words, only the event.
+    func sendQuietDone() {
+        guard let session, session.activationState == .activated, session.isReachable else { return }
+        session.sendMessage(QuietDoneWatchMessage.payload, replyHandler: nil, errorHandler: nil)
+    }
+
     /// The phone's status as the watch reads it: flat keys, plus `job` while a job is open. The
     /// surface publisher adds `surfaces` and `today`.
     private func statusContext() -> [String: Any]? {

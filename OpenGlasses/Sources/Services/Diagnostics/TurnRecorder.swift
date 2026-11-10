@@ -362,6 +362,11 @@ enum TurnRecorder {
         update { $0.route = token }
     }
 
+    /// Plan LA: the quiet-ending verdict (`QuietTurnVerdict.traceToken`), never text.
+    static func noteQuietVerdict(_ token: String) {
+        update { $0.quietVerdict = token }
+    }
+
     /// The system prompt this turn is sending, block by block. Last-wins: a cascade that rebuilds
     /// the prompt for the next model replaces the list rather than doubling it.
     static func notePromptBlocks(_ blocks: [TurnTimeline.PromptBlock]) {

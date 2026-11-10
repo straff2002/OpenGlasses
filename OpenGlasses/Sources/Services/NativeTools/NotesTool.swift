@@ -58,6 +58,11 @@ struct SaveNoteTool: NativeTool {
         "required": ["content"]
     ]
 
+    static func completion(title: String?) -> ActionCompletion {
+        guard let title, !title.isEmpty else { return .done(summary: "Note saved") }
+        return .done(summary: "Note saved: \(title)")
+    }
+
     func execute(args: [String: Any]) async throws -> String {
         guard let content = args["content"] as? String, !content.isEmpty else {
             return "No content provided for the note."
@@ -70,6 +75,8 @@ struct SaveNoteTool: NativeTool {
                              origin: SavedNoteOrigin.assistant)
         notes.append(note)
         NotesStorage.saveNotes(notes)
+        // Plan LA: the note is on disk.
+        ActionCompletionReport.record(Self.completion(title: title))
 
         let count = min(notes.count, NotesStorage.maxNotes)
         if let title {

@@ -571,6 +571,12 @@ struct Config {
     @UserDefaultsBacked("directSentenceStreamingEnabled", default: false)
     static var directSentenceStreamingEnabled: Bool
 
+    /// Plan LA: when something the wearer asked for has fully happened, a short done tone instead
+    /// of a spoken reply (`QuietTurnJudge`). Off by default (decision 1); hidden and read as off in
+    /// Simple Mode. Settings › Voice.
+    @UserDefaultsBacked("quietAfterActionsEnabled", default: false)
+    static var quietAfterActionsEnabled: Bool
+
     /// Ask the phone's built-in mic for Apple's voice processing (noise suppression and echo
     /// cancellation) during dictation, on the engine dictation builds for itself (Plan JM P0).
     /// Never on a Bluetooth route and never on the wake-word listener's shared engine — see
