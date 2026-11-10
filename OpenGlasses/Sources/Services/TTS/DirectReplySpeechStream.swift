@@ -30,6 +30,9 @@ final class DirectReplySpeechStream {
 
     private weak var speaker: (any StreamedReplySpeaking)?
     private let gate: StreamSpeechGate
+    /// Plan KZ §6: citation markup is taken out before the sentence splitter sees the text, and
+    /// half a link is held until it is whole, so no address is spoken part-way.
+    private var citations = CitationMarkupStripper.Stream()
     private let isCurrent: @MainActor () -> Bool
     /// The reply's queue, opened by the first released sentence.
     private(set) var queue: StreamedReplyQueue?
@@ -78,17 +81,19 @@ final class DirectReplySpeechStream {
 
     /// `onToken`.
     func ingest(_ chunk: String) {
-        let sentences = gate.ingest(chunk)
+        let clean = citations.ingest(chunk)
+        let sentences = clean.isEmpty ? [] : gate.ingest(clean)
         guard !Task.isCancelled, !wasStopped, isCurrent() else { return }
         enqueue(sentences)
     }
 
     /// `onStreamReset`.
     func streamDidReset() {
+        let held = citations.flush()
         let calls = turnCalls()
         let round = Array(calls.dropFirst(accountedCalls))
         accountedCalls = calls.count
-        let tail = gate.endIteration(roundCalls: round)
+        let tail = (held.isEmpty ? [] : gate.ingest(held)) + gate.endIteration(roundCalls: round)
         if !Task.isCancelled, !wasStopped, isCurrent() { enqueue(tail) }
         let said = spokenThisIteration
         if !said.isEmpty {
@@ -101,8 +106,11 @@ final class DirectReplySpeechStream {
     }
 
     /// `speak:` — the reply is final.
-    func finish(reply: String) async {
+    func finish(reply raw: String) async {
         guard let speaker else { return }
+        // Reconciled against what can be spoken: the reply with its citation markup taken out,
+        // exactly as the streamed sentences had it.
+        let reply = CitationMarkupStripper.strip(raw)
         guard let queue else {
             // Nothing was streamed: today's path, byte for byte.
             await speaker.speakWholeReply(reply)

@@ -66,11 +66,13 @@ struct ModelConfig: Codable, Identifiable, Equatable {
     /// Plan GC: the OpenAI endpoint this model's requests go to and the reasoning they carry
     /// there. The model editor and the request builder read the same selection.
     func routeSelection(toolsAttached: Bool, learnedToolRejection: Bool = false,
-                        learnedResponsesRejection: Bool = false) -> OpenAIRouteSelector.Selection {
+                        learnedResponsesRejection: Bool = false,
+                        providerSearch: Bool = false) -> OpenAIRouteSelector.Selection {
         OpenAIRouteSelector.select(provider: llmProvider, model: model, baseURL: baseURL,
                                    toolsAttached: toolsAttached, requested: reasoningEffort,
                                    learnedToolRejection: learnedToolRejection,
-                                   learnedResponsesRejection: learnedResponsesRejection)
+                                   learnedResponsesRejection: learnedResponsesRejection,
+                                   providerSearch: providerSearch)
     }
 
     static func inferredSupportsVision(provider: LLMProvider, model: String, baseURL: String) -> Bool {

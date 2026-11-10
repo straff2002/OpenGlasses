@@ -409,6 +409,35 @@ enum TurnRecorder {
         }
     }
 
+    /// Plan KZ §9: a search the provider ran itself. Recorded as a `web_search` note with outcome
+    /// `provider`: the queries, and — since a provider's results are not returned to the app — the
+    /// cited pages and snippets in place of the returned text, masked and bounded exactly like our
+    /// own tool's.
+    static func noteProviderSearch(provider: String, evidence: ProviderSearchEvidence, turnID: UUID?,
+                                   secrets: () -> [String] = { Config.knownSecretValues }) {
+        guard let turnID, turnID == toolTraceID else { return }
+        update {
+            guard $0.toolCalls.count < maxToolCalls else { return }
+            var note = TurnTimeline.ToolNote(name: "web_search", outcome: "provider")
+            let used = $0.toolCalls.reduce(0) { $0 + ($1.search?.result.count ?? 0) }
+            note.search = .init(query: evidence.queries.joined(separator: " | "),
+                                result: "provider: \(provider)\n" + evidence.traceText,
+                                remainingResultCharacters: TurnTimeline.SearchEvidence.turnResultLimit - used,
+                                secrets: secrets())
+            $0.toolCalls.append(note)
+        }
+    }
+
+    /// Plan KZ §4: the provider refused the request because of its own search, and the turn was
+    /// retried with our tool. The class of the refusal only.
+    static func noteProviderSearchRefused(provider: String, kind: ProviderSearchRefusal.Kind, turnID: UUID?) {
+        guard let turnID, turnID == toolTraceID else { return }
+        update {
+            guard $0.toolCalls.count < maxToolCalls else { return }
+            $0.toolCalls.append(.init(name: "web_search", outcome: "provider refused (\(kind.rawValue))"))
+        }
+    }
+
     /// The turn failed with `error`. Only its category is kept, never its description — and, when
     /// a provider refused the request, what that refusal classified as (Plan IE P0).
     static func noteFailure(_ error: Error) {

@@ -34,15 +34,23 @@ enum ResponsesTranslator {
         /// GB's volatile tail: sent as a final `developer` message after the history, so the
         /// stable `instructions` and the conversation stay a byte-identical cacheable prefix.
         var trailingDeveloperMessage: String? = nil
+        /// Plan KZ: tools the provider runs itself (`{"type":"web_search"}`), already in the
+        /// Responses shape, after the function tools.
+        var hostedTools: [[String: Any]] = []
+        /// Plan KZ: further `include` values (xAI's `no_inline_citations`).
+        var extraInclude: [String] = []
 
         init(includeEncryptedReasoning: Bool = false, maxOutputTokens: Int? = nil,
              promptCacheKey: String? = nil, reasoning: ReasoningPolicy.Resolution? = nil,
-             trailingDeveloperMessage: String? = nil) {
+             trailingDeveloperMessage: String? = nil, hostedTools: [[String: Any]] = [],
+             extraInclude: [String] = []) {
             self.includeEncryptedReasoning = includeEncryptedReasoning
             self.maxOutputTokens = maxOutputTokens
             self.promptCacheKey = promptCacheKey
             self.reasoning = reasoning
             self.trailingDeveloperMessage = trailingDeveloperMessage
+            self.hostedTools = hostedTools
+            self.extraInclude = extraInclude
         }
     }
 
@@ -67,13 +75,16 @@ enum ResponsesTranslator {
             "store": false,
             "stream": true,
         ]
-        if let tools, !tools.isEmpty {
-            body["tools"] = responseTools(fromChatTools: tools)
+        let declared = (tools.map(responseTools(fromChatTools:)) ?? []) + options.hostedTools
+        if !declared.isEmpty {
+            body["tools"] = declared
             body["tool_choice"] = "auto"
             body["parallel_tool_calls"] = true
         }
-        if options.includeEncryptedReasoning {
-            body["include"] = ["reasoning.encrypted_content"]
+        let include = (options.includeEncryptedReasoning ? ["reasoning.encrypted_content"] : [])
+            + options.extraInclude
+        if !include.isEmpty {
+            body["include"] = include
         }
         if let maxOutputTokens = options.maxOutputTokens {
             body["max_output_tokens"] = maxOutputTokens

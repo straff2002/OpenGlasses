@@ -52,6 +52,9 @@ enum ToolAuthorizationPolicy {
         let seam: ToolDispatchSeam
         /// What running this call does that a person would want to have been asked about.
         let effectClass: ToolEffectClass
+        /// The turn has read web pages through the provider's own search (Plan KZ §5), which no
+        /// envelope framed: a high-impact call needs a yes even with agent mode off.
+        let turnReadWeb: Bool
 
         /// The default context has no rules enabled and reads no settings — the router always
         /// passes a live one, so this keeps a policy assertion free of global state. `seam` and
@@ -63,13 +66,15 @@ enum ToolAuthorizationPolicy {
                 quietHoursStart: 0, quietHoursEnd: 0),
              composedTargets: ComposedToolPolicy.Mode = .refuse,
              seam: ToolDispatchSeam = .native,
-             effectClass: ToolEffectClass = .readOnly) {
+             effectClass: ToolEffectClass = .readOnly,
+             turnReadWeb: Bool = false) {
             self.call = call
             self.agentModeEnabled = agentModeEnabled
             self.safetyContext = safetyContext
             self.composedTargets = composedTargets
             self.seam = seam
             self.effectClass = effectClass
+            self.turnReadWeb = turnReadWeb
         }
     }
 
@@ -115,6 +120,15 @@ enum ToolAuthorizationPolicy {
         if !input.agentModeEnabled, HighImpactToolPolicy.mayRequireConfirmation(tool: name),
            case .requiresConfirmation(let summary) = HighImpactToolPolicy.evaluate(tool: name, args: args) {
             return .confirm(summary: attributed(summary, call: call))
+        }
+
+        // 1b. A turn that read the web through the provider's own search (Plan KZ, Decision 8):
+        //    a page the model read is not framed as data the way our tool's results are, so every
+        //    high-impact call asks first. With agent mode on the supervisor below already does.
+        if !input.agentModeEnabled, input.turnReadWeb,
+           PromptInjectionPolicy.isHighImpact(toolName: name, args: args) {
+            return .confirm(summary: attributed(PromptInjectionPolicy.actionSummary(toolName: name, args: args),
+                                                call: call))
         }
 
         // 2. Deterministic safety supervisor (Plan S) — the single pre-execution gate when agent

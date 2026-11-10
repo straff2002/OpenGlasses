@@ -52,6 +52,17 @@ final class UsageTracker: ObservableObject {
                                  fieldSessionId: fieldSessionId))
     }
 
+    /// Plan KZ §7: the fee for searches a provider ran itself, beside the turn's tokens. Kept as
+    /// its own priced row (no tokens), so Insights' cost and the spend caps include it; the
+    /// ChatGPT subscription never reaches here.
+    func recordSearches(provider: LLMProvider, model: String, searches: Int, costUSD: Double,
+                        at: Date = Date(), fieldSessionId: String? = nil) {
+        guard searches > 0, costUSD > 0, provider != .chatgpt else { return }
+        store.insert(UsageRecord(sessionId: sessionId, provider: provider.rawValue, model: model,
+                                 tokensIn: 0, tokensOut: 0, costUSD: costUSD, at: at,
+                                 fieldSessionId: fieldSessionId))
+    }
+
     /// What one Field Assist job has cost so far (Plan GB P5).
     func jobUsage(fieldSessionId: String) -> JobUsageSummary {
         JobUsageSummary.summarise(store.records(fieldSessionId: fieldSessionId), fieldSessionId: fieldSessionId)
