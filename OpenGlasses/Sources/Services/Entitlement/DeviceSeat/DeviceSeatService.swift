@@ -148,11 +148,16 @@ final class DeviceSeatService: ObservableObject {
         let before = DeviceSeatLease.verdict(lease: current.lease, keys: seams.leaseKeys,
                                              deviceKeyHash: (try? seams.keys.existing()).map { DeviceSeatLease.deviceKeyHash(publicKeyX963: $0.publicKeyX963) },
                                              enrolmentId: current.enrolmentId, licenseIDHash: licenseIDHash,
+                                             previousLicenseIDHash: current.previousLicenseIDHash,
                                              clockHighWater: current.clockHighWater, now: now)
         if before != .clockWoundBack { current.clockHighWater = max(current.clockHighWater ?? now, now) }
 
         if !force, let last = current.lastAttempt, last <= now {
-            let wait = before.isLive ? Self.renewalInterval : Self.retryInterval
+            // A lease still honoured for a code that has been replaced is renewed at the next
+            // retry, not a day later: it is a bridge to the new code's lease, not a lease for it.
+            let forThisCode = current.lease.flatMap { DeviceSeatLease.open($0, keys: seams.leaseKeys) }?
+                .licenseIDHash == licenseIDHash
+            let wait = before.isLive && forThisCode ? Self.renewalInterval : Self.retryInterval
             if now.timeIntervalSince(last) < wait {
                 save(current, verdict: before)
                 return
@@ -175,8 +180,10 @@ final class DeviceSeatService: ObservableObject {
         var reply = ownLease
             ? await exchange(.renew, DeviceSeatLease.RenewRequest(build: seams.build(), lease: current.lease ?? ""), key: key, origin: origin)
             : await exchange(.claim, claimRequest(enrolment, key: key), key: key, origin: origin)
-        if ownLease, reply?.refusal == .freed {
-            // The seat was freed: ask for one again, which there may or may not be room for.
+        // The seat was freed: ask for one again, which there may or may not be room for — unless
+        // the phone itself let the seat go (a release) while the renewal was out, which a claim
+        // now would undo on the service.
+        if ownLease, reply?.refusal == .freed, generation == startedIn {
             reply = await exchange(.claim, claimRequest(enrolment, key: key), key: key, origin: origin)
         }
 
@@ -191,13 +198,29 @@ final class DeviceSeatService: ObservableObject {
                                        deviceKeyHash: DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963),
                                        enrolmentId: current.enrolmentId, licenseIDHash: licenseIDHash,
                                        now: wholeSeconds(seams.now())).isLive {
-                current.lease = lease
-                current.lastRenewed = wholeSeconds(seams.now())
-                current.refusal = nil
-                current.refusedSeats = nil
                 // The service's clock signed the lease: it, not a clock once set ahead, is the
-                // latest time seen. A phone whose clock jumped forward recovers here.
-                current.clockHighWater = opened.issued
+                // latest time seen. A phone whose clock jumped forward recovers here — but only
+                // from a lease newer than the one it holds: an older one (a replay, with the clock
+                // wound back to fit it) must never lower the mark.
+                let storedIssued = current.lease.flatMap { DeviceSeatLease.open($0, keys: seams.leaseKeys) }?.issued
+                if let storedIssued, opened.issued < storedIssued {
+                    // Older than the lease already held: the service never signs backwards, so
+                    // this is a replay. It is not stored either — held, it would become the
+                    // lease the next replay only has to be newer than, and the mark could be
+                    // walked down a step at a time.
+                } else {
+                    if storedIssued.map({ opened.issued > $0 }) ?? true {
+                        current.clockHighWater = opened.issued
+                    } else {
+                        current.clockHighWater = max(current.clockHighWater ?? opened.issued, opened.issued)
+                    }
+                    current.lease = lease
+                    current.lastRenewed = wholeSeconds(seams.now())
+                    current.refusal = nil
+                    current.refusedSeats = nil
+                    // The new lease names the code in force: the bridge for the replaced one ends.
+                    current.previousLicenseIDHash = nil
+                }
             } else if let refusal = reply.refusal, refusal != .badNonce, refusal != .badRequest {
                 current.refusal = refusal
                 current.refusedSeats = reply.seats
@@ -208,6 +231,24 @@ final class DeviceSeatService: ObservableObject {
                                             enrolmentId: current.enrolmentId, licenseIDHash: licenseIDHash,
                                             clockHighWater: current.clockHighWater, now: wholeSeconds(seams.now()))
         save(current, verdict: after)
+    }
+
+    /// A renewal of the same profile replaced the licence code in force (`OrgProfileManager`). The
+    /// stored lease was issued for the old code; it stays in force until its own end, or until a
+    /// check-in brings a lease for the new code, so the technician is not locked out in between.
+    /// Recorded only for this enrolment's own record, and only when the lease does name the code
+    /// being replaced; nothing about the lease itself changes.
+    func noteLicenceReplaced(previousCode: String, enrolment: DeviceSeatEnrolment) {
+        guard var record = seams.loadRecord(), record.enrolmentId == enrolment.enrolmentId,
+              record.profileId == enrolment.profileId,
+              let payload = record.lease.flatMap({ DeviceSeatLease.open($0, keys: seams.leaseKeys) }),
+              payload.enrolmentId == enrolment.enrolmentId else { return }
+        let previous = LiveFieldAssistEntitlementProvider.licenseIDHash(for:
+            previousCode.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard payload.licenseIDHash == previous, record.previousLicenseIDHash != previous else { return }
+        record.previousLicenseIDHash = previous
+        seams.saveRecord(record)
+        seams.entitlementChanged()
     }
 
     /// Records keep whole seconds (ISO-8601), so a time compares equal after a round trip.

@@ -517,3 +517,26 @@ with search off; a locked OpenRouter workspace; Groq's free tier before turning 
 turns against each bill; on the glasses, no URL spoken and the sources line); OpenAI's and xAI's replay of
 `web_search_call` items across a tool round with `store: false`; the catalog sync for the new strings.
 
+
+## Review follow-up (2026-11-10)
+
+A code review of the merged work found four faults; status unchanged (🚧, device passes owed). Fixed
+headlessly, over the recording transport where a send path is involved:
+
+1. **The boundaries are read every round.** Once a turn settled on a provider search, later rounds reused
+   it without asking the policy again, so a vault-only job opened by `field_session` in round one, or
+   Medical Compliance turned on mid-turn, refused our `web_search` but not the provider's. Rules 1–2 are now
+   `ProviderSearchPolicy.boundary`, asked on every round of a turn that attached a search (the consent
+   answer stays settled). When it forbids search, the tool goes for the rest of the turn and this turn's
+   history loses what the search left in it (`HistoryHygiene.strippingProviderSearch`): Anthropic's search
+   blocks and citations, and a Responses message's replayed output items when they hold a `web_search_call`
+   (that message is replayed from its text and tool calls, as a Chat Completions turn is). Chat Completions
+   and Gemini keep nothing of a search. The Anthropic round takes its request copy again after the strip.
+2. **The Responses → Chat Completions fallback reruns a turn only before any tool ran.** A 4xx on round two
+   after a tool ran surfaces as it did before the fallback existed, as the refusal retry already did.
+3. **`privacy.html`** said "If you turn on …" for a switch that is on by default (Decision 1). It now says
+   the query goes to the provider while "Let the AI search the web itself" is on, which it is unless turned
+   off. The in-app privacy footers and the manifest do not describe the switch's state; nothing else changed.
+4. **A cited Anthropic reply** is joined with nothing between blocks, as before, and then has the space put
+   back where a block boundary glued two whole sentences ("Let me check.The shop…"), with
+   `TextSegmentJoiner.repairingGluedSentences` as the Gemini path does.

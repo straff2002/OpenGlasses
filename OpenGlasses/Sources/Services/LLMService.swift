@@ -3126,6 +3126,10 @@ class LLMService: ObservableObject {
                             attachedSearch = spec
                             tools = ProviderSearchPolicy.withholdingOurTool(tools)
                         }
+                        // Dropped mid-turn: the copy above still carries the search's blocks.
+                        if searchTurn.takeHistoryChanged() {
+                            historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                        }
                         // How many definitions went, and how many of them an MCP server wrote — the
                         // one part of the body that differs between installations. Counts only.
                         TurnRecorder.noteToolsSent(count: tools.count, fromMCP: mcpToolCount)
@@ -3354,13 +3358,30 @@ class LLMService: ObservableObject {
                                     declaresWebSearch: Bool,
                                     kinds: Set<ProviderSearchSpec.Kind>) async -> ProviderSearchSpec? {
         if turn.forcedOurTool { return nil }
-        // Settled: the turn's search, if this path can carry it (a Responses turn that fell back
-        // to Chat Completions cannot).
-        if turn.settled { return turn.spec.flatMap { kinds.contains($0.kind) ? $0 : nil } }
-        let decision = ProviderSearchPolicy.decide(ProviderSearchLive.inputs(
+        let inputs = ProviderSearchLive.inputs(
             for: config, credential: turn.credential, webSearchDeclared: declaresWebSearch,
             learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model),
-            memory: providerSearchMemory))
+            memory: providerSearchMemory)
+        // Settled: the turn's search, if this path can carry it (a Responses turn that fell back
+        // to Chat Completions cannot) — and only while the boundaries still allow it. They are
+        // read every round: a tool in round one can seal a vault-only job, and the medical
+        // boundary can come on mid-turn. Then the search goes for the rest of the turn, and so do
+        // its blocks in this turn's history, which the next request could not carry without the
+        // tool (review follow-up 2026-11-10). The consent answer stays settled.
+        if turn.settled {
+            if turn.spec != nil, let reason = ProviderSearchPolicy.boundary(inputs) {
+                turn.spec = nil
+                turn.forcedOurTool = true
+                conversationHistory = HistoryHygiene.strippingProviderSearch(
+                    conversationHistory, fromTurnStart: turnHistoryStart)
+                turn.historyChanged = true
+                PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
+                                 model: PrivacyToken(config.model), detail: PrivacyToken(reason.token))
+                return nil
+            }
+            return turn.spec.flatMap { kinds.contains($0.kind) ? $0 : nil }
+        }
+        let decision = ProviderSearchPolicy.decide(inputs)
         // Not declared this round is not a decision for the turn: a tool looked up later may be.
         if case .ourTool(.notDeclared) = decision { return nil }
         turn.settled = true
@@ -3678,13 +3699,19 @@ class LLMService: ObservableObject {
         Self.noteRoute(selection, provider: provider, model: config.model)
 
         if selection.endpoint == .responses {
+            // The fallback reruns the whole turn, so it is only for a turn in which no tool has
+            // run yet: a 4xx on round two after `send_message` ran must not send it again
+            // (review follow-up 2026-11-10, as `retryingWithoutProviderSearch` already holds).
+            let dispatchedBeforeResponses = toolCallsDispatched
             do {
                 return try await sendOpenAIResponses(
                     text, systemPrompt: systemPrompt, volatileTail: volatileTail, config: config,
                     includeTools: includeTools, imageData: imageData, smallContext: smallContext,
                     selection: selection, searchTurn: searchTurn,
                     onToken: onToken, onStreamReset: onStreamReset)
-            } catch LLMError.apiError(_, let status, _, _) where Self.responsesRouteShouldFallBack(status: status) {
+            } catch LLMError.apiError(_, let status, _, _)
+                        where Self.responsesRouteShouldFallBack(status: status)
+                            && toolCallsDispatched == dispatchedBeforeResponses {
                 // Decision 6: a route decision, not a cascade hop. Remember the model for the run,
                 // rewind this turn's own appends (the user message included, so the retry does not
                 // add it twice — `turnHistoryStart` is its index even if `trimHistory` compacted
@@ -6740,8 +6767,17 @@ final class ProviderSearchTurn {
     var spec: ProviderSearchSpec?
     /// The turn has decided; an attached search stays attached.
     var settled = false
-    /// Retried after a refusal: our own tool for the rest of the turn.
+    /// Retried after a refusal, or dropped mid-turn by a boundary: our own tool for the rest of
+    /// the turn.
     var forcedOurTool = false
+    /// The search was dropped mid-turn and this turn's history rewritten without its blocks: a
+    /// request copy taken before must be taken again. Read once.
+    var historyChanged = false
+
+    func takeHistoryChanged() -> Bool {
+        defer { historyChanged = false }
+        return historyChanged
+    }
 
     init(credential: String) {
         self.credential = credential

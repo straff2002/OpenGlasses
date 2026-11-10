@@ -335,6 +335,143 @@ final class ProviderSearchWiringTests: XCTestCase {
         XCTAssertNil(svc.replySearchSuggestions, "handed over once")
     }
 
+    // MARK: - A boundary that comes on mid-turn (review follow-up 2026-11-10)
+
+    /// After the first request of the turn is sent, Medical Compliance comes on: the next round
+    /// must carry no provider search and nothing the search left in the history.
+    private func boundaryAfterFirstRequest() {
+        RecordingQueueProtocol.onRequest = { index in if index == 0 { Config.hipaaMode = true } }
+    }
+
+    func testAnthropicDropsItsSearchAndItsBlocksWhenABoundaryComesOnMidTurn() async throws {
+        let toolRound = answeredBlocks + [["type": "tool_use", "id": "toolu_1", "name": "kz_missing_tool", "input": [:]]]
+        RecordingQueueProtocol.queue = [
+            (200, anthropicJSON(toolRound, stop: "tool_use")),
+            (200, anthropicJSON([["type": "text", "text": "Done."]], stop: "end_turn")),
+        ]
+        boundaryAfterFirstRequest()
+        let svc = service(origin: "https://api.anthropic.com")
+        _ = try await svc.sendAnthropic("q", systemPrompt: "sys", config: claude, includeTools: true, imageData: nil)
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        XCTAssertTrue(try tools(0).contains { $0["type"] as? String == "web_search_20250305" })
+        XCTAssertFalse(try tools(1).contains { $0["type"] as? String == "web_search_20250305" }, "no search tool")
+        let messages = try XCTUnwrap(body(1)["messages"] as? [[String: Any]])
+        let blocks = messages.flatMap { $0["content"] as? [[String: Any]] ?? [] }
+        XCTAssertFalse(blocks.contains { ["server_tool_use", "web_search_tool_result"].contains($0["type"] as? String ?? "") },
+                       "no search block orphaned without its tool")
+        XCTAssertFalse(blocks.contains { $0["citations"] != nil })
+        XCTAssertTrue(blocks.contains { $0["type"] as? String == "tool_use" }, "the tool call and its result stay")
+        let sent = RecordingQueueProtocol.requests[1].bodyText
+        XCTAssertFalse(sent.contains("ENCRYPTED-FIXTURE"))
+        XCTAssertFalse(sent.contains("WEB SEARCH:"))
+    }
+
+    func testResponsesDropsItsSearchAndItsItemsWhenABoundaryComesOnMidTurn() async throws {
+        let round1 = """
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"store hours"}}}
+
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"kz_missing_tool","arguments":"{}"}}
+
+        event: response.completed
+        data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":20,"output_tokens":5}}}
+
+
+        """
+        RecordingQueueProtocol.queue = [(200, round1), (200, responsesStream(text: "Done.", url: "https://h.example/1"))]
+        boundaryAfterFirstRequest()
+        let svc = service(origin: "https://api.openai.com")
+        let config = ModelConfig(id: "kzo", name: "kzo", provider: LLMProvider.openai.rawValue, apiKey: "sk-test",
+                                 model: "gpt-4.1", baseURL: "")
+        _ = try await svc.sendOpenAICompatibleForTesting("q", config: config)
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        XCTAssertTrue(try tools(0).contains { $0["type"] as? String == "web_search" })
+        XCTAssertFalse(try tools(1).contains { $0["type"] as? String == "web_search" }, "no hosted search")
+        let input = try XCTUnwrap(body(1)["input"] as? [[String: Any]])
+        XCTAssertFalse(input.contains { $0["type"] as? String == "web_search_call" }, "no search item replayed")
+        XCTAssertTrue(input.contains { $0["type"] as? String == "function_call" }, "the tool call is still replayed")
+        XCTAssertTrue(input.contains { $0["type"] as? String == "function_call_output" })
+    }
+
+    func testOpenRouterDropsItsServerToolWhenABoundaryComesOnMidTurn() async throws {
+        let round1 = #"""
+        {"choices":[{"message":{"role":"assistant","content":"","annotations":[{"type":"url_citation","url_citation":{"url":"https://a.example/1","title":"First","content":"…"}}],
+          "tool_calls":[{"id":"call_1","type":"function","function":{"name":"kz_missing_tool","arguments":"{}"}}]}}],
+         "usage":{"prompt_tokens":10,"completion_tokens":2,"server_tool_use_details":{"web_search_requests":1}}}
+        """#
+        let round2 = #"{"choices":[{"message":{"role":"assistant","content":"Done."}}],"usage":{"prompt_tokens":10,"completion_tokens":2}}"#
+        RecordingQueueProtocol.queue = [(200, round1), (200, round2)]
+        boundaryAfterFirstRequest()
+        let svc = service(origin: "https://openrouter.ai")
+        let config = ModelConfig(id: "kzr", name: "kzr", provider: LLMProvider.openrouter.rawValue, apiKey: "or-test",
+                                 model: "anthropic/claude-sonnet-5.5",
+                                 baseURL: "https://openrouter.ai/api/v1/chat/completions")
+        _ = try await svc.sendOpenAICompatibleForTesting("q", config: config)
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        XCTAssertTrue(try tools(0).contains { $0["type"] as? String == "openrouter:web_search" })
+        XCTAssertFalse(try tools(1).contains { $0["type"] as? String == "openrouter:web_search" })
+        XCTAssertFalse(RecordingQueueProtocol.requests[1].bodyText.contains("url_citation"))
+    }
+
+    func testGeminiDropsGoogleSearchWhenABoundaryComesOnMidTurn() async throws {
+        let round1 = #"""
+        {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"kz_missing_tool","args":{}}}]},
+          "groundingMetadata":{"webSearchQueries":["q"],"groundingChunks":[{"web":{"uri":"https://g.example/r","title":"g.example"}}]}}],
+         "usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":3}}
+        """#
+        let round2 = #"{"candidates":[{"content":{"role":"model","parts":[{"text":"Done."}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1}}"#
+        RecordingQueueProtocol.queue = [(200, round1), (200, round2)]
+        boundaryAfterFirstRequest()
+        let svc = service(origin: "https://generativelanguage.googleapis.com")
+        let config = ModelConfig(id: "kzg", name: "kzg", provider: LLMProvider.gemini.rawValue, apiKey: "g-test",
+                                 model: "gemini-3.5-flash-lite", baseURL: "")
+        _ = try await svc.sendGemini("q", systemPrompt: "sys", config: config, includeTools: true, imageData: nil)
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        XCTAssertTrue(try tools(0).contains { $0["google_search"] != nil })
+        XCTAssertFalse(try tools(1).contains { $0["google_search"] != nil })
+        let toolConfig = (try body(1)["toolConfig"] as? [String: Any]).flatMap { $0["functionCallingConfig"] as? [String: String] }
+        XCTAssertNotEqual(toolConfig, ["mode": "VALIDATED"])
+    }
+
+    func testTheTurnStripLeavesEarlierTurnsAlone() {
+        let earlier: [String: Any] = ["role": "assistant", "content": [["type": "text", "text": "old", "citations": [["u": 1]]]]]
+        let thisTurn: [String: Any] = ["role": "assistant", "content": searchedBlocks + [["type": "text", "text": "new"]]]
+        let responses: [String: Any] = ["role": "assistant", "content": "r",
+                                        ResponsesTranslator.rawOutputItemsKey: [["type": "web_search_call", "id": "ws"]]]
+        let out = HistoryHygiene.strippingProviderSearch([earlier, ["role": "user", "content": "q"], thisTurn, responses],
+                                                         fromTurnStart: 1)
+        XCTAssertNotNil((out[0]["content"] as? [[String: Any]])?.first?["citations"], "before the turn: untouched")
+        XCTAssertEqual((out[2]["content"] as? [[String: Any]])?.map { $0["type"] as? String }, ["text"])
+        XCTAssertNil(out[3][ResponsesTranslator.rawOutputItemsKey])
+        XCTAssertEqual(out[3]["content"] as? String, "r")
+    }
+
+    // MARK: - The Responses fallback after a tool ran (review follow-up 2026-11-10)
+
+    func testAResponsesRefusalAfterAToolRanIsNotRerunOnChatCompletions() async throws {
+        let round1 = """
+        event: response.output_item.done
+        data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"kz_missing_tool","arguments":"{}"}}
+
+        event: response.completed
+        data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","usage":{"input_tokens":20,"output_tokens":5}}}
+
+
+        """
+        RecordingQueueProtocol.queue = [(200, round1), (400, #"{"error":{"message":"kz fixture shape refused"}}"#)]
+        let svc = service(origin: "https://api.openai.com")
+        let config = ModelConfig(id: "kzo", name: "kzo", provider: LLMProvider.openai.rawValue, apiKey: "sk-test",
+                                 model: "gpt-4.1", baseURL: "")
+        do {
+            _ = try await svc.sendOpenAICompatibleForTesting("q", config: config)
+            XCTFail("the refusal stands: the turn is not run again")
+        } catch {}
+        XCTAssertEqual(RecordingQueueProtocol.requests.count, 2)
+        XCTAssertFalse(RecordingQueueProtocol.requests.contains { $0.url.hasSuffix("/chat/completions") },
+                       "a tool already ran, so nothing is run a second time")
+    }
+
     // MARK: - The confirmation gate (§5, Decision 8)
 
     func testATurnThatReadTheWebAsksBeforeAHighImpactAction() {

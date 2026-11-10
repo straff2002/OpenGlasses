@@ -47,6 +47,18 @@ as a follow-up to KX.
    while the strip is full width, the symbol alone beside the shrunk bar, then the mic.
 4. iOS 26.0 keeps KX's fallback: no accessory, so the other tabs show nothing new.
 
+## Review follow-up (2026-11-10)
+
+The strip's mic works on every tab, but "Check what I said before sending" (Plan JM P1) drew its review —
+the transcript, the countdown and Cancel — only in the Avenkin tab's typed bar, so on any other tab the
+countdown sent the transcript without it ever being shown. **`SendReviewTabPolicy`** (pure, beside
+`TabStripPolicy`) now brings the wearer to Avenkin when a review begins on another tab (decision 1 already
+lands the reply's text there). It leaves the tab alone during onboarding, under a sheet presented from the
+root (asked again once the sheet closes, so a manual page shown as a sheet is not re-homed inline), and
+with CarPlay watching; it is asked when a review begins, not when the wearer moves off Avenkin
+themselves. `MainView` wires it. No new strings. Status unchanged: the device check is still owed, now
+including a spoken review started from History and Settings, with VoiceOver on.
+
 ## Tests
 
 `TabStripPolicyTests`: every tab's action under each fact, the Field Assist fallback, and when the strip stands

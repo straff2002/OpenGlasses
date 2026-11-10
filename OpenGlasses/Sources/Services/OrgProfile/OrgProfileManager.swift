@@ -238,6 +238,10 @@ final class OrgProfileManager: ObservableObject {
         /// enrolment), and give it back on removal. No-ops by default — `production` wires them.
         var seatCheckIn: @MainActor (_ enrolment: DeviceSeatEnrolment, _ force: Bool) async -> Void = { _, _ in }
         var releaseSeat: @MainActor () -> Void = {}
+        /// Plan JS P2 review follow-up: a renewal is about to replace the licence code in force;
+        /// the seat lease issued for the old code is honoured until its own end or the next
+        /// check-in. No-op by default — `production` wires it.
+        var noteLicenceReplaced: @MainActor (_ previousCode: String, _ enrolment: DeviceSeatEnrolment) -> Void = { _, _ in }
         /// The profile's sealed company credentials into the Keychain, on every apply, renewal and
         /// launch (`OrgCredentialSync`). Does nothing by default; `production` wires it.
         var syncCredentials: @MainActor (ConfigProfile) -> Void = { _ in }
@@ -257,6 +261,7 @@ final class OrgProfileManager: ObservableObject {
             seams.endLapseDeparture = { OrgDepartureService.shared.cancelLapse(enrolmentId: $0) }
             seams.seatCheckIn = { await DeviceSeatService.shared.checkIn($0, force: $1) }
             seams.releaseSeat = { DeviceSeatService.shared.release() }
+            seams.noteLicenceReplaced = { DeviceSeatService.shared.noteLicenceReplaced(previousCode: $0, enrolment: $1) }
             seams.syncCredentials = { OrgCredentialSync.shared.apply($0) }
             seams.beginDeparture = { reason, record, profile in
                 AppStateProvider.shared?.workiz.remove()
@@ -843,11 +848,18 @@ final class OrgProfileManager: ObservableObject {
     /// writes only starting values it has never written, so the person's own changes stand.
     private func renew(with renewed: ConfigProfile, document: String) {
         guard var current = record else { return }
-        if let code = renewed.licenceCode, code != profile?.licenceCode,
-           (try? seams.activateLicence(code)) != nil {
-            current.activatedLicence = true
-            // The profile's own code is now the one in force, not a key entered by hand.
-            current.activatedLicenceCode = nil
+        if let code = renewed.licenceCode, code != profile?.licenceCode {
+            // A seat-checked phone's lease names the code in force; tell the seat check which code
+            // this enrolment's lease belongs to before it is replaced, so the phone is not locked
+            // until its next check-in (Plan JS P2 review follow-up).
+            if let previous = seams.storedLicenceCode(), previous != code, let enrolment = seatEnrolment {
+                seams.noteLicenceReplaced(previous, enrolment)
+            }
+            if (try? seams.activateLicence(code)) != nil {
+                current.activatedLicence = true
+                // The profile's own code is now the one in force, not a key entered by hand.
+                current.activatedLicenceCode = nil
+            }
         }
         let result = ProfileApplier.apply(profile: renewed, resolvableVaultIds: seams.resolvableVaultIds())
         // Values still waiting for the pack keep waiting: a renewal must not write them early.

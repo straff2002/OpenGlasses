@@ -227,6 +227,14 @@ struct MainView: View {
                 EditionPresentation.tab(requested, restricted: restricted), after: modesPresentation)
             appState.requestedTab = nil
         }
+        // "Check what I said before sending" draws its review only on the Avenkin tab, and the
+        // strip's mic works on every tab: a review that begins elsewhere brings the wearer there,
+        // or its countdown would send words they never saw (`SendReviewTabPolicy`). Asked when a
+        // review begins, and again when onboarding or a sheet that held it back goes away — not
+        // when the wearer moves off Avenkin themselves.
+        .onChange(of: sendReviewFacts) { _, facts in
+            if let tab = SendReviewTabPolicy.tab(for: facts, current: selectedTab) { selectedTab = tab }
+        }
         .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)
         .preferredColorScheme(colorScheme)
@@ -315,6 +323,19 @@ struct MainView: View {
             && !appState.currentMode.isRealtime
         return TabStripPolicy.showsStrip(on: selectedTab, facts: stripFacts,
                                          onboarding: showOnboarding, typingOnVoice: typing)
+    }
+
+    /// What decides whether a transcript under review moves the wearer to Avenkin. "A sheet is up"
+    /// is every sheet this view presents from the root.
+    private var sendReviewFacts: SendReviewTabPolicy.Facts {
+        let manualSheetUp = appState.manualFigureRequest.map { !presentsManualInline($0) } ?? false
+        let sheetUp = appState.showManualPicker || appState.phoneCameraRequest != nil
+            || appState.toolPhotoRequest != nil || appState.pendingSiriContent != nil || manualSheetUp
+            || appState.vaultFileRequest != nil || appState.deliveryComposerRequest != nil
+            || appState.deliveryShareItem != nil || appState.supportReportRequest != nil
+            || appState.jobSends.handoverDraft != nil
+        return .init(reviewID: appState.pendingTranscript?.id, onboarding: showOnboarding,
+                     sheetPresented: sheetUp, carPlay: appState.carPlayConnected)
     }
 
     /// What the tabs reported, with the parts this view already holds.

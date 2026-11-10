@@ -320,6 +320,23 @@ All eight taken as recommended.
    The watch target compiles none of the phone's files, so the two wire strings are spelled out there and a
    test pins them.
 
+## Review follow-up (2026-11-10)
+
+A code review of the merged work found two ways a turn that answered something could still end with the
+tone. Status unchanged (🚧, P4 device pass and catalog sync owed); both fixed headlessly:
+
+1. **A question after the action.** `UtteranceQuestionCue` read only the opening words and a trailing "?".
+   "Turn off the kitchen lights and what time is it" (no "?" from the recogniser) opened with "turn", and a
+   polite opener ("Can you set a timer … and what's 15% of 80?") returned before the "?" was read. It now
+   reads every sentence and every clause (after a comma, a dash, "and", "then", "also", "but", "so", "or"):
+   a clause that opens with a question word or "tell me" asks, once a polite opener is taken off, and a "?"
+   counts unless its sentence opened with a polite request. "Can you turn off the lights?" is still a
+   request.
+2. **A reply-side guard (rule 7b, `ReplyBeyondSummaryCue`, reason `replyBeyondSummary`).** A quiet ending
+   stands in for a confirmation, so the reply must be one: no number (digits or a number word) the tools'
+   done summaries don't carry, and no longer than six words per action plus six. "Timer set for 10
+   minutes." beside "Timer 10 minutes" stays quiet; "Kitchen lights off. It's 3:45." speaks.
+
 ## Phases (one PR each)
 
 ### P0 — the pure core (headless)

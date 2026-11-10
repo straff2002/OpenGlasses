@@ -133,6 +133,7 @@ final class ReplayBufferService: ObservableObject {
 
     /// Re-read every condition and start or stop the buffer to match. Cheap; safe to call often.
     func reconcile() {
+        discardIfBlurTurnedOn()
         let next = currentDecision()
         switch (decision, next) {
         case (.run(let running), .run(let wanted)):
@@ -154,6 +155,7 @@ final class ReplayBufferService: ObservableObject {
 
     private func begin(_ plan: ReplayBufferPlan) {
         guard let source else { return }
+        blurWasOn = seams.filterEnabled()
         generation += 1
         ring = ReplaySegmentRing(capacity: plan.capacity)
         bufferedSeconds = 0
@@ -221,6 +223,7 @@ final class ReplayBufferService: ObservableObject {
     /// whole behaviour, and a test drives them with frames of its own making.
     func ingest(_ image: UIImage) {
         guard isRunning, let size = Self.encodeSize(of: image) else { return }
+        discardIfBlurTurnedOn()
         let now = seams.now()
         if deliveredSize != size {
             deliveredSize = size
@@ -315,6 +318,35 @@ final class ReplayBufferService: ObservableObject {
         await settle()
     }
 
+    // MARK: - The blur switched on (review follow-up 2026-11-10)
+
+    /// The blur switch as last seen while the buffer ran.
+    private var blurWasOn: Bool?
+
+    /// Bystander blur went from off to on: everything buffered before that moment held faces the
+    /// wearer has now said to blur, so it goes — the segment being written, the ones finishing and
+    /// the ring — and the buffer carries on from nothing, the same rule as a new length. Read on
+    /// every frame, on the one-second tick and at save time, so a save straight after the switch
+    /// never reaches footage from before it.
+    private func discardIfBlurTurnedOn() {
+        let on = seams.filterEnabled()
+        defer { blurWasOn = on }
+        guard isRunning, blurWasOn == false, on else { return }
+        let discarded = discardBuffered()
+        PrivacyLog.recording(.replayBufferStopped, count: discarded, detail: PrivacyToken("blurTurnedOn"))
+    }
+
+    /// Cancel the open segment, drop any still finishing, and delete the ring. Returns how many
+    /// finished segments went.
+    private func discardBuffered() -> Int {
+        let held = ring.count
+        current?.writer.cancel()
+        current = nil
+        generation += 1
+        wipeEverything()
+        return held
+    }
+
     // MARK: - Files
 
     /// Files a save is reading. Evicted while pinned, they are deleted when the save ends.
@@ -345,12 +377,7 @@ final class ReplayBufferService: ObservableObject {
     /// indexed by who appears in it, so forgetting a person forgets the whole buffer.
     @discardableResult
     func deleteAll() -> Int {
-        let held = ring.count
-        current?.writer.cancel()
-        current = nil
-        generation += 1
-        wipeEverything()
-        return held
+        discardBuffered()
     }
 
     // MARK: - Saving
@@ -372,9 +399,15 @@ final class ReplayBufferService: ObservableObject {
         defer { isSaving = false }
 
         await rollSegment()
+        // The blur may have come on while the last segment closed.
+        discardIfBlurTurnedOn()
         guard let span = ring.span(coveringLast: seconds, now: seams.now()) else {
             return .init(result: .refused(.nothingBuffered))
         }
+        // Everything that erases the buffer — a delete-all, a subject erasure, the buffer ending,
+        // the blur coming on — bumps the generation. A clip composed from footage erased while it
+        // was being read is not filed anywhere (review follow-up 2026-11-10).
+        let startedIn = generation
 
         let names = span.segments.map(\.fileName)
         pinned.formUnion(names)
@@ -391,6 +424,13 @@ final class ReplayBufferService: ObservableObject {
             PrivacyLog.recording(.replaySaveFailed, detail: PrivacyToken("composeFailed"),
                                  error: SafeErrorSummary(error))
             return .init(result: .refused(.couldNotSave))
+        }
+        discardIfBlurTurnedOn()
+        guard generation == startedIn, isRunning else {
+            try? FileManager.default.removeItem(at: output)
+            PrivacyLog.recording(.replaySaveFailed, detail: PrivacyToken("erasedWhileSaving"))
+            if case .off(let reason) = self.decision { return .init(result: .refused(.notRunning(reason))) }
+            return .init(result: .refused(.nothingBuffered))
         }
         // The file's own length is what was kept: a 30-second ask normally yields 30–32, because
         // the cut lands on a segment's keyframe.

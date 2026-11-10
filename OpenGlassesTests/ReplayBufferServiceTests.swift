@@ -474,6 +474,78 @@ final class ReplayBufferServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Review follow-up 2026-11-10
+
+    private func scratchFiles() -> [String] {
+        (try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("scratch").path)) ?? []
+    }
+
+    func testFootageFromBeforeTheBlurWasSwitchedOnIsNeverSaved() async {
+        filter = false
+        let service = makeService()
+        feed(10)
+        await service.settle()
+        XCTAssertFalse(service.ring.isEmpty)
+        filter = true   // switched on; no frame has arrived since
+        let outcome = await service.save(ReplaySaveRequest())
+        XCTAssertEqual(outcome.result, .refused(.nothingBuffered))
+        XCTAssertTrue(composer.composed.isEmpty, "nothing from before the switch is read")
+        XCTAssertTrue(filesInBuffer().isEmpty, "and none of it is left on disk")
+        XCTAssertTrue(service.isRunning, "the buffer carries on from nothing")
+    }
+
+    func testTheSwitchIsNoticedBetweenFramesAndOnlyLaterFootageIsKept() async throws {
+        filter = false
+        let service = makeService()
+        feed(10)
+        await service.settle()
+        let before = Set(service.ring.segments.map(\.fileName))
+        filter = true
+        service.reconcile()   // the one-second tick
+        XCTAssertTrue(service.ring.isEmpty)
+        XCTAssertTrue(filesInBuffer().isEmpty)
+        feed(6)
+        let outcome = await service.save(ReplaySaveRequest(destination: .job))
+        let composed = try XCTUnwrap(composer.composed.first)
+        XCTAssertTrue(Set(composed).isDisjoint(with: before), "only footage from after the switch")
+        XCTAssertEqual(job.attached.first?.filterWasOn, true)
+        XCTAssertTrue(outcome.didSave)
+    }
+
+    func testTurningTheBlurOffKeepsWhatIsBuffered() async {
+        let service = makeService()
+        feed(10)
+        await service.settle()
+        let held = service.ring.count
+        filter = false
+        service.reconcile()
+        XCTAssertEqual(service.ring.count, held, "only off to on erases: the footage was already blurred")
+    }
+
+    func testAClipComposedFromFootageErasedWhileItWasReadIsNotFiled() async {
+        let service = makeService()
+        feed(35)
+        composer.duringCompose = { _ = service.deleteAll() }
+        let outcome = await service.save(ReplaySaveRequest(destination: .photos))
+        XCTAssertEqual(outcome.result, .refused(.nothingBuffered))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recordings.path), "nothing reaches Recordings")
+        XCTAssertTrue(photosCalls.isEmpty, "or Photos")
+        XCTAssertTrue(scratchFiles().isEmpty, "and the composed clip is deleted")
+    }
+
+    func testAClipComposedWhileTheBufferEndedIsNotFiledToTheJob() async {
+        let service = makeService()
+        feed(35)
+        composer.duringCompose = { [unowned self] in
+            self.streaming = false
+            service.reconcile()
+        }
+        let outcome = await service.save(ReplaySaveRequest(destination: .job))
+        XCTAssertEqual(outcome.result, .refused(.notRunning(.cameraOff)))
+        XCTAssertTrue(job.attached.isEmpty)
+        XCTAssertTrue(scratchFiles().isEmpty)
+    }
+
     func testTheStatusLine() async {
         let service = makeService()
         XCTAssertEqual(service.statusLine, "Instant Replay is on and just getting started.")

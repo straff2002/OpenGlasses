@@ -198,12 +198,21 @@ enum ProviderSearchPolicy {
         var country: String? = nil
     }
 
+    /// Rules 1–2 alone: the boundaries that keep every search off, whatever was decided before.
+    /// A turn that attached a search asks this again every round (review follow-up 2026-11-10):
+    /// a vault-only job opened by a tool in round one, or Medical Compliance turned on mid-turn,
+    /// stops the provider's search for the rest of the turn exactly as it refuses our own tool.
+    static func boundary(_ inputs: Inputs) -> Reason? {
+        if inputs.hipaaMode || inputs.medicalLocalOnly || !inputs.egressAllowsWebSearch {
+            return .medicalBoundary
+        }
+        if inputs.vaultOnlySealed { return .vaultOnly }
+        return nil
+    }
+
     static func decide(_ inputs: Inputs) -> Decision {
         // 1–2: the boundaries that keep every search off.
-        if inputs.hipaaMode || inputs.medicalLocalOnly || !inputs.egressAllowsWebSearch {
-            return .ourTool(.medicalBoundary)
-        }
-        if inputs.vaultOnlySealed { return .ourTool(.vaultOnly) }
+        if let reason = boundary(inputs) { return .ourTool(reason) }
         // 3: never more search than our own tool would have had.
         guard inputs.webSearchDeclared else { return .ourTool(.notDeclared) }
         // 4–5: the wearer's choices.

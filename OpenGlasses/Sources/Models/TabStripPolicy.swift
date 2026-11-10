@@ -100,3 +100,31 @@ enum TabStripPolicy {
         }
     }
 }
+
+/// Where a transcript under review is shown (review follow-up 2026-11-10, Plans KY and JM P1).
+///
+/// The strip's mic works on every tab, but "Check what I said before sending" draws its review —
+/// the transcript, its countdown and Cancel — only in the Avenkin tab's typed bar. Left on another
+/// tab, the countdown would send words the wearer never saw. So a review that begins anywhere else
+/// brings the wearer to the Avenkin tab, where the reply lands anyway. Pure.
+enum SendReviewTabPolicy {
+    struct Facts: Equatable {
+        /// The review in force, if any; a new one is a new id.
+        var reviewID: UUID?
+        /// Onboarding is drawn over the tabs; the review is not moved under it.
+        var onboarding: Bool
+        /// A sheet is up from the root (a manual page, the camera, a report): it covers the tabs,
+        /// and switching under it could re-home what it shows. Asked again once it closes.
+        var sheetPresented: Bool
+        /// CarPlay is watching the turn. A review never starts there (`SendReviewPolicy`); this
+        /// keeps the phone's tab still if one is somehow in force.
+        var carPlay: Bool
+    }
+
+    /// The tab to bring forward, or nil to leave the selection alone.
+    static func tab(for facts: Facts, current: MainTab) -> MainTab? {
+        guard facts.reviewID != nil, current != .voice,
+              !facts.onboarding, !facts.sheetPresented, !facts.carPlay else { return nil }
+        return .voice
+    }
+}

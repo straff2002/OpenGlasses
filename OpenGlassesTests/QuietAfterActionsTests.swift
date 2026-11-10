@@ -102,6 +102,63 @@ final class QuietTurnJudgeTests: XCTestCase {
         XCTAssertFalse(UtteranceQuestionCue.isQuestion("Could you pause the music", languageCode: "en"))
     }
 
+    // Review follow-up 2026-11-10: a question after the action, with no question mark, must speak.
+    func testAQuestionAfterAnActionSpeaksWithoutAQuestionMark() {
+        XCTAssertEqual(verdict(input([lightsOff], utterance: "turn off the kitchen lights and what time is it",
+                                     reply: "Kitchen lights off.")),
+                       .speak(reason: .askedQuestion))
+        XCTAssertEqual(verdict(input([call("music_control", completion: .done(summary: "Paused"))],
+                                     utterance: "pause the music and tell me what's next", reply: "Paused.")),
+                       .speak(reason: .askedQuestion))
+        XCTAssertTrue(UtteranceQuestionCue.isQuestion("Lights off, then how long is the timer", languageCode: "en"))
+        XCTAssertTrue(UtteranceQuestionCue.isQuestion("Can you tell me the time", languageCode: "en"),
+                      "a polite question still asks")
+    }
+
+    func testAPoliteOpenerDoesNotHideALaterQuestion() {
+        XCTAssertEqual(verdict(input([timer], utterance: "Can you set a timer for 10 minutes and what's 15% of 80?",
+                                     reply: "Timer set for 10 minutes.")),
+                       .speak(reason: .askedQuestion))
+        XCTAssertTrue(UtteranceQuestionCue.isQuestion("Could you turn off the lights. Is the door locked?",
+                                                      languageCode: "en"))
+    }
+
+    func testPlainActionsAreStillNotQuestions() {
+        for utterance in ["turn off the lights", "can you turn off the lights?", "set a timer for ten minutes",
+                          "Set a timer for ten minutes and pause the music", "Could you dim the lights, please"] {
+            XCTAssertFalse(UtteranceQuestionCue.isQuestion(utterance, languageCode: "en"), utterance)
+        }
+        XCTAssertEqual(verdict(input([lightsOff], utterance: "turn off the lights")),
+                       .quiet(summary: "Kitchen lights off"))
+        XCTAssertEqual(verdict(input([lightsOff], utterance: "can you turn off the lights?")),
+                       .quiet(summary: "Kitchen lights off"))
+        XCTAssertEqual(verdict(input([timer], utterance: "set a timer for ten minutes",
+                                     reply: "Timer set for 10 minutes.")),
+                       .quiet(summary: "Timer 10 minutes"))
+        XCTAssertEqual(verdict(input([timer], utterance: "set a timer for ten minutes",
+                                     reply: "Ten-minute timer set.")),
+                       .quiet(summary: "Timer 10 minutes"), "a number word is its digits")
+    }
+
+    func testAReplyCarryingANumberTheToolsDidNotReportSpeaks() {
+        XCTAssertEqual(verdict(input([lightsOff], reply: "Kitchen lights off. It's 3:45.")),
+                       .speak(reason: .replyBeyondSummary))
+        XCTAssertEqual(verdict(input([lightsOff], reply: "Kitchen lights off, and it's a quarter to four.")),
+                       .speak(reason: .replyBeyondSummary))
+        XCTAssertEqual(verdict(input([timer], reply: "Timer set for 10 minutes. That comes to 12.")),
+                       .speak(reason: .replyBeyondSummary))
+    }
+
+    func testALongReplySaysMoreThanAConfirmation() {
+        let long = "Kitchen lights off. By the way, the forecast says it will be sunny all afternoon today."
+        XCTAssertEqual(verdict(input([lightsOff], reply: long)), .speak(reason: .replyBeyondSummary))
+        XCTAssertFalse(ReplyBeyondSummaryCue.saysMore("Okay, I've turned off the kitchen lights.", than: [lightsOff]))
+        XCTAssertFalse(ReplyBeyondSummaryCue.saysMore("I've set a timer for ten minutes and paused the music.",
+                                                      than: [timer, call("music_control",
+                                                                         completion: .done(summary: "Paused"))]))
+        XCTAssertEqual(ReplyBeyondSummaryCue.numbers(in: "Alarm 07:00, ten past, 3pm"), [7, 0, 10, 3])
+    }
+
     func testACaveatOrAQuestionInTheReplySpeaks() {
         XCTAssertEqual(verdict(input([lightsOff], reply: "Done, but the hall light didn't respond.")),
                        .speak(reason: .replyHasMore))
