@@ -94,6 +94,10 @@ final class HUDAnswerCard {
     private var turnFollowUps: [String] = []
     /// The open turn staged a manual page (Plan KV §4).
     private var turnStagedPage = false
+    /// Plan KZ: how many web sources the open turn's reply has, and whether it has Google's
+    /// Search Suggestions; both are on the phone, and the card says so in one line.
+    private var turnWebSourceCount = 0
+    private var turnHasSearchSuggestions = false
     /// The card's turn staged a page: its Actions offer **Page** while the lens can show it.
     private(set) var hasPage = false
 
@@ -176,6 +180,8 @@ final class HUDAnswerCard {
         turnHasCard = false
         turnFollowUps = []
         turnStagedPage = false
+        turnWebSourceCount = 0
+        turnHasSearchSuggestions = false
     }
 
     /// Plan KV §4: the open turn staged a manual page. Its card's Actions offer **Page**.
@@ -224,6 +230,38 @@ final class HUDAnswerCard {
         turn = nil
     }
 
+    /// Plan KZ: the open turn's reply rests on `count` web pages, and maybe Google's Search
+    /// Suggestions. The final card ends with one line saying where to find them — no addresses on
+    /// the lens. The Display draws text, not Google's snippet, so the suggestions are pointed to on
+    /// the phone rather than re-styled here.
+    func offerWebSources(count: Int, hasSearchSuggestions: Bool) {
+        guard turn != nil else { return }
+        turnWebSourceCount = max(0, count)
+        turnHasSearchSuggestions = hasSearchSuggestions
+        guard let open = turn, open.isFinished else { return }
+        update()
+    }
+
+    /// The card's closing line for a reply's web sources and suggestions, or nil.
+    static func webSourcesLine(count: Int, hasSearchSuggestions: Bool) -> String? {
+        switch (count, hasSearchSuggestions) {
+        case (0, false): return nil
+        case (0, true): return String(localized: "Google search suggestions on your phone")
+        case (1, false): return String(localized: "1 web source on your phone")
+        case (1, true): return String(localized: "1 web source and Google search suggestions on your phone")
+        case (let n, false): return String(localized: "\(n) web sources on your phone")
+        case (let n, true): return String(localized: "\(n) web sources and Google search suggestions on your phone")
+        }
+    }
+
+    /// What the pager lays out: the answer, and once it is final, the sources line under it.
+    private func cardText(for turn: HUDAnswerTurn) -> String {
+        guard turn.isFinished,
+              let line = Self.webSourcesLine(count: turnWebSourceCount,
+                                             hasSearchSuggestions: turnHasSearchSuggestions) else { return turn.text }
+        return turn.text + "\n\n" + line
+    }
+
     /// A line the speech service is about to say as an answer. True when the card took it (shown,
     /// collected, or already on the card); false sends it down today's `showText` path.
     @discardableResult
@@ -248,7 +286,7 @@ final class HUDAnswerCard {
         guard let turn, !turn.isEmpty else { return }
         let shape = geometry()
         let questionLine = HUDAnswerCardBuilder.questionLine(for: turn.question, maxChars: shape.maxChars)
-        let laid = HUDAnswerPager.pages(for: turn.text, geometry: shape,
+        let laid = HUDAnswerPager.pages(for: cardText(for: turn), geometry: shape,
                                         firstPageReservedLines: questionLine == nil ? 0 : 1)
         guard !laid.isEmpty else { return }
         if !turnHasCard {

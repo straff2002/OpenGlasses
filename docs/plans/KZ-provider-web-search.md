@@ -1,7 +1,10 @@
 # Plan KZ — Search the Web the Provider's Own Way (the chosen AI runs the search itself when it can)
 
-**Status:** 📝 Drafted 2026-11-10. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-10, P0–P3 in one branch ([As built](#as-built-2026-11-10)): Anthropic,
+OpenAI, xAI, OpenRouter and Gemini (with Google's Search Suggestions under the reply) search for
+themselves; Groq is built but held off. P4, the live pass against the real providers, is owed, and so
+is the catalog sync. Every decision below was taken as recommended, except Decision 6, which the owner
+took differently (Gemini on).
 **Track:** Everyday assistant (Direct mode). Field Assist is unchanged: a vault-only job never searches.
 **Builds on:** `web_search` (`WebSearchTool`), Plan [GC](GC-openai-responses-reasoning.md) (`OpenAIRouteSelector`,
 `sendOpenAIResponses`), Plan [BW](BW-chatgpt-subscription-provider.md) (the ChatGPT sign-in path), Plan
@@ -307,7 +310,7 @@ it keeps our tool as a function. Gemini Live does accept `{google_search:{}}`, b
 (§6) has no place to land mid-voice, and the Live socket closes on a bad setup field. It is a later item once
 decision 6 is taken for Direct mode.
 
-## Decisions for Greig (open)
+## Decisions for Greig (taken 2026-11-10)
 
 Recommendations first.
 
@@ -320,9 +323,10 @@ Recommendations first.
 4. **Anthropic on `web_search_20250305`** to start. Move to the newer version only if P0 shows a clear gain.
 5. **OpenRouter uses `engine:"native"`** only for models whose provider searches, and our tool otherwise. Exa
    (`engine:"auto"`'s fallback) is a further search company the wearer has not chosen.
-6. **Gemini waits.** Its terms require Google's Search Suggestions to be shown with every grounded answer, and a
-   glasses wearer often hears the answer with the phone in a pocket. Recommend Gemini keeps our tool until
-   you've read the terms and decided that rendering the suggestions in the conversation is enough.
+6. ~~**Gemini waits.**~~ **Decision 6 taken 2026-11-10 by the owner: Gemini grounding on; Search Suggestions
+   shown under the reply in the conversation thread (phone, and the Display as far as it can), stored with the
+   message; the owner's reading is that a spoken answer is an agent's summary of an agentic search.**
+   (The recommendation had been for Gemini to keep our tool until the terms were read.)
 7. **After a search failure inside a turn, our tool for 10 minutes**, then the provider again.
 8. **A turn that read the web asks before any high-impact action**, even with agent mode off (§5 rule 1).
 9. **Country only** as the location hint.
@@ -392,3 +396,124 @@ Recommendations first.
   tool has the provider's own description. The prompt sentence in §6 covers the answer style, not the decision
   to search. P4 measures how often a no-search question searched.
 - **Gemini's display terms.** Settled by decision 6 before any Gemini code.
+
+## As built (2026-11-10)
+
+P0–P3 in one branch. P4 (the live pass) is owed; the catalog sync is owed in its own PR.
+
+**The core (pure, table-tested).** `Services/LLM/ProviderSearch/`:
+- `ProviderSearchPolicy` — the §1 rule table (`decide`), the support table (`supportedKind`), the withholding
+  helpers for all three tool shapes (Anthropic flat, OpenAI `function`, Gemini `functionDeclarations`), and the
+  prompt sentence. `ProviderSearchSpec` builds each provider's fragment.
+- `ProviderSearchEvidence` — one parser per shape (Anthropic blocks, Responses items and annotations, Chat
+  Completions annotations and `executed_tools`, Gemini `groundingMetadata`), bounded (5 queries × 200 characters,
+  10 sources by address, 10 snippets × 150). `WebSource`, `SearchSuggestions` (Google's snippet kept byte for
+  byte, the queries, and the `sdkBlob` links), `SearchSuggestionsLinkPolicy`, `ReplyAttachments`.
+- `ProviderSearchRefusal.classify` and `ProviderSearchMemory` (refusals per provider and credential
+  fingerprint — the first 12 hex digits of its SHA-256, never the credential — persisted in preferences under
+  `providerSearchRefusals`; per-model for `toolUnsupported`; the 10-minute cool-off in memory only).
+- `TurnWebExposure` (a task-local, per-turn mark), `ProviderSearchStatusLine` and `ProviderSearchLive` (the
+  live inputs, shared by the send paths, the settings line and Cloud AI Sharing).
+- `Services/TTS/CitationMarkupStripper` (whole text and a streaming form that never releases half a link);
+  `Services/Usage/SearchFeeTable`.
+
+**Wired, per provider (`LLMService`).**
+- *Anthropic* (`sendAnthropic`): `web_search_20250305`, `max_uses: 3`, the country hint; our `web_search`
+  withheld; `streamAnthropicContent` assembles `server_tool_use` input deltas and `citations_delta`; the blocks
+  are replayed unchanged within the turn (`CrossProviderHistory` now reads them as native Anthropic blocks) and
+  stripped from the history when the turn ends (`HistoryHygiene.stripProviderSearchBlocks`); `pause_turn` is a new
+  `AnthropicReply.Outcome.paused`, resumed once with the paused content sent back as it is. A cited reply's text
+  blocks are joined without a newline (they split mid-sentence at every citation).
+- *OpenAI* (Responses): a new `OpenAIRouteSelector` rule (`.providerSearch`) moves a search turn to Responses on
+  OpenAI's own host, ahead of the non-reasoning rule; GC's Chat Completions fallback drops the search.
+  `ResponsesTranslator.RequestOptions` gained `hostedTools` and `extraInclude`.
+- *xAI*: the same rule sends a Grok 4+ turn to `https://api.x.ai/v1/responses` (never to OpenAI's host with an
+  empty base URL), with `include: ["no_inline_citations"]`, no reasoning setting, no encrypted reasoning and no
+  cache key. `RequestContextBudget` gives that endpoint the Grok 4 family's 256k window.
+- *OpenRouter* (Chat Completions): `openrouter:web_search` with `engine: "native"`, `max_results: 5`,
+  `max_uses: 3`, only for `anthropic/`, `openai/` and `x-ai/` models (Decision 5). Annotations are read from the
+  message and from stream deltas, then taken off before the message enters the history.
+- *Gemini* (`sendGemini`, AI Studio only): `{"google_search":{}}` beside the function declarations, with
+  `toolConfig.functionCallingConfig.mode: VALIDATED`, on Gemini 3 and later text models. The grounding
+  metadata gives the sources and the Search Suggestions.
+- *Groq*: fragment and parser built; `ProviderSearchPolicy.groqBrowserSearchEnabled = false`.
+- Every path runs inside `retryingWithoutProviderSearch`: a refusal that names search is remembered, the turn's
+  own appends rewound (the question stays), and the turn run once more with our tool — only if no tool has run.
+
+**The surfaces.**
+- `ConversationMessage` gained optional `webSources` and `searchSuggestions` (old threads decode unchanged; an
+  ordinary reply stores neither). `LLMService.replyWebSources` / `replySearchSuggestions` are handed over once
+  (`takeReplyWebAttachments`) to the message saved on the spoken and typed paths; our own tool's `Sources:` line
+  feeds the same list.
+- Phone: `MessageBubble` shows **Sources (n)** (a sheet of title and site, each a `Link` to Safari) and, under a
+  grounded Gemini reply, `SearchSuggestionsView` — Google's snippet loaded unaltered into a non-scrolling
+  `WKWebView` (non-persistent data store) sized to its content; a tapped link opens in Safari directly, anything
+  else is cancelled, nothing is logged.
+- Display: the answer card ends with "3 web sources on your phone" or "… and Google search suggestions on your
+  phone". The Display draws text, not HTML, so the suggestions are pointed to on the phone rather than re-styled.
+- Speech: `TextToSpeechService.speakReporting` strips citation markup before speaking or mirroring to the lens;
+  `DirectReplySpeechStream` strips before the sentence splitter and reconciles against the stripped reply.
+- §5: `ToolAuthorizationPolicy` rule 1b — with agent mode off, a turn marked as having read the web asks before
+  any `isHighImpact` tool; no coordinator means refused. The prompt sentence says the pages are untrusted.
+- §9: `TurnRecorder.noteProviderSearch` (outcome `provider`; queries, cited pages and snippets, masked and
+  bounded like our tool's) and `noteProviderSearchRefused`.
+- §7: `UsageTracker.recordSearches` writes a priced row (no tokens) per searched response.
+- Settings › Services › Web Search: **Let the AI search the web itself** (default on) with its line.
+- §10: `CloudServiceCatalog.providerSearchRoute` lists the active model's host under Web search while the policy
+  would attach search; each send path asks Cloud AI Sharing's "Web search" question before attaching, and the
+  Responses route moves only after a yes. No new `NetworkRoute`. `privacy.html` (the Web search row, Google's
+  30-day retention for grounded prompts and answers, and the AI turn records), the manifest comment and the
+  diagnostics copy changed.
+
+**Deviations, and why.**
+- *Decision 6 reversed by the owner* (above): Gemini on, suggestions stored with the message and shown in the
+  thread; the Display gets the pointer line.
+- *Account sign-ins keep our tool* (Anthropic's Claude sign-in, xAI's account sign-in): neither provider
+  documents server tools for those tokens, so rule 6 treats them as unverified (`.accountSignIn`).
+- *Groq is off*: its docs say gpt-oss can mix built-in and local tools only in general terms, and document neither
+  `executed_tools` nor a price, so the switch line could not state a fee.
+- *OpenRouter's `google/` models keep our tool*: no Search Suggestions come back through OpenRouter.
+- *Vertex keeps our tool*: not verified.
+- *Bare addresses are dropped* from speech rather than said as a site name.
+- *Search fees are separate priced usage rows* rather than a new column, so Insights and the spend caps count
+  them without a schema change.
+- *The OpenAI pre-route asks for consent* before the round's own decision, since the route is chosen first.
+- *The ChatGPT backend keeps today's path* (no probe possible without its documentation), as do on-device models.
+
+**P0 documentation findings** (read 2026-11-10, official docs only):
+- Anthropic (platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool, …/server-tools): verified the
+  tool shape, the result and error blocks (error codes as listed above, in a 200), citations with `cited_text` ≤
+  150 characters, `usage.server_tool_use.web_search_requests`, streaming (`server_tool_use` input as
+  `input_json_delta`, the result whole in `content_block_start`), `pause_turn` (send the content back unchanged
+  with the same tools), and the org-disabled 400 `invalid_request_error`. Not documented: the exact refusal
+  wording, and server tools with sign-in tokens. `web_search_20260209` needs code execution by default (or
+  `allowed_callers: ["direct"]`) and is not available on Vertex or Foundry: no clear gain, so `20250305` stays.
+- OpenAI (developers.openai.com/api/docs/guides/tools-web-search, …/pricing): verified the tool and its knobs,
+  `web_search_call` actions, `url_citation` annotations, `include: ["web_search_call.action.sources"]`, $10 per
+  1,000 calls. Not documented: the error for a model without search, mixing with function tools, and the
+  `response.web_search_call.*` stream event names.
+- xAI (docs.x.ai/developers/tools/web-search, …/function-calling, …/citations, …/pricing): verified
+  `/v1/responses`, the tool and filters, `no_inline_citations`, annotations whose title is the citation number,
+  `citations`, mixing with function tools, $5 per 1,000. Not documented: `instructions`, a result-count knob,
+  and Chat Completions search (the Live Search page is gone).
+- OpenRouter (openrouter.ai/docs/guides/features/server-tools/web-search, …/features/web-search): verified the
+  server tool and its parameters, annotations nested under `url_citation`,
+  `usage.server_tool_use_details.web_search_requests`, the 403s for locked workspaces, Exa at $0.007 per request.
+  Not documented: where streamed annotations arrive (both the delta and a closing message are read), and mixing
+  with function tools.
+- Groq (console.groq.com/docs/browser-search, …/tool-use/built-in-tools, …/deprecations): verified
+  `browser_search` on gpt-oss-20b/120b/safeguard-20b and Compound's retirement on 2026-09-21. Not documented:
+  `executed_tools`, the markers, the price, and mixing with function tools specifically.
+- Gemini (aistudio.google.com/docs/google-search, …/tool-combination, …/api-reference/generate-content,
+  …/pricing): verified `groundingMetadata`'s fields, Google Search with function declarations on Gemini 3 and
+  later (`VALIDATED` mode), and the price (5,000 free a month, then $14 per 1,000). The guide now leads with the
+  Interactions API; the `generateContent` reference names the field `googleSearch` (the REST shape `google_search`
+  is sent). Not documented on those pages: the exact Search Suggestions display rules.
+- The speech path already turned `[text](url)` into its words (`SpokenSymbolExpander`), but not xAI's `[[1]](url)`,
+  Groq's markers or bare addresses; `CitationMarkupStripper` now runs before it, and before the streamed splitter.
+
+**Owed.** P4 on real keys for each provider (open-now, news and no-search questions; an Anthropic organisation
+with search off; a locked OpenRouter workspace; Groq's free tier before turning it on; the cost per 100 searched
+turns against each bill; on the glasses, no URL spoken and the sources line); OpenAI's and xAI's replay of
+`web_search_call` items across a tool round with `store: false`; the catalog sync for the new strings.
+

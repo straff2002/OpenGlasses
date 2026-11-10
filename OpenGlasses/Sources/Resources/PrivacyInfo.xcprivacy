@@ -25,7 +25,12 @@
   / etc. for LLM + vision, ElevenLabs / OpenAI / xAI / Gemini for TTS, Deepgram for diarized
   captions, Deepgram or OpenAI for dictation when the wearer chooses a cloud
   recognizer (off by default), Perplexity / Tavily / Brave /
-  SearXNG (user-configured) / DuckDuckGo for search, Apple WeatherKit for weather,
+  SearXNG (user-configured) / DuckDuckGo for search, or the wearer's own AI provider when it
+  runs the search itself ("Let the AI search the web itself": the query travels inside the
+  conversation request, on the conversation route, to the host already approved for
+  conversation, and is covered by the SearchHistory entry below; with Google Gemini the search
+  runs on Google Search and Google keeps the prompt and answer for 30 days to produce the
+  results), Apple WeatherKit for weather,
   adsb.fi for flights, RTMP / WebRTC for live streaming). There is no analytics, crash-reporting, or advertising SDK, and no
   cross-app/-developer tracking. Requests are authenticated to provider accounts and
   content may identify the user or other people; there is no guaranteed de-identification

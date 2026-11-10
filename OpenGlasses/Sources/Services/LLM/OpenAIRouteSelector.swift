@@ -25,6 +25,10 @@ import Foundation
 ///    at that family's lowest setting (Plan KJ P1). An explicit `none` is rule 8 and stays.
 /// 10. Any other Automatic with tools → Chat Completions at `none`: GB's cheap default, unchanged.
 ///
+/// Plan KZ adds one rule ahead of 3 for the OpenAI provider on its own host, and one for xAI:
+/// a request that carries the provider's own web search goes to Responses, the only endpoint
+/// where that search exists, unless Responses refused the model earlier in the run (4 wins).
+///
 /// Pure and table-tested. `LLMService` consults it once per request before building the URL, and
 /// the model editor shows the same selection, so what the tester reads is what goes on the wire.
 enum OpenAIRouteSelector {
@@ -71,6 +75,8 @@ enum OpenAIRouteSelector {
         case customHostResponsesURL
         /// Responses refused this model earlier in this run → Chat Completions at `none`.
         case responsesRefusedEarlier
+        /// The provider's own web search rides on this request, and it exists only on Responses.
+        case providerSearch
 
         /// One plain sentence for the model editor.
         var explanation: String {
@@ -97,6 +103,8 @@ enum OpenAIRouteSelector {
                 return String(localized: "The base URL names a Responses endpoint.")
             case .responsesRefusedEarlier:
                 return String(localized: "The Responses API refused this model earlier, so tool turns use Chat Completions without reasoning until the app restarts.")
+            case .providerSearch:
+                return String(localized: "This model runs its own web searches, which only the Responses API offers.")
             }
         }
     }
@@ -135,7 +143,8 @@ enum OpenAIRouteSelector {
     static func select(provider: LLMProvider, model: String, baseURL: String,
                        toolsAttached: Bool, requested: String?,
                        learnedToolRejection: Bool = false,
-                       learnedResponsesRejection: Bool = false) -> Selection {
+                       learnedResponsesRejection: Bool = false,
+                       providerSearch: Bool = false) -> Selection {
         func resolve(_ route: ReasoningRoute, learned: Bool? = nil) -> ReasoningPolicy.Resolution {
             ReasoningPolicy.resolve(provider: provider, model: model, route: route,
                                     toolsAttached: toolsAttached, requested: requested,
@@ -150,6 +159,14 @@ enum OpenAIRouteSelector {
 
         // 1. Other providers keep their own shape; an OpenAI-compatible one may opt in by URL —
         //    unless that endpoint refused this model earlier in the run (4).
+        // Plan KZ: xAI's own search exists only on `/v1/responses`. Grok takes no reasoning
+        // setting there, so nothing is sent for it.
+        if provider == .xai, providerSearch, !learnedResponsesRejection {
+            return Selection(endpoint: .responses,
+                             reasoning: ReasoningPolicy.Resolution(wire: .omit, effective: .notApplicable,
+                                                                   reason: .noEffortSetting),
+                             reason: .providerSearch)
+        }
         guard provider == .openai else {
             let ownRoute = ReasoningRoute.route(for: provider)
             if ownRoute == .chatCompletions, baseURLNamesResponses(baseURL) {
@@ -173,6 +190,11 @@ enum OpenAIRouteSelector {
             return learnedResponsesRejection
                 ? chat(.responsesRefusedEarlier, learned: true)
                 : responses(.customHostResponsesURL)
+        }
+        // Plan KZ: the provider's own web search exists only on Responses — for a reasoning model
+        // at the level its rules give that route, and for a model without one as it is.
+        if providerSearch, !learnedResponsesRejection {
+            return responses(.providerSearch)
         }
         // 3. Non-reasoning models (gpt-4o, gpt-4.1, gpt-5-chat-latest) never move.
         guard let family = ReasoningPolicy.openAIFamily(model: model) else {

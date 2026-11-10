@@ -17,13 +17,22 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
     /// field existed decode unchanged, and nil (not an empty list) is what a tool-free reply
     /// stores, so the saved file only grows for the turns that carry it.
     let toolNames: [String]?
+    /// Plan KZ: the web pages this reply rests on — cited by the AI provider's own search or
+    /// listed by Avenkin's — shown as **Sources (n)**. Optional so threads saved before the field
+    /// existed decode unchanged, and nil for a reply without sources.
+    let webSources: [WebSource]?
+    /// Plan KZ: Google's Search Suggestions for a grounded Gemini reply, kept with it so they are
+    /// shown under it in the thread however long after it landed. Nil for every other reply.
+    let searchSuggestions: SearchSuggestions?
+
     /// Plan LA: this reply ended with the done tone rather than being spoken. Optional and nil for
     /// every ordinary reply, so threads saved before it existed decode unchanged and the file only
     /// grows for the turns that carry it.
     var endedQuietly: Bool?
 
     init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false,
-         toolNames: [String] = [], endedQuietly: Bool = false) {
+         toolNames: [String] = [], webSources: [WebSource] = [],
+         searchSuggestions: SearchSuggestions? = nil, endedQuietly: Bool = false) {
         self.id = UUID().uuidString
         self.role = role
         self.content = content
@@ -31,8 +40,13 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
         self.timestamp = Date()
         self.answeredOnDevice = answeredOnDevice ? true : nil
         self.toolNames = toolNames.isEmpty ? nil : toolNames
+        self.webSources = webSources.isEmpty ? nil : webSources
+        self.searchSuggestions = searchSuggestions
         self.endedQuietly = endedQuietly ? true : nil
     }
+
+    /// The reply's sources; empty when it has none.
+    var sources: [WebSource] { webSources ?? [] }
 
     /// Whether this reply ended with the done tone (Plan LA).
     var isEndedQuietly: Bool { endedQuietly ?? false }
@@ -308,12 +322,16 @@ class ConversationStore: ObservableObject {
     @discardableResult
     func appendMessage(role: String, content: String, imageAttached: Bool = false,
                        answeredOnDevice: Bool = false, toolNames: [String] = [],
+                       webSources: [WebSource] = [],
+                       searchSuggestions: SearchSuggestions? = nil,
                        endedQuietly: Bool = false,
                        toThread threadId: String? = nil) -> String? {
         let target = threadId ?? activeThreadId
         guard let idx = threads.firstIndex(where: { $0.id == target }) else { return nil }
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
                                       answeredOnDevice: answeredOnDevice, toolNames: toolNames,
+                                      webSources: webSources,
+                                      searchSuggestions: searchSuggestions,
                                       endedQuietly: endedQuietly)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = msg.timestamp

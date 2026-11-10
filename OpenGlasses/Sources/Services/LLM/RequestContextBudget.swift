@@ -54,6 +54,12 @@ enum RequestContextBudget {
             return openAIAPIContext(model: model).map { Limit(context: $0, provenance: "openaiModelPages20260930") }
                 ?? Limit(context: 128_000, provenance: "openaiUnknownModelConservativeV1")
         }
+        // Plan KZ: xAI's Responses endpoint, reached when Grok runs its own web search. The Grok 4
+        // family's window is 256k on xAI's model pages; the faster variants are larger.
+        if URL(string: endpoint)?.host?.lowercased() == "api.x.ai",
+           ProviderSearchPolicy.xaiModelSearches(model.lowercased()) {
+            return Limit(context: 256_000, provenance: "xaiGrok4Family20261110")
+        }
         guard URL(string: endpoint)?.host == "chatgpt.com",
               URL(string: endpoint)?.path == "/backend-api/codex/responses" else {
             return Limit(context: 32_768, provenance: "unknownEndpointConservativeV1")
