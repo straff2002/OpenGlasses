@@ -47,7 +47,14 @@ final class ProviderSearchEvidenceTests: XCTestCase {
     func testAnthropicCitedTextIsJoinedWithoutBreakingTheSentence() {
         let content = json(anthropicResponse)["content"] as! [[String: Any]]
         XCTAssertEqual(AnthropicReply.text(in: content),
-                       "I'll check the shop list.It's open until 9 tonight, according to the airport's shop list.")
+                       "I'll check the shop list. It's open until 9 tonight, according to the airport's shop list.",
+                       "two whole sentences cut at a block boundary get their space back (review follow-up 2026-11-10)")
+        // Cut mid-sentence at a citation, nothing is added.
+        XCTAssertEqual(AnthropicReply.text(in: [
+            ["type": "text", "text": "Let me check."],
+            ["type": "text", "text": "The shop is open", "citations": [["type": "web_search_result_location", "url": "https://a.example"]]],
+            ["type": "text", "text": " until 9, per its site."],
+        ]), "Let me check. The shop is open until 9, per its site.")
         // Without citations the blocks stay on their own lines, as before.
         XCTAssertEqual(AnthropicReply.text(in: [["type": "text", "text": "a"], ["type": "text", "text": "b"]]), "a\nb")
     }

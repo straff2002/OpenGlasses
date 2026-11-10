@@ -115,11 +115,15 @@ enum AnthropicReply {
     /// The reply's text: every `text` block, joined the way the tool loop has always joined them.
     ///
     /// A reply that cites web search results (Plan KZ) is cut into many text blocks at every
-    /// citation, mid-sentence; those are one text, so they are joined with nothing between.
+    /// citation, mid-sentence; those are one text, so they are joined with nothing between — and
+    /// the space a block boundary left out between two whole sentences ("Let me check.The shop
+    /// is…") is put back, as the Gemini path does.
     static func text(in content: [[String: Any]]) -> String {
         let texts = content.filter { ($0["type"] as? String) == "text" }
         let cited = texts.contains { !(($0["citations"] as? [[String: Any]]) ?? []).isEmpty }
-        return texts.compactMap { $0["text"] as? String }.joined(separator: cited ? "" : "\n")
+        let pieces = texts.compactMap { $0["text"] as? String }
+        guard cited else { return pieces.joined(separator: "\n") }
+        return TextSegmentJoiner.repairingGluedSentences(pieces.joined())
     }
 
     static func outcome(stopReason: String?, text: String, hasToolCalls: Bool) -> Outcome {
