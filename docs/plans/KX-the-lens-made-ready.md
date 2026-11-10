@@ -1,6 +1,6 @@
 # Plan KX — The Lens Made Ready (offered on connect, hardened for the real Display, and the screens the ecosystem shows are worth having)
 
-**Status:** 🚧 Drafted and building 2026-11-11, all phases headless. The device pass is owed and is folded
+**Status:** 🚧 Drafted and building 2026-11-11, all phases headless; P0–P3 built. The device pass is owed and is folded
 into KP P6 / KV P5 (nobody on the team has a Display yet; the partner's is still on order).
 **Track:** Display (Meta Ray-Ban Display through stable `MWDATDisplay` 1.0.1). Nothing here links or
 calls an experimental DAT API; gesture work stays in Plan [JV](JV-dat-experimental-testflight-lane.md).
@@ -81,6 +81,31 @@ action as the heading ("Send to Sam?"), one preview line, and **Approve** (prima
 **Details** (when there is more on the phone). It stays until answered or until its timeout, which
 denies. Voice yes/no and the Watch still answer it. A temple tap never approves.
 
+**Built 2026-11-11 (P2).** `HUDApprovalCardBuilder` (pure) splits the consent surface's summary at its
+first ": " (or after a first sentence that is already a question) into the heading and one preview
+line, behind a ⚠ meta line naming who asks ("The assistant asks", BN P1's attribution); a first part
+too long for a heading gets the generic **Approve?** and the whole ask as the preview. Items are
+**Approve** (primary, focused) · **Deny** (`kx.approval.deny`) · **Details** (only when the preview was
+cut), and Details shows the ask over up to four lines with Approve · Deny · ‹ Back (focused) and "The
+rest is on your phone" when even that is cut. `HUDApprovalCard` watches
+`ToolConfirmationCoordinator.pending`, so a band press, a spoken yes/no (`resolveByVoice`, unchanged)
+or the phone's card all answer it and close it; band presses are gated on `acceptsHeldScreenPress`, so
+one made under a notification is dropped. `GlassesDisplayService.presentApprovalCard` /
+`endApprovalCard` hold the card over whatever the lens had and restore it afterwards (a task card, a
+menu, an answer card, the turn's card, a page view); while it is up a task card or menu that changes
+goes underneath it, an answer flashes over it, a page view does not open, and a screen that ends under
+it does not come back. Decided differently: **there was no approval timeout to reuse** (the 10 s was
+only the ambient line's lifetime; the coordinator waits indefinitely), so the card brings its own,
+`HUDApprovalCard.defaultTimeout` = **20 s** — twice the old line, long enough to read and answer by
+voice after the prompt is spoken, inside the panel's 25 s wake — and it belongs to the card: an ask the
+lens could not hold waits on the phone as before. The card is not wearer-led, so it does **not**
+reopen a lens the wearer dismissed (the ask is still spoken and on the phone), and a text-reply ask
+(Plan FE) keeps the old line. The spoken prompt is no longer mirrored while the card is up (it would
+cover the card and make its buttons stale). **There is no Watch confirm today** (the Watch app has no
+approval surface), so "the Watch still answers it" is true only once one exists — it will, because
+the card follows `pending`. Temple taps have no approval effect in `TempleActionResolver`, and the
+card takes no press from them.
+
 ### 4 · Listening → thinking → answer, and the Today glance (P3)
 
 - **Listening** (the live partial transcript, at most one send per 0.4 s, the final always sent) →
@@ -90,6 +115,47 @@ denies. Voice yes/no and the Watch still answer it. A temple tap never approves.
   an active timer or route, the top digest item, then **What's new** (primary) · **Resume** ·
   **Navigate** · **Menu**. Summoned (voice "show my day", a temple-tap quick action, the Watch), never
   always on: the panel sleeps at 25 s and a session is the wearer's to start.
+
+**Built 2026-11-11 (P3a, Listening → Thinking).** `HUDTurnStateBuilder` (pure) draws **Listening…**
+(the partial transcript's newest words in the body style) and **Thinking…** (the heard question as the
+answer card's "You: …" line), each with **Stop** (`kx.turn.stop`, focused). `HUDPartialThrottle` (pure)
+allows one partial per `HUDSendPacer.textGap` (0.4 s) and the final always; a partial inside the gap
+waits it out and the newest goes then. `HUDTurnState` runs it: `beginListening()` from
+`handleWakeWordDetected` (the wake word, a tap, the Action Button, a temple tap) — a wearer-led frame,
+so it reopens a dismissed lens through the new `presentTurnState(_:wearerStarted:onSelect:)`; partials
+from `TranscriptionService.$currentTranscription`; `heard()` from `onTranscriptionComplete`;
+`thinking()` where `handleTranscription` hands the turn to the assistant (after the voice commands, so
+a command never flashes Thinking). The answer card replaces it (`acceptsAnswerCard` now accepts over
+the turn's card); `end()` clears it when the turn is over without one (`resumeListeningOrReturnToWakeWord`,
+the silence timeout, an empty final, `isProcessing` going false, Assistive Mode or a narration command
+taking the transcript), with a 30 s / 90 s lifetime as a backstop. `acceptsTurnState` keeps it off a
+task card, a menu, a page view and an approval card; guidance and anything else taking the lens end it;
+a line spoken during the turn (an error) flashes over it and its own auto-clear clears the lens. Stop on
+Listening is the phone's Tap to stop (`endListeningSession`), on Thinking the phone's cancel
+(`cancelCurrentResponse`). Decided: the follow-up capture a conversation re-arms by itself does **not**
+show Listening — it would cover the answer card being read — so the states are for the turn that opened
+the conversation. Held screens, not ambient frames: Stop needs a button, and a held screen keeps
+captions off the wearer's own words.
+
+**Built 2026-11-11 (P3b, Today).** `HUDTodayBuilder` (pure) builds L0 from a plain `HUDTodayGlance`:
+time · glasses battery (`clock`, meta; the battery only while connected), the next event (`calendar`:
+"Now: …", "10:30 …", "Today: …"), the weather (`weather`, with WeatherKit's service name as its
+credit), the walking route (`navigation`), the digest's top item (`info`), then **What's new**
+(`branch:digest`, primary, focused) · **Resume** (`branch:resume`, only with a task card running) ·
+**Navigate** (`branch:navigate`, only with a recent destination) · **Menu** (`today:menu`, pushes the
+existing branch list, whose Close closes the launcher and "back" returns to Today) · **Close**. Rows and
+items with nothing to show are left off. `HUDTodayGlance.make` reads the Watch's Today value
+(`WatchTodayBuilder.payload` over `MyDayService.gathered`, Plan KS), so the lens and the wrist read the
+same day under the same Medical Compliance rules (titles withheld under any mode, weather off under
+Local Only); yesterday's gathering adds nothing, and opening Today fetches nothing.
+`NotificationDigestService.topLine(now:)` gives the deterministic top line (never the model rewrite,
+never marks anything seen). New `HUDIcon` cases `.weather` (DAT `.cloud`) and `.clock` (DAT `.clock`),
+with glyphs on the Even G2, the web mirror and the phone preview. Summoned only: "menu" as before, and
+"show my day" / "show today" while the lens can show it (otherwise the words still reach My Day). Not
+built: an active timer row (no timer service the lens can read yet) and the temple-tap and Watch
+summon paths the section names — the launcher opens the same way from any of them once they call
+`HUDLauncher.open()`. A launcher with no `today` source (the tests' rigs) opens at the branch list as
+before.
 
 ### 5 · Live-mode answers and the picture behind a vision answer (P4)
 
@@ -133,8 +199,8 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
 
 - **P0** — the offer on connect.
 - **P1** — hardening (focus, dismissal, exits, pacer, mic).
-- **P2** — Approve / Deny cards.
-- **P3** — listening/thinking states and the Today glance.
+- **P2** — Approve / Deny cards. ✅ Built 2026-11-11 (§3).
+- **P3** — listening/thinking states and the Today glance. ✅ Built 2026-11-11 (§4).
 - **P4** — live-mode answer cards and vision thumbnails.
 - **P5** — captions, navigation arrow, timer and media cards, Home Assistant list, teleprompter
   voice-follow, Field Assist clips.

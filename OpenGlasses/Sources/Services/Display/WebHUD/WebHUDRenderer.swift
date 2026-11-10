@@ -85,7 +85,7 @@ enum WebHUDRenderer {
         const POLL_SECONDS = \(pollInterval);
         const GLYPHS = { none: "", info: "(i)", success: "[OK]", warning: "[!]", error: "[X]",
           navigation: "\u{2192}", hazard: "[!]", calendar: "[\u{25A4}]", location: "[\u{2302}]",
-          reminder: "[\u{2022}]", message: "[\u{2709}]" };
+          reminder: "[\u{2022}]", message: "[\u{2709}]", weather: "[\u{2601}]", clock: "[\u{25F7}]" };
         let lastKey = null;
         let current = null;      // the last payload from the phone
         let localPage = 0;       // the answer page shown here (Plan KP)

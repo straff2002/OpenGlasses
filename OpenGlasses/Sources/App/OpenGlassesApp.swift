@@ -1446,6 +1446,12 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The answer card on the lens (Plan KP P1): a turn's answer a page at a time, with its
     /// actions under it.
     lazy var hudAnswerCard = HUDAnswerCard(display: glassesDisplay)
+    /// The approval card on the lens (Plan KX §3): the shared consent surface's ask, held until it
+    /// is answered or times out to Deny.
+    lazy var hudApprovalCard = HUDApprovalCard(display: glassesDisplay, coordinator: toolConfirmationCoordinator)
+    /// Listening → Thinking on the lens for a turn the wearer started (Plan KX §4), until the
+    /// answer card replaces it.
+    lazy var hudTurnState = HUDTurnState(display: glassesDisplay)
     /// The band check (Plan KP §5): Practise the band, on the lens and the phone page.
     lazy var bandPractice = BandPracticeSession(display: glassesDisplay)
     /// The manual page on the lens (Plan KV): the view, zoomed by band or voice, and the
@@ -2627,6 +2633,9 @@ class AppState: ObservableObject, AppStateProtocol {
             // cannot forget to and leave the hold window measuring from nothing.
             guard isProcessing != oldValue else { return }
             turnStartedAt = isProcessing ? Date() : nil
+            // Plan KX §4: a Thinking card no answer replaced (a failed or cancelled turn, one a
+            // command answered) clears when processing stops.
+            if !isProcessing { hudTurnState.processingEnded() }
         }
     }
 
@@ -2849,12 +2858,18 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         toolConfirmationCoordinator.onSpeakPrompt = { [weak self] prompt in
             guard let self else { return }
-            // Shared consent surface (BN P1): spoken prompt + in-lens HUD card together.
-            self.glassesDisplay.showNotification(title: "Approve?", body: prompt, icon: .info, duration: 10)
+            // Shared consent surface (BN P1): spoken prompt + in-lens HUD card together. Plan KX §3:
+            // the lens half is `hudApprovalCard`, which watches the coordinator's `pending` — a held
+            // Approve / Deny card, or the old ten-second line when the lens can't hold one. This runs
+            // before `pending` is set; the speech below starts after it, so it can tell whether the
+            // card went up, and is not mirrored over it (a mirrored line would cover the card and
+            // make its buttons stale for five seconds).
             Task { @MainActor in
-                await self.speechService.speak(prompt, source: .confirmation)
+                await self.speechService.speak(prompt, source: .confirmation,
+                                               mirrorToHUD: !self.glassesDisplay.showsApprovalCard)
             }
         }
+        hudApprovalCard.start()
 
         // Readable memory by voice (Plan GG P3). Registered here rather than in the registry's
         // init because it needs the stores AppState owns. It reads no wider than the model could
@@ -4722,6 +4737,35 @@ class AppState: ObservableObject, AppStateProtocol {
         hudLauncher.openDigest = { [weak self] in
             Task { await self?.notificationDigest.presentGlance() }
         }
+        // Plan KX §4: the launcher opens at the Today glance, built from what the app already holds
+        // — My Day's last gathering through the Watch's Today value (Plan KS, with its Medical
+        // Compliance rules), the glasses' battery while connected, the route and the digest. It
+        // fetches nothing: a day My Day has not gathered shows the time and the rest that is known.
+        hudLauncher.today = { [weak self] in
+            guard let self else { return nil }
+            let now = Date()
+            let calendar = Calendar.autoupdatingCurrent
+            let today = self.myDayService.gathered.map { gathered in
+                WatchTodayBuilder.payload(from: gathered, .init(
+                    now: now, calendar: calendar, medical: MedicalEgressGuard.currentMode(),
+                    temperatureUnit: WeatherUnits.forLocale(.autoupdatingCurrent).temperature == .fahrenheit
+                        ? .fahrenheit : .celsius,
+                    attribution: WatchTodayAttribution(
+                        serviceName: WeatherAttributionStore.shared.info.serviceName,
+                        legalPageURL: WeatherAttributionStore.shared.info.legalPageURL.absoluteString)))
+            }
+            let route: String?
+            switch self.walkingRoute.state {
+            case .guiding(let destination):
+                route = self.walkingRoute.currentHUDLine
+                    ?? String(localized: "To \(destination)", comment: "Glasses: Today glance, the walking route's destination.")
+            case .idle, .resolving, .arrived:
+                route = nil
+            }
+            return HUDTodayGlance.make(now: now, calendar: calendar, locale: .autoupdatingCurrent,
+                                       batteryPercent: self.glassesService.batteryLevel, today: today,
+                                       route: route, digestTop: self.notificationDigest.topLine(now: now))
+        }
 
         // Walking navigation (Plan CA): location + HUD + urgency-scaled TTS, launcher recents.
         walkingRoute.locationService = locationService
@@ -5008,15 +5052,22 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.dictationIsFollowUp = false   // Plan JM P0: this turn heard something
                 self.noteTypeInstead(TypeInsteadPolicy.event(forTranscript: text))   // Plan JM P1
                 self.noteUserInteraction()   // Plan W: a spoken command is an explicit engagement
+                // Plan KX §4: the final transcript always reaches the Listening card (an empty one
+                // clears it).
+                self.hudTurnState.heard(text)
                 // While Assistive Mode (A3) is active it owns the loop — feed the transcript to bias
                 // Scene vs Social routing instead of starting a normal turn.
                 if AssistiveModeService.shared.isActive {
+                    self.hudTurnState.end()
                     AssistiveModeService.shared.noteTranscription(text)
                     return
                 }
                 // Plan CV P2: "start narrating" / "stop narrating" drive the narration mode rather
                 // than becoming a turn of their own.
-                if self.handleNarrationCommand(text) { return }
+                if self.handleNarrationCommand(text) {
+                    self.hudTurnState.end()
+                    return
+                }
                 // Plan JM P1: "Check what I said before sending" — the transcript waits in the chat
                 // bar, and its countdown (or the wearer) runs the turn below.
                 if self.beginSendReviewIfWanted(text) { return }
@@ -5029,6 +5080,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in
                 guard let self else { return }
                 self.noteDictationHeardNothing()
+                self.hudTurnState.end()   // Plan KX §4: nothing was heard
                 PrivacyLog.app(.conversationEnded, detail: PrivacyToken("silence"))
                 await self.returnToWakeWord()
             }
@@ -7392,6 +7444,8 @@ class AppState: ObservableObject, AppStateProtocol {
             playAcknowledgmentTone: { [self] in speechService.playAcknowledgmentTone() },
             startRecording: { [self] in
                 dictationIsFollowUp = false
+                // Plan KX §4: the wearer started this turn; the lens shows Listening.
+                hudTurnState.beginListening()
                 transcriptionService.startRecording()
             },
             updateLiveActivity: { [self] in updateLiveActivity() }
@@ -7432,6 +7486,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// - Parameter ensureEngine: run the audio-engine keepalive first — needed after TTS playback,
     ///   which may have interrupted the engine.
     private func resumeListeningOrReturnToWakeWord(ensureEngine: Bool = false) async {
+        // Plan KX §4: the turn is over. Its Listening or Thinking card clears if no answer card
+        // replaced it (a command handled it, or it was answered by voice only).
+        hudTurnState.end()
         // Barge-in owns the next input. The cancelled task still restores its resources, but
         // must not start dictation or replay held speech while its replacement is waiting.
         guard !spokenTurnGate.isReplacing else { return }
@@ -7539,8 +7596,13 @@ class AppState: ObservableObject, AppStateProtocol {
                 return true
             },
             // HUD launcher (Display Phase 4 / Plan Y): "menu" opens the band-navigable launcher.
+            // Plan KX §4: so does "show my day", at the same Today glance — but only while the lens
+            // can show it, so without a display the words still reach My Day as a spoken briefing.
             VoiceCommandHandler(label: "hud-launcher-open") { [weak self] text in
-                guard let self, HUDLauncher.isOpenCommand(text), self.hudLauncher.hasContent else { return false }
+                guard let self else { return false }
+                let asked = HUDLauncher.isOpenCommand(text)
+                    || (HUDLauncher.isTodayCommand(text) && self.glassesDisplay.answerSurface != .none)
+                guard asked, self.hudLauncher.hasContent else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudLauncherOpen"))
                 self.hudLauncher.open()
                 await self.resumeListeningOrReturnToWakeWord()
@@ -8051,6 +8113,7 @@ class AppState: ObservableObject, AppStateProtocol {
     private func wireAnswerCard() {
         speechService.answerCard = hudAnswerCard
         hudRouter.answerCard = hudAnswerCard
+        wireTurnState()
         // Plan KP P2: the Direct prompt asks for follow-ups only while this says something shows them.
         FollowUpPrompt.currentSurface = { [weak display = glassesDisplay] in display?.answerSurface ?? .none }
         hudAnswerCard.submitTurn = { [weak self] text in
@@ -8068,6 +8131,18 @@ class AppState: ObservableObject, AppStateProtocol {
             if case .completed = outcome { return true }
             return false
         }
+    }
+
+    /// Plan KX §4: the Listening and Thinking cards. The recogniser's live transcript feeds the
+    /// Listening card (the card ignores it unless a turn the wearer started has its card up); Stop
+    /// on Listening is the phone's Tap to stop, and on Thinking the phone's cancel.
+    private func wireTurnState() {
+        let partials = transcriptionService.$currentTranscription
+            .removeDuplicates()
+            .sink { [weak self] text in self?.hudTurnState.partial(text) }
+        cancellables.append(partials)
+        hudTurnState.onStopListening = { [weak self] in self?.endListeningSession() }
+        hudTurnState.onCancelTurn = { [weak self] in self?.cancelCurrentResponse() }
     }
 
     /// Plan GE: close a phone turn that needed no model — a deterministic tool answer or the hold
@@ -8264,6 +8339,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // It now plays alongside the work, as the switch notice does: every path below that
         // speaks waits on `turnAnnouncement` first, so the disclosure is still heard whole.
         announceConversationCueIfDue()
+        // Plan KX §4: everything below answers the wearer, so the lens says Thinking (with what was
+        // heard) until the answer card replaces it.
+        hudTurnState.thinking(question: text)
 
         // A temple tap assigned to "ask my agent" opened this turn (Plan GJ): the utterance goes to
         // the agent. After the stop/goodbye handlers, so those still end the conversation.

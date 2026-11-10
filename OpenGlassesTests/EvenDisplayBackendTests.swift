@@ -98,7 +98,7 @@ final class EvenDisplayBackendTests: XCTestCase {
     func testAllTenIconsHaveAMonoDecision() {
         // `.none` maps to nothing; every other semantic icon maps to a glyph.
         for icon in [HUDIcon.info, .success, .warning, .error, .navigation, .hazard,
-                     .calendar, .location, .reminder, .message] {
+                     .calendar, .location, .reminder, .message, .weather, .clock] {
             XCTAssertNotNil(EvenScreenRenderer.iconGlyph(icon), "\(icon)")
         }
         XCTAssertNil(EvenScreenRenderer.iconGlyph(.none))

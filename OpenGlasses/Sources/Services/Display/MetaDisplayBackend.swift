@@ -538,6 +538,8 @@ extension HUDIcon {
         case .location: return .house
         case .reminder: return .bell
         case .message: return .speechBubble
+        case .weather: return .cloud
+        case .clock: return .clock
         }
     }
 }

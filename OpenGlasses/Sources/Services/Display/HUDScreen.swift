@@ -16,6 +16,8 @@ enum HUDIcon: Equatable {
     case info, success, warning, error
     case navigation, hazard
     case calendar, location, reminder, message
+    /// Plan KX §4: the Today glance's weather row and its time-and-battery line.
+    case weather, clock
 }
 
 /// Shared HUD text shaping (Plan AH — extracted from `GlassesDisplayService` so every

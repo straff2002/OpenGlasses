@@ -23,7 +23,7 @@ enum EvenFrame: Equatable {
 /// Pure `HUDScreen`/content → `EvenFrame` mapping for the monochrome 576×288 panel.
 /// Mono mappings (decided, tested): emphasis → plain / two-space indent / "· " prefix;
 /// buttons → numbered entries (the number grammar joins the voice-selection story); each
-/// of the ten semantic icons → a text glyph. Char budget is a device-pending starting
+/// of the semantic icons → a text glyph. Char budget is a device-pending starting
 /// point — 576 px at a ~12 px advance ≈ 48 cells; 44 leaves margin.
 enum EvenScreenRenderer {
 
@@ -75,7 +75,7 @@ enum EvenScreenRenderer {
 
     static func clearFrame() -> EvenFrame { .lines([]) }
 
-    /// All ten semantic icons, enumerated → a mono glyph (or nothing).
+    /// Every semantic icon, enumerated → a mono glyph (or nothing).
     static func iconGlyph(_ icon: HUDIcon) -> String? {
         switch icon {
         case .none: return nil
@@ -89,6 +89,8 @@ enum EvenScreenRenderer {
         case .location: return "[⌂]"
         case .reminder: return "[•]"
         case .message: return "[✉]"
+        case .weather: return "[☁]"
+        case .clock: return "[◷]"
         }
     }
 

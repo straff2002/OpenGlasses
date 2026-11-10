@@ -4,6 +4,12 @@ import Foundation
 /// root menu, pushes category submenus via `HUDRouter`, and runs leaf actions through
 /// closures injected by AppState. Screens come from the pure `HUDMenuBuilder`.
 ///
+/// Plan KX §4: the root (L0) is the Today glance (`HUDTodayBuilder`) — time and glasses battery,
+/// the next event, the weather, the route, the digest's top item — with What's new · Resume ·
+/// Navigate · Menu · Close. **Menu** pushes the branch list below. Today is summoned only (the
+/// "menu" and "show my day" voice commands), never shown by itself. A launcher with no `today`
+/// source wired opens at the branch list, as before.
+///
 /// Branches: Resume task · Quick Actions · Workflows · SOPs (Field Assist) · Mode/Persona ·
 /// Practise the band (Plan KP §5).
 /// Workflows and SOPs hand off to the Plan X Now/Next task card; the rest run an action and
@@ -41,25 +47,39 @@ final class HUDLauncher {
     var bandPracticeAvailable: (() -> Bool)?
     var startBandPractice: (() -> Void)?
 
+    /// Plan KX §4: the Today glance as it stands now, built from what the app already holds (My
+    /// Day's last gathering, the glasses' battery, the route, the digest). Nil — or not wired —
+    /// opens the launcher at its branch list.
+    var today: (() -> HUDTodayGlance?)?
+
     init(router: HUDRouter) {
         self.router = router
     }
 
-    /// Open the launcher at its root menu. No-op when no branch has content.
+    /// Open the launcher at its root: the Today glance, or (with no `today` source) the branch
+    /// list. No-op when neither has anything to show.
     func open() {
+        if let glance = today?() {
+            router.openLauncher(todayScreen(glance))
+            return
+        }
         let branches = rootBranches()
         guard !branches.isEmpty else { return }
-        router.openLauncher(HUDMenuBuilder.root(branches: branches, onClose: { [weak self] in
-            self?.router.dismiss()
-        }))
+        router.openLauncher(menuScreen(branches))
     }
 
     /// Whether the launcher would have anything to show (used to gate the open trigger).
-    var hasContent: Bool { !rootBranches().isEmpty }
+    var hasContent: Bool { today?() != nil || !rootBranches().isEmpty }
 
     /// Recognise the spoken phrase that opens the launcher.
     static func isOpenCommand(_ text: String) -> Bool {
         ["menu", "show menu", "open menu", "open the menu", "hud menu"].contains(normalize(text))
+    }
+
+    /// Plan KX §4: the spoken phrase that asks for the Today glance on the lens. Whole-phrase only,
+    /// so "what's on my day tomorrow" still reaches the assistant.
+    static func isTodayCommand(_ text: String) -> Bool {
+        ["show my day", "show me my day", "show today", "show me today"].contains(normalize(text))
     }
 
     /// Voice navigation within an open menu (Plan Y): match a spoken phrase to a visible
@@ -100,6 +120,41 @@ final class HUDLauncher {
     }
 
     // MARK: - Screens
+
+    /// L0 (Plan KX §4): the Today glance and its items. Each item is offered only when it has
+    /// something to do, read now: a digest to show, a task card to go back to, a recent destination,
+    /// a branch in the Menu.
+    private func todayScreen(_ glance: HUDTodayGlance) -> HUDScreen {
+        var actions = HUDTodayBuilder.Actions(close: { [weak self] in self?.router.dismiss() })
+        if digestHasContent?() == true {
+            actions.whatsNew = { [weak self] in self?.openDigest?() }
+        }
+        if router.isPresentingTask {
+            actions.resume = { [weak self] in self?.router.resumeTask() }
+        }
+        if !(recentDestinations?() ?? []).isEmpty {
+            actions.navigate = { [weak self] in
+                guard let self else { return }
+                self.router.push(self.navigateScreen())
+            }
+        }
+        if !rootBranches().isEmpty {
+            actions.menu = { [weak self] in
+                guard let self else { return }
+                // Built when pressed, so it lists what is available then.
+                self.router.push(self.menuScreen(self.rootBranches()))
+            }
+        }
+        return HUDTodayBuilder.screen(glance, actions: actions)
+    }
+
+    /// The branch list: L0 without a Today source, else what Today's **Menu** opens. Its Close
+    /// closes the launcher; "back" by voice returns to Today.
+    private func menuScreen(_ branches: [HUDItem]) -> HUDScreen {
+        HUDMenuBuilder.root(branches: branches, onClose: { [weak self] in
+            self?.router.dismiss()
+        })
+    }
 
     private func rootBranches() -> [HUDItem] {
         var branches: [HUDItem] = []

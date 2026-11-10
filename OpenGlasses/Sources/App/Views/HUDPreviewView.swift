@@ -445,6 +445,8 @@ private func sfSymbol(for name: MWDATDisplay.IconName) -> String {
     case .house: return "house"
     case .bell: return "bell.fill"
     case .speechBubble: return "bubble.left.and.text.bubble.right"
+    case .cloud: return "cloud"
+    case .clock: return "clock"
     default: return "circle.fill"
     }
 }
