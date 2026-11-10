@@ -72,6 +72,9 @@ enum SensitiveStore: String, CaseIterable {
     case capturedPhotos
     /// Kept caption sessions (Plan KP P5): only while Keep caption sessions is on.
     case captionSessions
+    /// Instant Replay's rolling buffer: only while the setting is on and the glasses camera is
+    /// already streaming.
+    case instantReplayBuffer
 
     // Field Assist and vaults
     case fieldSessionLogs
@@ -559,6 +562,27 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "CaptionSessionStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/CaptionSessions/CaptionSessionStore.swift"],
                           location: "Application Support/CaptionSessions/caption-session-{began}.json")
+
+        case .instantReplayBuffer:
+            // The last minute (by default) of what the glasses camera showed, as two-second
+            // segments, so a moment that has just happened can be kept. Bystanders are in it, so
+            // the linkage is third-party; through the blur relay, so with Blur Bystander Faces on
+            // the faces in it are blurred. Off by default. It exists only while the camera already
+            // streams for something else, and is deleted when that stream stops, when the setting
+            // goes off, in Medical Compliance mode, at a raised power posture, at launch and by a
+            // subject erasure — a segment is not indexed by who appears in it, so forgetting a
+            // person forgets the whole buffer. Never uploaded, never read by a model; a kept clip
+            // becomes an ordinary recording or job clip and is covered there.
+            return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUnlessOpen, backupExcluded: true,
+                          retention: .policy("while the glasses camera streams, at most the buffer "
+                                             + "length (30 s, 1 min or 2 min); deleted when the stream "
+                                             + "stops, the setting goes off, and at launch"),
+                          deleteAll: .api("ReplayBufferService.deleteAll()"),
+                          deleteSubject: .api("ReplayBufferService.deleteAll()"),
+                          owner: "ReplayBufferService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/InstantReplay/ReplayBufferService.swift"],
+                          location: "Application Support/InstantReplay/segment-{n}.mp4")
 
         case .capturedPhotos:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,

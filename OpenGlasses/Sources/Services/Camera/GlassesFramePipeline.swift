@@ -1,6 +1,7 @@
 #if !AVENKIN_PHONE_ONLY
 import Foundation
 import CoreMedia
+import QuartzCore
 #if !AVENKIN_PHONE_ONLY
 import MWDATCamera
 #endif
@@ -33,6 +34,13 @@ final class GlassesFramePipeline: @unchecked Sendable {
     /// old stream before it was torn down", and it asks after the teardown has already reset
     /// everything else here.
     private var samplesSeen = 0
+    /// Instant Replay P0: the frame-cadence measurement. Off unless the Developer panel's switch
+    /// is on; when it is, a minute of each stream's arrival and presentation times is judged once.
+    private let cadence: FrameCadenceRecorder
+
+    init(cadence: FrameCadenceRecorder = .shared) {
+        self.cadence = cadence
+    }
 
     /// Turn one delivered frame into the picture to publish, and say whether that picture is
     /// *fresh* — newly produced from this frame — or the last good one handed over again.
@@ -52,6 +60,7 @@ final class GlassesFramePipeline: @unchecked Sendable {
     /// decoded a second time.
     func picture(helperImage: UIImage?,
                  sampleBuffer: CMSampleBuffer) -> (image: UIImage?, isFresh: Bool) {
+        recordCadence(of: sampleBuffer, helperImage: helperImage)
         let shape = StreamCodecPolicy.shape(
             helperProducedImage: helperImage != nil,
             hasDataBuffer: CMSampleBufferGetDataBuffer(sampleBuffer) != nil,
@@ -168,6 +177,24 @@ final class GlassesFramePipeline: @unchecked Sendable {
         liveness.restart()
         loggedShape = nil
         loggedUnconvertible = false
+        cadence.streamReset()
+    }
+
+    /// Every delivered sample, before anything is decided about it: when it arrived and when the
+    /// glasses say it was captured. Arrival is `CACurrentMediaTime()`, the host clock the
+    /// recorders' own stamps come from.
+    private func recordCadence(of sampleBuffer: CMSampleBuffer, helperImage: UIImage?) {
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let presentation: TimeInterval? = pts.isValid && pts.isNumeric ? pts.seconds : nil
+        guard let report = cadence.record(arrival: CACurrentMediaTime(),
+                                          presentation: presentation) else { return }
+        // The size the glasses sent, from the sample's own format — present whether the sample
+        // is compressed or already a picture.
+        let dimensions = CMSampleBufferGetFormatDescription(sampleBuffer)
+            .map(CMVideoFormatDescriptionGetDimensions)
+        let width = dimensions.map { Int($0.width) } ?? helperImage.map { Int($0.size.width * $0.scale) }
+        let height = dimensions.map { Int($0.height) } ?? helperImage.map { Int($0.size.height * $0.scale) }
+        PrivacyLog.frameCadence(report, width: width, height: height)
     }
 
     private func logShapeOnce(_ shape: StreamCodecPolicy.FrameShape) {

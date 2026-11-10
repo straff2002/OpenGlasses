@@ -166,15 +166,21 @@ struct RecordingFiler {
 
     // MARK: - Naming (pure)
 
+    static let defaultPrefix = "Recording"
+    /// An Instant Replay kept into the Recordings folder.
+    static let replayPrefix = "Replay"
+
     /// Timestamped name for a recording that finished at `date` — "Recording_2026-08-24_143012.mp4".
     /// Sorts chronologically as text, which is how any file browser will list it.
+    /// `prefix` names what kind of recording it is: "Replay" for an Instant Replay kept from the
+    /// buffer, so the Recordings list can label it.
     static func fileName(for date: Date, fileExtension: String,
-                         timeZone: TimeZone = .current) -> String {
+                         timeZone: TimeZone = .current, prefix: String = defaultPrefix) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
-        let stem = "Recording_\(formatter.string(from: date))"
+        let stem = "\(prefix)_\(formatter.string(from: date))"
         return fileExtension.isEmpty ? stem : "\(stem).\(fileExtension)"
     }
 
@@ -213,8 +219,9 @@ struct RecordingFiler {
     /// business linking — so the caller performs it against `Outcome.primaryURL` and records the
     /// result on `savedToPhotos`. `saveToPhotos` here only says whether it was *asked for*, which
     /// is what `message` needs in order to be honest about what did and didn't land.
-    func file(_ source: URL, date: Date, saveToPhotos: Bool) -> Outcome {
-        let name = Self.fileName(for: date, fileExtension: source.pathExtension)
+    func file(_ source: URL, date: Date, saveToPhotos: Bool,
+              prefix: String = RecordingFiler.defaultPrefix) -> Outcome {
+        let name = Self.fileName(for: date, fileExtension: source.pathExtension, prefix: prefix)
 
         var outcome = Outcome(primaryURL: source,
                               savedToLibrary: false,

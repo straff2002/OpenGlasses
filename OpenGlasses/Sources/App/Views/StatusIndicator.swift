@@ -228,6 +228,11 @@ struct StatusIndicator: View {
                 // An open job, running or paused (`SessionCardJobPill`).
                 jobPill
                 glassesPill
+                // Instant Replay is keeping recent video from the glasses camera. Shown whenever
+                // the buffer runs, so it is never invisible.
+                if appState.instantReplay.isRunning {
+                    replayMark
+                }
                 if Config.isOpenClawConfigured {
                     openClawPill
                 }
@@ -776,6 +781,26 @@ struct StatusIndicator: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(SessionCardWakeWordNotice.accessibilityLabel)
         .accessibilityHint(SessionCardWakeWordNotice.accessibilityHint)
+    }
+
+    /// The Replay mark: not a button — what it says is that the buffer is running, and the switch
+    /// is in Settings › Devices & Privacy › Glasses.
+    private var replayMark: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "gobackward")
+                .accessibilityHidden(true)
+            Text("Replay")
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(OGTheme.secondaryLabel)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .glassEffect(in: .capsule)
+        .frame(minHeight: OGMetrics.minTouchTarget)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Instant Replay on")
+        .accessibilityHint("Keeping recent video from the glasses camera on this phone.")
     }
 
     private var reconnectingLabel: some View {

@@ -82,6 +82,7 @@ enum OfflineToolPolicy {
         "reading": .local,
         "reading_session": .local,
         "record_clip": .local,
+        "instant_replay": .local,         // copies the on-phone buffer into Recordings or the job
         "reminder": .local,
         "rule_chain": .local,             // runs over the phone's own tables and the job on it
         "save_location": .local,

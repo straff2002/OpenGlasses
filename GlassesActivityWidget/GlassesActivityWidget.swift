@@ -112,6 +112,14 @@ struct GlassesActivityWidget: Widget {
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer()
+                        // Instant Replay is keeping the last minute of the glasses camera: said
+                        // wherever the session is shown, so the buffer is never invisible.
+                        if context.state.instantReplayRunning == true {
+                            Label("Replay", systemImage: "gobackward")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                                .labelStyle(.titleAndIcon)
+                        }
                         if let battery = context.state.batteryLevel {
                             HStack(spacing: 2) {
                                 Image(systemName: batteryIcon(battery))

@@ -1220,6 +1220,9 @@ struct GlassesSettingsView: View {
             } footer: {
                 Text("Off unless you turn it on. Names only the people you enrol, and they aren't told.")
             }
+
+            // Instant Replay rides the glasses camera's stream, so its switch lives here too.
+            InstantReplaySettingsSection(replay: appState.instantReplay)
         }
         .navigationTitle("Glasses")
         // Opening this screen is when the line above is read, so the permission it is built on

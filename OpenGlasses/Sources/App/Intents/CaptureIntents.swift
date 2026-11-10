@@ -79,4 +79,37 @@ struct RecordGlassesVideoIntent: AppIntent {
     }
 }
 
+/// Shortcut: keep the last 30 seconds from Instant Replay, into Recordings.
+///
+/// The same as "save the replay": the glasses camera has to be streaming already and Instant
+/// Replay has to be on, and the spoken answer says why when it isn't. Opens the app, as
+/// `RecordGlassesVideoIntent` does. A Shortcuts action (and Action-button addable); not in
+/// `OpenGlassesShortcuts`, for the same 10-shortcut cap.
+struct SaveGlassesReplayIntent: AppIntent {
+    static var title: LocalizedStringResource = "Save Glasses Replay"
+    static var description = IntentDescription("Keep the last 30 seconds the glasses camera showed")
+
+    static var isDiscoverable: Bool { true }
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let appState = AppStateProvider.shared else {
+            throw IntentError.appNotRunning
+        }
+        let outcome = await appState.saveInstantReplay(ReplaySaveRequest())
+        return .result(dialog: IntentDialog(stringLiteral: outcome.spoken))
+    }
+
+    enum IntentError: Error, CustomLocalizedStringResourceConvertible {
+        case appNotRunning
+
+        var localizedStringResource: LocalizedStringResource {
+            switch self {
+            case .appNotRunning: return "Avenkin is not running. Open the app first."
+            }
+        }
+    }
+}
+
 #endif

@@ -3730,6 +3730,39 @@ struct Config {
 
     static func setPrivacyFilterEnabled(_ enabled: Bool) { privacyFilterEnabled = enabled }
 
+    // MARK: - Instant Replay
+
+    /// Keep the last minute the glasses camera already showed, while it streams for something
+    /// else, so a moment that has just happened can be saved. **Off by default**: it keeps video
+    /// of other people without a fresh request each time. An organisation profile may pin it off
+    /// (`SettingKey.instantReplayEnabled`), never on.
+    static var instantReplayEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.instantReplayEnabled,
+                                stored: UserDefaults.standard.object(forKey: "instantReplayEnabled") as? Bool ?? false)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.instantReplayEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "instantReplayEnabled")
+        }
+    }
+
+    /// How much Instant Replay keeps: 30 s, a minute (the default) or 2 minutes.
+    static var instantReplayBufferSeconds: TimeInterval {
+        get {
+            let stored = UserDefaults.standard.double(forKey: "instantReplayBufferSeconds")
+            return ReplayBufferPlan.bufferChoices.contains(stored) ? stored : ReplayBufferPlan.defaultBufferSeconds
+        }
+        set {
+            guard ReplayBufferPlan.bufferChoices.contains(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: "instantReplayBufferSeconds")
+        }
+    }
+
+    /// Developer panel: measure each glasses stream's frame cadence for its first minute and write
+    /// the reading to the camera log (Instant Replay P0). Off by default.
+    @UserDefaultsBacked("frameCadenceLoggingEnabled", default: false) static var frameCadenceLoggingEnabled: Bool
+
     /// Plan CO Item 1 — similarity gap the leading face must open over the runner-up before the
     /// name is spoken as a fact. Inside this margin the app names the possibilities instead of
     /// guessing. Configurable because the right value can only be found against real enrolments;

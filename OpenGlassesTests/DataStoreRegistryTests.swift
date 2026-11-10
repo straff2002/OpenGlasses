@@ -368,6 +368,19 @@ final class DataStoreRegistryTests: XCTestCase {
         try assertAttributes(of: XCTUnwrap(store.fileURL(for: session)), match: .captionSessions)
     }
 
+    /// Instant Replay: a buffer segment is protected the way the registry says, and out of backup.
+    /// Prepared and protected by the service's own helpers — the ones every finished segment
+    /// passes through.
+    func testInstantReplaySegmentAttributesMatchTheRegistry() throws {
+        let directory = workspace.appendingPathComponent("InstantReplay", isDirectory: true)
+        ReplayBufferService.prepareDirectory(directory)
+        let segment = directory.appendingPathComponent("segment-000001.mp4")
+        XCTAssertTrue(FileManager.default.createFile(atPath: segment.path, contents: Data("segment".utf8)))
+        ReplayBufferService.protect(segment)
+        try assertAttributes(of: segment, match: .instantReplayBuffer)
+        try assertAttributes(of: directory, match: .instantReplayBuffer)
+    }
+
     @MainActor
     func testSemanticMemoryDatabaseAttributesMatchTheRegistry() throws {
         let store = SemanticMemoryStore(directory: workspace)
