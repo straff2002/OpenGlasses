@@ -68,6 +68,13 @@ struct BrightnessTool: NativeTool {
         }
 
         let pct = Int(newBrightness * 100)
+        // Plan LA: the screen's brightness is set directly; asking for the level is a read and
+        // reports nothing.
+        ActionCompletionReport.record(Self.completion(percent: pct))
         return "Brightness set to \(pct)%."
+    }
+
+    static func completion(percent: Int) -> ActionCompletion {
+        .done(summary: "Brightness \(percent)%")
     }
 }

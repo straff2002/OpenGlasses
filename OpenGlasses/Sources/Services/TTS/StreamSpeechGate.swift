@@ -36,6 +36,12 @@ final class StreamSpeechGate {
         var holdWholeReply: (String) -> Bool = StreamSpeechGate.looksLikeMemoryCommand
         /// True when the reply's opening looks like a choice list. Latches.
         var looksLikeChoiceList: (String) -> Bool = StreamSpeechGate.looksLikeChoiceListOpening
+        /// Plan LA §3: given the tool calls the iteration just made, true to hold back its
+        /// preamble ("Turning off the lights.") rather than release it. Held text is never said.
+        var holdPreamble: ([QuietTurnCall]) -> Bool = { _ in false }
+        /// Plan LA §4: given the tool calls the iteration just made, true to hold the next
+        /// iteration whole until the turn's quiet-ending verdict is in.
+        var holdNextIteration: ([QuietTurnCall]) -> Bool = { _ in false }
 
         static let `default` = Rules()
     }
@@ -46,6 +52,9 @@ final class StreamSpeechGate {
         case choiceList
         /// A `<next>` arrived: the rest of the iteration is a follow-up tail (Plan KP P2).
         case followUpTail
+        /// Plan LA §4: every call of the last round reported done, so this iteration may be the
+        /// reply of a turn that ends with the done tone. Held whole until the judge decides.
+        case quietCandidate
     }
 
     private let rules: Rules
@@ -57,6 +66,9 @@ final class StreamSpeechGate {
     private(set) var text = ""
     /// The sentences released to speech in this iteration, in order.
     private(set) var released: [String] = []
+    /// Plan LA §3: the preambles held back at a stream reset rather than said, in order. Kept only
+    /// for the record; nothing reads them aloud.
+    private(set) var heldPreambles: [String] = []
     /// Set once the rest of the iteration is held for the end.
     private(set) var holdReason: HoldReason?
     /// How many characters of `text` the splitter has been handed.
@@ -116,8 +128,11 @@ final class StreamSpeechGate {
     /// way through a sentence) is dropped, not spoken. Everything is then cleared for the next
     /// iteration, including a hold: the held text belonged to an iteration whose words are not the
     /// reply.
-    func endIteration() -> [String] {
+    func endIteration(roundCalls: [QuietTurnCall] = []) -> [String] {
         var tail: [String] = []
+        // Plan LA §4: a quiet candidate held only to see whether it was the reply. It was not —
+        // the model called another tool — so it ends like any iteration that held nothing.
+        if holdReason == .quietCandidate { holdReason = nil }
         if holdReason == nil {
             text += thinkFilter.flush()
             if !rules.holdWholeReply(text), !rules.looksLikeChoiceList(text) {
@@ -125,12 +140,19 @@ final class StreamSpeechGate {
                 if holdReason == nil { tail += splitter.flushIfComplete() }
             }
         }
+        // Plan LA §3: the round was all reviewed actions, so its preamble is not said. If the turn
+        // ends spoken, only the final reply is said (one answer, said once).
+        if !tail.isEmpty, rules.holdPreamble(roundCalls) {
+            heldPreambles.append(tail.joined(separator: " "))
+            tail = []
+        }
+        let holdNext = rules.holdNextIteration(roundCalls)
         thinkFilter = ThinkStreamFilter(startsInThink: false)
         splitter = SentenceStreamSplitter(limits: limits)
         text = ""
         splitterFed = 0
         released = []
-        holdReason = nil
+        holdReason = holdNext ? .quietCandidate : nil
         return tail
     }
 

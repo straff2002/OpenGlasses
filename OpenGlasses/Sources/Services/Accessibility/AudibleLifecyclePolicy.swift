@@ -112,6 +112,10 @@ enum AudibleLifecyclePolicy {
         case captured
         /// Low double — it did not work.
         case failed
+        /// Soft high rising fifth — what you asked for has happened (Plan LA, `QuietDoneCue`).
+        /// Not a session cue: it ends a turn that changed something, instead of a spoken reply,
+        /// and is here so the sound tour teaches it with the others.
+        case done
     }
 
     /// Whether the wearer wants words with their tones.
@@ -385,6 +389,7 @@ enum AudibleLifecyclePolicy {
         Lesson(earcon: .restored, meaning: "This sound means the connection is back."),
         Lesson(earcon: .captured, meaning: "This sound means a photo you asked for was taken."),
         Lesson(earcon: .failed, meaning: "This sound means something didn't work and I can't carry on without you."),
+        Lesson(earcon: .done, meaning: QuietDoneCue.tourLine),
     ]
 
     /// The gap between one lesson's tone and its explanation, and between lessons. Long enough that

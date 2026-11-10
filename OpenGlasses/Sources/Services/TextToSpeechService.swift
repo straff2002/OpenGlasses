@@ -946,14 +946,30 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         playEarcon(ListeningCuePolicy.end, label: "listenEnd")
     }
 
+    /// Plan LA §5: the done tone — what the wearer hears instead of a spoken reply when everything
+    /// they asked for has happened (`QuietDoneCue`). It goes the way speech goes, so it reaches the
+    /// glasses on the same route, and waits (briefly) for anything still speaking to finish rather
+    /// than playing over it.
+    func playQuietDoneTone() async {
+        var waited = 0
+        while isSpeaking, waited < 60 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            waited += 1
+        }
+        playEarcon(QuietDoneCue.notes, label: "quietDone", volume: QuietDoneCue.volume)
+        // Returns once it has sounded, so the next cue (the listening tone as the mic reopens)
+        // follows it rather than landing on top of it.
+        try? await Task.sleep(nanoseconds: UInt64((QuietDoneCue.seconds + 0.15) * 1_000_000_000))
+    }
+
     /// Play a short earcon as one sound. One buffer rather than a tone per note: `tonePlayer` holds
     /// one player, so a second note started on a timer would release the first mid-note.
-    private func playEarcon(_ notes: [GlassesLinkCuePolicy.Note], label: String) {
+    private func playEarcon(_ notes: [GlassesLinkCuePolicy.Note], label: String, volume: Float = 0.7) {
         do {
             let toneData = try Self.generateEarconData(notes: notes, sampleRate: 44100)
             let player = try AVAudioPlayer(data: toneData)
             self.tonePlayer = player
-            player.volume = 0.7
+            player.volume = volume
             Self.prepareAndPlayOffMain(player)
         } catch {
             PrivacyLog.tts(.toneFailed, detail: PrivacyToken(label), error: SafeErrorSummary(error))
@@ -1039,6 +1055,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         case .restored: playRecoveryTone()
         case .captured: playPhotoTone()
         case .failed: playFailureTone()
+        case .done: playEarcon(QuietDoneCue.notes, label: "quietDone", volume: QuietDoneCue.volume)
         }
     }
 

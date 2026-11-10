@@ -17,12 +17,16 @@ struct MessageBubble: View {
     /// Who said it, what was said, and whether a photo went with it — one VoiceOver line.
     private var spokenLabel: String {
         let content = message.content
+        let line: String
         switch (isUser, message.imageAttached) {
-        case (true, false): return String(localized: "You: \(content)")
-        case (true, true): return String(localized: "You: \(content). Photo attached")
-        case (false, false): return String(localized: "AI: \(content)")
-        case (false, true): return String(localized: "AI: \(content). Photo attached")
+        case (true, false): line = String(localized: "You: \(content)")
+        case (true, true): line = String(localized: "You: \(content). Photo attached")
+        case (false, false): line = String(localized: "AI: \(content)")
+        case (false, true): line = String(localized: "AI: \(content). Photo attached")
         }
+        // Plan LA §6: a reply that was not spoken says so.
+        guard !isUser, message.isEndedQuietly else { return line }
+        return line + ". " + String(localized: "Ended with the done tone")
     }
     /// The sources this answer named. Machine-attached by the retriever and repeated by the model,
     /// so they point at real pages — which is what makes them safe to make tappable (Plan EK P3).
@@ -65,9 +69,15 @@ struct MessageBubble: View {
 
                 CitationChipsView(citations: citations)
 
-                Text(message.timestamp, style: .time)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(message.timestamp, style: .time)
+                    // Plan LA §6: the reply ended with the done tone instead of being spoken.
+                    if !isUser, message.isEndedQuietly {
+                        Image(systemName: "checkmark.circle")
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
 
             if !isUser { Spacer(minLength: 48) }

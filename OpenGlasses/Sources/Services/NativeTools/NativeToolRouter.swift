@@ -394,9 +394,15 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 // idempotency key rides alongside for any adapter that can put one on the wire.
                 // Plan GV: a phone-photo ledger rides too, so a photo the user cancelled reaches
                 // the model as a plain sentence whatever the tool itself says about it.
+                //
+                // Plan LA: the tool's own word on whether the request landed rides beside its
+                // string (`ActionCompletionReport`). Only a native tool's call has a slot to write
+                // to, and only a root call's report reaches the caller.
                 try await ToolInvocationScope.$current.withValue(call) {
                     try await OperationScope.$idempotencyKey.withValue(key) {
-                        try await PhoneCaptureScope.run { try await tool.execute(args: args) }
+                        try await ActionCompletionReport.capture(isRoot: call.context.depth == 0) {
+                            try await PhoneCaptureScope.run { try await tool.execute(args: args) }
+                        }
                     }
                 }
             }

@@ -25,9 +25,14 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
     /// shown under it in the thread however long after it landed. Nil for every other reply.
     let searchSuggestions: SearchSuggestions?
 
+    /// Plan LA: this reply ended with the done tone rather than being spoken. Optional and nil for
+    /// every ordinary reply, so threads saved before it existed decode unchanged and the file only
+    /// grows for the turns that carry it.
+    var endedQuietly: Bool?
+
     init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false,
          toolNames: [String] = [], webSources: [WebSource] = [],
-         searchSuggestions: SearchSuggestions? = nil) {
+         searchSuggestions: SearchSuggestions? = nil, endedQuietly: Bool = false) {
         self.id = UUID().uuidString
         self.role = role
         self.content = content
@@ -37,10 +42,14 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
         self.toolNames = toolNames.isEmpty ? nil : toolNames
         self.webSources = webSources.isEmpty ? nil : webSources
         self.searchSuggestions = searchSuggestions
+        self.endedQuietly = endedQuietly ? true : nil
     }
 
     /// The reply's sources; empty when it has none.
     var sources: [WebSource] { webSources ?? [] }
+
+    /// Whether this reply ended with the done tone (Plan LA).
+    var isEndedQuietly: Bool { endedQuietly ?? false }
 
     /// Whether this reply was given on the phone while offline.
     var isAnsweredOnDevice: Bool { answeredOnDevice ?? false }
@@ -315,13 +324,15 @@ class ConversationStore: ObservableObject {
                        answeredOnDevice: Bool = false, toolNames: [String] = [],
                        webSources: [WebSource] = [],
                        searchSuggestions: SearchSuggestions? = nil,
+                       endedQuietly: Bool = false,
                        toThread threadId: String? = nil) -> String? {
         let target = threadId ?? activeThreadId
         guard let idx = threads.firstIndex(where: { $0.id == target }) else { return nil }
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
                                       answeredOnDevice: answeredOnDevice, toolNames: toolNames,
                                       webSources: webSources,
-                                      searchSuggestions: searchSuggestions)
+                                      searchSuggestions: searchSuggestions,
+                                      endedQuietly: endedQuietly)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = msg.timestamp
         if threads[idx].id == activeThreadId { lastActivity = (threads[idx].id, msg.timestamp) }

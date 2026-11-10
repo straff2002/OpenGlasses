@@ -775,13 +775,17 @@ class LLMService: ObservableObject {
                - "Got it, searching for that now." then call web_search.
                - "One moment, looking that up." then call web_search.
             """ : ""
+            // Plan LA §3: with Quiet After Actions on, an action-only request skips the preamble so
+            // a quiet turn is not "Turning off the lights" and then a tone.
+            let quietActionsException = QuietAfterActionsPrompt.exception(
+                enabled: Config.quietAfterActionsEnabled, simpleMode: Config.simpleModeEnabled)
             toolSection += """
 
             TOOL USAGE RULES:
             CRITICAL: NEVER tell the user a tool is "not configured" or "not set up" — ALWAYS call the tool and let it handle errors. The tools check configuration internally and return helpful messages. Your job is to call them, not to guess their state.
             1. ALWAYS speak a brief verbal acknowledgment BEFORE calling any tool. This prevents awkward \
             silence while the tool executes. Examples:
-               - "Sure, let me check the weather." then call get_weather.\(searchExamples)
+               - "Sure, let me check the weather." then call get_weather.\(searchExamples)\(quietActionsException)
             2. CONTACTS: phone_call and send_message both accept contact NAMES directly (e.g. "Mom", "John"). \
             They automatically resolve names to phone numbers from the user's contacts. You do NOT need to call \
             lookup_contact first — just pass the name. If multiple matches exist, the tool returns options for the user to choose. \
@@ -1034,11 +1038,15 @@ class LLMService: ObservableObject {
                 }
                 let toolTraceID = TurnRecorder.toolTraceID
                 let outcome: ToolExecutionOutcome
+                // Plan LA: what a native tool said about its request landing, beside its outcome.
+                var completion: ActionCompletion?
                 if let router = self.nativeToolRouter {
                     // The provider's own call id, where it gave one: a redelivery of this exact
                     // call then resolves to the operation that already ran instead of running again.
-                    outcome = await router.executeRoot(name: name, args: args, origin: .model,
-                                                       invocationID: callID ?? UUID().uuidString)
+                    (outcome, completion) = await ActionCompletionReport.collect {
+                        await router.executeRoot(name: name, args: args, origin: .model,
+                                                 invocationID: callID ?? UUID().uuidString)
+                    }
                 } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive,
                           !VaultOnlyPolicy.jobIsSealed {
                     let taskDesc = args["task"] as? String ?? (rawArgs ?? String(describing: args))
@@ -1047,7 +1055,7 @@ class LLMService: ObservableObject {
                 } else {
                     outcome = .failedBeforeExecution(reason: "No tool handler available")
                 }
-                self.turnToolLedger.finished(ledgerID, outcome: outcome)
+                self.turnToolLedger.finished(ledgerID, outcome: outcome, completion: completion)
                 // Plan KZ: the pages our own search listed are the reply's sources too, so the
                 // phone shows the same Sources list whichever search ran.
                 if name == ProviderSearchPolicy.ourToolName, case .completed = outcome {
@@ -1731,7 +1739,8 @@ class LLMService: ObservableObject {
     /// Enter a model tool call in the turn's ledger as it is dispatched; returns its id.
     private func ledgerDispatched(_ name: String, args: [String: Any], arguments: String? = nil) -> Int {
         turnToolLedger.dispatched(tool: name, arguments: arguments ?? AttemptToolLedger.canonicalArguments(args),
-                                  effect: callEffect(ofTool: name, args: args))
+                                  effect: callEffect(ofTool: name, args: args),
+                                  isNative: nativeToolRouter?.registry.tool(named: name) != nil)
     }
 
     /// The decision for a hop the chain is about to make (Plan KL P2). Returns normally to hop —
@@ -5579,10 +5588,14 @@ class LLMService: ObservableObject {
                                                   arguments: AttemptToolLedger.canonicalArguments(json: argumentsJSON))
             self?.toolCallStatus = .executing(name)
             let startedAt = Date()
-            let outcome = await router.executeRoot(name: name, args: args)
+            let (outcome, completion) = await ActionCompletionReport.collect {
+                await router.executeRoot(name: name, args: args)
+            }
             TurnRecorder.addToolTime(since: startedAt)
             self?.toolCallStatus = .idle
-            if let ledgerID { self?.turnToolLedger.finished(ledgerID, outcome: outcome) }
+            if let ledgerID {
+                self?.turnToolLedger.finished(ledgerID, outcome: outcome, completion: completion)
+            }
             switch outcome {
             case .completed(let text): return text
             case .outcomeUnknown(_, let message): return message
@@ -5994,10 +6007,12 @@ class LLMService: ObservableObject {
             // above `sendLocal`), so its single tool round trip needs its own bracket. The
             // generation passes either side of it report themselves through `addGeneration`.
             let toolStartedAt = Date()
-            let outcome = await router.executeRoot(name: toolName, args: toolArgs)
+            let (outcome, completion) = await ActionCompletionReport.collect {
+                await router.executeRoot(name: toolName, args: toolArgs)
+            }
             TurnRecorder.addToolTime(since: toolStartedAt)
             toolCallStatus = .idle
-            turnToolLedger.finished(ledgerID, outcome: outcome)
+            turnToolLedger.finished(ledgerID, outcome: outcome, completion: completion)
 
             // An unresolved outcome is not an error, and must not be handed to the model prefixed
             // as one — its own copy already says what is and isn't known.
@@ -6151,6 +6166,9 @@ class LLMService: ObservableObject {
         replyFollowUps = []   // Plan KP P2: on-device prompts don't ask for them
         replyWebSources = []
         replySearchSuggestions = nil
+        // Plan LA: the on-device agent's turn is its own, so its calls are the only ones the turn's
+        // ledger holds. A spill to the cloud below starts the ledger again, as every cascade does.
+        turnToolLedger.reset()
         let agentModelId = Config.agentModelId
         let hasNativeTools = nativeToolRouter != nil
         let device = Self.deviceInUse()   // Plan FY F3: read once for whichever prompt is built
