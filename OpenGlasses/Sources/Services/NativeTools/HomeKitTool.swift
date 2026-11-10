@@ -182,6 +182,8 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
 
         do {
             try await characteristic.writeValue(newValue)
+            // Plan LA: HomeKit returns from a write once the accessory has taken it.
+            ActionCompletionReport.record(.done(summary: "\(accessory.name) \(newValue ? "on" : "off")"))
             return "\(accessory.name) turned \(newValue ? "on" : "off")."
         } catch {
             return "Failed to control \(accessory.name): \(error.localizedDescription). Is the device reachable? (reachable=\(accessory.isReachable))"
@@ -209,6 +211,7 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
                 try await powerChar.writeValue(true)
             }
             try await characteristic.writeValue(brightness)
+            ActionCompletionReport.record(.done(summary: "\(accessory.name) \(brightness)%"))
             return "\(accessory.name) brightness set to \(brightness)%."
         } catch {
             return "Failed to set brightness: \(error.localizedDescription)"
@@ -230,6 +233,8 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
 
         do {
             try await characteristic.writeValue(celsius)
+            // A target temperature is a setting the room has not reached: spoken.
+            ActionCompletionReport.record(.partial(reason: .unverified))
             return "\(accessory.name) set to \(Int(temp)) degrees Fahrenheit."
         } catch {
             return "Failed to set thermostat: \(error.localizedDescription)"
@@ -252,6 +257,8 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
         do {
             try await characteristic.readValue()
             try await characteristic.writeValue(lockValue)
+            // A lock's target is not its state, and a door is never something to be quiet about.
+            ActionCompletionReport.record(.partial(reason: .unverified))
             return "\(accessory.name) \(locked ? "locked" : "unlocked")."
         } catch {
             return "Failed to \(locked ? "lock" : "unlock"): \(error.localizedDescription)"
@@ -269,6 +276,7 @@ final class HomeKitTool: NativeTool, @unchecked Sendable {
 
         do {
             try await home.executeActionSet(scene)
+            ActionCompletionReport.record(.done(summary: "\(scene.name) scene"))
             return "Scene '\(scene.name)' activated."
         } catch {
             return "Failed to activate '\(scene.name)': \(error.localizedDescription)"

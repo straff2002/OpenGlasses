@@ -105,7 +105,11 @@ struct PomodoroTool: NativeTool {
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(minutes * 60), repeats: false)
         let request = UNNotificationRequest(identifier: "pomodoro-timer", content: content, trigger: trigger)
-        try? await center.add(request)
+        let scheduled = (try? await center.add(request)) != nil
+        // Plan LA: the session is running and its end is scheduled; without the notification the
+        // wearer would not be told when it ends, so that is spoken.
+        ActionCompletionReport.record(Self.startCompletion(isBreak: isBreak, minutes: minutes,
+                                                           notificationScheduled: scheduled))
 
         if isBreak {
             return "Break started: \(minutes) minutes. You've completed \(sessionsCompleted) focus session\(sessionsCompleted == 1 ? "" : "s"). Relax!"
@@ -117,6 +121,11 @@ struct PomodoroTool: NativeTool {
         }
         msg += " I'll notify you when it's time for a break. Stay focused!"
         return msg
+    }
+
+    static func startCompletion(isBreak: Bool, minutes: Int, notificationScheduled: Bool) -> ActionCompletion {
+        guard notificationScheduled else { return .partial(reason: .unverified) }
+        return .done(summary: isBreak ? "Break \(minutes) minutes" : "Focus \(minutes) minutes")
     }
 
     private func checkStatus() -> String {
@@ -156,6 +165,7 @@ struct PomodoroTool: NativeTool {
         // Remove notification
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["pomodoro-timer"])
         clearState()
+        ActionCompletionReport.record(.done(summary: state.isBreak ? "Break stopped" : "Focus session stopped"))
 
         return "Stopped \(kind) after \(elapsed / 60) minutes. Total sessions completed: \(state.sessionsCompleted)."
     }

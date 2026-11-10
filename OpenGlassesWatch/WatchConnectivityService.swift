@@ -1,5 +1,6 @@
 import Foundation
 import WatchConnectivity
+import WatchKit
 import WidgetKit
 
 /// **Storage key, not a product name.** The App Group suite name the watch app and its widget
@@ -258,6 +259,13 @@ extension WatchConnectivityService: WCSessionDelegate {
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         DispatchQueue.main.async { self.apply(applicationContext) }
+    }
+
+    /// A turn on the phone ended with the done tone instead of a spoken reply: one tap on the wrist.
+    /// The phone's `QuietDoneWatchMessage` — this target compiles none of the phone's files.
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        guard message["event"] as? String == "quietDone" else { return }
+        DispatchQueue.main.async { WKInterfaceDevice.current().play(.success) }
     }
 
     /// Take the phone's status into the published state and the complications. Main queue only.

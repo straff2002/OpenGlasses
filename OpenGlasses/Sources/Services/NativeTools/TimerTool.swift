@@ -64,10 +64,18 @@ struct TimerTool: NativeTool {
         try await center.add(request)
 
         let durationStr = formatDuration(seconds)
+        // Plan LA: the notification is scheduled, so the timer is set.
+        ActionCompletionReport.record(.done(summary: Self.doneSummary(label: label, duration: durationStr)))
         if let label {
             return "Timer set: \(label) for \(durationStr)."
         }
         return "Timer set for \(durationStr)."
+    }
+
+    /// "Timer 10 minutes", "Pasta timer 10 minutes".
+    static func doneSummary(label: String?, duration: String) -> String {
+        guard let label, !label.isEmpty else { return "Timer \(duration)" }
+        return "\(label.prefix(1).uppercased() + label.dropFirst()) timer \(duration)"
     }
 
     private func formatDuration(_ seconds: Int) -> String {

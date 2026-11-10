@@ -1,7 +1,9 @@
 # Plan LA — Quiet After Actions (a short done tone instead of a spoken reply, only when everything really got done)
 
-**Status:** 📝 Drafted 2026-11-10. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-10 — P0–P3 in one PR, every [decision](#decisions-for-greig-taken-2026-11-10)
+taken as recommended. **Owed:** the P4 device pass, and the string-catalog sync for the new UI strings (its
+own later PR). What was built and where it differs from the design is in
+[As built](#as-built-2026-11-10).
 **Track:** Everyday assistant (Direct mode, spoken turns). Off by default.
 **Builds on:** `ToolExecutionOutcome`, `ToolEffect` and `ToolExecutionSemantics`, `AttemptToolLedger` and
 `HopAfterTools` (Plan [KL](KL-say-why-and-keep-the-tools.md)), `ConversationTurnRunner`, Plan
@@ -229,9 +231,9 @@ not to be. Every other turn streams as now.
 - **Live modes.** Out of scope. The provider's voice speaks the reply as it generates it; there is nothing to
   hold back without cutting the provider off.
 
-## Decisions for Greig (open)
+## Decisions for Greig (taken 2026-11-10)
 
-Recommendations first.
+All eight taken as recommended.
 
 1. **Off by default**, in Settings › Voice, with the footer: "When something you asked for has fully
    happened, play a short tone instead of saying so. Anything partly done, or any question, is still spoken."
@@ -248,6 +250,75 @@ Recommendations first.
    against the distinctness test.
 7. **"What was that?" works for 30 seconds** after a quiet turn.
 8. **Languages without word lists speak.** Rules 6 and 7 err towards speaking until a language's lists exist.
+
+## As built (2026-11-10)
+
+- **P0, the pure core** — `Services/QuietAfterActions/`: `ActionCompletion` and `QuietActionRoster` (the
+  reviewed starter set; `neverQuiet` names messages, calls, first aid, emergency information, navigation and
+  the gateway), `QuietTurnCall` / `QuietTurnInput` / `QuietTurnVerdict` / `QuietTurnJudge` with the eight
+  rules in order, `UtteranceQuestionCue`, `ReplyCaveatCue`, the summary joiner, `QuietDoneCue` (notes, the
+  distinctness rule, the VoiceOver rule), `QuietReplayWindow`, `QuietAfterActionsPrompt`.
+  `StreamSpeechGate.Rules` gained `holdPreamble` and `holdNextIteration` (both off by default), and
+  `HoldReason.quietCandidate`; `endIteration(roundCalls:)` takes the round's calls.
+- **P1, tools report** — `ActionCompletionReport`: the router opens a slot around every native tool's
+  `execute` (`capture`), and a root call's report reaches the slot the dispatcher opened (`collect`); a
+  composed child's is dropped, and nothing outside a native tool's call has a slot. `AttemptToolLedger.Call`
+  gained `isNative`, `outcome` and `completion` (kept only for a completed call) and the ledger a reset
+  `generation`. All three dispatch sites in `LLMService` (cloud tool loop, Apple on-device, MLX) collect.
+  The starter set reports; `open_app` reports `.partial(.handedToApp)`. `ActionCompletionRosterTests` fails
+  on a file outside the native tools that reports, or a `.done` from a tool not on the list.
+- **P2, wired** — `Config.quietAfterActionsEnabled` (off) with a toggle in Settings › Voice (hidden in Simple
+  Mode); the prompt exception after the acknowledgement rule; the stream's preamble and final-reply holds
+  for spoken turns; the judge in `handleTranscription` (`AppState+QuietAfterActions.swift`); the done tone
+  (`TextToSpeechService.playQuietDoneTone()`); `ConversationMessage.endedQuietly` with a check mark on the
+  bubble and "Ended with the done tone" for VoiceOver; `TurnBackgroundTime.ReplyDelivery.quiet`;
+  `quietVerdict` on `TurnTimeline`/`TurnTrace` and `PrivacyLog.app(.quietTurnJudged)`; the "what was that?"
+  handler (`quiet-replay`, ahead of the bystander filter).
+- **P3, accessibility and the watch** — "Done" after the tone with VoiceOver and "Speak What Each Sound
+  Means" on; the tone joins the sound tour as `AudibleLifecyclePolicy.Earcon.done`; a quiet turn sends
+  `QuietDoneWatchMessage` while the watch app is reachable, and the watch plays `.success`.
+
+**Where it differs from the design, and why**
+
+1. **The judge runs in `accept`, not `speak`.** `accept` stores the reply before `speak` runs, so the verdict is
+   taken there (on the final reply, before any of it is said) and the saved message carries `endedQuietly`
+   from the start; `speak` acts on it.
+2. **A polite request is not a question.** "Can you turn off the lights?" asks for an action, and a recogniser
+   writes the question mark either way, so the modal openers ("can/could/would/will you") are read as
+   requests even with a trailing "?". "Did you…", "is the…" and every other leading question word still speak.
+3. **English only.** Decision 8 names no other language, so only English has word lists; every other language
+   speaks.
+4. **`lookup_tools` is not a lookup.** The model fetching a tool's definition on demand (Plan IU) is left out
+   of the calls the judge reads; a call the IU safety net turned back still counts as not done, and speaks.
+5. **A turn that keeps no ledger never ends quiet.** The Hermes agent runs its own tools, and the on-device
+   agent did not reset the ledger, so a turn could read the previous turn's calls. The ledger now counts its
+   resets; a turn whose ledger was not reset since it began gets no verdict and speaks, and
+   `sendViaLocalAgent` now resets the ledger at the start of its turn.
+6. **What "confirmed" means per tool.** Home Assistant: done only when the service call's changed-states list
+   holds the entity (a light, switch, fan or input boolean) in the state `turn_on`/`turn_off`/`toggle` asks
+   for; locks, automations, `converse` and anything unconfirmed are `.partial(.unverified)`. HomeKit: power and
+   brightness writes and scenes are done (a write returns once the accessory took it); locks and thermostats
+   are `.partial(.unverified)`. Alarm: a clock alarm is done, the notification fallback is
+   `.partial(.leftNotification)`. Pomodoro: a start whose end notification could not be scheduled is
+   `.partial(.unverified)`. Reminders: adding only. Music: transport on any player and Apple Music
+   playback are done; a speaker asked to play something by name, add-to-library and every read report
+   nothing; `.needsInput` is `.awaitingWearer`.
+7. **The notes.** C6 then G6 (1047 → 1568 Hz, 90 + 140 ms, 250 ms), at 0.35 against the other earcons' 0.7
+   (−6 dB). Every rising fifth lower down is already a sound the app makes, so this one sits above them; the
+   test's margin is 3 semitones, note for note, between cues of the same length and contour. Tuning on the
+   glasses is P4's.
+8. **The tone waits and is waited for.** It stops the thinking sound, waits briefly for speech still playing,
+   and returns only once it has sounded, so the listening tone as the mic reopens follows it rather than
+   landing on it.
+9. **Typed turns keep today's stream rules** whatever the setting says (a typed turn's spoken reply can never
+   end quiet, so it should not wait on a verdict).
+10. **The preamble hold catches the iteration's unreleased end.** A sentence the splitter had already released
+   mid-stream has been said; the prompt exception is what keeps it from being written.
+11. **The tour's line** is "This sound means what you asked for has happened.", worded like every other
+   lesson (the tour's own test holds them to "This sound means…"), rather than "Done: …".
+12. **The watch** gets the message only while its app is reachable (a tap delivered later confirms nothing).
+   The watch target compiles none of the phone's files, so the two wire strings are spelled out there and a
+   test pins them.
 
 ## Phases (one PR each)
 

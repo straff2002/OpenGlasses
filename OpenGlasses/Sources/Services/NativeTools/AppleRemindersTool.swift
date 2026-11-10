@@ -53,6 +53,10 @@ final class AppleRemindersTool: NativeTool, @unchecked Sendable {
         }
     }
 
+    static func addedCompletion(title: String) -> ActionCompletion {
+        .done(summary: "Reminder: \(title)")
+    }
+
     private func createReminder(args: [String: Any]) throws -> String {
         guard let title = (args["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !title.isEmpty else {
@@ -79,6 +83,8 @@ final class AppleRemindersTool: NativeTool, @unchecked Sendable {
         }
 
         try eventStore.saveReminder(title: title, dueDate: due, hasTime: due != nil)
+        // Plan LA: adding is the reviewed action; completing and listing report nothing.
+        ActionCompletionReport.record(Self.addedCompletion(title: title))
         var response = "Reminder set: '\(title)'"
         if let due {
             response += " due \(formatDueDate(due, hasTime: true))"

@@ -111,6 +111,8 @@ struct OpenAppTool: NativeTool {
         }
 
         let displayName = appName.prefix(1).uppercased() + appName.dropFirst()
+        // Plan LA: an app opened is handed over, never done.
+        ActionCompletionReport.record(.partial(reason: .handedToApp))
         return "Opening \(displayName)..."
     }
 

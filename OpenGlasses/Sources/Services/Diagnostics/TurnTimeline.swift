@@ -201,6 +201,9 @@ struct TurnTimeline: Identifiable, Equatable {
     /// The OpenAI endpoint the request went to (Plan GC): `responses` or `chatCompletions`. nil
     /// for providers that never consult the route selector.
     var route: String?
+    /// Plan LA: how the quiet-ending judge decided — "quiet", or "speak: lookup" — so a tester
+    /// can see why a turn spoke. Nil when the judge did not run (the setting off).
+    var quietVerdict: String?
     /// The system prompt, block by block, as it was assembled for this turn.
     var promptBlocks: [PromptBlock] = []
     /// The manual passages retrieved for this turn, by citation ("<manual>, page 12").
