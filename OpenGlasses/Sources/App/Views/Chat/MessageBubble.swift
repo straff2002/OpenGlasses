@@ -34,6 +34,19 @@ struct MessageBubble: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            bubble
+            // Plan KZ: the web pages this reply rests on, and Google's Search Suggestions — outside
+            // the bubble's combined VoiceOver element, so each stays its own control.
+            let attachments = ReplyAttachments(message: message)
+            if !attachments.isEmpty {
+                ReplyAttachmentsView(attachments: attachments)
+                    .padding(.trailing, 48)
+            }
+        }
+    }
+
+    private var bubble: some View {
         HStack {
             if isUser { Spacer(minLength: 48) }
 

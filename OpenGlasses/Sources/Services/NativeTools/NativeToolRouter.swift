@@ -287,7 +287,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
             safetyContext: safetyContext,
             composedTargets: composedTargetPolicy,
             seam: profile.seam,
-            effectClass: profile.effectClass))
+            effectClass: profile.effectClass,
+            turnReadWeb: TurnWebExposure.turnReadWeb))
 
         // What the trail records if the call goes on to dispatch (Plan IW P1).
         var dispatchGate = ActivityGateRecord(gate: .ran(approvalSummary: nil),

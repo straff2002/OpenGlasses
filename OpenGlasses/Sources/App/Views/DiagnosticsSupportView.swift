@@ -174,7 +174,7 @@ struct DiagnosticsSupportView: View {
                     turnRecordsCleared = true
                 } label: {
                     OGRow("Delete AI Turn Records", icon: "trash", mutedIcon: true,
-                          subtitle: "Kept on this phone for up to 14 days for support reports: models, timings, manual pages, errors, and web search queries and returned text. Keys and tokens are masked.",
+                          subtitle: "Kept on this phone for up to 14 days for support reports: models, timings, manual pages, errors, and web search queries, and the text or pages the search returned. Keys and tokens are masked.",
                           showsChevron: false) {
                         OGRowValue(value: turnRecordsCleared ? "Deleted" : nil)
                     }

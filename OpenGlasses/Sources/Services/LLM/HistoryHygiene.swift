@@ -280,4 +280,36 @@ enum HistoryHygiene {
         }
         return out
     }
+
+    // MARK: - Provider-run web search (Plan KZ)
+
+    /// The history without the blocks a provider's own web search left in assistant messages:
+    /// `server_tool_use`, `web_search_tool_result`, and the `citations` on text blocks. They are
+    /// replayed unchanged inside the turn that made them (the provider refuses an altered result)
+    /// and dropped when it ends, because a later request may not declare the search tool, and
+    /// another provider cannot read them. An assistant message left with nothing is dropped.
+    static func stripProviderSearchBlocks(_ history: [[String: Any]]) -> [[String: Any]] {
+        let searchBlocks: Set<String> = ["server_tool_use", "web_search_tool_result"]
+        var changed = false
+        var out: [[String: Any]] = []
+        for message in history {
+            guard message["role"] as? String == "assistant",
+                  let blocks = message["content"] as? [[String: Any]],
+                  blocks.contains(where: { searchBlocks.contains($0["type"] as? String ?? "") || $0["citations"] != nil })
+            else { out.append(message); continue }
+            changed = true
+            let kept: [[String: Any]] = blocks.compactMap { block in
+                if searchBlocks.contains(block["type"] as? String ?? "") { return nil }
+                var block = block
+                block.removeValue(forKey: "citations")
+                if block["type"] as? String == "text", (block["text"] as? String ?? "").isEmpty { return nil }
+                return block
+            }
+            guard !kept.isEmpty else { continue }
+            var message = message
+            message["content"] = kept
+            out.append(message)
+        }
+        return changed ? out : history
+    }
 }

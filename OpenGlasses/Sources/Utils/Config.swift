@@ -2329,6 +2329,13 @@ struct Config {
     /// configuration is needed.
     @UserDefaultsBacked("localWebSearchFallbackEnabled", default: true) static var localWebSearchFallbackEnabled: Bool
 
+    /// "Let the AI search the web itself" (Plan KZ, Decision 1): with no search key set up, a
+    /// provider that runs web search on its own servers (Claude, GPT, Grok, OpenRouter) searches
+    /// inside the conversation request instead of the keyless fallbacks. Default on; a first
+    /// search still asks Cloud AI Sharing's "Web search" question for the provider's address.
+    /// `ProviderSearchPolicy` decides per request.
+    @UserDefaultsBacked("providerWebSearchEnabled", default: true) static var providerWebSearchEnabled: Bool
+
     // MARK: - Local runtime and durable agent loops (Plan DZ)
 
     // All four default OFF and fail closed. Off is not "broken": with the coordinator flag off the

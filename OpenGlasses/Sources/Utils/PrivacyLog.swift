@@ -1605,6 +1605,10 @@ enum PrivacyLog {
         // Plan GC — the OpenAI endpoint a turn took, and a Responses refusal retried on Chat
         // Completions. Endpoint and reason tokens only.
         case routeSelected, routeFallback
+        // Plan KZ — the provider's own web search: the policy's decision token, a refusal's
+        // class and status, a resumed pause, and per response the search and source counts.
+        // Tokens and counts only; never a query or an address.
+        case providerSearch
         case spendCap
         // Plan GD3 — the field-mode tool profile trimmed the declared tools: counts and a digest.
         case toolProfileApplied

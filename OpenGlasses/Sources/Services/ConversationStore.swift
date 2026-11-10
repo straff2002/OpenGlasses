@@ -17,9 +17,17 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
     /// field existed decode unchanged, and nil (not an empty list) is what a tool-free reply
     /// stores, so the saved file only grows for the turns that carry it.
     let toolNames: [String]?
+    /// Plan KZ: the web pages this reply rests on — cited by the AI provider's own search or
+    /// listed by Avenkin's — shown as **Sources (n)**. Optional so threads saved before the field
+    /// existed decode unchanged, and nil for a reply without sources.
+    let webSources: [WebSource]?
+    /// Plan KZ: Google's Search Suggestions for a grounded Gemini reply, kept with it so they are
+    /// shown under it in the thread however long after it landed. Nil for every other reply.
+    let searchSuggestions: SearchSuggestions?
 
     init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false,
-         toolNames: [String] = []) {
+         toolNames: [String] = [], webSources: [WebSource] = [],
+         searchSuggestions: SearchSuggestions? = nil) {
         self.id = UUID().uuidString
         self.role = role
         self.content = content
@@ -27,7 +35,12 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
         self.timestamp = Date()
         self.answeredOnDevice = answeredOnDevice ? true : nil
         self.toolNames = toolNames.isEmpty ? nil : toolNames
+        self.webSources = webSources.isEmpty ? nil : webSources
+        self.searchSuggestions = searchSuggestions
     }
+
+    /// The reply's sources; empty when it has none.
+    var sources: [WebSource] { webSources ?? [] }
 
     /// Whether this reply was given on the phone while offline.
     var isAnsweredOnDevice: Bool { answeredOnDevice ?? false }
@@ -300,11 +313,15 @@ class ConversationStore: ObservableObject {
     @discardableResult
     func appendMessage(role: String, content: String, imageAttached: Bool = false,
                        answeredOnDevice: Bool = false, toolNames: [String] = [],
+                       webSources: [WebSource] = [],
+                       searchSuggestions: SearchSuggestions? = nil,
                        toThread threadId: String? = nil) -> String? {
         let target = threadId ?? activeThreadId
         guard let idx = threads.firstIndex(where: { $0.id == target }) else { return nil }
         let msg = ConversationMessage(role: role, content: content, imageAttached: imageAttached,
-                                      answeredOnDevice: answeredOnDevice, toolNames: toolNames)
+                                      answeredOnDevice: answeredOnDevice, toolNames: toolNames,
+                                      webSources: webSources,
+                                      searchSuggestions: searchSuggestions)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = msg.timestamp
         if threads[idx].id == activeThreadId { lastActivity = (threads[idx].id, msg.timestamp) }

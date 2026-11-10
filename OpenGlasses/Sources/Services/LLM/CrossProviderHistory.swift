@@ -64,6 +64,9 @@ enum CrossProviderHistory {
 
     private static let anthropicBlockTypes: Set<String> = [
         "text", "image", "document", "tool_use", "tool_result", "thinking", "redacted_thinking",
+        // Plan KZ: the provider's own web search, replayed unchanged within the turn that ran it
+        // (`HistoryHygiene.stripProviderSearchBlocks` takes them out when it ends).
+        "server_tool_use", "web_search_tool_result",
     ]
     private static let openAIBlockTypes: Set<String> = ["text", "image_url"]
 

@@ -17,6 +17,9 @@ struct ServicesSettingsView: View {
 
     // Web Search
     @State private var perplexityKeyInput: String = Config.perplexityAPIKey
+    /// "Let the AI search the web itself" (Plan KZ) and the line under it.
+    @State private var providerWebSearch: Bool = Config.providerWebSearchEnabled
+    @State private var providerSearchLine: String = ProviderSearchLive.currentLine()
     @State private var tavilyKeyInput: String = Config.tavilyAPIKey
     @State private var braveKeyInput: String = Config.braveAPIKey
     @State private var searxngBaseURLInput: String = Config.searxngBaseURL
@@ -574,9 +577,24 @@ struct ServicesSettingsView: View {
 
             // MARK: Web Search
             Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Let the AI search the web itself", isOn: $providerWebSearch)
+                        .onChange(of: providerWebSearch) { _, newValue in
+                            Config.providerWebSearchEnabled = newValue
+                            providerSearchLine = ProviderSearchLive.currentLine()
+                            // A new use of the provider's address: Cloud AI Sharing asks about it.
+                            NotificationCenter.default.post(name: .cloudServicesChanged, object: nil)
+                        }
+                    Text(providerSearchLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .onAppear { providerSearchLine = ProviderSearchLive.currentLine() }
+
                 SecretInputField(placeholder: String(localized: "Perplexity API Key"), text: $perplexityKeyInput)
                     .onChange(of: perplexityKeyInput) { _, newValue in
                         Config.setPerplexityAPIKey(newValue)
+                        providerSearchLine = ProviderSearchLive.currentLine()
                     }
 
                 if perplexityKeyInput.isEmpty {

@@ -8556,6 +8556,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Plan KP P2: the reply's follow-ups (its tail, already off the reply) go to
                     // this turn's answer card, read the moment the model's call returns.
                     hudAnswerCard.offerFollowUps(llmService.replyFollowUps)
+                    // Plan KZ: and the card's line pointing at the sources on the phone.
+                    hudAnswerCard.offerWebSources(count: llmService.replyWebSources.count,
+                                                  hasSearchSuggestions: llmService.replySearchSuggestions != nil)
                     nowPlayingAtStart = nil  // consumed for this turn
                     return rawResponse
                 },
@@ -8586,9 +8589,13 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Save to conversation store — in the thread the question went into, which in
                     // push-to-talk is no longer guaranteed to be the active one by now.
                     if Config.conversationPersistenceEnabled {
+                        // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
+                        let attachments = llmService.takeReplyWebAttachments()
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
                                                         toolNames: usedToolNames,
+                                                        webSources: attachments.sources,
+                                                        searchSuggestions: attachments.suggestions,
                                                         toThread: turnThreadId)
                     }
 
@@ -8824,7 +8831,11 @@ class AppState: ObservableObject, AppStateProtocol {
                         }
                     )
                     // Plan KP P2: the reply's follow-ups go to this turn's answer card.
-                    if speakResponse { hudAnswerCard.offerFollowUps(llmService.replyFollowUps) }
+                    if speakResponse {
+                        hudAnswerCard.offerFollowUps(llmService.replyFollowUps)
+                        hudAnswerCard.offerWebSources(count: llmService.replyWebSources.count,
+                                                      hasSearchSuggestions: llmService.replySearchSuggestions != nil)
+                    }
                     return reply
                 },
                 postProcess: { [self] rawResponse in
@@ -8844,9 +8855,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
                     let usedToolNames = nativeToolRouter.takeTurnToolNames()
                     if Config.conversationPersistenceEnabled {
+                        // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
+                        let attachments = llmService.takeReplyWebAttachments()
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
                                                         toolNames: usedToolNames,
+                                                        webSources: attachments.sources,
+                                                        searchSuggestions: attachments.suggestions,
                                                         toThread: turnThreadId)
                     }
 
