@@ -102,6 +102,8 @@ struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
     struct SeatInputs: Sendable {
         var record: @Sendable () -> DeviceSeatRecord? = { DeviceSeatRecord.load() }
         var deviceKeyHash: @Sendable () -> String? = { DeviceSeatKeychainStore.shared.currentKeyHash() }
+        /// The organisation enrolment in force, which a lease must name.
+        var enrolmentId: @Sendable () -> String? = { OrgProfileManager.loadStoredRecord()?.enrolmentId }
         var leaseKeys: [String] = DeviceSeatLease.productionPublicKeys
         var now: @Sendable () -> Date = { Date() }
     }
@@ -137,7 +139,8 @@ struct LiveFieldAssistEntitlementProvider: FieldAssistEntitlementProvider {
                 // says why, and the evaluator words it like a lapse.
                 if payload.isSeatChecked,
                    let hold = DeviceSeatGate.hold(for: payload, code: raw, record: seat.record(),
-                                                  deviceKeyHash: seat.deviceKeyHash(), keys: seat.leaseKeys,
+                                                  deviceKeyHash: seat.deviceKeyHash(),
+                                                  enrolmentId: seat.enrolmentId(), keys: seat.leaseKeys,
                                                   now: seat.now()) {
                     set.seatHold = hold
                     return set

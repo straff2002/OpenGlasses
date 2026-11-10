@@ -53,6 +53,8 @@ actor StubSeatService: DeviceSeatServer {
     var staleNonceOnce = false
     /// Run once, while the next request is out (before its answer), to race the phone against itself.
     var whileOut: (@Sendable () async -> Void)?
+    /// Answer the next request with this reply instead (a replayed or forged answer).
+    var replayOnce: DeviceSeatLease.Reply?
 
     init(licence: SeatLicence, profileId: String, now: Date) {
         self.licence = licence
@@ -66,6 +68,9 @@ actor StubSeatService: DeviceSeatServer {
     func set(licence: SeatLicence) { self.licence = licence }
     func set(staleNonceOnce: Bool) { self.staleNonceOnce = staleNonceOnce }
     func set(whileOut: (@Sendable () async -> Void)?) { self.whileOut = whileOut }
+    func set(replayOnce: DeviceSeatLease.Reply?) { self.replayOnce = replayOnce }
+    /// A lease the service's key signs, for any payload: what an old answer replayed looks like.
+    func signedLease(_ payload: SeatLeasePayload) throws -> String { try SeatWire.lease(payload, signer: leaseKey.signature(for:)) }
     func free(all: Bool = true) { for i in seats.indices { seats[i].freedAt = now } }
     func occupy(_ count: Int) {
         for _ in 0..<count {
@@ -93,6 +98,10 @@ actor StubSeatService: DeviceSeatServer {
             return reply(.refuse(.badRequest))
         }
         received.append((action, body))
+        if let replay = replayOnce {
+            replayOnce = nil
+            return replay
+        }
         if let hook = whileOut {
             whileOut = nil
             await hook()
@@ -151,7 +160,13 @@ final class SeatWorld: @unchecked Sendable {
     private var storedRecord: DeviceSeatRecord?
     private var storedNow: Date
     private var storedCode: String?
+    private var storedEnrolmentId: String?
     init(now: Date) { storedNow = now }
+    /// The organisation enrolment in force, as the gate reads it; nil falls back to the record's.
+    var enrolmentId: String? {
+        get { lock.withLock { storedEnrolmentId } }
+        set { lock.withLock { storedEnrolmentId = newValue } }
+    }
     var record: DeviceSeatRecord? {
         get { lock.withLock { storedRecord } }
         set { lock.withLock { storedRecord = newValue } }
@@ -218,7 +233,7 @@ final class DeviceSeatTests: XCTestCase {
             storePurchases: VerifiedStorePurchaseRecorder(), licensePublicKeyBase64: licenceKeyBase64,
             licenseCode: { world.code },
             seat: .init(record: { world.record }, deviceKeyHash: { keys.currentKeyHash() },
-                        leaseKeys: leaseKeys, now: { world.now }))
+                        enrolmentId: { world.enrolmentId }, leaseKeys: leaseKeys, now: { world.now }))
         return FieldAssistEntitlementEvaluator.decide(provider.evidence(), now: world.now)
     }
 
@@ -261,7 +276,7 @@ final class DeviceSeatTests: XCTestCase {
             storePurchases: VerifiedStorePurchaseRecorder(), licensePublicKeyBase64: licenceKeyBase64,
             licenseCode: { world.code },
             seat: .init(record: { world.record }, deviceKeyHash: { keys.currentKeyHash() },
-                        leaseKeys: leaseKeys, now: { world.now }))
+                        enrolmentId: { world.enrolmentId }, leaseKeys: leaseKeys, now: { world.now }))
     }
 
     func testClaimingOnEnrolmentUnlocksTheLicence() async {
@@ -390,19 +405,144 @@ final class DeviceSeatTests: XCTestCase {
         XCTAssertEqual(hold.kind, .full(seats: 2))
     }
 
-    func testANewLicenceCodeIsRenewedOntoTheSameSeat() async throws {
-        let seats = service()
-        await seats.checkIn(enrolment, force: true)
-        // The paid full-term code arrives in the profile: the lease names the old code.
+    /// The paid full-term code arrives in the profile, replacing the code the lease names.
+    private func replaceCode(noting seats: DeviceSeatService?) async throws {
+        let old = try XCTUnwrap(world.code)
+        seats?.noteLicenceReplaced(previousCode: old, enrolment: enrolment)
         world.code = try code(expires: t0.addingTimeInterval(400 * 86_400))
         await server.set(licence: SeatLicence(licenseIDHash: SeatWire.licenseIDHash(code: world.code!), seats: 2,
                                               seatCheck: true, expires: t0.addingTimeInterval(400 * 86_400)))
-        XCTAssertFalse(decision().isGranted)
+    }
+
+    // Review follow-up 2026-11-10: a renewal or a seat increase must not lock the phone until its
+    // next check-in. The lease for the replaced code stays honoured until a new lease replaces it.
+    func testANewLicenceCodeIsRenewedOntoTheSameSeat() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        try await replaceCode(noting: seats)
+        XCTAssertTrue(decision().isGranted, "the lease for the replaced code still runs")
+        XCTAssertNotNil(world.record?.previousLicenseIDHash)
         await advance(days: 0.01)
-        await seats.checkIn(enrolment)   // not yet a day, but the lease is not live: retried
+        await seats.checkIn(enrolment)   // not yet a day, but the lease is for the old code: retried
         XCTAssertTrue(decision().isGranted)
+        let lease = world.record?.lease.flatMap { DeviceSeatLease.open($0, keys: leaseKeys) }
+        XCTAssertEqual(lease?.licenseIDHash, SeatWire.licenseIDHash(code: world.code!), "renewed onto the new code")
+        XCTAssertNil(world.record?.previousLicenseIDHash, "the bridge ends with the new lease")
         let held = await server.seats.filter { $0.freedAt == nil }.count
         XCTAssertEqual(held, 1, "renewed onto the seat it had, not a second one")
+    }
+
+    func testACodeReplacedOutsideARenewalOfThisEnrolmentStillWaitsForACheckIn() async throws {
+        await service().checkIn(enrolment, force: true)
+        try await replaceCode(noting: nil)
+        XCTAssertFalse(decision().isGranted, "only the profile's own renewal bridges the old lease")
+    }
+
+    func testACodeReplacedWhileTheSeatServiceIsDownRunsToTheLeasesOwnEnd() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        try await replaceCode(noting: seats)
+        await server.set(reachable: false)
+        await advance(days: 10)
+        await seats.checkIn(enrolment, force: true)
+        XCTAssertTrue(decision().isGranted, "no answer, and the old code's lease still runs")
+        world.now = t0.addingTimeInterval(44 * 86_400 - 60)
+        XCTAssertTrue(decision().isGranted, "to the end of its own grace")
+        world.now = t0.addingTimeInterval(44 * 86_400)
+        guard case .seatUnavailable(let hold)? = decision().denial else { return XCTFail("expected a seat hold") }
+        XCTAssertEqual(hold.kind, .checkIn, "and not a second longer: nothing was extended")
+    }
+
+    func testTheBridgeIsNeverNotedForAnUnrelatedCodeOrAnotherEnrolment() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        // An unrelated code named as the one replaced: the lease does not name it, nothing is noted.
+        seats.noteLicenceReplaced(previousCode: try code(seats: 9), enrolment: enrolment)
+        XCTAssertNil(world.record?.previousLicenseIDHash)
+        // Another enrolment's renewal: not this record.
+        seats.noteLicenceReplaced(previousCode: try XCTUnwrap(world.code),
+                                  enrolment: DeviceSeatEnrolment(profileId: enrolment.profileId, enrolmentId: "e5f6a7b8"))
+        XCTAssertNil(world.record?.previousLicenseIDHash)
+        try await replaceCode(noting: nil)
+        XCTAssertFalse(decision().isGranted, "a lease for an unrelated code is refused")
+    }
+
+    func testTheBridgeStillNeedsThisEnrolmentAndThisPhonesKey() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        try await replaceCode(noting: seats)
+        world.enrolmentId = enrolment.enrolmentId
+        XCTAssertTrue(decision().isGranted)
+        world.enrolmentId = "e5f6a7b8"
+        XCTAssertFalse(decision().isGranted, "a lease for another enrolment is refused")
+        world.enrolmentId = enrolment.enrolmentId
+        keys.remove()
+        _ = try keys.create()
+        XCTAssertFalse(decision().isGranted, "and one naming another phone's key")
+    }
+
+    func testARecordWrittenBeforeTheBridgeStillReads() throws {
+        let json = #"{"enrolmentId":"a1b2c3d4","profileId":"p-fixture","lease":"x.y","clockHighWater":"2027-01-15T08:00:00Z"}"#
+        let record = try LicenseService.decoder.decode(DeviceSeatRecord.self, from: Data(json.utf8))
+        XCTAssertEqual(record.enrolmentId, "a1b2c3d4")
+        XCTAssertNil(record.previousLicenseIDHash)
+    }
+
+    func testTheGateChecksTheEnrolmentInForceNotTheRecordAgainstItself() async {
+        await service().checkIn(enrolment, force: true)
+        world.enrolmentId = enrolment.enrolmentId
+        XCTAssertTrue(decision().isGranted)
+        world.enrolmentId = "e5f6a7b8"
+        XCTAssertFalse(decision().isGranted, "the phone re-enrolled; the lease is for the enrolment it left")
+        world.enrolmentId = nil
+        XCTAssertTrue(decision().isGranted, "no enrolment record readable: the seat record's own, as before")
+    }
+
+    // MARK: - The clock mark (review follow-up 2026-11-10)
+
+    func testAnOlderLeaseReplayedWithTheClockWoundBackNeverLowersTheMark() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 10)
+        await seats.checkIn(enrolment)   // renewed: the stored lease was issued at t0 + 10 days
+        let mark = try XCTUnwrap(world.record?.clockHighWater)
+        XCTAssertEqual(mark, t0.addingTimeInterval(10 * 86_400))
+        // An answer from day one, replayed, with the phone's clock wound back to fit inside it.
+        let old = SeatLeasePayload(deviceKeyHash: try XCTUnwrap(keys.currentKeyHash()), enrolmentId: enrolment.enrolmentId,
+                                   issued: t0.addingTimeInterval(86_400), licenseIDHash: SeatWire.licenseIDHash(code: world.code!),
+                                   notAfter: t0.addingTimeInterval(31 * 86_400))
+        let replayed = try await server.signedLease(old)
+        await server.set(replayOnce: DeviceSeatLease.Reply(lease: replayed, refusal: nil, seats: nil))
+        world.now = t0.addingTimeInterval(2 * 86_400)
+        await seats.checkIn(enrolment, force: true)
+        XCTAssertEqual(world.record?.clockHighWater, mark, "a lease no newer than the stored one keeps the mark")
+        XCTAssertFalse(decision().isGranted, "the wound-back clock is still caught")
+    }
+
+    func testANewerLeaseCorrectsAMarkAClockSetAheadRaised() async {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 2)
+        world.now = t0.addingTimeInterval(12 * 86_400)   // the phone's clock jumps ten days ahead
+        await seats.checkIn(enrolment, force: true)       // renewed at the service's own time
+        XCTAssertEqual(world.record?.clockHighWater, t0.addingTimeInterval(2 * 86_400))
+        world.now = t0.addingTimeInterval(2 * 86_400 + 3_600)   // corrected
+        XCTAssertTrue(decision().isGranted)
+    }
+
+    // MARK: - A release while a renewal is out (review follow-up 2026-11-10)
+
+    func testAFreedRenewalDoesNotReclaimAfterTheReleaseThatHappenedWhileItWasOut() async throws {
+        let seats = service()
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 2)
+        await server.free()   // the administrator freed it: the renewal will be told .freed
+        await server.set(whileOut: { await MainActor.run { _ = seats.release() } })
+        await seats.checkIn(enrolment)
+        for _ in 0..<20 { await Task.yield() }
+        let claims = await server.received.filter { $0.0 == .claim }.count
+        XCTAssertEqual(claims, 1, "the phone let the seat go; no claim undoes that")
+        XCTAssertNil(world.record)
     }
 
     // MARK: - Release
@@ -546,6 +686,8 @@ final class OrgProfileSeatSeamTests: XCTestCase {
     private var stored: OrgEnrolmentRecord?
     private var licence: String?
     private var events: [String] = []
+    private var licenceEvents: [String] = []
+    private var fetched: Data?
 
     private func manager() -> OrgProfileManager {
         var seams = OrgProfileManager.Seams()
@@ -559,7 +701,14 @@ final class OrgProfileSeatSeamTests: XCTestCase {
         seams.saveRecord = { [unowned self] in self.stored = $0 }
         seams.readSetting = { _ in nil }
         seams.writeSetting = { _, _ in }
-        seams.activateLicence = { [unowned self] in self.licence = $0 }
+        seams.activateLicence = { [unowned self] in self.licenceEvents.append("activate"); self.licence = $0 }
+        seams.fetch = { [unowned self] _ in
+            guard let data = self.fetched else { throw URLError(.notConnectedToInternet) }
+            return data
+        }
+        seams.noteLicenceReplaced = { [unowned self] previous, enrolment in
+            self.licenceEvents.append("replaced \(previous == self.licence) \(enrolment.enrolmentId)")
+        }
         seams.storedLicenceCode = { [unowned self] in self.licence }
         seams.clearLicence = { [unowned self] in self.events.append("clearLicence"); self.licence = nil }
         seams.installEnvelope = { _, _ in }
@@ -588,6 +737,36 @@ final class OrgProfileSeatSeamTests: XCTestCase {
         XCTAssertEqual(events, ["checkIn fixture enrol123 true"])
         try manager.remove().get()
         XCTAssertEqual(events.suffix(2), ["release", "clearLicence"])
+    }
+
+    private func seatCheckedCode(days: Double) throws -> String {
+        let payload = LicenseService.LicensePayload(feature: "field_assist", licensee: "Fixture Ltd", issued: now,
+                                                    expires: now.addingTimeInterval(days * 86_400), seats: 2,
+                                                    profile: "https://licence.example.test/p/fixture", seatCheck: true)
+        return try LicenseService.makeCode(payload: payload, privateKeyBase64: key.rawRepresentation.base64EncodedString())
+    }
+
+    private func document(code: String) throws -> String {
+        let profile = ConfigProfile(keyId: "k", profileId: "fixture", organizationName: "Fixture Ltd",
+                                    issued: now, leaseDays: 60, licenceCode: code, settings: [:])
+        return try ProfileVerification.makeDocument(profile, privateKeyBase64: key.rawRepresentation.base64EncodedString())
+    }
+
+    // Review follow-up 2026-11-10: the seat check learns which code the lease was for before the
+    // renewal replaces it, so the phone is not locked until its next check-in.
+    func testARenewalThatReplacesTheCodeTellsTheSeatCheckFirst() async throws {
+        let manager = manager()
+        let review = try manager.review(document: try document(code: try seatCheckedCode(days: 30)), source: .link,
+                                        sourceURL: URL(string: "https://licence.example.test/p/fixture")).get()
+        try manager.apply(review).get()
+        licenceEvents = []
+        fetched = Data(try document(code: try seatCheckedCode(days: 400)).utf8)
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(licenceEvents, ["replaced true enrol123", "activate"])
+
+        licenceEvents = []
+        await manager.renewIfDue(force: true)   // the same code again: nothing replaced
+        XCTAssertEqual(licenceEvents, [])
     }
 }
 

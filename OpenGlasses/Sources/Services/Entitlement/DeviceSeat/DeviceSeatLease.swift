@@ -82,14 +82,24 @@ enum DeviceSeatLease {
 
     /// The whole offline check. `now` is the phone's clock; `clockHighWater` the latest time the
     /// seat check has seen, so winding the clock back cannot stretch a lease.
+    ///
+    /// `previousLicenseIDHash` is the code this enrolment's lease was issued for, when a renewal
+    /// of the same profile has since replaced it (`DeviceSeatRecord.previousLicenseIDHash`): a
+    /// lease naming it stays in force until its own `liveUntil`, so a seat increase or a renewal
+    /// never locks a phone between the new code arriving and its next check-in. Everything else
+    /// — the signature, this phone's key, this enrolment, the clock — is checked as for any lease,
+    /// and nothing is extended.
     nonisolated static func verdict(lease: String?, keys: [String] = productionPublicKeys,
                                     deviceKeyHash: String?, enrolmentId: String, licenseIDHash: String,
+                                    previousLicenseIDHash: String? = nil,
                                     clockHighWater: Date? = nil, now: Date) -> Verdict {
         guard let lease, !lease.isEmpty else { return .missing }
         guard let payload = open(lease, keys: keys) else { return .invalid }
         guard let deviceKeyHash, payload.deviceKeyHash == deviceKeyHash else { return .otherDevice }
         guard payload.enrolmentId == enrolmentId else { return .otherEnrolment }
-        guard payload.licenseIDHash == licenseIDHash else { return .otherLicence }
+        let namesACodeInForce = payload.licenseIDHash == licenseIDHash
+            || (previousLicenseIDHash.map { payload.licenseIDHash == $0 } ?? false)
+        guard namesACodeInForce else { return .otherLicence }
         if let highWater = clockHighWater, now.addingTimeInterval(clockSlack) < highWater { return .clockWoundBack }
         guard now < payload.liveUntil else { return .lapsed(since: payload.liveUntil) }
         return .live(until: payload.liveUntil)
@@ -218,6 +228,11 @@ struct DeviceSeatRecord: Codable, Equatable, Sendable {
     var refusal: DeviceSeatLease.Refusal?
     var refusedSeats: Int?
     var clockHighWater: Date?
+    /// The licence code the stored lease was issued for, once a renewal of the same enrolment's
+    /// profile replaced that code (`DeviceSeatService.noteLicenceReplaced`). The gate honours the
+    /// lease for it until the lease's own end; the next accepted lease clears it. Optional, so a
+    /// record written before it existed reads.
+    var previousLicenseIDHash: String?
 
     init(enrolmentId: String, profileId: String) {
         self.enrolmentId = enrolmentId
@@ -244,8 +259,12 @@ struct DeviceSeatRecord: Codable, Equatable, Sendable {
 enum DeviceSeatGate {
     /// Nil when the code may be used as evidence (not seat-checked, or seat-checked with a live
     /// lease); otherwise the hold that explains the lock.
+    ///
+    /// `enrolmentId` is the organisation enrolment in force on this phone. A lease must name it;
+    /// nil (no enrolment record could be read) falls back to the seat record's own.
     nonisolated static func hold(for payload: LicenseService.LicensePayload, code: String,
                                  record: DeviceSeatRecord?, deviceKeyHash: String?,
+                                 enrolmentId: String? = nil,
                                  keys: [String] = DeviceSeatLease.productionPublicKeys,
                                  now: Date) -> DeviceSeatHold? {
         guard payload.isSeatChecked else { return nil }
@@ -254,8 +273,10 @@ enum DeviceSeatGate {
         }
         guard let record else { return hold(.checkIn) }
         let verdict = DeviceSeatLease.verdict(
-            lease: record.lease, keys: keys, deviceKeyHash: deviceKeyHash, enrolmentId: record.enrolmentId,
+            lease: record.lease, keys: keys, deviceKeyHash: deviceKeyHash,
+            enrolmentId: enrolmentId ?? record.enrolmentId,
             licenseIDHash: LiveFieldAssistEntitlementProvider.licenseIDHash(for: code),
+            previousLicenseIDHash: record.previousLicenseIDHash,
             clockHighWater: record.clockHighWater, now: now)
         if verdict.isLive { return nil }
         if record.refusal == .full { return hold(.full(seats: payload.seats ?? record.refusedSeats)) }

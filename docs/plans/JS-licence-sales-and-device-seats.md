@@ -636,3 +636,27 @@ built from `SeatPolicy`.
   screen beyond the footer note, and the administrator phone freeing seats (the open question on who may
   free one: the partner and the vendor can, in the portal). The service is not deployed; `seatCheck` stays
   off in its settings until a build that claims seats is on the App Store.
+
+## P2 review follow-up (2026-11-10)
+
+A code review of the merged P2 found four ways the phone could be locked out, or a seat or the clock
+mark mishandled. Status unchanged (P2 built, not deployed). All headless, in `DeviceSeatTests`:
+
+- **A new code no longer locks the phone until its next check-in.** A lease names the code it was issued
+  for, so a renewal or a seat increase delivered in the profile made every phone's live lease
+  `.otherLicence` and locked Field Assist until a check-in got through. `OrgProfileManager`'s renewal of
+  the same profile now tells the seat check which code it is about to replace
+  (`noteLicenceReplaced`); `DeviceSeatRecord.previousLicenseIDHash` (optional, so old records read) is set
+  only when this enrolment's own stored lease names that code. The gate honours that lease until its own
+  `liveUntil` or until a lease for the new code replaces it (which clears the field). Nothing is extended,
+  and the signature, the phone's key, the enrolment and the clock are checked as before; such a lease is
+  renewed at the ten-minute retry, not a day later.
+- **The clock mark never moves back.** A reply lease resets the mark to its signed `issued` only when it is
+  newer than the stored lease; otherwise the mark keeps its maximum, so an old lease replayed with the clock
+  wound back to fit it is still caught. A phone whose clock ran ahead still recovers on its next lease.
+- **A release while a renewal is out stays released.** After a `.freed` renewal, the re-claim is sent only
+  if no release happened meanwhile.
+- **The gate checks the enrolment in force.** `LiveFieldAssistEntitlementProvider` passes the stored
+  organisation enrolment's id to `DeviceSeatGate.hold`, so a lease for an enrolment the phone has left
+  reads `.otherEnrolment`; with no readable enrolment record it falls back to the seat record's own, as
+  before.
