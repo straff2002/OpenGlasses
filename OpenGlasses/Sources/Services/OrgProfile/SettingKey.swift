@@ -94,6 +94,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// The spoken interpreter: a bystander's voice goes to the cloud. An organisation may switch it
     /// off on its phones, never on.
     case interpreterEnabled
+    /// Instant Replay: a rolling minute of other people on the phone. An organisation may switch
+    /// it off on its phones, never on.
+    case instantReplayEnabled
     /// The "Connecting to Avenkin AI" line at voice startup (Plan HP P2 item 10): an organisation
     /// may make sure it is always said, never silence it — it is the disclosure that the person is
     /// talking to an AI.
@@ -168,7 +171,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled, .teamLearningReviewerDevice,
-             .cloudDictationEnabled, .interpreterEnabled:
+             .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled:
             return .ceiling(pinnedTo: false)
         case .pilotReportRecipients:
             return .startingValue(.strings)

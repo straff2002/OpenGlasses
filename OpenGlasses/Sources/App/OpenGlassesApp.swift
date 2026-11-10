@@ -2442,6 +2442,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// is `AppState`'s job rather than a tool's or a view's.
     let jobClips = JobClipRecorder()
 
+    /// Instant Replay: the rolling buffer of what the glasses camera already showed, fed off
+    /// `outboundFrames` only, and only while the camera already streams for something else
+    /// (`OutboundFrameConsumer.instantReplayBuffer`). Wired in `connectInstantReplay()`.
+    let instantReplay = ReplayBufferService()
+    /// The buffer's observers: the stream, the power posture, and its own state for the Live
+    /// Activity.
+    var instantReplayObservers: [AnyCancellable] = []
+
     /// A tab one surface has asked the root tab bar to show, cleared by `MainView` once it has.
     ///
     /// The selection is `MainView`'s own scene state and stays that way — this is a request, not a
@@ -2531,6 +2539,8 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.assistingHandovers = AssistingHandoverStore.shared
         // Plan KP P5: a kept caption session is other people's speech.
         erasure.captionSessions = CaptionSessionStore.shared
+        // Instant Replay: the rolling buffer has bystanders in it, and is cleared whole.
+        erasure.instantReplay = instantReplay
         return MemoryFactServices(
             stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
                                      agentDocuments: agentDocs, objects: .shared,
@@ -3113,6 +3123,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
             erasureStores.captionSessions = CaptionSessionStore.shared
+            erasureStores.instantReplay = instantReplay
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
             replaySources.classFiles = { erasable in
@@ -3860,6 +3871,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // W04.1: the same filter, for the still readers. Wired once here for the same reason the
         // relay is — a reader must not be able to obtain a still the blur never saw.
         cameraService.privacyFilter = privacyFilter
+        // Instant Replay: whatever a crash left in the buffer is not a buffer of any stream
+        // running now; then the buffer is wired onto the relay, to run only alongside a stream.
+        ReplayBufferService.removeLeftovers()
+        connectInstantReplay()
     }
 
     /// Switch between app modes: Direct, Gemini Live, or OpenAI Realtime.
@@ -5404,7 +5419,8 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing: isProcessing,
             lastResponse: lastResponse,
             deviceName: glassesService.deviceName,
-            batteryLevel: glassesService.batteryLevel
+            batteryLevel: glassesService.batteryLevel,
+            instantReplayRunning: instantReplay.isRunning
         )
     }
 

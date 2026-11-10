@@ -643,6 +643,11 @@ enum PrivacyLog {
         /// HJ P1, log-only. The device session's own state, with `phase` and `codec` beside it,
         /// so a device session can say whether a session ever ends without a stream `.stopped`.
         case sessionStateChanged
+        /// Instant Replay P0. One line per stream, a minute in, while the Developer panel's
+        /// frame-cadence switch is on: whether the glasses deliver frames evenly or in bursts.
+        /// Written by `frameCadence(_:)`, which carries the measured gaps, bursts, lag and the
+        /// playout delay a player would need. Numbers only.
+        case frameCadence
     }
 
     @discardableResult
@@ -676,6 +681,36 @@ enum PrivacyLog {
         if let phase { fields.append(.init(.phase, .token(phase))) }
         if let codec { fields.append(.init(.codec, .token(codec))) }
         if let error { fields.append(.init(.error, .summary(error))) }
+        return emit(.init(.capture, .camera, fields))
+    }
+
+    /// Instant Replay P0 — the frame-cadence reading for one stream (`FrameCadenceAnalyzer`).
+    /// `verdict` is `even`, `bursty`, `stalled` or `insufficient`; the gaps are between frame
+    /// arrivals; `lagP95`/`lagMax` are how far arrival trails the glasses' own timestamps beyond
+    /// the smallest lag seen; `playoutDelay` is the delay that would show these frames evenly.
+    @discardableResult
+    static func frameCadence(_ report: FrameCadenceAnalyzer.Report, width: Int? = nil,
+                             height: Int? = nil) -> PrivacyEvent {
+        func ms(_ seconds: TimeInterval) -> PrivacyEvent.Value { .milliseconds(Int((seconds * 1000).rounded())) }
+        var fields: [PrivacyEvent.Field] = [
+            .init(.source, .token(PrivacyToken(CameraSource.glasses.rawValue))),
+            .init(.event, .token(PrivacyToken(CameraEvent.frameCadence.rawValue))),
+            .init(.verdict, .token(PrivacyToken(report.verdict.rawValue))),
+            .init(.count, .count(report.frames)),
+            .init(.frameRate, .count(Int(report.framesPerSecond.rounded()))),
+            .init(.gapMedian, ms(report.gapMedian)),
+            .init(.gapP95, ms(report.gapP95)),
+            .init(.gapMax, ms(report.gapMax)),
+            .init(.bursts, .count(report.bursts)),
+            .init(.stalls, .count(report.stalls)),
+            .init(.lagP95, ms(report.lagP95)),
+            .init(.lagMax, ms(report.lagMax)),
+            .init(.presentationEven, .flag(report.presentationEven)),
+            .init(.reordered, .count(report.reordered)),
+            .init(.playoutDelay, ms(report.recommendedPlayoutDelay)),
+        ]
+        if let width { fields.append(.init(.width, .count(width))) }
+        if let height { fields.append(.init(.height, .count(height))) }
         return emit(.init(.capture, .camera, fields))
     }
 
@@ -716,6 +751,11 @@ enum PrivacyLog {
         case photosSkipped
         case audioFormatChanged, audioBuffersDropped, audioAppendRejected
         case autoTranscriptionEnabled, transcriptCaptured, transcriptSaved, transcriptSaveFailed
+        // Instant Replay. The buffer starting and stopping (`detail` is why it stopped: an off
+        // reason, `stopped` or `launchCleanup`), a segment the encoder could not finish, a
+        // replay kept (`seconds` its length, `detail` where it went) and one that could not be.
+        case replayBufferStarted, replayBufferStopped, replaySegmentFailed
+        case replaySaved, replaySaveFailed
     }
 
     /// `success` is whether the file reached the photo library; `count` is frames or buffers,
@@ -2491,6 +2531,11 @@ struct PrivacyEvent: Equatable {
         // Plan KL P1 — a per-minute refusal's own figures: the account's tokens a minute for the
         // model, and what the provider counted the request as. Numbers only.
         case limit, requested
+        // Instant Replay P0 — a stream's frame cadence: the gaps between arrivals, the bursts and
+        // stalls among them, how far arrival trails capture, and the playout delay that would
+        // hide it. Numbers and one flag.
+        case gapMedian, gapP95, gapMax, bursts, stalls, lagP95, lagMax, reordered, playoutDelay
+        case presentationEven
     }
 
     /// The only shapes a field value can take. There is no `case text(String)` — that absence is

@@ -1,7 +1,9 @@
 # Plan LB — Instant Replay (keep the last 30 seconds the glasses already saw, only while the camera is already on)
 
-**Status:** 📝 Drafted 2026-11-10. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-10, P0–P2 in one branch ([As built](#as-built-2026-11-10)), headless. Owed:
+P0's small device pass (the frame-cadence reading at high and medium, in a live session and in a recording,
+and whether the capture light is lit for each), P3's device pass, and the catalog sync. Every
+[decision](#decisions-for-greig-open) below was taken as recommended.
 **Track:** Everyday and Field Assist. Off by default.
 **Builds on:** `CameraService` and `MetaCameraBackend`, Plan [CP](CP-outbound-frame-privacy.md)
 (`OutboundFrameRelay`, the `OutboundFrameConsumer` roster, `PrivacyFilterScope.recording`), Plan
@@ -331,3 +333,106 @@ Recommendations first.
 - **Bystander trust.** A camera that "remembers" is the feature people fear most from smart glasses. The
   default-off switch, the visible mark, the camera-already-on rule and the never-uploaded rule are the answer.
   The setting's footer says all four plainly.
+
+## As built (2026-11-10)
+
+P0–P2 in one branch, headless. P0's device pass and P3 are owed; the string catalog sync is owed in its own
+PR. Every decision was taken as recommended: off by default; a 60 s buffer (30 s and 2 min offered), "save
+the replay" keeps 30 s; video only; Recordings by default, the job or Photos only when named; a job clip
+capped at 60 s; a raised posture stops the buffer; no "save that".
+
+**The core (pure, table-tested).** `Services/InstantReplay/`:
+- `ReplayBufferPolicy` — the §1 table: an organisation pin, the setting, Medical Compliance, the glasses
+  camera streaming, a `.normal` posture, and free space of at least twice the buffer plus the recorder's own
+  low-storage line (`VideoRecordingService.lowStorageBytes`, 2 GB; an unknown free figure is not a refusal).
+  `.run(plan)` or `.off(ReplayOffReason)`, each reason with its spoken and status line.
+- `ReplayBufferPlan` — 2 s segments, capacity buffer/segment + 1, `VideoBitratePolicy.disk` at the size and
+  rate, the size line for the footer. Estimated from the tier (`StreamConfigPolicy.encodedSize`) until the
+  first frame, then worked from the delivered size.
+- `ReplaySegmentRing` — fixed capacity, oldest-first eviction (the evicted segments are handed back for
+  deletion), out-of-order refusal, and `span(coveringLast:now:)`: the newest contiguous run, stopping at a gap
+  longer than a segment, at a size change, or once it reaches the window's start.
+- `ReplaySaveRequest` / `ReplaySaveDecision` / `ReplaySaveOutcome` — the arguments, the decision (held to the
+  buffer; the job needs an open job and is capped at `jobClipMaximumSeconds`), and every reply.
+  `ReplayCompositionPlan` — the passthrough timeline.
+- `FrameCadenceAnalyzer` (§8) — inter-arrival median/p95/max, bursts (≥3 frames within 20 ms then ≥100 ms),
+  stalls (≥500 ms), arrival lag beyond the smallest lag (p95/max), presentation evenness and reorders, a
+  verdict (`even`, `bursty`, `stalled`, `insufficient`) and a recommended playout delay (zero when even;
+  otherwise the lag spread rounded up to 10 ms, capped at 300 ms). `FrameCadenceRecorder` keeps one stream's
+  first 60 s and reports once.
+
+**Wired.**
+- `ReplayBufferService` (`@MainActor`) is fed only by `OutboundFrameRelay.publisher`
+  (`AppState.connectInstantReplay()`, roster case `OutboundFrameConsumer.instantReplayBuffer`: owner
+  `ReplayBufferService`, scope `.recording`, tap `.outboundRelay`, mechanism `.relay`). It reads
+  `cameraService.isStreaming` and never starts, claims or keeps a stream. It reconciles on the stream flag,
+  the power posture, the setting row and a one-second tick while running (Medical Compliance, the
+  organisation pin and free space change without an event). Every stop deletes every segment; so do launch
+  (`removeLeftovers()`), a changed length and a subject erasure.
+- Segments: `AVReplaySegmentWriter`, H.264 in MP4, the encode on its own serial queue, keyframe interval the
+  segment length, `Application Support/InstantReplay/segment-{n}.mp4`, `completeUnlessOpen` and excluded
+  from backup on each file and on the directory.
+- Saving: the segment being written is closed first, so the last second is in; the span's files are pinned
+  while the passthrough composition (`AVReplayClipComposer`: `AVMutableComposition`, `AVAssetExportSession`
+  passthrough) reads them, and a segment evicted meanwhile is deleted when the save ends. Recordings through
+  `RecordingFiler` as `Replay_{date}.mp4` (the list labels it Replay); Photos through
+  `GlassesPhotoAlbum.saveVideo` only for `destination: photos`; the job through `JobClipFiling.attachClip` with
+  a poster frame, `filterWasOn` (the blur on for every segment) and `cutShort` (the buffer held less).
+- `instant_replay` (`save`, `status`; seconds, destination, caption), registered outside the phone-only
+  build; classified `.local(.notCancellable)`, offline `.local`, `PhoneCapturePolicy` `.glassesOnly`, titled
+  "Kept a replay for you". `TempleAction.saveReplay` ("Save Instant Replay"; refused with "Instant Replay
+  isn't running." while off; acknowledged with the recording-stopped pair, then the spoken result).
+  `SaveGlassesReplayIntent` ("Save Glasses Replay") in `CaptureIntents.swift`, opens the app.
+- Settings › Devices & Privacy › Glasses › Instant Replay: the switch, the length, what it is doing now, and
+  the footer with the size for the current stream. `SettingKey.instantReplayEnabled`, an off-ceiling, always
+  shown. A Replay mark on the session card and a Replay label on the Live Activity's Lock Screen view
+  (`ContentState.instantReplayRunning`, optional so an older state still decodes).
+- `SensitiveStore.instantReplayBuffer` (media, third-party, `completeUnlessOpen`, backup excluded, delete-all
+  and subject delete `ReplayBufferService.deleteAll()`), in the ET matrix and the erasure walk.
+- The cadence measurement: `GlassesFramePipeline.picture(helperImage:sampleBuffer:)` hands every delivered
+  sample's arrival (`CACurrentMediaTime()`) and presentation timestamp to `FrameCadenceRecorder` before
+  anything is decided about it, behind the Developer panel's **Measure frame cadence** switch (off by
+  default, `frameCadenceLoggingEnabled`).
+
+**Sizes as built** (`VideoBitratePolicy.disk`, 15 fps; the buffer column includes one 2 s segment):
+
+| Stream | Bitrate | A 30 s save | 30 s buffer | 60 s buffer (default) | 2 min buffer |
+|---|---|---|---|---|---|
+| high 720×1280 | 5.7 Mbps | 21.4 MB | 22.8 MB | 44.2 MB | 86.9 MB |
+| medium 504×896 | 2.8 Mbps | 10.5 MB | 11.2 MB | 21.7 MB | 42.7 MB |
+| low 360×640 | 1.4 Mbps | 5.3 MB | 5.6 MB | 10.9 MB | 21.4 MB |
+
+At 30 fps high is 8.0 Mbps and medium 3.9 Mbps. The footer for the default reads "Keeps up to about 44 MB on
+the phone while the camera is on."
+
+**Running the P0 device pass.** Settings › Advanced & Support › Advanced › Developer › Frame Cadence: turn
+on **Measure frame cadence**, then start a stream (a live session with the camera, then a recording) and keep
+it running for a minute. The reading appears under the switch and in the camera log as one line,
+`[capture] camera source=glasses event=frameCadence verdict=… count=… frameRate=… gapMedian=…ms gapP95=…ms
+gapMax=…ms bursts=… stalls=… lagP95=…ms lagMax=…ms presentationEven=… reordered=… playoutDelay=…ms
+width=… height=…`. Each new stream is measured again from its first frame. Repeat at high and medium, and
+note whether the glasses' capture light is lit in each. `bursty` with a non-zero `playoutDelay` is §8's
+"frames burst" branch; `even` is the other.
+
+**Deviations.**
+- **One `AVAssetWriter` per segment, not fragmented MPEG-4.** Chosen without the on-phone encode measurement
+  P1 named (that is P3's now): each segment is a self-contained MP4 that starts on a keyframe by construction
+  and survives the next writer failing, and the composition reads it with no special handling. A writer that
+  cannot be made is retried after one segment, not once a frame.
+- **Frames are stamped on arrival**, as every recorder still is: the relay publishes a `UIImage` and no
+  capture time. Capture-time stamping waits on the cadence reading, as §8 says.
+- **The cadence reading goes to the camera log** (the `PrivacyLog` channel the transport-level line uses) and
+  to the Developer panel, not a separate probe file, and never to the support report.
+- **A change of frame size is a boundary**, beside a gap: two sizes cannot be joined passthrough.
+- **A subject erasure clears the whole buffer** (`deleteSubject` is `deleteAll()`): a segment is not indexed
+  by who appears in it, and the buffer is at most two minutes.
+- **Recordings only, no chosen-folder copy**: a kept replay is filed into the Recordings folder and is not
+  copied to the wearer's chosen recordings folder or Photos unless the request named Photos.
+- **A job replay is filed as a clip** with the `record_clip` origin, the only clip origin there is.
+- **The capture-light rule** ("if any stream runs without it, the buffer is not allowed for that stream")
+  waits on P0's device pass; nothing in the build can read the light.
+- **The Live Activity** shows the Replay label on the Lock Screen view; the Dynamic Island is unchanged.
+- **The Shortcut** is a Shortcuts action, not an App Shortcut (the provider is at its cap), and has no Siri
+  exposure switch of its own; it refuses with the same spoken reason when the buffer is off.
+- The settings switch is drawn disabled in Medical Compliance mode and under an organisation pin.
+

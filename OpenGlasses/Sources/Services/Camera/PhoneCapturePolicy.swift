@@ -67,6 +67,7 @@ enum PhoneCapturePolicy {
         "navigation_assist": .glassesOnly,
         "video_recording": .glassesOnly,
         "record_clip": .glassesOnly,
+        "instant_replay": .glassesOnly,
         "pin_frame": .glassesOnly,
     ]
 

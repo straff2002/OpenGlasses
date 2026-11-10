@@ -38,6 +38,12 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// same shape a recording shared from the Recordings folder has. What differs is the length
     /// cap and where the file is filed, neither of which is a privacy classification.
     case jobClipRecording
+    /// Instant Replay's rolling buffer: two-second segments of the last minute, kept on this
+    /// device only while the glasses camera already streams for something else, so a moment that
+    /// has just happened can be saved. `.recording` for the same reason a job clip is: frames
+    /// written to a file on this device. Off the relay like every recorder, never the raw tap —
+    /// a buffer of pre-blur frames would make every clip saved from it undo the filter.
+    case instantReplayBuffer
     /// RTMP broadcast. The relay protects the glasses feed. `PhoneVideoSource` hands its frames to
     /// the encoder directly, without the relay, so while the blur is on no phone frame reaches the
     /// encoder at all: `BroadcastGoLive` refuses every route, `BroadcastService` asks the same rule
@@ -310,6 +316,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .hermesBridgePhotoRequest: return "AppState"
         case .videoRecording: return "VideoRecordingService"
         case .jobClipRecording: return "JobClipRecorder"
+        case .instantReplayBuffer: return "ReplayBufferService"
         case .videoRecordingTool: return "VideoRecordingTool"
         case .rtmpBroadcast: return "BroadcastService"
         case .webRTCBrowserStream: return "WebRTCStreamingService"
@@ -365,7 +372,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
     var scope: PrivacyFilterScope? {
         switch self {
         case .outboundRelayInput, .appRelayAttachment: return nil
-        case .videoRecording, .videoRecordingTool, .jobClipRecording: return .recording
+        case .videoRecording, .videoRecordingTool, .jobClipRecording, .instantReplayBuffer: return .recording
         case .rtmpBroadcast, .webRTCBrowserStream: return .broadcast
         case .expertStreamBridge, .expertMJPEGTransport, .expertMeetingLinkTransport,
              .expertPeerTransport, .expertTransportProtocol: return .expertStream
@@ -401,7 +408,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .jobRecordingBlurPass, .jobRecordingOfficeSync: return .jobRecordingFolder
         case .liveSessionPush, .livePreview: return .rawCameraCallback
         case .phoneViewfinder: return .phonePreviewLayer
-        case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
+        case .videoRecording, .videoRecordingTool, .jobClipRecording, .instantReplayBuffer,
+             .rtmpBroadcast,
              .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
              .expertMeetingLinkTransport, .expertPeerTransport,
              .expertTransportProtocol: return .outboundRelay
@@ -423,7 +431,8 @@ enum OutboundFrameConsumer: String, CaseIterable {
     var mechanism: Mechanism {
         switch self {
         case .outboundRelayInput, .appRelayAttachment: return .relayInput
-        case .videoRecording, .videoRecordingTool, .jobClipRecording, .rtmpBroadcast,
+        case .videoRecording, .videoRecordingTool, .jobClipRecording, .instantReplayBuffer,
+             .rtmpBroadcast,
              .webRTCBrowserStream, .expertStreamBridge, .expertMJPEGTransport,
              .expertMeetingLinkTransport, .expertPeerTransport,
              .expertTransportProtocol: return .relay

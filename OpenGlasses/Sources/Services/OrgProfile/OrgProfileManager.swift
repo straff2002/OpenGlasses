@@ -1047,6 +1047,7 @@ extension SettingKey {
         case .teamLearningReviewerDevice: return "This phone can't approve team learnings"
         case .cloudDictationEnabled: return "Cloud dictation is off"
         case .interpreterEnabled: return "The spoken interpreter is off"
+        case .instantReplayEnabled: return "Instant Replay is off"
         default: return rawValue
         }
     }

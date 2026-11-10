@@ -219,6 +219,7 @@ enum ActivityTitler {
         ], reads: ["status"]),
         "record_clip": .init("Recorded a clip for you", actions: ["stop": "Stopped the clip"],
                              reads: ["status"]),
+        "instant_replay": .init("Kept a replay for you", reads: ["status"]),
         "scan_document": .init("Scanned a document for you"),
         "smart_capture": .init("Captured what you're looking at"),
         "remember_scene": .init("Remembered a scene for you"),

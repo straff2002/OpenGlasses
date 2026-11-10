@@ -24,6 +24,8 @@ enum TempleAction: Hashable, Identifiable {
     case answerNextPage
     /// Turn the answer card back a page, or from its actions back to the answer.
     case answerPreviousPage
+    /// Keep the last 30 seconds from Instant Replay. Nothing while the buffer isn't running.
+    case saveReplay
     /// Run a saved Quick Action by id.
     case quickAction(String)
 
@@ -33,7 +35,7 @@ enum TempleAction: Hashable, Identifiable {
     static let builtIns: [TempleAction] = [
         .startTalking, .hangUp, .mute, .photoDescribe, .photoToCameraRoll,
         .readDigest, .toggleRecording, .musicPlayPause, .askAgent,
-        .answerNextPage, .answerPreviousPage, .nothing,
+        .answerNextPage, .answerPreviousPage, .saveReplay, .nothing,
     ]
 
     /// Persisted form. Stable — never rename a case's value.
@@ -51,6 +53,7 @@ enum TempleAction: Hashable, Identifiable {
         case .askAgent: return "askAgent"
         case .answerNextPage: return "answerNextPage"
         case .answerPreviousPage: return "answerPreviousPage"
+        case .saveReplay: return "saveReplay"
         case .quickAction(let id): return Self.quickActionPrefix + id
         }
     }
@@ -85,6 +88,7 @@ enum TempleAction: Hashable, Identifiable {
         case .askAgent: return String(localized: "Ask my agent")
         case .answerNextPage: return String(localized: "Next page of an answer")
         case .answerPreviousPage: return String(localized: "Previous page of an answer")
+        case .saveReplay: return String(localized: "Save Instant Replay")
         case .quickAction: return String(localized: "Quick Action")
         }
     }

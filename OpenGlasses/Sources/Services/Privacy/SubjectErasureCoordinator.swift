@@ -133,6 +133,8 @@ final class SubjectErasureCoordinator {
         var assistingHandovers: AssistingHandoverStore?
         /// Kept caption sessions (Plan KP P5).
         var captionSessions: CaptionSessionStore?
+        /// Instant Replay's rolling buffer, which a person erasure clears whole.
+        var instantReplay: ReplayBufferService?
 
         init() {}
     }
@@ -171,6 +173,7 @@ final class SubjectErasureCoordinator {
         .activityTrail,
         .goals,
         .recordings,
+        .instantReplayBuffer,
         .jobRecordingBundles,
         .jobRecordingCapture,
         .capturedPhotos,
@@ -268,6 +271,8 @@ final class SubjectErasureCoordinator {
             case .recordings:
                 receipt = .unsupported(store, "a recording is not indexed by who is audible in it; "
                                        + "erasure is per file from the recordings screen")
+            case .instantReplayBuffer:
+                receipt = eraseInstantReplay(subject)
             case .jobRecordingBundles:
                 receipt = .unsupported(store, "a recorded job is not indexed by who appears in it; "
                                        + "it is removed with its job, and its media a week after "
@@ -675,6 +680,17 @@ final class SubjectErasureCoordinator {
     /// A kept caption session that mentions the person goes whole (Plan KP P5): what was said,
     /// its translation and the speakers' names are all searched. A thread or a document is not
     /// what a session is about, so those subjects find nothing here.
+    /// A replay segment is not indexed by who appears in it, so forgetting a person clears the
+    /// whole buffer: it is at most a couple of minutes of video, and it is gone from the phone
+    /// within that anyway. A thread, a document or a fact is never in it.
+    private func eraseInstantReplay(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let replay = stores.instantReplay else {
+            return .unsupported(.instantReplayBuffer, "no Instant Replay buffer was supplied to clear")
+        }
+        guard case .person = subject else { return .complete(.instantReplayBuffer) }
+        return .complete(.instantReplayBuffer, removed: replay.deleteAll())
+    }
+
     private func eraseCaptionSessions(_ subject: ErasureSubject) -> ErasureReceipt {
         guard let sessions = stores.captionSessions else {
             return .unsupported(.captionSessions, "no store of kept caption sessions was supplied")
