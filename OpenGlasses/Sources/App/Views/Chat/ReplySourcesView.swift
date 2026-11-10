@@ -90,6 +90,8 @@ private struct SearchSuggestionsWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         // Nothing kept between snippets: no cookies, no cache, no site data.
         configuration.websiteDataStore = .nonPersistent()
+        // The snippet is markup and style; nothing in it needs to run.
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
         view.scrollView.isScrollEnabled = false
