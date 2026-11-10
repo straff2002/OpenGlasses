@@ -66,4 +66,31 @@ final class TabStripPolicyTests: XCTestCase {
             XCTAssertFalse(lead.title(modeName: nil).isEmpty)
         }
     }
+    // MARK: - A transcript under review is shown (review follow-up 2026-11-10)
+
+    private func review(_ id: UUID? = UUID(), onboarding: Bool = false, sheet: Bool = false,
+                        carPlay: Bool = false) -> SendReviewTabPolicy.Facts {
+        .init(reviewID: id, onboarding: onboarding, sheetPresented: sheet, carPlay: carPlay)
+    }
+
+    func testAReviewStartedOnAnotherTabBringsTheWearerToAvenkin() {
+        for tab in MainTab.allCases where tab != .voice {
+            XCTAssertEqual(SendReviewTabPolicy.tab(for: review(), current: tab), .voice, "\(tab)")
+        }
+        XCTAssertNil(SendReviewTabPolicy.tab(for: review(), current: .voice), "already there")
+    }
+
+    func testNoReviewMovesNothing() {
+        for tab in MainTab.allCases {
+            XCTAssertNil(SendReviewTabPolicy.tab(for: review(nil), current: tab), "\(tab)")
+        }
+    }
+
+    func testOnboardingASheetOrCarPlayLeaveTheTabAlone() {
+        XCTAssertNil(SendReviewTabPolicy.tab(for: review(onboarding: true), current: .settings))
+        XCTAssertNil(SendReviewTabPolicy.tab(for: review(sheet: true), current: .job))
+        XCTAssertNil(SendReviewTabPolicy.tab(for: review(carPlay: true), current: .chat))
+        // The sheet closes with the review still in force: asked again, it moves.
+        XCTAssertEqual(SendReviewTabPolicy.tab(for: review(sheet: false), current: .job), .voice)
+    }
 }
