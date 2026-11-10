@@ -68,7 +68,7 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
         // Nothing else has configured the session when the shared tap is down, so we configure it
         // ourselves — with the same category/options the always-on listener uses, so a later
         // handover back to it does not re-tune the route underneath the capture.
-        let options = MicRoutePolicy.categoryOptions(for: Config.micRoute, mixWithOthers: true)
+        let options = MicRoutePolicy.categoryOptions(for: Config.conversationMicRoute, mixWithOthers: true)
         do {
             sessionLease = try await AudioSessionCoordinator.shared.acquireOffMain(
                 .captureAudio, category: .playAndRecord, mode: .default, options: options)
@@ -163,7 +163,7 @@ final class StandaloneMicTapService: ObservableObject, CaptureAudioEngineProvidi
     /// listener makes, so the capture doesn't quietly come up on the phone mic when the glasses are
     /// the configured source.
     private func preferConfiguredMicIfAvailable(_ session: AVAudioSession) {
-        let route = Config.micRoute
+        let route = Config.conversationMicRoute
         guard route != .phone, let inputs = session.availableInputs else { return }
         let ports = inputs.map { (name: $0.portName, type: $0.portType) }
         guard let index = MicRoutePolicy.preferredInputIndex(for: route, ports: ports) else { return }

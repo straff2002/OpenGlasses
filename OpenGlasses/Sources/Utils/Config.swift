@@ -3879,6 +3879,20 @@ struct Config {
         return useGlassesMicForWakeWord ? .glasses : .phone
     }
 
+    /// Plan KX §2.5: the route a conversation actually captures on — `micRoute`, except that
+    /// **Glasses Mic** becomes the iPhone mic while the Meta Display is on (the glasses' hands-free
+    /// mic ends the display session). Capture paths read this; Settings and hints read `micRoute`.
+    static var conversationMicRoute: MicRoute {
+        LensMicPolicy.conversationRoute(preferred: micRoute, lensOn: lensIsOn,
+                                        keepPhoneMic: lensKeepsPhoneMic)
+    }
+
+    /// The HUD switch is on and a Meta Display is connected.
+    static var lensIsOn: Bool { glassesDisplayEnabled && LensMicPolicy.metaDisplayPresent }
+
+    /// Plan KX §2.5: the rollback for `conversationMicRoute`. On by default.
+    @UserDefaultsBacked("lensKeepsPhoneMic", default: true) static var lensKeepsPhoneMic: Bool
+
     static func setMicRoute(_ route: MicRoute) {
         UserDefaults.standard.set(route.rawValue, forKey: "micRoute")
         // Keep the legacy boolean coherent for anything that still reads it.
@@ -4030,7 +4044,16 @@ struct Config {
     /// Ray-Ban Display in-lens HUD. No-ops on glasses without a display.
     @UserDefaultsBacked("glassesDisplayEnabled", default: false) static var glassesDisplayEnabled: Bool
 
-    static func setGlassesDisplayEnabled(_ enabled: Bool) { glassesDisplayEnabled = enabled }
+    /// Plan KX §1: moving the switch by hand answers the connect-time offer too, so it is never
+    /// asked after the wearer has already chosen.
+    static func setGlassesDisplayEnabled(_ enabled: Bool) {
+        glassesDisplayEnabled = enabled
+        displayOfferAnswered = true
+    }
+
+    /// Plan KX §1: the "Your glasses have a display" offer was answered (Turn on, Not now, or the
+    /// switch moved by hand). Asked once per install.
+    @UserDefaultsBacked("displayOfferAnswered", default: false) static var displayOfferAnswered: Bool
 
     /// Plan KP §8 rule 5: while another app has the Display, the first answer spoken is followed
     /// once by "Your display's busy…" (once per stretch). On by default (decision 9).

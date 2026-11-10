@@ -140,6 +140,11 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     }
     var onSessionReading: ((DisplaySessionReading) -> Void)?
 
+    /// Plan KX §2.2: the session we held reached `.stopped` without us stopping it — the wearer's
+    /// Back gesture or two-finger tap, or the glasses' hands-free mic coming up (iOS #342, #349). The
+    /// service reads it as a dismissal and does not reopen the lens for an ambient frame.
+    var onSessionEndedByDevice: (() -> Void)?
+
     /// A refused start reads as `.inUse` for this long, then the next frame may try once more. A
     /// refusal is not an interruption: the session never had the Display, so trying again later
     /// takes nothing back. Without the expiry a refusal would hold the HUD dark until relaunch,
@@ -206,14 +211,15 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 }
             }
         }
-        try await display.send(view)
+        try await HUDSendDeadline.run { try await display.send(view) }
     }
 
     func send(screen: HUDScreen) async throws {
         let display = try await ensureDisplay()
         let view = makeScreenView(screen)
         if screen.picture != nil { lastPictureBytes = Self.pictureBytes(in: view) }
-        try await display.send(view)
+        // Plan KX §2.4: a send that has not come back in `HUDSendDeadline.seconds` has failed.
+        try await HUDSendDeadline.run { try await display.send(view) }
     }
 
     /// The encoded size of the picture in a built tree: DAT carries an `Image` as its `uri`.
@@ -272,9 +278,12 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             (text: HUDTextShaper.condense(line.text), iconName: line.icon.metaIconName,
              style: line.emphasis.textStyle, color: line.emphasis.textColor)
         }
+        // Plan KX §2.1: exactly one button carries `.actionRole(.primary)`, so the glasses focus it
+        // when the frame first renders (and again on every re-send, which resets focus).
+        let focusID = screen.resolvedFocusItemID
         let buttonModels = screen.items.map { item in
             (id: item.id, label: HUDTextShaper.condense(item.label, max: HUDTextShaper.maxTitleLength),
-             style: item.style.buttonStyle, iconName: item.icon.metaIconName)
+             style: item.style.buttonStyle, iconName: item.icon.metaIconName, focused: item.id == focusID)
         }
         // Plan KV §6: the page view's picture, built here so the builder closure captures only the
         // Sendable `Image`, never the `UIImage`. It is drawn at the box the frame leaves it
@@ -314,11 +323,19 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 ButtonGroup(alignment: .center) {
                     for button in buttonModels {
                         let id = button.id
-                        Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
+                        let onClick: @Sendable () -> Void = { [weak self] in
                             Task { @MainActor in
                                 if let onSelect { onSelect(id) } else { self?.onItemSelected?(id) }
                             }
-                        })
+                        }
+                        if button.focused {
+                            Button(label: button.label, style: button.style, iconName: button.iconName,
+                                   onClick: onClick)
+                                .actionRole(.primary)
+                        } else {
+                            Button(label: button.label, style: button.style, iconName: button.iconName,
+                                   onClick: onClick)
+                        }
                     }
                 }
             }
@@ -436,9 +453,20 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         sessionWatch?.cancel()
         let updates = session.stateUpdates()
         sessionWatch = Task { @MainActor [weak self] in
+            var reachedStarted = false
             for await state in updates {
                 guard let self, !Task.isCancelled, self.session === session else { return }
                 self.noteSessionState(state)
+                if state == .started { reachedStarted = true }
+                // Plan KX §2.2: `dropSession` cancels this watch before it stops the session, so a
+                // `.stopped` heard here, after the session was up, is one the app did not ask for.
+                // A start that never got there is a refused start (`prepareSession`), not this.
+                if state == .stopped, reachedStarted {
+                    self.onDebugEvent?("HUD display session ended by the glasses")
+                    self.dropSession(stopping: false)
+                    self.onSessionEndedByDevice?()
+                    return
+                }
             }
         }
     }

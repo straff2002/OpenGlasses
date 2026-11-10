@@ -90,6 +90,7 @@ final class GlassesDisplayService: ObservableObject {
         if let meta = backend as? MetaDisplayBackend {
             meta.onDebugEvent = { [weak self] message in self?.onDebugEvent?(message) }
             meta.onSessionReading = { [weak self] reading in self?.applySessionReading(reading) }
+            meta.onSessionEndedByDevice = { [weak self] in self?.lensEndedByDevice() }
         }
         #endif
     }
@@ -210,6 +211,8 @@ final class GlassesDisplayService: ObservableObject {
     @discardableResult
     func presentPageView(_ screen: HUDScreen, kind: HeldPage, onSelect: @escaping (String) -> Void) -> Bool {
         guard isEnabled, deviceSupportsDisplay(), !holdsLens else { return false }
+        // Plan KX §2.2: a page the wearer opened reopens a dismissed lens; a cue the app put up does not.
+        if kind == .view { wearerLed() } else if lensDismissed { return false }
         if kind == .view {
             switch heldPage {
             case .view:
@@ -329,10 +332,59 @@ final class GlassesDisplayService: ObservableObject {
     /// While another app has the Display, nothing is enqueued for the lens.
     private var holdsLens: Bool { displayAvailability == .inUse }
 
+    // MARK: - A session the glasses ended (Plan KX §2.2)
+
+    /// True after the glasses ended our display session themselves — the band's Back gesture, a
+    /// two-finger temple tap, or the hands-free mic coming up. The wearer dismissed the lens, so
+    /// nothing ambient (a caption, a notification, a guidance line, a page's **Show here** cue)
+    /// reopens it: every frame is dropped at `enqueue` while this is set. A wearer-led frame clears
+    /// it first — a menu or task card presented, a new answer card, a page view opened, the HUD
+    /// switch or the display offer's **Turn on**, or the glasses' link coming up again.
+    @Published private(set) var lensDismissed = false
+    /// The answer card on the lens when it was dismissed: its later growth is not a new answer and
+    /// does not reopen the lens.
+    private var dismissedAnswerCard: Int?
+
+    /// The glasses ended the session. State only: nothing is sent (the session is gone, and a send
+    /// would open a new one). A running task card stays resumable from the launcher.
+    func lensEndedByDevice() {
+        guard !lensDismissed else { return }
+        dismissedAnswerCard = showsAnswerCard ? currentScreen?.pageSet?.card : nil
+        lensDismissed = true
+        pending = nil
+        isInteractive = false
+        showsAnswerCard = false
+        flashingOverInteractive = false
+        releasePageView()
+        currentScreen = nil
+        screenSelectionHandler = nil
+        transientShowing = nil
+        isDisplayActive = false
+        lastRendered = nil
+        lastScreenKey = nil
+        sendPacer.reset()
+        onDebugEvent?("HUD dismissed by the wearer")
+    }
+
+    /// The wearer turned the HUD on (Settings, or the display offer's **Turn on**).
+    func wearerTurnedLensOn() {
+        wearerLed()
+    }
+
+    /// A wearer-led frame is about to be enqueued: the lens may open again.
+    private func wearerLed() {
+        guard lensDismissed else { return }
+        lensDismissed = false
+        dismissedAnswerCard = nil
+        onDebugEvent?("HUD reopened by the wearer")
+    }
+
     /// The glasses' link and worn state, from `GlassesConnectionService` (`isConnected`, which is
     /// `linkState == .connected`, and `isWorn`).
     func updateGlassesLink(connected: Bool, worn: Bool?) {
         guard connected != glassesConnected || worn != glassesWorn else { return }
+        // Plan KX §2.2: a link coming up is a fresh start; a dismissal does not outlive it.
+        if connected && !glassesConnected { wearerLed() }
         glassesConnected = connected
         glassesWorn = worn
         refreshAvailability()
@@ -416,8 +468,42 @@ final class GlassesDisplayService: ObservableObject {
 
     /// The support report's lines about the reading.
     var availabilityReportLines: [String] {
-        ["Display reading now: \(displayAvailability.reportName) (\(sessionReading.reportName))"]
-            + availabilityLog.reportLines()
+        var lines = ["Display reading now: \(displayAvailability.reportName) (\(sessionReading.reportName))"]
+        if lensDismissed { lines.append("Display dismissed by the wearer (not reopened for ambient frames)") }
+        if let lastSend { lines.append(lastSend.reportLine) }
+        return lines + availabilityLog.reportLines()
+    }
+
+    // MARK: - Pacing and send records (Plan KX §2.4)
+
+    /// Spaces real sends to the glasses. Not consulted when `testRenderSink` captures frames.
+    private var sendPacer = HUDSendPacer()
+    /// The last send to the backend, for the support report and the Developer panel.
+    @Published private(set) var lastSend: HUDSendRecord?
+    /// Test seam: the pacer's sleep (production sleeps on the main actor).
+    var paceSleep: (TimeInterval) async -> Void = { seconds in
+        try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+    }
+
+    /// A send to the backend ended: note it for the pacer and the report. Nil kind: nothing was sent.
+    private func recordSend(_ kind: HUDSendRecord.Kind?, started: ContinuousClock.Instant,
+                            outcome: HUDSendRecord.Outcome) {
+        guard let kind else { return }
+        sendPacer.sent(endingAt: Date(), hadPicture: kind == .picture)
+        lastSend = HUDSendRecord(kind: kind, milliseconds: Self.milliseconds(since: started), outcome: outcome)
+    }
+
+    /// Plan KX §2.4: whether a failed picture frame is worth sending again as text. Not when there is
+    /// no display, or the Display is another app's: those are readings, and text would fail the same.
+    static func retriesWithoutPicture(after error: Error) -> Bool {
+        if case GlassesDisplayError.noDisplay = error { return false }
+        if case GlassesDisplayError.displayInUse = error { return false }
+        return true
+    }
+
+    private static func milliseconds(since start: ContinuousClock.Instant) -> Int {
+        let elapsed = ContinuousClock.now - start
+        return Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
     }
 
     // MARK: - Testing seam
@@ -449,6 +535,8 @@ final class GlassesDisplayService: ObservableObject {
         // pairing from TestFlight must not start a glasses transport after an App Store upgrade.
         let supported = GlassesSupportPolicy.isSupported && (testCapabilityOverride ?? activeBackend.isAvailable)
         if hasDisplayCapability != supported { hasDisplayCapability = supported }
+        // Plan KX §2.5: whether a Meta Display is there to lose to the glasses' hands-free mic.
+        LensMicPolicy.metaDisplayPresent = supported && readsSessionAvailability
         return supported
     }
 
@@ -509,6 +597,8 @@ final class GlassesDisplayService: ObservableObject {
     /// feature is off or the glasses have no display.
     func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
+        // Plan KX §2.2: a menu, task card or choice list is the wearer's doing; it reopens the lens.
+        wearerLed()
         screenSelectionHandler = onSelect
         currentScreen = screen
         isInteractive = true
@@ -526,6 +616,12 @@ final class GlassesDisplayService: ObservableObject {
     @discardableResult
     func presentAnswerCard(_ screen: HUDScreen, onSelect: @escaping (String) -> Void) -> Bool {
         guard acceptsAnswerCard else { return false }
+        // Plan KX §2.2: a new answer is the wearer's (they asked); the card they dismissed growing
+        // is not, and stays off the lens.
+        if lensDismissed {
+            if let dismissed = dismissedAnswerCard, screen.pageSet?.card == dismissed { return false }
+            wearerLed()
+        }
         // Plan KV: under an open page view the answer waits, current, for the view to close.
         if heldPage == .view {
             answerUnderPage = (screen, onSelect)
@@ -662,6 +758,9 @@ final class GlassesDisplayService: ObservableObject {
             lensMissedFrames = true
             return
         }
+        // Plan KX §2.2: the wearer dismissed the lens; only a wearer-led frame (which clears this
+        // first) opens a session again. Nothing is held back for later either.
+        guard !lensDismissed else { return }
         frameRevision &+= 1
         if case .screen = frame { heldScreenRevision = frameRevision }
         // Any frame after a transient one replaces it (its own auto-clear included).
@@ -671,8 +770,21 @@ final class GlassesDisplayService: ObservableObject {
         isRendering = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            while let frame = self.pending {
+            while self.pending != nil {
+                // Plan KX §2.4: space real sends. The wait happens before the frame is taken, so
+                // anything enqueued meanwhile replaces it (latest wins) and only the newest goes.
+                if self.testRenderSink == nil, self.deviceSupportsDisplay() {
+                    let wait = self.sendPacer.delay(at: Date())
+                    if wait > 0 { await self.paceSleep(wait) }
+                }
+                // Dismissed (or handed to another app) while waiting: nothing goes.
+                guard !self.lensDismissed, !self.holdsLens, let frame = self.pending else {
+                    self.pending = nil
+                    break
+                }
                 self.pending = nil
+                var sentKind: HUDSendRecord.Kind?
+                let started = ContinuousClock.now
                 do {
                     switch frame {
                     case .op(let op):
@@ -683,6 +795,7 @@ final class GlassesDisplayService: ObservableObject {
                         } else if self.deviceSupportsDisplay() {
                             switch op {
                             case .show(let content):
+                                sentKind = .text
                                 try await self.activeBackend.showContent(
                                     title: content.title, body: content.body, icon: content.icon)
                                 self.isDisplayActive = true
@@ -692,8 +805,10 @@ final class GlassesDisplayService: ObservableObject {
                                 // missing `hudRenderedAt` is that, not a missing mark call.
                                 TurnRecorder.markHUDRendered(at: Date())
                             case .clear:
+                                sentKind = .clear
                                 try await self.activeBackend.clear()
                             }
+                            self.recordSend(sentKind, started: started, outcome: .sent)
                         }
                         self.lastRendered = op
                         self.lastScreenKey = nil
@@ -711,21 +826,32 @@ final class GlassesDisplayService: ObservableObject {
                         } else if self.deviceSupportsDisplay() {
                             let backend = self.activeBackend
                             let sent = Self.screen(screen, forBackendDrawingPictures: backend.drawsPictures)
-                            let started = ContinuousClock.now
+                            sentKind = sent.picture != nil ? .picture : .screen
                             try await backend.send(screen: sent)
                             self.isDisplayActive = true
                             if sent.picture != nil {
-                                let elapsed = ContinuousClock.now - started
-                                let ms = Int(elapsed.components.seconds * 1000
-                                             + elapsed.components.attoseconds / 1_000_000_000_000_000)
-                                self.onPictureSent?(backend.lastPictureBytes, ms)
+                                self.onPictureSent?(backend.lastPictureBytes, Self.milliseconds(since: started))
                             }
+                            self.recordSend(sentKind, started: started, outcome: .sent)
                         }
                         self.lastScreenKey = screen.renderKey
                         self.lastRendered = nil
                     }
                 } catch {
+                    let timedOut: Bool
+                    if case GlassesDisplayError.sendTimedOut = error { timedOut = true } else { timedOut = false }
                     self.handleRenderError(error)
+                    // Plan KX §2.4: a picture frame that failed goes once more as its text lines,
+                    // unless something newer is already waiting or the failure was the lens being
+                    // someone else's (a reading, not a failure).
+                    if sentKind == .picture, case .screen(var screen) = frame, self.pending == nil,
+                       Self.retriesWithoutPicture(after: error) {
+                        self.recordSend(.picture, started: started, outcome: .retriedWithoutPicture)
+                        screen.picture = nil
+                        self.pending = .screen(screen)
+                        continue
+                    }
+                    self.recordSend(sentKind, started: started, outcome: timedOut ? .timedOut : .failed)
                     break
                 }
             }
@@ -786,6 +912,7 @@ final class GlassesDisplayService: ObservableObject {
             return
         }
         PrivacyLog.device(.hud, .renderFailed, error: SafeErrorSummary(error))
+        sendPacer.reset()
         // The on-screen diagnostics panel is a different sink with a different audience — the
         // wearer chose to open it — so it keeps the readable text the device log does not.
         onDebugEvent?("HUD error: \(String(describing: error))")
@@ -805,6 +932,8 @@ enum GlassesDisplayError: LocalizedError {
     /// Plan KP §8: another app has the Display (our session is paused, or a start was refused).
     /// A reading, not a failure: nothing is torn down and nothing is retried until it is ours.
     case displayInUse
+    /// Plan KX §2.4: a send did not come back within `HUDSendDeadline.seconds`.
+    case sendTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -815,6 +944,7 @@ enum GlassesDisplayError: LocalizedError {
         #endif
         case .sessionUnavailable: return "Display session unavailable"
         case .displayInUse: return "Another app is using the display"
+        case .sendTimedOut: return "The display did not answer in time"
         }
     }
 }

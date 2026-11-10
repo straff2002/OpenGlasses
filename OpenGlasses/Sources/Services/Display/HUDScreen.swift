@@ -120,10 +120,29 @@ struct HUDScreen {
     /// `renderKey`: the key is what this frame shows.
     var pageSet: HUDPageSet?
 
-    init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = []) {
+    /// Plan KX §2.1: the item that takes focus when the screen first renders (DAT 1.0's
+    /// `.actionRole(.primary)`: "the first primary action receives focus"). Nil lets
+    /// `resolvedFocusItemID` choose. Set by a builder where the likeliest next press is not the
+    /// first prominent button. Part of `renderKey` only when set, so default screens keep their keys.
+    var focusItemID: String?
+
+    init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = [], focusItemID: String? = nil) {
         self.title = title
         self.lines = lines
         self.items = items
+        self.focusItemID = focusItemID
+    }
+
+    /// Plan KX §2.1: the one item a backend marks as the focused default. The explicit
+    /// `focusItemID` when it names an item on this screen, else the first `.primary` item, else the
+    /// first `.secondary`, else the first item. Nil for a screen with no items. Exactly one button
+    /// is ever marked, so focus never depends on which of several "primary" buttons the firmware
+    /// happens to take.
+    var resolvedFocusItemID: String? {
+        if let focusItemID, items.contains(where: { $0.id == focusItemID }) { return focusItemID }
+        return items.first(where: { $0.style == .primary })?.id
+            ?? items.first(where: { $0.style == .secondary })?.id
+            ?? items.first?.id
     }
 
     /// Stable key over the *visible* content, used to skip redundant re-renders
@@ -132,8 +151,29 @@ struct HUDScreen {
         let head = title ?? ""
         let body = lines.map { "\($0.emphasis):\($0.icon):\($0.text)" }.joined(separator: "¦")
         let acts = items.map { "\($0.id):\($0.style):\($0.icon):\($0.label)" }.joined(separator: "¦")
-        guard let picture else { return "\(head)|\(body)|\(acts)" }
-        return "\(head)|\(body)|\(acts)|pic:\(picture.contentKey)"
+        var key = "\(head)|\(body)|\(acts)"
+        if let picture { key += "|pic:\(picture.contentKey)" }
+        if let focusItemID { key += "|focus:\(focusItemID)" }
+        return key
+    }
+}
+
+/// Plan KX §2.3: the ids and labels that let the wearer leave a screen from the screen itself.
+/// The band's Back gesture ends the whole display session on hardware (iOS #349), so every
+/// interactive screen below the launcher's root carries one of these.
+enum HUDExit {
+    /// Item ids that leave or step back from a screen.
+    static let ids: Set<String> = [
+        "close", "back", "done", "dismiss", "stop",
+        "kp.close", "kp.back", "kp.answer",
+    ]
+
+    /// Whether `screen` has an item that leaves it.
+    static func hasExit(_ screen: HUDScreen) -> Bool {
+        screen.items.contains { item in
+            ids.contains(item.id) || item.id.hasSuffix(".close") || item.id.hasSuffix(".back")
+                || item.id.hasSuffix(".stop") || item.id.hasSuffix(".done") || item.id.hasSuffix(".deny")
+        }
     }
 }
 

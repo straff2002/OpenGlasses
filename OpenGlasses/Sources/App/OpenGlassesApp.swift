@@ -4370,6 +4370,13 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             }
         cancellables.append(displayLinkToken)
+        // Plan KX §1: Display glasses connecting with the HUD off are offered the display, once.
+        let displayOfferToken = glassesService.$isConnected
+            .removeDuplicates()
+            .sink { [weak self] connected in
+                DispatchQueue.main.async { self?.glassesLinkChangedForDisplayOffer(connected) }
+            }
+        cancellables.append(displayOfferToken)
         // The glasses say whether they and this build can work together (Plan HX P1). `nil` is
         // the link not being up, so a requirement is only ever acted on while connected.
         let compatibilityToken = glassesService.$compatibility
@@ -4820,7 +4827,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 micMuted: self?.micMuted ?? false,
                 voiceInputAvailable: self?.voiceInputAvailable() ?? true,
                 wakeListenMic: Config.wakeListenMic,
-                micRoute: Config.micRoute,
+                micRoute: Config.conversationMicRoute,
                 posture: PowerPolicyService.shared.posture,
                 speechGateEnabled: Config.wakeSpeechGateEnabled)
         }
@@ -5563,6 +5570,46 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The support report being reviewed before it is sent.
     @Published var supportReportRequest: SupportReportRequest?
     @Published var pilotReportDays: [Date] = []
+
+    // MARK: - Display offer (Plan KX §1)
+
+    /// True while the "Your glasses have a display" banner is up. Raised once Display glasses have
+    /// been connected for `DisplayOfferPolicy.settleSeconds` with the HUD off and the offer never
+    /// answered; nothing turns the display on but the wearer's **Turn on**.
+    @Published private(set) var displayOfferShowing = false
+    private var displayOfferTask: Task<Void, Never>?
+
+    /// The link changed: consider the offer once it has settled, or withdraw it when the link drops.
+    func glassesLinkChangedForDisplayOffer(_ connected: Bool) {
+        displayOfferTask?.cancel()
+        guard connected else {
+            displayOfferShowing = false
+            return
+        }
+        displayOfferTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(DisplayOfferPolicy.settleSeconds * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            let offer = DisplayOfferPolicy.shouldOffer(
+                supported: GlassesSupportPolicy.isSupported,
+                connected: self.glassesService.isConnected,
+                hasDisplay: self.glassesDisplay.deviceSupportsDisplay(),
+                hudEnabled: Config.glassesDisplayEnabled,
+                answered: Config.displayOfferAnswered)
+            if offer { self.addDebugEvent("Display offer shown") }
+            self.displayOfferShowing = offer
+        }
+    }
+
+    /// The wearer answered the offer. **Turn on** is the explicit start KP decision 8 names.
+    func answerDisplayOffer(_ answer: DisplayOfferPolicy.Answer) {
+        displayOfferTask?.cancel()
+        displayOfferShowing = false
+        let enabled = DisplayOfferPolicy.hudEnabled(after: answer, current: Config.glassesDisplayEnabled)
+        Config.setGlassesDisplayEnabled(enabled)   // marks the offer answered
+        if answer == .turnOn { glassesDisplay.wearerTurnedLensOn() }
+        addDebugEvent(answer == .turnOn ? "Display offer: turned on" : "Display offer: not now")
+    }
+
     /// When the wearer last dismissed the offer — it is not raised again for a while after that.
     var supportPromptDismissedAt: Date?
 
