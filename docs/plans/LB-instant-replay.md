@@ -436,3 +436,22 @@ note whether the glasses' capture light is lit in each. `bursty` with a non-zero
   exposure switch of its own; it refuses with the same spoken reason when the buffer is off.
 - The settings switch is drawn disabled in Medical Compliance mode and under an organisation pin.
 
+
+## Review follow-up (2026-11-10)
+
+A code review of the merged work found two ways a save could file footage it should not have; status
+unchanged (device passes and the catalog sync owed). Fixed headlessly in `ReplayBufferServiceTests`:
+
+- **Switching Bystander Face Blur on erases what was buffered before it.** Only the job path read
+  `span.filterWasOn`; Recordings and Photos would have kept unblurred footage buffered while the blur was off.
+  Now the buffer notices the switch going from off to on — on every frame, on the one-second tick and at save
+  time, before and after the last segment is closed — and deletes the open segment, any still finishing and
+  the ring, then carries on from nothing (the same rule as a new length). Switching it off keeps what is held,
+  which was blurred.
+- **A clip composed from footage erased while it was read is not filed.** A save records the buffer's
+  generation before composing; a delete-all, a subject erasure, the buffer ending or the blur coming on bumps
+  it, and then the composed clip is deleted and nothing reaches Recordings, Photos or the job. The wearer is
+  told the buffer isn't running (with its reason) or has nothing kept yet.
+- **Not changed:** a second save asked for while one is being put together still gets the generic "The replay
+  couldn't be saved." There is no existing refusal that says a save is already under way, and a new one is a
+  new string for the catalog; left for a later pass.
