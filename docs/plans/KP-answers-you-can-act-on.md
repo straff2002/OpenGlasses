@@ -420,7 +420,9 @@ sends without the confirmation), `WebHUDMirrorTests` (the footer shows and the a
   on its page, the browser keeps the page it turned to (and stays hidden after Escape); a new answer, or
   the phone turning a page, resets both.
 - **Live modes.** Gemini Live and OpenAI Realtime replies don't reach the HUD today (their audio comes
-  from the model; nothing mirrors it), so they get no card. Left as is.
+  from the model; nothing mirrors it), so they get no card. Left as is. *Superseded 2026-11-11 by
+  Plan KX §5 (P4):* every live mode's turn now goes on this card at the turn's end, through
+  `LiveAnswerCardFeed`, without follow-ups.
 - **For P1b.** The held card to bring back is `HUDAnswerCard`'s state; `presentAnswerCard` is where a
   `.inUse` reading should hold rather than enqueue. **For P2.** Follow-ups go in where the card builds
   its screens (`HUDAnswerCard.currentScreen`, `followUps: []` today), and `.followUp` presses already
@@ -694,7 +696,8 @@ changes in their own commit, and this Status line and the index row updated.
   lesson 4 and JV's probe answer it.
 - The real pixel sizes behind DAT's text tokens (P6).
 - ~~Whether the live modes' replies reach the HUD today.~~ Answered by P1: they don't (their audio comes
-  from the model and nothing mirrors it), so they get no card.
+  from the model and nothing mirrors it), so they get no card. Plan KX §5 (P4) since gives them the
+  card, one per model turn at its end.
 - What DAT reports when another app takes the Display: `paused`, `stopped`, or an error (P6, from the
   support report).
 - Whether the glasses play our speech over another Display app's own sound, or hold it back (P6).

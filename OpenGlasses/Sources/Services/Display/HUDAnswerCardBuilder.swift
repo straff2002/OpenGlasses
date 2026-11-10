@@ -35,6 +35,11 @@ enum HUDAnswerAction: Equatable {
 ///
 /// P1 put ‹ Back on middle pages too (P0 had it on the paged last page only): with the band
 /// alone, a wearer two pages in had no way back but to read on to the end.
+///
+/// **The picture (Plan KX §5).** A vision answer's first page carries the analysed frame's
+/// thumbnail (`HUDAnswerThumbnail`) as its `HUDScreen.picture`, under the text and over the
+/// buttons, when `HUDAnswerThumbnail.fits` says the page and the picture fit the lens together;
+/// otherwise the page is drawn without it. Later pages and the Actions screen never carry it.
 enum HUDAnswerCardBuilder {
     /// Follow-ups shown beside Actions on the last page; a third goes on the Actions screen.
     static let followUpsOnLastPage = 2
@@ -73,11 +78,13 @@ enum HUDAnswerCardBuilder {
 
     /// The card for one page. `index` is clamped into the pages; nil when there are no pages.
     /// `question` is the shaped question line (`questionLine(for:maxChars:)`), shown over the
-    /// first page only.
+    /// first page only. `picture` is the frame a vision answer analysed (Plan KX §5): the first
+    /// page carries it when the two fit the lens together.
     static func page(_ pages: [HUDAnswerPage],
                      index: Int,
                      followUps: [String],
                      question: String? = nil,
+                     picture: HUDPicture? = nil,
                      onAction: @escaping (HUDAnswerAction) -> Void) -> HUDScreen? {
         guard !pages.isEmpty else { return nil }
         let page = pages[min(max(index, 0), pages.count - 1)]
@@ -112,7 +119,11 @@ enum HUDAnswerCardBuilder {
                 items.append(item(ItemID.back, String(localized: "‹ Back"), .outline, .back, onAction))
             }
         }
-        return HUDScreen(title: nil, lines: lines, items: items)
+        var screen = HUDScreen(title: nil, lines: lines, items: items)
+        if page.index == 0, let picture, HUDAnswerThumbnail.fits(screen, picture: picture) {
+            screen.picture = picture
+        }
+        return screen
     }
 
     /// The pushed Actions screen: the answer's first line as a reminder, the third follow-up if

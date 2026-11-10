@@ -84,7 +84,8 @@ the whole page one press away, and zoom and pan by band press or voice.
   the lens's shape, with token sizes marked as estimates.
 - **The answer card.** KP's card shows the reply only. `HUDAnswerTurn` opens around each Direct-mode
   reply; the transcribed question is known at that point and not shown. The live modes (Gemini Live,
-  OpenAI Realtime) get no card at all, as KP P1 found.
+  OpenAI Realtime) get no card at all, as KP P1 found. (Since Plan KX §5, P4, they do: one card per
+  model turn, at its end, with the wearer's words as the question line.)
 - **The band.** In a store build the band reaches the app only as a button's `onClick`. Swipes and
   pinches would come only through JV's Inputs lane, which is TestFlight-only. Whether the band can reach
   every button in a row is what KP's band check settles.
@@ -258,7 +259,8 @@ meta style and prefixed "You:". It shows on the first page only, so a long answe
 after it. Hearing the question back answers a question the technician had no way to ask: whether the
 app misheard them. It isn't shown for a turn the app started (a proactive alert, a watcher) and is cut
 like any other line (`HUDTextShaper.condense`). The live modes still get no card; mirroring their
-transcript is a separate piece of work (see "What KV leaves out").
+transcript is a separate piece of work (see "What KV leaves out") — done in Plan KX §5 (P4), where a
+live card's question line is what the wearer said that turn.
 
 ### 8 · Privacy and licensed pages
 
@@ -274,7 +276,9 @@ not involved. The privacy-logging gate applies to every new log line: page refer
   is half-crop moves.
 - **Live-mode conversation on the lens** (Gemini Live, OpenAI Realtime). Their replies are model audio;
   putting their transcripts on a card means mirroring two different transcript streams with their own
-  timing. A plan of its own, once the partner says which mode the demos run in.
+  timing. A plan of its own, once the partner says which mode the demos run in. *Built in Plan KX §5
+  (P4):* one adapter on the shared live coordinator puts each model turn on the answer card at its
+  end; the same plan puts a vision answer's frame on its card's first page as a `HUDPicture`.
 - **Pictures on the Even G2 and the web mirror** (§6).
 - **Pages in a task card.** A procedure or playbook step that cites a page could offer **Page** too. KV
   opens the view from the answer card and from requests; the task-card route waits until P5 shows the

@@ -1,6 +1,6 @@
 # Plan KX — The Lens Made Ready (offered on connect, hardened for the real Display, and the screens the ecosystem shows are worth having)
 
-**Status:** 🚧 Drafted and building 2026-11-11, all phases headless; P0–P3 built. The device pass is owed and is folded
+**Status:** 🚧 Drafted and building 2026-11-11, all phases headless; P0–P4 built. The device pass is owed and is folded
 into KP P6 / KV P5 (nobody on the team has a Display yet; the partner's is still on order).
 **Track:** Display (Meta Ray-Ban Display through stable `MWDATDisplay` 1.0.1). Nothing here links or
 calls an experimental DAT API; gesture work stays in Plan [JV](JV-dat-experimental-testflight-lane.md).
@@ -166,6 +166,79 @@ before.
   that was analysed, through KV's `HUDPicture` path, so the wearer sees what the answer is about and
   which camera took it.
 
+**Built 2026-11-11 (P4a, live-mode answers).** One adapter, not a change per provider: every live
+provider (Gemini Live, OpenAI Realtime, Qwen, Doubao) runs through the shared `RealtimeSessionManager`,
+which now sends `LiveAnswerEvent`s (`onAnswerEvent`) from the places it already hears them — the
+server's speech start, the wearer's transcript, the model's transcript deltas, an interruption, the
+turn's end, the session's stop; never for the spoken interpreter. AppState hands both managers'
+events to one `LiveAnswerCardFeed`, whose pure `LiveAnswerTurnTracker` joins the turn's transcript
+(`ScriptAwareJoiner`, the session's own rule) and, at the turn's end, gives `HUDAnswerCard.presentLiveAnswer`
+the whole text, what the wearer said (the card's "You: …" line) and whether they led. The card is
+KP's — paged, Actions, the 60 s lifetime — with no follow-ups (a live model is never asked for the
+tail, `FollowUpPrompt`). Decided: **turn end only, no partials** — a live transcript arrives in
+sub-word deltas ahead of the audio, the turn ends while the audio is often still playing, and KP's
+card shows page 1 only once it is settled, so throttled partials would spend sends on a card that
+barely moves. The answer waits a 0.5 s settle for transcript that trails the turn-complete event,
+and goes at once when the wearer starts talking. A still-open turn the wearer speaks over is
+dropped (its response was cancelled; the next answer replaces it); a completed turn whose playback
+they cut is whole and shows. A tool call's empty turn carries the question and the lead to the
+answer after it; a JSON provider's late input transcript joins the turn waiting to publish. The idle
+warning is not an answer. Rules unchanged and enforced by the card: the HUD switch, the Display-in-use
+rule, `acceptsAnswerCard` (never over a task card, a menu, a page view or an approval card — and,
+unlike Direct mode, nothing flashes there instead: a live answer is heard). New:
+`GlassesDisplayService.presentAnswerCard(_:wearerLed:onSelect:)` — a live answer reopens a dismissed
+lens only when the wearer spoke or pressed that turn (an announcement or a volunteered answer stays
+off it). The card's presses in a live mode go to the live session (`LiveAnswerCardRouting`): More,
+Send and follow-ups as a text turn where the provider takes them, Repeat through the exact-speech
+lane (Doubao) or as a text turn; with neither, "Not available in this live mode" flashes — they
+never fall through to the Direct model the wearer did not choose. The band pages a live card; the
+spoken paging words go to the live model, as everything spoken in a live mode does.
+
+**The live mic (§2.5 for live modes).** A live session has no mic picker: it captured on the
+glasses' hands-free mic whenever the camera streamed from them, so the HFP mic ended the display
+session every time a Display wearer went live. That capture is the **Glasses Mic** route, and
+`LensMicPolicy.liveAudio` now puts it through `conversationRoute`: with the Meta Display on (and
+**Keep the mic on the iPhone** on) the session uses the new `RealtimeAudioRoute.lensPhoneMic` — the
+phone's built-in mic, output still on the glasses over A2DP, no `.allowBluetoothHFP`, mode
+`.default` (`.voiceChat` / `.videoChat` imply HFP), no voice processing (it can pull a Bluetooth
+route onto its hands-free link), and the phone route's echo posture (capture muted while the model
+speaks on the half-duplex tier, since the phone's mic hears the open-ear speakers). The late camera
+start no longer switches such a session to glasses audio. The interpreter keeps its own route, and
+without the lens (or with the rollback off) live audio is exactly as before. Not changed: a live
+session still ignores the stored **iPhone / Headset** preference, as it always has — honouring it
+would move every existing glasses user's live sessions off the glasses mic, which is a decision of
+its own, not this plan's. The route is chosen at session start; turning the HUD on mid-session
+takes effect at the next session.
+
+**Built 2026-11-11 (P4b, the picture behind a vision answer).** `HUDAnswerThumbnail` (pure apart
+from the ImageIO decode) draws the analysed frame into a **552 px-wide strip, at most 200 px tall**:
+the frame aspect-fit and centred, the rest black (clear on the additive lens), every channel lifted
+through a gamma of 0.8 (shadows up, black and white unchanged). A fixed-width strip rather than a
+bitmap the frame's own shape, because DAT's only non-icon image preset is `.fill`, which sizes the
+image to the column: a portrait thumbnail could otherwise come back 576 px wide and 768 tall. The
+strip draws at most 209 px in the 576 px column. Its `contentKey` is the capture time, byte count
+and decoded size — never pixels. Decoded with ImageIO's thumbnail (orientation applied; a 12 MP
+photo is never held at full size) off the main actor, while the model thinks. **On the first page,
+budgeted, not a page of its own:** on `LensPageFrame`'s measured budget the fullest first page of the
+4 × 32 card (four body lines; or the question and three; or the question, two and the footer) leaves
+at least 286 px over the button row, so the strip fits beside the text without the pager moving a
+word — the page count and the prefix-stable pages a streaming answer relies on are unchanged.
+`HUDAnswerThumbnail.fits` is the guard (`HUDAnswerCardBuilder.page(picture:)`): a page it does not
+fit is drawn without the picture rather than scrolled. The backend draws a picture after a screen's
+lines, so the thumbnail sits under the text and over the buttons. AppState stages the frame at
+every vision send (the photo button and quick action, the phone-camera fallback, "take a picture",
+the smart camera's frame on a cloud turn, a typed turn with an image) through
+`HUDAnswerCard.expectPicture` / `stagePicture(_:ticket:)` — only when `wantsAnswerPictures` (the HUD
+on, a display, a backend that draws pictures); the next new card takes it, and the turn's end, a
+whole answer outside a turn, the photo path's end or 90 s drops one nobody took, so a frame never
+lands on a later, unrelated answer. A late decode for an older frame is ignored by its ticket. P1's
+send pump already sends a failed picture frame again as text. Not built: the live modes' frames (a
+live session streams video continuously; no single frame is "the" one an answer analysed), a label
+saying which camera took it (the From-the-phone-camera line is already spoken and on the card's
+text), and redrawing a card whose thumbnail decode finished after the card went up (it would need
+the card to say which frame it is waiting for; decode takes milliseconds against seconds for the
+model, so it is not expected).
+
 ### 6 · Refinements (P5)
 
 - **Captions:** a three-row budget (~340 characters) instead of one condensed line, the speaker label
@@ -201,7 +274,7 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
 - **P1** — hardening (focus, dismissal, exits, pacer, mic).
 - **P2** — Approve / Deny cards. ✅ Built 2026-11-11 (§3).
 - **P3** — listening/thinking states and the Today glance. ✅ Built 2026-11-11 (§4).
-- **P4** — live-mode answer cards and vision thumbnails.
+- **P4** — live-mode answer cards and vision thumbnails. ✅ Built 2026-11-11 (§5).
 - **P5** — captions, navigation arrow, timer and media cards, Home Assistant list, teleprompter
   voice-follow, Field Assist clips.
 - **P6** — device pass (owed, with KP P6 / KV P5): wake-on-send, native scroll, characters per line,

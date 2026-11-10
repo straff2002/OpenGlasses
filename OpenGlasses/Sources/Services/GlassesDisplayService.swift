@@ -369,6 +369,12 @@ final class GlassesDisplayService: ObservableObject {
     /// text lines (Even G2; the phone-only build).
     var drawsPictures: Bool { testDrawsPicturesOverride ?? activeBackend.drawsPictures }
 
+    /// Plan KX §5: whether a vision answer's thumbnail is worth drawing now — the HUD is on, a
+    /// display is there and its backend draws pictures. Read before the phone spends a decode on it.
+    var wantsAnswerPictures: Bool {
+        isEnabled && drawsPictures && deviceSupportsDisplay()
+    }
+
     /// Hold a page screen on the lens (Plan KV §4): the page view or its cue. Not a press, so not
     /// gated; while a notification is showing — over a held screen or over nothing — the screen is
     /// held and the notification's auto-clear draws it, so the notification stays up for its full
@@ -801,13 +807,20 @@ final class GlassesDisplayService: ObservableObject {
     /// redrawn because more of the answer arrived. Not a press, so not gated: a new answer
     /// replaces whatever card was up. While a transient frame is over the card, only the held
     /// screen is updated and the flash's restore draws it.
+    ///
+    /// `wearerLed` (Plan KX §5): whether the wearer asked for this answer. A Direct-mode answer is
+    /// always theirs; a live-mode answer is only when the wearer spoke (or pressed) that turn, so
+    /// one the model volunteered (an announcement, the end of a tool call nobody is waiting on)
+    /// stays off a lens they dismissed.
     @discardableResult
-    func presentAnswerCard(_ screen: HUDScreen, onSelect: @escaping (String) -> Void) -> Bool {
+    func presentAnswerCard(_ screen: HUDScreen, wearerLed asked: Bool = true,
+                           onSelect: @escaping (String) -> Void) -> Bool {
         guard acceptsAnswerCard else { return false }
         // Plan KX §2.2: a new answer is the wearer's (they asked); the card they dismissed growing
         // is not, and stays off the lens.
         if lensDismissed {
             if let dismissed = dismissedAnswerCard, screen.pageSet?.card == dismissed { return false }
+            guard asked else { return false }
             wearerLed()
         }
         // Plan KV: under an open page view the answer waits, current, for the view to close.

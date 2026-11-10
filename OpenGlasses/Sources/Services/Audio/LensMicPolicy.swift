@@ -25,6 +25,29 @@ enum LensMicPolicy {
         return .phone
     }
 
+    /// Plan KX §5: how a live session (Gemini Live, OpenAI Realtime, Qwen, Doubao) captures. A live
+    /// session has no mic picker of its own: it captures on the glasses' hands-free mic whenever the
+    /// camera streams from them, which is the **Glasses Mic** route. That goes through
+    /// `conversationRoute` like any conversation, so with the Meta Display on (and the rollback on)
+    /// it becomes the iPhone mic — `.lensPhoneMic`, output still on the glasses over A2DP, and with
+    /// no camera streaming too, since the lens being on means the glasses are on the wearer. The
+    /// interpreter keeps its own route. `useIPhoneMode` is the session's echo posture: the phone's
+    /// mic hears the glasses' open-ear speakers, so the lens route mutes capture while the model
+    /// speaks on the half-duplex tier, exactly as the phone route does.
+    struct LiveAudio: Equatable {
+        let route: RealtimeAudioRoute
+        let useIPhoneMode: Bool
+    }
+
+    static func liveAudio(cameraOnGlasses: Bool, interpreting: Bool,
+                          lensOn: Bool, keepPhoneMic: Bool) -> LiveAudio {
+        if interpreting { return LiveAudio(route: .interpreter, useIPhoneMode: false) }
+        if conversationRoute(preferred: .glasses, lensOn: lensOn, keepPhoneMic: keepPhoneMic) == .phone {
+            return LiveAudio(route: .lensPhoneMic, useIPhoneMode: true)
+        }
+        return LiveAudio(route: .standard, useIPhoneMode: !cameraOnGlasses)
+    }
+
     /// Whether `preferred` is being overridden right now, for the Settings footnote.
     static func overrides(preferred: MicRoute, lensOn: Bool, keepPhoneMic: Bool) -> Bool {
         conversationRoute(preferred: preferred, lensOn: lensOn, keepPhoneMic: keepPhoneMic) != preferred

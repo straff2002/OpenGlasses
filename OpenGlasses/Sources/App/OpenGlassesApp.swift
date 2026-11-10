@@ -1446,6 +1446,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The answer card on the lens (Plan KP P1): a turn's answer a page at a time, with its
     /// actions under it.
     lazy var hudAnswerCard = HUDAnswerCard(display: glassesDisplay)
+    /// Plan KX §5: each live-mode model turn onto the answer card, at the turn's end.
+    lazy var liveAnswerFeed = LiveAnswerCardFeed(card: hudAnswerCard)
     /// The approval card on the lens (Plan KX §3): the shared consent surface's ask, held until it
     /// is answered or times out to Deny.
     lazy var hudApprovalCard = HUDApprovalCard(display: glassesDisplay, coordinator: toolConfirmationCoordinator)
@@ -6183,6 +6185,7 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.beginTurn()
         TurnRecorder.noteAppPrompt()   // the prompt is the button's or quick action's, not words said
         didNarrateModelSwitchThisTurn = false
+        stageAnswerPicture(imageData)   // Plan KX §5
         do {
             TurnRecorder.mark(.commit)
             let rawResponse = try await llmService.sendMessageCascading(
@@ -6214,6 +6217,7 @@ class AppState: ObservableObject, AppStateProtocol {
             speechService.stopThinkingSound()
             errorMessage = String(localized: "Photo analysis failed: \(error.localizedDescription)")
         }
+        hudAnswerCard.dropStagedPicture()   // Plan KX §5: no later answer takes this frame
         TurnRecorder.endTurn()
     }
 
@@ -6247,6 +6251,7 @@ class AppState: ObservableObject, AppStateProtocol {
             }
 
             photoCaptured = true
+            stageAnswerPicture(photoData)   // Plan KX §5
             let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
@@ -6300,6 +6305,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 await speechService.speak(line, source: .errorLine)
             }
         }
+        hudAnswerCard.dropStagedPicture()   // Plan KX §5: no later answer takes this frame
         TurnRecorder.endTurn()
     }
 
@@ -6573,6 +6579,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
             let prompt = "Describe what you see in this image."
             photoCaptured = true
+            stageAnswerPicture(photoData)   // Plan KX §5
             let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
@@ -6631,6 +6638,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 await speechService.speak(line, source: .errorLine)
             }
         }
+        hudAnswerCard.dropStagedPicture()   // Plan KX §5: no later answer takes this frame
         TurnRecorder.endTurn()
     }
 
@@ -7689,6 +7697,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
                             self.cameraService.restoreAudioForWakeWord()
                             photoCaptured = true
+                            self.stageAnswerPicture(photoData)   // Plan KX §5
 
                             return try await self.llmService.sendMessageCascading(
                                 query,
@@ -7755,6 +7764,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             if let line { await self.speechService.speak(line, source: .errorLine) }
                         },
                         finish: {
+                            self.hudAnswerCard.dropStagedPicture()   // Plan KX §5
                             self.isProcessing = false
                             self.speechService.stopThinkingSound()
                             self.turnBackgroundTime.turnEnded()
@@ -8116,20 +8126,82 @@ class AppState: ObservableObject, AppStateProtocol {
         wireTurnState()
         // Plan KP P2: the Direct prompt asks for follow-ups only while this says something shows them.
         FollowUpPrompt.currentSurface = { [weak display = glassesDisplay] in display?.answerSurface ?? .none }
-        hudAnswerCard.submitTurn = { [weak self] text in
-            Task { @MainActor in await self?.sendTextMessage(text) }
-        }
-        hudAnswerCard.speakAgain = { [weak self] text in
-            Task { @MainActor in
-                await self?.speechService.speak(text, source: .readAloud, mirrorToHUD: false)
-            }
-        }
+        hudAnswerCard.submitTurn = { [weak self] text in self?.submitAnswerCardTurn(text) }
+        hudAnswerCard.speakAgain = { [weak self] text in self?.repeatAnswerCard(text) }
+        // Plan KX §5: the live modes' turns reach the card through one adapter, from the shared
+        // coordinator both managers are.
+        geminiLiveSession.onAnswerEvent = { [weak self] event in self?.liveAnswerFeed.handle(event) }
+        openAIRealtimeSession.onAnswerEvent = { [weak self] event in self?.liveAnswerFeed.handle(event) }
         hudAnswerCard.saveNote = { [weak self] title, content in
             guard let self else { return false }
             let outcome = await self.nativeToolRouter.execute(
                 .root(name: "save_note", arguments: ["content": content, "title": title], origin: .user))
             if case .completed = outcome { return true }
             return false
+        }
+    }
+
+    /// Plan KX §5: the live session a live-mode answer card's presses reach, or nil in Direct mode.
+    private var answerCardLiveSession: RealtimeSessionManager? {
+        currentMode.isRealtime ? realtimeManager(for: currentMode) : nil
+    }
+
+    /// More, Send or a follow-up on the answer card: the wearer's next turn. In Direct mode the
+    /// typed-turn path; in a live mode a text turn into the live session, which answers it on the
+    /// card in turn (`LiveAnswerCardRouting`).
+    private func submitAnswerCardTurn(_ text: String) {
+        let live = answerCardLiveSession
+        switch LiveAnswerCardRouting.submit(realtimeMode: currentMode.isRealtime,
+                                            canInject: live?.canInject ?? false,
+                                            textTurns: live?.supportsTextInjection ?? false) {
+        case .direct:
+            Task { @MainActor in await self.sendTextMessage(text) }
+        case .liveTurn:
+            liveAnswerFeed.wearerAsked()
+            noteLiveSessionActivity()
+            live?.injectText(text, completeTurn: true)
+        case .liveSpeech, .unavailable:
+            glassesDisplay.flash(LiveAnswerCardRouting.unavailableLine, duration: 2)
+        }
+    }
+
+    /// Repeat on the answer card: the answer again, without mirroring it. In a live mode, through the
+    /// session's own voice.
+    private func repeatAnswerCard(_ text: String) {
+        let live = answerCardLiveSession
+        switch LiveAnswerCardRouting.repeatAnswer(realtimeMode: currentMode.isRealtime,
+                                                  canInject: live?.canInject ?? false,
+                                                  textTurns: live?.supportsTextInjection ?? false,
+                                                  suppliedSpeech: live?.supportsSuppliedSpeech ?? false) {
+        case .direct:
+            Task { @MainActor in
+                await self.speechService.speak(text, source: .readAloud, mirrorToHUD: false)
+            }
+        case .liveSpeech:
+            liveAnswerFeed.wearerAsked()
+            noteLiveSessionActivity()
+            live?.speakSuppliedText(text)
+        case .liveTurn:
+            liveAnswerFeed.wearerAsked()
+            noteLiveSessionActivity()
+            live?.injectText(LiveAnswerCardRouting.repeatRequest, completeTurn: true)
+        case .unavailable:
+            glassesDisplay.flash(LiveAnswerCardRouting.unavailableLine, duration: 2)
+        }
+    }
+
+    /// Plan KX §5: a turn is sending the model this camera frame, so its answer card's first page
+    /// carries a thumbnail of it. Only when the lens would draw it (the HUD on, a display that draws
+    /// pictures); decoded and downscaled off the main actor, while the model thinks.
+    private func stageAnswerPicture(_ imageData: Data?) {
+        guard let imageData, glassesDisplay.wantsAnswerPictures else { return }
+        let ticket = hudAnswerCard.expectPicture()
+        let capturedAt = Date()
+        Task { @MainActor [weak self] in
+            let picture = await Task.detached(priority: .userInitiated) {
+                HUDAnswerThumbnail.picture(fromImageData: imageData, capturedAt: capturedAt)
+            }.value
+            self?.hudAnswerCard.stagePicture(picture, ticket: ticket)
         }
     }
 
@@ -8588,6 +8660,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     // the user's fallback order — spills on overflow / rate-limit / empty completion.
                     func cloudCascade() async throws -> String {
                         let imageData = await smartCameraImageData(for: query)
+                        // Plan KX §5. This nested function is not itself isolated (see `onToken`).
+                        await MainActor.run { self.stageAnswerPicture(imageData) }
                         return try await llmService.sendMessageCascading(
                             query,
                             locationContext: locationCtx,
@@ -8922,6 +8996,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     } else {
                         image = await smartCameraImageData(for: query)
                     }
+                    if speakResponse { stageAnswerPicture(image) }   // Plan KX §5
                     let reply = try await llmService.sendMessageCascading(
                         query,
                         locationContext: locationService.locationContext,
