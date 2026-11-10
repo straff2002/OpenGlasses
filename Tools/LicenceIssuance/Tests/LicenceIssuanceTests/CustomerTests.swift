@@ -203,6 +203,37 @@ final class CustomerTests: XCTestCase {
         XCTAssertFalse(ProfilePreset.carriesKey(.init(provider: "openrouter", model: "meta-llama/llama-3.1-405b-instruct", baseURL: "https://openrouter.ai/api/v1")))
     }
 
+    func testPresetSectionsOpenOrCloseOnlyWhatThePresetOffers() throws {
+        var p = preset
+        p.lockdown = .init(open: ["voice"], lock: ["tools"])
+        p.choices.sections = ["intelligence", "display", "field-assist"]
+        func lockdown(_ open: [String]?) throws -> ProfileContract.Lockdown? {
+            var book = try SalesBook(); var c = newCustomer; c.selection.openSections = open
+            let s = try signUp(&book, c, preset: p)
+            return try profile(book.profileDocument(customerId: "c1", code: s.code.code, preset: p, grant: grant, keyID: "fixture",
+                                                    issued: date(1), signer: profileKey.signature(for:))).lockdown
+        }
+        XCTAssertEqual(try lockdown(nil), p.lockdown, "no pick carries the preset's lockdown as written")
+        XCTAssertEqual(try lockdown(["display"]), .init(open: ["voice", "display"], lock: ["tools", "intelligence", "field-assist"]))
+        XCTAssertEqual(try lockdown(["intelligence", "display", "field-assist"]), .init(open: ["voice", "intelligence", "display", "field-assist"], lock: ["tools"]))
+        XCTAssertEqual(p.openSections(for: .init()), ["field-assist"], "Field Assist is open unless locked; the rest are closed")
+        XCTAssertEqual(p.openSections(for: .init(openSections: ["display"])), ["display"])
+        var book = try SalesBook(); var c = newCustomer; c.selection.openSections = ["voice"]
+        XCTAssertThrowsError(try signUp(&book, c, preset: p)) { XCTAssertEqual($0 as? PresetRefusal, .sectionNotOffered("voice")) }
+        XCTAssertTrue(book.ledger.entries.isEmpty)
+        func invalid(_ change: (inout ProfilePreset) -> Void, _ message: String, line: UInt = #line) {
+            var bad = preset; change(&bad)
+            XCTAssertThrowsError(try bad.validate(), line: line) { XCTAssertEqual($0 as? PresetRefusal, .invalidPreset(message), line: line) }
+        }
+        invalid({ $0.choices.sections = ["assisting"] }, "assisting is always open")
+        invalid({ $0.choices.sections = ["display", "display"] }, "display is listed twice")
+        invalid({ $0.choices.sections = ["glasses"] }, "glasses is not a settings category (\(ProfileContract.settingsCategoryIds.joined(separator: ", ")))")
+        invalid({ $0.edition = nil; $0.choices.sections = ["display"] }, "sections only apply with an edition")
+        let unchanged = String(decoding: try IssuanceWire.encoder(profile: true).encode(preset), as: UTF8.self)
+            + String(decoding: try IssuanceWire.encoder(profile: true).encode(newCustomer.selection), as: UTF8.self)
+        XCTAssertFalse(unchanged.contains("sections"), "a preset or pick without sections encodes, and digests, as before")
+    }
+
     func testPasscodeVerifierIsCheckedAndOnlyItsHashReachesTheProfile() throws {
         var book = try SalesBook(); _ = try signUp(&book)
         let full = try XCTUnwrap(pay(&book))
