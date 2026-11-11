@@ -52,13 +52,15 @@ struct TimerTool: NativeTool {
         }
 
         let requestId = try await Self.scheduleNotification(seconds: seconds, label: label)
-        // Plan KX §6: the lens's timer card hears it finish while the app runs.
+        // Plan LC §6: the lens's timer card hears it finish while the app runs.
         let fireAt = Date().addingTimeInterval(TimeInterval(seconds))
         await MainActor.run {
             TimerCompletionWatch.shared.timerScheduled(id: requestId, label: label, fireAt: fireAt)
         }
 
         let durationStr = formatDuration(seconds)
+        // Plan LA: the notification is scheduled, so the timer is set.
+        ActionCompletionReport.record(.done(summary: Self.doneSummary(label: label, duration: durationStr)))
         if let label {
             return "Timer set: \(label) for \(durationStr)."
         }
@@ -66,7 +68,7 @@ struct TimerTool: NativeTool {
     }
 
     /// Schedule the timer's notification and return its request id. Also what the lens's **+5 min**
-    /// sets again (Plan KX §6), so a timer set from the glasses is the same timer.
+    /// sets again (Plan LC §6), so a timer set from the glasses is the same timer.
     static func scheduleNotification(seconds: Int, label: String?) async throws -> String {
         let content = UNMutableNotificationContent()
         content.title = label ?? "Timer"
@@ -78,6 +80,12 @@ struct TimerTool: NativeTool {
         let request = UNNotificationRequest(identifier: requestId, content: content, trigger: trigger)
         try await UNUserNotificationCenter.current().add(request)
         return requestId
+    }
+
+    /// "Timer 10 minutes", "Pasta timer 10 minutes".
+    static func doneSummary(label: String?, duration: String) -> String {
+        guard let label, !label.isEmpty else { return "Timer \(duration)" }
+        return "\(label.prefix(1).uppercased() + label.dropFirst()) timer \(duration)"
     }
 
     private func formatDuration(_ seconds: Int) -> String {

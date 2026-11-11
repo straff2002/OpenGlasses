@@ -3,7 +3,7 @@ import Foundation
 import ImageIO
 import UIKit
 
-/// The picture behind a vision answer (Plan KX §5): a small thumbnail of the camera frame the model
+/// The picture behind a vision answer (Plan LC §5): a small thumbnail of the camera frame the model
 /// analysed, on the answer card's first page, through KV's `HUDPicture` path. SDK-free; the
 /// geometry, the key, the tone lift and the budget check are pure, and `picture(fromImageData:)`
 /// draws on whatever thread calls it (the caller keeps it off the main actor).
@@ -36,9 +36,9 @@ import UIKit
 /// bytes it was and its size. The render queue's de-duplication compares it; it never carries what
 /// the frame shows.
 enum HUDAnswerThumbnail {
-    /// The strip's width: the Display survey's measured 552 px picture (Plan KX §2.4's send cost).
+    /// The strip's width: the Display survey's measured 552 px picture (Plan LC §2.4's send cost).
     static let stripWidth: CGFloat = 552
-    /// The tallest strip (Plan KX §5).
+    /// The tallest strip (Plan LC §5).
     static let maxHeight: CGFloat = 200
     /// The tone lift's gamma (out = in^γ): under 1 lifts the shadows.
     static let liftGamma: Double = 0.8
@@ -59,7 +59,7 @@ enum HUDAnswerThumbnail {
     /// The content key for a frame captured at `capturedAt`, `byteCount` bytes, `pixelSize` big.
     static func contentKey(capturedAt: Date, byteCount: Int, pixelSize: CGSize) -> String {
         let millis = Int((capturedAt.timeIntervalSince1970 * 1000).rounded())
-        return "kx.answer.frame:\(millis):\(byteCount):\(Int(pixelSize.width))x\(Int(pixelSize.height))"
+        return "lc.answer.frame:\(millis):\(byteCount):\(Int(pixelSize.width))x\(Int(pixelSize.height))"
     }
 
     /// One channel through the lift. 0 stays 0 and 255 stays 255.

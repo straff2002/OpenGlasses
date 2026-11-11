@@ -1,6 +1,6 @@
 import Foundation
 
-/// Plan KX §1: the display is offered when Display glasses connect, and turned on only when the
+/// Plan LC §1: the display is offered when Display glasses connect, and turned on only when the
 /// wearer says yes.
 ///
 /// The in-lens HUD is off by default (`Config.glassesDisplayEnabled`), behind a switch a new

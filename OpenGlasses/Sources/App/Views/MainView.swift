@@ -16,7 +16,15 @@ struct MainView: View {
     #endif
     @StateObject private var workspace = AdaptiveWorkspaceState()
     @StateObject private var manualPresentation = ManualFigurePresentation()
+    /// The Voice tab's dock, shared with the tab view's bottom accessory where its controls ride.
+    @StateObject private var voiceDock = VoiceDockModel()
+    /// Every tab's bottom strip (Plan KY): what each tab reports, and the strip's taps for the tab
+    /// that answers them.
+    @StateObject private var tabStrip = TabStripModel()
     @State private var showOnboarding = Config.needsOnboarding
+    /// The manual page last opened in place on the Voice tab. It stays there — rather than turning
+    /// into a sheet over whatever tab the wearer moves to next — until it is closed or replaced.
+    @State private var inlineManualID: String?
     /// The wearer's own Field Assist switch. Read reactively so turning it off in Settings takes
     /// the tab away in the same breath.
     @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled: Bool = false
@@ -128,7 +136,15 @@ struct MainView: View {
             .id(departures.departure?.startedAt)
             .id(orgProfile.contentLocked)
             .tabViewStyle(.sidebarAdaptable)
+            // Scrolling down shrinks the bar to the mark on every tab, the Voice tab's conversation
+            // included (the owner's call, 2026-11-10: the same gesture as Settings) — and the
+            // accessory below slides in beside it.
             .tabBarMinimizeBehavior(.onScrollDown)
+            // The bottom strip, in Apple's accessory: above the tab bar, and beside it when the bar
+            // shrinks. Avenkin's is the mic, the buttons button and typing (off while the typed
+            // bar is open, which takes the bottom of the tab for itself); every other tab's is the
+            // mic and that tab's own action (Plan KY).
+            .modifier(TabStripAccessoryModifier(enabled: showsStrip, tab: selectedTab, facts: stripFacts))
             .tint(accent)
             // Onboarding is drawn *over* the tabs, not instead of them, so without this the whole
             // session surface stays in the accessibility tree behind it: a VoiceOver user on the
@@ -154,7 +170,7 @@ struct MainView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        // Plan KX §1: Display glasses connected with the HUD off — the wearer chooses.
+        // Plan LC §1: Display glasses connected with the HUD off — the wearer chooses.
         .overlay(alignment: .bottom) {
             if !showOnboarding, appState.displayOfferShowing {
                 DisplayOfferBanner(turnOn: { appState.answerDisplayOffer(.turnOn) },
@@ -219,6 +235,14 @@ struct MainView: View {
             selectedTab = ModesTabPresentation.selection(
                 EditionPresentation.tab(requested, restricted: restricted), after: modesPresentation)
             appState.requestedTab = nil
+        }
+        // "Check what I said before sending" draws its review only on the Avenkin tab, and the
+        // strip's mic works on every tab: a review that begins elsewhere brings the wearer there,
+        // or its countdown would send words they never saw (`SendReviewTabPolicy`). Asked when a
+        // review begins, and again when onboarding or a sheet that held it back goes away — not
+        // when the wearer moves off Avenkin themselves.
+        .onChange(of: sendReviewFacts) { _, facts in
+            if let tab = SendReviewTabPolicy.tab(for: facts, current: selectedTab) { selectedTab = tab }
         }
         .environment(\.appAccent, accent)
         .animation(.easeInOut(duration: 0.3), value: showOnboarding)
@@ -288,7 +312,10 @@ struct MainView: View {
         }
         .environmentObject(workspace)
         .environmentObject(manualPresentation)
+        .environmentObject(voiceDock)
+        .environmentObject(tabStrip)
         .onChange(of: appState.manualFigureRequest?.id) { _, requestID in
+            if requestID != nil, selectedTab == .voice, !showOnboarding { inlineManualID = requestID }
             if requestID == nil {
                 manualPresentation.reset()
                 if workspace.section == .reference { workspace.section = .job }
@@ -298,17 +325,59 @@ struct MainView: View {
         }
     }
 
+    /// Whether the strip is up on this tab (`TabStripPolicy.showsStrip`). On Avenkin it gives the
+    /// bottom of the screen to the typed bar.
+    private var showsStrip: Bool {
+        let typing = (voiceDock.showChatInput || appState.pendingTranscript != nil)
+            && !appState.currentMode.isRealtime
+        return TabStripPolicy.showsStrip(on: selectedTab, facts: stripFacts,
+                                         onboarding: showOnboarding, typingOnVoice: typing)
+    }
+
+    /// What decides whether a transcript under review moves the wearer to Avenkin. "A sheet is up"
+    /// is every sheet this view presents from the root.
+    private var sendReviewFacts: SendReviewTabPolicy.Facts {
+        let manualSheetUp = appState.manualFigureRequest.map { !presentsManualInline($0) } ?? false
+        let sheetUp = appState.showManualPicker || appState.phoneCameraRequest != nil
+            || appState.toolPhotoRequest != nil || appState.pendingSiriContent != nil || manualSheetUp
+            || appState.vaultFileRequest != nil || appState.deliveryComposerRequest != nil
+            || appState.deliveryShareItem != nil || appState.supportReportRequest != nil
+            || appState.jobSends.handoverDraft != nil
+        return .init(reviewID: appState.pendingTranscript?.id, onboarding: showOnboarding,
+                     sheetPresented: sheetUp, carPlay: appState.carPlayConnected)
+    }
+
+    /// What the tabs reported, with the parts this view already holds.
+    private var stripFacts: TabStripFacts {
+        var facts = tabStrip.facts
+        facts.modesIsFieldAssist = modesPresentation.isFieldAssist
+        facts.activeModeName = appState.activePersona?.name
+        facts.jobOpen = sessions.activeSession.map { $0.endedAt == nil && $0.outcome != .cancelled } ?? false
+        return facts
+    }
+
     private var manualSheetRequest: Binding<AppState.ManualFigureRequest?> {
         return Binding(
-            get: { presentsManualInline ? nil : appState.manualFigureRequest },
+            get: {
+                guard let request = appState.manualFigureRequest else { return nil }
+                return presentsManualInline(request) ? nil : request
+            },
             set: { request in
                 // Expanding dismisses the system sheet in favour of the pane. That dismissal
                 // must not clear the citation that the pane is about to display.
-                if request != nil || !presentsManualInline { appState.manualFigureRequest = request }
+                if let request {
+                    appState.manualFigureRequest = request
+                } else if let current = appState.manualFigureRequest, !presentsManualInline(current) {
+                    appState.manualFigureRequest = nil
+                }
             })
     }
 
-    private var presentsManualInline: Bool {
-        workspace.isExpanded && selectedTab == .voice && !showOnboarding
+    /// The Voice tab draws a cited page itself — in the context pane when the workspace is
+    /// expanded, under the answer in its feed when it is not — so the sheet is only for a page
+    /// asked for on another tab.
+    private func presentsManualInline(_ request: AppState.ManualFigureRequest) -> Bool {
+        guard !showOnboarding else { return false }
+        return selectedTab == .voice || inlineManualID == request.id
     }
 }

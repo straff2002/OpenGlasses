@@ -1,4 +1,4 @@
-# Plan KX — The Lens Made Ready (offered on connect, hardened for the real Display, and the screens the ecosystem shows are worth having)
+# Plan LC — The Lens Made Ready (offered on connect, hardened for the real Display, and the screens the ecosystem shows are worth having)
 
 **Status:** 🚧 Drafted and building 2026-11-11, all phases headless; P0–P5 built. The device pass is owed and is folded
 into KP P6 / KV P5 (nobody on the team has a Display yet; the partner's is still on order).
@@ -35,7 +35,7 @@ And the display is off by default (`glassesDisplayEnabled`), behind a switch a n
 find. The owner's rule: **offer it when Display glasses connect, and turn it on only when the wearer
 says yes.** That is also KP decision 8's "wearer's explicit start" (the HUD switch), made findable.
 
-## What KX builds
+## What LC builds
 
 ### 1 · The offer on connect (P0)
 
@@ -85,7 +85,7 @@ denies. Voice yes/no and the Watch still answer it. A temple tap never approves.
 first ": " (or after a first sentence that is already a question) into the heading and one preview
 line, behind a ⚠ meta line naming who asks ("The assistant asks", BN P1's attribution); a first part
 too long for a heading gets the generic **Approve?** and the whole ask as the preview. Items are
-**Approve** (primary, focused) · **Deny** (`kx.approval.deny`) · **Details** (only when the preview was
+**Approve** (primary, focused) · **Deny** (`lc.approval.deny`) · **Details** (only when the preview was
 cut), and Details shows the ask over up to four lines with Approve · Deny · ‹ Back (focused) and "The
 rest is on your phone" when even that is cut. `HUDApprovalCard` watches
 `ToolConfirmationCoordinator.pending`, so a band press, a spoken yes/no (`resolveByVoice`, unchanged)
@@ -118,7 +118,7 @@ card takes no press from them.
 
 **Built 2026-11-11 (P3a, Listening → Thinking).** `HUDTurnStateBuilder` (pure) draws **Listening…**
 (the partial transcript's newest words in the body style) and **Thinking…** (the heard question as the
-answer card's "You: …" line), each with **Stop** (`kx.turn.stop`, focused). `HUDPartialThrottle` (pure)
+answer card's "You: …" line), each with **Stop** (`lc.turn.stop`, focused). `HUDPartialThrottle` (pure)
 allows one partial per `HUDSendPacer.textGap` (0.4 s) and the final always; a partial inside the gap
 waits it out and the newest goes then. `HUDTurnState` runs it: `beginListening()` from
 `handleWakeWordDetected` (the wake word, a tap, the Action Button, a temple tap) — a wearer-led frame,
@@ -274,7 +274,7 @@ maps the walking route's `Maneuver` to a bearing — ahead and the start 0°, be
 turn ∓90°, U-turn 180°; a roundabout (which exit is in the words) and the arrival have none and keep
 the line alone — and draws a white arrow on black in a 120 px square at the start of a **552 × 120
 strip** (the thumbnail's reason: `.fill` would draw a bare 120 px square 552 px tall). Keyed by angle
-(`kx.nav.arrow:-90`), drawn once per angle and kept. `HUDPicture` gained a `placement`; the arrow is
+(`lc.nav.arrow:-90`), drawn once per angle and kept. `HUDPicture` gained a `placement`; the arrow is
 `.aboveLines`, so it leads its guidance line on the lens. `showNavigation(_:icon:arrow:)` sends the
 line and arrow as an ambient screen only where `wantsGuidancePictures` (the HUD on, a display, a
 backend that draws pictures, and the link not slow); otherwise exactly the old text frame, and it still
@@ -341,7 +341,7 @@ band's Back ends the session, so "stop" (or "back", "close", "done") by voice st
 Meta's ≤ 400 px / ≤ 70,000 px limits are the clip author's — the phone never downloads the clip to
 check — and no shipped vault procedure has a clip yet. The playbook task source has no video field.
 
-## What KX leaves out
+## What LC leaves out
 
 Gestures, voice launch and the HFP-free camera-audio mic (Plan JV, TestFlight-only); reading other
 apps' notifications (iOS forbids it); band BLE reverse-engineering and raw EMG; always-on HUDs and
@@ -350,7 +350,7 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
 ## Decisions (taken by the owner 2026-11-11: "implementing all suggestions")
 
 1. **Offer on connect, wearer chooses** (owner's words). Never auto-on.
-2. **KP decision 8 stands:** the HUD switch is the wearer's explicit start; KX adds only that a session
+2. **KP decision 8 stands:** the HUD switch is the wearer's explicit start; LC adds only that a session
    the glasses ended is not reopened by an ambient frame.
 3. **Phone mic while the lens is on**, with a rollback setting.
 4. **Approvals time out to Deny.**

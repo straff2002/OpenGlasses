@@ -15,13 +15,22 @@
     - Disk space (DeviceInfoTool, .systemFreeSize) -> E174.1
 
   NSPrivacyCollectedDataTypes reflect a source audit of what actually leaves the
-  device. Avenkin has no developer-operated backend or user account: every
-  transmission is user-directed app functionality sent under the user's own API
-  keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
+  device. Avenkin has no user account, and one developer-operated service: a
+  seat-checked organisation licence checks this phone's seat with the vendor's
+  licence service about once a day (claim, renew, release), sending the enrolment
+  id, a public key made for this phone, the app build and the profile id, and
+  nothing else; only a phone holding such a licence makes the call (DeviceID
+  below). Every other transmission is user-directed app functionality sent under
+  the user's own API keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
   / etc. for LLM + vision, ElevenLabs / OpenAI / xAI / Gemini for TTS, Deepgram for diarized
   captions, Deepgram or OpenAI for dictation when the wearer chooses a cloud
   recognizer (off by default), Perplexity / Tavily / Brave /
-  SearXNG (user-configured) / DuckDuckGo for search, Apple WeatherKit for weather,
+  SearXNG (user-configured) / DuckDuckGo for search, or the wearer's own AI provider when it
+  runs the search itself ("Let the AI search the web itself": the query travels inside the
+  conversation request, on the conversation route, to the host already approved for
+  conversation, and is covered by the SearchHistory entry below; with Google Gemini the search
+  runs on Google Search and Google keeps the prompt and answer for 30 days to produce the
+  results), Apple WeatherKit for weather,
   adsb.fi for flights, RTMP / WebRTC for live streaming). There is no analytics, crash-reporting, or advertising SDK, and no
   cross-app/-developer tracking. Requests are authenticated to provider accounts and
   content may identify the user or other people; there is no guaranteed de-identification
@@ -168,6 +177,23 @@
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeContacts</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<!-- Seat check for a seat-checked organisation licence: the enrolment id, a public key
+		     made for this phone (P-256, its private half in the Secure Enclave), the app build
+		     and the profile id, sent to the vendor's licence service about once a day. No name,
+		     device model, vendor identifier or location; the service keeps no IP addresses.
+		     Only a phone holding a licence signed with seatCheck makes the call. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>

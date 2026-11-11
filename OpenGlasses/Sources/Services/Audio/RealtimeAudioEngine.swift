@@ -218,7 +218,7 @@ final class RealtimeAudioEngine {
         }
         if route.keepsMicOnPhone {
             // App speech on a phone-only route sets the speaker itself, and nothing here would
-            // know to clear it. Plan KX §5: the lens route keeps the glasses as the output.
+            // know to clear it. Plan LC §5: the lens route keeps the glasses as the output.
             try? session.overrideOutputAudioPort(.none)
             preferBuiltInMic(session)
         } else {
@@ -292,7 +292,7 @@ final class RealtimeAudioEngine {
         // Plan CC: decide the duplex tier for THIS capture. Voice processing is only attempted for
         // the co-located phone speaker+mic — in glasses mode the mic is remote and there is no echo
         // path to cancel, so the risk of the IO swap buys nothing.
-        // Plan KX §5: never on a route that keeps the mic on the phone — voice processing can pull
+        // Plan LC §5: never on a route that keeps the mic on the phone — voice processing can pull
         // a Bluetooth route onto its hands-free link, which is what that route exists to avoid.
         prepareEngineOnQueue(wantVoiceProcessing: Config.duplexAudioEnabled && useIPhoneMode
                                  && !route.keepsMicOnPhone)

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Builds the lens's Listening and Thinking cards for a turn the wearer started (Plan KX §4). Pure:
+/// Builds the lens's Listening and Thinking cards for a turn the wearer started (Plan LC §4). Pure:
 /// the Stop press is reported through the injected `onStop`.
 ///
 /// | Card | Heading | Lines | Buttons |
@@ -17,7 +17,7 @@ enum HUDTurnStateBuilder {
 
     /// Stable item ids, so a band press routes back by id.
     enum ItemID {
-        static let stop = "kx.turn.stop"
+        static let stop = "lc.turn.stop"
     }
 
     static var listeningTitle: String {
@@ -74,7 +74,7 @@ enum HUDTurnStateBuilder {
     }
 }
 
-/// Plan KX §4: how often the Listening card follows the live transcript. At most one partial per
+/// Plan LC §4: how often the Listening card follows the live transcript. At most one partial per
 /// `gap` (the render queue's own text gap, `HUDSendPacer.textGap`, as hermes-glasses does), and the
 /// final transcript always. A partial that arrives inside the gap is not dropped for good: the
 /// caller waits out the gap and sends the newest one then. Pure.

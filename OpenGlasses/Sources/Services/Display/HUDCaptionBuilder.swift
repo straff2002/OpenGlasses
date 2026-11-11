@@ -1,6 +1,6 @@
 import Foundation
 
-/// One caption frame on the lens (Plan KX §6): up to three rows of what is being said, who is
+/// One caption frame on the lens (Plan LC §6): up to three rows of what is being said, who is
 /// saying it when diarization names them, and whether capture is live. Equatable, so the render
 /// queue's latest-wins de-duplication skips a frame identical to the one on the lens. Never logged:
 /// the rows are what people near the wearer said.
@@ -13,7 +13,7 @@ struct HUDCaption: Equatable {
     var listening: Bool
 }
 
-/// Plan KX §6 (Plan BY on the lens): the caption screen. Captions used to reach the lens as one
+/// Plan LC §6 (Plan BY on the lens): the caption screen. Captions used to reach the lens as one
 /// condensed line — `showText`, cut to `HUDTextShaper.maxBodyLength` (120 characters), which on a
 /// conversation is barely a sentence and jumps to empty at every final. Now a caption is a frame of
 /// its own, budgeted to `budget` (340) characters in `rowCount` (3) rows:
@@ -33,7 +33,7 @@ struct HUDCaption: Equatable {
 /// Still ambient: `GlassesDisplayService.showCaption` drops it under any interactive screen and
 /// while the wearer has dismissed the lens, and P1's pacer spaces the sends.
 enum HUDCaptionBuilder {
-    /// Characters on the lens at most (Plan KX §6).
+    /// Characters on the lens at most (Plan LC §6).
     static let budget = 340
     /// Rows on the lens at most.
     static let rowCount = 3

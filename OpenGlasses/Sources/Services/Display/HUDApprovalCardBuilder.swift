@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a press on an approval card asks for (Plan KX §3). The builder only reports the press;
+/// What a press on an approval card asks for (Plan LC §3). The builder only reports the press;
 /// `HUDApprovalCard` decides what each one does.
 enum HUDApprovalAction: Equatable {
     case approve
@@ -11,7 +11,7 @@ enum HUDApprovalAction: Equatable {
     case back
 }
 
-/// Builds the approval card's `HUDScreen`s from what the shared consent surface asks (Plan KX §3).
+/// Builds the approval card's `HUDScreen`s from what the shared consent surface asks (Plan LC §3).
 /// Pure: the ask is the `PendingToolConfirmation`'s summary and source, and presses are reported
 /// through the injected `onAction`.
 ///
@@ -39,10 +39,10 @@ enum HUDApprovalCardBuilder {
 
     /// Stable item ids, so a band press routes back by id.
     enum ItemID {
-        static let approve = "kx.approval.approve"
-        static let deny = "kx.approval.deny"
-        static let details = "kx.approval.details"
-        static let back = "kx.approval.back"
+        static let approve = "lc.approval.approve"
+        static let deny = "lc.approval.deny"
+        static let details = "lc.approval.details"
+        static let back = "lc.approval.back"
     }
 
     /// Body lines the Details screen gives the ask.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The lens while the wearer waits (Plan KX §4): Listening (the live partial transcript) →
+/// The lens while the wearer waits (Plan LC §4): Listening (the live partial transcript) →
 /// Thinking → the KP answer card, so the lens is never blank between the wake word and the answer.
 ///
 /// **Only for a turn the wearer started.** `beginListening()` is called where the wearer opens a

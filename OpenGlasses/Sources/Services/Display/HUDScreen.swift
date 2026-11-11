@@ -16,9 +16,9 @@ enum HUDIcon: Equatable {
     case info, success, warning, error
     case navigation, hazard
     case calendar, location, reminder, message
-    /// Plan KX §4: the Today glance's weather row and its time-and-battery line.
+    /// Plan LC §4: the Today glance's weather row and its time-and-battery line.
     case weather, clock
-    /// Plan KX §6: the caption screen's live-capture mark, the Now Playing card's track line, and a
+    /// Plan LC §6: the caption screen's live-capture mark, the Now Playing card's track line, and a
     /// Field Assist step's **Watch** (its clip).
     case microphone, music, video
 }
@@ -109,7 +109,7 @@ struct HUDPicture {
     let contentKey: String
 
     /// Where the backend draws it: under the screen's lines (a page crop, a vision thumbnail) or,
-    /// Plan KX §6, above them (the turn arrow, which leads its guidance line).
+    /// Plan LC §6, above them (the turn arrow, which leads its guidance line).
     enum Placement: Equatable {
         case belowLines
         case aboveLines
@@ -117,7 +117,7 @@ struct HUDPicture {
     var placement: Placement = .belowLines
 }
 
-/// Plan KX §6: a clip a Field Assist step points at, as the lens can play it — an HTTPS MP4 the
+/// Plan LC §6: a clip a Field Assist step points at, as the lens can play it — an HTTPS MP4 the
 /// Display fetches itself (DAT's `VideoPlayer(provider: .uri(_:), codec: .mp4)`). SDK-free, so the
 /// task card can offer **Watch** without knowing which backend is up; only a backend that
 /// `playsVideo` is ever handed one. The phone never downloads the clip; Meta's limits for it
@@ -138,7 +138,7 @@ struct HUDVideo: Equatable {
     }
 }
 
-/// Plan KX §6: how a clip on the lens ended, mapped from DAT's `VideoPlaybackEventType`. Every
+/// Plan LC §6: how a clip on the lens ended, mapped from DAT's `VideoPlaybackEventType`. Every
 /// ending returns the lens to the task card the clip was started from.
 enum HUDVideoEnding: String, Equatable {
     case ended, stopped, failed
@@ -160,7 +160,7 @@ struct HUDScreen {
     /// `renderKey`: the key is what this frame shows.
     var pageSet: HUDPageSet?
 
-    /// Plan KX §2.1: the item that takes focus when the screen first renders (DAT 1.0's
+    /// Plan LC §2.1: the item that takes focus when the screen first renders (DAT 1.0's
     /// `.actionRole(.primary)`: "the first primary action receives focus"). Nil lets
     /// `resolvedFocusItemID` choose. Set by a builder where the likeliest next press is not the
     /// first prominent button. Part of `renderKey` only when set, so default screens keep their keys.
@@ -173,7 +173,7 @@ struct HUDScreen {
         self.focusItemID = focusItemID
     }
 
-    /// Plan KX §2.1: the one item a backend marks as the focused default. The explicit
+    /// Plan LC §2.1: the one item a backend marks as the focused default. The explicit
     /// `focusItemID` when it names an item on this screen, else the first `.primary` item, else the
     /// first `.secondary`, else the first item. Nil for a screen with no items. Exactly one button
     /// is ever marked, so focus never depends on which of several "primary" buttons the firmware
@@ -201,7 +201,7 @@ struct HUDScreen {
     }
 }
 
-/// Plan KX §2.3: the ids and labels that let the wearer leave a screen from the screen itself.
+/// Plan LC §2.3: the ids and labels that let the wearer leave a screen from the screen itself.
 /// The band's Back gesture ends the whole display session on hardware (iOS #349), so every
 /// interactive screen below the launcher's root carries one of these.
 enum HUDExit {

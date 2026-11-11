@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import UIKit
 
-/// Plan KX §6 (Plan CA on the lens): the turn arrow, drawn on the phone and sent with the walking
+/// Plan LC §6 (Plan CA on the lens): the turn arrow, drawn on the phone and sent with the walking
 /// route's guidance line through KV's `HUDPicture` path.
 ///
 /// **What it draws.** A white arrow on black — black is clear on the additive lens, so the wearer
@@ -18,7 +18,7 @@ import UIKit
 /// in the column, the arrow under the start of the text. It is drawn above the guidance line
 /// (`HUDPicture.Placement.aboveLines`), so the arrow leads.
 ///
-/// **The key.** `contentKey` names the angle only (`kx.nav.arrow:<degrees>`), so a line whose
+/// **The key.** `contentKey` names the angle only (`lc.nav.arrow:<degrees>`), so a line whose
 /// distance changed redraws, but the render queue's de-duplication still skips a frame that is the
 /// same arrow and the same words. Pictures are drawn once per angle and kept.
 enum HUDTurnArrow {
@@ -40,7 +40,7 @@ enum HUDTurnArrow {
     }
 
     static func contentKey(angle: Double) -> String {
-        "kx.nav.arrow:\(Int(angle.rounded()))"
+        "lc.nav.arrow:\(Int(angle.rounded()))"
     }
 
     /// The arrow for `maneuver` as a lens picture, or nil when it has no direction.
@@ -101,7 +101,7 @@ enum HUDTurnArrow {
     }
 }
 
-/// Plan KX §6: whether the guidance line may carry its arrow now. "Text alone when the link is
+/// Plan LC §6: whether the guidance line may carry its arrow now. "Text alone when the link is
 /// slow": a picture send that failed, timed out, went again without its picture, or took longer
 /// than `slowSend` puts the arrow off for `cooldown`; the line still goes, as text. "No more than
 /// once a second" is the send pump's own rule (`HUDSendPacer.pictureGap`): a frame after a picture

@@ -405,6 +405,9 @@ final class RecordingQueueProtocol: URLProtocol {
     }
 
     nonisolated(unsafe) static var queue: [(status: Int, body: String)] = []
+    /// Called with each request's index once it is recorded, before its answer goes back: the
+    /// moment to change something between one round of a turn and the next.
+    nonisolated(unsafe) static var onRequest: (@Sendable (Int) -> Void)?
     nonisolated(unsafe) private static var recorded: [Recorded] = []
     private static let lock = NSLock()
 
@@ -417,6 +420,7 @@ final class RecordingQueueProtocol: URLProtocol {
         lock.lock(); defer { lock.unlock() }
         queue = []
         recorded = []
+        onRequest = nil
     }
 
     static func session() -> URLSession {
@@ -434,7 +438,10 @@ final class RecordingQueueProtocol: URLProtocol {
         Self.recorded.append(Recorded(url: request.url?.absoluteString ?? "",
                                       headers: request.allHTTPHeaderFields ?? [:], body: body))
         let next = Self.queue.isEmpty ? (status: 200, body: "") : Self.queue.removeFirst()
+        let index = Self.recorded.count - 1
+        let hook = Self.onRequest
         Self.lock.unlock()
+        hook?(index)
         let contentType = next.body.hasPrefix("{") ? "application/json" : "text/event-stream"
         let response = HTTPURLResponse(
             url: request.url!, statusCode: next.status,

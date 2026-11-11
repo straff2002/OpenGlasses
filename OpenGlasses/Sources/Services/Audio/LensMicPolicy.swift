@@ -1,6 +1,6 @@
 import Foundation
 
-/// Plan KX §2.5: while the Meta Display is on, the conversation mic stays on the iPhone.
+/// Plan LC §2.5: while the Meta Display is on, the conversation mic stays on the iPhone.
 ///
 /// On current Ray-Ban Display firmware, bringing up the glasses' hands-free (HFP) microphone ends
 /// the app's display session (meta-wearables-dat-ios #342), and the glasses put their call screen
@@ -25,7 +25,7 @@ enum LensMicPolicy {
         return .phone
     }
 
-    /// Plan KX §5: how a live session (Gemini Live, OpenAI Realtime, Qwen, Doubao) captures. A live
+    /// Plan LC §5: how a live session (Gemini Live, OpenAI Realtime, Qwen, Doubao) captures. A live
     /// session has no mic picker of its own: it captures on the glasses' hands-free mic whenever the
     /// camera streams from them, which is the **Glasses Mic** route. That goes through
     /// `conversationRoute` like any conversation, so with the Meta Display on (and the rollback on)

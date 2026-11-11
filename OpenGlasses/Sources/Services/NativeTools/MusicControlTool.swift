@@ -63,7 +63,43 @@ struct MusicControlTool: NativeTool {
     @MainActor
     private static func run(_ request: MusicToolRequest,
                             makeEnvironment: @MainActor () -> MusicControlEnvironment) async -> String {
-        await makeEnvironment().run(request)
+        let environment = makeEnvironment()
+        let (result, route) = await environment.executeRouted(request)
+        // Plan LA: what the wearer asked for is playing, paused or skipped — or it is not.
+        if let completion = Self.completion(for: request, result: result, route: route) {
+            ActionCompletionReport.record(completion)
+        }
+        return result.spoken
+    }
+
+    /// Plan LA §1: a `music_control` call's completion. Pure.
+    ///
+    /// - Spotify's search page opened → `.partial(.handedToApp)`: nothing plays until a tap.
+    /// - A question back (which speaker? what song?) → `.awaitingWearer`.
+    /// - Transport that worked, on any player, and Apple Music playback that started → `.done`.
+    /// - Reads (now playing, search, the speaker list), adding to the library, a speaker asked to
+    ///   play something by name, and anything that failed or is unsupported → no report (spoken).
+    static func completion(for request: MusicToolRequest, result: MusicCommandResult,
+                           route: MusicControlEnvironment.RouteTaken) -> ActionCompletion? {
+        if result.handedToApp { return .partial(reason: .handedToApp) }
+        if result.outcome == .needsInput { return .awaitingWearer }
+        guard result.outcome == .done, case .command(let command) = request.parsed else { return nil }
+        switch command {
+        case .play: return .done(summary: "Playing")
+        case .pause: return .done(summary: "Paused")
+        case .toggle: return .done(summary: "Play/pause")
+        case .next: return .done(summary: "Next track")
+        case .previous: return .done(summary: "Previous track")
+        case .shuffle: return .done(summary: "Shuffle")
+        case .volumeUp: return .done(summary: "Volume up")
+        case .volumeDown: return .done(summary: "Volume down")
+        case .volumeSet(let level): return .done(summary: "Volume \(Int((level * 100).rounded()))%")
+        case .playByName(let play):
+            guard route == .appleMusic else { return nil }
+            return .done(summary: "Playing \(play.phrase)")
+        case .nowPlaying, .search, .devices, .addToLibrary:
+            return nil
+        }
     }
 }
 
@@ -248,11 +284,24 @@ struct MusicControlEnvironment {
         await execute(request).spoken
     }
 
+    /// Which way a call went (Plan LA): it decides whether a play-by-name that "worked" is playing.
+    enum RouteTaken: Equatable {
+        case none
+        case spotifySearch
+        case appleMusic
+        case homeAssistant
+    }
+
     /// The outcome as well as the words — a temple tap speaks only answers the wearer needs.
     func execute(_ request: MusicToolRequest) async -> MusicCommandResult {
+        await executeRouted(request).result
+    }
+
+    /// `execute`, with the route the call took.
+    func executeRouted(_ request: MusicToolRequest) async -> (result: MusicCommandResult, route: RouteTaken) {
         let command: MusicCommand
         switch request.parsed {
-        case .reply(let line): return MusicCommandResult(spoken: line, outcome: .needsInput)
+        case .reply(let line): return (MusicCommandResult(spoken: line, outcome: .needsInput), .none)
         case .command(let parsed): command = parsed
         }
 
@@ -279,12 +328,13 @@ struct MusicControlEnvironment {
 
         if command == .devices {
             guard context.homeAssistantUsable else {
-                return .failed(context.homeAssistantUnavailableLine ?? MusicPhraser.speakersNeedHomeAssistant)
+                return (.failed(context.homeAssistantUnavailableLine ?? MusicPhraser.speakersNeedHomeAssistant), .none)
             }
-            return .done(MusicPhraser.speakerList(context.speakers))
+            return (.done(MusicPhraser.speakerList(context.speakers)), .homeAssistant)
         }
 
         let result: MusicCommandResult
+        let route: RouteTaken
         switch MusicCommandRouter.route(command, target: request.target, context: context) {
         case .refuse(let line):
             // Spotify by name with something to find: open Spotify's own search for it — a link,
@@ -292,26 +342,32 @@ struct MusicControlEnvironment {
             if case .unsupported("Spotify")? = request.target.service, let phrase = Self.searchPhrase(command),
                let url = SpotifySearchLink.url(for: phrase) {
                 postUserPlaybackRequested()
-                if await openSpotifySearch(url) { return .done(MusicPhraser.openingSpotifySearch(phrase)) }
+                if await openSpotifySearch(url) {
+                    var opened = MusicCommandResult.done(MusicPhraser.openingSpotifySearch(phrase))
+                    opened.handedToApp = true
+                    return (opened, .spotifySearch)
+                }
             }
-            return .unsupported(line)
+            return (.unsupported(line), .none)
         case .askSpeaker(let speakers):
-            return MusicCommandResult(spoken: MusicPhraser.askWhichSpeaker(speakers), outcome: .needsInput)
+            return (MusicCommandResult(spoken: MusicPhraser.askWhichSpeaker(speakers), outcome: .needsInput), .none)
         case .appleMusic:
+            route = .appleMusic
             // Commands are for the wearer's own player: the temple-tap trigger drops its claim
             // first so it never races their playback for Now Playing.
             if !command.isReadOnly { postUserPlaybackRequested() }
             result = await appleMusic.perform(command, speaker: nil)
         case .homeAssistant(let speaker):
             // A speaker plays in the room, not on the phone: the phone's Now Playing is untouched.
-            guard let homeAssistant else { return .failed(MusicPhraser.speakersNeedHomeAssistant) }
+            guard let homeAssistant else { return (.failed(MusicPhraser.speakersNeedHomeAssistant), .none) }
+            route = .homeAssistant
             result = await homeAssistant.perform(command, speaker: speaker)
         }
 
         if request.isLike, result.outcome == .done, result.spoken.hasPrefix("Added") {
-            return .done(MusicPhraser.likeIsAddToLibrary)
+            return (.done(MusicPhraser.likeIsAddToLibrary), route)
         }
-        return result
+        return (result, route)
     }
 
     /// The words worth opening a search for: a play-by-name or a search; nothing for transport.

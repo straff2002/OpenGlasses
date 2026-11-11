@@ -94,6 +94,7 @@ final class LearningCandidateService {
         case .notIncluded: return .notEntitled(FieldAssistPaywallCopy.teamLearningsNotIncluded)
         case .denied(.expired(_)): return .notEntitled(FieldAssistPaywallCopy.teamLearningsLapsed)
         case .denied(.unverifiableLicense): return .notEntitled(FieldAssistPaywallCopy.unverifiable)
+        case .denied(.seatUnavailable(let hold)): return .notEntitled("Nothing was filed: " + hold.message)
         case .denied(.noEvidence): return .notEntitled(FieldAssistPaywallCopy.teamLearningsLocked)
         }
     }

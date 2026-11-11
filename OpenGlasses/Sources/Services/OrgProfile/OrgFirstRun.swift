@@ -38,18 +38,4 @@ enum OrgFirstRun {
 
     static let providerPage = 1
     static let servicesPage = 3
-
-    /// What is typed into the key field. An attempt at an activation key is upper-cased and grouped
-    /// in fours as it is typed; anything else — a pasted licence code — is left exactly as it is.
-    static func formatKeyEntry(_ text: String) -> String {
-        let compact = text.uppercased().filter { !$0.isWhitespace && $0 != "-" }
-        guard !compact.isEmpty, compact.count <= ActivationKey.length,
-              compact.allSatisfy({ ActivationKey.alphabet.contains($0) || "OILU".contains($0) }) else {
-            return text
-        }
-        let characters = Array(compact)
-        return stride(from: 0, to: characters.count, by: 4)
-            .map { String(characters[$0..<min($0 + 4, characters.count)]) }
-            .joined(separator: "-")
-    }
 }

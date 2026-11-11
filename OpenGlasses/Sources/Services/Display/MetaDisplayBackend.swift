@@ -40,12 +40,12 @@ protocol GlassesDisplayBackend: AnyObject {
     /// report. Nil when the backend sent none or cannot say.
     var lastPictureBytes: Int? { get }
 
-    /// Plan KX §6: the caption frame (`HUDCaptionBuilder`). The default draws it as a heading (the
+    /// Plan LC §6: the caption frame (`HUDCaptionBuilder`). The default draws it as a heading (the
     /// speaker) and one body (the rows), which a text-cell backend wraps to its own panel; the Meta
     /// backend draws the three rows.
     func showCaption(_ caption: HUDCaption) async throws
 
-    /// Plan KX §6: whether the backend plays a clip (Meta Display: DAT's `VideoPlayer`). Even G2,
+    /// Plan LC §6: whether the backend plays a clip (Meta Display: DAT's `VideoPlayer`). Even G2,
     /// the web mirror and the phone-only build: no, and a task card on them never offers **Watch**.
     var playsVideo: Bool { get }
     /// Play `video` as the lens's whole frame. `onEnded` hears how it ended (it ran out, it was
@@ -165,7 +165,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     }
     var onSessionReading: ((DisplaySessionReading) -> Void)?
 
-    /// Plan KX §2.2: the session we held reached `.stopped` without us stopping it — the wearer's
+    /// Plan LC §2.2: the session we held reached `.stopped` without us stopping it — the wearer's
     /// Back gesture or two-finger tap, or the glasses' hands-free mic coming up (iOS #342, #349). The
     /// service reads it as a dismissal and does not reopen the lens for an ambient frame.
     var onSessionEndedByDevice: (() -> Void)?
@@ -204,7 +204,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     func showContent(title: String?, body: String, icon: HUDIcon) async throws {
         let display = try await ensureDisplay()
-        videoEnded = nil   // Plan KX §6: a frame replaces a clip
+        videoEnded = nil   // Plan LC §6: a frame replaces a clip
         let iconName = icon.metaIconName
         let hasTitle = !(title?.isEmpty ?? true)
 
@@ -242,11 +242,11 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     func send(screen: HUDScreen) async throws {
         let display = try await ensureDisplay()
-        // Plan KX §6: a screen replaces a clip; the service already knows it left.
+        // Plan LC §6: a screen replaces a clip; the service already knows it left.
         videoEnded = nil
         let view = makeScreenView(screen)
         if screen.picture != nil { lastPictureBytes = Self.pictureBytes(in: view) }
-        // Plan KX §2.4: a send that has not come back in `HUDSendDeadline.seconds` has failed.
+        // Plan LC §2.4: a send that has not come back in `HUDSendDeadline.seconds` has failed.
         try await HUDSendDeadline.run { try await display.send(view) }
     }
 
@@ -255,7 +255,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         view.children.lazy.compactMap { $0 as? Image }.first.map { $0.uri.utf8.count }
     }
 
-    // MARK: - Captions and clips (Plan KX §6)
+    // MARK: - Captions and clips (Plan LC §6)
 
     /// The caption screen: an items-less frame, top-aligned, through the same tree as any screen.
     func showCaption(_ caption: HUDCaption) async throws {
@@ -309,7 +309,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     func clear() async throws {
         // Nothing to clear if we never started a session.
         guard let display else { return }
-        videoEnded = nil   // Plan KX §6: a clear replaces a clip
+        videoEnded = nil   // Plan LC §6: a clear replaces a clip
         // DAT 0.8.0: explicit clear instead of sending an empty FlexBox.
         try await display.clearDisplay()
     }
@@ -359,7 +359,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             (text: HUDTextShaper.condense(line.text), iconName: line.icon.metaIconName,
              style: line.emphasis.textStyle, color: line.emphasis.textColor)
         }
-        // Plan KX §2.1: exactly one button carries `.actionRole(.primary)`, so the glasses focus it
+        // Plan LC §2.1: exactly one button carries `.actionRole(.primary)`, so the glasses focus it
         // when the frame first renders (and again on every re-send, which resets focus).
         let focusID = screen.resolvedFocusItemID
         let buttonModels = screen.items.map { item in
@@ -371,7 +371,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // (`LensPageFrame.pictureBox`), the column's full width, so `.fill` draws it one lens pixel
         // per image pixel and the lines, the picture and the button row all fit on the lens.
         let picture = screen.picture.map { Image(image: $0.image, sizePreset: .fill) }
-        // Plan KX §6: a turn arrow leads its guidance line; everything else draws under the lines.
+        // Plan LC §6: a turn arrow leads its guidance line; everything else draws under the lines.
         let pictureLeads = screen.picture?.placement == .aboveLines
         // Under a button row, room for the focused button's glow (`LensPageFrame`): with the 12 px
         // margin the glow reached past the lens, and the lens scrolled every frame up by 20 px.
@@ -544,7 +544,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 guard let self, !Task.isCancelled, self.session === session else { return }
                 self.noteSessionState(state)
                 if state == .started { reachedStarted = true }
-                // Plan KX §2.2: `dropSession` cancels this watch before it stops the session, so a
+                // Plan LC §2.2: `dropSession` cancels this watch before it stops the session, so a
                 // `.stopped` heard here, after the session was up, is one the app did not ask for.
                 // A start that never got there is a refused start (`prepareSession`), not this.
                 if state == .stopped, reachedStarted {

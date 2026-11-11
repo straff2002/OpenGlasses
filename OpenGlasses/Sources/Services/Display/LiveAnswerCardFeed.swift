@@ -1,7 +1,7 @@
 import Foundation
 
 /// What a live session (Gemini Live, OpenAI Realtime, Qwen, Doubao) tells the lens about a turn
-/// (Plan KX §5). `RealtimeSessionManager`, the one coordinator every live provider shares, sends
+/// (Plan LC §5). `RealtimeSessionManager`, the one coordinator every live provider shares, sends
 /// these from the places it already hears them; nothing provider-specific reaches the lens.
 enum LiveAnswerEvent: Equatable {
     /// The server's voice activity heard the wearer start talking.
@@ -19,7 +19,7 @@ enum LiveAnswerEvent: Equatable {
     case sessionEnded
 }
 
-/// One live-mode answer for the card (Plan KX §5).
+/// One live-mode answer for the card (Plan LC §5).
 struct LiveAnswer: Equatable {
     let text: String
     /// What the wearer said that turn, for the card's "You: …" line; nil when they said nothing.
@@ -28,7 +28,7 @@ struct LiveAnswer: Equatable {
     let wearerLed: Bool
 }
 
-/// Collects one live turn's transcript into one answer (Plan KX §5). Pure.
+/// Collects one live turn's transcript into one answer (Plan LC §5). Pure.
 ///
 /// - **The answer is the turn's transcript, whole.** Deltas join with `ScriptAwareJoiner` (the
 ///   session's own rule, so CJK isn't spaced apart). Nothing is published until the turn ends.
@@ -103,7 +103,7 @@ struct LiveAnswerTurnTracker: Equatable {
     }
 }
 
-/// The adapter from a live session to the answer card (Plan KX §5): `RealtimeSessionManager`'s
+/// The adapter from a live session to the answer card (Plan LC §5): `RealtimeSessionManager`'s
 /// `onAnswerEvent` goes to `handle(_:)`, and each model turn's transcript becomes one KP card through
 /// `HUDAnswerCard.presentLiveAnswer` at the turn's end.
 ///
@@ -179,7 +179,7 @@ final class LiveAnswerCardFeed {
     }
 }
 
-/// Where a press on a live-mode answer card goes (Plan KX §5). Pure.
+/// Where a press on a live-mode answer card goes (Plan LC §5). Pure.
 ///
 /// The card's More, Send and follow-ups submit a next turn, and Repeat says the answer again. In
 /// Direct mode that is the typed-turn path and the app's voice, as KP built them. In a live mode the

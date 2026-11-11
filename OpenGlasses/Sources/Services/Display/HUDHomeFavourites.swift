@@ -1,6 +1,6 @@
 import Foundation
 
-/// Plan KX §6: the wearer's Home Assistant quick actions as a list on the lens (Today › Menu ›
+/// Plan LC §6: the wearer's Home Assistant quick actions as a list on the lens (Today › Menu ›
 /// Home). Pure.
 ///
 /// One button per action (`ha:<id>`, its own label), at most `pageSize` (5) to a page, then
@@ -12,9 +12,9 @@ enum HUDHomeFavouritesBuilder {
     static let pageSize = 5
 
     enum ItemID {
-        static let more = "kx.home.more"
+        static let more = "lc.home.more"
         static let back = "back"
-        static let close = "kx.home.close"
+        static let close = "lc.home.close"
         static func action(_ id: String) -> String { "ha:\(id)" }
     }
 
@@ -77,7 +77,7 @@ enum HomeFavouriteOutcome: Equatable {
     case done, failed, declined
 }
 
-/// Plan KX §6: runs one Home Assistant quick action pressed on the lens.
+/// Plan LC §6: runs one Home Assistant quick action pressed on the lens.
 ///
 /// **Directly, not through the model.** The phone's quick action asks the model to call the
 /// service; a press on the lens calls it itself (`HomeAssistantTool.runFavourite`), with the same

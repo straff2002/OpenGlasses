@@ -83,7 +83,7 @@ final class HUDRouter: ObservableObject {
         // Don't render the card over an open launcher menu, or the page view pushed over it; it
         // re-renders on resume/close.
         guard !isPresentingMenu, !isPresentingPage else { return }
-        // Plan KX §6: a step's clip is offered only where the lens can play it.
+        // Plan LC §6: a step's clip is offered only where the lens can play it.
         let onWatch: ((HUDVideo) -> Void)? = display.playsVideo ? { [weak self] video in self?.watch(video) } : nil
         let screen = Self.taskCard(source: source, current: current, next: source.next, onWatch: onWatch)
         currentScreen = screen
@@ -97,7 +97,7 @@ final class HUDRouter: ObservableObject {
         item.action()
     }
 
-    /// Plan KX §6: play the step's clip over the task card. The card comes back when it ends; a clip
+    /// Plan LC §6: play the step's clip over the task card. The card comes back when it ends; a clip
     /// the glasses would not play says so in a short line over the card.
     private func watch(_ video: HUDVideo) {
         display.playVideo(video) { [weak self] ending in
@@ -107,7 +107,7 @@ final class HUDRouter: ObservableObject {
         }
     }
 
-    /// Plan KX §6: the words that stop a clip while it plays (the clip has no buttons, and the
+    /// Plan LC §6: the words that stop a clip while it plays (the clip has no buttons, and the
     /// band's Back would end the whole display session).
     static func isStopClipCommand(_ text: String) -> Bool {
         ["stop", "stop video", "stop the video", "stop clip", "stop the clip", "close", "back", "done"]
@@ -123,7 +123,7 @@ final class HUDRouter: ObservableObject {
     /// LLM). No-op otherwise.
     @discardableResult
     func handleVoiceCommand(_ text: String) async -> Bool {
-        // Plan KX §6: while a step's clip plays, "stop" (or "back", "close", "done") stops it and
+        // Plan LC §6: while a step's clip plays, "stop" (or "back", "close", "done") stops it and
         // brings the card back, rather than moving the step under it.
         if display.showsVideo, Self.isStopClipCommand(text) {
             display.stopVideo()
@@ -229,7 +229,7 @@ final class HUDRouter: ObservableObject {
         refresh()
     }
 
-    /// Plan KX §6: redraw the top screen in place (the Now Playing card after a press), without
+    /// Plan LC §6: redraw the top screen in place (the Now Playing card after a press), without
     /// growing the stack. Nothing when no menu is open.
     func replaceTop(_ screen: HUDScreen) {
         guard isPresentingMenu, !screenStack.isEmpty else { return }
@@ -296,12 +296,12 @@ final class HUDRouter: ObservableObject {
 
     // MARK: - Card layout
 
-    /// Plan KX §6: the task card's **Watch** item.
-    static let watchItemID = "kx.task.watch"
+    /// Plan LC §6: the task card's **Watch** item.
+    static let watchItemID = "lc.task.watch"
 
     /// Build the Now/Next card. `static` and pure so it's unit-testable without a device.
     ///
-    /// Plan KX §6: `onWatch`, when given and the step has a clip, adds **Watch** before Back.
+    /// Plan LC §6: `onWatch`, when given and the step has a clip, adds **Watch** before Back.
     static func taskCard(source: HUDTaskSource, current: HUDStep, next: HUDStep?,
                          onWatch: ((HUDVideo) -> Void)? = nil) -> HUDScreen {
         var lines: [HUDLine] = []

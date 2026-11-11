@@ -36,7 +36,7 @@ enum HUDAnswerAction: Equatable {
 /// P1 put ‹ Back on middle pages too (P0 had it on the paged last page only): with the band
 /// alone, a wearer two pages in had no way back but to read on to the end.
 ///
-/// **The picture (Plan KX §5).** A vision answer's first page carries the analysed frame's
+/// **The picture (Plan LC §5).** A vision answer's first page carries the analysed frame's
 /// thumbnail (`HUDAnswerThumbnail`) as its `HUDScreen.picture`, under the text and over the
 /// buttons, when `HUDAnswerThumbnail.fits` says the page and the picture fit the lens together;
 /// otherwise the page is drawn without it. Later pages and the Actions screen never carry it.
@@ -78,7 +78,7 @@ enum HUDAnswerCardBuilder {
 
     /// The card for one page. `index` is clamped into the pages; nil when there are no pages.
     /// `question` is the shaped question line (`questionLine(for:maxChars:)`), shown over the
-    /// first page only. `picture` is the frame a vision answer analysed (Plan KX §5): the first
+    /// first page only. `picture` is the frame a vision answer analysed (Plan LC §5): the first
     /// page carries it when the two fit the lens together.
     static func page(_ pages: [HUDAnswerPage],
                      index: Int,

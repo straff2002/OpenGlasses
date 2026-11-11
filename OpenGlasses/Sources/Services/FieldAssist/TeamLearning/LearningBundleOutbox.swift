@@ -194,6 +194,7 @@ final class LearningBundleOutbox {
         case .notIncluded: return .notEntitled(FieldAssistPaywallCopy.teamLearningsBundleNotIncluded)
         case .denied(.expired(_)): return .notEntitled(FieldAssistPaywallCopy.teamLearningsBundleLapsed)
         case .denied(.unverifiableLicense): return .notEntitled(FieldAssistPaywallCopy.unverifiable)
+        case .denied(.seatUnavailable(let hold)): return .notEntitled("Not exchanged: " + hold.message)
         case .denied(.noEvidence): return .notEntitled(FieldAssistPaywallCopy.teamLearningsBundleLocked)
         }
     }

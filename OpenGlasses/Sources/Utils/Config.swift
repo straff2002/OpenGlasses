@@ -571,6 +571,12 @@ struct Config {
     @UserDefaultsBacked("directSentenceStreamingEnabled", default: false)
     static var directSentenceStreamingEnabled: Bool
 
+    /// Plan LA: when something the wearer asked for has fully happened, a short done tone instead
+    /// of a spoken reply (`QuietTurnJudge`). Off by default (decision 1); hidden and read as off in
+    /// Simple Mode. Settings › Voice.
+    @UserDefaultsBacked("quietAfterActionsEnabled", default: false)
+    static var quietAfterActionsEnabled: Bool
+
     /// Ask the phone's built-in mic for Apple's voice processing (noise suppression and echo
     /// cancellation) during dictation, on the engine dictation builds for itself (Plan JM P0).
     /// Never on a Bluetooth route and never on the wake-word listener's shared engine — see
@@ -2329,6 +2335,13 @@ struct Config {
     /// configuration is needed.
     @UserDefaultsBacked("localWebSearchFallbackEnabled", default: true) static var localWebSearchFallbackEnabled: Bool
 
+    /// "Let the AI search the web itself" (Plan KZ, Decision 1): with no search key set up, a
+    /// provider that runs web search on its own servers (Claude, GPT, Grok, OpenRouter) searches
+    /// inside the conversation request instead of the keyless fallbacks. Default on; a first
+    /// search still asks Cloud AI Sharing's "Web search" question for the provider's address.
+    /// `ProviderSearchPolicy` decides per request.
+    @UserDefaultsBacked("providerWebSearchEnabled", default: true) static var providerWebSearchEnabled: Bool
+
     // MARK: - Local runtime and durable agent loops (Plan DZ)
 
     // All four default OFF and fail closed. Off is not "broken": with the coordinator flag off the
@@ -3730,6 +3743,39 @@ struct Config {
 
     static func setPrivacyFilterEnabled(_ enabled: Bool) { privacyFilterEnabled = enabled }
 
+    // MARK: - Instant Replay
+
+    /// Keep the last minute the glasses camera already showed, while it streams for something
+    /// else, so a moment that has just happened can be saved. **Off by default**: it keeps video
+    /// of other people without a fresh request each time. An organisation profile may pin it off
+    /// (`SettingKey.instantReplayEnabled`), never on.
+    static var instantReplayEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.instantReplayEnabled,
+                                stored: UserDefaults.standard.object(forKey: "instantReplayEnabled") as? Bool ?? false)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.instantReplayEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "instantReplayEnabled")
+        }
+    }
+
+    /// How much Instant Replay keeps: 30 s, a minute (the default) or 2 minutes.
+    static var instantReplayBufferSeconds: TimeInterval {
+        get {
+            let stored = UserDefaults.standard.double(forKey: "instantReplayBufferSeconds")
+            return ReplayBufferPlan.bufferChoices.contains(stored) ? stored : ReplayBufferPlan.defaultBufferSeconds
+        }
+        set {
+            guard ReplayBufferPlan.bufferChoices.contains(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: "instantReplayBufferSeconds")
+        }
+    }
+
+    /// Developer panel: measure each glasses stream's frame cadence for its first minute and write
+    /// the reading to the camera log (Instant Replay P0). Off by default.
+    @UserDefaultsBacked("frameCadenceLoggingEnabled", default: false) static var frameCadenceLoggingEnabled: Bool
+
     /// Plan CO Item 1 — similarity gap the leading face must open over the runner-up before the
     /// name is spoken as a fact. Inside this margin the app names the possibilities instead of
     /// guessing. Configurable because the right value can only be found against real enrolments;
@@ -3879,7 +3925,7 @@ struct Config {
         return useGlassesMicForWakeWord ? .glasses : .phone
     }
 
-    /// Plan KX §2.5: the route a conversation actually captures on — `micRoute`, except that
+    /// Plan LC §2.5: the route a conversation actually captures on — `micRoute`, except that
     /// **Glasses Mic** becomes the iPhone mic while the Meta Display is on (the glasses' hands-free
     /// mic ends the display session). Capture paths read this; Settings and hints read `micRoute`.
     static var conversationMicRoute: MicRoute {
@@ -3890,7 +3936,7 @@ struct Config {
     /// The HUD switch is on and a Meta Display is connected.
     static var lensIsOn: Bool { glassesDisplayEnabled && LensMicPolicy.metaDisplayPresent }
 
-    /// Plan KX §2.5: the rollback for `conversationMicRoute`. On by default.
+    /// Plan LC §2.5: the rollback for `conversationMicRoute`. On by default.
     @UserDefaultsBacked("lensKeepsPhoneMic", default: true) static var lensKeepsPhoneMic: Bool
 
     static func setMicRoute(_ route: MicRoute) {
@@ -4044,14 +4090,14 @@ struct Config {
     /// Ray-Ban Display in-lens HUD. No-ops on glasses without a display.
     @UserDefaultsBacked("glassesDisplayEnabled", default: false) static var glassesDisplayEnabled: Bool
 
-    /// Plan KX §1: moving the switch by hand answers the connect-time offer too, so it is never
+    /// Plan LC §1: moving the switch by hand answers the connect-time offer too, so it is never
     /// asked after the wearer has already chosen.
     static func setGlassesDisplayEnabled(_ enabled: Bool) {
         glassesDisplayEnabled = enabled
         displayOfferAnswered = true
     }
 
-    /// Plan KX §1: the "Your glasses have a display" offer was answered (Turn on, Not now, or the
+    /// Plan LC §1: the "Your glasses have a display" offer was answered (Turn on, Not now, or the
     /// switch moved by hand). Asked once per install.
     @UserDefaultsBacked("displayOfferAnswered", default: false) static var displayOfferAnswered: Bool
 
@@ -4137,7 +4183,7 @@ struct Config {
         UserDefaults.standard.set(value, forKey: "teleprompterLead")
     }
 
-    /// Plan KX §6: audio-paced sessions turn a whole page when its last words are heard
+    /// Plan LC §6: audio-paced sessions turn a whole page when its last words are heard
     /// (`TeleprompterPageFollow`) instead of moving a line at a time. Off by default.
     @UserDefaultsBacked("teleprompterPageFollow", default: false) static var teleprompterPageFollow: Bool
 

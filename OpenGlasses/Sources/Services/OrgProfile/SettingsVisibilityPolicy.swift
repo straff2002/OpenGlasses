@@ -105,11 +105,14 @@ enum SettingsVisibilityPolicy {
     ///   gone, and the on-phone recognisers beside it stay theirs to pick.
     /// - **The spoken interpreter**, pinned off: where a bystander's voice goes. `live_translate`
     ///   beside it stays on the phone and stays the wearer's.
+    /// - **Instant Replay**, pinned off: a rolling minute of the people in front of the glasses.
+    ///   The wearer is told it is off rather than left looking for a switch that is gone.
     static let alwaysShown: Set<ManagedSetting> = [.key(.privacyFilterEnabled), .area(.requestRouting),
                                                    .key(.faceRecognitionEnabled),
                                                    .key(.aiConnectionCueEnabled),
                                                    .key(.cloudDictationEnabled),
-                                                   .key(.interpreterEnabled)]
+                                                   .key(.interpreterEnabled),
+                                                   .key(.instantReplayEnabled)]
 
     /// Whether the organisation's policy stops whoever is looking from changing `setting`.
     static func isLocked(_ setting: ManagedSetting, in context: ManagedSettingsContext) -> Bool {

@@ -3,7 +3,7 @@ import MWDATDisplay
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KX P0–P1: the display offered on connect, and the lens hardened for the real Display.
+/// Plan LC P0–P1: the display offered on connect, and the lens hardened for the real Display.
 /// Headless: pure policies directly, the service through `testRenderSink`, the Meta backend through a
 /// fake session (never `Wearables.shared`).
 @MainActor
@@ -110,7 +110,7 @@ final class LensHardeningTests: XCTestCase {
         let pages = HUDAnswerPager.pages(for: "Short answer.", geometry: .raybanDisplay)
         XCTAssertTrue(HUDExit.hasExit(HUDAnswerCardBuilder.actions(pages, followUps: [], onAction: { _ in })))
         XCTAssertFalse(HUDExit.hasExit(HUDScreen(items: [item("next", .primary)])))
-        XCTAssertTrue(HUDExit.hasExit(HUDScreen(items: [item("kx.approval.deny", .outline)])))
+        XCTAssertTrue(HUDExit.hasExit(HUDScreen(items: [item("lc.approval.deny", .outline)])))
     }
 
     // MARK: - P1 §2.4: the send pump

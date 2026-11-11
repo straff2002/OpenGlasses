@@ -147,28 +147,55 @@ struct AttemptToolLedger: Equatable {
         var ran = true
         /// The tool's output when it completed; nil while it runs and for any other outcome.
         var result: String?
+        /// Plan LA: a tool this app ships (the registry holds it), not an MCP server's or the
+        /// gateway's. Only a native tool can vouch for what it did.
+        var isNative = false
+        /// Plan LA: how the call ended, by class; `.running` until it finishes.
+        var outcome: QuietTurnCall.Outcome = .running
+        /// Plan LA: what the tool reported about the request landing (`ActionCompletionReport`).
+        var completion: ActionCompletion?
+
+        /// The call as the quiet-ending judge reads it.
+        var quietCall: QuietTurnCall {
+            QuietTurnCall(tool: tool, effect: effect, outcome: outcome, completion: completion,
+                          isNative: isNative)
+        }
     }
 
     private(set) var calls: [Call] = []
     private var nextID = 0
+    /// Plan LA: how many times the ledger has been reset. A turn that reads the ledger compares it
+    /// with the count when the turn began: unchanged, the calls are an earlier turn's (a brain that
+    /// keeps no ledger answered), and nothing may be concluded from them.
+    private(set) var generation = 0
 
     /// Forget the calls — a new turn. Ids keep counting.
-    mutating func reset() { calls.removeAll() }
+    mutating func reset() {
+        calls.removeAll()
+        generation += 1
+    }
 
     /// Enter a call as it is dispatched; returns its id for `finished(_:outcome:)`.
     @discardableResult
-    mutating func dispatched(tool: String, arguments: String, effect: ToolEffect) -> Int {
+    mutating func dispatched(tool: String, arguments: String, effect: ToolEffect,
+                             isNative: Bool = false) -> Int {
         nextID += 1
-        calls.append(Call(id: nextID, tool: tool,
-                          arguments: String(arguments.prefix(HopAfterTools.capturedArgumentsLimit)),
-                          effect: effect))
+        var call = Call(id: nextID, tool: tool,
+                        arguments: String(arguments.prefix(HopAfterTools.capturedArgumentsLimit)),
+                        effect: effect)
+        call.isNative = isNative
+        calls.append(call)
         return nextID
     }
 
     /// Record how a call ended. A completed call keeps its result; a refusal or a call that was
     /// never reached did not run; an unresolved outcome may have landed, and has no result to carry.
-    mutating func finished(_ id: Int, outcome: ToolExecutionOutcome) {
+    mutating func finished(_ id: Int, outcome: ToolExecutionOutcome, completion: ActionCompletion? = nil) {
         guard let index = calls.firstIndex(where: { $0.id == id }) else { return }
+        calls[index].outcome = QuietTurnCall.Outcome(outcome)
+        // A report only stands for a call that completed: a timed-out or refused call's tool may
+        // have said "done" about work nobody waited for.
+        calls[index].completion = outcome.isCompleted ? completion : nil
         switch outcome {
         case .completed(let text):
             calls[index].result = String(text.prefix(HopAfterTools.capturedResultLimit))
@@ -181,6 +208,13 @@ struct AttemptToolLedger: Equatable {
 
     /// The calls that ran, or may have.
     var ran: [Call] { calls.filter(\.ran) }
+
+    /// Plan LA: every call of the turn, refused ones included, as the quiet-ending judge reads
+    /// them; `from` skips the calls an earlier round already accounted for.
+    func quietCalls(from start: Int = 0) -> [QuietTurnCall] {
+        guard start < calls.count else { return [] }
+        return calls[max(0, start)...].map(\.quietCall)
+    }
 
     var toolsRan: HopAfterTools.ToolsRan {
         let ran = self.ran

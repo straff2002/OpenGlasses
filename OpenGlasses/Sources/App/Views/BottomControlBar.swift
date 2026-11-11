@@ -1,31 +1,25 @@
 import SwiftUI
 import PhotosUI
 
-/// The control dock — two glass surfaces above the tab bar, bottom-most first:
+/// The control dock, floating over the bottom of the Voice tab's conversation:
 ///
-///   Capsule (bottom): the wide mic/action capsule on its own glass, nearest the thumb. It is the
-///                     control reached most often and by far the largest target, so it sits at the
-///                     bottom of the reach rather than on top of a grid of small ones. It never
-///                     pages, which is what keeps "stop" reachable at every moment of a turn.
-///   Panel (above):    pages behind one fixed frame — the conversation, then the grid cut into as
-///                     many pages as its tiles need — swiped like a home screen, with dots to say
-///                     where you are.
+///   Control row (bottom): the mic — one round, thumb-sized button that carries every state the old
+///                         full-width capsule did (talk, stop, cancel, start or stop a live
+///                         session, the mute badge and its long press) — with the buttons button
+///                         beside it at the trailing edge. On the grid, the cog takes the leading
+///                         corner.
+///   Grid panel (above):   the tiles, cut into as many pages as they need and swiped like a home
+///                         screen. It rises over the conversation when the buttons button asks for
+///                         it and gives the screen back when a turn starts.
 ///
-/// Grid page 1 is the home page, so the conversation is a swipe back and the next page of tiles a
-/// swipe onward. The layout editor is not a page: it is a sheet behind the cog on the dots row, so
-/// no swipe can land in it by accident (`HomeGridPaging` holds the paging maths, `DockPagerPolicy`
-/// the flips). The panel flips itself to the
-/// conversation when a turn starts and when the reply arrives, and after that it does as it is
-/// told: `DockPagerPolicy` holds those rules, and holds the promise that a swipe is never argued
-/// with. The content tiles used to *disappear* while the assistant worked; the flip replaces that,
-/// so nothing is taken away — it is just no longer the page in front.
+/// The conversation is not a page of this panel any more: it is the tab's own scroll, so it runs as
+/// long as it is and the tab bar shrinks to the mark as it scrolls. `DockPagerPolicy` still decides
+/// when the grid steps aside — `.conversation` is the grid lowered, `.actions` the grid up — and
+/// still holds the promise that the wearer's own choice is never argued with.
 ///
-/// The PANEL is the glass the pages sit on; transcript cards are flat on it. The grid's tiles are
-/// glass keys of their own — three across, each one a pressable lens — drawn inside a single
-/// `GlassEffectContainer`, so the keys share one sampling pass rather than each blurring the
-/// animating ambience separately. The capsule carries its own capsule-shaped glass, which is what
-/// it always drew; stacking that inside the panel's rectangle was glass on glass, and separating
-/// them is what lets the two swap places.
+/// The grid's tiles are glass keys of their own — three across, each one a pressable lens — drawn
+/// inside a single `GlassEffectContainer`, so the keys share one sampling pass rather than each
+/// blurring the animating ambience separately.
 struct BottomControlBar: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var session: GeminiLiveSessionManager
@@ -45,19 +39,23 @@ struct BottomControlBar: View {
     /// rather than deriving its own, so the panel and the ambience can never disagree about what
     /// the session is doing.
     var voiceState: VoiceVisualState = .idle
-    /// The tab's usable height, measured once at the top of the surface. A one-way dependency on
-    /// purpose: the panel sizes itself from the screen, and the conversation zone then takes what
-    /// is left — the reverse would be circular.
+    /// The tab's usable height. The risen grid takes at most a share of it, so the conversation
+    /// behind it always keeps a readable window.
     var availableHeight: CGFloat = 0
-    /// The measured height of the surface the panel sits under: the status card, My Day in
-    /// whatever state the wearer left it, the captions and notices held above the dock, and the
-    /// zone's own padding. `nil` until the first layout has reported it.
-    ///
-    /// Still one-way, and still not circular: what is measured is the *modules'* own heights,
-    /// which depend on the width they are given and not on what the panel does with the height.
-    /// The panel divides the screen by what those modules drew — it no longer guesses at a share
-    /// of the screen and leaves whatever it over-reserved on the glass as a gap.
-    var heightAboveDock: CGFloat? = nil
+    /// Set when the row is drawn inside the tab view's bottom accessory (`VoiceDockAccessory`):
+    /// smaller controls on the system's own glass, laid out for where the strip currently sits.
+    var accessoryPlacement: TabViewBottomAccessoryPlacement? = nil
+    /// Set, this bar draws only the grid's pages, filling an area of this height in the
+    /// conversation's place. Unset, it draws only the control row. The Voice tab uses one of each.
+    var gridAreaHeight: CGFloat? = nil
+    /// A reply arrived while the grid was up: the conversation button carries a dot until the
+    /// conversation is shown again.
+    var unseenReply: Bool = false
+    /// Another tab's own strip action (Plan KY), drawn before the mic.
+    var tabLead: TabStripLeadControl? = nil
+    /// Avenkin's strip carries the buttons button and typing; another tab's carries only the mic
+    /// and its own action.
+    var isHomeTab: Bool = true
 
     @State private var runningActionId: String?
     @Binding var pager: DockPagerState
@@ -157,48 +155,12 @@ struct BottomControlBar: View {
         HomeGridPaging.minimumTileHeight(contentHeight: tileContentHeight)
     }
 
-    /// The capsule's glyph box, for the one frame before a real capsule has reported its height.
-    @ScaledMetric(relativeTo: .title3) private var capsuleGlyphBox: CGFloat
-        = DockGridMetrics.capsuleGlyphBox
-
-    /// What the capsule actually measured, once it has been laid out.
-    @State private var measuredCapsuleHeight: CGFloat?
-
-    /// The capsule's height — the same measure-don't-predict rule the row takes, and for the same
-    /// reason: `ActionCapsule` sizes itself to its content, so predicting it is predicting a font.
-    /// It can never be squeezed below its own touch-target floor, which is what keeps this from
-    /// feeding back into the panel height that sits above it.
-    private var capsuleHeight: CGFloat {
-        if let measuredCapsuleHeight, measuredCapsuleHeight > 0 { return measuredCapsuleHeight }
-        return max(OGMetrics.minTouchTarget,
-                   capsuleGlyphBox + DockGridMetrics.capsuleVerticalPadding)
-    }
-
-    /// Everything the dock draws that is not a page, in the order `body` stacks it: the module gap
-    /// above the panel, the module gap between panel and capsule, the capsule, the padding under
-    /// it, and the panel's own inset top and bottom inside its glass.
-    ///
-    /// The page dots are deliberately *not* here — they sit inside the pages' frame, which is what
-    /// `panelPagesHeight` returns.
-    private var dockChromeHeight: CGFloat {
-        DockGridMetrics.moduleGap * 2
-            + DockGridMetrics.dockBottomPadding
-            + DockGridMetrics.panelInset * 2
-            + capsuleHeight
-    }
-
-    /// The pages' frame inside the glass: pure subtraction, so every point the screen has left
-    /// belongs to the panel rather than to a gap above it.
-    private var pagesHeight: CGFloat {
-        DockGridMetrics.panelPagesHeight(
-            availableHeight: availableHeight,
-            reservedHeight: heightAboveDock.map { $0 + dockChromeHeight },
-            rowHeight: minimumTileHeight)
-    }
-
-    /// What a page has above the dots — the room the grid page fits its whole rows inside.
+    /// The grid's page body — the room above its dots — when it takes the conversation's place:
+    /// the whole area it is given, less the panel's inset and the dots. The rows then fill it
+    /// (`HomeGridPaging.fit`).
     private var pageBodyHeight: CGFloat {
-        max(0, pagesHeight - DockGridMetrics.pageIndicatorHeight)
+        DockGridMetrics.gridPageBodyHeight(areaHeight: gridAreaHeight ?? 0,
+                                           minimumTileHeight: minimumTileHeight)
     }
 
     /// What gates a control's tile right now — applied before paging, so every page holds exactly
@@ -222,100 +184,185 @@ struct BottomControlBar: View {
                            naturalTileHeight: naturalTileHeight)
     }
 
+    /// The grid is up when the pager is on it; on the conversation it is lowered out of the way.
+    private var showsGrid: Bool { pager.page == .actions }
+
     var body: some View {
-        // Bottom-most control last: the paging panel, then the capsule beneath it. One gap between
-        // them and one above, the same 16 pt the modules above the dock stack at — the dock is
-        // part of the tab's rhythm, not a surface with a rhythm of its own.
-        VStack(spacing: DockGridMetrics.moduleGap) {
-            panel
-            capsule
+        Group {
+            if gridAreaHeight != nil {
+                panel
+            } else if let accessoryPlacement {
+                if isHomeTab { accessoryRow(accessoryPlacement) } else { tabStripRow(accessoryPlacement) }
+            } else {
+                controlRow
+                    .padding(.top, 8)
+                    .padding(.bottom, DockGridMetrics.dockBottomPadding)
+            }
         }
-        .padding(.top, DockGridMetrics.moduleGap)
-        .padding(.bottom, DockGridMetrics.dockBottomPadding)
+        .sheet(isPresented: $showEditor) { editorSheet }
+    }
+
+    // MARK: - Control row
+
+    /// The cog at the leading edge while the grid is up, then the mic and, at the trailing edge,
+    /// the buttons button — the two controls a thumb reaches most, side by side in its corner.
+    private var controlRow: some View {
+        HStack(spacing: 12) {
+            if showsGrid {
+                RoundDockButton(icon: "gearshape.fill", size: DockGridMetrics.secondaryButtonSize,
+                                label: DockPanelActionName.editHomeScreen,
+                                hint: "Add, remove and reorder the tiles, and choose the cards on the home screen.") {
+                    showEditor = true
+                }
+                .transition(.opacity)
+            }
+            Spacer(minLength: 0)
+            micButton
+            RoundDockButton(icon: showsGrid ? "text.bubble" : "square.grid.2x2",
+                            size: DockGridMetrics.secondaryButtonSize,
+                            label: showsGrid ? DockPage.conversation.showActionName
+                                             : DockPage.actions.showActionName,
+                            hint: "Switch between your buttons and the conversation.",
+                            isActive: showsGrid, badge: showsGrid && unseenReply) {
+                move { DockPagerPolicy.userMoved(pager, to: showsGrid ? .conversation : .actions) }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Accessory row
+
+    /// The row in the tab view's bottom accessory. Full width above the tab bar, its free width is
+    /// the way in to typing (or the cog while the buttons are up) with the two controls at the
+    /// trailing edge; shrunk beside the Avenkin mark, it is just the two controls, still trailing.
+    @ViewBuilder
+    private func accessoryRow(_ placement: TabViewBottomAccessoryPlacement) -> some View {
+        HStack(spacing: 10) {
+            if placement == .expanded {
+                if showsGrid {
+                    RoundDockButton(icon: "gearshape.fill", size: DockGridMetrics.accessoryButtonSize,
+                                    label: DockPanelActionName.editHomeScreen,
+                                    hint: "Add, remove and reorder the tiles, and choose the cards on the home screen.",
+                                    onSystemGlass: true) {
+                        showEditor = true
+                    }
+                    Spacer(minLength: 0)
+                } else if let showChatInput, !isRealtime {
+                    // The strip's free width is the way in to typing: it reads as an empty field and
+                    // opens the typed bar, keyboard up — never words that look tappable and are not.
+                    Button {
+                        showChatInput.wrappedValue = true
+                    } label: {
+                        Text("Type a request")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
+                                   alignment: .leading)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Type a request")
+                    .accessibilityHint("Opens the keyboard to type instead of speaking.")
+                } else {
+                    // A live session has no typed turn, so the two controls simply keep right.
+                    Spacer(minLength: 0)
+                }
+            }
+            accessoryMic
+            RoundDockButton(icon: showsGrid ? "text.bubble" : "square.grid.2x2",
+                            size: DockGridMetrics.accessoryButtonSize,
+                            label: showsGrid ? DockPage.conversation.showActionName
+                                             : DockPage.actions.showActionName,
+                            hint: "Switch between your buttons and the conversation.",
+                            isActive: showsGrid, badge: showsGrid && unseenReply,
+                            onSystemGlass: true) {
+                move { DockPagerPolicy.userMoved(pager, to: showsGrid ? .conversation : .actions) }
+            }
+        }
+        .padding(.horizontal, placement == .expanded ? 14 : 6)
+        // Shrunk beside the mark, the two controls keep to the strip's trailing end — where the
+        // thumb finds them in both placements.
+        .frame(maxWidth: .infinity, alignment: placement == .expanded ? .leading : .trailing)
+    }
+
+    // MARK: - Another tab's strip
+
+    /// Another tab's strip (Plan KY): its own action at the leading edge — words and symbol while
+    /// the strip is full width, the symbol alone beside the shrunk tab bar — and the mic trailing,
+    /// where the thumb finds it on every tab.
+    @ViewBuilder
+    private func tabStripRow(_ placement: TabViewBottomAccessoryPlacement) -> some View {
+        HStack(spacing: 10) {
+            if let tabLead {
+                if placement == .expanded {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        tabLead.action()
+                    } label: {
+                        Label(tabLead.title, systemImage: tabLead.lead.systemImage)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
+                                   alignment: .leading)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    RoundDockButton(icon: tabLead.lead.systemImage,
+                                    size: DockGridMetrics.accessoryButtonSize,
+                                    label: tabLead.title, hint: "",
+                                    onSystemGlass: true, action: tabLead.action)
+                }
+            } else if placement == .expanded {
+                Spacer(minLength: 0)
+            }
+            accessoryMic
+        }
+        .padding(.horizontal, placement == .expanded ? 14 : 6)
+        .frame(maxWidth: .infinity, alignment: placement == .expanded ? .leading : .trailing)
     }
 
     // MARK: - Panel
 
-    /// One frame, every page, and the frame is simply what the screen has left. Every page is the
-    /// same size whatever it holds, and the panel never resizes under a swipe.
-    ///
-    /// The glass absorbs the remainder rather than snapping to whole rows. Snapping the frame put
-    /// up to a row of leftover *between* the card and the panel, sitting next to gaps that are all
-    /// 16 pt — a rhythm broken by arithmetic. Now every module gap is the rhythm and the leftover
-    /// lands inside the glass, under the last row, where it reads as calm space. The whole-row rule
-    /// lives in `HomeGridPaging.rowsThatFit`, which decides how many rows a grid page holds.
-    ///
-    /// Deliberately *not* a per-page height: the tall frame is the panel's, and the conversation
-    /// inherits it by sharing the frame. Only the surface above changing height and the existing
-    /// state-driven yields move it, and both animate outside the pager, so a swipe still lands on a
-    /// frame that has not moved. My Day expanding, collapsing or leaving moves it the same way a
-    /// caption arriving does: by changing the measurement, not by naming a share — and the rows per
-    /// page follow, with the panel staying on the page that holds the tile that was first on screen.
+    /// The grid's pages, in the conversation's place: the buttons button swaps one for the other,
+    /// as the pages of the old panel did. Every page is the same height, so the panel never
+    /// resizes under a swipe.
     private var panel: some View {
-        let pageHeight = pagesHeight
         let tiles = gridTiles
         let tileIDs = tiles.map(\.id)
         let fit = gridFit
         let paging = HomeGridPaging(tileCount: tiles.count, columns: columnCount, rows: fit.rows)
-        let current = paging.panelIndex(for: pager, tileIDs: tileIDs)
-        let currentGridPage = paging.gridPage(forPanelIndex: current)
+        let currentGridPage = paging.gridPage(forPanelIndex: paging.panelIndex(for: pager, tileIDs: tileIDs))
+        // The conversation counts as a page in the swipe order, so there are always dots to show.
+        let pagesDots = true
+        let dots = DockGridMetrics.pageIndicatorHeight
 
         return TabView(selection: pageSelection(paging: paging, tileIDs: tileIDs)) {
-            conversationPage
-                .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
-                // Off-screen pages stay in the hierarchy under a paging TabView, so VoiceOver
-                // would otherwise walk pages the user cannot see.
-                .accessibilityHidden(current != HomeGridPaging.conversationIndex)
+            // The conversation's place in the swipe order, as on the old panel: swiping back from
+            // the first page of buttons lands here, and the selection binding hands the area back
+            // to the conversation.
+            Color.clear
+                .accessibilityHidden(true)
                 .tag(HomeGridPaging.conversationIndex)
-
             ForEach(Array(0..<paging.pageCount), id: \.self) { gridPage in
                 gridPageView(gridPage, tiles: tiles, paging: paging, tileHeight: fit.tileHeight)
-                    .padding(.bottom, DockGridMetrics.pageIndicatorHeight)
+                    .padding(.bottom, dots)
+                    // Off-screen pages stay in the hierarchy under a paging TabView, so VoiceOver
+                    // would otherwise walk pages the user cannot see.
                     .accessibilityHidden(currentGridPage != gridPage)
                     .tag(paging.panelIndex(forGridPage: gridPage))
             }
         }
         // One whole page per swipe, snapping: a short or slow drag springs back, a flick or a drag
-        // past half commits. That is the page style's own physics, which is why the grid pages
-        // here rather than scrolling.
-        .tabViewStyle(.page(indexDisplayMode: .always))
+        // past half commits.
+        .tabViewStyle(.page(indexDisplayMode: pagesDots ? .always : .never))
         // The dots sit on a translucent panel over an animating ambience, where a bare dot has no
         // reliable ground. `.always` gives them their own, in both themes.
         .indexViewStyle(.page(backgroundDisplayMode: .always))
-        .frame(height: pageHeight)
-        // The one way into the editor a sighted user can see: a cog in the corner the page dots
-        // leave free, on every grid page. The editor is a sheet with its own Done, so there is
-        // nothing to swipe to and nothing to swipe back from.
-        .overlay(alignment: .bottomTrailing) {
-            if currentGridPage != nil {
-                cornerButton(icon: "gearshape.fill",
-                             label: DockPanelActionName.editHomeScreen,
-                             hint: "Add, remove and reorder the tiles, and choose the cards on the home screen.") {
-                    showEditor = true
-                }
-                .transition(.opacity)
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            cornerButton(icon: currentGridPage == nil ? "square.grid.2x2" : "text.bubble",
-                         label: currentGridPage == nil ? DockPage.actions.showActionName
-                            : DockPage.conversation.showActionName,
-                         hint: "Switch between your actions and the conversation.") {
-                move { DockPagerPolicy.userMoved(
-                    pager, to: currentGridPage == nil ? .actions : .conversation) }
-            }
-        }
-        // **Deliberately not animated here.** The frame tracks the measurement directly, and that
-        // is what makes the card growing and the panel giving way one motion instead of two.
-        //
-        // A second animation on this side was the bug: while My Day animates its own height, the
-        // reader above reports a new value every frame, and an `.animation(value: pageHeight)`
-        // restarts a fresh ease toward each of them — the panel arrives late and mushy behind a
-        // card that has already stopped. Tracking instead means the two surfaces sum to the screen
-        // on every single frame, which is exactly what a "height exchange" is. The changes that
-        // have no motion of their own to ride — the opening guess giving way to the first real
-        // measurement, a caption arriving — carry `DockGridMetrics.heightSettle` at their source
-        // instead, so they settle without ever being animated twice.
+        .frame(height: pageBodyHeight + dots)
+        .frame(maxHeight: .infinity, alignment: .top)
         // The page control is an adjustable element, which is a poor way to reach a named
         // destination. Every destination is also one named action from wherever focus happens to be.
         .accessibilityElement(children: .contain)
@@ -324,11 +371,6 @@ struct BottomControlBar: View {
         .accessibilityActions {
             Button(DockPage.conversation.showActionName) {
                 move { DockPagerPolicy.userMoved(pager, to: .conversation) }
-            }
-            // The remembered grid page — the one the wearer was on before a turn flipped the panel
-            // to the conversation — rather than walking them back through every page.
-            Button(DockPage.actions.showActionName) {
-                move { DockPagerPolicy.userMoved(pager, to: .actions) }
             }
             if let page = currentGridPage, page + 1 < paging.pageCount {
                 Button(DockPanelActionName.nextGridPage) {
@@ -349,12 +391,6 @@ struct BottomControlBar: View {
         .padding(DockGridMetrics.panelInset)
         .glassEffect(in: .rect(cornerRadius: 28))
         .padding(.horizontal, 12)
-        .onChange(of: voiceState) { previous, next in
-            let advanced = DockPagerPolicy.advance(pager, from: previous, to: next)
-            guard advanced != pager else { return }
-            withAnimation(.easeInOut(duration: 0.25)) { pager = advanced }
-        }
-        .sheet(isPresented: $showEditor) { editorSheet }
     }
 
     /// The home screen's editor, on a sheet with room to work at any panel height.
@@ -384,31 +420,6 @@ struct BottomControlBar: View {
         return String(localized: "\(name), page \(page) of \(paging.pageCount)")
     }
 
-    /// The cog on the dots row.
-    ///
-    /// 44 pt square for the fingertip, though the dots row is only 40 tall: the overlay sits
-    /// outside the pages' frame, so the spare points reach down into the panel's own inset rather
-    /// than up over the last row of keys.
-    private func cornerButton(icon: String, label: String, hint: LocalizedStringKey,
-                              action: @escaping () -> Void) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            action()
-        } label: {
-            Image(systemName: icon)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 34, height: 34)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .offset(y: (OGMetrics.minTouchTarget - DockGridMetrics.pageIndicatorHeight) / 2 + 2)
-        .accessibilityLabel(label)
-        .accessibilityHint(hint)
-    }
-
     /// The selection binding. The index shown is *derived* from the pager state under today's
     /// paging, so a reflow needs no handler of its own. A write equal to it is the pager echoing
     /// us; anything else came from a finger (a swipe or the dots), and a finger's choice stands for
@@ -429,25 +440,13 @@ struct BottomControlBar: View {
         )
     }
 
-    /// A named accessibility action, which is a deliberate move like a swipe — so it takes the
-    /// same "do not argue with me afterwards" promise.
+    /// A deliberate move — the buttons button, or a named accessibility action — so it takes the
+    /// same "do not argue with me afterwards" promise a swipe does.
     private func move(_ next: () -> DockPagerState) {
         withAnimation(.easeInOut(duration: 0.25)) { pager = next() }
     }
 
     // MARK: - Pages
-
-    /// The conversation, and above it the header that says *which* conversation it is. The header
-    /// does not scroll with the transcript: "start a new one" and "go back to an earlier one" have
-    /// to be reachable from the bottom of a long reply, not just the top.
-    private var conversationPage: some View {
-        VStack(spacing: 6) {
-            ConversationPageHeader(store: appState.conversationStore)
-            ConversationPageBody(store: appState.conversationStore,
-                                 session: session,
-                                 openAISession: openAISession)
-        }
-    }
 
     /// One page of the grid: its slice of the one order, as explicit rows of `columns` keys.
     ///
@@ -529,17 +528,27 @@ struct BottomControlBar: View {
         }
     }
 
-    private var capsuleHeightReader: some View {
-        GeometryReader { proxy in
-            Color.clear.preference(key: DockCapsuleHeightKey.self, value: proxy.size.height)
-        }
+    // MARK: - Mic
+
+    /// The mic on the accessory's glass, with the same long-press mute as the floating one.
+    private var accessoryMic: some View {
+        MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState,
+                  onSystemGlass: true)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5).onEnded { _ in appState.micMuted.toggle() }
+            )
+            .accessibilityHint(appState.micMuted
+                               ? "Double-tap and hold to unmute the microphone."
+                               : "Double-tap and hold to mute the microphone.")
+            .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
+                                                          : "Mute microphone") {
+                appState.micMuted.toggle()
+            }
     }
 
-    // MARK: - Capsule
-
-    /// The primary control, on its own glass at the bottom of the reach.
-    private var capsule: some View {
-        heroCapsule
+    /// The primary control, round and thumb-sized, beside the buttons button.
+    private var micButton: some View {
+        MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState)
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.5)
                     .onEnded { _ in
@@ -557,14 +566,6 @@ struct BottomControlBar: View {
             .accessibilityAction(named: appState.micMuted ? "Unmute microphone"
                                                           : "Mute microphone") {
                 appState.micMuted.toggle()
-            }
-            .padding(.horizontal, 12)
-            // The panel above divides what is left of the screen after this, so the capsule reports
-            // what it drew rather than being predicted from a font.
-            .background(capsuleHeightReader)
-            .onPreferenceChange(DockCapsuleHeightKey.self) { height in
-                guard let height, height > 0, height != measuredCapsuleHeight else { return }
-                withAnimation(DockGridMetrics.heightSettle) { measuredCapsuleHeight = height }
             }
     }
 
@@ -685,12 +686,12 @@ struct BottomControlBar: View {
         }
     }
 
-    // MARK: - Hero Capsule
+    // MARK: - Mic states
 
-    @ViewBuilder
-    private var heroCapsule: some View {
+    /// What the mic does right now — the states the full-width capsule used to carry, one by one.
+    private var micControl: MicControl {
         if isGemini {
-            ActionCapsule(
+            return MicControl(
                 icon: session.isActive ? "stop.fill" : "play.fill",
                 label: session.isActive ? String(localized: "Stop Session") : String(localized: "Start Gemini Live"),
                 isActive: session.isActive,
@@ -704,7 +705,7 @@ struct BottomControlBar: View {
                 }
             }
         } else if isOpenAI {
-            ActionCapsule(
+            return MicControl(
                 icon: openAISession.isActive ? "stop.fill" : "play.fill",
                 label: openAISession.isActive ? String(localized: "Stop Session") : String(localized: "Start \(appState.currentMode.displayName)"),
                 isActive: openAISession.isActive,
@@ -719,42 +720,37 @@ struct BottomControlBar: View {
                 }
             }
         } else if appState.isProcessing || appState.speechService.isSpeaking {
-            ActionCapsule(
+            return MicControl(
                 icon: "stop.fill",
-                label: appState.speechService.isSpeaking ? String(localized: "Tap to stop") : String(localized: "Cancel"),
-                spokenLabel: appState.speechService.isSpeaking ? String(localized: "Stop speaking") : String(localized: "Cancel"),
+                label: appState.speechService.isSpeaking ? String(localized: "Stop speaking") : String(localized: "Cancel"),
                 isActive: true,
                 color: OGTheme.warn
             ) {
                 appState.cancelCurrentResponse()
             }
         } else if appState.isListening {
-            // Active voice session — explicit End button. Shown regardless of glasses
-            // connection so Push-to-Talk / phone-only sessions can always be stopped.
-            ActionCapsule(
+            // Active voice session — explicit End. Shown regardless of glasses connection so
+            // Push-to-Talk / phone-only sessions can always be stopped.
+            return MicControl(
                 icon: "stop.circle.fill",
-                label: String(localized: "Tap to stop"),
-                spokenLabel: String(localized: "End voice session"),
+                label: String(localized: "End voice session"),
                 isActive: true,
                 color: OGTheme.warn,
-                showMuteBadge: appState.micMuted
+                showsMuteBadge: appState.micMuted
             ) {
                 appState.endListeningSession()
             }
         } else {
-            // Idle — one capsule, phone-first (`TalkEntryPolicy`). With glasses away or never
-            // added this talks on the phone at once; it used to read "Connect & Talk" and spend
-            // 15 s trying to register glasses that were in their case, then show a glasses error
-            // instead of listening. Connecting glasses is the glasses pill's job.
+            // Idle — phone-first (`TalkEntryPolicy`). With glasses away or never added this talks
+            // on the phone at once; connecting glasses is the glasses pill's job.
             let entry = TalkEntryPolicy.decide(link: appState.glassesPhase,
                                                stoodDown: appState.glassesStoodDown)
-            ActionCapsule(
+            return MicControl(
                 icon: "mic.fill",
-                label: entry.label,
-                spokenLabel: entry.action == .resumeGlassesThenTalk ? String(localized: "Resume glasses and start talking")
-                                                                    : String(localized: "Start talking"),
+                label: entry.action == .resumeGlassesThenTalk ? String(localized: "Resume glasses and start talking")
+                                                              : String(localized: "Start talking"),
                 color: accent,
-                showMuteBadge: appState.micMuted
+                showsMuteBadge: appState.micMuted
             ) {
                 Task { await appState.connectAndListen() }
             }
@@ -767,7 +763,7 @@ struct BottomControlBar: View {
     private var cameraButton: some View {
         // No "Connect" tile: the app is not glasses-first any more, and a tile that only means
         // something to a wearer was the first thing a phone-only user met on the grid. Without
-        // glasses this is the phone's camera; connecting stays on the capsule and in Settings.
+        // glasses this is the phone's camera; connecting stays on the mic and in Settings.
         if isRealtime && appState.isConnected {
             // FD P0: the label is the readiness phase, not the stream flag. `isStreaming` stayed
             // true across a doff-induced pause and across a decoder that had stopped producing
@@ -842,92 +838,199 @@ struct BottomControlBar: View {
 
 }
 
-// MARK: - Action Capsule (primary touch target)
+// MARK: - Mic button (primary touch target)
 
-/// Wide capsule button — the main interaction element.
-/// Sized for easy thumb hits from either hand edge.
-private struct ActionCapsule: View {
+/// One state of the mic: what it shows, what it is called, and what a tap does.
+private struct MicControl {
     let icon: String
+    /// The control's name. Spoken, not drawn: the button is a glyph, and the old capsule's visible
+    /// copy ("Tap to talk") was an instruction to a finger anyway.
     let label: String
-    /// What VoiceOver says instead of `label`. The visible copy is written as an instruction to a
-    /// finger — "Tap to talk", "Tap to stop" — which is the wrong instruction for a VoiceOver user
-    /// (the gesture is a double-tap) and reads as a sentence rather than a control name. Nil keeps
-    /// the visible copy, for the capsules whose label is already a name.
-    var spokenLabel: String? = nil
     var isActive: Bool = false
     var color: Color = .primary
-    var showMuteBadge: Bool = false
+    var showsMuteBadge: Bool = false
     let action: () -> Void
+}
 
-    /// The capsule's glyph, and the mute badge that rides it.
-    @ScaledMetric(relativeTo: .title3) private var glyph: CGFloat = 18
-    @ScaledMetric(relativeTo: .caption2) private var badgeOffsetX: CGFloat = 12
-    @ScaledMetric(relativeTo: .caption2) private var badgeOffsetY: CGFloat = 8
+/// The mic — a round glass button tinted with its state's hue, large enough to hit without looking.
+private struct MicButton: View {
+    let control: MicControl
+    let mutedBadge: Bool
+    /// What the session is doing, shown as a ring around the mic now that the button carries no
+    /// words: a pulse while it listens, a turning arc while it thinks, a breath while it speaks.
+    var activity: VoiceVisualState = .idle
+    /// Drawn on the tab view's accessory strip, which is already glass: a smaller, solid circle
+    /// rather than glass on glass.
+    var onSystemGlass: Bool = false
+
+    @ScaledMetric(relativeTo: .title) private var scale: CGFloat = 1
+    /// Grows with the text size, but not past half again its size: the mic shares one row with the
+    /// buttons beside it, and an AX5 mic would push them off the screen.
+    private var diameter: CGFloat {
+        let base = onSystemGlass ? DockGridMetrics.accessoryMicSize : DockGridMetrics.micButtonSize
+        return base * min(scale, DockGridMetrics.dockButtonMaxScale)
+    }
+    @ScaledMetric(relativeTo: .caption2) private var badgeOffset: CGFloat = 16
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                ZStack {
-                    // The glyph is the hue corrected to read on a wash of
-                    // itself — the same treatment the status tile takes, so a
-                    // stop-red or a pale accent preset stays legible whether the
-                    // capsule is washed (active) or bare glass (idle).
-                    Group {
-                        if icon == "AvenkinMark" {
-                            LogoIcon(size: glyph)
-                        } else {
-                            Image(systemName: icon)
-                                .font(.title3.weight(.semibold))
-                        }
-                    }
-                    .foregroundStyle(OGTheme.tintedAccentLabel(color))
-
-                    if showMuteBadge {
-                        Image(systemName: "mic.slash.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(OGTheme.mediaErrorLabel)
-                            .padding(3)
-                            // Opaque, not the old 0.7 wash: a translucent badge
-                            // composites the capsule's glyph through itself and
-                            // the failure hue stops clearing 3:1 against it.
-                            .background(OGTheme.media, in: Circle())
-                            .offset(x: badgeOffsetX, y: -badgeOffsetY)
-                    }
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            control.action()
+        } label: {
+            ZStack {
+                Image(systemName: control.icon)
+                    .font(onSystemGlass ? .body.weight(.semibold) : .title.weight(.semibold))
+                    .foregroundStyle(OGTheme.onAccentLabel(control.color))
+                if mutedBadge {
+                    Image(systemName: "mic.slash.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(OGTheme.mediaErrorLabel)
+                        .padding(4)
+                        // Opaque: a translucent badge composites the glyph through itself and the
+                        // failure hue stops clearing 3:1 against it.
+                        .background(OGTheme.media, in: Circle())
+                        .offset(x: badgeOffset, y: -badgeOffset)
                 }
-
-                Text(label)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Color(.label))
             }
-            // The shipped capsule is a fixed 50pt, which clips its own label once
-            // the text grows. Rather than scale 50 — which reaches about 155pt at
-            // AX5, three times what the content needs — the padding is fixed and
-            // the *content* sets the height: 22pt of glyph plus 28pt of padding
-            // is the same 50pt at the default size, and grows only as far as the
-            // label actually does. The 44pt floor still applies underneath.
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: OGMetrics.minTouchTarget)
-            .background(isActive ? color.opacity(OGTheme.Opacity.accentFill) : Color.clear)
-            .glassEffect(in: .capsule)
-            .contentShape(.capsule)
+            .frame(width: diameter, height: diameter)
+            .modifier(MicSurface(color: control.color, onSystemGlass: onSystemGlass))
+            .contentShape(.circle)
+            .background(
+                MicActivityRing(state: activity, color: control.color, diameter: diameter)
+                    // A fresh ring per state, so one state's endless animation never leaks into
+                    // the next.
+                    .id(activity)
+            )
         }
         .buttonStyle(.plain)
-        // The capsule reaches VoiceOver as exactly one button, the size of the capsule, by its
-        // spoken name. A *representation* rather than `.accessibilityElement(children: .ignore)`
-        // over the `Button`: that wrapper made a new element around the button but left the
-        // button in the tree beneath it, still named by its drawn copy ("Tap & Talk") — the
-        // instruction to a finger this capsule's spoken name exists to replace. Before it, SwiftUI
-        // took the union of the label's children — a 17pt glyph and a line of text — so the
-        // element focused, and the target an audit measures, was 18pt tall inside a 50pt control.
+        // Exactly one button, the size of the circle, by its spoken name.
         .accessibilityRepresentation {
-            Button(spokenLabel ?? label, action: action)
-                // The mute badge is a 9pt glyph tucked behind the icon — the only thing
-                // distinguishing a muted session from a live one, so it has to be spoken, not just
-                // drawn. As a *value* rather than glued to the label, so it is re-read when it
-                // changes under a held focus.
-                .accessibilityValue(showMuteBadge ? "Microphone muted" : "")
+            Button(control.label, action: control.action)
+                // The mute badge is the only thing distinguishing a muted session from a live one,
+                // so it has to be spoken. As a *value*, so it is re-read when it changes under focus.
+                .accessibilityValue(spokenState)
         }
+    }
+
+    private var spokenState: String {
+        if mutedBadge { return String(localized: "Microphone muted") }
+        switch activity {
+        case .idle: return ""
+        case .listening: return String(localized: "Listening")
+        case .thinking: return String(localized: "Thinking")
+        case .speaking: return String(localized: "Speaking")
+        }
+    }
+}
+
+/// The mic's own surface: tinted glass floating over the page, or a solid circle on the
+/// accessory's glass.
+private struct MicSurface: ViewModifier {
+    let color: Color
+    let onSystemGlass: Bool
+
+    func body(content: Content) -> some View {
+        if onSystemGlass {
+            content.background(color, in: Circle())
+        } else {
+            content.glassEffect(.regular.tint(color).interactive(), in: .circle)
+        }
+    }
+}
+
+/// The ring around the mic that says what the session is doing. Decorative — the state is spoken
+/// as the mic's value — and still under Reduce Motion, where it is drawn without moving.
+private struct MicActivityRing: View {
+    let state: VoiceVisualState
+    let color: Color
+    let diameter: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var animating = false
+
+    var body: some View {
+        ZStack {
+            switch state {
+            case .idle:
+                EmptyView()
+            case .listening:
+                Circle()
+                    .stroke(color.opacity(0.6), lineWidth: 3)
+                    .scaleEffect(reduceMotion ? 1.1 : (animating ? 1.32 : 1.04))
+                    .opacity(reduceMotion ? 1 : (animating ? 0 : 0.9))
+            case .thinking:
+                Circle()
+                    .trim(from: 0, to: 0.3)
+                    .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(animating ? 360 : 0))
+                    .scaleEffect(1.12)
+            case .speaking:
+                Circle()
+                    .stroke(color.opacity(0.5), lineWidth: 3)
+                    .scaleEffect(reduceMotion ? 1.1 : (animating ? 1.18 : 1.06))
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion, state != .idle else { return }
+            let animation: Animation = switch state {
+            case .thinking: .linear(duration: 1).repeatForever(autoreverses: false)
+            case .listening: .easeOut(duration: 1.4).repeatForever(autoreverses: false)
+            default: .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
+            }
+            withAnimation(animation) { animating = true }
+        }
+    }
+}
+
+/// A round glass button for the dock's control row: the buttons button and the cog.
+private struct RoundDockButton: View {
+    let icon: String
+    let size: CGFloat
+    let label: String
+    let hint: LocalizedStringKey
+    var isActive: Bool = false
+    /// A small dot at the top corner — something new behind this button.
+    var badge: Bool = false
+    /// On the accessory's glass: no glass of its own, just the glyph in its tap target.
+    var onSystemGlass: Bool = false
+    let action: () -> Void
+
+    @Environment(\.appAccent) private var accent
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+
+    /// Grows with the text size, capped like the mic so the row always fits across the screen.
+    private var side: CGFloat {
+        max(OGMetrics.minTouchTarget, size * min(scale, DockGridMetrics.dockButtonMaxScale))
+    }
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            Image(systemName: icon)
+                .font(onSystemGlass ? .body.weight(.semibold) : .title3.weight(.semibold))
+                .foregroundStyle(isActive ? OGTheme.tintedAccentLabel(accent) : .primary)
+                .frame(width: side, height: side)
+                .modifier(RoundDockSurface(isActive: isActive, accent: accent, onSystemGlass: onSystemGlass))
+                .contentShape(.circle)
+                .overlay(alignment: .topTrailing) {
+                    if badge {
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().strokeBorder(OGTheme.canvas, lineWidth: 2))
+                            .offset(x: -2, y: 2)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(badge ? String(localized: "New reply") : "")
+        .accessibilityHint(hint)
     }
 }
 
@@ -1154,18 +1257,6 @@ extension EnvironmentValues {
     }
 }
 
-/// The hero capsule's measured height. The panel's rows are what the screen has left once this and
-/// the surface above the dock have had theirs, so it is measured for the same reason the tile is —
-/// a capsule sized to its own content is a font's line height plus padding, and predicting that is
-/// how the arithmetic drifts at the text sizes nobody tested.
-private struct DockCapsuleHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat? { nil }
-
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = value ?? nextValue()
-    }
-}
-
 // MARK: - Provider mark
 
 /// Whether a provider's own brand mark is bundled, so the model tile can prefer it over the
@@ -1237,3 +1328,20 @@ extension AppState: HomeGridSession {
     }
 }
 
+/// A round dock button's surface: its own glass over the page, or a light accent wash when it
+/// already sits on the accessory's glass.
+private struct RoundDockSurface: ViewModifier {
+    let isActive: Bool
+    let accent: Color
+    let onSystemGlass: Bool
+
+    func body(content: Content) -> some View {
+        if onSystemGlass {
+            content.background(isActive ? accent.opacity(OGTheme.Opacity.accentFill) : Color.clear,
+                               in: Circle())
+        } else {
+            content.glassEffect(isActive ? .regular.tint(accent.opacity(OGTheme.Opacity.accentFill)).interactive()
+                                         : .regular.interactive(), in: .circle)
+        }
+    }
+}

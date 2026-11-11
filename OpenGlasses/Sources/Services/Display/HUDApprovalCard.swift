@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// The approval card on the glasses (Plan KX §3): the shared consent surface's ask (BN P1), held on
+/// The approval card on the glasses (Plan LC §3): the shared consent surface's ask (BN P1), held on
 /// the lens until it is answered.
 ///
 /// **What it replaces.** The lens half of an approval was a ten-second ambient "Approve?" line the
@@ -29,7 +29,7 @@ import Foundation
 /// clears.
 @MainActor
 final class HUDApprovalCard {
-    /// Plan KX decision 4: an unanswered card denies after this long. Twice the old line's ten
+    /// Plan LC decision 4: an unanswered card denies after this long. Twice the old line's ten
     /// seconds, so the preview can be read and answered by voice after the prompt is spoken, and
     /// inside the 25 s the Display's panel stays awake.
     static let defaultTimeout: TimeInterval = 20

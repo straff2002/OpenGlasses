@@ -280,4 +280,55 @@ enum HistoryHygiene {
         }
         return out
     }
+
+    // MARK: - Provider-run web search (Plan KZ)
+
+    /// The history without the blocks a provider's own web search left in assistant messages:
+    /// `server_tool_use`, `web_search_tool_result`, and the `citations` on text blocks. They are
+    /// replayed unchanged inside the turn that made them (the provider refuses an altered result)
+    /// and dropped when it ends, because a later request may not declare the search tool, and
+    /// another provider cannot read them. An assistant message left with nothing is dropped.
+    /// A turn whose provider search was dropped mid-turn (a boundary turned on): every message
+    /// from `start` on loses what the provider's search left in it, so the next request is valid
+    /// without the tool. Anthropic's search blocks and citations go (`stripProviderSearchBlocks`);
+    /// a Responses message whose replayed output items include a `web_search_call` loses those
+    /// items, and is replayed from its chat-shape text and tool calls as a Chat Completions turn
+    /// would be (`stripResponsesItems`). Chat Completions and Gemini histories keep nothing of a
+    /// search. Messages before `start` are untouched.
+    static func strippingProviderSearch(_ history: [[String: Any]], fromTurnStart start: Int) -> [[String: Any]] {
+        let start = min(max(0, start), history.count)
+        let earlier = Array(history[..<start])
+        var turn = stripProviderSearchBlocks(Array(history[start...]))
+        let searched = turn.contains { message in
+            (message[ResponsesTranslator.rawOutputItemsKey] as? [[String: Any]] ?? [])
+                .contains { $0["type"] as? String == "web_search_call" }
+        }
+        if searched { turn = stripResponsesItems(turn) }
+        return earlier + turn
+    }
+
+    static func stripProviderSearchBlocks(_ history: [[String: Any]]) -> [[String: Any]] {
+        let searchBlocks: Set<String> = ["server_tool_use", "web_search_tool_result"]
+        var changed = false
+        var out: [[String: Any]] = []
+        for message in history {
+            guard message["role"] as? String == "assistant",
+                  let blocks = message["content"] as? [[String: Any]],
+                  blocks.contains(where: { searchBlocks.contains($0["type"] as? String ?? "") || $0["citations"] != nil })
+            else { out.append(message); continue }
+            changed = true
+            let kept: [[String: Any]] = blocks.compactMap { block in
+                if searchBlocks.contains(block["type"] as? String ?? "") { return nil }
+                var block = block
+                block.removeValue(forKey: "citations")
+                if block["type"] as? String == "text", (block["text"] as? String ?? "").isEmpty { return nil }
+                return block
+            }
+            guard !kept.isEmpty else { continue }
+            var message = message
+            message["content"] = kept
+            out.append(message)
+        }
+        return changed ? out : history
+    }
 }

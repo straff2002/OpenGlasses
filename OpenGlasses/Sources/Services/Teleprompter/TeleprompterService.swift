@@ -94,12 +94,12 @@ final class TeleprompterService: ObservableObject {
     /// Cap on the recognized tail handed to the aligner — bounds work and keeps matching local.
     static let maxHeardTail = 16
 
-    /// Plan KX §6: what voice-follow has heard of the current recognition.
+    /// Plan LC §6: what voice-follow has heard of the current recognition.
     private var pageFollower = TeleprompterPageFollower()
     /// Test seam: voice-follow on or off without the stored setting.
     var testPageFollow: Bool?
 
-    /// Plan KX §6: this session turns pages by voice — audio-paced, with voice-follow on.
+    /// Plan LC §6: this session turns pages by voice — audio-paced, with voice-follow on.
     var followsPages: Bool {
         mode == .audioPaced && (testPageFollow ?? Config.teleprompterPageFollow)
     }
@@ -355,7 +355,7 @@ final class TeleprompterService: ObservableObject {
         checkCompletion()
     }
 
-    /// Plan KX §6: turn the page when `heard` (the recognition so far) reaches its last words.
+    /// Plan LC §6: turn the page when `heard` (the recognition so far) reaches its last words.
     private func followPage(_ heard: [String]) {
         guard let script else { return }
         let page = TeleprompterPageFollow.page(script, from: cursor, geometry: geometry).range

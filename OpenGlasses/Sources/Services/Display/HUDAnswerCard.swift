@@ -48,14 +48,14 @@ import Foundation
 /// meanwhile ("next" may mean the next track), and "repeat", "tell me more", "save that" and "send
 /// that" reach everything the card offers as ordinary requests.
 ///
-/// **Live modes (Plan KX §5).** Gemini Live, OpenAI Realtime, Qwen and Doubao speak with the
+/// **Live modes (Plan LC §5).** Gemini Live, OpenAI Realtime, Qwen and Doubao speak with the
 /// model's own voice, so nothing they say reaches `absorb`. `LiveAnswerCardFeed` collects each
 /// model turn's transcript and, at the turn's end, hands it to `presentLiveAnswer` — one card per
 /// turn, never word by word, with what the wearer said as its question line and no follow-ups (a
 /// live model is never asked for the tail). Such an answer reopens a lens the wearer dismissed only
 /// when the wearer spoke (or pressed) that turn (`GlassesDisplayService.presentAnswerCard(wearerLed:)`).
 ///
-/// **The picture behind a vision answer (Plan KX §5).** A turn that sent the model a camera frame
+/// **The picture behind a vision answer (Plan LC §5).** A turn that sent the model a camera frame
 /// stages the frame's thumbnail (`expectPicture` / `stagePicture`); the next new card takes it onto
 /// its first page (`HUDAnswerCardBuilder.page(picture:)`) when the backend draws pictures. A staged
 /// picture belongs to the next answer only: the turn's end, a whole answer spoken outside a turn,
@@ -64,7 +64,7 @@ import Foundation
 final class HUDAnswerCard {
     /// Plan KP §3: a card with no press for this long clears.
     static let defaultIdleLifetime: TimeInterval = 60
-    /// Plan KX §5: a staged thumbnail no card has taken after this long belongs to no answer.
+    /// Plan LC §5: a staged thumbnail no card has taken after this long belongs to no answer.
     static let stagedPictureLifetime: TimeInterval = 90
 
     private let display: GlassesDisplayService
@@ -109,12 +109,16 @@ final class HUDAnswerCard {
     private var turnFollowUps: [String] = []
     /// The open turn staged a manual page (Plan KV §4).
     private var turnStagedPage = false
+    /// Plan KZ: how many web sources the open turn's reply has, and whether it has Google's
+    /// Search Suggestions; both are on the phone, and the card says so in one line.
+    private var turnWebSourceCount = 0
+    private var turnHasSearchSuggestions = false
     /// The card's turn staged a page: its Actions offer **Page** while the lens can show it.
     private(set) var hasPage = false
-    /// Plan KX §5: whether the open turn's answer is the wearer's (they spoke or pressed). Only a
+    /// Plan LC §5: whether the open turn's answer is the wearer's (they spoke or pressed). Only a
     /// live turn can say no; every Direct-mode answer is.
     private var turnWearerLed = true
-    /// Plan KX §5: the thumbnail waiting for the next new card, when it was staged, and the ticket
+    /// Plan LC §5: the thumbnail waiting for the next new card, when it was staged, and the ticket
     /// that names the frame it was staged for (`expectPicture`).
     private var stagedPicture: (picture: HUDPicture, at: Date)?
     private var pictureTicket = 0
@@ -201,9 +205,11 @@ final class HUDAnswerCard {
         turnFollowUps = []
         turnStagedPage = false
         turnWearerLed = true
+        turnWebSourceCount = 0
+        turnHasSearchSuggestions = false
     }
 
-    // MARK: - Live modes (Plan KX §5)
+    // MARK: - Live modes (Plan LC §5)
 
     /// A live-mode model turn ended with `text` as its transcript: show it as a card of its own,
     /// whole. `question` is what the wearer said that turn (nil when they said nothing);
@@ -221,7 +227,7 @@ final class HUDAnswerCard {
         endTurn()
     }
 
-    // MARK: - The picture behind a vision answer (Plan KX §5)
+    // MARK: - The picture behind a vision answer (Plan LC §5)
 
     /// A frame is on its way to the model: any thumbnail staged for an earlier one is dropped, and
     /// the returned ticket names this one for `stagePicture`.
@@ -297,8 +303,40 @@ final class HUDAnswerCard {
         }
         if turnHasCard, isShowing { armIdleTimer() }
         turn = nil
-        // Plan KX §5: a thumbnail this turn's card did not take belongs to no later answer.
+        // Plan LC §5: a thumbnail this turn's card did not take belongs to no later answer.
         dropStagedPicture()
+    }
+
+    /// Plan KZ: the open turn's reply rests on `count` web pages, and maybe Google's Search
+    /// Suggestions. The final card ends with one line saying where to find them — no addresses on
+    /// the lens. The Display draws text, not Google's snippet, so the suggestions are pointed to on
+    /// the phone rather than re-styled here.
+    func offerWebSources(count: Int, hasSearchSuggestions: Bool) {
+        guard turn != nil else { return }
+        turnWebSourceCount = max(0, count)
+        turnHasSearchSuggestions = hasSearchSuggestions
+        guard let open = turn, open.isFinished else { return }
+        update()
+    }
+
+    /// The card's closing line for a reply's web sources and suggestions, or nil.
+    static func webSourcesLine(count: Int, hasSearchSuggestions: Bool) -> String? {
+        switch (count, hasSearchSuggestions) {
+        case (0, false): return nil
+        case (0, true): return String(localized: "Google search suggestions on your phone")
+        case (1, false): return String(localized: "1 web source on your phone")
+        case (1, true): return String(localized: "1 web source and Google search suggestions on your phone")
+        case (let n, false): return String(localized: "\(n) web sources on your phone")
+        case (let n, true): return String(localized: "\(n) web sources and Google search suggestions on your phone")
+        }
+    }
+
+    /// What the pager lays out: the answer, and once it is final, the sources line under it.
+    private func cardText(for turn: HUDAnswerTurn) -> String {
+        guard turn.isFinished,
+              let line = Self.webSourcesLine(count: turnWebSourceCount,
+                                             hasSearchSuggestions: turnHasSearchSuggestions) else { return turn.text }
+        return turn.text + "\n\n" + line
     }
 
     /// A line the speech service is about to say as an answer. True when the card took it (shown,
@@ -318,7 +356,7 @@ final class HUDAnswerCard {
         turn?.finish(reply: text)
         update()
         turn = nil
-        dropStagedPicture()      // Plan KX §5: the whole answer was this line
+        dropStagedPicture()      // Plan LC §5: the whole answer was this line
         return true
     }
 
@@ -326,7 +364,7 @@ final class HUDAnswerCard {
         guard let turn, !turn.isEmpty else { return }
         let shape = geometry()
         let questionLine = HUDAnswerCardBuilder.questionLine(for: turn.question, maxChars: shape.maxChars)
-        let laid = HUDAnswerPager.pages(for: turn.text, geometry: shape,
+        let laid = HUDAnswerPager.pages(for: cardText(for: turn), geometry: shape,
                                         firstPageReservedLines: questionLine == nil ? 0 : 1)
         guard !laid.isEmpty else { return }
         if !turnHasCard {

@@ -23,6 +23,10 @@ struct GlassesActivityAttributes: ActivityAttributes {
         /// Top 4 quick actions for widget buttons (used when no personas configured).
         var quickActionButtons: [QuickActionButton]
 
+        /// Instant Replay is keeping the last minute of the glasses camera. Optional so a state
+        /// encoded by an earlier build still decodes; nil reads as not running.
+        var instantReplayRunning: Bool? = nil
+
         struct PersonaButton: Codable, Hashable {
             var id: String
             var name: String

@@ -120,6 +120,11 @@ final class NativeToolRegistry {
         if let rewind = memoryRewindService {
             register(MemoryRewindTool(rewindService: rewind))
         }
+        // instant_replay: keep a moment the glasses camera already showed, from the rolling
+        // buffer on the blurred relay. Glasses only: the buffer rides a glasses stream.
+        #if !AVENKIN_PHONE_ONLY
+        register(InstantReplayTool())
+        #endif
 
         // Tier 2 tools
         register(GeofenceTool(locationService: locationService))

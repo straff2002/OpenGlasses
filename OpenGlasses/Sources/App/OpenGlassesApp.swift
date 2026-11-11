@@ -1293,6 +1293,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// `TechnicianWords.currentTurn()`).
     private(set) var turnSerial = 0
     @Published var lastResponse: String = ""
+    /// Plan LA: the last quiet turn's reply, for "what was that?" in the 30 seconds after it.
+    var quietReplay = QuietReplayWindow()
     /// In-flight assistant reply for the Chat tab, streamed token-by-token where the provider
     /// supports it (on-device models today). The Chat thread renders this as a live bubble, then
     /// swaps it for the persisted message on completion. Nil when no reply is streaming.
@@ -1446,16 +1448,16 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The answer card on the lens (Plan KP P1): a turn's answer a page at a time, with its
     /// actions under it.
     lazy var hudAnswerCard = HUDAnswerCard(display: glassesDisplay)
-    /// Plan KX §5: each live-mode model turn onto the answer card, at the turn's end.
+    /// Plan LC §5: each live-mode model turn onto the answer card, at the turn's end.
     lazy var liveAnswerFeed = LiveAnswerCardFeed(card: hudAnswerCard)
-    /// The approval card on the lens (Plan KX §3): the shared consent surface's ask, held until it
+    /// The approval card on the lens (Plan LC §3): the shared consent surface's ask, held until it
     /// is answered or times out to Deny.
     lazy var hudApprovalCard = HUDApprovalCard(display: glassesDisplay, coordinator: toolConfirmationCoordinator)
-    /// The timer card on the lens (Plan KX §6): a timer or alarm that finished, with Stop · +5 min.
+    /// The timer card on the lens (Plan LC §6): a timer or alarm that finished, with Stop · +5 min.
     lazy var hudTimerCard = HUDTimerCard(display: glassesDisplay)
-    /// Plan KX §6: the Music app's transport, for the lens's Now Playing card.
+    /// Plan LC §6: the Music app's transport, for the lens's Now Playing card.
     lazy var lensMediaPlayer = MediaPlayerLibrary()
-    /// Listening → Thinking on the lens for a turn the wearer started (Plan KX §4), until the
+    /// Listening → Thinking on the lens for a turn the wearer started (Plan LC §4), until the
     /// answer card replaces it.
     lazy var hudTurnState = HUDTurnState(display: glassesDisplay)
     /// The band check (Plan KP §5): Practise the band, on the lens and the phone page.
@@ -2452,6 +2454,14 @@ class AppState: ObservableObject, AppStateProtocol {
     /// is `AppState`'s job rather than a tool's or a view's.
     let jobClips = JobClipRecorder()
 
+    /// Instant Replay: the rolling buffer of what the glasses camera already showed, fed off
+    /// `outboundFrames` only, and only while the camera already streams for something else
+    /// (`OutboundFrameConsumer.instantReplayBuffer`). Wired in `connectInstantReplay()`.
+    let instantReplay = ReplayBufferService()
+    /// The buffer's observers: the stream, the power posture, and its own state for the Live
+    /// Activity.
+    var instantReplayObservers: [AnyCancellable] = []
+
     /// A tab one surface has asked the root tab bar to show, cleared by `MainView` once it has.
     ///
     /// The selection is `MainView`'s own scene state and stays that way — this is a request, not a
@@ -2541,6 +2551,8 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.assistingHandovers = AssistingHandoverStore.shared
         // Plan KP P5: a kept caption session is other people's speech.
         erasure.captionSessions = CaptionSessionStore.shared
+        // Instant Replay: the rolling buffer has bystanders in it, and is cleared whole.
+        erasure.instantReplay = instantReplay
         return MemoryFactServices(
             stores: MemoryFactStores(semantic: userMemory, brain: BrainStore.shared,
                                      agentDocuments: agentDocs, objects: .shared,
@@ -2639,7 +2651,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // cannot forget to and leave the hold window measuring from nothing.
             guard isProcessing != oldValue else { return }
             turnStartedAt = isProcessing ? Date() : nil
-            // Plan KX §4: a Thinking card no answer replaced (a failed or cancelled turn, one a
+            // Plan LC §4: a Thinking card no answer replaced (a failed or cancelled turn, one a
             // command answered) clears when processing stops.
             if !isProcessing { hudTurnState.processingEnded() }
         }
@@ -2864,7 +2876,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         toolConfirmationCoordinator.onSpeakPrompt = { [weak self] prompt in
             guard let self else { return }
-            // Shared consent surface (BN P1): spoken prompt + in-lens HUD card together. Plan KX §3:
+            // Shared consent surface (BN P1): spoken prompt + in-lens HUD card together. Plan LC §3:
             // the lens half is `hudApprovalCard`, which watches the coordinator's `pending` — a held
             // Approve / Deny card, or the old ten-second line when the lens can't hold one. This runs
             // before `pending` is set; the speech below starts after it, so it can tell whether the
@@ -2877,7 +2889,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudApprovalCard.start()
 
-        // Plan KX §6: a timer or AlarmKit alarm that finishes while the app runs raises the timer
+        // Plan LC §6: a timer or AlarmKit alarm that finishes while the app runs raises the timer
         // card on the lens (Stop · +5 min · Close), or a short line where the lens is busy.
         hudTimerCard.stop = { TimerCompletionWatch.shared.stop($0) }
         hudTimerCard.extend = { TimerCompletionWatch.shared.extend($0) }
@@ -3139,6 +3151,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
             erasureStores.captionSessions = CaptionSessionStore.shared
+            erasureStores.instantReplay = instantReplay
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
             replaySources.classFiles = { erasable in
@@ -3886,6 +3899,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // W04.1: the same filter, for the still readers. Wired once here for the same reason the
         // relay is — a reader must not be able to obtain a still the blur never saw.
         cameraService.privacyFilter = privacyFilter
+        // Instant Replay: whatever a crash left in the buffer is not a buffer of any stream
+        // running now; then the buffer is wired onto the relay, to run only alongside a stream.
+        ReplayBufferService.removeLeftovers()
+        connectInstantReplay()
     }
 
     /// Switch between app modes: Direct, Gemini Live, or OpenAI Realtime.
@@ -4398,7 +4415,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             }
         cancellables.append(displayLinkToken)
-        // Plan KX §1: Display glasses connecting with the HUD off are offered the display, once.
+        // Plan LC §1: Display glasses connecting with the HUD off are offered the display, once.
         let displayOfferToken = glassesService.$isConnected
             .removeDuplicates()
             .sink { [weak self] connected in
@@ -4750,7 +4767,7 @@ class AppState: ObservableObject, AppStateProtocol {
         hudLauncher.openDigest = { [weak self] in
             Task { await self?.notificationDigest.presentGlance() }
         }
-        // Plan KX §4: the launcher opens at the Today glance, built from what the app already holds
+        // Plan LC §4: the launcher opens at the Today glance, built from what the app already holds
         // — My Day's last gathering through the Watch's Today value (Plan KS, with its Medical
         // Compliance rules), the glasses' battery while connected, the route and the digest. It
         // fetches nothing: a day My Day has not gathered shows the time and the rest that is known.
@@ -4834,7 +4851,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in await self?.executeQuickAction(action) }
         }
 
-        // Plan KX §6: Now Playing (the Music app's player) and the Home Assistant favourites, under
+        // Plan LC §6: Now Playing (the Music app's player) and the Home Assistant favourites, under
         // the launcher's Menu. A favourite the confirmation floor holds (a lock, a garage door) asks
         // first through the shared consent surface — the approval card on the lens.
         hudLauncher.nowPlaying = { [weak self] in HUDNowPlaying(self?.lensMediaPlayer.nowPlaying()) }
@@ -5092,7 +5109,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.dictationIsFollowUp = false   // Plan JM P0: this turn heard something
                 self.noteTypeInstead(TypeInsteadPolicy.event(forTranscript: text))   // Plan JM P1
                 self.noteUserInteraction()   // Plan W: a spoken command is an explicit engagement
-                // Plan KX §4: the final transcript always reaches the Listening card (an empty one
+                // Plan LC §4: the final transcript always reaches the Listening card (an empty one
                 // clears it).
                 self.hudTurnState.heard(text)
                 // While Assistive Mode (A3) is active it owns the loop — feed the transcript to bias
@@ -5120,7 +5137,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Task { @MainActor in
                 guard let self else { return }
                 self.noteDictationHeardNothing()
-                self.hudTurnState.end()   // Plan KX §4: nothing was heard
+                self.hudTurnState.end()   // Plan LC §4: nothing was heard
                 PrivacyLog.app(.conversationEnded, detail: PrivacyToken("silence"))
                 await self.returnToWakeWord()
             }
@@ -5501,7 +5518,8 @@ class AppState: ObservableObject, AppStateProtocol {
             isProcessing: isProcessing,
             lastResponse: lastResponse,
             deviceName: glassesService.deviceName,
-            batteryLevel: glassesService.batteryLevel
+            batteryLevel: glassesService.batteryLevel,
+            instantReplayRunning: instantReplay.isRunning
         )
     }
 
@@ -5663,7 +5681,7 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var supportReportRequest: SupportReportRequest?
     @Published var pilotReportDays: [Date] = []
 
-    // MARK: - Display offer (Plan KX §1)
+    // MARK: - Display offer (Plan LC §1)
 
     /// True while the "Your glasses have a display" banner is up. Raised once Display glasses have
     /// been connected for `DisplayOfferPolicy.settleSeconds` with the HUD off and the offer never
@@ -6223,7 +6241,7 @@ class AppState: ObservableObject, AppStateProtocol {
         TurnRecorder.beginTurn()
         TurnRecorder.noteAppPrompt()   // the prompt is the button's or quick action's, not words said
         didNarrateModelSwitchThisTurn = false
-        stageAnswerPicture(imageData)   // Plan KX §5
+        stageAnswerPicture(imageData)   // Plan LC §5
         do {
             TurnRecorder.mark(.commit)
             let rawResponse = try await llmService.sendMessageCascading(
@@ -6255,7 +6273,7 @@ class AppState: ObservableObject, AppStateProtocol {
             speechService.stopThinkingSound()
             errorMessage = String(localized: "Photo analysis failed: \(error.localizedDescription)")
         }
-        hudAnswerCard.dropStagedPicture()   // Plan KX §5: no later answer takes this frame
+        hudAnswerCard.dropStagedPicture()   // Plan LC §5: no later answer takes this frame
         TurnRecorder.endTurn()
     }
 
@@ -6289,7 +6307,7 @@ class AppState: ObservableObject, AppStateProtocol {
             }
 
             photoCaptured = true
-            stageAnswerPicture(photoData)   // Plan KX §5
+            stageAnswerPicture(photoData)   // Plan LC §5
             let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
@@ -6343,7 +6361,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 await speechService.speak(line, source: .errorLine)
             }
         }
-        hudAnswerCard.dropStagedPicture()   // Plan KX §5: no later answer takes this frame
+        hudAnswerCard.dropStagedPicture()   // Plan LC §5: no later answer takes this frame
         TurnRecorder.endTurn()
     }
 
@@ -6617,7 +6635,7 @@ class AppState: ObservableObject, AppStateProtocol {
 
             let prompt = "Describe what you see in this image."
             photoCaptured = true
-            stageAnswerPicture(photoData)   // Plan KX §5
+            stageAnswerPicture(photoData)   // Plan LC §5
             let rawResponse = try await llmService.sendMessageCascading(
                 prompt,
                 locationContext: locationService.locationContext,
@@ -6676,7 +6694,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 await speechService.speak(line, source: .errorLine)
             }
         }
-        hudAnswerCard.dropStagedPicture()   // Plan KX §5: no later answer takes this frame
+        hudAnswerCard.dropStagedPicture()   // Plan LC §5: no later answer takes this frame
         TurnRecorder.endTurn()
     }
 
@@ -7490,7 +7508,7 @@ class AppState: ObservableObject, AppStateProtocol {
             playAcknowledgmentTone: { [self] in speechService.playAcknowledgmentTone() },
             startRecording: { [self] in
                 dictationIsFollowUp = false
-                // Plan KX §4: the wearer started this turn; the lens shows Listening.
+                // Plan LC §4: the wearer started this turn; the lens shows Listening.
                 hudTurnState.beginListening()
                 transcriptionService.startRecording()
             },
@@ -7532,7 +7550,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// - Parameter ensureEngine: run the audio-engine keepalive first — needed after TTS playback,
     ///   which may have interrupted the engine.
     private func resumeListeningOrReturnToWakeWord(ensureEngine: Bool = false) async {
-        // Plan KX §4: the turn is over. Its Listening or Thinking card clears if no answer card
+        // Plan LC §4: the turn is over. Its Listening or Thinking card clears if no answer card
         // replaced it (a command handled it, or it was answered by voice only).
         hudTurnState.end()
         // Barge-in owns the next input. The cancelled task still restores its resources, but
@@ -7642,7 +7660,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 return true
             },
             // HUD launcher (Display Phase 4 / Plan Y): "menu" opens the band-navigable launcher.
-            // Plan KX §4: so does "show my day", at the same Today glance — but only while the lens
+            // Plan LC §4: so does "show my day", at the same Today glance — but only while the lens
             // can show it, so without a display the words still reach My Day as a spoken briefing.
             VoiceCommandHandler(label: "hud-launcher-open") { [weak self] text in
                 guard let self else { return false }
@@ -7661,6 +7679,20 @@ class AppState: ObservableObject, AppStateProtocol {
                       HUDVoiceCommand.parse(text) == .briefing else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("digestBriefing"))
                 await self.notificationDigest.presentGlance()
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // Plan LA decision 7: "what was that?" in the 30 seconds after a quiet turn says the
+            // reply that was not spoken — the stored text, no model call. Before the bystander
+            // filter, which would read a bare "say it" as filler.
+            VoiceCommandHandler(label: "quiet-replay") { [weak self] text in
+                guard let self, let reply = self.quietReplayReply(for: text) else { return false }
+                PrivacyLog.app(.quietTurnReplayed, characters: reply.count)
+                self.quietReplay.close()
+                self.startStopListener()
+                let outcome = await self.speechService.speakReporting(reply, source: .reply)
+                self.stopStopListener()
+                self.noteReplySpoken(.reported(outcome))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
@@ -7735,7 +7767,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             // Restore audio for wake word after camera capture (camera reconfigures for Bluetooth)
                             self.cameraService.restoreAudioForWakeWord()
                             photoCaptured = true
-                            self.stageAnswerPicture(photoData)   // Plan KX §5
+                            self.stageAnswerPicture(photoData)   // Plan LC §5
 
                             return try await self.llmService.sendMessageCascading(
                                 query,
@@ -7802,7 +7834,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             if let line { await self.speechService.speak(line, source: .errorLine) }
                         },
                         finish: {
-                            self.hudAnswerCard.dropStagedPicture()   // Plan KX §5
+                            self.hudAnswerCard.dropStagedPicture()   // Plan LC §5
                             self.isProcessing = false
                             self.speechService.stopThinkingSound()
                             self.turnBackgroundTime.turnEnded()
@@ -8166,7 +8198,7 @@ class AppState: ObservableObject, AppStateProtocol {
         FollowUpPrompt.currentSurface = { [weak display = glassesDisplay] in display?.answerSurface ?? .none }
         hudAnswerCard.submitTurn = { [weak self] text in self?.submitAnswerCardTurn(text) }
         hudAnswerCard.speakAgain = { [weak self] text in self?.repeatAnswerCard(text) }
-        // Plan KX §5: the live modes' turns reach the card through one adapter, from the shared
+        // Plan LC §5: the live modes' turns reach the card through one adapter, from the shared
         // coordinator both managers are.
         geminiLiveSession.onAnswerEvent = { [weak self] event in self?.liveAnswerFeed.handle(event) }
         openAIRealtimeSession.onAnswerEvent = { [weak self] event in self?.liveAnswerFeed.handle(event) }
@@ -8179,7 +8211,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// Plan KX §5: the live session a live-mode answer card's presses reach, or nil in Direct mode.
+    /// Plan LC §5: the live session a live-mode answer card's presses reach, or nil in Direct mode.
     private var answerCardLiveSession: RealtimeSessionManager? {
         currentMode.isRealtime ? realtimeManager(for: currentMode) : nil
     }
@@ -8228,7 +8260,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// Plan KX §5: a turn is sending the model this camera frame, so its answer card's first page
+    /// Plan LC §5: a turn is sending the model this camera frame, so its answer card's first page
     /// carries a thumbnail of it. Only when the lens would draw it (the HUD on, a display that draws
     /// pictures); decoded and downscaled off the main actor, while the model thinks.
     private func stageAnswerPicture(_ imageData: Data?) {
@@ -8243,7 +8275,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
 
-    /// Plan KX §4: the Listening and Thinking cards. The recogniser's live transcript feeds the
+    /// Plan LC §4: the Listening and Thinking cards. The recogniser's live transcript feeds the
     /// Listening card (the card ignores it unless a turn the wearer started has its card up); Stop
     /// on Listening is the phone's Tap to stop, and on Thinking the phone's cancel.
     private func wireTurnState() {
@@ -8449,7 +8481,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // It now plays alongside the work, as the switch notice does: every path below that
         // speaks waits on `turnAnnouncement` first, so the disclosure is still heard whole.
         announceConversationCueIfDue()
-        // Plan KX §4: everything below answers the wearer, so the lens says Thinking (with what was
+        // Plan LC §4: everything below answers the wearer, so the lens says Thinking (with what was
         // heard) until the answer card replaces it.
         hudTurnState.thinking(question: text)
 
@@ -8662,12 +8694,17 @@ class AppState: ObservableObject, AppStateProtocol {
         let turnGeneration = conversationReset.currentGeneration
         // Plan HZ P1: with the switch on, the reply is spoken a sentence at a time as it is written.
         // Nil — today's path, unchanged — when it is off.
-        let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId)
+        let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId,
+                                                spokenTurn: true)
         // Plan KP P1: this reply's sentences collect into one answer card on the glasses, with what
         // the app heard over its first page (Plan KV §7).
         hudAnswerCard.beginTurn(question: turnUtterance)
         // Plan KR P5: the turn finishes even if the phone goes in a pocket now.
         turnBackgroundTime.turnBegan(appInBackground: UIApplication.shared.applicationState == .background)
+        // Plan LA: the quiet-ending verdict, decided once in `accept` (so the saved reply carries
+        // its mark) and acted on in `speak`. Stays nil with the setting off.
+        let quietEnding = QuietEndingBox()
+        let ledgerGenerationAtStart = llmService.turnToolLedger.generation
 
         // Run the turn inside a tracked, cancellable task (Plan BG P2). Barge-in / stop / cancel
         // cancel it, so a normal text turn no longer speaks its now-stale response after the user
@@ -8698,7 +8735,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // the user's fallback order — spills on overflow / rate-limit / empty completion.
                     func cloudCascade() async throws -> String {
                         let imageData = await smartCameraImageData(for: query)
-                        // Plan KX §5. This nested function is not itself isolated (see `onToken`).
+                        // Plan LC §5. This nested function is not itself isolated (see `onToken`).
                         await MainActor.run { self.stageAnswerPicture(imageData) }
                         return try await llmService.sendMessageCascading(
                             query,
@@ -8793,6 +8830,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     // Plan KP P2: the reply's follow-ups (its tail, already off the reply) go to
                     // this turn's answer card, read the moment the model's call returns.
                     hudAnswerCard.offerFollowUps(llmService.replyFollowUps)
+                    // Plan KZ: and the card's line pointing at the sources on the phone.
+                    hudAnswerCard.offerWebSources(count: llmService.replyWebSources.count,
+                                                  hasSearchSuggestions: llmService.replySearchSuggestions != nil)
                     nowPlayingAtStart = nil  // consumed for this turn
                     return rawResponse
                 },
@@ -8820,12 +8860,25 @@ class AppState: ObservableObject, AppStateProtocol {
 
                     let usedToolNames = nativeToolRouter.takeTurnToolNames()
 
+                    // Plan LA §2: the judge runs once, on the final reply, before any of it is said.
+                    // A brain that keeps no ledger (the Hermes agent runs its own tools) left the
+                    // ledger as an earlier turn's: nothing is concluded from it, and the reply speaks.
+                    let ledgerIsThisTurns = llmService.turnToolLedger.generation != ledgerGenerationAtStart
+                    quietEnding.verdict = !ledgerIsThisTurns ? nil : judgeQuietEnding(
+                        utterance: query, reply: response,
+                        hasFollowUps: !llmService.replyFollowUps.isEmpty || quietEnding.sawFollowUps)
+
                     // Save to conversation store — in the thread the question went into, which in
                     // push-to-talk is no longer guaranteed to be the active one by now.
                     if Config.conversationPersistenceEnabled {
+                        // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
+                        let attachments = llmService.takeReplyWebAttachments()
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
                                                         toolNames: usedToolNames,
+                                                        webSources: attachments.sources,
+                                                        searchSuggestions: attachments.suggestions,
+                                                        endedQuietly: quietEnding.verdict?.isQuiet == true,
                                                         toThread: turnThreadId)
                     }
 
@@ -8839,6 +8892,20 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 speak: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else { return }
+                    // Plan LA §4–§6: everything asked for happened — the done tone instead of the
+                    // reply. The reply still shows on the phone and the glasses, untouched.
+                    if case .quiet = quietEnding.verdict {
+                        hudAnswerCard.finishTurn(reply: response)
+                        if let replyStream {
+                            await replyStream.finishQuietly()
+                            releaseReplyStreamStopListener(replyStream)
+                        }
+                        guard conversationReset.isCurrent(turnGeneration), !Task.isCancelled else { return }
+                        await playQuietEnding(reply: response)
+                        noteReplySpoken(.quiet)
+                        return
+                    }
+                    quietReplay.close()
                     // Plan HZ P1: the reply has been speaking since its first sentence (and the
                     // stop listener with it) — say what is left of it.
                     if let replyStream, replyStream.didStream {
@@ -8894,9 +8961,20 @@ class AppState: ObservableObject, AppStateProtocol {
                 // them (`RelativeTimeGuard`).
                 utterance: query,
                 // Plan KP P2: a tail the spine took off (another brain's reply) goes to the card.
-                onFollowUps: { [self] questions in hudAnswerCard.offerFollowUps(questions) }
+                onFollowUps: { [self] questions in
+                    quietEnding.sawFollowUps = true
+                    hudAnswerCard.offerFollowUps(questions)
+                }
             ))
         }
+    }
+
+    /// Plan LA: one Direct turn's quiet-ending verdict, shared by its `accept` and `speak` stages.
+    @MainActor
+    final class QuietEndingBox {
+        var verdict: QuietTurnVerdict?
+        /// The spine took a follow-ups tail off the reply (another brain's).
+        var sawFollowUps = false
     }
 
     // MARK: - Text Message Input
@@ -9034,7 +9112,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     } else {
                         image = await smartCameraImageData(for: query)
                     }
-                    if speakResponse { stageAnswerPicture(image) }   // Plan KX §5
+                    if speakResponse { stageAnswerPicture(image) }   // Plan LC §5
                     let reply = try await llmService.sendMessageCascading(
                         query,
                         locationContext: locationService.locationContext,
@@ -9062,7 +9140,11 @@ class AppState: ObservableObject, AppStateProtocol {
                         }
                     )
                     // Plan KP P2: the reply's follow-ups go to this turn's answer card.
-                    if speakResponse { hudAnswerCard.offerFollowUps(llmService.replyFollowUps) }
+                    if speakResponse {
+                        hudAnswerCard.offerFollowUps(llmService.replyFollowUps)
+                        hudAnswerCard.offerWebSources(count: llmService.replyWebSources.count,
+                                                      hasSearchSuggestions: llmService.replySearchSuggestions != nil)
+                    }
                     return reply
                 },
                 postProcess: { [self] rawResponse in
@@ -9082,9 +9164,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
                     let usedToolNames = nativeToolRouter.takeTurnToolNames()
                     if Config.conversationPersistenceEnabled {
+                        // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
+                        let attachments = llmService.takeReplyWebAttachments()
                         conversationStore.appendMessage(role: "assistant", content: response,
                                                         answeredOnDevice: answeredOnPhone,
                                                         toolNames: usedToolNames,
+                                                        webSources: attachments.sources,
+                                                        searchSuggestions: attachments.suggestions,
                                                         toThread: turnThreadId)
                     }
 
@@ -9316,18 +9402,29 @@ class AppState: ObservableObject, AppStateProtocol {
     // MARK: - Sentence-streamed replies (Plan HZ P1)
 
     /// A streamed reply for one Direct turn, or nil when the switch is off — today's path.
+    /// `spokenTurn`: a turn the wearer spoke, the only kind that can end with the done tone (Plan
+    /// LA rule 1). A typed turn's stream keeps today's rules whatever the setting says.
     private func makeReplySpeechStream(turnGeneration: UInt64,
-                                       threadId: String?) -> DirectReplySpeechStream? {
+                                       threadId: String?,
+                                       spokenTurn: Bool = false) -> DirectReplySpeechStream? {
         guard Config.directSentenceStreamingEnabled else { return nil }
         // Held whole, as today: a reply post-processing rewrites (memory commands), and one opening
         // with a choice list while the buttons are on, so the spoken options and the buttons agree.
         let choiceButtons = Config.hudChoiceButtonsEnabled
-        let rules = StreamSpeechGate.Rules(
+        var rules = StreamSpeechGate.Rules(
             holdWholeReply: StreamSpeechGate.looksLikeMemoryCommand,
             looksLikeChoiceList: { choiceButtons && StreamSpeechGate.looksLikeChoiceListOpening($0) })
+        // Plan LA §3/§4: with Quiet After Actions on, a round of reviewed actions says no preamble,
+        // and a round that all reported done holds the reply whole until the judge has decided.
+        // Off, the rules are exactly today's.
+        if spokenTurn, quietAfterActionsActive {
+            rules.holdPreamble = QuietTurnJudge.holdsPreamble(forRound:)
+            rules.holdNextIteration = QuietTurnJudge.holdsNextIteration(afterRound:)
+        }
         let stream = DirectReplySpeechStream(
             speaker: speechService, rules: rules,
-            isCurrent: { [weak self] in self?.conversationReset.isCurrent(turnGeneration) ?? false })
+            isCurrent: { [weak self] in self?.conversationReset.isCurrent(turnGeneration) ?? false },
+            turnCalls: { [weak self] in self?.quietTurnCalls() ?? [] })
         // The wearer can say "stop" from the first sentence on, as from the start of `speak`.
         stream.onSpeechBegan = { [weak self] in self?.startStopListener() }
         // Open question 1: a preamble said before a tool runs stays in the transcript as its own

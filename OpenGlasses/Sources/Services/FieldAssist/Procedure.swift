@@ -85,7 +85,7 @@ struct Procedure: Codable, Equatable, Identifiable {
         /// full heat cycle … only after the retest passes" (Plan GB P3). Optional in the schema;
         /// absent means false, and is left out when encoding.
         let requiresConfirmation: Bool?
-        /// Plan KX §6: a short clip showing the step, as an HTTPS MP4 the Display fetches itself
+        /// Plan LC §6: a short clip showing the step, as an HTTPS MP4 the Display fetches itself
         /// (at most 400 px a side and 70,000 px in all, Meta's `VideoPlayer` limits). Optional in the
         /// schema; absent is no clip, and is left out when encoding. The lens offers **Watch** only
         /// for a URL `HUDVideo.playable` accepts.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the Today glance shows (Plan KX §4), as plain data: the launcher's root screen is built from
+/// What the Today glance shows (Plan LC §4), as plain data: the launcher's root screen is built from
 /// this by `HUDTodayBuilder`, and nothing in it fetches. A row with no data is nil and is left off
 /// the screen.
 ///
@@ -82,7 +82,7 @@ struct HUDTodayGlance: Equatable {
     }
 }
 
-/// Builds the launcher's root, the Today glance (Plan KX §4). Pure: the glance is plain data and
+/// Builds the launcher's root, the Today glance (Plan LC §4). Pure: the glance is plain data and
 /// the items' effects are injected closures, so every row and item is unit-testable headlessly.
 ///
 /// | Row | Icon | When |

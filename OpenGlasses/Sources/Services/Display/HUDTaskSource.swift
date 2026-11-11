@@ -11,7 +11,7 @@ struct HUDStep: Equatable {
     let instruction: String?
     let safetyNote: String?
     let icon: GlassesDisplayService.HUDIcon
-    /// Plan KX §6: the step's clip, when it has one the lens can play (`HUDVideo.playable`). The
+    /// Plan LC §6: the step's clip, when it has one the lens can play (`HUDVideo.playable`). The
     /// task card offers **Watch** for it on a backend that plays clips.
     let video: HUDVideo?
 

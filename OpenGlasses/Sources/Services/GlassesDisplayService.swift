@@ -40,7 +40,7 @@ final class GlassesDisplayService: ObservableObject {
 
     private enum RenderOp: Equatable {
         case show(HUDContent)
-        /// Plan KX §6: the caption frame, three rows and the speaker (`HUDCaptionBuilder`).
+        /// Plan LC §6: the caption frame, three rows and the speaker (`HUDCaptionBuilder`).
         case caption(HUDCaption)
         case clear
     }
@@ -51,7 +51,7 @@ final class GlassesDisplayService: ObservableObject {
     private enum Frame {
         case op(RenderOp)
         case screen(HUDScreen)
-        /// Plan KX §6: a Field Assist step's clip, played as the lens's whole frame.
+        /// Plan LC §6: a Field Assist step's clip, played as the lens's whole frame.
         case video(HUDVideo)
     }
 
@@ -161,7 +161,7 @@ final class GlassesDisplayService: ObservableObject {
     /// (a display or the mirror), and nothing but an answer card is held. Plan KV: a page's
     /// **Show here** cue gives way to an answer like a card does; an open page view takes the
     /// answer under it (shown when the view closes) unless it was opened over a task card or a menu.
-    /// Plan KX §4: the turn's Listening or Thinking card is waiting for exactly this answer, so it
+    /// Plan LC §4: the turn's Listening or Thinking card is waiting for exactly this answer, so it
     /// gives way too. An approval card does not: the answer flashes over it, as over a task card.
     var acceptsAnswerCard: Bool {
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
@@ -172,7 +172,7 @@ final class GlassesDisplayService: ObservableObject {
         }
     }
 
-    // MARK: - Listening and Thinking (Plan KX §4)
+    // MARK: - Listening and Thinking (Plan LC §4)
 
     /// True while the held interactive screen is the wearer's turn in progress — the Listening card
     /// (the live partial transcript) or the Thinking card — put up by `HUDTurnState`. The answer
@@ -190,7 +190,7 @@ final class GlassesDisplayService: ObservableObject {
         return !isInteractive || showsAnswerCard || showsTurnState
     }
 
-    /// Hold the turn's Listening or Thinking card (Plan KX §4), or redraw it. `wearerStarted`: the
+    /// Hold the turn's Listening or Thinking card (Plan LC §4), or redraw it. `wearerStarted`: the
     /// wearer just started this turn (the wake word, a tap, the Action Button), which is wearer-led
     /// and so reopens a lens they dismissed (§2.2). A later update to the same turn (a partial, the
     /// Thinking card) is not, and stays off a lens dismissed meanwhile. While a notification is over
@@ -235,7 +235,7 @@ final class GlassesDisplayService: ObservableObject {
         endInteractive()
     }
 
-    // MARK: - Approve / Deny (Plan KX §3)
+    // MARK: - Approve / Deny (Plan LC §3)
 
     /// True while an approval card (`HUDApprovalCard`) is held over whatever the lens had.
     @Published private(set) var showsApprovalCard = false
@@ -262,7 +262,7 @@ final class GlassesDisplayService: ObservableObject {
         return !holdsLens && !lensDismissed
     }
 
-    /// Hold an approval card over whatever the lens has (Plan KX §3), or redraw the one held (its
+    /// Hold an approval card over whatever the lens has (Plan LC §3), or redraw the one held (its
     /// Details screen and back). The held screen underneath is kept, and comes back when
     /// `endApprovalCard()` runs. While it is up, a task card or menu that changes (or opens) goes
     /// underneath it, an answer flashes over it, and a page view does not open. False when
@@ -358,7 +358,7 @@ final class GlassesDisplayService: ObservableObject {
     /// An answer card is held under the page view, to come back when it closes.
     var holdsAnswerCardUnderPage: Bool { answerUnderPage != nil }
 
-    /// Set by `HUDAnswerCard`: the page view (or, Plan KX §3, an approval card) closed and the answer
+    /// Set by `HUDAnswerCard`: the page view (or, Plan LC §3, an approval card) closed and the answer
     /// card under it is on the lens again.
     var onAnswerCardReturnedFromPage: (() -> Void)?
 
@@ -373,7 +373,7 @@ final class GlassesDisplayService: ObservableObject {
     /// text lines (Even G2; the phone-only build).
     var drawsPictures: Bool { testDrawsPicturesOverride ?? activeBackend.drawsPictures }
 
-    /// Plan KX §5: whether a vision answer's thumbnail is worth drawing now — the HUD is on, a
+    /// Plan LC §5: whether a vision answer's thumbnail is worth drawing now — the HUD is on, a
     /// display is there and its backend draws pictures. Read before the phone spends a decode on it.
     var wantsAnswerPictures: Bool {
         isEnabled && drawsPictures && deviceSupportsDisplay()
@@ -388,9 +388,9 @@ final class GlassesDisplayService: ObservableObject {
     @discardableResult
     func presentPageView(_ screen: HUDScreen, kind: HeldPage, onSelect: @escaping (String) -> Void) -> Bool {
         guard isEnabled, deviceSupportsDisplay(), !holdsLens else { return false }
-        // Plan KX §3: an approval card is being answered; nothing opens over it.
+        // Plan LC §3: an approval card is being answered; nothing opens over it.
         guard !showsApprovalCard else { return false }
-        // Plan KX §2.2: a page the wearer opened reopens a dismissed lens; a cue the app put up does not.
+        // Plan LC §2.2: a page the wearer opened reopens a dismissed lens; a cue the app put up does not.
         if kind == .view { wearerLed() } else if lensDismissed { return false }
         if kind == .view {
             switch heldPage {
@@ -405,7 +405,7 @@ final class GlassesDisplayService: ObservableObject {
                 } else {
                     answerUnderPage = nil
                 }
-                // Plan KX §4: the turn's own card is waiting for an answer, as nothing would be.
+                // Plan LC §4: the turn's own card is waiting for an answer, as nothing would be.
                 pageTakesAnswerUnder = !isInteractive || showsAnswerCard || showsTurnState
             }
         } else {
@@ -513,7 +513,7 @@ final class GlassesDisplayService: ObservableObject {
     /// While another app has the Display, nothing is enqueued for the lens.
     private var holdsLens: Bool { displayAvailability == .inUse }
 
-    // MARK: - A session the glasses ended (Plan KX §2.2)
+    // MARK: - A session the glasses ended (Plan LC §2.2)
 
     /// True after the glasses ended our display session themselves — the band's Back gesture, a
     /// two-finger temple tap, or the hands-free mic coming up. The wearer dismissed the lens, so
@@ -569,7 +569,7 @@ final class GlassesDisplayService: ObservableObject {
     /// `linkState == .connected`, and `isWorn`).
     func updateGlassesLink(connected: Bool, worn: Bool?) {
         guard connected != glassesConnected || worn != glassesWorn else { return }
-        // Plan KX §2.2: a link coming up is a fresh start; a dismissal does not outlive it.
+        // Plan LC §2.2: a link coming up is a fresh start; a dismissal does not outlive it.
         if connected && !glassesConnected { wearerLed() }
         glassesConnected = connected
         glassesWorn = worn
@@ -660,7 +660,7 @@ final class GlassesDisplayService: ObservableObject {
         return lines + availabilityLog.reportLines()
     }
 
-    // MARK: - Pacing and send records (Plan KX §2.4)
+    // MARK: - Pacing and send records (Plan LC §2.4)
 
     /// Spaces real sends to the glasses. Not consulted when `testRenderSink` captures frames.
     private var sendPacer = HUDSendPacer()
@@ -679,7 +679,7 @@ final class GlassesDisplayService: ObservableObject {
         lastSend = HUDSendRecord(kind: kind, milliseconds: Self.milliseconds(since: started), outcome: outcome)
     }
 
-    /// Plan KX §2.4: whether a failed picture frame is worth sending again as text. Not when there is
+    /// Plan LC §2.4: whether a failed picture frame is worth sending again as text. Not when there is
     /// no display, or the Display is another app's: those are readings, and text would fail the same.
     static func retriesWithoutPicture(after error: Error) -> Bool {
         if case GlassesDisplayError.noDisplay = error { return false }
@@ -708,9 +708,9 @@ final class GlassesDisplayService: ObservableObject {
     enum HUDFrame: Equatable {
         case content(body: String, title: String?, icon: HUDIcon)
         case screen(renderKey: String)
-        /// Plan KX §6: a caption frame's rows and speaker.
+        /// Plan LC §6: a caption frame's rows and speaker.
         case caption(rows: [String], speaker: String?)
-        /// Plan KX §6: a clip sent to play.
+        /// Plan LC §6: a clip sent to play.
         case video(url: URL)
         case clear
     }
@@ -725,7 +725,7 @@ final class GlassesDisplayService: ObservableObject {
         // pairing from TestFlight must not start a glasses transport after an App Store upgrade.
         let supported = GlassesSupportPolicy.isSupported && (testCapabilityOverride ?? activeBackend.isAvailable)
         if hasDisplayCapability != supported { hasDisplayCapability = supported }
-        // Plan KX §2.5: whether a Meta Display is there to lose to the glasses' hands-free mic.
+        // Plan LC §2.5: whether a Meta Display is there to lose to the glasses' hands-free mic.
         LensMicPolicy.metaDisplayPresent = supported && readsSessionAvailability
         return supported
     }
@@ -762,7 +762,7 @@ final class GlassesDisplayService: ObservableObject {
     /// Show persistent navigation guidance (icon + body). Cleared explicitly via
     /// `clear()` when guidance stops.
     ///
-    /// `arrow` (Plan KX §6): the walking route's turn arrow (`HUDTurnArrow`), drawn above the line
+    /// `arrow` (Plan LC §6): the walking route's turn arrow (`HUDTurnArrow`), drawn above the line
     /// by a backend that draws pictures. The line goes alone — exactly as before — when there is no
     /// arrow, the backend draws only text, or the link has been slow (`HUDGuidancePicturePolicy`).
     func showNavigation(_ text: String, icon: HUDIcon = .navigation, arrow: HUDPicture? = nil) {
@@ -770,7 +770,7 @@ final class GlassesDisplayService: ObservableObject {
         // card. An answer used to be a plain line the next guidance line replaced; a card gives
         // way the same way, rather than holding the line back for up to a minute.
         if showsAnswerCard { endInteractive() }
-        // Plan KX §4: nor does the turn's Listening or Thinking card.
+        // Plan LC §4: nor does the turn's Listening or Thinking card.
         if showsTurnState { endTurnState() }
         if let arrow, let screen = guidanceScreen(text, icon: icon, arrow: arrow) {
             guard acceptsAmbientFrame else { return }
@@ -780,7 +780,7 @@ final class GlassesDisplayService: ObservableObject {
         present(HUDContent(title: nil, body: text, icon: icon), transient: false, duration: 0)
     }
 
-    /// Plan KX §6: whether a guidance line's arrow goes now. Read by the walking route before it
+    /// Plan LC §6: whether a guidance line's arrow goes now. Read by the walking route before it
     /// asks for an arrow, so nothing is drawn for a lens that would not show it.
     var wantsGuidancePictures: Bool {
         guidancePictures.note(lastSend, at: now())
@@ -799,14 +799,14 @@ final class GlassesDisplayService: ObservableObject {
         return screen
     }
 
-    /// Plan KX §6: what a persistent ambient frame (a caption, a guidance line) must pass: the HUD
+    /// Plan LC §6: what a persistent ambient frame (a caption, a guidance line) must pass: the HUD
     /// on, something to show it, the lens ours, and nothing interactive held.
     private var acceptsAmbientFrame: Bool {
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
         return !holdsLens && !isInteractive
     }
 
-    /// Plan KX §6: the caption screen (`HUDCaptionBuilder`) — up to three rows, the speaker, the mic
+    /// Plan LC §6: the caption screen (`HUDCaptionBuilder`) — up to three rows, the speaker, the mic
     /// mark. Ambient and persistent, like the line it replaces (`showText`, whose contract is
     /// unchanged): dropped under any interactive screen, while another app has the Display, and —
     /// at `enqueue` — while the wearer has dismissed the lens.
@@ -815,7 +815,7 @@ final class GlassesDisplayService: ObservableObject {
         enqueue(.op(.caption(caption)))
     }
 
-    // MARK: - Raised cards (Plan KX §6)
+    // MARK: - Raised cards (Plan LC §6)
 
     /// Whether a card the app raises by itself for the wearer (a timer that finished) may be held
     /// now: the HUD on, something to show it, the lens ours and not dismissed, and nothing but an
@@ -826,7 +826,7 @@ final class GlassesDisplayService: ObservableObject {
         return !isInteractive || showsAnswerCard || showsTurnState
     }
 
-    /// Hold a raised card (Plan KX §6). False — and nothing changes — when `acceptsRaisedCard` is
+    /// Hold a raised card (Plan LC §6). False — and nothing changes — when `acceptsRaisedCard` is
     /// false; the caller flashes a line instead.
     @discardableResult
     func presentRaisedCard(_ screen: HUDScreen, onSelect: @escaping (String) -> Void) -> Bool {
@@ -842,7 +842,7 @@ final class GlassesDisplayService: ObservableObject {
         return true
     }
 
-    // MARK: - Clips (Plan KX §6)
+    // MARK: - Clips (Plan LC §6)
 
     /// True while a Field Assist step's clip plays on the lens over its task card.
     @Published private(set) var showsVideo = false
@@ -901,7 +901,7 @@ final class GlassesDisplayService: ObservableObject {
         guard !showsAnswerCard else { return }
         // Plan KV: nor a page view, or its cue, held over it.
         guard heldPage == nil else { return }
-        // Plan KX: nor the turn's card or an approval card, which end by their own rules.
+        // Plan LC: nor the turn's card or an approval card, which end by their own rules.
         guard !showsTurnState, !showsApprovalCard else { return }
         guard isDisplayActive || lastRendered != nil || lastScreenKey != nil else { return }
         enqueue(.op(.clear))
@@ -912,9 +912,9 @@ final class GlassesDisplayService: ObservableObject {
     /// feature is off or the glasses have no display.
     func present(screen: HUDScreen, onSelect: @escaping (String) -> Void) {
         guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return }
-        // Plan KX §2.2: a menu, task card or choice list is the wearer's doing; it reopens the lens.
+        // Plan LC §2.2: a menu, task card or choice list is the wearer's doing; it reopens the lens.
         wearerLed()
-        // Plan KX §3: under an approval card it goes underneath, and comes back when the approval
+        // Plan LC §3: under an approval card it goes underneath, and comes back when the approval
         // is answered — a task step that changed meanwhile never covers the question.
         if showsApprovalCard {
             underApproval = HeldUnderApproval(screen: screen, handler: onSelect, showsAnswerCard: false,
@@ -939,7 +939,7 @@ final class GlassesDisplayService: ObservableObject {
     /// replaces whatever card was up. While a transient frame is over the card, only the held
     /// screen is updated and the flash's restore draws it.
     ///
-    /// `wearerLed` (Plan KX §5): whether the wearer asked for this answer. A Direct-mode answer is
+    /// `wearerLed` (Plan LC §5): whether the wearer asked for this answer. A Direct-mode answer is
     /// always theirs; a live-mode answer is only when the wearer spoke (or pressed) that turn, so
     /// one the model volunteered (an announcement, the end of a tool call nobody is waiting on)
     /// stays off a lens they dismissed.
@@ -947,7 +947,7 @@ final class GlassesDisplayService: ObservableObject {
     func presentAnswerCard(_ screen: HUDScreen, wearerLed asked: Bool = true,
                            onSelect: @escaping (String) -> Void) -> Bool {
         guard acceptsAnswerCard else { return false }
-        // Plan KX §2.2: a new answer is the wearer's (they asked); the card they dismissed growing
+        // Plan LC §2.2: a new answer is the wearer's (they asked); the card they dismissed growing
         // is not, and stays off the lens.
         if lensDismissed {
             if let dismissed = dismissedAnswerCard, screen.pageSet?.card == dismissed { return false }
@@ -1007,7 +1007,7 @@ final class GlassesDisplayService: ObservableObject {
     /// Leave interactive mode and clear the HUD so ambient producers resume.
     func endInteractive() {
         guard isInteractive else { return }
-        // Plan KX §3: what ended is the screen under the approval card (a task finished, a menu
+        // Plan LC §3: what ended is the screen under the approval card (a task finished, a menu
         // closed); the approval stays, and nothing comes back when it is answered.
         if showsApprovalCard {
             underApproval = nil
@@ -1098,10 +1098,10 @@ final class GlassesDisplayService: ObservableObject {
             lensMissedFrames = true
             return
         }
-        // Plan KX §2.2: the wearer dismissed the lens; only a wearer-led frame (which clears this
+        // Plan LC §2.2: the wearer dismissed the lens; only a wearer-led frame (which clears this
         // first) opens a session again. Nothing is held back for later either.
         guard !lensDismissed else { return }
-        // Plan KX §6: any other frame replaces a clip that is playing.
+        // Plan LC §6: any other frame replaces a clip that is playing.
         if showsVideo, !Self.isVideo(frame) {
             showsVideo = false
             clipEndedHandler = nil
@@ -1116,7 +1116,7 @@ final class GlassesDisplayService: ObservableObject {
         Task { @MainActor [weak self] in
             guard let self else { return }
             while self.pending != nil {
-                // Plan KX §2.4: space real sends. The wait happens before the frame is taken, so
+                // Plan LC §2.4: space real sends. The wait happens before the frame is taken, so
                 // anything enqueued meanwhile replaces it (latest wins) and only the newest goes.
                 if self.testRenderSink == nil, self.deviceSupportsDisplay() {
                     let wait = self.sendPacer.delay(at: Date())
@@ -1205,7 +1205,7 @@ final class GlassesDisplayService: ObservableObject {
                     let timedOut: Bool
                     if case GlassesDisplayError.sendTimedOut = error { timedOut = true } else { timedOut = false }
                     self.handleRenderError(error)
-                    // Plan KX §2.4: a picture frame that failed goes once more as its text lines,
+                    // Plan LC §2.4: a picture frame that failed goes once more as its text lines,
                     // unless something newer is already waiting or the failure was the lens being
                     // someone else's (a reading, not a failure).
                     if sentKind == .picture, case .screen(var screen) = frame, self.pending == nil,
@@ -1216,7 +1216,7 @@ final class GlassesDisplayService: ObservableObject {
                         continue
                     }
                     self.recordSend(sentKind, started: started, outcome: timedOut ? .timedOut : .failed)
-                    // Plan KX §6: a clip the glasses would not take ends as a failure; the card returns.
+                    // Plan LC §6: a clip the glasses would not take ends as a failure; the card returns.
                     if case .video = frame, self.showsVideo { self.clipEnded(.failed) }
                     break
                 }
@@ -1306,7 +1306,7 @@ enum GlassesDisplayError: LocalizedError {
     /// Plan KP §8: another app has the Display (our session is paused, or a start was refused).
     /// A reading, not a failure: nothing is torn down and nothing is retried until it is ours.
     case displayInUse
-    /// Plan KX §2.4: a send did not come back within `HUDSendDeadline.seconds`.
+    /// Plan LC §2.4: a send did not come back within `HUDSendDeadline.seconds`.
     case sendTimedOut
 
     var errorDescription: String? {

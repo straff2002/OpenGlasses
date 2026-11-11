@@ -60,12 +60,15 @@ final class CustomerTests: XCTestCase {
         XCTAssertEqual(s.customer.profileAddress, "https://fixture.invalid/p/fixture-profile")
         XCTAssertEqual(s.code.payload.profile, s.customer.profileAddress); XCTAssertEqual(s.code.payload.licensee, "Fixture Ltd")
         XCTAssertEqual(s.code.payload.expires, date(35)); XCTAssertEqual(s.code.record.phase, .provisional)
-        XCTAssertEqual(try open(s.sealedFile, key: s.activationKey), s.code.code)
+        let opened = try XCTUnwrap(ActivationKeyMint.open(s.sealedFile, canonical: s.activationKey.replacingOccurrences(of: "-", with: "")))
+        XCTAssertEqual(opened, .init(licenceCode: s.code.code, companySecret: s.companySecret))
+        XCTAssertEqual(s.customer.companySecretId, ProfileContract.Credential.secretId(s.companySecret))
         XCTAssertEqual(s.customer.activationFile, ActivationKeyMint.fileName(s.activationKey.replacingOccurrences(of: "-", with: "")))
         XCTAssertEqual(book.ledger.entries.count, 1); XCTAssertEqual(book.ledger.invoices.count, 1)
         XCTAssertEqual(book.ledger.orders.first?.customerId, "c1"); XCTAssertEqual(book.ledger.customers["c1"], s.customer)
         let json = String(decoding: try IssuanceWire.encoder().encode(book.ledger), as: UTF8.self)
-        for secret in [s.activationKey, s.activationKey.replacingOccurrences(of: "-", with: ""), s.sealedFile, s.code.code] {
+        for secret in [s.activationKey, s.activationKey.replacingOccurrences(of: "-", with: ""), s.sealedFile, s.code.code,
+                       s.companySecret.base64EncodedString()] {
             XCTAssertFalse(json.contains(secret))
         }
         let reopened = try IssuanceWire.decoder().decode(Ledger.self, from: IssuanceWire.encoder().encode(book.ledger))
@@ -153,6 +156,27 @@ final class CustomerTests: XCTestCase {
         XCTAssertThrowsError(try increase("lapsed", 1, at: 365)) { XCTAssertEqual($0 as? CustomerRefusal, .noPaidLiveCode) }
     }
 
+    /// Plan JS P2: a customer signed up seat-checked keeps the claim on every code it is issued —
+    /// the provisional code, the paid one, and a seat increase's replacement.
+    func testASeatCheckedCustomerKeepsTheClaimThroughPaymentAndIncrease() throws {
+        var book = try SalesBook()
+        let s = try book.signUp(newCustomer, orderId: "o1",
+                                order: .init(seats: 2, termDays: 365, packs: ["hvac"], reference: "partner-ref", seatCheck: true),
+                                preset: preset, profileBase: "https://fixture.invalid", grant: grant, catalog: catalog,
+                                bankDetails: "FIXTURE BANK", operatorId: "fixture-partner-user", now: now, signer: key.signature(for:))
+        XCTAssertEqual(s.code.payload.seatCheck, true)
+        let paid = try XCTUnwrap(pay(&book))
+        XCTAssertEqual(paid.payload.seatCheck, true)
+        try book.increaseSeats(id: "more", customerId: "c1", additionalSeats: 1, grant: grant, catalog: catalog,
+                               bankDetails: "FIXTURE BANK", operatorId: "fixture", now: date(100))
+        let raised = try XCTUnwrap(pay(&book, "INV-000002", amount: 73, day: 110, id: "p2"))
+        XCTAssertEqual(raised.payload.seatCheck, true)
+        XCTAssertEqual(raised.payload.seats, 3)
+        // Without the order's flag, nothing changes.
+        var plain = try SalesBook()
+        XCTAssertNil(try signUp(&plain).code.payload.seatCheck)
+    }
+
     func testPresetRefusesAnythingItDoesNotList() throws {
         func refused(_ change: (inout NewCustomer) -> Void, preset p: ProfilePreset? = nil, _ expected: PresetRefusal, line: UInt = #line) {
             var book = try! SalesBook(); var c = newCustomer; change(&c)
@@ -177,6 +201,37 @@ final class CustomerTests: XCTestCase {
         p = preset; p.settings["notASetting"] = .init(value: .bool(true), disposition: "default")
         refused({ _ in }, preset: p, .invalidPreset("notASetting is not a setting a profile may set (see SettingKey)"))
         XCTAssertFalse(ProfilePreset.carriesKey(.init(provider: "openrouter", model: "meta-llama/llama-3.1-405b-instruct", baseURL: "https://openrouter.ai/api/v1")))
+    }
+
+    func testPresetSectionsOpenOrCloseOnlyWhatThePresetOffers() throws {
+        var p = preset
+        p.lockdown = .init(open: ["voice"], lock: ["tools"])
+        p.choices.sections = ["intelligence", "display", "field-assist"]
+        func lockdown(_ open: [String]?) throws -> ProfileContract.Lockdown? {
+            var book = try SalesBook(); var c = newCustomer; c.selection.openSections = open
+            let s = try signUp(&book, c, preset: p)
+            return try profile(book.profileDocument(customerId: "c1", code: s.code.code, preset: p, grant: grant, keyID: "fixture",
+                                                    issued: date(1), signer: profileKey.signature(for:))).lockdown
+        }
+        XCTAssertEqual(try lockdown(nil), p.lockdown, "no pick carries the preset's lockdown as written")
+        XCTAssertEqual(try lockdown(["display"]), .init(open: ["voice", "display"], lock: ["tools", "intelligence", "field-assist"]))
+        XCTAssertEqual(try lockdown(["intelligence", "display", "field-assist"]), .init(open: ["voice", "intelligence", "display", "field-assist"], lock: ["tools"]))
+        XCTAssertEqual(p.openSections(for: .init()), ["field-assist"], "Field Assist is open unless locked; the rest are closed")
+        XCTAssertEqual(p.openSections(for: .init(openSections: ["display"])), ["display"])
+        var book = try SalesBook(); var c = newCustomer; c.selection.openSections = ["voice"]
+        XCTAssertThrowsError(try signUp(&book, c, preset: p)) { XCTAssertEqual($0 as? PresetRefusal, .sectionNotOffered("voice")) }
+        XCTAssertTrue(book.ledger.entries.isEmpty)
+        func invalid(_ change: (inout ProfilePreset) -> Void, _ message: String, line: UInt = #line) {
+            var bad = preset; change(&bad)
+            XCTAssertThrowsError(try bad.validate(), line: line) { XCTAssertEqual($0 as? PresetRefusal, .invalidPreset(message), line: line) }
+        }
+        invalid({ $0.choices.sections = ["assisting"] }, "assisting is always open")
+        invalid({ $0.choices.sections = ["display", "display"] }, "display is listed twice")
+        invalid({ $0.choices.sections = ["glasses"] }, "glasses is not a settings category (\(ProfileContract.settingsCategoryIds.joined(separator: ", ")))")
+        invalid({ $0.edition = nil; $0.choices.sections = ["display"] }, "sections only apply with an edition")
+        let unchanged = String(decoding: try IssuanceWire.encoder(profile: true).encode(preset), as: UTF8.self)
+            + String(decoding: try IssuanceWire.encoder(profile: true).encode(newCustomer.selection), as: UTF8.self)
+        XCTAssertFalse(unchanged.contains("sections"), "a preset or pick without sections encodes, and digests, as before")
     }
 
     func testPasscodeVerifierIsCheckedAndOnlyItsHashReachesTheProfile() throws {
@@ -232,8 +287,15 @@ final class CustomerTests: XCTestCase {
         XCTAssertThrowsError(try book.rotateActivationKey(customerId: "c1", currentCode: s.code.code, operatorId: "fixture", now: date(2))) {
             XCTAssertEqual($0 as? CustomerRefusal, .notCurrentCode)
         }
-        let rotated = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, operatorId: "fixture", now: date(2))
-        XCTAssertEqual(try open(rotated.sealedFile, key: rotated.activationKey), full.code)
+        XCTAssertThrowsError(try book.rotateActivationKey(customerId: "c1", currentCode: full.code, operatorId: "fixture", now: date(2))) {
+            XCTAssertEqual($0 as? CustomerRefusal, .companySecretMismatch, "a customer with a secret keeps it")
+        }
+        let rotated = try book.rotateActivationKey(customerId: "c1", currentCode: full.code, companySecret: s.companySecret,
+                                                   operatorId: "fixture", now: date(2))
+        XCTAssertEqual(ActivationKeyMint.open(rotated.sealedFile, canonical: rotated.activationKey.replacingOccurrences(of: "-", with: "")),
+                       .init(licenceCode: full.code, companySecret: s.companySecret))
+        XCTAssertEqual(rotated.customer.companySecretId, s.customer.companySecretId)
+        XCTAssertFalse(rotated.newCompanySecret)
         XCTAssertEqual(rotated.retiredFile, s.customer.activationFile); XCTAssertNotEqual(rotated.customer.activationFile, s.customer.activationFile)
         XCTAssertEqual(book.ledger.customers["c1"]?.activationFile, rotated.customer.activationFile)
         XCTAssertEqual(book.ledger.retiredActivationFiles(for: "c1"), [s.customer.activationFile])

@@ -428,7 +428,7 @@ class AmbientCaptionService: ObservableObject {
             let liveLine = segment.speaker.map { "\(self.speakerRegistry.displayLabel(for: $0)): \(segment.text)" }
                 ?? segment.text
             self.currentCaption = liveLine
-            // Plan KX §6: on the lens the speaker is its own meta line over the words.
+            // Plan LC §6: on the lens the speaker is its own meta line over the words.
             self.showOnLens(segment.text, speaker: segment.speaker)
             self.resetSilenceTimer()
             if segment.isFinal {
@@ -443,7 +443,7 @@ class AmbientCaptionService: ObservableObject {
         }
     }
 
-    /// Plan KX §6: the live text as the lens's caption frame (`HUDCaptionBuilder`): up to three
+    /// Plan LC §6: the live text as the lens's caption frame (`HUDCaptionBuilder`): up to three
     /// rows, the last few finals of the same speaker carried in front of it, the speaker's label
     /// when diarization gives one, and the mic mark while capture is live. The visual notes a
     /// recording inserts into the history are not speech and are never carried.

@@ -490,15 +490,18 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     func speakReporting(_ text: String, source: SpeechSource, urgency: SpeechUrgency = .low,
                         mirrorToHUD: Bool = true,
                         onDeviceOnly: Bool = false) async -> SpeechDeliveryOutcome {
-        guard !text.isEmpty else { return .failed(reason: "nothing to say") }
+        // Plan KZ §6: no web address is read aloud or put on the lens — a link keeps its words,
+        // citation markers and bare addresses go.
+        let unlinked = CitationMarkupStripper.strip(text)
+        guard !unlinked.isEmpty else { return .failed(reason: "nothing to say") }
         // Markup with no words in it — a table's rule line, a lone "---" — leaves nothing to say
         // once it is taken out, and an empty request is an error to a cloud voice.
-        guard !SpokenSymbolExpander.spokenForm(of: text).isEmpty else {
+        guard !SpokenSymbolExpander.spokenForm(of: unlinked).isEmpty else {
             return .failed(reason: "nothing to say")
         }
-        lastSpokenText = text
+        lastSpokenText = unlinked
         activeRateMultiplier = urgency.rateMultiplier
-        let text = urgency.prefix + text
+        let text = urgency.prefix + unlinked
 
         // Mirror spoken text to the in-lens HUD (additive; no-op without a display).
         // Callers that render a richer HUD treatment themselves pass mirrorToHUD: false.
@@ -629,7 +632,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // What is actually spoken: the reply with its symbols written out as words
         // (no engine can be trusted with "22°C" or "80 km/h"), plus a one-off line when the cloud voice has
         // just turned it down for a reason the wearer has to act on.
-        var text = SpokenSymbolExpander.spokenForm(of: text)
+        var text = SpokenSymbolExpander.spokenForm(of: CitationMarkupStripper.strip(text))
         let elevenLabsKey = Config.elevenLabsAPIKey
         let chain = engineChain(urgency: urgency, onDeviceOnly: onDeviceOnly)
         // One notice per utterance, however many cloud voices turn it away.
@@ -943,14 +946,30 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         playEarcon(ListeningCuePolicy.end, label: "listenEnd")
     }
 
+    /// Plan LA §5: the done tone — what the wearer hears instead of a spoken reply when everything
+    /// they asked for has happened (`QuietDoneCue`). It goes the way speech goes, so it reaches the
+    /// glasses on the same route, and waits (briefly) for anything still speaking to finish rather
+    /// than playing over it.
+    func playQuietDoneTone() async {
+        var waited = 0
+        while isSpeaking, waited < 60 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            waited += 1
+        }
+        playEarcon(QuietDoneCue.notes, label: "quietDone", volume: QuietDoneCue.volume)
+        // Returns once it has sounded, so the next cue (the listening tone as the mic reopens)
+        // follows it rather than landing on top of it.
+        try? await Task.sleep(nanoseconds: UInt64((QuietDoneCue.seconds + 0.15) * 1_000_000_000))
+    }
+
     /// Play a short earcon as one sound. One buffer rather than a tone per note: `tonePlayer` holds
     /// one player, so a second note started on a timer would release the first mid-note.
-    private func playEarcon(_ notes: [GlassesLinkCuePolicy.Note], label: String) {
+    private func playEarcon(_ notes: [GlassesLinkCuePolicy.Note], label: String, volume: Float = 0.7) {
         do {
             let toneData = try Self.generateEarconData(notes: notes, sampleRate: 44100)
             let player = try AVAudioPlayer(data: toneData)
             self.tonePlayer = player
-            player.volume = 0.7
+            player.volume = volume
             Self.prepareAndPlayOffMain(player)
         } catch {
             PrivacyLog.tts(.toneFailed, detail: PrivacyToken(label), error: SafeErrorSummary(error))
@@ -1036,6 +1055,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         case .restored: playRecoveryTone()
         case .captured: playPhotoTone()
         case .failed: playFailureTone()
+        case .done: playEarcon(QuietDoneCue.notes, label: "quietDone", volume: QuietDoneCue.volume)
         }
     }
 

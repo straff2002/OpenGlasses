@@ -73,6 +73,15 @@ enum CloudServiceCatalog {
         return CloudServiceRoute(name: name, url: address, scope: .conversation)
     }
 
+    /// Plan KZ §10: a provider that runs web search itself sends the query to the same address as
+    /// the conversation, but it is a new use of that address, so it is listed (and asked about)
+    /// under Web search too — while the policy would attach the search to the model's requests.
+    static func providerSearchRoute(for model: ModelConfig, decision: ProviderSearchPolicy.Decision,
+                                    conversationRoute: CloudServiceRoute?) -> CloudServiceRoute? {
+        guard decision.spec != nil, let conversationRoute else { return nil }
+        return CloudServiceRoute(name: conversationRoute.name, url: conversationRoute.url, scope: .webSearch)
+    }
+
     /// Where each voice sends the text it reads. The on-device ones send nothing.
     static func voiceRoute(for engine: TTSEngine) -> CloudServiceRoute? {
         switch engine {
@@ -159,6 +168,16 @@ enum CloudServiceFactsProvider {
 
     private static func searchRoutes() -> [CloudServiceRoute] {
         var routes: [CloudServiceRoute] = []
+        // Plan KZ: the active model's provider, when it would run the search itself.
+        if let model = Config.activeModel {
+            let decision = ProviderSearchPolicy.decide(ProviderSearchLive.inputs(
+                for: model, credential: model.apiKey, webSearchDeclared: true,
+                learnedResponsesRejection: false))
+            if let route = CloudServiceCatalog.providerSearchRoute(for: model, decision: decision,
+                                                                    conversationRoute: modelRoute(model)) {
+                routes.append(route)
+            }
+        }
         if Config.isPerplexityConfigured {
             routes.append(CloudServiceRoute(name: "Perplexity", url: "https://api.perplexity.ai", scope: .webSearch))
         }

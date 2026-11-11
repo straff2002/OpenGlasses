@@ -55,8 +55,8 @@ final class LicenseService: ObservableObject {
         var tier: String?
         /// Commercial plan the code was issued under ("pilot" / "team" / "enterprise"); informational.
         var plan: String?
-        /// Seats bought. Recorded so the status screen and the invoice agree; **not enforced** —
-        /// the code is device-scoped and offline, and there is no seat server.
+        /// Seats bought. Recorded so the status screen and the invoice agree. Counted only when the
+        /// code also carries `seatCheck` (Plan JS P2); otherwise a label, as it always was.
         var seats: Int?
         /// Purchase order or agreement reference; free text.
         var reference: String?
@@ -70,11 +70,16 @@ final class LicenseService: ObservableObject {
         /// Both are absent on legacy codes; a display name or URL is never that binding.
         var organizationID: String?
         var profileID: String?
+        /// Plan JS P2: the phones using this code are counted against `seats`. A seat-checked code
+        /// is evidence only while this phone holds a live seat lease (`DeviceSeatLease`), claimed
+        /// from the origin of the signed `profile` address. Absent — every code before P2, every
+        /// hand-minted one — the code behaves exactly as it always has.
+        var seatCheck: Bool?
 
         init(feature: String, licensee: String, issued: Date, expires: Date?,
              tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
              packs: [String]? = nil, profile: String? = nil,
-             organizationID: String? = nil, profileID: String? = nil) {
+             organizationID: String? = nil, profileID: String? = nil, seatCheck: Bool? = nil) {
             self.feature = feature
             self.licensee = licensee
             self.issued = issued
@@ -87,7 +92,11 @@ final class LicenseService: ObservableObject {
             self.profile = profile
             self.organizationID = organizationID
             self.profileID = profileID
+            self.seatCheck = seatCheck
         }
+
+        /// Whether this code counts its phones. Only a literal signed `true` does.
+        var isSeatChecked: Bool { seatCheck == true }
 
         /// The tier this payload grants; an unrecognised or missing claim is team, never more.
         var resolvedTier: FieldAssistTier {

@@ -89,7 +89,7 @@ struct HomeAssistantTool: NativeTool {
         }
     }
 
-    /// Plan KX §6: run one of the wearer's Home Assistant quick actions pressed on the lens
+    /// Plan LC §6: run one of the wearer's Home Assistant quick actions pressed on the lens
     /// (`HomeFavouriteRunner`). The guards `execute` applies — Medical egress, the configured URL and
     /// token, Plan GS's service-data allowlist — and no Conversation fallback, so the answer is a
     /// plain yes or no. The confirmation floor is the caller's (it asks before calling this).
@@ -160,6 +160,8 @@ struct HomeAssistantTool: NativeTool {
                let reply = plain["speech"] as? String {
                 // The command and the reply are both spoken content: sizes only.
                 PrivacyLog.homeOperation(.converse, success: true, replyCharacters: reply.count)
+                // Plan LA: Home Assistant's own words about what it did are not a confirmed state.
+                ActionCompletionReport.record(.partial(reason: .unverified))
                 return reply
             }
             return "Home Assistant processed the command but gave no response."
@@ -196,8 +198,11 @@ struct HomeAssistantTool: NativeTool {
         let body = data.body(entityId: entityId)
 
         do {
-            let _ = try await haRequest(url: url, method: "POST", body: body)
+            let response = try await haRequest(url: url, method: "POST", body: body)
             PrivacyLog.homeOperation(.callService, success: true)
+            // Plan LA: done only when Home Assistant says the entity is now in the state asked for.
+            ActionCompletionReport.record(HomeAssistantCompletion.completion(
+                service: service, entityId: entityId, responseBody: response))
             return "Done — \(service) on \(entityId.replacingOccurrences(of: "_", with: " "))."
         } catch {
             PrivacyLog.homeOperation(.callService, success: false)
@@ -279,5 +284,40 @@ struct HomeAssistantTool: NativeTool {
             throw URLError(.badServerResponse)
         }
         return data
+    }
+}
+
+/// Whether a Home Assistant service call is known to have landed (Plan LA §1). Pure.
+///
+/// `POST /api/services/<domain>/<service>` answers with the states that changed while the service
+/// ran. A call is done only when that list holds the entity in the state the service asks for —
+/// `turn_on` → "on", `turn_off` → "off", `toggle` → either, `lock` → "locked" is left out on
+/// purpose: a lock reports "locking" first, and a door is not a thing to be quiet about. Anything
+/// else (an empty list, another state, an automation, a scene, a speaker command) is sent but not
+/// confirmed: `.partial(.unverified)`, and spoken.
+enum HomeAssistantCompletion {
+    static func completion(service: String, entityId: String, responseBody: Data) -> ActionCompletion {
+        guard let states = try? JSONSerialization.jsonObject(with: responseBody) as? [[String: Any]],
+              let entry = states.first(where: { ($0["entity_id"] as? String) == entityId }),
+              let state = (entry["state"] as? String)?.lowercased() else {
+            return .partial(reason: .unverified)
+        }
+        let domain = entityId.split(separator: ".").first.map(String.init) ?? ""
+        guard ["light", "switch", "fan", "input_boolean"].contains(domain) else {
+            return .partial(reason: .unverified)
+        }
+        let expected: Set<String>
+        switch service.lowercased() {
+        case "turn_on": expected = ["on"]
+        case "turn_off": expected = ["off"]
+        case "toggle": expected = ["on", "off"]
+        default: return .partial(reason: .unverified)
+        }
+        guard expected.contains(state) else { return .partial(reason: .unverified) }
+        let attributes = entry["attributes"] as? [String: Any]
+        let name = (attributes?["friendly_name"] as? String)
+            ?? entityId.split(separator: ".").last.map { $0.replacingOccurrences(of: "_", with: " ") }
+            ?? entityId
+        return .done(summary: "\(name) \(state)")
     }
 }

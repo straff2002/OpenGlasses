@@ -15,6 +15,10 @@ struct ConversationPageHeader: View {
     @Environment(\.appAccent) private var accent
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    /// The header's touch targets: the title and its two buttons. Bigger than the 44 pt floor —
+    /// they are reached for mid-job, with a thumb, often without looking.
+    @ScaledMetric(relativeTo: .body) private var target: CGFloat = 56
+
     @State private var showingSwitcher = false
     /// Raised when starting a new conversation would take the technician out of an open job.
     @State private var pendingLeaveJob: JobThreadQuestion?
@@ -36,16 +40,16 @@ struct ConversationPageHeader: View {
                     }
                 }
             } else {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     titleButton
-                    Spacer(minLength: 4)
                     actionButtons
                 }
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(OGTheme.card)
         )
         .sheet(isPresented: $showingSwitcher) {
@@ -71,16 +75,17 @@ struct ConversationPageHeader: View {
                 // Wraps rather than truncating: a title cut to one line at large text sizes
                 // drops the words that say which conversation this is.
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color(.label))
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
             }
-            .frame(minHeight: OGMetrics.minTouchTarget, alignment: .leading)
+            // The whole of the pill up to the buttons, not just the words.
+            .frame(maxWidth: .infinity, minHeight: target, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -102,8 +107,8 @@ struct ConversationPageHeader: View {
                 resume(resumable.id)
             } label: {
                 Image(systemName: "arrow.uturn.backward")
-                    .font(.footnote.weight(.semibold))
-                    .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                    .font(.title3.weight(.semibold))
+                    .frame(width: target, height: target)
                     // Without a shape, the button's hit and accessibility area is the glyph alone.
                     .contentShape(Rectangle())
             }
@@ -117,8 +122,8 @@ struct ConversationPageHeader: View {
             newConversation()
         } label: {
             Image(systemName: "square.and.pencil")
-                .font(.footnote.weight(.semibold))
-                .frame(width: OGMetrics.minTouchTarget, height: OGMetrics.minTouchTarget)
+                .font(.title3.weight(.semibold))
+                .frame(width: target, height: target)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

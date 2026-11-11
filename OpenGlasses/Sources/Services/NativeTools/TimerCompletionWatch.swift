@@ -4,7 +4,7 @@ import UserNotifications
 import AlarmKit
 #endif
 
-/// A timer or alarm that has just finished, as the lens's timer card (Plan KX §6) needs it. The
+/// A timer or alarm that has just finished, as the lens's timer card (Plan LC §6) needs it. The
 /// label is the wearer's own words for it and is never logged.
 struct FinishedTimer: Equatable {
     enum Kind: Equatable {
@@ -23,7 +23,7 @@ struct FinishedTimer: Equatable {
     let canExtend: Bool
 }
 
-/// Plan KX §6: hears a timer or an AlarmKit alarm finish while the app runs, for the lens.
+/// Plan LC §6: hears a timer or an AlarmKit alarm finish while the app runs, for the lens.
 ///
 /// **Why it exists.** Neither backend calls the app back: `set_timer` schedules a local
 /// notification and nothing else, and AlarmKit rings by itself. So a timer the app set is watched

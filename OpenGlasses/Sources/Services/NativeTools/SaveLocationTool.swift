@@ -61,6 +61,8 @@ final class SaveLocationTool: NativeTool, @unchecked Sendable {
             locations = Array(locations.suffix(Self.maxLocations))
         }
         saveLocations(locations)
+        // Plan LA: the place is saved.
+        ActionCompletionReport.record(.done(summary: "Saved \(label)"))
 
         var response = "Saved '\(label)' at your current location"
         if let address {

@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the Now Playing card shows (Plan KX §6): the track and whether it is playing.
+/// What the Now Playing card shows (Plan LC §6): the track and whether it is playing.
 struct HUDNowPlaying: Equatable {
     var title: String?
     var artist: String?
@@ -25,7 +25,7 @@ enum HUDMediaAction: Equatable {
     case previous, toggle, next, close
 }
 
-/// Plan KX §6: the Now Playing card, reached from the launcher's Menu (Today › Menu › Now
+/// Plan LC §6: the Now Playing card, reached from the launcher's Menu (Today › Menu › Now
 /// Playing). Pure.
 ///
 /// The track's title (with the music mark) and artist, then **‹‹** · **Pause** / **Play** (primary,
@@ -43,10 +43,10 @@ enum HUDMediaAction: Equatable {
 /// cannot be read or driven by a third-party app on iOS.
 enum HUDNowPlayingBuilder {
     enum ItemID {
-        static let previous = "kx.media.previous"
-        static let toggle = "kx.media.toggle"
-        static let next = "kx.media.next"
-        static let close = "kx.media.close"
+        static let previous = "lc.media.previous"
+        static let toggle = "lc.media.toggle"
+        static let next = "lc.media.next"
+        static let close = "lc.media.close"
     }
 
     static var title: String {

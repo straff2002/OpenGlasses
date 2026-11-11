@@ -1,20 +1,20 @@
 import Foundation
 
-/// What a press on the timer card does (Plan KX §6).
+/// What a press on the timer card does (Plan LC §6).
 enum HUDTimerAction: Equatable {
     case stop, extend, close
 }
 
-/// Plan KX §6: the card a finished timer or alarm raises on the lens. Pure.
+/// Plan LC §6: the card a finished timer or alarm raises on the lens. Pure.
 ///
 /// **Timer done** (or **Alarm**) as the heading, the wearer's label under it, then **Stop**
 /// (primary, focused: the likeliest press is to silence it) · **+5 min** (only when the timer can be
 /// set again) · **Close** (leaves it ringing on the phone). Three buttons, well inside focus reach.
 enum HUDTimerCardBuilder {
     enum ItemID {
-        static let stop = "kx.timer.stop"
-        static let extend = "kx.timer.extend"
-        static let close = "kx.timer.close"
+        static let stop = "lc.timer.stop"
+        static let extend = "lc.timer.extend"
+        static let close = "lc.timer.close"
     }
 
     static var timerHeading: String {
@@ -48,7 +48,7 @@ enum HUDTimerCardBuilder {
     }
 }
 
-/// Plan KX §6: holds the timer card on the lens when a timer or an AlarmKit alarm finishes
+/// Plan LC §6: holds the timer card on the lens when a timer or an AlarmKit alarm finishes
 /// (`TimerCompletionWatch`).
 ///
 /// **When it goes up.** Over nothing, an answer card or the turn's card

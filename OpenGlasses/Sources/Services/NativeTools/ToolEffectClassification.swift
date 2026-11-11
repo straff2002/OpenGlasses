@@ -201,6 +201,12 @@ extension DeliverReportTool { var executionSemantics: ToolExecutionSemantics { .
 extension RecordClipTool {
     var executionSemantics: ToolExecutionSemantics { .local(.cooperative) }
 }
+// instant_replay copies part of the on-phone replay buffer into Recordings, the open job or (when
+// asked) Photos. Local: nothing leaves the device. Not idempotent — a redelivered save is a second
+// file — and not cancellable once the passthrough export has begun.
+extension InstantReplayTool {
+    var executionSemantics: ToolExecutionSemantics { .local(.notCancellable) }
+}
 
 // MARK: External mutations
 

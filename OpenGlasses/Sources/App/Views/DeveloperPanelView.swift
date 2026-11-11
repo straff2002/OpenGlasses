@@ -19,6 +19,8 @@ struct DeveloperPanelView: View {
     @AppStorage("dictationVoiceProcessingEnabled") private var dictationVoiceProcessingEnabled = false
     /// Plan JM P3 — `Config.recognizerComparisonEnabled`, the same key and default (off).
     @AppStorage("recognizerComparisonEnabled") private var recognizerComparisonEnabled = false
+    /// Instant Replay P0 — `Config.frameCadenceLoggingEnabled`, the same key and default (off).
+    @AppStorage("frameCadenceLoggingEnabled") private var frameCadenceLoggingEnabled = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -87,6 +89,22 @@ struct DeveloperPanelView: View {
             .onChange(of: recognizerComparisonEnabled) { _, keep in
                 // Off means forgotten now, not at the next question.
                 if !keep { appState.transcriptionService.forgetKeptUtterance() }
+            }
+
+            OGSection(
+                header: "Frame Cadence",
+                footer: "Measures the first minute of each glasses stream: whether frames arrive evenly or in bursts, from their arrival times and the glasses' own timestamps. The reading goes to the camera log and shows here. Start a stream after turning this on."
+            ) {
+                OGRow("Measure frame cadence", isOn: $frameCadenceLoggingEnabled,
+                      icon: "metronome")
+                if let report = FrameCadenceRecorder.shared.lastReport {
+                    OGDivider()
+                    Text(verbatim: FrameCadenceSummary.line(report))
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
             }
 
             // Plan JY P1: documents' languages and their search models — labels and counts only.

@@ -2,12 +2,18 @@ import Foundation
 import Combine
 
 /// Key and technician choice share one atomic, device-only Keychain item. No profile or defaults
-/// may carry the key. WorkizConnection is registered with DataStoreRegistry as workizConnection.
+/// may carry the key readable: a profile carries it only sealed (`OrgCredentialSync` writes it here).
+/// WorkizConnection is registered with DataStoreRegistry as workizConnection.
 struct WorkizCredential: Codable {
     var key: String
     var generation = UUID().uuidString
     var technicianID: String?
     var technicianName: String?
+    /// The organisation whose profile supplied the key. Nil for a key pasted on this phone.
+    var managedBy: String?
+    /// The technician answered "Which one are you?" for a key the profile supplied: their name and
+    /// technician ID were set from Workiz once, and only an administrator changes them.
+    var technicianConfirmed: Bool?
 }
 @MainActor
 final class WorkizConnection: ObservableObject {
@@ -49,6 +55,14 @@ final class WorkizConnection: ObservableObject {
     var fieldName: String { PolicyEnvelope.string(.workizReportFieldName, stored: UserDefaults.standard.string(forKey: "workizReportFieldName") ?? WorkizWriteBack.defaultFieldName) }
     var clientNotes: Bool { PolicyEnvelope.bool(.workizClientNotes, stored: UserDefaults.standard.bool(forKey: "workizClientNotes")) }
     var timeZone: TimeZone { TimeZone(identifier: UserDefaults.standard.string(forKey: "workizAccountTimeZone") ?? "") ?? .current }
+    /// The key came from the organisation's profile, not from this phone.
+    var isManagedKey: Bool { credential?.managedBy != nil }
+    /// The last four characters, for an administrator only ("Key set · ends in …a1b2"). Never the key.
+    var keyEnding: String? { credential.map { String($0.key.suffix(4)) } }
+    /// Name and technician ID were confirmed from Workiz for a profile-supplied key, so they are set once.
+    var technicianPinned: Bool { isManagedKey && credential?.technicianConfirmed == true && credential?.technicianID != nil }
+    /// "Which one are you?" is waiting: a profile-supplied key with nobody confirmed yet.
+    var needsTechnicianConfirmation: Bool { isManagedKey && !technicianPinned }
     /// The save path checks the administrator session too: disabling a SecureField alone is not a gate.
     func pasteKey(_ key: String, administrator: Bool) throws {
         guard !officeRoute, !PolicyEnvelope.isManaged || administrator else { throw WorkizFailure.disabled }
@@ -58,14 +72,40 @@ final class WorkizConnection: ObservableObject {
         next.technicianID = credential?.technicianID; next.technicianName = credential?.technicianName
         try commit(next)
     }
-    func select(_ user: WorkizUser) throws {
-        guard var next = credential, !officeRoute, user.active, user.fieldTech else { throw WorkizFailure.disabled }
+    /// Written with no prompt: the organisation's partner set this key centrally. The technician
+    /// choice carries over, so a replaced key for the same Workiz account keeps who the technician
+    /// is; `WorkizController.testConnection` clears an ID the new key's account does not have.
+    /// Returns whether anything changed.
+    @discardableResult
+    func setManagedKey(_ key: String, organization: String) throws -> Bool {
+        guard !officeRoute else { throw WorkizFailure.disabled }
+        if let current = credential, current.key == key, current.managedBy == organization { return false }
+        _ = try WorkizAPI.request(.users, key: key)
+        var next = WorkizCredential(key: key)
+        next.managedBy = organization
+        next.technicianID = credential?.technicianID; next.technicianName = credential?.technicianName
+        next.technicianConfirmed = credential?.technicianConfirmed
+        try commit(next)
+        return true
+    }
+    /// The profile stopped carrying a key: the one it supplied goes. A pasted key stays.
+    @discardableResult
+    func removeManagedKey() throws -> Bool {
+        guard isManagedKey else { return false }
+        try remove()
+        return true
+    }
+    /// Once a profile-supplied key's technician is confirmed, only an administrator chooses again.
+    func select(_ user: WorkizUser, confirmed: Bool = false, administrator: Bool = false) throws {
+        guard var next = credential, !officeRoute, user.active, user.fieldTech,
+              !technicianPinned || administrator else { throw WorkizFailure.disabled }
         next.technicianID = user.id; next.technicianName = user.name
+        if confirmed { next.technicianConfirmed = true }
         try commit(next)
     }
     func clearTechnician() throws {
         guard var next = credential else { return }
-        next.technicianID = nil; next.technicianName = nil; try commit(next)
+        next.technicianID = nil; next.technicianName = nil; next.technicianConfirmed = nil; try commit(next)
     }
     private func commit(_ next: WorkizCredential) throws {
         try storage.write(JSONEncoder().encode(next))
@@ -187,6 +227,22 @@ final class WorkizController: ObservableObject {
         client.cancel(); try connection.select(user); jobs.removeWorkizJobs()
         await refresh(force: true)
     }
+    /// "Which one are you?" answered for a key the profile supplied, after the one-time confirmation:
+    /// the Field Assist technician name and ID are filled from Workiz. Every other field stays the
+    /// technician's to edit.
+    func confirm(_ user: WorkizUser, administrator: Bool = false) async throws {
+        client.cancel(); try connection.select(user, confirmed: true, administrator: administrator); jobs.removeWorkizJobs()
+        fillIdentity(user)
+        await refresh(force: true)
+    }
+    /// An administrator lets the technician answer "Which one are you?" again.
+    func chooseAgain() throws {
+        client.cancel(); try connection.clearTechnician(); jobs.removeWorkizJobs()
+    }
+    var fillIdentity: (WorkizUser) -> Void = { user in
+        Config.technicianFullName = user.name
+        Config.technicianID = user.id
+    }
     func testConnection() async {
         guard !testing else { return }; testing = true; defer { testing = false }
         do {
@@ -198,7 +254,8 @@ final class WorkizController: ObservableObject {
             if let id = connection.credential?.technicianID, !users.contains(where: { $0.id == id }) {
                 try connection.clearTechnician(); jobs.removeWorkizJobs()
             }
-            if connection.credential?.technicianID == nil {
+            // A key the profile supplied asks "Which one are you?" and is confirmed once; it is never guessed.
+            if connection.credential?.technicianID == nil, !connection.isManagedKey {
                 let name = Config.technicianFullName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let matches = users.filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }
                 if matches.count == 1, let match = matches.first { try connection.select(match) }

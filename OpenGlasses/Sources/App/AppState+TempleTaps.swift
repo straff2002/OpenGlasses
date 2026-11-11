@@ -18,7 +18,8 @@ extension AppState: TempleActionPerforming {
             quickActionIDs: Set(Config.quickActions.map(\.id)),
             // Plan KP §8: a card held while another app has the Display can't be seen, so a page
             // tap is refused (the soft tone) rather than turning a page nobody can read.
-            answerCardShowing: hudAnswerCard.isShowing && glassesDisplay.displayAvailability != .inUse)
+            answerCardShowing: hudAnswerCard.isShowing && glassesDisplay.displayAvailability != .inUse,
+            replayRunning: instantReplay.isRunning)
     }
 
     private var templeActivity: TempleContext.Activity {
@@ -80,6 +81,10 @@ extension AppState: TempleActionPerforming {
         case .answerPage(let forward):
             // The tap's earcon confirmed it; the page itself is the answer.
             hudAnswerCard.press(forward ? .next : .back)
+        case .saveReplay:
+            // The earcon confirmed the tap; the line says how much was kept and where.
+            let outcome = await saveInstantReplay(ReplaySaveRequest())
+            await speechService.speak(outcome.spoken, source: .acknowledgement)
         case .musicPlayPause:
             // Same routing as "pause" by voice: the provider that is playing, else the default.
             // The earcon confirmed the tap; only an answer the wearer needs is spoken.

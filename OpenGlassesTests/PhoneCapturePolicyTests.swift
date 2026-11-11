@@ -20,7 +20,7 @@ final class PhoneCapturePolicyTests: XCTestCase {
     func testLiveStreamToolsAndFaceRecognitionStayOnTheGlasses() {
         XCTAssertEqual(PhoneCapturePolicy.glassesOnlyTools,
                        ["face_recognition", "fitness_coach", "live_coach", "navigation_assist",
-                        "video_recording", "record_clip", "pin_frame"])
+                        "video_recording", "record_clip", "pin_frame", "instant_replay"])
     }
 
     func testAnUnknownToolAsksOnThePhoneRatherThanTakingAHiddenShot() {

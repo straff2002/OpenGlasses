@@ -16,6 +16,11 @@ struct FlashlightTool: NativeTool {
         "required": [] as [String]
     ]
 
+    /// Plan LA: the torch's new state is set on the device itself, so it is done.
+    static func completion(turnedOn: Bool) -> ActionCompletion {
+        .done(summary: turnedOn ? "Torch on" : "Torch off")
+    }
+
     func execute(args: [String: Any]) async throws -> String {
         guard let device = AVCaptureDevice.default(for: .video),
               device.hasTorch else {
@@ -40,9 +45,11 @@ struct FlashlightTool: NativeTool {
 
             if newState {
                 try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                ActionCompletionReport.record(Self.completion(turnedOn: true))
                 return "Flashlight turned on."
             } else {
                 device.torchMode = .off
+                ActionCompletionReport.record(Self.completion(turnedOn: false))
                 return "Flashlight turned off."
             }
         } catch {

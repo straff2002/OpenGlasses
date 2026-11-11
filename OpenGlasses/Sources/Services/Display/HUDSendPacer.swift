@@ -1,6 +1,6 @@
 import Foundation
 
-/// Plan KX §2.4: how the render queue spaces its sends to the glasses.
+/// Plan LC §2.4: how the render queue spaces its sends to the glasses.
 ///
 /// A send is not free on the Display's Bluetooth link (a developer measured ~47 ms for text and
 /// ~155 ms for a 552 × 220 image), and the apps that reached hardware all pace theirs: hermes-glasses
@@ -38,7 +38,7 @@ struct HUDSendPacer: Equatable {
     }
 }
 
-/// Plan KX §2.4: the last send the render queue made, for the support report and the Developer
+/// Plan LC §2.4: the last send the render queue made, for the support report and the Developer
 /// panel. Case names and a duration only, never what the frame said.
 struct HUDSendRecord: Equatable {
     enum Kind: String { case text, screen, picture, clear, video }
@@ -53,7 +53,7 @@ struct HUDSendRecord: Equatable {
     }
 }
 
-/// Plan KX §2.4: a send that has not come back within its deadline is a failed send. `send()`
+/// Plan LC §2.4: a send that has not come back within its deadline is a failed send. `send()`
 /// returning is no proof the frame rendered (Display Recording blanks third-party content while
 /// `send()` still succeeds), but a send that never returns is certainly not one; without a deadline
 /// the queue's single in-flight slot would hold every later frame behind it.

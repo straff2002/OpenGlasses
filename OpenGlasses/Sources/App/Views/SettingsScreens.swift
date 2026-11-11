@@ -27,6 +27,9 @@ struct VoiceTriggersSettingsScreen: View {
     // organisation's pin wins.
     @State private var aiConnectionCueEnabled = Config.aiConnectionCueEnabled
     @ObservedObject private var adminGate = AdminGate.shared
+    // Plan LA — the done tone after an action. Hidden in Simple Mode, which always speaks.
+    @AppStorage("quietAfterActionsEnabled") private var quietAfterActions = false
+    @AppStorage("simpleModeEnabled") private var simpleModeEnabled = false
 
     private let wakePhrasePresets = Config.wakePhrasePresets
 
@@ -165,6 +168,15 @@ struct VoiceTriggersSettingsScreen: View {
                     info: "When you say \"Hey Siri, ask Avenkin…\", the answer is normally spoken hands-free without opening the app. Turn this on if Siri says Avenkin isn't running — it launches the app first so the question always goes through, at the cost of bringing the app to the foreground."
                 )
 
+                // Plan LA decision 1: off by default, and never offered in Simple Mode.
+                if !simpleModeEnabled {
+                    InfoToggle(
+                        title: "Quiet After Actions",
+                        isOn: $quietAfterActions,
+                        info: "When something you asked for has fully happened, play a short tone instead of saying so. Anything partly done, or any question, is still spoken. The reply still shows on screen, and saying \"what was that?\" straight afterwards reads it out. With VoiceOver and Speak What Each Sound Means on, you also hear \"Done\" after the tone."
+                    )
+                }
+
                 // Plan HP P2 item 10. An organisation may pin it on (drawn read-only, with its
                 // name), never off.
                 if adminGate.presentation(.key(.aiConnectionCueEnabled)).isShown {
@@ -225,7 +237,7 @@ struct VoiceTriggersSettingsScreen: View {
                             Config.singleQuestionPerActivation = newValue
                         }
                     ),
-                    info: "On, each answer ends the conversation: say the wake phrase or tap Tap & Talk to ask the next thing. When the answer asks you something back, the microphone stays open for your reply. Off, the microphone opens again after every answer so you can carry on talking. On by default with Field Assist."
+                    info: "On, each answer ends the conversation: say the wake phrase or tap the mic to ask the next thing. When the answer asks you something back, the microphone stays open for your reply. Off, the microphone opens again after every answer so you can carry on talking. On by default with Field Assist."
                 )
             } header: {
                 Text("Pause & Interruptions")

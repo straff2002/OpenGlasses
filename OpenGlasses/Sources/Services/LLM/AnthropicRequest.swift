@@ -107,19 +107,29 @@ enum AnthropicReply {
         case declined
         /// `stop_reason: max_tokens` with no text and no tool call: the allowance went on thinking.
         case ranOutOfRoom
+        /// `stop_reason: pause_turn` (Plan KZ): a long turn with the provider's own web search
+        /// stopped part-way. The paused content is sent back as it is, and the model carries on.
+        case paused
     }
 
     /// The reply's text: every `text` block, joined the way the tool loop has always joined them.
+    ///
+    /// A reply that cites web search results (Plan KZ) is cut into many text blocks at every
+    /// citation, mid-sentence; those are one text, so they are joined with nothing between — and
+    /// the space a block boundary left out between two whole sentences ("Let me check.The shop
+    /// is…") is put back, as the Gemini path does.
     static func text(in content: [[String: Any]]) -> String {
-        content.compactMap { block -> String? in
-            guard (block["type"] as? String) == "text" else { return nil }
-            return block["text"] as? String
-        }.joined(separator: "\n")
+        let texts = content.filter { ($0["type"] as? String) == "text" }
+        let cited = texts.contains { !(($0["citations"] as? [[String: Any]]) ?? []).isEmpty }
+        let pieces = texts.compactMap { $0["text"] as? String }
+        guard cited else { return pieces.joined(separator: "\n") }
+        return TextSegmentJoiner.repairingGluedSentences(pieces.joined())
     }
 
     static func outcome(stopReason: String?, text: String, hasToolCalls: Bool) -> Outcome {
         // Checked before the content is read: a declined reply can still carry blocks.
         if stopReason == "refusal" { return .declined }
+        if stopReason == "pause_turn", !hasToolCalls { return .paused }
         if stopReason == "max_tokens", !hasToolCalls,
            text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .ranOutOfRoom

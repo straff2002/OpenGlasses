@@ -183,6 +183,14 @@ class LLMService: ObservableObject {
     /// reply had none. Reset as each `sendMessage` starts; the Direct turn reads it right after its
     /// call returns and hands it to the answer card, the only place follow-ups go.
     private(set) var replyFollowUps: [String] = []
+    /// Plan KZ: the web pages this turn's reply rests on — cited by the provider's own search, or
+    /// listed by our `web_search` — for the conversation's **Sources** and the answer card's line.
+    /// Set during the turn, read the moment it returns, like `replyFollowUps`.
+    private(set) var replyWebSources: [WebSource] = []
+    /// Plan KZ: Google's Search Suggestions for this turn's grounded Gemini reply, stored with it.
+    private(set) var replySearchSuggestions: SearchSuggestions?
+    /// Plan KZ: what provider searches taught this install (refusals per account, the cool-off).
+    var providerSearchMemory = ProviderSearchMemory.shared
 
     /// Optional OpenClaw bridge for tool calling in direct mode
     var openClawBridge: OpenClawBridge?
@@ -767,13 +775,17 @@ class LLMService: ObservableObject {
                - "Got it, searching for that now." then call web_search.
                - "One moment, looking that up." then call web_search.
             """ : ""
+            // Plan LA §3: with Quiet After Actions on, an action-only request skips the preamble so
+            // a quiet turn is not "Turning off the lights" and then a tone.
+            let quietActionsException = QuietAfterActionsPrompt.exception(
+                enabled: Config.quietAfterActionsEnabled, simpleMode: Config.simpleModeEnabled)
             toolSection += """
 
             TOOL USAGE RULES:
             CRITICAL: NEVER tell the user a tool is "not configured" or "not set up" — ALWAYS call the tool and let it handle errors. The tools check configuration internally and return helpful messages. Your job is to call them, not to guess their state.
             1. ALWAYS speak a brief verbal acknowledgment BEFORE calling any tool. This prevents awkward \
             silence while the tool executes. Examples:
-               - "Sure, let me check the weather." then call get_weather.\(searchExamples)
+               - "Sure, let me check the weather." then call get_weather.\(searchExamples)\(quietActionsException)
             2. CONTACTS: phone_call and send_message both accept contact NAMES directly (e.g. "Mom", "John"). \
             They automatically resolve names to phone numbers from the user's contacts. You do NOT need to call \
             lookup_contact first — just pass the name. If multiple matches exist, the tool returns options for the user to choose. \
@@ -1026,11 +1038,15 @@ class LLMService: ObservableObject {
                 }
                 let toolTraceID = TurnRecorder.toolTraceID
                 let outcome: ToolExecutionOutcome
+                // Plan LA: what a native tool said about its request landing, beside its outcome.
+                var completion: ActionCompletion?
                 if let router = self.nativeToolRouter {
                     // The provider's own call id, where it gave one: a redelivery of this exact
                     // call then resolves to the operation that already ran instead of running again.
-                    outcome = await router.executeRoot(name: name, args: args, origin: .model,
-                                                       invocationID: callID ?? UUID().uuidString)
+                    (outcome, completion) = await ActionCompletionReport.collect {
+                        await router.executeRoot(name: name, args: args, origin: .model,
+                                                 invocationID: callID ?? UUID().uuidString)
+                    }
                 } else if let bridge = self.openClawBridge, Config.isOpenClawAgentActive,
                           !VaultOnlyPolicy.jobIsSealed {
                     let taskDesc = args["task"] as? String ?? (rawArgs ?? String(describing: args))
@@ -1039,7 +1055,12 @@ class LLMService: ObservableObject {
                 } else {
                     outcome = .failedBeforeExecution(reason: "No tool handler available")
                 }
-                self.turnToolLedger.finished(ledgerID, outcome: outcome)
+                self.turnToolLedger.finished(ledgerID, outcome: outcome, completion: completion)
+                // Plan KZ: the pages our own search listed are the reply's sources too, so the
+                // phone shows the same Sources list whichever search ran.
+                if name == ProviderSearchPolicy.ourToolName, case .completed = outcome {
+                    self.addReplyWebSources(ProviderSearchEvidence.ourToolSources(fromResult: outcome.text))
+                }
                 // Support trace: only web_search keeps a bounded, redacted query and result.
                 // Unknown tool names and all other arguments/outputs remain unrecorded.
                 let known = self.nativeToolRouter?.registry.tool(named: name) != nil
@@ -1101,6 +1122,8 @@ class LLMService: ObservableObject {
         lastAttemptCarriedTools = true
         lastChatRequestShape = nil
         replyFollowUps = []
+        replyWebSources = []
+        replySearchSuggestions = nil
         // Plan KL P2: a turn the chain does not own starts its own ledger.
         if !cascadeTurnInFlight {
             turnToolLedger.reset()
@@ -1422,7 +1445,9 @@ class LLMService: ObservableObject {
         // Plan IU: the provider loops and the tool dispatcher read this turn's exposure from here.
         let promptForTurn = fullPrompt
         let tailForTurn = volatileTail
+        // Plan KZ §5: the turn's web mark, set when a provider search's pages reach the model.
         let providerResponse: String = try await PerMinuteFitScope.$shortened.withValue(shortenedForAllowance) {
+            try await TurnWebExposure.$current.withValue(TurnWebExposure()) {
             try await ToolExposureScope.$turn.withValue(exposureTurn) {
                 switch provider {
                 case .anthropic:
@@ -1439,6 +1464,7 @@ class LLMService: ObservableObject {
                 case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
                     return try await sendOpenAICompatible(text, systemPrompt: promptForTurn, volatileTail: tailForTurn, config: modelConfig, includeTools: effectiveIncludeTools, imageData: turnImage, smallContext: smallContext, onToken: onToken, onStreamReset: onStreamReset)
                 }
+            }
             }
         }
         // Plan KD P3: one chokepoint for every provider, before the reply is spoken, logged or
@@ -1713,7 +1739,8 @@ class LLMService: ObservableObject {
     /// Enter a model tool call in the turn's ledger as it is dispatched; returns its id.
     private func ledgerDispatched(_ name: String, args: [String: Any], arguments: String? = nil) -> Int {
         turnToolLedger.dispatched(tool: name, arguments: arguments ?? AttemptToolLedger.canonicalArguments(args),
-                                  effect: callEffect(ofTool: name, args: args))
+                                  effect: callEffect(ofTool: name, args: args),
+                                  isNative: nativeToolRouter?.registry.tool(named: name) != nil)
     }
 
     /// The decision for a hop the chain is about to make (Plan KL P2). Returns normally to hop —
@@ -3027,6 +3054,10 @@ class LLMService: ObservableObject {
         }
         trimHistory()
         turnHistoryStart = max(0, conversationHistory.count - 1)
+        // Plan KZ: a provider search's blocks are replayed unchanged within the turn, and leave
+        // the history with it, however it ends — a later request may not declare the tool.
+        defer { conversationHistory = HistoryHygiene.stripProviderSearchBlocks(conversationHistory) }
+        let searchTurn = ProviderSearchTurn(credential: apiKey)
 
         // A tool_use block with an id but missing name/input can't be dispatched, yet still needs a
         // tool_result or the next request 400s (Plan BF). Its id is carried per-turn and answered
@@ -3046,161 +3077,198 @@ class LLMService: ObservableObject {
             dispatcher: makeToolDispatcher(),
             performTurn: { [weak self] in
                 guard let self else { throw LLMError.invalidResponse("Anthropic") }
-                state.malformedIds = []
+                // Plan KZ: a `pause_turn` is resumed once, by sending the paused content back as
+                // it is; a second pause is taken as the answer so far.
+                var resumedPause = false
+                for _ in 0..<2 {
+                    state.malformedIds = []
 
-                var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-                request.httpMethod = "POST"
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                AnthropicAuth.apply(credential: account?.token ?? apiKey, to: &request)  // resolved above
+                    var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+                    request.httpMethod = "POST"
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    AnthropicAuth.apply(credential: account?.token ?? apiKey, to: &request)  // resolved above
 
-                // Turn hygiene (Plan BF): drop stale images that would otherwise re-upload every turn,
-                // and repair any dangling tool_use so a single interrupted tool call can't 400 the whole
-                // conversation. Applied to the sent copy AND written back so the fixes persist.
-                self.conversationHistory = HistoryHygiene.repairDanglingToolUse(
-                    HistoryHygiene.pruneImages(self.conversationHistory, keepLast: 1))
+                    // Turn hygiene (Plan BF): drop stale images that would otherwise re-upload every turn,
+                    // and repair any dangling tool_use so a single interrupted tool call can't 400 the whole
+                    // conversation. Applied to the sent copy AND written back so the fixes persist.
+                    self.conversationHistory = HistoryHygiene.repairDanglingToolUse(
+                        HistoryHygiene.pruneImages(self.conversationHistory, keepLast: 1))
 
-                var historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
-                let reasoning = config.reasoningResolution(toolsAttached: includeTools)
-                Self.noteReasoning(reasoning, provider: .anthropic, model: config.model)
+                    var historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                    let reasoning = config.reasoningResolution(toolsAttached: includeTools)
+                    Self.noteReasoning(reasoning, provider: .anthropic, model: config.model)
 
-                // Prompt caching (Plan BF): the system prompt + tool schemas are large and byte-stable
-                // within a session, so mark them ephemeral-cacheable. Anthropic then reads them from
-                // cache on every follow-up turn instead of re-billing full input tokens each time.
-                // Plan GB P5: the breakpoint sits on the *untimestamped* head; the volatile tail
-                // (date and time, memory, passages) follows as its own uncached block. The tools
-                // come first: the omission note offers `brain` only when it is declared.
-                var tools: [[String: Any]] = []
-                if includeTools {
-                    let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
-                    let declaring = self.roundToolFilter()   // Plan IU: nil = every tool
-                    let (toolsData, mcpToolCount): (Data, Int) = await MainActor.run {
-                        let mcpClient = self.nativeToolRouter?.mcpClient
-                        let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: mcpClient, declaring: declaring)
-                        let data = (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
-                        return (data, ToolDeclarations.mcpToolDeclarations(mcpClient: mcpClient).count)
+                    // Prompt caching (Plan BF): the system prompt + tool schemas are large and byte-stable
+                    // within a session, so mark them ephemeral-cacheable. Anthropic then reads them from
+                    // cache on every follow-up turn instead of re-billing full input tokens each time.
+                    // Plan GB P5: the breakpoint sits on the *untimestamped* head; the volatile tail
+                    // (date and time, memory, passages) follows as its own uncached block. The tools
+                    // come first: the omission note offers `brain` only when it is declared.
+                    var tools: [[String: Any]] = []
+                    // Plan KZ: the provider's own web search, when this request carries it.
+                    var attachedSearch: ProviderSearchSpec?
+                    if includeTools {
+                        let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
+                        let declaring = self.roundToolFilter()   // Plan IU: nil = every tool
+                        let (toolsData, mcpToolCount): (Data, Int) = await MainActor.run {
+                            let mcpClient = self.nativeToolRouter?.mcpClient
+                            let tools = ToolDeclarations.anthropicTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: mcpClient, declaring: declaring)
+                            let data = (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
+                            return (data, ToolDeclarations.mcpToolDeclarations(mcpClient: mcpClient).count)
+                        }
+                        tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                        // Plan KZ: when Claude searches itself, our `web_search` is withheld, so one
+                        // question is never searched twice (Decision 3).
+                        if let spec = await self.providerSearchSpec(
+                            for: config, turn: searchTurn,
+                            declaresWebSearch: ProviderSearchPolicy.declaresOurTool(tools),
+                            kinds: [.anthropic]) {
+                            attachedSearch = spec
+                            tools = ProviderSearchPolicy.withholdingOurTool(tools)
+                        }
+                        // Dropped mid-turn: the copy above still carries the search's blocks.
+                        if searchTurn.takeHistoryChanged() {
+                            historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                        }
+                        // How many definitions went, and how many of them an MCP server wrote — the
+                        // one part of the body that differs between installations. Counts only.
+                        TurnRecorder.noteToolsSent(count: tools.count, fromMCP: mcpToolCount)
+                        // Cache-breakpoint on the final tool caches the whole tools array as one prefix.
+                        if !tools.isEmpty {
+                            tools[tools.count - 1]["cache_control"] = ["type": "ephemeral"]
+                        }
+                        // After the breakpoint: the system block's own breakpoint still covers it.
+                        if let attachedSearch { tools.append(attachedSearch.toolFragment) }
                     }
-                    tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
-                    // How many definitions went, and how many of them an MCP server wrote — the
-                    // one part of the body that differs between installations. Counts only.
-                    TurnRecorder.noteToolsSent(count: tools.count, fromMCP: mcpToolCount)
-                    // Cache-breakpoint on the final tool caches the whole tools array as one prefix.
-                    if !tools.isEmpty {
-                        tools[tools.count - 1]["cache_control"] = ["type": "ephemeral"]
+                    let (promptForRound, tailForRound) = Self.withProviderSearchSentence(
+                        attachedSearch, systemPrompt: systemPrompt, volatileTail: volatileTail)
+                    let recallOffered = includeTools && !withholding.active && APIHistoryBudget.declaresRecall(tools)
+                    var system = self.requestSystemParts(stable: promptForRound, volatileTail: tailForRound,
+                                                         recallOffered: recallOffered)
+                    var systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
+
+                    // Plan IE P2: this turn's thinking blocks ride only over the prefix they were
+                    // produced over. The hygiene and the budget above can rewrite an earlier message
+                    // between round trips (a pruned photo, a dropped exchange, a changed omission
+                    // note), so compare with what the last request sent; on any difference drop the
+                    // blocks — from the history too, so every later request sends the same thing.
+                    if let lastSent = state.lastSent, HistoryHygiene.containsThinking(historyForRequest),
+                       !ThinkingReplayGuard.prefixUnchanged(since: lastSent, system: systemBlocks,
+                                                            tools: tools, messages: historyForRequest) {
+                        self.conversationHistory = HistoryHygiene.stripThinkingBlocks(self.conversationHistory)
+                        historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
+                        system = self.requestSystemParts(stable: promptForRound, volatileTail: tailForRound,
+                                                         recallOffered: recallOffered)
+                        systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
+                        PrivacyLog.model(.thinkingDropped, provider: PrivacyToken("anthropic"),
+                                         model: PrivacyToken(config.model))
                     }
-                }
-                let recallOffered = includeTools && !withholding.active && APIHistoryBudget.declaresRecall(tools)
-                var system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail,
-                                                     recallOffered: recallOffered)
-                var systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
+                    state.lastSent = ThinkingReplayGuard.record(system: systemBlocks, tools: tools,
+                                                                messages: historyForRequest)
 
-                // Plan IE P2: this turn's thinking blocks ride only over the prefix they were
-                // produced over. The hygiene and the budget above can rewrite an earlier message
-                // between round trips (a pruned photo, a dropped exchange, a changed omission
-                // note), so compare with what the last request sent; on any difference drop the
-                // blocks — from the history too, so every later request sends the same thing.
-                if let lastSent = state.lastSent, HistoryHygiene.containsThinking(historyForRequest),
-                   !ThinkingReplayGuard.prefixUnchanged(since: lastSent, system: systemBlocks,
-                                                        tools: tools, messages: historyForRequest) {
-                    self.conversationHistory = HistoryHygiene.stripThinkingBlocks(self.conversationHistory)
-                    historyForRequest = self.requestHistory(for: config.llmProvider, smallContext: smallContext)
-                    system = self.requestSystemParts(stable: systemPrompt, volatileTail: volatileTail,
-                                                     recallOffered: recallOffered)
-                    systemBlocks = PromptLayout.anthropicSystem(stable: system.stable, volatile: system.volatile)
-                    PrivacyLog.model(.thinkingDropped, provider: PrivacyToken("anthropic"),
-                                     model: PrivacyToken(config.model))
-                }
-                state.lastSent = ThinkingReplayGuard.record(system: systemBlocks, tools: tools,
-                                                            messages: historyForRequest)
+                    // Plan IE P1/P3: the body comes from the one builder that knows what this model
+                    // accepts — the effort it is sent, and output room for the thinking it does.
+                    let baseOutputCap = smallContext
+                        ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
+                        : (includeTools ? Self.toolTurnMaxTokens : Config.maxTokens)
+                    var body = AnthropicRequest.body(
+                        model: config.model, maxTokens: baseOutputCap, system: .blocks(systemBlocks),
+                        messages: historyForRequest, tools: includeTools ? tools : nil,
+                        reasoning: reasoning, stream: onToken != nil)
+                    if withholding.active, includeTools, !tools.isEmpty {
+                        body["tool_choice"] = ["type": "none"]
+                    }
+                    // Sorted keys: byte-identical bodies for identical content (Plan GB P5).
+                    request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
 
-                // Plan IE P1/P3: the body comes from the one builder that knows what this model
-                // accepts — the effort it is sent, and output room for the thinking it does.
-                let baseOutputCap = smallContext
-                    ? (imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
-                    : (includeTools ? Self.toolTurnMaxTokens : Config.maxTokens)
-                var body = AnthropicRequest.body(
-                    model: config.model, maxTokens: baseOutputCap, system: .blocks(systemBlocks),
-                    messages: historyForRequest, tools: includeTools ? tools : nil,
-                    reasoning: reasoning, stream: onToken != nil)
-                if withholding.active, includeTools, !tools.isEmpty {
-                    body["tool_choice"] = ["type": "none"]
-                }
-                // Sorted keys: byte-identical bodies for identical content (Plan GB P5).
-                request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+                    // Final-reply turns stream into the Chat tab when a streaming caller passes `onToken`;
+                    // the reconstructed content blocks + stop reason feed the shared tool loop unchanged.
+                    let content: [[String: Any]]
+                    let stopReason: String?
+                    var searchUsage: [String: Any]?
+                    if let onToken {
+                        // New tool-loop iteration: clear the caller's accumulated bubble first, so an
+                        // intermediate tool turn's text never concatenates with the final reply (BM P9).
+                        onStreamReset?()
+                        let flag = TokenDeliveryFlag()
+                        (content, stopReason) = try await SubscriptionAuthRetry.send(
+                            request, credential: account, provider: "anthropic",
+                            refresh: { await self.refreshedClaudeToken(after: $0) },
+                            sign: { token, request in AnthropicAuth.apply(credential: token, to: &request) }
+                        ) { request in
+                            try await self.withTransientSSERetries(tokenFlag: flag) {
+                                try await self.streamAnthropicContent(request: request, model: config.model) { token in
+                                    flag.mark()
+                                    onToken(token)
+                                }
+                            }
+                        }
+                    } else {
+                        let data: Data = try await SubscriptionAuthRetry.send(
+                            request, credential: account, provider: "anthropic",
+                            refresh: { await self.refreshedClaudeToken(after: $0) },
+                            sign: { token, request in AnthropicAuth.apply(credential: token, to: &request) }
+                        ) { request in
+                            let (data, response) = try await self.dataSession.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
+                            guard let httpResponse = response as? HTTPURLResponse,
+                                  httpResponse.statusCode == 200 else {
+                                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                                // Logged whether or not the body parsed: a refusal with no readable
+                                // envelope used to leave no line at all (Plan IE P0).
+                                let rejection = Self.noteAnthropicRejection(response: response, body: data,
+                                                                            request: request)
+                                let errorMsg = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
+                                    .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
+                                throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode,
+                                                        message: errorMsg, rejection: rejection)
+                            }
+                            return data
+                        }
 
-                // Final-reply turns stream into the Chat tab when a streaming caller passes `onToken`;
-                // the reconstructed content blocks + stop reason feed the shared tool loop unchanged.
-                let content: [[String: Any]]
-                let stopReason: String?
-                if let onToken {
-                    // New tool-loop iteration: clear the caller's accumulated bubble first, so an
-                    // intermediate tool turn's text never concatenates with the final reply (BM P9).
-                    onStreamReset?()
-                    let flag = TokenDeliveryFlag()
-                    (content, stopReason) = try await SubscriptionAuthRetry.send(
-                        request, credential: account, provider: "anthropic",
-                        refresh: { await self.refreshedClaudeToken(after: $0) },
-                        sign: { token, request in AnthropicAuth.apply(credential: token, to: &request) }
-                    ) { request in
-                        try await self.withTransientSSERetries(tokenFlag: flag) {
-                            try await self.streamAnthropicContent(request: request, model: config.model) { token in
-                                flag.mark()
-                                onToken(token)
+                        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let parsed = json["content"] as? [[String: Any]] else {
+                            throw LLMError.invalidResponse("Anthropic")
+                        }
+                        content = parsed
+                        stopReason = json["stop_reason"] as? String
+                        searchUsage = json["usage"] as? [String: Any]
+                        self.recordUsage(provider: .anthropic, model: config.model, json: json)
+                    }
+                    if let attachedSearch {
+                        self.absorbProviderSearch(ProviderSearchEvidence.anthropic(content: content, usage: searchUsage),
+                                                  spec: attachedSearch, config: config, turn: searchTurn)
+                    }
+
+                    var toolCalls: [ToolInvocation] = []
+                    if stopReason == "tool_use", includeTools {
+                        for block in content where (block["type"] as? String) == "tool_use" {
+                            if let id = block["id"] as? String,
+                               let name = block["name"] as? String,
+                               let input = block["input"] as? [String: Any] {
+                                toolCalls.append(ToolInvocation(id: id, name: name, arguments: input))
+                            } else if let id = block["id"] as? String {
+                                state.malformedIds.append(id)
                             }
                         }
                     }
-                } else {
-                    let data: Data = try await SubscriptionAuthRetry.send(
-                        request, credential: account, provider: "anthropic",
-                        refresh: { await self.refreshedClaudeToken(after: $0) },
-                        sign: { token, request in AnthropicAuth.apply(credential: token, to: &request) }
-                    ) { request in
-                        let (data, response) = try await self.dataSession.consentedData(for: request, scope: .conversation, consent: self.processingConsent)
-                        guard let httpResponse = response as? HTTPURLResponse,
-                              httpResponse.statusCode == 200 else {
-                            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                            // Logged whether or not the body parsed: a refusal with no readable
-                            // envelope used to leave no line at all (Plan IE P0).
-                            let rejection = Self.noteAnthropicRejection(response: response, body: data,
-                                                                        request: request)
-                            let errorMsg = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
-                                .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
-                            throw LLMError.apiError(provider: "Anthropic", statusCode: statusCode,
-                                                    message: errorMsg, rejection: rejection)
-                        }
-                        return data
+                    let text = AnthropicReply.text(in: content)
+                    // Plan IE P3: a 200 that is not an answer says so, instead of reaching `finalize`
+                    // as an empty reply and surfacing as an unreadable response.
+                    switch AnthropicReply.outcome(stopReason: stopReason, text: text,
+                                                  hasToolCalls: !toolCalls.isEmpty || !state.malformedIds.isEmpty) {
+                    case .declined: throw LLMError.modelDeclined(provider: "Anthropic")
+                    case .ranOutOfRoom: throw LLMError.outputTruncated(provider: "Anthropic")
+                    case .paused where !resumedPause:
+                        resumedPause = true
+                        PrivacyLog.model(.providerSearch, provider: PrivacyToken("anthropic"),
+                                         detail: PrivacyToken("pauseTurnResumed"))
+                        self.conversationHistory.append(["role": "assistant", "content": content] as [String: Any])
+                        continue
+                    case .answered, .paused: break
                     }
-
-                    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let parsed = json["content"] as? [[String: Any]] else {
-                        throw LLMError.invalidResponse("Anthropic")
-                    }
-                    content = parsed
-                    stopReason = json["stop_reason"] as? String
-                    self.recordUsage(provider: .anthropic, model: config.model, json: json)
+                    return AssistantTurn(text: text, toolCalls: toolCalls, payload: content)
                 }
-
-                var toolCalls: [ToolInvocation] = []
-                if stopReason == "tool_use", includeTools {
-                    for block in content where (block["type"] as? String) == "tool_use" {
-                        if let id = block["id"] as? String,
-                           let name = block["name"] as? String,
-                           let input = block["input"] as? [String: Any] {
-                            toolCalls.append(ToolInvocation(id: id, name: name, arguments: input))
-                        } else if let id = block["id"] as? String {
-                            state.malformedIds.append(id)
-                        }
-                    }
-                }
-                let text = AnthropicReply.text(in: content)
-                // Plan IE P3: a 200 that is not an answer says so, instead of reaching `finalize`
-                // as an empty reply and surfacing as an unreadable response.
-                switch AnthropicReply.outcome(stopReason: stopReason, text: text,
-                                              hasToolCalls: !toolCalls.isEmpty || !state.malformedIds.isEmpty) {
-                case .declined: throw LLMError.modelDeclined(provider: "Anthropic")
-                case .ranOutOfRoom: throw LLMError.outputTruncated(provider: "Anthropic")
-                case .answered: break
-                }
-                return AssistantTurn(text: text, toolCalls: toolCalls, payload: content)
+                throw LLMError.invalidResponse("Anthropic")
             },
             appendAssistantToolCall: { [weak self] turn in
                 guard let self, let content = turn.payload as? [[String: Any]] else { return }
@@ -3258,8 +3326,167 @@ class LLMService: ObservableObject {
             }
         )
 
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter).withholdingTools(withholding),
-                                     setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        return try await retryingWithoutProviderSearch(config: config, turn: searchTurn,
+                                                        onStreamReset: onStreamReset) {
+            try await runToolLoop(maxIterations: self.toolLoopIterations,
+                                       adapter: self.notingStalls(adapter).withholdingTools(withholding),
+                                       setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        }
+    }
+
+    // MARK: - Provider-run web search (Plan KZ)
+
+    /// The request's instructions with the provider-search sentence (§5, §6) when a search rides
+    /// on it: in the uncached tail where the request has one, so the cached head is unchanged.
+    nonisolated static func withProviderSearchSentence(_ spec: ProviderSearchSpec?, systemPrompt: String,
+                                                       volatileTail: String?) -> (String, String?) {
+        guard let spec else { return (systemPrompt, volatileTail) }
+        let sentence = ProviderSearchPolicy.promptSentence(maxUses: spec.maxUses)
+        if let volatileTail { return (systemPrompt, volatileTail + "\n\n" + sentence) }
+        return (systemPrompt + "\n\n" + sentence, nil)
+    }
+
+    /// The provider search to attach to this round, or nil for our own tool.
+    ///
+    /// Decided by `ProviderSearchPolicy` from the live settings. Once a turn attaches it, it stays
+    /// for the turn's every round: a search block replayed into the next round needs its tool. A
+    /// turn retried after a refusal uses our tool throughout. `kinds` are the searches this send
+    /// path can carry; anything else leaves our tool in place without asking for consent. The
+    /// first attachment asks Cloud AI Sharing's "Web search" question for the conversation host
+    /// (§10); anything but a yes is our tool.
+    private func providerSearchSpec(for config: ModelConfig, turn: ProviderSearchTurn,
+                                    declaresWebSearch: Bool,
+                                    kinds: Set<ProviderSearchSpec.Kind>) async -> ProviderSearchSpec? {
+        if turn.forcedOurTool { return nil }
+        let inputs = ProviderSearchLive.inputs(
+            for: config, credential: turn.credential, webSearchDeclared: declaresWebSearch,
+            learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model),
+            memory: providerSearchMemory)
+        // Settled: the turn's search, if this path can carry it (a Responses turn that fell back
+        // to Chat Completions cannot) — and only while the boundaries still allow it. They are
+        // read every round: a tool in round one can seal a vault-only job, and the medical
+        // boundary can come on mid-turn. Then the search goes for the rest of the turn, and so do
+        // its blocks in this turn's history, which the next request could not carry without the
+        // tool (review follow-up 2026-11-10). The consent answer stays settled.
+        if turn.settled {
+            if turn.spec != nil, let reason = ProviderSearchPolicy.boundary(inputs) {
+                turn.spec = nil
+                turn.forcedOurTool = true
+                conversationHistory = HistoryHygiene.strippingProviderSearch(
+                    conversationHistory, fromTurnStart: turnHistoryStart)
+                turn.historyChanged = true
+                PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
+                                 model: PrivacyToken(config.model), detail: PrivacyToken(reason.token))
+                return nil
+            }
+            return turn.spec.flatMap { kinds.contains($0.kind) ? $0 : nil }
+        }
+        let decision = ProviderSearchPolicy.decide(inputs)
+        // Not declared this round is not a decision for the turn: a tool looked up later may be.
+        if case .ourTool(.notDeclared) = decision { return nil }
+        turn.settled = true
+        PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
+                         model: PrivacyToken(config.model), detail: PrivacyToken(decision.token))
+        guard let spec = decision.spec, kinds.contains(spec.kind) else { return nil }
+        guard let origin = ProviderSearchLive.origin(for: config),
+              (try? await processingConsent.authorize(url: origin, scope: .webSearch)) != nil else {
+            PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
+                             detail: PrivacyToken(ProviderSearchPolicy.Reason.consentNotGiven.token))
+            return nil
+        }
+        turn.spec = spec
+        return spec
+    }
+
+    /// One response's search evidence: the reply's sources, the support trace, the fee, and the
+    /// turn's web mark (§5); a search that failed inside the 200 starts the cool-off (§4).
+    private func absorbProviderSearch(_ evidence: ProviderSearchEvidence, spec: ProviderSearchSpec,
+                                      config: ModelConfig, turn: ProviderSearchTurn) {
+        guard evidence.ranSearch else { return }
+        if evidence.readWeb { TurnWebExposure.current?.markReadWeb() }
+        addReplyWebSources(evidence.sources)
+        if let suggestions = evidence.searchSuggestions { replySearchSuggestions = suggestions }
+        TurnRecorder.noteProviderSearch(provider: config.llmProvider.rawValue, evidence: evidence,
+                                        turnID: TurnRecorder.toolTraceID)
+        if ProviderSearchRefusal.startsCoolOff(evidence.errors) {
+            providerSearchMemory.noteInTurnFailure(provider: config.llmProvider, credential: turn.credential)
+        }
+        PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
+                         count: evidence.searchCount, total: evidence.sources.count,
+                         detail: PrivacyToken(evidence.errors.isEmpty ? "searched" : "searchFailed"))
+        if let cost = SearchFeeTable.cost(kind: spec.kind, model: config.model, searches: evidence.searchCount) {
+            let tracker = usageTrackerOverride ?? UsageTracker.shared
+            let fieldSessionId = FieldSessionService.shared.activeSession?.id
+            let provider = config.llmProvider
+            let model = config.model
+            let searches = evidence.searchCount
+            Task { @MainActor in
+                tracker.recordSearches(provider: provider, model: model, searches: searches,
+                                       costUSD: cost, fieldSessionId: fieldSessionId)
+            }
+        }
+    }
+
+    /// The reply's sources and Search Suggestions, handed over once to the message that keeps
+    /// them; a later turn that never reaches this service (a bridge) cannot pick them up.
+    func takeReplyWebAttachments() -> (sources: [WebSource], suggestions: SearchSuggestions?) {
+        defer { replyWebSources = []; replySearchSuggestions = nil }
+        return (replyWebSources, replySearchSuggestions)
+    }
+
+    /// Sources for the reply, de-duplicated by address, bounded like a response's.
+    private func addReplyWebSources(_ sources: [WebSource]) {
+        for source in sources where replyWebSources.count < ProviderSearchEvidence.maxSources
+            && !replyWebSources.contains(where: { $0.url == source.url }) {
+            replyWebSources.append(source)
+        }
+    }
+
+    /// Run a turn; when the whole request is refused because of the provider's search (§4),
+    /// remember it for this provider and account, rewind the turn's own appends (the question
+    /// stays), and run it once more with our own tool. Only before any tool has run, so nothing
+    /// runs twice; the retry's own errors stand.
+    private func retryingWithoutProviderSearch(config: ModelConfig, turn: ProviderSearchTurn,
+                                               onStreamReset: (() -> Void)?,
+                                               _ run: () async throws -> String) async throws -> String {
+        let dispatchedBefore = toolCallsDispatched
+        do {
+            return try await run()
+        } catch {
+            guard turn.spec != nil, !turn.forcedOurTool,
+                  case LLMError.apiError(_, let status, let message, _) = error,
+                  let kind = ProviderSearchRefusal.classify(status: status, message: message),
+                  toolCallsDispatched == dispatchedBefore else { throw error }
+            providerSearchMemory.noteRefusal(kind, provider: config.llmProvider,
+                                             credential: turn.credential, model: config.model)
+            TurnRecorder.noteProviderSearchRefused(provider: config.llmProvider.rawValue, kind: kind,
+                                                   turnID: TurnRecorder.toolTraceID)
+            PrivacyLog.model(.providerSearch, provider: PrivacyToken(config.llmProvider.rawValue),
+                             model: PrivacyToken(config.model), status: status,
+                             detail: PrivacyToken(ProviderSearchPolicy.Reason.refusedEarlier(kind).token))
+            turn.forcedOurTool = true
+            turn.spec = nil
+            let rewindTo = min(max(0, turnHistoryStart + 1), conversationHistory.count)
+            conversationHistory.removeSubrange(rewindTo...)
+            onStreamReset?()
+            return try await run()
+        }
+    }
+
+    /// Whether our `web_search` is among the tools this installation can declare at all, read
+    /// before the round's own list is built (the route a provider search needs is chosen first).
+    private func webSearchDeclarable() -> Bool {
+        ToolDeclarations.availableToolSet(registry: nativeToolRouter?.registry,
+                                          mcpClient: nativeToolRouter?.mcpClient)
+            .names.contains(ProviderSearchPolicy.ourToolName)
+    }
+
+    /// A chat message without the provider-search fields (`annotations`, `executed_tools`, the
+    /// stashed `usage`), which are read once and never sent back in the history.
+    nonisolated static func strippingSearchFields(_ message: [String: Any]) -> [String: Any] {
+        var message = message
+        for key in ["annotations", "executed_tools", "usage"] { message.removeValue(forKey: key) }
+        return message
     }
 
     // MARK: - OpenAI-compatible
@@ -3442,19 +3669,49 @@ class LLMService: ObservableObject {
         // Plan GC: which endpoint this turn goes to, at what reasoning level, and why.
         let routeToolsAttached = includeTools
             && Self.providerSupportsTools(provider, customEndpointRejectsTools: Self.customEndpointRejectsTools)
+        // Plan KZ: one turn's provider-search state, shared by whichever endpoint serves it. A
+        // search that exists only on Responses (OpenAI, xAI) picks that route before the round's
+        // own tool list exists, from whether our `web_search` could be declared at all; the round
+        // then decides for itself, and attaches nothing if `web_search` is not declared after all.
+        let searchTurn = ProviderSearchTurn(credential: apiKey)
+        var routeForSearch = false
+        if routeToolsAttached,
+           ProviderSearchPolicy.supportedKind(
+               provider: provider, model: config.model, baseURL: config.baseURL,
+               learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model))?
+               .needsResponsesRoute == true {
+            let wouldSearch = ProviderSearchPolicy.decide(ProviderSearchLive.inputs(
+                for: config, credential: apiKey, webSearchDeclared: webSearchDeclarable(),
+                learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model),
+                memory: providerSearchMemory)).spec != nil
+            // The route moves only for a search that will be sent: Cloud AI Sharing's "Web
+            // search" question for this host is asked here, before the route is chosen, and
+            // anything but a yes keeps today's route and our tool.
+            if wouldSearch, let origin = ProviderSearchLive.origin(for: config) {
+                routeForSearch = (try? await processingConsent.authorize(url: origin, scope: .webSearch)) != nil
+            }
+        }
         var selection = config.routeSelection(
             toolsAttached: routeToolsAttached,
             learnedToolRejection: Self.reasoningToolRejections.contains(config.model),
-            learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model))
+            learnedResponsesRejection: Self.responsesRouteRejections.contains(config.model),
+            providerSearch: routeForSearch)
         Self.noteRoute(selection, provider: provider, model: config.model)
 
         if selection.endpoint == .responses {
+            // The fallback reruns the whole turn, so it is only for a turn in which no tool has
+            // run yet: a 4xx on round two after `send_message` ran must not send it again
+            // (review follow-up 2026-11-10, as `retryingWithoutProviderSearch` already holds).
+            let dispatchedBeforeResponses = toolCallsDispatched
             do {
                 return try await sendOpenAIResponses(
                     text, systemPrompt: systemPrompt, volatileTail: volatileTail, config: config,
                     includeTools: includeTools, imageData: imageData, smallContext: smallContext,
-                    selection: selection, onToken: onToken, onStreamReset: onStreamReset)
-            } catch LLMError.apiError(_, let status, _, _) where Self.responsesRouteShouldFallBack(status: status) {
+                    selection: selection, searchTurn: searchTurn,
+                    onToken: onToken, onStreamReset: onStreamReset)
+            } catch LLMError.apiError(_, let status, _, _)
+                        where Self.responsesRouteShouldFallBack(status: status)
+                            && toolCallsDispatched == dispatchedBeforeResponses {
                 // Decision 6: a route decision, not a cascade hop. Remember the model for the run,
                 // rewind this turn's own appends (the user message included, so the retry does not
                 // add it twice — `turnHistoryStart` is its index even if `trimHistory` compacted
@@ -3462,6 +3719,8 @@ class LLMService: ObservableObject {
                 // retried request's own errors propagate unchanged: its 400 stays terminal.
                 Self.responsesRouteRejections.insert(config.model)
                 Self.reasoningToolRejections.insert(config.model)
+                // Plan KZ: Chat Completions carries no OpenAI or xAI search; our tool answers.
+                searchTurn.forcedOurTool = true
                 let rewindTo = min(max(0, turnHistoryStart), conversationHistory.count)
                 conversationHistory.removeSubrange(rewindTo...)
                 PrivacyLog.model(.routeFallback, provider: PrivacyToken(provider.rawValue),
@@ -3568,8 +3827,23 @@ class LLMService: ObservableObject {
                     }
                     declared = ((try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? [], toolsData, mcpToolCount)
                 }
+                // Plan KZ: OpenRouter's server tool (and Groq's, once verified) rides on Chat
+                // Completions beside the function tools, with our `web_search` withheld.
+                var attachedSearch: ProviderSearchSpec?
+                if var current = declared,
+                   let spec = await self.providerSearchSpec(
+                       for: config, turn: searchTurn,
+                       declaresWebSearch: ProviderSearchPolicy.declaresOurTool(current.tools),
+                       kinds: [.openRouter, .groq]) {
+                    attachedSearch = spec
+                    current.tools = ProviderSearchPolicy.withholdingOurTool(current.tools) + [spec.toolFragment]
+                    current.data = (try? JSONSerialization.data(withJSONObject: current.tools, options: [.sortedKeys])) ?? Data()
+                    declared = current
+                }
+                let (promptForRound, tailForRound) = Self.withProviderSearchSentence(
+                    attachedSearch, systemPrompt: systemPrompt, volatileTail: volatileTail)
                 let system = self.requestSystemParts(
-                    stable: systemPrompt, volatileTail: volatileTail,
+                    stable: promptForRound, volatileTail: tailForRound,
                     recallOffered: !withholding.active && APIHistoryBudget.declaresRecall(declared?.tools))
                 let messages = PromptLayout.chatMessages(stable: system.stable, history: historySlice,
                                                          volatile: system.volatile)
@@ -3646,7 +3920,7 @@ class LLMService: ObservableObject {
 
                 // Final-reply turns stream into the Chat tab when a streaming caller passes `onToken`;
                 // the reconstructed `message` (content + tool_calls) feeds the shared tool loop unchanged.
-                let message: [String: Any]
+                let rawMessage: [String: Any]
                 // Retry-without-tools for `.custom` (some Ollama/LM Studio builds 400 on the
                 // `tools` array): strip it, remember for the session, and re-send once.
                 func retryRequestWithoutTools() throws -> URLRequest {
@@ -3713,10 +3987,13 @@ class LLMService: ObservableObject {
 
                     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                           let choices = json["choices"] as? [[String: Any]],
-                          let m = choices.first?["message"] as? [String: Any] else {
+                          var m = choices.first?["message"] as? [String: Any] else {
                         throw LLMError.invalidResponse(provider.displayName)
                     }
                     self.recordUsage(provider: provider, model: config.model, json: json)
+                    // Plan KZ: the search count rides in the usage block; read with the message,
+                    // then taken off it (`strippingSearchFields`).
+                    if attachedSearch != nil, let usage = json["usage"] { m["usage"] = usage }
                     return m
                 }
                 }
@@ -3734,7 +4011,7 @@ class LLMService: ObservableObject {
                 }
 
                 do {
-                    message = try await sendSigned(request)
+                    rawMessage = try await sendSigned(request)
                 } catch LLMError.apiError(_, 400, let refusal, _)
                             where ReasoningRejectionClassifier.shouldRetry(
                                 status: 400, message: refusal,
@@ -3752,8 +4029,16 @@ class LLMService: ObservableObject {
                     TurnRecorder.noteReasoning(ReasoningEffort.none.rawValue)
                     var retried = request
                     retried.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
-                    message = try await sendSigned(retried)
+                    rawMessage = try await sendSigned(retried)
                 }
+
+                if let attachedSearch {
+                    self.absorbProviderSearch(
+                        ProviderSearchEvidence.chatMessage(rawMessage, usage: rawMessage["usage"] as? [String: Any],
+                                                           provider: provider),
+                        spec: attachedSearch, config: config, turn: searchTurn)
+                }
+                let message = Self.strippingSearchFields(rawMessage)
 
                 var toolCalls: [ToolInvocation] = []
                 if includeTools, let calls = message["tool_calls"] as? [[String: Any]] {
@@ -3837,8 +4122,12 @@ class LLMService: ObservableObject {
             }
         )
 
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
-                                     setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        return try await retryingWithoutProviderSearch(config: config, turn: searchTurn,
+                                                        onStreamReset: onStreamReset) {
+            try await runToolLoop(maxIterations: self.toolLoopIterations,
+                                  adapter: self.notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
+                                  setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        }
     }
 
     // MARK: - OpenAI API over the Responses endpoint (Plan GC P2)
@@ -3855,12 +4144,16 @@ class LLMService: ObservableObject {
     private func sendOpenAIResponses(_ text: String, systemPrompt: String, volatileTail: String?,
                                      config: ModelConfig, includeTools: Bool, imageData: Data?,
                                      smallContext: Bool, selection: OpenAIRouteSelector.Selection,
+                                     searchTurn: ProviderSearchTurn? = nil,
                                      onToken: ((String) -> Void)?,
                                      onStreamReset: (() -> Void)?) async throws -> String {
         try enforceMedicalRemoteBoundary(config)
         let provider = config.llmProvider
         let authorization = try Self.openAICompatibleAuthorization(provider: provider, apiKey: config.apiKey)
-        let endpoint = OpenAIRouteSelector.endpointURL(baseURL: config.baseURL, endpoint: .responses)
+        // An empty base is OpenAI's own default only for OpenAI: xAI's turn goes to xAI's host
+        // (Plan KZ), never with its key to `api.openai.com`.
+        let responsesBase = provider == .openai || !config.baseURL.isEmpty ? config.baseURL : provider.defaultBaseURL
+        let endpoint = OpenAIRouteSelector.endpointURL(baseURL: responsesBase, endpoint: .responses)
         guard let url = URL(string: endpoint) else {
             throw LLMError.invalidConfiguration("Invalid base URL: \(endpoint)")
         }
@@ -3927,24 +4220,42 @@ class LLMService: ObservableObject {
                     request.setValue("Avenkin", forHTTPHeaderField: "X-Title")
                 }
 
-                let (tools, toolsData) = roundTools()
+                var (tools, toolsData) = roundTools()
+                // Plan KZ: the provider's own `web_search` (OpenAI, xAI) as a hosted tool, with
+                // ours withheld.
+                var attachedSearch: ProviderSearchSpec?
+                if let searchTurn,
+                   let spec = await self.providerSearchSpec(
+                       for: config, turn: searchTurn,
+                       declaresWebSearch: ProviderSearchPolicy.declaresOurTool(tools),
+                       kinds: [.openAIResponses, .xaiResponses]) {
+                    attachedSearch = spec
+                    tools = tools.map(ProviderSearchPolicy.withholdingOurTool)
+                    toolsData = (try? JSONSerialization.data(withJSONObject: tools ?? [], options: [.sortedKeys])) ?? Data()
+                }
+                let (promptForRound, tailForRound) = Self.withProviderSearchSentence(
+                    attachedSearch, systemPrompt: systemPrompt, volatileTail: volatileTail)
                 // GB's request copy, then its prompt parts (the omission note depends on the copy).
                 let historySlice = self.requestHistory(for: provider, smallContext: smallContext)
                 let system = self.requestSystemParts(
-                    stable: systemPrompt, volatileTail: volatileTail,
+                    stable: promptForRound, volatileTail: tailForRound,
                     recallOffered: !withholding.active && APIHistoryBudget.declaresRecall(tools))
                 // The current user message's index within the copy: every message since it is
                 // this turn's own and is protected from the capacity guard.
                 let turnTail = max(0, self.conversationHistory.count - self.turnHistoryStart)
                 let protectedStart = min(max(0, historySlice.count - turnTail), historySlice.count)
+                // xAI's Responses take the shape without OpenAI's encrypted reasoning and cache key.
+                let openAIExtras = provider != .xai
                 let options = ResponsesTranslator.RequestOptions(
-                    includeEncryptedReasoning: true,
+                    includeEncryptedReasoning: openAIExtras,
                     maxOutputTokens: selection.reasoning.outputCap(base: baseOutputCap),
-                    promptCacheKey: toolsAttached
+                    promptCacheKey: toolsAttached && openAIExtras
                         ? PromptPrefixDigest.cacheKey(model: config.model, stable: system.stable, tools: toolsData)
                         : nil,
                     reasoning: selection.reasoning,
-                    trailingDeveloperMessage: system.volatile.flatMap { $0.isEmpty ? nil : $0 })
+                    trailingDeveloperMessage: system.volatile.flatMap { $0.isEmpty ? nil : $0 },
+                    hostedTools: attachedSearch.map { [$0.toolFragment] } ?? [],
+                    extraInclude: attachedSearch?.responsesInclude ?? [])
                 Self.noteReasoning(selection.reasoning, provider: provider, model: config.model)
 
                 let responseJSON = try await self.budgetedResponsesTurn(
@@ -3957,6 +4268,10 @@ class LLMService: ObservableObject {
                     onToken: onToken, onStreamReset: onStreamReset)
 
                 let parsed = ResponsesTranslator.parseOutput(responseJSON)
+                if let attachedSearch, let searchTurn {
+                    self.absorbProviderSearch(ProviderSearchEvidence.responses(responseJSON, provider: provider),
+                                              spec: attachedSearch, config: config, turn: searchTurn)
+                }
                 // Decision 9: a reply the output cap cut off before any text or tool call is named,
                 // then takes the ordinary empty-completion path.
                 if ResponsesTranslator.incompleteReason(responseJSON) == "max_output_tokens",
@@ -4017,8 +4332,16 @@ class LLMService: ObservableObject {
                 return turn.text
             }
         )
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
-                                     setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        guard let searchTurn else {
+            return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
+                                         setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        }
+        return try await retryingWithoutProviderSearch(config: config, turn: searchTurn,
+                                                        onStreamReset: onStreamReset) {
+            try await runToolLoop(maxIterations: self.toolLoopIterations,
+                                  adapter: self.notingStalls(adapter, asksAgainWhenSilent: true).withholdingTools(withholding),
+                                  setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        }
     }
 
     // MARK: - ChatGPT subscription (Responses backend, Plan BW P3)
@@ -4535,6 +4858,12 @@ class LLMService: ObservableObject {
 
         var fullContent = ""
         var toolAcc: [Int: (id: String, name: String, args: String)] = [:]  // tool_calls accumulate by index
+        // Plan KZ: a provider search's citations and executed tools, and the final usage block
+        // (its search count). Where a stream puts annotations is not documented, so both the
+        // delta and a closing message are read. Taken off the message by the caller.
+        var annotations: [[String: Any]] = []
+        var executedTools: [[String: Any]] = []
+        var lastUsage: [String: Any]?
         var usage = StreamingUsageAccumulator()   // from the final include_usage chunk
         var sawDone = false
         let thinkFilter = ThinkStreamFilter(startsInThink: false)
@@ -4554,8 +4883,12 @@ class LLMService: ObservableObject {
                                                  reason: kind.map { "\($0): \(msg)" } ?? msg)
             }
             usage.consumeOpenAI(obj)   // the usage chunk has empty choices, so parse it before the guard
+            if let block = obj["usage"] as? [String: Any] { lastUsage = block }
             guard let choice = (obj["choices"] as? [[String: Any]])?.first,
                   let delta = choice["delta"] as? [String: Any] else { continue }
+            annotations += delta["annotations"] as? [[String: Any]] ?? []
+            annotations += (choice["message"] as? [String: Any])?["annotations"] as? [[String: Any]] ?? []
+            executedTools += delta["executed_tools"] as? [[String: Any]] ?? []
 
             if let chunk = delta["content"] as? String, !chunk.isEmpty {
                 let visible = thinkFilter.ingest(chunk)
@@ -4589,6 +4922,9 @@ class LLMService: ObservableObject {
 
         fullContent += thinkFilter.flush()
         var message: [String: Any] = ["role": "assistant", "content": fullContent]
+        if !annotations.isEmpty { message["annotations"] = annotations }
+        if !executedTools.isEmpty { message["executed_tools"] = executedTools }
+        if !annotations.isEmpty || !executedTools.isEmpty, let lastUsage { message["usage"] = lastUsage }
         if !toolAcc.isEmpty {
             message["tool_calls"] = toolAcc.sorted { $0.key < $1.key }.map { _, v in
                 ["id": v.id, "type": "function", "function": ["name": v.name, "arguments": v.args]] as [String: Any]
@@ -4632,7 +4968,11 @@ class LLMService: ObservableObject {
                 let idx = obj["index"] as? Int ?? 0
                 if let cb = obj["content_block"] as? [String: Any] {
                     blocks[idx] = cb
-                    if (cb["type"] as? String) == "tool_use" { toolJSON[idx] = "" }
+                    // Plan KZ: a `server_tool_use` (the provider's own web search) streams its
+                    // query as `input_json_delta` like a tool call; a `web_search_tool_result`
+                    // arrives whole here and has no deltas.
+                    let blockType = cb["type"] as? String
+                    if blockType == "tool_use" || blockType == "server_tool_use" { toolJSON[idx] = "" }
                 }
             case "content_block_delta":
                 let idx = obj["index"] as? Int ?? 0
@@ -4643,6 +4983,12 @@ class LLMService: ObservableObject {
                         blocks[idx] = b
                         TurnRecorder.markFirstToken()
                         onToken(t)
+                    } else if dtype == "citations_delta", let citation = delta["citation"] as? [String: Any] {
+                        // Plan KZ: a text block's web citations arrive one delta each, and are
+                        // kept on the block so it replays exactly as received.
+                        var b = blocks[idx] ?? ["type": "text", "text": ""]
+                        b["citations"] = ((b["citations"] as? [[String: Any]]) ?? []) + [citation]
+                        blocks[idx] = b
                     } else if dtype == "input_json_delta", let pj = delta["partial_json"] as? String {
                         toolJSON[idx, default: ""] += pj
                     } else if dtype == "thinking_delta", let t = delta["thinking"] as? String {
@@ -4688,6 +5034,8 @@ class LLMService: ObservableObject {
         // Finalize tool_use blocks: parse the accumulated partial JSON into `input`.
         for (idx, jsonStr) in toolJSON {
             guard var b = blocks[idx] else { continue }
+            // No deltas: the input that came with the block start stands.
+            if jsonStr.isEmpty, b["input"] is [String: Any] { continue }
             b["input"] = (try? JSONSerialization.jsonObject(with: Data(jsonStr.utf8)) as? [String: Any]) ?? [:]
             blocks[idx] = b
         }
@@ -4808,6 +5156,8 @@ class LLMService: ObservableObject {
         }
         trimHistory()
         turnHistoryStart = max(0, conversationHistory.count - 1)
+        // Plan KZ: Google Search grounding, under the same policy as every provider's search.
+        let searchTurn = ProviderSearchTurn(credential: config.apiKey)
 
         // Raised for the wrap-up request only, which then offers the model no tool to call.
         let withholding = ToolWithholding()
@@ -4865,6 +5215,7 @@ class LLMService: ObservableObject {
                         configuredMaxTokens: smallContext && imageData != nil ? Self.smallContextVisionMaxTokens : Config.maxTokens)
                 ]
 
+                var attachedSearch: ProviderSearchSpec?
                 if includeTools {
                     let includeOpenClaw = Config.isOpenClawAgentActive && self.openClawBridge != nil
                     let declaring = self.roundToolFilter()   // Plan IU: nil = every tool
@@ -4872,10 +5223,20 @@ class LLMService: ObservableObject {
                         let tools = ToolDeclarations.geminiRESTTools(registry: self.nativeToolRouter?.registry, includeOpenClaw: includeOpenClaw, mcpClient: self.nativeToolRouter?.mcpClient, declaring: declaring)
                         return (try? JSONSerialization.data(withJSONObject: tools, options: [.sortedKeys])) ?? Data()
                     }
-                    let tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                    var tools = (try? JSONSerialization.jsonObject(with: toolsData)) as? [[String: Any]] ?? []
+                    // Plan KZ: Google Search beside the function declarations, ours withheld. With
+                    // both in one request Google documents `VALIDATED` function calling.
+                    if let spec = await self.providerSearchSpec(
+                        for: config, turn: searchTurn,
+                        declaresWebSearch: ProviderSearchPolicy.declaresOurTool(tools), kinds: [.gemini]) {
+                        attachedSearch = spec
+                        tools = ProviderSearchPolicy.withholdingOurTool(tools) + [spec.toolFragment]
+                    }
                     body["tools"] = tools
                     if withholding.active, !tools.isEmpty {
                         body["toolConfig"] = ["functionCallingConfig": ["mode": "NONE"]]
+                    } else if attachedSearch != nil {
+                        body["toolConfig"] = ["functionCallingConfig": ["mode": "VALIDATED"]]
                     }
                 }
                 // Plan KK P3: Gemini REST's history is budgeted by `APIHistoryBudget` like the other
@@ -4883,8 +5244,10 @@ class LLMService: ObservableObject {
                 // carries the note and the timeline the same way, at the prompt's end; after the
                 // tools, because the note offers `brain` only when it is declared.
                 let declared = body["tools"] as? [[String: Any]]
+                let (promptForRound, _) = Self.withProviderSearchSentence(
+                    attachedSearch, systemPrompt: systemPrompt, volatileTail: nil)
                 let system = self.requestSystemParts(
-                    stable: systemPrompt, volatileTail: nil,
+                    stable: promptForRound, volatileTail: nil,
                     recallOffered: !withholding.active && APIHistoryBudget.declaresRecall(declared))
                 body["system_instruction"] = ["parts": [["text": system.stable]]]
 
@@ -4935,6 +5298,10 @@ class LLMService: ObservableObject {
                     throw LLMError.invalidResponse("Gemini")
                 }
                 self.recordUsage(provider: .gemini, model: config.model, json: json)
+                if let attachedSearch, let candidate = candidates.first {
+                    self.absorbProviderSearch(ProviderSearchEvidence.gemini(candidate: candidate),
+                                              spec: attachedSearch, config: config, turn: searchTurn)
+                }
 
                 var toolCalls: [ToolInvocation] = []
                 if includeTools {
@@ -5013,8 +5380,11 @@ class LLMService: ObservableObject {
             }
         )
 
-        return try await runToolLoop(maxIterations: toolLoopIterations, adapter: notingStalls(adapter).withholdingTools(withholding),
-                                     setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        return try await retryingWithoutProviderSearch(config: config, turn: searchTurn, onStreamReset: nil) {
+            try await runToolLoop(maxIterations: self.toolLoopIterations,
+                                  adapter: self.notingStalls(adapter).withholdingTools(withholding),
+                                  setStatus: { [weak self] in self?.toolCallStatus = $0 })
+        }
     }
 
     /// The adapter with the loop's one re-ask wired in: a note from the app goes into history as a
@@ -5245,10 +5615,14 @@ class LLMService: ObservableObject {
                                                   arguments: AttemptToolLedger.canonicalArguments(json: argumentsJSON))
             self?.toolCallStatus = .executing(name)
             let startedAt = Date()
-            let outcome = await router.executeRoot(name: name, args: args)
+            let (outcome, completion) = await ActionCompletionReport.collect {
+                await router.executeRoot(name: name, args: args)
+            }
             TurnRecorder.addToolTime(since: startedAt)
             self?.toolCallStatus = .idle
-            if let ledgerID { self?.turnToolLedger.finished(ledgerID, outcome: outcome) }
+            if let ledgerID {
+                self?.turnToolLedger.finished(ledgerID, outcome: outcome, completion: completion)
+            }
             switch outcome {
             case .completed(let text): return text
             case .outcomeUnknown(_, let message): return message
@@ -5660,10 +6034,12 @@ class LLMService: ObservableObject {
             // above `sendLocal`), so its single tool round trip needs its own bracket. The
             // generation passes either side of it report themselves through `addGeneration`.
             let toolStartedAt = Date()
-            let outcome = await router.executeRoot(name: toolName, args: toolArgs)
+            let (outcome, completion) = await ActionCompletionReport.collect {
+                await router.executeRoot(name: toolName, args: toolArgs)
+            }
             TurnRecorder.addToolTime(since: toolStartedAt)
             toolCallStatus = .idle
-            turnToolLedger.finished(ledgerID, outcome: outcome)
+            turnToolLedger.finished(ledgerID, outcome: outcome, completion: completion)
 
             // An unresolved outcome is not an error, and must not be handed to the model prefixed
             // as one — its own copy already says what is and isn't known.
@@ -5815,6 +6191,11 @@ class LLMService: ObservableObject {
     /// Builds its own lightweight prompt and routes through sendLocal().
     func sendViaLocalAgent(_ text: String, locationContext: String? = nil, memoryContext: String? = nil, weatherContext: String? = nil) async throws -> String {
         replyFollowUps = []   // Plan KP P2: on-device prompts don't ask for them
+        replyWebSources = []
+        replySearchSuggestions = nil
+        // Plan LA: the on-device agent's turn is its own, so its calls are the only ones the turn's
+        // ledger holds. A spill to the cloud below starts the ledger again, as every cascade does.
+        turnToolLedger.reset()
         let agentModelId = Config.agentModelId
         let hasNativeTools = nativeToolRouter != nil
         let device = Self.deviceInUse()   // Plan FY F3: read once for whichever prompt is built
@@ -6376,5 +6757,29 @@ enum LLMError: LocalizedError {
         case .contextOverflow(let provider, _):
             return "\(provider) couldn't fit this request in its window — choose a cloud model in Settings → Assistant → AI Models for requests like this"
         }
+    }
+}
+
+/// One turn's provider-search state, shared by the rounds of its tool loop (Plan KZ).
+final class ProviderSearchTurn {
+    /// The credential the turn is sent with, for the refusal memory's fingerprint only.
+    let credential: String
+    var spec: ProviderSearchSpec?
+    /// The turn has decided; an attached search stays attached.
+    var settled = false
+    /// Retried after a refusal, or dropped mid-turn by a boundary: our own tool for the rest of
+    /// the turn.
+    var forcedOurTool = false
+    /// The search was dropped mid-turn and this turn's history rewritten without its blocks: a
+    /// request copy taken before must be taken again. Read once.
+    var historyChanged = false
+
+    func takeHistoryChanged() -> Bool {
+        defer { historyChanged = false }
+        return historyChanged
+    }
+
+    init(credential: String) {
+        self.credential = credential
     }
 }

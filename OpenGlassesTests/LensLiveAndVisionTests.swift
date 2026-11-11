@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KX P4 (§5): live-mode answers on the lens and the picture behind a vision answer.
+/// Plan LC P4 (§5): live-mode answers on the lens and the picture behind a vision answer.
 /// Headless: the pure tracker, routing, mic and thumbnail pieces directly; the feed, the card and the
 /// display through `testRenderSink` and the controllers' scheduling seams (the Display-dependent
 /// part is not built in the phone-only lane, where no display exists).
@@ -153,7 +153,7 @@ final class LensLiveAndVisionTests: XCTestCase {
     func testTheContentKeyNamesTheFrameWithoutItsPixels() {
         let at = Date(timeIntervalSince1970: 1_000)
         let key = HUDAnswerThumbnail.contentKey(capturedAt: at, byteCount: 4096, pixelSize: CGSize(width: 552, height: 414))
-        XCTAssertEqual(key, "kx.answer.frame:1000000:4096:552x414")
+        XCTAssertEqual(key, "lc.answer.frame:1000000:4096:552x414")
         XCTAssertNotEqual(key, HUDAnswerThumbnail.contentKey(capturedAt: at.addingTimeInterval(1), byteCount: 4096,
                                                              pixelSize: CGSize(width: 552, height: 414)))
     }
@@ -172,7 +172,7 @@ final class LensLiveAndVisionTests: XCTestCase {
         let data = try XCTUnwrap(Self.frameJPEG(CGSize(width: 1440, height: 1080), grey: 0.25))
         let picture = try XCTUnwrap(HUDAnswerThumbnail.picture(fromImageData: data, capturedAt: Date(timeIntervalSince1970: 5)))
         XCTAssertEqual(picture.pixelSize, CGSize(width: 552, height: 200))
-        XCTAssertTrue(picture.contentKey.hasPrefix("kx.answer.frame:5000:\(data.count):"))
+        XCTAssertTrue(picture.contentKey.hasPrefix("lc.answer.frame:5000:\(data.count):"))
         let pillar = try XCTUnwrap(LensPageFixtures.pixel(picture.image, x: 4, y: 100))
         XCTAssertEqual(pillar.r, 0, "past the frame is black, clear on the lens")
         let middle = try XCTUnwrap(LensPageFixtures.pixel(picture.image, x: 276, y: 100))
@@ -182,7 +182,7 @@ final class LensLiveAndVisionTests: XCTestCase {
 
     // MARK: - The card's first page carries it, and fits
 
-    private func thumbnail(_ key: String = "kx.answer.frame:1", height: CGFloat = 200) -> HUDPicture {
+    private func thumbnail(_ key: String = "lc.answer.frame:1", height: CGFloat = 200) -> HUDPicture {
         HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: height), contentKey: key)
     }
 
@@ -193,8 +193,8 @@ final class LensLiveAndVisionTests: XCTestCase {
         let question = HUDAnswerCardBuilder.questionLine(for: "what is this", maxChars: 32)
         let first = try XCTUnwrap(HUDAnswerCardBuilder.page(pages, index: 0, followUps: [], question: question,
                                                             picture: thumbnail(), onAction: { _ in }))
-        XCTAssertEqual(first.picture?.contentKey, "kx.answer.frame:1")
-        XCTAssertTrue(first.renderKey.contains("pic:kx.answer.frame:1"))
+        XCTAssertEqual(first.picture?.contentKey, "lc.answer.frame:1")
+        XCTAssertTrue(first.renderKey.contains("pic:lc.answer.frame:1"))
         let second = try XCTUnwrap(HUDAnswerCardBuilder.page(pages, index: 1, followUps: [], picture: thumbnail(),
                                                              onAction: { _ in }))
         XCTAssertNil(second.picture)
@@ -394,9 +394,9 @@ final class LensLiveAndVisionDisplayTests: XCTestCase {
         let (_, card, _, _) = makeRig()
         let ticket = card.expectPicture()
         card.stagePicture(HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
-                                     contentKey: "kx.answer.frame:7"), ticket: ticket)
+                                     contentKey: "lc.answer.frame:7"), ticket: ticket)
         XCTAssertTrue(card.absorb("A red pressure relief valve.", streamed: false))
-        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "kx.answer.frame:7")
+        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "lc.answer.frame:7")
 
         XCTAssertTrue(card.absorb("Something else.", streamed: false))
         XCTAssertNil(card.screenOnLens?.picture, "the frame belongs to one answer")
@@ -405,7 +405,7 @@ final class LensLiveAndVisionDisplayTests: XCTestCase {
     func testAStaleOrUnwantedPictureIsIgnored() {
         let (_, card, _, _) = makeRig()
         let picture = HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
-                                 contentKey: "kx.answer.frame:8")
+                                 contentKey: "lc.answer.frame:8")
         let old = card.expectPicture()
         _ = card.expectPicture()                          // a newer frame went to the model
         card.stagePicture(picture, ticket: old)
@@ -424,7 +424,7 @@ final class LensLiveAndVisionDisplayTests: XCTestCase {
         let (_, card, _, _) = makeRig(drawsPictures: false)
         let ticket = card.expectPicture()
         card.stagePicture(HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
-                                     contentKey: "kx.answer.frame:9"), ticket: ticket)
+                                     contentKey: "lc.answer.frame:9"), ticket: ticket)
         XCTAssertTrue(card.absorb("A valve.", streamed: false))
         XCTAssertNil(card.screenOnLens?.picture)
     }
@@ -434,11 +434,11 @@ final class LensLiveAndVisionDisplayTests: XCTestCase {
         card.beginTurn(question: "what is this")
         let ticket = card.expectPicture()
         card.stagePicture(HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
-                                     contentKey: "kx.answer.frame:10"), ticket: ticket)
+                                     contentKey: "lc.answer.frame:10"), ticket: ticket)
         card.finishTurn(reply: "That's a thermostatic mixing valve. Turn it clockwise to cool the water.")
-        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "kx.answer.frame:10")
+        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "lc.answer.frame:10")
         card.endTurn()
-        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "kx.answer.frame:10", "the card keeps its picture")
+        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "lc.answer.frame:10", "the card keeps its picture")
         card.close()
         XCTAssertNil(card.picture)
     }

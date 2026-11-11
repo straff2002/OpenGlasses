@@ -134,7 +134,7 @@ struct TeleprompterSettingsView: View {
             }
 
             if mode == .audioPaced {
-                // Plan KX §6: voice-follow — the page turns when its last words are heard.
+                // Plan LC §6: voice-follow — the page turns when its last words are heard.
                 Toggle("Turn whole pages", isOn: $pageFollow)
                     .onChange(of: pageFollow) { _, newValue in Config.teleprompterPageFollow = newValue }
             }

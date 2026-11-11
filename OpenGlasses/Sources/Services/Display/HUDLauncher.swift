@@ -4,7 +4,7 @@ import Foundation
 /// root menu, pushes category submenus via `HUDRouter`, and runs leaf actions through
 /// closures injected by AppState. Screens come from the pure `HUDMenuBuilder`.
 ///
-/// Plan KX §4: the root (L0) is the Today glance (`HUDTodayBuilder`) — time and glasses battery,
+/// Plan LC §4: the root (L0) is the Today glance (`HUDTodayBuilder`) — time and glasses battery,
 /// the next event, the weather, the route, the digest's top item — with What's new · Resume ·
 /// Navigate · Menu · Close. **Menu** pushes the branch list below. Today is summoned only (the
 /// "menu" and "show my day" voice commands), never shown by itself. A launcher with no `today`
@@ -47,12 +47,12 @@ final class HUDLauncher {
     var bandPracticeAvailable: (() -> Bool)?
     var startBandPractice: (() -> Void)?
 
-    /// Plan KX §4: the Today glance as it stands now, built from what the app already holds (My
+    /// Plan LC §4: the Today glance as it stands now, built from what the app already holds (My
     /// Day's last gathering, the glasses' battery, the route, the digest). Nil — or not wired —
     /// opens the launcher at its branch list.
     var today: (() -> HUDTodayGlance?)?
 
-    /// Plan KX §6: the Now Playing card — what the Music app has loaded (nil: nothing, and the Menu
+    /// Plan LC §6: the Now Playing card — what the Music app has loaded (nil: nothing, and the Menu
     /// does not offer it) and its transport. Both wired by AppState.
     var nowPlaying: (() -> HUDNowPlaying?)?
     var mediaTransport: ((HUDMediaAction) -> Void)?
@@ -66,7 +66,7 @@ final class HUDLauncher {
         }
     }
 
-    /// Plan KX §6: the wearer's Home Assistant quick actions (empty: the Menu does not offer Home)
+    /// Plan LC §6: the wearer's Home Assistant quick actions (empty: the Menu does not offer Home)
     /// and how one runs. Both wired by AppState.
     var homeFavourites: (() -> [QuickAction])?
     var runHomeFavourite: ((QuickAction) async -> HomeFavouriteOutcome)?
@@ -97,7 +97,7 @@ final class HUDLauncher {
         ["menu", "show menu", "open menu", "open the menu", "hud menu"].contains(normalize(text))
     }
 
-    /// Plan KX §4: the spoken phrase that asks for the Today glance on the lens. Whole-phrase only,
+    /// Plan LC §4: the spoken phrase that asks for the Today glance on the lens. Whole-phrase only,
     /// so "what's on my day tomorrow" still reaches the assistant.
     static func isTodayCommand(_ text: String) -> Bool {
         ["show my day", "show me my day", "show today", "show me today"].contains(normalize(text))
@@ -142,7 +142,7 @@ final class HUDLauncher {
 
     // MARK: - Screens
 
-    /// L0 (Plan KX §4): the Today glance and its items. Each item is offered only when it has
+    /// L0 (Plan LC §4): the Today glance and its items. Each item is offered only when it has
     /// something to do, read now: a digest to show, a task card to go back to, a recent destination,
     /// a branch in the Menu.
     private func todayScreen(_ glance: HUDTodayGlance) -> HUDScreen {
@@ -224,7 +224,7 @@ final class HUDLauncher {
             })
         }
 
-        // Plan KX §6: the Now Playing card, while the Music app has something loaded.
+        // Plan LC §6: the Now Playing card, while the Music app has something loaded.
         if nowPlaying?() != nil {
             branches.append(HUDItem(id: "branch:media", label: HUDNowPlayingBuilder.title, icon: .music,
                                     style: .secondary) { [weak self] in
@@ -232,7 +232,7 @@ final class HUDLauncher {
                 self.router.push(self.nowPlayingScreen())
             })
         }
-        // Plan KX §6: the Home Assistant favourites, while there are any.
+        // Plan LC §6: the Home Assistant favourites, while there are any.
         if !(homeFavourites?() ?? []).isEmpty {
             branches.append(HUDItem(id: "branch:home", label: HUDHomeFavouritesBuilder.title, icon: .location,
                                     style: .secondary) { [weak self] in
@@ -252,7 +252,7 @@ final class HUDLauncher {
         return branches
     }
 
-    // MARK: - Now Playing and Home (Plan KX §6)
+    // MARK: - Now Playing and Home (Plan LC §6)
 
     /// The Now Playing card as it stands now.
     func nowPlayingScreen() -> HUDScreen {

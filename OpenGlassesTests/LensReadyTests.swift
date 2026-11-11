@@ -3,7 +3,7 @@ import Combine
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KX P2–P3: the approval card, the Listening → Thinking states, and the Today glance as the
+/// Plan LC P2–P3: the approval card, the Listening → Thinking states, and the Today glance as the
 /// launcher's root. Headless: the builders directly, the service through `testRenderSink`, timers
 /// through the controllers' scheduling seams, the band by firing the rendered buttons.
 @MainActor

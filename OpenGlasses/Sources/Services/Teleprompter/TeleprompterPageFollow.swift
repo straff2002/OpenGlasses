@@ -1,6 +1,6 @@
 import Foundation
 
-/// Plan KX §6: teleprompter voice-follow — the page turns when the phone's mic hears its last words.
+/// Plan LC §6: teleprompter voice-follow — the page turns when the phone's mic hears its last words.
 ///
 /// **What it is.** An opt-in way to run the audio-paced mode (`Config.teleprompterPageFollow`, off
 /// by default). The plain audio-paced mode moves the window a line at a time as the aligner tracks
@@ -22,7 +22,7 @@ import Foundation
 ///
 /// **The mic** is the audio-paced mode's: the recognition shell taps the shared audio engine
 /// (`WakeWordService`), whose input follows `Config.conversationMicRoute` — so with the Meta Display
-/// on, Glasses Mic becomes the iPhone's mic (Plan KX §2.5), and the hands-free link that would end
+/// on, Glasses Mic becomes the iPhone's mic (Plan LC §2.5), and the hands-free link that would end
 /// the display session is never opened for it.
 enum TeleprompterPageFollow {
     /// How many of the page's last words are listened for.
@@ -121,7 +121,7 @@ enum TeleprompterPageFollow {
     }
 }
 
-/// Plan KX §6: what voice-follow has heard of the current recognition. A recogniser's partial
+/// Plan LC §6: what voice-follow has heard of the current recognition. A recogniser's partial
 /// results grow within one utterance, so the words that turned a page are set aside: the next page
 /// is matched only on words heard after them. A shorter result is a new utterance and starts over.
 struct TeleprompterPageFollower: Equatable {

@@ -19,12 +19,17 @@ public struct IssuedLicensePayload: Codable, Equatable {
     public var profile: String?
     public var organizationID: String?
     public var profileID: String?
+    /// Plan JS P2: the phones using this code are counted against `seats` (`SeatWire`). Only with a
+    /// `profile`, whose origin is the seat service. Absent on every code minted before P2.
+    public var seatCheck: Bool?
     public init(feature: String = "field_assist", licensee: String, issued: Date, expires: Date?,
                 tier: String? = nil, plan: String? = nil, seats: Int? = nil, reference: String? = nil,
-                packs: [String]? = nil, profile: String? = nil, organizationID: String? = nil, profileID: String? = nil) {
+                packs: [String]? = nil, profile: String? = nil, organizationID: String? = nil, profileID: String? = nil,
+                seatCheck: Bool? = nil) {
         self.feature = feature; self.licensee = licensee; self.issued = issued; self.expires = expires
         self.tier = tier; self.plan = plan; self.seats = seats; self.reference = reference
         self.packs = packs; self.profile = profile; self.organizationID = organizationID; self.profileID = profileID
+        self.seatCheck = seatCheck
     }
 }
 
@@ -102,16 +107,65 @@ public enum ActivationKeyMint {
     public static func fileName(_ key: String) -> String {
         IssuanceWire.digest(Data(("openglasses.activation-id.v1\n" + key).utf8))
     }
-    public static func seal(_ code: String, canonical: String) throws -> String {
+    /// The HKDF `info` the file's sealing key is derived with. Never changes: every issued key derives with it.
+    public static let sealingDomain = "openglasses.activation-key.v1"
+    /// The `format` of a version 2 file's plaintext. A version 1 file's plaintext is the bare licence code.
+    public static let contentsFormat = "openglasses.activation"
+
+    /// What an activation file opens to. Version 1 files carry no company secret.
+    public struct Contents: Equatable {
+        public let licenceCode: String
+        public let companySecret: Data?
+        public init(licenceCode: String, companySecret: Data?) { self.licenceCode = licenceCode; self.companySecret = companySecret }
+    }
+    struct Version2: Codable {
+        var format = ActivationKeyMint.contentsFormat
+        var version = 2
+        let licenceCode: String
+        let companySecret: String
+    }
+
+    static func sealingKey(canonical: String) throws -> SymmetricKey {
         let values = canonical.compactMap { alphabet.firstIndex(of: $0) }
-        guard values.count == 16, checkValue(Array(values.prefix(15))) == values[15] else {
+        guard values.count == 16, canonical.count == 16, checkValue(Array(values.prefix(15))) == values[15] else {
             throw IssuanceWire.WireError.invalidActivationKey
         }
-        let key = HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: Data(canonical.utf8)),
-                                       info: Data("openglasses.activation-key.v1".utf8), outputByteCount: 32)
-        guard let combined = try AES.GCM.seal(Data(code.utf8), using: key).combined else {
+        return HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: Data(canonical.utf8)),
+                                      info: Data(sealingDomain.utf8), outputByteCount: 32)
+    }
+    static func box(_ plain: Data, canonical: String) throws -> String {
+        guard let combined = try AES.GCM.seal(plain, using: sealingKey(canonical: canonical)).combined else {
             throw CryptoKitError.incorrectParameterSize
         }
         return combined.base64EncodedString()
+    }
+
+    /// Version 1: the bare licence code. The manual generator's format; the service seals version 2.
+    public static func seal(_ code: String, canonical: String) throws -> String {
+        try box(Data(code.utf8), canonical: canonical)
+    }
+
+    /// Version 2: the licence code and the company's secret (`ProfileContract.Credential`), which opens the
+    /// credentials the profile carries sealed. The file is the only place the secret travels.
+    public static func seal(_ code: String, companySecret: Data, canonical: String) throws -> String {
+        guard companySecret.count == ProfileContract.Credential.secretLength else { throw IssuanceWire.WireError.invalidActivationKey }
+        let plain = try IssuanceWire.encoder().encode(Version2(licenceCode: code, companySecret: companySecret.base64EncodedString()))
+        return try box(plain, canonical: canonical)
+    }
+
+    /// Either version, or nil when this key did not seal the file. Mirrors `ActivationKey.open` in the app.
+    public static func open(_ file: String, canonical: String) -> Contents? {
+        guard let key = try? sealingKey(canonical: canonical),
+              let combined = Data(base64Encoded: file.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let sealed = try? AES.GCM.SealedBox(combined: combined),
+              let plain = try? AES.GCM.open(sealed, using: key) else { return nil }
+        if plain.first == UInt8(ascii: "{") {
+            guard let v2 = try? IssuanceWire.decoder().decode(Version2.self, from: plain), v2.format == contentsFormat, v2.version == 2,
+                  let secret = Data(base64Encoded: v2.companySecret), secret.count == ProfileContract.Credential.secretLength,
+                  !v2.licenceCode.isEmpty else { return nil }
+            return Contents(licenceCode: v2.licenceCode, companySecret: secret)
+        }
+        guard let code = String(data: plain, encoding: .utf8), !code.isEmpty else { return nil }
+        return Contents(licenceCode: code, companySecret: nil)
     }
 }

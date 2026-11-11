@@ -170,13 +170,65 @@ only the file name. Later rows are `.customerChange` (preset, administrator veri
   `leaseDays` is 60–365.
 - `setAdminPasscode` accepts `{salt, iterations, hash}` only, with the app's `AdminSecrets` bounds.
 - `rotateActivationKey` seals the **current** code under a new key and lists the old file for deletion.
+  It carries the customer's company secret over (pass it from protected state); a customer signed up before sealed
+  credentials gets its first secret here. With `newCompanySecret: true` (a leak, or someone left) it makes a new
+  secret instead and `KeyRotation.newCompanySecret` says so: every credential sealed under the old one must be
+  dropped, and each phone enters the new key once before it can open credentials sealed from then on.
+
+## Sealed company credentials
+
+A company's Workiz API key reaches its phones in the profile, but never readable: the profile is public and
+prints `licenceCode` in clear, so nothing derived from the licence could hide it. Instead:
+
+- Sign-up makes a **company secret** (32 random bytes) and seals it into the activation file next to the licence
+  code. The file's plaintext is then version 2, sorted-key JSON
+  `{"companySecret", "format": "openglasses.activation", "licenceCode", "version": 2}` under the same
+  HKDF `openglasses.activation-key.v1` key; a version 1 file (the bare code, still what the manual generator
+  writes) keeps opening. `ActivationKeyMint.open` reads both. `SignUp.companySecret` and
+  `KeyRotation.companySecret` are returned for the service's protected state only; the journal records
+  `Customer.companySecretId` (a domain-separated SHA-256), never the secret.
+- `sealCredential` seals a value under HKDF-SHA256(company secret, info `openglasses.org-credential.v1`) with
+  AES-GCM, authenticating `openglasses.org-credential.v1\n<profileId>\n<name>`. The profile carries the
+  boxes as `credentials: {"workiz": <base64>}`; `profileDocument(…, credentials:)` puts them there. Today
+  `workiz` is the only name. `ProfileContract.Credential` mirrors `OrgCredentialSeal` in the app.
+- Anyone holding the activation key can open the file and so the box: the key is what technicians type, and
+  this keeps the Workiz key off screens and out of the public profile, not out of a determined technician's
+  reach. Re-keying (`rotateActivationKey(…, newCompanySecret: true)`) ends that for the holder of an old file;
+  the gateway in avenkin-licence's `docs/plans/integration-gateway.md` is the step that takes it off phones.
 - `profileDocument` builds and signs the customer's profile from its preset, choices, verifier and current code
   through `ProfileContract`, the same contract `make-org-profile` uses, so both produce the same bytes.
+- A preset may offer settings sections (`choices.sections`, `SettingsCategoryID` raw values, never one of the
+  always-open four) for the partner to open or close per company. The pick is `PresetSelection.openSections`;
+  `lockdown(for:)` writes each offered section into the profile's `open` or `lock`, and a company with no pick
+  carries the preset's `lockdown` as written. `openSections(for:)` reads it back the way `ManagedLockdown` does,
+  for the portal's checkboxes. Neither field is encoded when absent, so existing presets keep their digests.
 
 The key-for-life path (key → sealed expired first code → enrolment → the profile's current code active,
 nothing re-sealed) is proven in `LicenceIssuanceIntegrationTests` against the app's own enrolment.
 Not in P0b: the setup link and the administrator contact it uses (P1), renaming a customer, presets that
 carry an `officeAuthority`, and terminal commands for customers (the service is their caller).
+
+## Device seats (P2)
+
+`Seats.swift` is the contract between a phone and the seat service, and the rule that counts seats.
+
+- **Codes.** `IssuanceRequest.seatCheck` / `CustomerOrder.seatCheck` (and `--seat-check` on the generator)
+  sign `seatCheck: true` into the code. It needs a `profile`, because the seat service is that address's
+  origin. A seat increase keeps the claim of the code it raises. Absent, the payload bytes are unchanged.
+- **Wire.** `POST <origin>/seats/nonce` returns a single-use nonce (`SeatNonceReply`, five minutes). Then
+  `POST /seats/claim`, `/seats/renew` or `/seats/release` sends a `SeatEnvelope`: the request's JSON
+  (`SeatClaimRequest` has exactly `build`, `devicePublicKey`, `enrolmentId` and `profileId`), the nonce, and
+  the phone's ECDSA P-256 signature over `SeatWire.signedBytes` (domain, action, nonce, request). The reply
+  is always a `SeatReply`: a lease, or a `SeatRefusalCode`.
+- **Lease.** `SeatLeasePayload` (`deviceKeyHash`, `enrolmentId`, `issued`, `licenseIDHash`, `notAfter`),
+  Ed25519-signed under `openglasses.seat-lease.v1\n` with the seat-lease key, a third key. It runs 30 days
+  and is honoured for 14 more (`SeatWire.leaseDays`, `graceDays`).
+- **Counting.** `SeatPolicy.claim` / `renew`: a seat is held while it is not freed and its lease plus
+  grace has not run out. The same key claiming again keeps its seat. A full licence is refused with
+  `.full` and its seat count. A lapsed or non-seat-checked licence gets no lease. A freed seat's renewal
+  is `.freed`.
+
+The app's verifier (`DeviceSeatLease`) is held to these bytes by `DeviceSeatTests` in the app's test bundle.
 
 ## Validation (2026-10-23)
 

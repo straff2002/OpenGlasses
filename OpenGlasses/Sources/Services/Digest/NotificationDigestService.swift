@@ -62,7 +62,7 @@ final class NotificationDigestService: ObservableObject {
         !DigestComposer.compose(items, now: Date(), topN: Config.digestMaxItems).isEmpty
     }
 
-    /// Plan KX §4: the digest's top item as its deterministic line, for the lens's Today glance.
+    /// Plan LC §4: the digest's top item as its deterministic line, for the lens's Today glance.
     /// Never the model rewrite (opening Today calls no model) and never marks anything seen: only
     /// the glance itself does. Nil with the digest off or nothing live.
     func topLine(now: Date = Date()) -> String? {

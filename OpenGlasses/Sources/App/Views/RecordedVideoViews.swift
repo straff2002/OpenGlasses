@@ -9,6 +9,8 @@ struct RecordedVideo: Identifiable, Equatable {
 
     var id: URL { url }
     var name: String { url.deletingPathExtension().lastPathComponent }
+    /// Kept from the Instant Replay buffer rather than recorded on purpose.
+    var isReplay: Bool { name.hasPrefix(RecordingFiler.replayPrefix + "_") }
 
     static let videoExtensions: Set<String> = ["mp4", "mov", "m4v"]
 
@@ -34,7 +36,14 @@ struct RecordedVideoRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(video.date.formatted(date: .abbreviated, time: .shortened))
+            HStack(spacing: 6) {
+                Text(video.date.formatted(date: .abbreviated, time: .shortened))
+                if video.isReplay {
+                    Text("Replay")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
             Text(ByteCountFormatter.string(fromByteCount: Int64(video.bytes), countStyle: .file))
                 .font(.caption)
                 .foregroundStyle(.secondary)

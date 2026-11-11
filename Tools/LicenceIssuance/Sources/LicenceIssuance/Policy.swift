@@ -57,12 +57,14 @@ public struct IssuanceRequest: Codable, Equatable {
     public var reference: String
     public var replaces: String?
     public var profile: String?
+    /// Plan JS P2: count this code's phones. Needs `profile` (the seat service is its origin).
+    public var seatCheck: Bool?
     public init(licensee: String, tier: String = "team", plan: String = "team", seats: Int,
                 termDays: Int? = nil, expiry: Date? = nil, packs: [String] = [], reference: String,
-                replaces: String? = nil, profile: String? = nil) {
+                replaces: String? = nil, profile: String? = nil, seatCheck: Bool? = nil) {
         self.licensee = licensee; self.tier = tier; self.plan = plan; self.seats = seats
         self.termDays = termDays; self.expiry = expiry; self.packs = packs; self.reference = reference
-        self.replaces = replaces; self.profile = profile
+        self.replaces = replaces; self.profile = profile; self.seatCheck = seatCheck
     }
 }
 public enum IssuanceRefusal: Error, Equatable {
@@ -92,7 +94,8 @@ public enum IssuancePolicy {
             throw IssuanceRefusal.tierNotDelegated
         }
         guard !r.licensee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !r.reference.isEmpty, r.seats > 0, Set(r.packs).count == r.packs.count else {
+              !r.reference.isEmpty, r.seats > 0, Set(r.packs).count == r.packs.count,
+              r.seatCheck != true || r.profile != nil else {
             throw IssuanceRefusal.invalidRequest
         }
         if let p = r.profile {
@@ -144,6 +147,7 @@ public enum IssuancePolicy {
         }
         return IssuedLicensePayload(licensee: r.licensee, issued: now, expires: expiry, tier: r.tier,
                                    plan: r.plan, seats: r.seats, reference: r.reference,
-                                   packs: r.packs.isEmpty ? nil : r.packs.sorted(), profile: r.profile)
+                                   packs: r.packs.isEmpty ? nil : r.packs.sorted(), profile: r.profile,
+                                   seatCheck: r.seatCheck == true ? true : nil)
     }
 }

@@ -72,6 +72,9 @@ enum SensitiveStore: String, CaseIterable {
     case capturedPhotos
     /// Kept caption sessions (Plan KP P5): only while Keep caption sessions is on.
     case captionSessions
+    /// Instant Replay's rolling buffer: only while the setting is on and the glasses camera is
+    /// already streaming.
+    case instantReplayBuffer
 
     // Field Assist and vaults
     case fieldSessionLogs
@@ -90,6 +93,8 @@ enum SensitiveStore: String, CaseIterable {
     case jobDeliveryQueue
     case upcomingJobs
     case workizConnection
+    /// The company secret from the activation file, which opens the profile's sealed credentials.
+    case orgCompanySecret
     case vanStock
     case learningCandidates
     case capturedManuals
@@ -143,6 +148,7 @@ enum SensitiveStore: String, CaseIterable {
     case preferences
     case scenarioProgress
     case licence
+    case licenceSeat
 
     // Keychain, by item family
     case keychainProviderKeys
@@ -557,6 +563,27 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/CaptionSessions/CaptionSessionStore.swift"],
                           location: "Application Support/CaptionSessions/caption-session-{began}.json")
 
+        case .instantReplayBuffer:
+            // The last minute (by default) of what the glasses camera showed, as two-second
+            // segments, so a moment that has just happened can be kept. Bystanders are in it, so
+            // the linkage is third-party; through the blur relay, so with Blur Bystander Faces on
+            // the faces in it are blurred. Off by default. It exists only while the camera already
+            // streams for something else, and is deleted when that stream stops, when the setting
+            // goes off, in Medical Compliance mode, at a raised power posture, at launch and by a
+            // subject erasure — a segment is not indexed by who appears in it, so forgetting a
+            // person forgets the whole buffer. Never uploaded, never read by a model; a kept clip
+            // becomes an ordinary recording or job clip and is covered there.
+            return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUnlessOpen, backupExcluded: true,
+                          retention: .policy("while the glasses camera streams, at most the buffer "
+                                             + "length (30 s, 1 min or 2 min); deleted when the stream "
+                                             + "stops, the setting goes off, and at launch"),
+                          deleteAll: .api("ReplayBufferService.deleteAll()"),
+                          deleteSubject: .api("ReplayBufferService.deleteAll()"),
+                          owner: "ReplayBufferService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/InstantReplay/ReplayBufferService.swift"],
+                          location: "Application Support/InstantReplay/segment-{n}.mp4")
+
         case .capturedPhotos:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,
                           protection: .platformDefault, backupExcluded: false, retention: .none,
@@ -742,6 +769,16 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .notSubjectLinked, owner: "WorkizConnection",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Workiz/WorkizConnection.swift"],
                           location: "Keychain workizDirectCredential: key, generation and selected technician; options in UserDefaults")
+        case .orgCompanySecret:
+            // The 32-byte secret a version 2 activation file carries. It opens the company
+            // credentials the organisation profile carries sealed (today the Workiz key, which goes
+            // to `workizConnection`); it is no record of anyone. Removed when the phone leaves the firm.
+            return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true,
+                          retention: .none, deleteAll: .api("CompanySecretStore.erase()"),
+                          deleteSubject: .notSubjectLinked, owner: "CompanySecretStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/OrgProfile/OrgCredential.swift"],
+                          location: "Keychain orgCompanySecret: the company secret only")
         case .upcomingJobs:
             // Jobs ahead of the technician (Plan FO P3c): typed, spoken, or opened from an `.ogjob`
             // file the office sent. It carries the customer's name, the site address and a contact
@@ -1287,6 +1324,21 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "LicenseService",
                           ownerPaths: ["OpenGlasses/Sources/Services/LicenseService.swift"],
                           location: "preferences key `fieldAssistLicenseCode`")
+
+        case .licenceSeat:
+            // Plan JS P2: this phone's seat on a seat-checked licence — the signed lease, ids and
+            // dates in preferences, and the Secure Enclave key's opaque handle in the Keychain
+            // (this device only, never backed up). Removing the organisation releases the seat and
+            // deletes both.
+            return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true, retention: .none,
+                          deleteAll: .api("DeviceSeatService.release()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "DeviceSeatService",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatService.swift",
+                                       "OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatLease.swift",
+                                       "OpenGlasses/Sources/Services/Entitlement/DeviceSeat/DeviceSeatKey.swift"],
+                          location: "preferences key `licenceSeat`; Keychain item `licenceSeatDeviceKey`")
 
         case .keychainProviderKeys:
             return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,

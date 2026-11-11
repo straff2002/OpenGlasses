@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Plan KX §1: offered once, when Meta Ray-Ban Display glasses connect with the HUD off. The
+/// Plan LC §1: offered once, when Meta Ray-Ban Display glasses connect with the HUD off. The
 /// display turns on only from **Turn on**; **Not now** leaves it off and is never asked again (the
 /// switch stays in Devices & Privacy › Glasses).
 struct DisplayOfferBanner: View {

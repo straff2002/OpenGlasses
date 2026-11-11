@@ -275,7 +275,11 @@ final class FieldSessionService: ObservableObject {
         guard let session = activeSession else { return }
         let decision = FieldAssistEntitlement.shared.decision()
         let expired: Bool
-        if case .expired = decision.denial { expired = true } else { expired = false }
+        // A seat-checked licence without a seat is handled exactly like a lapse (Plan JS P2).
+        switch decision.denial {
+        case .expired?, .seatUnavailable?: expired = true
+        default: expired = false
+        }
         guard decision.isGranted || expired || StoreKitService.shared.hasCheckedEntitlements else { return }
         if !hasCurrentWorkAccess || !VaultRegistry.shared.isUnlocked(session.vaultId) {
             _ = try? closeForAccessLoss(reason: "Field Assist access ended. The job was automatically closed for handover.")

@@ -4,7 +4,7 @@ import MWDATDisplay
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KX P5: captions, the turn arrow, the timer and Now Playing cards, the Home Assistant list,
+/// Plan LC P5: captions, the turn arrow, the timer and Now Playing cards, the Home Assistant list,
 /// teleprompter voice-follow and Field Assist clips. Headless: the builders and policies directly,
 /// the service through `testRenderSink`, the band by firing the rendered buttons.
 @MainActor
@@ -176,7 +176,7 @@ final class LensRefinementsTests: XCTestCase {
         let picture = try XCTUnwrap(HUDTurnArrow.picture(for: .turnLeft))
         XCTAssertEqual(picture.pixelSize, CGSize(width: 552, height: 120))
         XCTAssertEqual(picture.placement, .aboveLines)
-        XCTAssertEqual(picture.contentKey, "kx.nav.arrow:-90")
+        XCTAssertEqual(picture.contentKey, "lc.nav.arrow:-90")
         XCTAssertEqual(HUDTurnArrow.picture(for: .turnLeft)?.contentKey, picture.contentKey)
         let ahead = try XCTUnwrap(HUDTurnArrow.picture(for: .continueStraight))
         XCTAssertGreaterThan(red(ahead.image, x: 60, y: 80), 200, "the shaft is white")
@@ -190,7 +190,7 @@ final class LensRefinementsTests: XCTestCase {
         screen.picture = arrow
         let view = MetaDisplayBackend().makeScreenView(screen)
         XCTAssertTrue(view.children.first is Image, "the arrow is drawn above the line")
-        XCTAssertTrue(screen.renderKey.contains("pic:kx.nav.arrow:90^"))
+        XCTAssertTrue(screen.renderKey.contains("pic:lc.nav.arrow:90^"))
     }
 
     func testGuidanceCarriesTheArrowOnlyOnABackendThatDrawsPictures() async throws {
@@ -201,7 +201,7 @@ final class LensRefinementsTests: XCTestCase {
         display.showNavigation("← 40 m · King St", arrow: arrow)
         await drain()
         guard case .screen(let key)? = frames.frames.last else { return XCTFail("\(frames.frames)") }
-        XCTAssertTrue(key.contains("pic:kx.nav.arrow:-90"))
+        XCTAssertTrue(key.contains("pic:lc.nav.arrow:-90"))
 
         let (textOnly, textFrames) = makeDisplay()
         textOnly.testDrawsPicturesOverride = false
@@ -222,7 +222,7 @@ final class LensRefinementsTests: XCTestCase {
         XCTAssertFalse(display.showsAnswerCard)
         XCTAssertFalse(display.isInteractive)
         guard case .screen(let key)? = frames.frames.last else { return XCTFail("\(frames.frames)") }
-        XCTAssertTrue(key.contains("kx.nav.arrow:90"))
+        XCTAssertTrue(key.contains("lc.nav.arrow:90"))
     }
 
     func testASlowPictureSendPutsTheArrowOffForAWhile() {

@@ -68,7 +68,7 @@ enum VoiceProcessingProbe {
 /// speaker takes input to the built-in mic anyway, so the phone's mic is the only one that survives
 /// a flip, and leaving HFP out keeps the glasses from pulling input back.
 ///
-/// `.lensPhoneMic` (Plan KX §5) is a live conversation while the Meta Display is on: the glasses'
+/// `.lensPhoneMic` (Plan LC §5) is a live conversation while the Meta Display is on: the glasses'
 /// hands-free mic ends the display session (iOS #342), so input is the phone's mic and output stays
 /// on the glasses over A2DP — the interpreter's shape without its speaker flips. Like a standard
 /// session it falls to the phone speaker with no glasses there.

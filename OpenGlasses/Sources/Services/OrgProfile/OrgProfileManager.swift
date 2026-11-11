@@ -234,6 +234,17 @@ final class OrgProfileManager: ObservableObject {
         /// A renewal heard after a lapse erasure: the phone is the firm's again, so the records
         /// still owed from that erasure are no longer to be erased.
         var endLapseDeparture: @MainActor (_ enrolmentId: String) -> Void = { _ in }
+        /// Plan JS P2: claim or renew this phone's seat on a seat-checked licence (`force` on
+        /// enrolment), and give it back on removal. No-ops by default — `production` wires them.
+        var seatCheckIn: @MainActor (_ enrolment: DeviceSeatEnrolment, _ force: Bool) async -> Void = { _, _ in }
+        var releaseSeat: @MainActor () -> Void = {}
+        /// Plan JS P2 review follow-up: a renewal is about to replace the licence code in force;
+        /// the seat lease issued for the old code is honoured until its own end or the next
+        /// check-in. No-op by default — `production` wires it.
+        var noteLicenceReplaced: @MainActor (_ previousCode: String, _ enrolment: DeviceSeatEnrolment) -> Void = { _, _ in }
+        /// The profile's sealed company credentials into the Keychain, on every apply, renewal and
+        /// launch (`OrgCredentialSync`). Does nothing by default; `production` wires it.
+        var syncCredentials: @MainActor (ConfigProfile) -> Void = { _ in }
 
         /// The app's seams: every default above, and the departure wired to `OrgDepartureService`.
         static var production: Seams {
@@ -248,8 +259,13 @@ final class OrgProfileManager: ObservableObject {
                 sessions.lockManagedRecords(ids: Set(ids))
             }
             seams.endLapseDeparture = { OrgDepartureService.shared.cancelLapse(enrolmentId: $0) }
+            seams.seatCheckIn = { await DeviceSeatService.shared.checkIn($0, force: $1) }
+            seams.releaseSeat = { DeviceSeatService.shared.release() }
+            seams.noteLicenceReplaced = { DeviceSeatService.shared.noteLicenceReplaced(previousCode: $0, enrolment: $1) }
+            seams.syncCredentials = { OrgCredentialSync.shared.apply($0) }
             seams.beginDeparture = { reason, record, profile in
                 AppStateProvider.shared?.workiz.remove()
+                OrgCredentialSync.shared.forget()
                 PilotReportStore.shared.clear()
                 AppStateProvider.shared?.pilotReportDays = []
                 if AppStateProvider.shared?.supportReportRequest?.pilotDay != nil {
@@ -316,6 +332,7 @@ final class OrgProfileManager: ObservableObject {
             } else {
                 let result = ProfileApplier.apply(profile: verified, resolvableVaultIds: seams.resolvableVaultIds())
                 seams.installEnvelope(result, verified.organizationName)
+                seams.syncCredentials(verified)
             }
         } catch {
             profile = nil
@@ -517,8 +534,20 @@ final class OrgProfileManager: ObservableObject {
         profile = review.profile
         loadProblem = nil
         seams.installEnvelope(review.result, review.profile.organizationName)
+        seams.syncCredentials(review.profile)
         evaluateLease()
+        if let enrolment = seatEnrolment {
+            // Plan JS P2: a seat-checked licence claims its seat now; nothing else does anything.
+            let checkIn = seams.seatCheckIn
+            Task { @MainActor in await checkIn(enrolment, true) }
+        }
         return .success(())
+    }
+
+    /// The enrolment a seat is claimed for: this phone's enrolment in the profile in force.
+    var seatEnrolment: DeviceSeatEnrolment? {
+        guard let record, let profile, record.revoked != true else { return nil }
+        return DeviceSeatEnrolment(profileId: profile.profileId, enrolmentId: record.enrolmentId)
     }
 
     /// The vaults a review may count as resolvable: those installed now, plus — when the profile
@@ -754,6 +783,12 @@ final class OrgProfileManager: ObservableObject {
     /// profile, or this enrolment's id in the profile's revoked list, revokes; the same profile,
     /// verified, renews.
     func renewIfDue(force: Bool = false) async {
+        await renewProfileIfDue(force: force)
+        // Plan JS P2: the seat lease rides the same pass, after any new licence the profile carried.
+        if let enrolment = seatEnrolment { await seams.seatCheckIn(enrolment, force) }
+    }
+
+    private func renewProfileIfDue(force: Bool) async {
         await completePendingPack()
         guard var current = record, let url = current.profileURL, let profile,
               current.revoked != true else {
@@ -813,11 +848,18 @@ final class OrgProfileManager: ObservableObject {
     /// writes only starting values it has never written, so the person's own changes stand.
     private func renew(with renewed: ConfigProfile, document: String) {
         guard var current = record else { return }
-        if let code = renewed.licenceCode, code != profile?.licenceCode,
-           (try? seams.activateLicence(code)) != nil {
-            current.activatedLicence = true
-            // The profile's own code is now the one in force, not a key entered by hand.
-            current.activatedLicenceCode = nil
+        if let code = renewed.licenceCode, code != profile?.licenceCode {
+            // A seat-checked phone's lease names the code in force; tell the seat check which code
+            // this enrolment's lease belongs to before it is replaced, so the phone is not locked
+            // until its next check-in (Plan JS P2 review follow-up).
+            if let previous = seams.storedLicenceCode(), previous != code, let enrolment = seatEnrolment {
+                seams.noteLicenceReplaced(previous, enrolment)
+            }
+            if (try? seams.activateLicence(code)) != nil {
+                current.activatedLicence = true
+                // The profile's own code is now the one in force, not a key entered by hand.
+                current.activatedLicenceCode = nil
+            }
         }
         let result = ProfileApplier.apply(profile: renewed, resolvableVaultIds: seams.resolvableVaultIds())
         // Values still waiting for the pack keep waiting: a renewal must not write them early.
@@ -850,6 +892,8 @@ final class OrgProfileManager: ObservableObject {
         record = current
         profile = renewed
         seams.installEnvelope(result, renewed.organizationName)
+        // A replaced or removed Workiz key arrives here, silently.
+        seams.syncCredentials(renewed)
     }
 
     // MARK: - An office's renewal and removal (Contracts/office-check-in.md)
@@ -901,6 +945,8 @@ final class OrgProfileManager: ObservableObject {
     /// when that installs the same vault pack, the departure leaves the pack in place rather than
     /// erasing it from under the new enrolment.
     private func leave(_ current: OrgEnrolmentRecord, keepingPackFor next: ConfigProfile?) {
+        // Plan JS P2: give the seat back while the licence naming the seat service is still stored.
+        seams.releaseSeat()
         for name in current.wroteStartingKeys {
             guard let key = SettingKey(rawValue: name) else { continue }
             seams.writeSetting(key, current.priorStartingValues[name])
@@ -1013,6 +1059,7 @@ extension SettingKey {
         case .teamLearningReviewerDevice: return "This phone can't approve team learnings"
         case .cloudDictationEnabled: return "Cloud dictation is off"
         case .interpreterEnabled: return "The spoken interpreter is off"
+        case .instantReplayEnabled: return "Instant Replay is off"
         default: return rawValue
         }
     }

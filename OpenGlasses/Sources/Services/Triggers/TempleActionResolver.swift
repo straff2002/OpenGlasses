@@ -33,6 +33,8 @@ struct TempleContext: Equatable {
     var quickActionIDs: Set<String> = []
     /// An answer card is on the glasses (Plan KP P1).
     var answerCardShowing: Bool = false
+    /// Instant Replay's buffer is running, so there is something to keep.
+    var replayRunning: Bool = false
 }
 
 /// The concrete thing to do for a resolved tap.
@@ -59,6 +61,8 @@ enum TempleEffect: Equatable {
     case quickAction(String)
     /// Turn the answer card a page: forward to the next page, back to the previous one.
     case answerPage(forward: Bool)
+    /// Keep the last 30 seconds of Instant Replay in Recordings.
+    case saveReplay
 }
 
 enum TempleIgnoreReason: String, Equatable, CaseIterable {
@@ -73,6 +77,8 @@ enum TempleIgnoreReason: String, Equatable, CaseIterable {
     case quickActionMissing
     /// A page-turn tap with no answer card on the glasses.
     case noAnswerCard
+    /// A replay tap while Instant Replay isn't running.
+    case replayNotRunning
 
     /// A short spoken line for refusals the wearer can act on. The rest are a soft tone only — a
     /// stray tap while already listening does not need a sentence.
@@ -90,6 +96,8 @@ enum TempleIgnoreReason: String, Equatable, CaseIterable {
             return String(localized: "The digest is off.")
         case .quickActionMissing:
             return String(localized: "That Quick Action no longer exists.")
+        case .replayNotRunning:
+            return String(localized: "Instant Replay isn't running.")
         }
     }
 }
@@ -180,6 +188,13 @@ enum TempleActionResolver {
             guard activity != .busy else { return .ignored(.busy) }
             guard context.answerCardShowing else { return .ignored(.noAnswerCard) }
             return .run(.answerPage(forward: action == .answerNextPage))
+
+        case .saveReplay:
+            // Saving reads the buffer and writes a file; it doesn't fight a reply for the audio,
+            // so it works mid-conversation. Only another mode that owns the loop keeps it out.
+            guard activity != .busy else { return .ignored(.busy) }
+            guard context.replayRunning else { return .ignored(.replayNotRunning) }
+            return .run(.saveReplay)
         }
     }
 }
@@ -226,6 +241,9 @@ enum TempleEarcon: Equatable, CaseIterable {
             case .setMicMuted(let muted), .setLiveMicMuted(let muted): return muted ? .muted : .unmuted
             case .muteAndEndConversation: return .muted
             case .toggleRecording(let starting): return starting ? .recordingStarted : .recordingStopped
+            // The recording-stopped pair: "something was kept". The spoken line after the save
+            // says how much and where.
+            case .saveReplay: return .recordingStopped
             }
         }
     }

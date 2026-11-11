@@ -16,6 +16,9 @@ enum CustomVaultGateState: Equatable {
     case lapsed(Date)
     /// A stored licence code did not verify.
     case unverifiableLicence
+    /// A seat-checked licence holds no live seat on this phone (Plan JS P2). Installed vaults stay
+    /// readable and removable, as for a lapse.
+    case seatUnavailable(DeviceSeatHold)
     /// No entitlement at all.
     case locked
 
@@ -25,6 +28,7 @@ enum CustomVaultGateState: Equatable {
         case .notIncluded: return .bundledOnly
         case .denied(.expired(let date)): return .lapsed(date)
         case .denied(.unverifiableLicense): return .unverifiableLicence
+        case .denied(.seatUnavailable(let hold)): return .seatUnavailable(hold)
         case .denied(.noEvidence): return .locked
         }
     }
@@ -44,6 +48,7 @@ enum CustomVaultGateState: Equatable {
         case .bundledOnly: return FieldAssistPaywallCopy.bundledVaultsOnly
         case .lapsed: return FieldAssistPaywallCopy.ownVaultsLapsed
         case .unverifiableLicence: return FieldAssistPaywallCopy.unverifiable
+        case .seatUnavailable(let hold): return hold.message
         case .locked: return FieldAssistPaywallCopy.ownVaultsLocked
         }
     }
