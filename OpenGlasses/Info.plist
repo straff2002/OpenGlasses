@@ -8,6 +8,10 @@
 	     YES without an ITSEncryptionExportComplianceCode is refused at upload (ITMS-90592).
 	     If France is ever made available, upload the French declaration, then set YES and add
 	     the code Apple issues. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.openglasses.app.refresh</string>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -413,6 +417,7 @@
 		<string>audio</string>
 		<string>bluetooth-central</string>
 		<string>external-accessory</string>
+		<string>fetch</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

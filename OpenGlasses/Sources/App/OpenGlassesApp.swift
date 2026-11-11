@@ -94,6 +94,13 @@ private func processWearablesCallbackURL(_ url: URL, source: String) {
 #endif
 
 final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
+    /// Plan LM P1: the shared background wake must be registered before launch finishes.
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        BackgroundRefreshCoordinator.shared.registerWithSystem()
+        return true
+    }
+
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
@@ -685,6 +692,8 @@ struct OpenGlassesApp: App {
             appState.cameraService.notePresence(scenePhase: .init(newPhase))
             switch newPhase {
             case .background:
+                // Plan LM P1: ask iOS for the next shared background wake, if a participant wants one.
+                BackgroundRefreshCoordinator.shared.scheduleNext()
                 // Plan KM P2: the expert's clock writes its last sign of life, so a kill while
                 // backgrounded loses only what came after.
                 AssistingService.shared.appWillResignActive()
@@ -2033,6 +2042,9 @@ class AppState: ObservableObject, AppStateProtocol {
         jobSendNotificationRouter?.openPreparedCard = { [weak self] id in self?.openPreparedCard(id) }
         jobSendNotificationRouter?.openStagedCard = { [weak self] id in self?.openStagedCard(id) }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
+        // Plan LM P2: the app's notification buttons, registered once, beside the one delegate that
+        // routes their presses.
+        NotificationActionCatalog.register()
     }
 
     private func configureGuidedJobFlow() {
@@ -3469,6 +3481,9 @@ class AppState: ObservableObject, AppStateProtocol {
         if Config.agentModeEnabled {
             agentScheduler.start()
         }
+        // Plan LM P1: goal check-ins are the first participant in the shared background wake. They
+        // check Agent Mode themselves, so registering them with it off asks iOS for nothing.
+        BackgroundRefreshCoordinator.shared.add(agentScheduler.goalCheckInBackgroundParticipant())
 
         setupServiceCallbacks()
 

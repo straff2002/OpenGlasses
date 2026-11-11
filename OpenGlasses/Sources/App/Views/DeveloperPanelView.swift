@@ -148,6 +148,9 @@ struct DeveloperPanelView: View {
                 .buttonStyle(.plain)
             }
 
+            // Plan LM P1: what the shared background wake actually did — the device pass's evidence.
+            BackgroundRefreshSection(ledger: BackgroundRefreshCoordinator.shared.ledger)
+
             OGSection(
                 header: "Debug Events",
                 footer: "The persistent field log lives in Documents/debug-events.log and survives relaunches."
@@ -184,5 +187,48 @@ struct DeveloperPanelView: View {
             }
         }
         .navigationTitle("Developer")
+    }
+}
+
+/// Plan LM P1 — the last background wakes and the last request made of iOS, with Run now (the same
+/// pass in the foreground, the only way to exercise it on the Simulator).
+private struct BackgroundRefreshSection: View {
+    @ObservedObject var ledger: BackgroundRunLedger
+    @State private var running = false
+
+    var body: some View {
+        OGSection(
+            header: "Background Refresh",
+            footer: "When iOS woke the app, how late against what was asked, and what each participant did. iOS decides when; this records what really happened."
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                if let request = ledger.lastRequest {
+                    Text(verbatim: BackgroundRunSummary.line(request))
+                }
+                if ledger.records.isEmpty {
+                    Text(verbatim: "No wakes recorded yet.")
+                } else {
+                    ForEach(Array(ledger.records.suffix(20).reversed().enumerated()), id: \.offset) { _, record in
+                        Text(verbatim: BackgroundRunSummary.line(record))
+                    }
+                }
+            }
+            .font(.caption2.monospaced())
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            OGDivider()
+            Button {
+                running = true
+                Task { @MainActor in
+                    await BackgroundRefreshCoordinator.shared.runNow()
+                    running = false
+                }
+            } label: {
+                OGRow("Run a background pass now", icon: "arrow.clockwise", mutedIcon: true, showsChevron: false)
+            }
+            .buttonStyle(.plain)
+            .disabled(running)
+        }
     }
 }
