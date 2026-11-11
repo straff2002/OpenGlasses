@@ -76,9 +76,35 @@ final class PreparedCardFeedBuilder {
     private var built: Set<String> = []
     private var shown: Set<String> = []
     private var turnedOffKind: PreparedCardKind?
-    /// Each card's draft as its rule wrote it on the last join, before any edit — what an edit
-    /// is measured against.
+    /// Each card's draft as it was shown on the last join, before any edit — the rule's
+    /// template, or the model's rewrite of it — what an edit is measured against.
     private(set) var baseDrafts: [PreparedCardID: String] = [:]
+
+    // MARK: Drafts by a model (§4.2)
+
+    /// Rewrites a card's template in the wearer's voice. Nil: templates only.
+    var draftWriter: (any DraftWriting)?
+    /// The style note the writer follows and the edit learner feeds.
+    var styleStore: WritingStyleStore?
+    /// A model's draft arrived: the feed should be re-joined.
+    var onDraftsChanged: (() -> Void)?
+
+    /// One model draft, kept in memory for the life of the process and never written down: the
+    /// card store keeps only state and edits (§3.5).
+    struct ModelDraft: Equatable {
+        /// The template it was written from. A rebuild whose template changed (a later arrival)
+        /// shows the new template rather than a rewrite of the old one.
+        let template: String
+        let result: DraftWriteResult
+    }
+
+    /// By card id. A card is asked for once: never again once a model was called for it.
+    private(set) var modelDrafts: [PreparedCardID: ModelDraft] = [:]
+    private var draftsAsked: Set<PreparedCardID> = []
+    /// Templates as the rules last wrote them, for the writer.
+    private var ruleDrafts: [PreparedCardID: String] = [:]
+    /// Edits already counted by the style learner.
+    private var learnedFrom: Set<PreparedCardID> = []
 
     init(store: PreparedCardStore,
          metrics: any PreparedCardMetricsRecording = PreparedCardMetricsStore.shared,
@@ -135,6 +161,9 @@ final class PreparedCardFeedBuilder {
         for entry in ruled where built.insert(entry.card.id.rawValue).inserted {
             metrics.record(.card(entry.card.kind, .built))
         }
+        ruleDrafts = Dictionary(ruled.compactMap { entry in entry.card.draft.map { (entry.card.id, $0.text) } },
+                                uniquingKeysWith: { first, _ in first })
+        ruled = ruled.map(applyingModelDraft)
         let memory = store.memory
         let feed = PreparedCardJoiner(calendar: calendar(), locale: locale)
             .join(ruled, items: lastItems, memory: memory, now: now, isFieldAssistDay: settings.isFieldAssistDay)
@@ -162,15 +191,68 @@ final class PreparedCardFeedBuilder {
     }
     #endif
 
+    // MARK: - Model drafts
+
+    /// The rule's card with the model's draft in place of its template, when the model wrote one
+    /// from this very template and the wearer has not started an edit from the template.
+    private func applyingModelDraft(_ entry: RuledCard) -> RuledCard {
+        guard let template = entry.card.draft?.text, let model = modelDrafts[entry.card.id],
+              model.result.fallback == nil, model.template == template else { return entry }
+        if let kept = store.entry(for: entry.card.id), kept.memory.editedText != nil,
+           kept.editedFrom == template { return entry }
+        var copy = entry
+        copy.card.draft = copy.card.draft.map {
+            PreparedDraft(channel: $0.channel, recipient: $0.recipient, subject: $0.subject,
+                          text: model.result.text, origin: model.result.origin, language: $0.language)
+        }
+        return copy
+    }
+
+    /// Ask for a model draft of each shown card that has a draft, once per card (§4.2): not for
+    /// a card the wearer has already edited, and not again once a model has been called for it.
+    /// A card no model could take yet (none ready, no consent) may be asked again next time.
+    private func requestDrafts(for cards: [PreparedCard]) {
+        guard let draftWriter else { return }
+        for card in cards where card.draft != nil && !draftsAsked.contains(card.id) && modelDrafts[card.id] == nil {
+            guard store.entry(for: card.id)?.memory.editedText == nil,
+                  let template = ruleDrafts[card.id],
+                  let request = DraftWriteRequest.make(card: card, template: template,
+                                                       wearerName: lastContext.wearer.name,
+                                                       meeting: lastContext.meeting) else { continue }
+            draftsAsked.insert(card.id)
+            let style = styleStore?.style ?? .standard
+            Task { @MainActor [weak self] in
+                let result = await draftWriter.write(request, style: style)
+                self?.finishDraft(request, result: result)
+            }
+        }
+    }
+
+    private func finishDraft(_ request: DraftWriteRequest, result: DraftWriteResult) {
+        if case .noRoute? = result.fallback {
+            // Nothing was called: the card stays a simple draft, and may be asked again.
+            draftsAsked.remove(request.cardId)
+            metrics.record(.draftOrigin(.template))
+            return
+        }
+        modelDrafts[request.cardId] = ModelDraft(template: request.template, result: result)
+        metrics.record(.draftOrigin(PreparedCardDraftOriginMetric(result.origin)))
+        if case .invalid(let failure)? = result.fallback { metrics.record(.validatorFallback(failure)) }
+        if result.fallback == nil { onDraftsChanged?() }
+    }
+
     // MARK: - What the wearer did
 
-    /// The page drew these cards.
+    /// The page drew these cards. Each one's draft is offered to a model the first time.
     func noteShown(_ cards: [PreparedCard], now: Date) {
         for card in cards where shown.insert(card.id.rawValue).inserted {
             metrics.record(.card(card.kind, .shown))
-            if let draft = card.draft { metrics.record(.draftOrigin(PreparedCardDraftOriginMetric(draft.origin))) }
+            if draftWriter == nil, let draft = card.draft {
+                metrics.record(.draftOrigin(PreparedCardDraftOriginMetric(draft.origin)))
+            }
         }
         store.markSeen(cards, now: now)
+        requestDrafts(for: cards)
     }
 
     func noteOpened(_ card: PreparedCard) { metrics.record(.card(card.kind, .opened)) }
@@ -231,6 +313,7 @@ final class PreparedCardFeedBuilder {
     /// route with no result leaves it "Opened in…" with Done and Not sent.
     func handedOff(_ card: PreparedCard, result: PreparedCardState.HandOffResult, now: Date) {
         metrics.record(.card(card.kind, .handedOff))
+        if result != .cancelled { learnStyle(from: card) }
         switch result {
         case .sent:
             metrics.record(.card(card.kind, .sent))
@@ -240,6 +323,14 @@ final class PreparedCardFeedBuilder {
         case .unknown:
             store.record(.handedOff(at: now, result: .unknown), for: card, now: now)
         }
+    }
+
+    /// §4.3: an edit the wearer handed off teaches the style learner, once per card. Counts only.
+    private func learnStyle(from card: PreparedCard) {
+        guard let styleStore, !learnedFrom.contains(card.id), let entry = store.entry(for: card.id),
+              let after = entry.memory.editedText, let before = entry.editedFrom else { return }
+        learnedFrom.insert(card.id)
+        styleStore.learn(before: before, after: after)
     }
 
     /// "Not sent" on a hand-off with no result: back to fresh.

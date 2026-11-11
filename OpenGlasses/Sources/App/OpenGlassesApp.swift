@@ -2554,6 +2554,7 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.activity = ActivityStore.shared
         // Plan KT P1: a card's kept draft can name the person it is to.
         erasure.preparedCards = PreparedCardStore.shared
+        erasure.writingStyle = WritingStyleStore.shared
         erasure.tableChecks = TableCheckStore()
         // Plan KM P2: handovers sent to this phone's owner as an expert can name a person.
         erasure.assistingHandovers = AssistingHandoverStore.shared
@@ -3157,6 +3158,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.goals = GoalStore.shared
             erasureStores.activity = ActivityStore.shared
             erasureStores.preparedCards = PreparedCardStore.shared
+            erasureStores.writingStyle = WritingStyleStore.shared
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
             erasureStores.captionSessions = CaptionSessionStore.shared
@@ -4716,6 +4718,12 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan KT P1: the cards — their facts, their state, the Google calendar hint and the one
         // notification a card may post.
         myDayService.cardBuilder = PreparedCardFeedBuilder(store: .shared, contextSource: preparedCardContext)
+        // Plan KT P2: a card's draft rewritten in the wearer's voice when it is first shown, on
+        // this iPhone first and in the cloud only with its own consent; the template otherwise.
+        let draftEngine = LivePreparedCardDraftEngine(localModel: { [weak self] in self?.llmService.localLLMService })
+        myDayService.cardBuilder?.draftWriter = DraftWriter(call: DraftModelCall(engine: draftEngine))
+        myDayService.cardBuilder?.styleStore = WritingStyleStore.shared
+        myDayService.cardBuilder?.onDraftsChanged = { [weak self] in self?.myDayService.rejoinCards() }
         myDayService.calendarSources = { [weak self] in self?.eventKitStore.calendarSources() ?? [] }
         myDayService.onFeedChanged = { [weak self] feed, now in
             self?.preparedCardNotifier.notify(feed: feed, now: now)

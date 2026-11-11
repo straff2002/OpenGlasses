@@ -47,6 +47,22 @@ extension Config {
         set { UserDefaults.standard.set(newValue, forKey: "preparedCardGoogleLineDismissed") }
     }
 
+    /// "Write drafts with" (§5.6): on this iPhone only, unless the wearer chooses their cloud model.
+    static var preparedCardDraftWriter: DraftWriterChoice {
+        get {
+            UserDefaults.standard.string(forKey: "preparedCardDraftWriter").flatMap(DraftWriterChoice.init(rawValue:))
+                ?? .onThisPhone
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "preparedCardDraftWriter") }
+    }
+
+    /// The cloud model the wearer agreed to for drafts ("Use {provider} to write drafts"), as its
+    /// `DraftCloudTarget.consentKey`. Another model, or the same one at another address, asks again.
+    static var preparedCardDraftCloudConsent: String? {
+        get { UserDefaults.standard.string(forKey: "preparedCardDraftCloudConsent") }
+        set { UserDefaults.standard.set(newValue, forKey: "preparedCardDraftCloudConsent") }
+    }
+
     /// "Text customers from cards" (decision 8): on, unless the wearer turns it off or an
     /// organisation profile pins it off.
     static var preparedCardCustomerTexts: Bool {

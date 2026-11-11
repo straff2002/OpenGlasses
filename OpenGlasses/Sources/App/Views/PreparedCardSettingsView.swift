@@ -14,6 +14,8 @@ struct PreparedCardSettingsView: View {
     @State private var sleepMinutes = Config.preparedCardShortNightMinutes
     @State private var earlyMeeting = Self.date(minutes: Config.preparedCardEarlyMeetingMinutes)
     @State private var showingGoogleHelp = false
+    @State private var draftWriter = Config.preparedCardDraftWriter
+    @State private var consentTarget: DraftCloudTarget?
 
     private static let personalKinds: [PreparedCardKind] = [.leaveBy, .runningLate, .meetingFollowUp, .fitItIn]
     private static let jobKinds: [PreparedCardKind] = [.jobOnMyWay, .jobRunningLate, .jobReportOwed,
@@ -21,6 +23,13 @@ struct PreparedCardSettingsView: View {
 
     private var healthOn: Bool { AIFeatureGate.isEnabled(.healthSummaries) }
     private var customerTextsLocked: Bool { PolicyEnvelope.isLocked(.preparedCardCustomerTexts) }
+    private var medicalCompliance: Bool { Config.hipaaMode }
+    private var cloudTarget: DraftCloudTarget? {
+        LivePreparedCardDraftEngine.activeCloudConfig.flatMap(DraftCloudTarget.init(config:))
+    }
+    private var cloudOffered: Bool {
+        DraftRoutePolicy.canOffer(cloudTarget, hipaaMode: Config.hipaaMode, medicalLocalOnly: Config.hipaaLocalOnly)
+    }
 
     var body: some View {
         Form {
@@ -68,6 +77,8 @@ struct PreparedCardSettingsView: View {
                     }
                 }
 
+                draftsSection
+
                 Section {
                     Toggle("Show card text on the lock screen", isOn: $lockScreenText)
                 } footer: {
@@ -86,6 +97,16 @@ struct PreparedCardSettingsView: View {
         .navigationTitle("Ready-to-send cards")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingGoogleHelp) { GoogleCalendarHelpSheet() }
+        .sheet(item: $consentTarget) { target in
+            DraftCloudConsentSheet(target: target) { agreed in
+                if agreed {
+                    Config.preparedCardDraftCloudConsent = target.consentKey
+                    Config.preparedCardDraftWriter = .cloud
+                    draftWriter = .cloud
+                }
+                consentTarget = nil
+            }
+        }
         .onAppear {
             kinds = Dictionary(uniqueKeysWithValues: PreparedCardKind.allCases.map { ($0, Config.preparedCardKindEnabled($0)) })
         }
@@ -103,6 +124,57 @@ struct PreparedCardSettingsView: View {
             Config.preparedCardEarlyMeetingMinutes = (parts.hour ?? 9) * 60 + (parts.minute ?? 30)
             service.rejoinCards()
         }
+    }
+
+    /// "Write drafts with" and "Your style" (§5.6). The cloud model is offered only when the
+    /// isolated route can reach it and Medical Compliance is off; choosing it asks once.
+    @ViewBuilder
+    private var draftsSection: some View {
+        Section {
+            Picker("Write drafts with", selection: Binding(
+                get: { draftWriter == .cloud && cloudOffered ? DraftWriterChoice.cloud : DraftWriterChoice.onThisPhone },
+                set: { (choice: DraftWriterChoice) in
+                    guard choice == .cloud, let target = cloudTarget else {
+                        Config.preparedCardDraftWriter = .onThisPhone
+                        draftWriter = .onThisPhone
+                        return
+                    }
+                    if Config.preparedCardDraftCloudConsent == target.consentKey {
+                        Config.preparedCardDraftWriter = .cloud
+                        draftWriter = .cloud
+                    } else {
+                        consentTarget = target
+                    }
+                })) {
+                Text("On this iPhone only").tag(DraftWriterChoice.onThisPhone)
+                if cloudOffered, let target = cloudTarget {
+                    Text(target.providerName).tag(DraftWriterChoice.cloud)
+                }
+            }
+            .disabled(medicalCompliance)
+            NavigationLink("Your style") { WritingStyleSettingsView() }
+        } header: {
+            Text("Drafts")
+        } footer: {
+            Text(draftsFooter)
+        }
+    }
+
+    private var draftsFooter: String {
+        if medicalCompliance {
+            return String(localized: "Medical Compliance is on, so drafts are written on this iPhone only.",
+                          comment: "My Day card settings: why drafts can't use a cloud model.")
+        }
+        if draftWriter == .cloud, cloudOffered, let target = cloudTarget {
+            if target.isBlockedForCaptionText {
+                return String(localized: "Drafts are written on this iPhone when it can, otherwise by \(target.providerName). Meeting recaps are never sent to \(target.providerName).",
+                              comment: "My Day card settings: drafts may use the named cloud model, but meeting recaps never do.")
+            }
+            return String(localized: "Drafts are written on this iPhone when it can, otherwise by \(target.providerName).",
+                          comment: "My Day card settings: drafts may use the named cloud model.")
+        }
+        return String(localized: "Drafts are rewritten in your style by Apple Intelligence or your downloaded model, on this iPhone. Without one, a card shows a simple draft.",
+                      comment: "My Day card settings: drafts are written on the phone only.")
     }
 
     private func binding(_ kind: PreparedCardKind) -> Binding<Bool> {

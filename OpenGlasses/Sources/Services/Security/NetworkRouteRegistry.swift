@@ -476,7 +476,8 @@ extension NetworkRoute {
         case .geminiLiveSession: return ["GeminiLiveService"]
         case .geminiLiveModelCatalog: return ["GeminiLiveModelCatalog"]
         case .cloudTranslationCaptions: return []
-        case .llmCompletion: return ["LLMService"]
+        // A My Day card's draft (Plan KT P2): its own one-request route, no history or tools.
+        case .llmCompletion: return ["LLMService", "DraftCloudTransport"]
         case .intentClassification: return ["IntentClassifier"]
         case .providerModelCatalog: return ["ModelFetcher"]
         case .conversationRecallSummary: return []

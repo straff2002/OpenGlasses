@@ -328,6 +328,9 @@ enum UITestSupport {
             appState.myDayService.seedForUITest(seededDay())
             if isSet(.seedPreparedCard) {
                 PreparedCardStore.shared.deleteAll()
+                // The seeded card keeps its template: a simulator's on-device model must not
+                // rewrite the text the UI test checks.
+                appState.myDayService.cardBuilder?.draftWriter = nil
                 appState.myDayService.seedCardsForUITest(seededCards(), items: seededDay().allItems)
             }
         }
