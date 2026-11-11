@@ -54,6 +54,8 @@ final class HUDRouter: ObservableObject {
     /// Stop driving the current task and return the HUD to its ambient producers.
     func stopTask() {
         clearTaskState()
+        // Plan KT: the day's cards opened over the task stay up; Close then clears the lens.
+        guard !isPresentingCards else { return }
         currentScreen = nil
         display.endInteractive()
     }
@@ -71,8 +73,8 @@ final class HUDRouter: ObservableObject {
         guard let current = source.current else {
             // Workflow finished.
             let title = source.title
-            if isPresentingMenu {
-                // A launcher menu is overlaying the card — leave it up; just drop the now
+            if isPresentingMenu || isPresentingCards {
+                // A launcher menu (or the day's cards) is overlaying the card — leave it up; just drop the now
                 // stale task so "Resume task" stops offering a finished card.
                 clearTaskState()
             } else {

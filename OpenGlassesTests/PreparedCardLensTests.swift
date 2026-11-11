@@ -296,6 +296,15 @@ final class PreparedCardLensTests: XCTestCase {
         router.closeCards()
         XCTAssertEqual(router.currentScreen?.title, "Step one")
         XCTAssertTrue(router.isPresentingTask)
+
+        // A task stopped from the phone while the cards are over it leaves the cards up.
+        router.openCards()
+        router.stopTask()
+        XCTAssertTrue(router.isPresentingCards)
+        XCTAssertTrue(display.isInteractive)
+        XCTAssertEqual(router.currentScreen?.title, "Leave by 18:15")
+        router.closeCards()
+        XCTAssertFalse(display.isInteractive)
     }
 
     // MARK: - Pushed glances (§6.2)
