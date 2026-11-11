@@ -415,7 +415,8 @@ final class HUDRouter: ObservableObject {
             closeCards()
         case .nextPage:
             guard let page = cardDraftPage,
-                  page + 1 < PreparedCardHUDBuilder.draftPages(card, geometry: cardGeometry()).count else { return }
+                  page + 1 < PreparedCardHUDBuilder.draftPages(card, geometry: cardGeometry(),
+                                                               withholding: hooks.withholding()).count else { return }
             cardDraftPage = page + 1
             renderCards(cards)
         case .back:
@@ -425,7 +426,7 @@ final class HUDRouter: ObservableObject {
         case .sendOnPhone:
             stage(card, cards: cards, position: position)
         case .readIt:
-            if let text = card.draft?.text { hooks.readAloud(text) }
+            if card.draft != nil { hooks.readAloud(card) }
         case .later:
             hooks.later(card)
             cardsChanged()
@@ -467,7 +468,9 @@ final class HUDRouter: ObservableObject {
         switch command {
         case .next:
             if let page = cardDraftPage {
-                guard page + 1 < PreparedCardHUDBuilder.draftPages(card, geometry: cardGeometry()).count else { return false }
+                guard page + 1 < PreparedCardHUDBuilder.draftPages(card, geometry: cardGeometry(),
+                                                                   withholding: cardHooks?.withholding() ?? false).count
+                else { return false }
                 action = .nextPage
             } else {
                 guard cardIndex + 1 < cards.count else { return false }
@@ -531,12 +534,15 @@ final class HUDRouter: ObservableObject {
     private func cardScreen(_ cards: [PreparedCard]) -> HUDScreen? {
         guard cards.indices.contains(cardIndex) else { return nil }
         let geometry = cardGeometry()
+        let withholding = cardHooks?.withholding() ?? false
         let onPress: (PreparedCardLensPress) -> Void = { [weak self] press in self?.pressCard(press) }
         if let page = cardDraftPage,
-           let draft = PreparedCardHUDBuilder.draft(cards[cardIndex], page: page, geometry: geometry, onPress: onPress) {
+           let draft = PreparedCardHUDBuilder.draft(cards[cardIndex], page: page, geometry: geometry,
+                                                    withholding: withholding, onPress: onPress) {
             return draft
         }
-        return PreparedCardHUDBuilder.stack(cards, index: cardIndex, geometry: geometry, onPress: onPress)
+        return PreparedCardHUDBuilder.stack(cards, index: cardIndex, geometry: geometry, withholding: withholding,
+                                            onPress: onPress)
     }
 
     private func renderCards(_ cards: [PreparedCard]) {
@@ -624,13 +630,16 @@ struct PreparedCardLensHooks {
     var run: (PreparedAction, PreparedCard) -> Void
     /// §6.4: stage the card's draft on the phone.
     var stage: (PreparedCard) async -> PreparedCardStager.Outcome
-    /// **Read it**: say the draft. Plan KT P4's phraser takes this over for the card itself.
-    var readAloud: (String) -> Void
+    /// **Read it**: say the card's draft, with who it is to (`PreparedCardPhraser.draftReading`).
+    var readAloud: (PreparedCard) -> Void
     var later: (PreparedCard) -> Void
     var dismiss: (PreparedCard) -> Void
     var notUseful: (PreparedCard) -> Void
     /// §10: counts a press by button.
     var notePress: (PreparedCardLensAction) -> Void = { _ in }
+    /// Plan KT P4: Medical Compliance withholds the event's title from the lens, as the Today
+    /// glance does (`PreparedCardMedicalWithholding`).
+    var withholding: () -> Bool = { false }
 }
 
 /// The words that drive the day's cards while they are on the lens (Plan KT §6.2). Strict and

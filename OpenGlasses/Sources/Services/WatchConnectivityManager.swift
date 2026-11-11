@@ -40,6 +40,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "toggleListen", "toggleRecord", "toggleVideo", "capturePhoto", "photo", "describe",
             "ask", "persona", "connect", "disconnect", "sleep", "status",
             "quickAction", "resumeThread", WatchDictation.command, WatchStartGuidance.command,
+            WatchPreparedCardWire.command,
         ]
         return known.contains(raw) ? PrivacyToken(raw) : nil
     }
@@ -60,7 +61,8 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         let today = WatchTodayPublisher(
             environment: .init(
                 watchAppInstalled: { session.isPaired && session.isWatchAppInstalled },
-                sourceAccessReady: { [weak self] in self?.appState?.myDaySourceAccessReady ?? false }),
+                sourceAccessReady: { [weak self] in self?.appState?.myDaySourceAccessReady ?? false },
+                cards: { [weak self] in self?.appState?.myDayService.todayFeed.cards ?? [] }),
             refresh: { [weak self] in _ = await self?.appState?.myDayService.refresh(channel: nil) },
             onChange: { [weak self] in self?.sendStatusUpdate() })
         todayPublisher = today
@@ -445,6 +447,11 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             case WatchStartGuidance.command:
                 replyHandler(await self.startGuidance(message, appState: appState))
+
+            case WatchPreparedCardWire.command:
+                // Plan KT §6.7: a press on a wrist card. `stage` is the Display's Send on phone.
+                let reply = await appState.watchPreparedCardHandler.handle(message)
+                replyHandler(WatchPreparedCardCommand.dictionary(reply))
 
             case "disconnect", "sleep":
                 appState.disconnectGlasses()

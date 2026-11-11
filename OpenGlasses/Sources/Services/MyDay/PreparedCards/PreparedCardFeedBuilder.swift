@@ -362,6 +362,9 @@ final class PreparedCardFeedBuilder {
     /// Plan KT §6.2: the card was shown on the Display unasked.
     func notePushed(_ card: PreparedCard) { metrics.record(.card(card.kind, .pushed)) }
 
+    /// Plan KT §6.5: the card was said unasked, because the Display could not show it.
+    func noteSpoken(_ card: PreparedCard) { metrics.record(.card(card.kind, .spoken)) }
+
     /// Plan KT §10: a press on the Display, by button.
     func noteLensPress(_ action: PreparedCardLensAction) {
         metrics.record(.lensPress(PreparedCardLensPressMetric(action)))

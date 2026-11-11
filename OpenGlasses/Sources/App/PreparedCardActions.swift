@@ -1,3 +1,4 @@
+import CallKit
 import MessageUI
 import SwiftUI
 import UIKit
@@ -115,14 +116,16 @@ extension AppState {
             cards: { [weak service] in service?.todayFeed.cards ?? [] },
             run: { [weak self] action, card in self?.performCardActionFromLens(action, on: card) },
             stage: { [weak self] card in await self?.preparedCardStager.stage(card) ?? .nothingToStage },
-            // Plan KT P4's phraser will say the card itself; P3 reads the draft as written.
-            readAloud: { [weak self] text in
-                Task { await self?.speechService.speak(text, source: .readAloud, mirrorToHUD: false) }
+            // Plan KT P4: the draft with who it is to, through the phraser (withheld under Medical
+            // Compliance when it names the meeting).
+            readAloud: { [weak self] card in
+                Task { await self?.preparedCardSpeech.readDraft(card) }
             },
             later: { [weak self] card in self?.performCardAction(.later, on: card) },
             dismiss: { [weak self] card in self?.performCardAction(.dismiss, on: card) },
             notUseful: { [weak service] card in service?.changeCards { $0.notUseful(card, now: Date()) } },
-            notePress: { [weak service] action in service?.cardBuilder?.noteLensPress(action) })
+            notePress: { [weak service] action in service?.cardBuilder?.noteLensPress(action) },
+            withholding: { PreparedCardMedicalWithholding.isOn })
 
         preparedCardGlances.cards = { [weak service] in service?.todayFeed.cards ?? [] }
         preparedCardGlances.worn = { [weak self] in self?.glassesService.isWorn }
@@ -131,6 +134,43 @@ extension AppState {
         }
         preparedCardGlances.open = { [weak self] id in self?.hudRouter.openCards(at: id) }
         preparedCardGlances.notePushed = { [weak service] card in service?.cardBuilder?.notePushed(card) }
+        preparedCardGlances.withholding = { PreparedCardMedicalWithholding.isOn }
+        // Plan KT P4: a pushed card the lens can't show is said instead — through the glasses, never
+        // on a call, never over captions or the wearer's own turn.
+        preparedCardGlances.speech = { [weak self] in
+            guard let self else { return .unavailable }
+            return PreparedCardPushPolicy.Speech(
+                glassesConnected: self.isConnected,
+                onCall: CXCallObserver().calls.contains { !$0.hasEnded },
+                captionsRunning: self.ambientCaptions.isActive,
+                busy: self.isProcessing || self.isListening || self.inConversation || self.speechService.isSpeaking)
+        }
+        preparedCardGlances.sayInstead = { [weak self] card in
+            Task { await self?.preparedCardSpeech.speakPushed(card) }
+        }
+        preparedCardGlances.noteSpoken = { [weak service] card in service?.cardBuilder?.noteSpoken(card) }
+
+        // Plan KT P4: "what's ready?" read aloud, and the answers while it reads. A spoken yes only
+        // stages, through the same stager as the lens's Send on phone.
+        preparedCardSpeech.cards = { [weak service] in service?.todayFeed.cards ?? [] }
+        preparedCardSpeech.stage = { [weak self] card in await self?.preparedCardStager.stage(card) ?? .nothingToStage }
+        preparedCardSpeech.later = { [weak self] card in self?.performCardAction(.later, on: card) }
+        preparedCardSpeech.dismiss = { [weak self] card in self?.performCardAction(.dismiss, on: card) }
+        preparedCardSpeech.notUseful = { [weak service] card in service?.changeCards { $0.notUseful(card, now: Date()) } }
+        preparedCardSpeech.voice = { [weak self] text, source in
+            await self?.speechService.speak(text, source: source, mirrorToHUD: false)
+        }
+
+        // Plan KT §6.7: a press on a wrist card. `stage` is the lens's Send on phone.
+        watchPreparedCardHandler.cards = { [weak service] in service?.todayFeed.cards ?? [] }
+        watchPreparedCardHandler.stage = { [weak self] card in
+            await self?.preparedCardStager.stage(card) ?? .nothingToStage
+        }
+        watchPreparedCardHandler.run = { [weak self] action, card in
+            self?.performCardActionAway(action, on: card) ?? false
+        }
+        watchPreparedCardHandler.later = { [weak self] card in self?.performCardAction(.later, on: card) }
+        watchPreparedCardHandler.dismiss = { [weak self] card in self?.performCardAction(.dismiss, on: card) }
 
         preparedCardStager.record = { [weak service] card in service?.changeCards { $0.stage(card, now: Date()) } }
         preparedCardStager.openComposer = { [weak self] card in
@@ -145,16 +185,24 @@ extension AppState {
     /// phone (directions, an open, a call) runs when the app is in front, and otherwise opens the
     /// card on the phone the next time it is unlocked (§6.4).
     func performCardActionFromLens(_ action: PreparedAction, on card: PreparedCard) {
+        guard !performCardActionAway(action, on: card) else { return }
+        glassesDisplay.flash(PreparedCardHUDBuilder.openOnPhoneLine, duration: 3)
+    }
+
+    /// A card's own action pressed away from the phone (the lens, the watch). True when it ran now;
+    /// false when the card opens on the phone the next time it is unlocked instead.
+    @discardableResult
+    func performCardActionAway(_ action: PreparedAction, on card: PreparedCard) -> Bool {
         if case .complete = action {
             performCardAction(action, on: card)
-            return
+            return true
         }
         if UIApplication.shared.applicationState == .active, UIApplication.shared.isProtectedDataAvailable {
             performCardAction(action, on: card)
-            return
+            return true
         }
         openPreparedCard(card.id)
-        glassesDisplay.flash(PreparedCardHUDBuilder.openOnPhoneLine, duration: 3)
+        return false
     }
 
     /// A tap on a staged card's notification: its composer, with the draft it was staged with.

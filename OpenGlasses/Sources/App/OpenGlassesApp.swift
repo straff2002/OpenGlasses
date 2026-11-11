@@ -4736,6 +4736,8 @@ class AppState: ObservableObject, AppStateProtocol {
             self.preparedCardGlances.evaluate()
             self.preparedCardStager.feedChanged(feed)
             self.openPendingStagedCard()
+            // Plan KT P4: the wrist's cards follow the feed (a push only if the value changed).
+            WatchConnectivityManager.shared.todayPublisher?.valueMayHaveChanged()
         }
         configurePreparedCardLens()
         // A card's urgency moves with the clock: re-join once a minute while the app runs, so a
@@ -5724,6 +5726,10 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var preparedCardGlances = PreparedCardGlances(display: glassesDisplay, router: hudRouter)
     /// Plan KT §6.4: "Send on phone" from the lens.
     let preparedCardStager = PreparedCardStager()
+    /// Plan KT §6.5: the cards by voice — "what's ready?" read aloud, and pushed cards said.
+    let preparedCardSpeech = PreparedCardSpeech()
+    /// Plan KT §6.7: presses on the wrist's cards.
+    let watchPreparedCardHandler = WatchPreparedCardHandler()
     /// A staged card's notification tapped before the feed had the card (a cold launch).
     var pendingStagedCard: PreparedCardID?
     /// The My Day cards' own facts (Plan KT P1).
@@ -7622,7 +7628,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // after whatever was being said, and before the microphone re-arms, so the next thing
         // heard is the answer. Speaks only when something is genuinely due, and the ask budget
         // means a technician who ignores it is not nagged.
-        let appAskedQuestion = await guidedJobFlow.speakPendingQuestionIfDue()
+        // Plan KT P4: a card read aloud is waiting for its answer ("yes", "next", "later").
+        let appAskedQuestion = await guidedJobFlow.speakPendingQuestionIfDue() || preparedCardSpeech.isAwaitingAnswer
         guard !spokenTurnGate.isReplacing else { return }
         // The user may have disabled listening while the turn was finishing — a finish stage must
         // never turn the microphone back on behind their back. But it must still CLOSE the
@@ -7693,6 +7700,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
+            // Plan KT §6.5: while the day's cards are being read aloud, "yes" (stages the draft —
+            // never sends), "next", "skip", "later", "not useful", "stop" answer the reading. Only
+            // inside its answer window; anything else ends the reading and goes on.
+            VoiceCommandHandler(label: "prepared-card-reading") { [weak self] text in
+                guard let self, self.preparedCardSpeech.reading != nil,
+                      await self.preparedCardSpeech.handle(text) else { return false }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("preparedCardReading"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
             // Teleprompter (Phase 2): while a session is running it owns the display, so
             // "next/back/pause/resume/restart/faster/slower/stop" drive the prompter rather than
             // the LLM. Checked first since it's a focused, full-screen mode.
@@ -7740,9 +7757,16 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self, HUDVoiceCommand.parse(text) == .briefing else { return false }
                 // Plan KT §6.2: with cards ready and a lens to show them, the same words open the
                 // card stack; with none, the digest as before.
-                if self.glassesDisplay.answerSurface != .none, self.glassesDisplay.displayAvailability != .inUse,
+                if self.glassesDisplay.answerSurface == .display, self.glassesDisplay.displayAvailability == .ours,
                    self.hudRouter.openCards() {
                     PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("preparedCards"))
+                    await self.resumeListeningOrReturnToWakeWord()
+                    return true
+                }
+                // Plan KT §6.5: no lens to show them (no display, another app has it, or it is off):
+                // the cards are read aloud, one at a time.
+                if await self.preparedCardSpeech.readStack() {
+                    PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("preparedCardsSpoken"))
                     await self.resumeListeningOrReturnToWakeWord()
                     return true
                 }

@@ -13,6 +13,8 @@ enum WatchTodayBuilder {
         var attribution: WatchTodayAttribution
         /// Localised short text for a condition. WeatherKit's own description by default.
         var conditionText: (WeatherCondition) -> String = { $0.description }
+        /// Plan KT §6.7: the feed's prepared cards, ranked (`MyDayService.todayFeed.cards`).
+        var cards: [PreparedCard] = []
     }
 
     static let titleLimit = 60
@@ -64,7 +66,10 @@ enum WatchTodayBuilder {
                                  events: events, moreEvents: more,
                                  redacted: redacted,
                                  weatherStatus: weatherStatus, weather: weather,
-                                 attribution: weather == nil ? nil : inputs.attribution)
+                                 attribution: weather == nil ? nil : inputs.attribution,
+                                 // The same Medical Compliance reading as the titles above.
+                                 cards: WatchPreparedCardBuilder.cards(from: inputs.cards, now: inputs.now,
+                                                                       withholding: redacted))
     }
 
     static func calendarStatus(_ gathered: MyDayGathered) -> WatchTodaySectionStatus {

@@ -45,6 +45,11 @@ struct PreparedCardLensPress: Equatable {
 /// The web mirror gets the strictest column: a health card is hidden there, and a draft's text is
 /// hidden on every draft screen (`HUDScreen.mirror`).
 ///
+/// **Medical Compliance (Plan KT P4).** With `withholding`, every screen shows the card as the Today
+/// glance would (`PreparedCardMedicalWithholding.shown`): no event title, and a draft that names the
+/// meeting is replaced by a line saying so — **Send on phone** still stages the whole message on
+/// the phone, where the wearer reads it.
+///
 /// "Later", "Dismiss" and "Not useful" are not buttons: the three slots go to doing things, and
 /// those are said ("later", "not useful") while the stack is on the lens.
 enum PreparedCardHUDBuilder {
@@ -107,10 +112,11 @@ enum PreparedCardHUDBuilder {
 
     /// Card `index` of `cards` (clamped), or nil with no cards.
     static func stack(_ cards: [PreparedCard], index: Int, geometry: TeleprompterPaginator.Geometry,
+                      withholding: Bool = false,
                       onPress: @escaping (PreparedCardLensPress) -> Void) -> HUDScreen? {
         guard !cards.isEmpty else { return nil }
         let position = min(max(index, 0), cards.count - 1)
-        let card = cards[position]
+        let card = PreparedCardMedicalWithholding.shown(cards[position], withholding: withholding)
         let width = max(1, geometry.maxChars)
         let paged = cards.count > 1
 
@@ -198,18 +204,23 @@ enum PreparedCardHUDBuilder {
         PreparedCardText.clipped(PreparedCardPresentation.draftModel(draft).recipientLine, to: HUDTextShaper.maxTitleLength)
     }
 
-    /// The draft cut into pages with KP's pager and geometry.
-    static func draftPages(_ card: PreparedCard, geometry: TeleprompterPaginator.Geometry) -> [HUDAnswerPage] {
+    /// The draft cut into pages with KP's pager and geometry. One page saying it is hidden when
+    /// Medical Compliance withholds its text.
+    static func draftPages(_ card: PreparedCard, geometry: TeleprompterPaginator.Geometry,
+                           withholding: Bool = false) -> [HUDAnswerPage] {
         guard let draft = card.draft else { return [] }
-        return HUDAnswerPager.pages(for: draft.text, geometry: geometry)
+        let text = PreparedCardMedicalWithholding.withholdsDraftText(card, withholding: withholding)
+            ? PreparedCardMedicalWithholding.draftHiddenLine : draft.text
+        return HUDAnswerPager.pages(for: text, geometry: geometry)
     }
 
     /// Page `page` (clamped) of the card's draft, or nil without a draft. **Send on phone** shows
     /// only on the last page, so the wearer has seen the whole message before they can stage it.
     static func draft(_ card: PreparedCard, page: Int, geometry: TeleprompterPaginator.Geometry,
+                      withholding: Bool = false,
                       onPress: @escaping (PreparedCardLensPress) -> Void) -> HUDScreen? {
         guard let draft = card.draft else { return nil }
-        let pages = draftPages(card, geometry: geometry)
+        let pages = draftPages(card, geometry: geometry, withholding: withholding)
         guard !pages.isEmpty else { return nil }
         let shown = pages[min(max(page, 0), pages.count - 1)]
 
@@ -242,7 +253,9 @@ enum PreparedCardHUDBuilder {
 
     /// The headline and one fact, with **Open** · **Close**.
     static func glance(_ card: PreparedCard, geometry: TeleprompterPaginator.Geometry,
+                       withholding: Bool = false,
                        onPress: @escaping (PreparedCardLensPress) -> Void) -> HUDScreen {
+        let card = PreparedCardMedicalWithholding.shown(card, withholding: withholding)
         let lines = factLines(card, limit: 1, maxChars: max(1, geometry.maxChars))
         let items = [
             HUDItem(id: ItemID.open, label: openLabel, style: .primary) {

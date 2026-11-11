@@ -66,7 +66,7 @@ final class PreparedCardLensTests: XCTestCase {
                 feed.staged.append(card.id)
                 return feed.stageOutcome
             },
-            readAloud: { feed.read.append($0) },
+            readAloud: { feed.read.append($0.draft?.text ?? "") },
             later: { card in feed.later.append(card.id); feed.remove(card.id) },
             dismiss: { card in feed.dismissed.append(card.id); feed.remove(card.id) },
             notUseful: { card in feed.notUseful.append(card.id); feed.remove(card.id) },
@@ -414,6 +414,77 @@ final class PreparedCardLensTests: XCTestCase {
         display.flash("A notification", duration: 30)
         rig.0.handle(PreparedCardLensPress(action: .open, cardID: LensCardFixtures.leaveBy.id))
         XCTAssertTrue(rig.opened().isEmpty, "a press under a notification is dropped")
+    }
+
+    // MARK: - Plan KT P4: spoken instead, sharing the once-memory
+
+    func testACardTheLensCannotShowIsSaidOnceAndNeverGlancedAfter() async {
+        let display = makeDisplay()
+        display.applySessionReading(.init(state: .paused))   // another app has the Display
+        XCTAssertEqual(display.displayAvailability, .inUse)
+        let feed = Feed([LensCardFixtures.runningLate])
+        let router = makeRouter(display, feed)
+        let rig = makeGlances(display, router, feed)
+        var spoken: [PreparedCardID] = []
+        rig.0.speech = { .init(glassesConnected: true, onCall: false, captionsRunning: false, busy: false) }
+        rig.0.sayInstead = { spoken.append($0.id) }
+        rig.0.evaluate()
+        XCTAssertEqual(spoken, [LensCardFixtures.runningLate.id])
+        XCTAssertFalse(rig.0.isShowing, "said, not shown")
+        rig.0.evaluate()
+        XCTAssertEqual(spoken.count, 1, "once")
+
+        display.applySessionReading(.init(state: .started))
+        XCTAssertEqual(display.displayAvailability, .ours)
+        rig.0.evaluate()
+        XCTAssertFalse(rig.0.isShowing, "a card already said is never glanced: one memory for both")
+    }
+
+    func testOnACallNothingIsSaidAndWhileInUseNothingQueues() async {
+        let display = makeDisplay()
+        display.applySessionReading(.init(state: .paused))
+        let feed = Feed([LensCardFixtures.leaveBy])
+        let router = makeRouter(display, feed)
+        let rig = makeGlances(display, router, feed)
+        var spoken: [PreparedCardID] = []
+        rig.0.speech = { .init(glassesConnected: true, onCall: true, captionsRunning: false, busy: false) }
+        rig.0.sayInstead = { spoken.append($0.id) }
+        rig.0.evaluate()
+        XCTAssertTrue(spoken.isEmpty)
+        display.applySessionReading(.init(state: .started))
+        rig.0.evaluate()
+        XCTAssertFalse(rig.0.isShowing, "spent while in use, as before")
+    }
+
+    func testTheGlanceWithholdsUnderMedicalCompliance() async {
+        let display = makeDisplay()
+        let card = PreparedCard(id: LensCardFixtures.runningLate.id, headline: "Running about 10 min late",
+                                subject: "Gig at the Example Hall", signals: [], facts: [],
+                                primary: LensCardFixtures.runningLate.primary, urgency: .immediate, dueAt: nil,
+                                validUntil: LensCardFixtures.validUntil)
+        let feed = Feed([card])
+        let router = makeRouter(display, feed)
+        let rig = makeGlances(display, router, feed)
+        rig.0.withholding = { true }
+        rig.0.evaluate()
+        XCTAssertTrue(rig.0.isShowing)
+        let words = (rig.0.screenOnLens?.lines.map(\.text) ?? []) + [rig.0.screenOnLens?.title ?? ""]
+        XCTAssertFalse(words.contains { $0.contains("Example Hall") })
+    }
+
+    func testTheStackWithholdsAndReadItGoesThroughTheCard() async {
+        let display = makeDisplay()
+        let feed = Feed([LensCardFixtures.shortNight])
+        let router = makeRouter(display, feed)
+        router.cardHooks?.withholding = { true }
+        XCTAssertTrue(router.openCards())
+        XCTAssertEqual(router.currentScreen?.title, "Ask to move a meeting")
+        router.pressCard(PreparedCardLensPress(action: .draft, cardID: LensCardFixtures.shortNight.id))
+        let lines = router.currentScreen?.lines.map(\.text).joined(separator: " ") ?? ""
+        XCTAssertFalse(lines.contains("Could we move"))
+        router.pressCard(PreparedCardLensPress(action: .readIt, cardID: LensCardFixtures.shortNight.id))
+        XCTAssertEqual(feed.read, [LensCardFixtures.longEmail], "the hook gets the card; the app's phraser withholds")
+        router.closeCards()
     }
 }
 

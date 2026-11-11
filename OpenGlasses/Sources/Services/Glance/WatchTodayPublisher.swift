@@ -42,6 +42,8 @@ final class WatchTodayPublisher {
         /// Every My Day source the refresh reads has had its permission answered, so an
         /// unattended refresh cannot ask.
         var sourceAccessReady: () -> Bool = { true }
+        /// Plan KT §6.7: the day's prepared cards now, ranked.
+        var cards: @MainActor () -> [PreparedCard] = { [] }
     }
 
     private let environment: Environment
@@ -110,7 +112,8 @@ final class WatchTodayPublisher {
                 from: held,
                 .init(now: now, calendar: calendar, medical: environment.medical(),
                       temperatureUnit: environment.temperatureUnit(),
-                      attribution: environment.attribution()))
+                      attribution: environment.attribution(),
+                      cards: environment.cards()))
         } else {
             return nil
         }
