@@ -18,6 +18,9 @@ targets:
       # Shared with iOS app (Plan KS) — the `today` payload (calendar items, weather, the weather
       # credit), its codec, and the is-it-today / which-is-now rules. Foundation only.
       - path: OpenGlasses/Sources/Shared/WatchToday.swift
+      # Shared with iOS app (Plan KT) — the prepared card model (and My Day's urgency ladder it
+      # carries), so the watch decodes the cards the phone builds. Foundation only.
+      - path: OpenGlasses/Sources/Shared/PreparedCard.swift
     # The watch app writes listening/recording/connected state to the App Group suite and the
     # watch widget's complications read it back — two processes, so both need the group.
     entitlements:

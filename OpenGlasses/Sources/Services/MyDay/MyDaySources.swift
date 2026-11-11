@@ -98,7 +98,8 @@ extension EventKitDayStore: CalendarDaySource {
                     startDate: $0.startDate,
                     endDate: $0.endDate,
                     isAllDay: $0.isAllDay,
-                    location: $0.location
+                    location: $0.location,
+                    attendees: $0.attendees
                 )
             }
             return .init(value: events, state: .available(.calendar))

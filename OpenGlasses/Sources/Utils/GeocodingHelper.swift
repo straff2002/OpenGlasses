@@ -19,6 +19,16 @@ enum GeocodingHelper {
         /// The city or town, from MapKit's address representations. Kept apart from `locality`,
         /// which weather and saved places already read and would start answering differently from.
         var cityName: String? = nil
+        /// The neighbourhood ("Te Aro", "Mission District"), for My Day's location chip (Plan KT).
+        /// Often absent outside big cities; the chip then falls back to the street.
+        var subLocality: String? = nil
+
+        /// The street part of `shortAddress` ("14 Example Street"), when MapKit gave one.
+        var streetFromShortAddress: String? {
+            guard let first = shortAddress?.components(separatedBy: ",").first?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty else { return nil }
+            return first
+        }
 
         /// Formatted short address (e.g. "123 Main St")
         var streetAddress: String? {
@@ -52,11 +62,22 @@ enum GeocodingHelper {
                 fullAddress: addr?.fullAddress,
                 location: item.location,
                 shortAddress: addr?.shortAddress,
-                cityName: item.addressRepresentations?.cityName
+                cityName: item.addressRepresentations?.cityName,
+                subLocality: subLocality(of: item)
             )
         } catch {
             return nil
         }
+    }
+
+    /// The map item's neighbourhood. iOS 26's address representations carry no sub-locality, so
+    /// the only source is the placemark MapKit still fills but has deprecated; it is read through
+    /// `LegacyPlacemarkReading` so that one deliberate use does not warn on every build.
+    static func subLocality(of item: MKMapItem) -> String? {
+        let reader: LegacyPlacemarkReading = LegacyPlacemarkReader()
+        guard let value = reader.subLocality(of: item)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+        return value
     }
 
     /// Reverse geocode coordinates to place info.
@@ -98,5 +119,18 @@ enum GeocodingHelper {
         } catch {
             return nil
         }
+    }
+}
+
+/// Calls a deprecated MapKit property from a deprecated witness, behind a protocol, so the caller
+/// is not itself using a deprecated API (see `GeocodingHelper.subLocality(of:)`).
+private protocol LegacyPlacemarkReading {
+    func subLocality(of item: MKMapItem) -> String?
+}
+
+private struct LegacyPlacemarkReader: LegacyPlacemarkReading {
+    @available(iOS, deprecated: 26.0, message: "MKMapItem.placemark is the only source of a sub-locality")
+    func subLocality(of item: MKMapItem) -> String? {
+        item.placemark.subLocality
     }
 }
