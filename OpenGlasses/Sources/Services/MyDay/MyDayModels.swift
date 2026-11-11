@@ -15,16 +15,8 @@ enum MyDayKind: String, Equatable, Sendable {
     case weather
 }
 
-enum MyDayUrgency: Int, Comparable, Equatable, Sendable {
-    case routine = 0
-    case upcoming = 1
-    case important = 2
-    case immediate = 3
-
-    static func < (lhs: MyDayUrgency, rhs: MyDayUrgency) -> Bool {
-        lhs.rawValue < rhs.rawValue
-    }
-}
+// `MyDayUrgency` lives in `Shared/PreparedCard.swift` (Plan KT): a prepared card carries it, and
+// the watch decodes prepared cards.
 
 enum MyDaySource: String, CaseIterable, Equatable, Sendable {
     case calendar
@@ -130,6 +122,40 @@ struct MyDayCalendarEvent: Equatable, Sendable {
     let endDate: Date
     let isAllDay: Bool
     let location: String?
+    /// The event's people, organiser included, from EventKit (Plan KT §9.3). The same for Google,
+    /// iCloud and Exchange calendars. Empty for an event with nobody else on it, and from every
+    /// source that does not read attendees — defaulted, so those callers are unchanged.
+    var attendees: [CalendarPerson] = []
+}
+
+/// One person on a calendar event (Plan KT §9.3), mapped from `EKParticipant` by
+/// `CalendarAttendeeMapper`. Rooms and resources are not people and never become one.
+struct CalendarPerson: Codable, Equatable, Hashable, Sendable {
+    enum Response: String, Codable, Equatable, Sendable {
+        case accepted
+        case declined
+        case tentative
+        case pending
+        case unknown
+    }
+
+    /// As the calendar gives it; nil when it gives none.
+    let name: String?
+    /// Lower-cased, from the participant's `mailto:` URL; nil when it has none.
+    let email: String?
+    let isOrganizer: Bool
+    /// The wearer (`EKParticipant.isCurrentUser`).
+    let isSelf: Bool
+    let response: Response
+
+    init(name: String?, email: String?, isOrganizer: Bool = false, isSelf: Bool = false,
+         response: Response = .unknown) {
+        self.name = name
+        self.email = email
+        self.isOrganizer = isOrganizer
+        self.isSelf = isSelf
+        self.response = response
+    }
 }
 
 struct MyDayReminder: Equatable, Sendable {

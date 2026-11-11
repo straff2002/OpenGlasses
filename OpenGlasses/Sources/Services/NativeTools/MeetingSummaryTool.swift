@@ -28,14 +28,23 @@ struct MeetingSummaryTool: NativeTool {
     }
 
     func execute(args: [String: Any]) async throws -> String {
+        await summarize(args: args).text
+    }
+
+    /// The summary as the tool says it, and — when there was a conversation to summarise — the
+    /// same extraction as a value (Plan KT P0), so a prepared card reads action items without
+    /// parsing the prose.
+    func summarize(args: [String: Any], now: Date = Date()) async -> MeetingSummaryOutput {
         guard let service = captionService else {
-            return "Ambient caption service not available."
+            return MeetingSummaryOutput(text: "Ambient caption service not available.", facts: nil)
         }
 
         let history = await MainActor.run { service.captionHistory }
 
         guard !history.isEmpty else {
-            return "No conversation transcript available. Start ambient captions first, then have a conversation. I'll be able to summarize it afterward."
+            return MeetingSummaryOutput(
+                text: "No conversation transcript available. Start ambient captions first, then have a conversation. I'll be able to summarize it afterward.",
+                facts: nil)
         }
 
         let mode = (args["mode"] as? String)?.lowercased() ?? "full"
@@ -52,9 +61,11 @@ struct MeetingSummaryTool: NativeTool {
         let wordCount = entries.reduce(0) { $0 + $1.text.split(separator: " ").count }
 
         // Extract key information locally
-        let actionItems = extractActionItems(from: entries.map { $0.text })
-        let decisions = extractDecisions(from: entries.map { $0.text })
-        let topics = extractTopics(from: entries.map { $0.text })
+        let facts = Self.facts(from: entries.map { (text: $0.text, timestamp: $0.timestamp) },
+                               savedAt: now)
+        let actionItems = facts?.actionItems ?? []
+        let decisions = facts?.decisions ?? []
+        let topics = facts?.topics ?? []
 
         var summary = ""
 
@@ -92,7 +103,23 @@ struct MeetingSummaryTool: NativeTool {
             saveNote(title: "Meeting Summary — \(dateStr)", content: summary)
         }
 
-        return summary + "\n\nThe LLM should present this summary conversationally to the user, highlighting the most important points."
+        return MeetingSummaryOutput(
+            text: summary + "\n\nThe LLM should present this summary conversationally to the user, highlighting the most important points.",
+            facts: facts)
+    }
+
+    /// The extraction as a value, over caption entries in time order. Nil for no entries.
+    nonisolated static func facts(from entries: [(text: String, timestamp: Date)], savedAt: Date) -> MeetingSummaryFacts? {
+        guard let first = entries.first, let last = entries.last else { return nil }
+        let texts = entries.map(\.text)
+        return MeetingSummaryFacts(
+            actionItems: extractActionItems(from: texts),
+            decisions: extractDecisions(from: texts),
+            topics: extractTopics(from: texts),
+            startedAt: min(first.timestamp, last.timestamp),
+            endedAt: max(first.timestamp, last.timestamp),
+            savedAt: savedAt,
+            transcript: texts.joined(separator: "\n"))
     }
 
     // MARK: - Summary Building
@@ -141,7 +168,7 @@ struct MeetingSummaryTool: NativeTool {
 
     // MARK: - Local Extraction
 
-    private func extractActionItems(from texts: [String]) -> [String] {
+    nonisolated static func extractActionItems(from texts: [String]) -> [String] {
         let actionPatterns = [
             "need to", "should", "will", "going to", "have to", "must",
             "let's", "let me", "i'll", "we'll", "please", "make sure",
@@ -172,7 +199,7 @@ struct MeetingSummaryTool: NativeTool {
         return Array(items.prefix(10))
     }
 
-    private func extractDecisions(from texts: [String]) -> [String] {
+    nonisolated static func extractDecisions(from texts: [String]) -> [String] {
         let decisionPatterns = [
             "decided", "agreed", "we're going with", "the plan is",
             "let's go with", "final answer", "confirmed", "approved",
@@ -195,7 +222,7 @@ struct MeetingSummaryTool: NativeTool {
         return Array(decisions.prefix(5))
     }
 
-    private func extractTopics(from texts: [String]) -> [String] {
+    nonisolated static func extractTopics(from texts: [String]) -> [String] {
         // Simple word frequency analysis for topic extraction
         let stopWords: Set<String> = ["the", "a", "an", "is", "it", "to", "and", "of", "in", "for",
                                        "that", "this", "with", "on", "at", "by", "from", "or", "but",
@@ -255,4 +282,26 @@ struct MeetingSummaryTool: NativeTool {
         // edges linking known people to this meeting.
         BrainStore.shared.ingest(text: content, sourceRef: title, sourceKind: "meeting", origin: .fromMeeting)
     }
+}
+
+/// What `MeetingSummaryTool` said, as text for the model and as a value for code.
+struct MeetingSummaryOutput {
+    let text: String
+    let facts: MeetingSummaryFacts?
+}
+
+/// One summarised conversation (Plan KT P0): the action items, decisions and topics the tool
+/// extracted, the span of the captions it read and when the summary was made.
+///
+/// `transcript` is caption text — other people's words. It is held only so a draft built from the
+/// action items can be checked for having copied anything else (`DraftValidator`); it is never
+/// stored, logged or put in a prompt by anything in Plan KT.
+struct MeetingSummaryFacts: Equatable, Sendable {
+    let actionItems: [String]
+    let decisions: [String]
+    let topics: [String]
+    let startedAt: Date
+    let endedAt: Date
+    let savedAt: Date
+    let transcript: String
 }

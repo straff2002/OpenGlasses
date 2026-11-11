@@ -80,6 +80,89 @@ enum ContactLookupHelper {
         return distinctNames.count == 1 ? .one(first) : .ambiguous(names: distinctNames)
     }
 
+    // MARK: - By email address (Plan KT §9.4)
+
+    /// A phone number on a contact found by email address, with its raw `CNLabeledValue` label
+    /// (`_$!<Mobile>!$_`), so the choice between numbers is a pure rule.
+    struct PhoneEntry: Equatable, Sendable {
+        let number: String
+        let rawLabel: String?
+    }
+
+    /// The contact an email address belongs to: a display name and its phone numbers.
+    struct EmailContact: Equatable, Sendable {
+        let name: String
+        let phones: [PhoneEntry]
+
+        /// The number a text should go to (`ContactLookupHelper.preferredPhone`).
+        var textablePhone: String? { ContactLookupHelper.preferredPhone(phones)?.number }
+    }
+
+    /// The contact who owns `email` — so a calendar attendee, who arrives as an address, can be
+    /// reached by name and by text from any calendar iOS Calendar syncs. Nil when nobody has the
+    /// address, when two different people do (the only safe answer then is to not guess), or when
+    /// Contacts access is not granted.
+    static func resolve(email: String) -> EmailContact? {
+        let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard address.contains("@") else { return nil }
+        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else { return nil }
+
+        let store = CNContactStore()
+        let keysToFetch: [CNKeyDescriptor] = [
+            CNContactGivenNameKey as CNKeyDescriptor,
+            CNContactFamilyNameKey as CNKeyDescriptor,
+            CNContactOrganizationNameKey as CNKeyDescriptor,
+            CNContactPhoneNumbersKey as CNKeyDescriptor,
+        ]
+        let predicate = CNContact.predicateForContacts(matchingEmailAddress: address)
+        guard let contacts = try? store.unifiedContacts(matching: predicate, keysToFetch: keysToFetch) else {
+            return nil
+        }
+        let matches = contacts.map { contact in
+            EmailContact(
+                name: displayName(given: contact.givenName, family: contact.familyName,
+                                  organization: contact.organizationName),
+                phones: contact.phoneNumbers.map {
+                    PhoneEntry(number: $0.value.stringValue, rawLabel: $0.label)
+                })
+        }
+        return pickContact(from: matches)
+    }
+
+    /// One match, or several that are the same person, is that person; two different people
+    /// sharing an address (a family inbox) is nobody, as `pickEmail` treats a shared name.
+    static func pickContact(from matches: [EmailContact]) -> EmailContact? {
+        guard let first = matches.first else { return nil }
+        let names = Set(matches.map { $0.name.lowercased() })
+        return names.count == 1 ? first : nil
+    }
+
+    /// "Given Family", else the organisation, else empty.
+    static func displayName(given: String, family: String, organization: String) -> String {
+        let full = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
+        return full.isEmpty ? organization : full
+    }
+
+    /// The number a text should go to: a mobile, then an iPhone, then any other number, in the
+    /// order the contact lists them. Landline-only labels (home, work, main, fax, pager) come last
+    /// and fax and pager never — they cannot take a text.
+    static func preferredPhone(_ phones: [PhoneEntry]) -> PhoneEntry? {
+        func rank(_ entry: PhoneEntry) -> Int? {
+            switch entry.rawLabel ?? "" {
+            case CNLabelPhoneNumberMobile: return 0
+            case CNLabelPhoneNumberiPhone: return 1
+            case CNLabelPhoneNumberHomeFax, CNLabelPhoneNumberWorkFax, CNLabelPhoneNumberOtherFax,
+                 CNLabelPhoneNumberPager: return nil
+            case CNLabelHome, CNLabelWork, CNLabelPhoneNumberMain: return 3
+            default: return 2
+            }
+        }
+        return phones.enumerated()
+            .filter { !$0.element.number.trimmingCharacters(in: .whitespaces).isEmpty }
+            .compactMap { offset, entry in rank(entry).map { ($0, offset, entry) } }
+            .min { ($0.0, $0.1) < ($1.0, $1.1) }?.2
+    }
+
     // MARK: - The one fetch both paths share
 
     /// The single trip to Contacts: authorization, keys, name predicate and the display name every

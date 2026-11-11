@@ -9,6 +9,8 @@ struct EventKitCalendarRecord: Equatable {
     let isAllDay: Bool
     let location: String?
     let notes: String?
+    /// The event's people (Plan KT §9.3), mapped by `CalendarAttendeeMapper`.
+    var attendees: [CalendarPerson] = []
 }
 
 struct EventKitReminderRecord: Equatable {
@@ -80,13 +82,23 @@ final class EventKitDayStore {
                     endDate: event.endDate,
                     isAllDay: event.isAllDay,
                     location: event.location?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-                    notes: event.notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    notes: event.notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                    attendees: CalendarAttendeeMapper.people(
+                        organizer: event.organizer.map(EventKitParticipantRecord.init),
+                        attendees: (event.attendees ?? []).map(EventKitParticipantRecord.init))
                 )
             }
             .sorted {
                 if $0.startDate != $1.startDate { return $0.startDate < $1.startDate }
                 return $0.id < $1.id
             }
+    }
+
+    /// The calendar accounts iOS Calendar holds, for `GoogleCalendarPresence` (Plan KT §9.1).
+    func calendarSources() -> [CalendarSourceRecord] {
+        eventStore.sources.map { source in
+            CalendarSourceRecord(title: source.title, kind: CalendarSourceRecord.Kind(source.sourceType))
+        }
     }
 
     func saveCalendarEvent(
@@ -170,6 +182,55 @@ final class EventKitDayStore {
             priority: reminder.priority,
             listName: reminder.calendar?.title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         )
+    }
+}
+
+extension EventKitParticipantRecord {
+    /// Copies what the mapper needs out of EventKit.
+    init(_ participant: EKParticipant) {
+        let kind: Kind
+        switch participant.participantType {
+        case .person: kind = .person
+        case .room: kind = .room
+        case .resource: kind = .resource
+        case .group: kind = .group
+        default: kind = .unknown
+        }
+        let role: Role
+        switch participant.participantRole {
+        case .required: role = .required
+        case .optional: role = .optional
+        case .chair: role = .chair
+        case .nonParticipant: role = .nonParticipant
+        default: role = .unknown
+        }
+        let status: Status
+        switch participant.participantStatus {
+        case .accepted: status = .accepted
+        case .declined: status = .declined
+        case .tentative: status = .tentative
+        case .pending: status = .pending
+        case .delegated: status = .delegated
+        case .completed: status = .completed
+        case .inProcess: status = .inProcess
+        default: status = .unknown
+        }
+        self.init(name: participant.name, url: participant.url, kind: kind, role: role,
+                  status: status, isCurrentUser: participant.isCurrentUser)
+    }
+}
+
+extension CalendarSourceRecord.Kind {
+    init(_ type: EKSourceType) {
+        switch type {
+        case .local: self = .local
+        case .exchange: self = .exchange
+        case .calDAV: self = .calDAV
+        case .mobileMe: self = .mobileMe
+        case .subscribed: self = .subscribed
+        case .birthdays: self = .birthdays
+        @unknown default: self = .unknown
+        }
     }
 }
 

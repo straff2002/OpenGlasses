@@ -1,6 +1,6 @@
 # Plan KT — Cards Ready to Act (two or three things the app already knows, joined into one thing to do, with the message drafted and handed to you to send — on the phone, the Display, the watch and by voice)
 
-**Status:** 📝 Drafted 2026-11-07 from the owner's ask. Nothing built. The owner took all the
+**Status:** 🚧 P0 built 2026-11-11 (headless): the shared card model, the rules for every P0 kind, the joiner and `TodayFeed`, the draft templates and validator, EventKit attendees, `GoogleCalendarPresence`, contact by email and the sub-locality. Nothing is wired into a surface yet; P1–P5 to do. Drafted 2026-11-07 from the owner's ask. The owner took all the
 recommended [decisions](#decisions-taken-2026-11-07) the same day ("Take them all"). Gmail and an in-app
 Google sign-in were in the first draft (the owner asked for them that morning) and were **dropped the same
 day** once Google's verification was on the table ("let's not worry about gmail / calendar unless the
