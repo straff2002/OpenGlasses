@@ -15,6 +15,45 @@ enum PreparedCardMetricAction: String, CaseIterable, Sendable {
     case later
     case dismissed
     case notUseful
+    /// Plan KT P3: shown on the Display unasked (§6.2).
+    case pushed
+    /// Plan KT P3: put on the phone to send from the Display (§6.4).
+    case staged
+}
+
+/// Plan KT §10: a press on a card's Display screens, by button. Never which card, never its text.
+enum PreparedCardLensPressMetric: String, CaseIterable, Sendable {
+    case run
+    case draft
+    case nextCard
+    case previousCard
+    case close
+    case nextPage
+    case back
+    case sendOnPhone
+    case readIt
+    case later
+    case dismiss
+    case notUseful
+    case open
+
+    init(_ action: PreparedCardLensAction) {
+        switch action {
+        case .run: self = .run
+        case .draft: self = .draft
+        case .nextCard: self = .nextCard
+        case .previousCard: self = .previousCard
+        case .close: self = .close
+        case .nextPage: self = .nextPage
+        case .back: self = .back
+        case .sendOnPhone: self = .sendOnPhone
+        case .readIt: self = .readIt
+        case .later: self = .later
+        case .dismiss: self = .dismiss
+        case .notUseful: self = .notUseful
+        case .open: self = .open
+        }
+    }
 }
 
 /// Who wrote a shown draft. P1 has templates only; the other two arrive with model drafts.
@@ -36,6 +75,7 @@ enum PreparedCardMetricEvent: Equatable, Sendable {
     case card(PreparedCardKind, PreparedCardMetricAction)
     case draftOrigin(PreparedCardDraftOriginMetric)
     case validatorFallback(DraftValidationFailure)
+    case lensPress(PreparedCardLensPressMetric)
 }
 
 protocol PreparedCardMetricsRecording: AnyObject {
@@ -46,6 +86,7 @@ struct PreparedCardMetricsSnapshot: Equatable, Sendable {
     let counts: [PreparedCardKind: [PreparedCardMetricAction: Int]]
     let draftOrigins: [PreparedCardDraftOriginMetric: Int]
     let fallbacks: [DraftValidationFailure: Int]
+    var lensPresses: [PreparedCardLensPressMetric: Int] = [:]
 
     func count(_ kind: PreparedCardKind, _ action: PreparedCardMetricAction) -> Int {
         counts[kind]?[action] ?? 0
@@ -72,6 +113,9 @@ final class PreparedCardMetricsStore: PreparedCardMetricsRecording, @unchecked S
         static func fallback(_ reason: DraftValidationFailure) -> String {
             prefix + "fallback." + reason.rawValue
         }
+        static func lensPress(_ press: PreparedCardLensPressMetric) -> String {
+            prefix + "lens." + press.rawValue
+        }
     }
 
     private let defaults: UserDefaults
@@ -87,6 +131,7 @@ final class PreparedCardMetricsStore: PreparedCardMetricsRecording, @unchecked S
         case .card(let kind, let action): key = Key.card(kind, action)
         case .draftOrigin(let origin): key = Key.origin(origin)
         case .validatorFallback(let reason): key = Key.fallback(reason)
+        case .lensPress(let press): key = Key.lensPress(press)
         }
         lock.lock()
         defer { lock.unlock() }
@@ -115,7 +160,13 @@ final class PreparedCardMetricsStore: PreparedCardMetricsRecording, @unchecked S
             let value = defaults.integer(forKey: Key.fallback(reason))
             if value > 0 { fallbacks[reason] = value }
         }
-        return PreparedCardMetricsSnapshot(counts: counts, draftOrigins: origins, fallbacks: fallbacks)
+        var presses: [PreparedCardLensPressMetric: Int] = [:]
+        for press in PreparedCardLensPressMetric.allCases {
+            let value = defaults.integer(forKey: Key.lensPress(press))
+            if value > 0 { presses[press] = value }
+        }
+        return PreparedCardMetricsSnapshot(counts: counts, draftOrigins: origins, fallbacks: fallbacks,
+                                           lensPresses: presses)
     }
 
     /// Every counter back to zero (tests).
@@ -155,6 +206,11 @@ enum PreparedCardReport {
         if !snapshot.fallbacks.isEmpty {
             lines.append("Card draft fallbacks: " + DraftValidationFailure.allCases.compactMap { reason in
                 snapshot.fallbacks[reason].map { "\(reason.rawValue) \($0)" }
+            }.joined(separator: ", "))
+        }
+        if !snapshot.lensPresses.isEmpty {
+            lines.append("Card Display presses: " + PreparedCardLensPressMetric.allCases.compactMap { press in
+                snapshot.lensPresses[press].map { "\(press.rawValue) \($0)" }
             }.joined(separator: ", "))
         }
         return lines

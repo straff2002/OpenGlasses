@@ -19,7 +19,10 @@ extension AppState: TempleActionPerforming {
             // Plan KP §8: a card held while another app has the Display can't be seen, so a page
             // tap is refused (the soft tone) rather than turning a page nobody can read.
             answerCardShowing: hudAnswerCard.isShowing && glassesDisplay.displayAvailability != .inUse,
-            replayRunning: instantReplay.isRunning)
+            replayRunning: instantReplay.isRunning,
+            // Plan KT §6.2: cards to show, and a display (not one another app has) to show them on.
+            cardsReady: hudRouter.hasCards && glassesDisplay.deviceSupportsDisplay() && Config.glassesDisplayEnabled
+                && glassesDisplay.displayAvailability != .inUse)
     }
 
     private var templeActivity: TempleContext.Activity {
@@ -81,6 +84,9 @@ extension AppState: TempleActionPerforming {
         case .answerPage(let forward):
             // The tap's earcon confirmed it; the page itself is the answer.
             hudAnswerCard.press(forward ? .next : .back)
+        case .openCards:
+            // The earcon confirmed the tap; the cards are the answer.
+            hudRouter.openCards()
         case .saveReplay:
             // The earcon confirmed the tap; the line says how much was kept and where.
             let outcome = await saveInstantReplay(ReplaySaveRequest())

@@ -85,6 +85,8 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     private let openTab: (MainTab) -> Void
     /// Where a tap on a My Day card's notification lands (Plan KT §5.3).
     var openPreparedCard: ((PreparedCardID) -> Void)?
+    /// Where a tap on a card staged from the Display lands: its composer (Plan KT §6.4).
+    var openStagedCard: ((PreparedCardID) -> Void)?
 
     init(openTab: @escaping (MainTab) -> Void) {
         self.openTab = openTab
@@ -113,7 +115,10 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
         Task { @MainActor in
-            if let card = PreparedCardNotificationPolicy.cardID(from: userInfo) {
+            if let card = PreparedCardNotificationPolicy.cardID(from: userInfo),
+               PreparedCardStagingPolicy.isStaged(userInfo), let openStagedCard = self.openStagedCard {
+                openStagedCard(card)
+            } else if let card = PreparedCardNotificationPolicy.cardID(from: userInfo) {
                 self.openPreparedCard?(card)
             } else if let tab = Self.requestedTab(from: userInfo) {
                 self.openTab(tab)

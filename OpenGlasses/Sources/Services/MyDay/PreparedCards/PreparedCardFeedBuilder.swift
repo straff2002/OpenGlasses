@@ -105,6 +105,10 @@ final class PreparedCardFeedBuilder {
     private var ruleDrafts: [PreparedCardID: String] = [:]
     /// Edits already counted by the style learner.
     private var learnedFrom: Set<PreparedCardID> = []
+    /// Plan KT §6.4: the draft each staged card was staged with, so the phone opens what the lens
+    /// showed. In memory only, like a model's draft: after a relaunch the card's draft as it is
+    /// then (the template, or the wearer's kept edit) is what opens.
+    private(set) var stagedTexts: [PreparedCardID: String] = [:]
 
     init(store: PreparedCardStore,
          metrics: any PreparedCardMetricsRecording = PreparedCardMetricsStore.shared,
@@ -163,7 +167,7 @@ final class PreparedCardFeedBuilder {
         }
         ruleDrafts = Dictionary(ruled.compactMap { entry in entry.card.draft.map { (entry.card.id, $0.text) } },
                                 uniquingKeysWith: { first, _ in first })
-        ruled = ruled.map(applyingModelDraft)
+        ruled = ruled.map(applyingModelDraft).map(applyingStagedDraft)
         let memory = store.memory
         let feed = PreparedCardJoiner(calendar: calendar(), locale: locale)
             .join(ruled, items: lastItems, memory: memory, now: now, isFieldAssistDay: settings.isFieldAssistDay)
@@ -206,6 +210,18 @@ final class PreparedCardFeedBuilder {
                           text: model.result.text, origin: model.result.origin, language: $0.language)
         }
         return copy
+    }
+
+    /// A staged card keeps the draft it was staged with while it is staged; an edit on the phone
+    /// still wins (the joiner applies it after).
+    private func applyingStagedDraft(_ entry: RuledCard) -> RuledCard {
+        guard let text = stagedTexts[entry.card.id], entry.card.draft != nil else { return entry }
+        if case .staged? = store.entry(for: entry.card.id)?.memory.state {
+            var copy = entry
+            copy.card.draft?.text = text
+            return copy
+        }
+        return entry
     }
 
     /// Ask for a model draft of each shown card that has a draft, once per card (§4.2): not for
@@ -313,6 +329,7 @@ final class PreparedCardFeedBuilder {
     /// route with no result leaves it "Opened in…" with Done and Not sent.
     func handedOff(_ card: PreparedCard, result: PreparedCardState.HandOffResult, now: Date) {
         metrics.record(.card(card.kind, .handedOff))
+        stagedTexts[card.id] = nil
         if result != .cancelled { learnStyle(from: card) }
         switch result {
         case .sent:
@@ -331,6 +348,23 @@ final class PreparedCardFeedBuilder {
               let after = entry.memory.editedText, let before = entry.editedFrom else { return }
         learnedFrom.insert(card.id)
         styleStore.learn(before: before, after: after)
+    }
+
+    /// Plan KT §6.4: "Send on phone" from the Display, the watch or the voice. The card is marked
+    /// staged with the draft it showed, which the composer opens with.
+    func stage(_ card: PreparedCard, now: Date) {
+        guard let draft = card.draft else { return }
+        metrics.record(.card(card.kind, .staged))
+        stagedTexts[card.id] = draft.text
+        store.record(.staged(at: now), for: card, now: now)
+    }
+
+    /// Plan KT §6.2: the card was shown on the Display unasked.
+    func notePushed(_ card: PreparedCard) { metrics.record(.card(card.kind, .pushed)) }
+
+    /// Plan KT §10: a press on the Display, by button.
+    func noteLensPress(_ action: PreparedCardLensAction) {
+        metrics.record(.lensPress(PreparedCardLensPressMetric(action)))
     }
 
     /// "Not sent" on a hand-off with no result: back to fresh.

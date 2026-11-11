@@ -93,7 +93,8 @@ struct HUDTodayGlance: Equatable {
 /// | the route | navigation | while walking navigation guides |
 /// | the digest's top item | info | the digest has something |
 ///
-/// Then **What's new** (primary, focused) · **Resume** · **Navigate** · **Menu** · **Close**, each
+/// Then **Ready** (Plan KT §6.2, the day's prepared cards; primary and focused when there are any) ·
+/// **What's new** (primary, focused without cards) · **Resume** · **Navigate** · **Menu** · **Close**, each
 /// only when it has something to do — What's new with a digest to show, Resume with a task card to
 /// go back to, Navigate with a recent destination, Menu with a branch in it. Focus is What's new,
 /// else Resume, else Menu. Today is the launcher's root, so Close is its own way out and Back (the
@@ -104,6 +105,8 @@ struct HUDTodayGlance: Equatable {
 enum HUDTodayBuilder {
 
     enum ItemID {
+        /// Plan KT §6.2: the day's prepared cards.
+        static let ready = "branch:cards"
         static let whatsNew = "branch:digest"
         static let resume = "branch:resume"
         static let navigate = "branch:navigate"
@@ -113,11 +116,18 @@ enum HUDTodayBuilder {
 
     /// The items' effects. A nil closure leaves its item off.
     struct Actions {
+        /// Plan KT §6.2: open the day's prepared cards; first, and focused, when there are any.
+        var ready: (() -> Void)?
         var whatsNew: (() -> Void)?
         var resume: (() -> Void)?
         var navigate: (() -> Void)?
         var menu: (() -> Void)?
         var close: () -> Void
+    }
+
+    /// Plan KT decision 9: the cards' own word, "Ready", rather than a second "Today" on Today.
+    static var readyLabel: String {
+        String(localized: "Ready", comment: "Glasses: Today glance button that opens the day's prepared cards.")
     }
 
     static var title: String {
@@ -176,6 +186,9 @@ enum HUDTodayBuilder {
 
     static func items(_ actions: Actions) -> [HUDItem] {
         var items: [HUDItem] = []
+        if let ready = actions.ready {
+            items.append(HUDItem(id: ItemID.ready, label: readyLabel, icon: .reminder, style: .primary, action: ready))
+        }
         if let whatsNew = actions.whatsNew {
             items.append(HUDItem(id: ItemID.whatsNew,
                                  label: String(localized: "What's new", comment: "Glasses: Today glance button that opens the digest."),
@@ -204,6 +217,7 @@ enum HUDTodayBuilder {
 
     /// What's new, else Resume, else Menu; nil (the default rule) with none of them.
     static func focus(_ actions: Actions) -> String? {
+        if actions.ready != nil { return ItemID.ready }
         if actions.whatsNew != nil { return ItemID.whatsNew }
         if actions.resume != nil { return ItemID.resume }
         if actions.menu != nil { return ItemID.menu }
