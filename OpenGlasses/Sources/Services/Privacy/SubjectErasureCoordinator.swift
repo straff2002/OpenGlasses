@@ -129,6 +129,8 @@ final class SubjectErasureCoordinator {
         var activity: ActivityStore?
         /// The My Day cards' kept state and draft edits (Plan KT P1).
         var preparedCards: PreparedCardStore?
+        /// The wearer's style note for drafts (Plan KT P2).
+        var writingStyle: WritingStyleStore?
         /// The phone's checks of pictured tables (Plan JN P3).
         var tableChecks: TableCheckStore?
         /// Job handovers sent to this phone's owner as an expert (Plan KM P2).
@@ -175,6 +177,7 @@ final class SubjectErasureCoordinator {
         .activityTrail,
         .goals,
         .preparedCards,
+        .writingStyle,
         .recordings,
         .instantReplayBuffer,
         .jobRecordingBundles,
@@ -273,6 +276,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseGoals(subject)
             case .preparedCards:
                 receipt = erasePreparedCards(subject)
+            case .writingStyle:
+                receipt = eraseWritingStyle(subject)
             case .recordings:
                 receipt = .unsupported(store, "a recording is not indexed by who is audible in it; "
                                        + "erasure is per file from the recordings screen")
@@ -764,6 +769,14 @@ final class SubjectErasureCoordinator {
         }
         guard case .person = subject else { return .complete(.preparedCards) }
         return .complete(.preparedCards, removed: cards.forget(matching: subject.searchToken))
+    }
+
+    private func eraseWritingStyle(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let style = stores.writingStyle else {
+            return .unsupported(.writingStyle, "no style store was supplied")
+        }
+        guard case .person = subject else { return .complete(.writingStyle) }
+        return .complete(.writingStyle, removed: style.forget(matching: subject.searchToken))
     }
 
     private func eraseConversations(_ subject: ErasureSubject) -> ErasureReceipt {

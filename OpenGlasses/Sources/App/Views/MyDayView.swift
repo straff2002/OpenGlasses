@@ -6,6 +6,7 @@ struct MyDayView: View {
     @ObservedObject var service: MyDayService
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var cardStore = PreparedCardStore.shared
+    @ObservedObject private var styleStore = WritingStyleStore.shared
     @Environment(\.appAccent) private var accent
     @Environment(\.openURL) private var openURL
     @State private var actionMessage: String?
@@ -98,6 +99,14 @@ struct MyDayView: View {
                     kind: kind,
                     onUndo: { service.changeCards { $0.undoTurnOff(kind) } },
                     onClose: { service.changeCards { $0.dismissTurnOffNotice() } })
+            }
+        }
+
+        // Plan KT §4.3: after three edits of the same kind, one suggested change to the style.
+        if let suggestion = styleStore.suggestion, !service.todayFeed.cards.isEmpty {
+            OGSection {
+                StyleSuggestionLine(suggestion: suggestion, store: styleStore)
+                    .padding(16)
             }
         }
 

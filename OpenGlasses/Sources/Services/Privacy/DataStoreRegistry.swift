@@ -67,6 +67,8 @@ enum SensitiveStore: String, CaseIterable {
     case goals
     /// The My Day cards' state and the wearer's edits of their drafts (Plan KT P1).
     case preparedCards
+    /// The wearer's style note for drafts and the edit learner's counts (Plan KT P2).
+    case writingStyle
 
     // Media
     case recordings
@@ -540,6 +542,20 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "PreparedCardStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/MyDay/PreparedCards/PreparedCardStore.swift"],
                           location: "Application Support/PreparedCards/cards.json")
+
+        case .writingStyle:
+            // How the wearer likes their drafts written (Plan KT §4.3): greeting, sign-off,
+            // length, formality, emoji and a free line, all their own words; and the edit
+            // learner's counts by kind of edit, never a message. A sign-off can name a person, so
+            // the erasure walk reaches it, and so it is excluded from backup.
+            return Record(store: self, dataClass: .personalMemory, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("until the wearer changes it; counts reset when a suggestion is taken or ignored"),
+                          deleteAll: .api("WritingStyleStore.deleteAll()"),
+                          deleteSubject: .api("WritingStyleStore.forget(matching:)"),
+                          owner: "WritingStyleStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/MyDay/PreparedCards/WritingStyle.swift"],
+                          location: "Application Support/PreparedCards/style.json")
 
         case .recordings:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,

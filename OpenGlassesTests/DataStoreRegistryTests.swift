@@ -331,6 +331,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.vanStock, VanStockStore.fileProtection),
             (.goals, GoalStore.fileProtection),
             (.preparedCards, PreparedCardStore.fileProtection),
+            (.writingStyle, WritingStyleStore.fileProtection),
             (.activityTrail, ActivityStore.fileProtection),
             (.captionSessions, CaptionSessionStore.fileProtection),
         ]
@@ -352,6 +353,13 @@ final class DataStoreRegistryTests: XCTestCase {
                                 validUntil: Date().addingTimeInterval(3600))
         store.record(.dismissed, for: card, now: Date())
         try assertAttributes(of: workspace.appendingPathComponent("cards.json"), match: .preparedCards)
+    }
+
+    @MainActor
+    func testWritingStyleStoreAttributesMatchTheRegistry() throws {
+        let store = WritingStyleStore(directory: workspace)
+        store.update { $0.signOff = "Cheers" }
+        try assertAttributes(of: workspace.appendingPathComponent("style.json"), match: .writingStyle)
     }
 
     @MainActor
