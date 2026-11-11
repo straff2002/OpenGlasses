@@ -11,6 +11,10 @@ final class LensReadyTests: XCTestCase {
 
     private var savedDisplayEnabled = false
     private var savedBackend: String?
+    /// The controllers a test made. The coordinator's subscription and the display's handlers hold
+    /// them weakly (as AppState's lazy properties are the real owners), so a test that never names
+    /// its card again would otherwise lose it at once.
+    private var retained: [AnyObject] = []
 
     override func setUp() async throws {
         try await super.setUp()
@@ -24,6 +28,7 @@ final class LensReadyTests: XCTestCase {
         Config.glassesDisplayEnabled = savedDisplayEnabled
         UserDefaults.standard.set(savedBackend, forKey: "displayBackend")
         LensMicPolicy.metaDisplayPresent = false
+        retained = []
         try await super.tearDown()
     }
 
@@ -67,12 +72,14 @@ final class LensReadyTests: XCTestCase {
         HUDScreen(title: title, items: [item("done", .primary), item("back", .outline)])
     }
 
-    /// Fire the rendered button `id` on `screen`, as the band would.
-    private func press(_ id: String, on screen: HUDScreen?, _ display: GlassesDisplayService) {
+    /// Fire the rendered button `id` on `screen`, as the band would, and let the selection arrive:
+    /// the Meta button's `onClick` hops to the main actor in a `Task`, so it lands a turn later.
+    private func press(_ id: String, on screen: HUDScreen?, _ display: GlassesDisplayService) async {
         guard let screen, let index = screen.items.firstIndex(where: { $0.id == id }) else {
             return XCTFail("no item '\(id)' on the screen")
         }
         display.testInteractiveButtonActions(for: screen)[index]()
+        await drain()
     }
 
     // MARK: - P2: the approval card's screens
@@ -158,6 +165,7 @@ final class LensReadyTests: XCTestCase {
         let timers = Timers()
         card.scheduleTimeout = { delay, fire in timers.fires.append((delay, fire)) }
         card.start()
+        retained.append(card)
         return (coordinator, card, timers)
     }
 
@@ -179,7 +187,7 @@ final class LensReadyTests: XCTestCase {
         await drain()
         XCTAssertEqual(frames.frames.last, .screen(renderKey: card.screenOnLens?.renderKey ?? ""))
 
-        press(HUDApprovalCardBuilder.ItemID.approve, on: card.screenOnLens, display)
+        await press(HUDApprovalCardBuilder.ItemID.approve, on: card.screenOnLens, display)
         let approved = await asked.value
         XCTAssertTrue(approved)
         XCTAssertFalse(display.showsApprovalCard)
@@ -192,7 +200,7 @@ final class LensReadyTests: XCTestCase {
         let (display, _) = makeDisplay()
         let (coordinator, card, _) = makeApproval(display)
         let asked = await ask(coordinator)
-        press(HUDApprovalCardBuilder.ItemID.deny, on: card.screenOnLens, display)
+        await press(HUDApprovalCardBuilder.ItemID.deny, on: card.screenOnLens, display)
         let approved = await asked.value
         XCTAssertFalse(approved)
         XCTAssertFalse(display.showsApprovalCard)
@@ -240,10 +248,10 @@ final class LensReadyTests: XCTestCase {
         let (coordinator, card, _) = makeApproval(display)
         let body = String(repeating: "word ", count: 60)
         let asked = await ask(coordinator, "Send a message to Sam: \(body)")
-        press(HUDApprovalCardBuilder.ItemID.details, on: card.screenOnLens, display)
+        await press(HUDApprovalCardBuilder.ItemID.details, on: card.screenOnLens, display)
         XCTAssertTrue(card.isOnDetails)
         XCTAssertEqual(display.heldScreenRenderKey, card.screenOnLens?.renderKey)
-        press(HUDApprovalCardBuilder.ItemID.back, on: card.screenOnLens, display)
+        await press(HUDApprovalCardBuilder.ItemID.back, on: card.screenOnLens, display)
         XCTAssertFalse(card.isOnDetails)
         XCTAssertNotNil(coordinator.pending, "reading more answers nothing")
         coordinator.resolve(false)
@@ -256,7 +264,7 @@ final class LensReadyTests: XCTestCase {
         let asked = await ask(coordinator)
         let screen = card.screenOnLens
         display.showNotification(title: "Reminder", body: "Call Sam")
-        press(HUDApprovalCardBuilder.ItemID.approve, on: screen, display)
+        await press(HUDApprovalCardBuilder.ItemID.approve, on: screen, display)
         XCTAssertNotNil(coordinator.pending, "a press made under the notification is dropped")
         coordinator.resolve(false)
         _ = await asked.value
@@ -393,6 +401,7 @@ final class LensReadyTests: XCTestCase {
         turn.now = { clock.now }
         turn.schedule = { delay, fire in timers.fires.append((delay, fire)) }
         turn.geometry = { .raybanDisplay }
+        retained.append(turn)
         return (turn, clock, timers)
     }
 
@@ -537,7 +546,7 @@ final class LensReadyTests: XCTestCase {
         XCTAssertEqual(turn.phase, .idle, "the turn's card is gone; nothing redraws it")
     }
 
-    func testStopOnListeningStopsCaptureAndOnThinkingCancels() {
+    func testStopOnListeningStopsCaptureAndOnThinkingCancels() async {
         let (display, _) = makeDisplay()
         let (turn, _, _) = makeTurn(display)
         var stopped = 0
@@ -545,10 +554,10 @@ final class LensReadyTests: XCTestCase {
         turn.onStopListening = { stopped += 1 }
         turn.onCancelTurn = { cancelled += 1 }
         turn.beginListening()
-        press(HUDTurnStateBuilder.ItemID.stop, on: turn.screenOnLens, display)
+        await press(HUDTurnStateBuilder.ItemID.stop, on: turn.screenOnLens, display)
         XCTAssertEqual(stopped, 1)
         turn.thinking(question: "what size breaker")
-        press(HUDTurnStateBuilder.ItemID.stop, on: turn.screenOnLens, display)
+        await press(HUDTurnStateBuilder.ItemID.stop, on: turn.screenOnLens, display)
         XCTAssertEqual(cancelled, 1)
         XCTAssertFalse(display.showsTurnState)
     }
@@ -736,7 +745,7 @@ final class LensReadyTests: XCTestCase {
         return (router, launcher)
     }
 
-    func testTheLauncherOpensAtTodayAndMenuOpensTheBranchList() {
+    func testTheLauncherOpensAtTodayAndMenuOpensTheBranchList() async {
         let (display, _) = makeDisplay()
         let (router, launcher) = makeLauncher(display)
         launcher.open()
@@ -747,7 +756,7 @@ final class LensReadyTests: XCTestCase {
         let todayIDs = router.currentScreen?.items.map(\.id) ?? []
         XCTAssertFalse(todayIDs.contains(HUDTodayBuilder.ItemID.whatsNew))
 
-        press(HUDTodayBuilder.ItemID.menu, on: router.currentScreen, display)
+        await press(HUDTodayBuilder.ItemID.menu, on: router.currentScreen, display)
         XCTAssertEqual(router.menuDepth, 2)
         XCTAssertEqual(router.currentScreen?.title, "Menu")
         XCTAssertTrue((router.currentScreen?.items.map(\.id) ?? []).contains("branch:workflows"))
@@ -757,7 +766,7 @@ final class LensReadyTests: XCTestCase {
         XCTAssertEqual(router.currentScreen?.title, HUDTodayBuilder.title)
     }
 
-    func testTodayOffersWhatsNewAndResumeWhenTheyHaveSomethingToDo() {
+    func testTodayOffersWhatsNewAndResumeWhenTheyHaveSomethingToDo() async {
         let (display, _) = makeDisplay()
         let (router, launcher) = makeLauncher(display)
         var opened = 0
@@ -768,7 +777,7 @@ final class LensReadyTests: XCTestCase {
         let ids = router.currentScreen?.items.map(\.id) ?? []
         XCTAssertEqual(Array(ids.prefix(2)), [HUDTodayBuilder.ItemID.whatsNew, HUDTodayBuilder.ItemID.resume])
         XCTAssertEqual(router.currentScreen?.resolvedFocusItemID, HUDTodayBuilder.ItemID.whatsNew)
-        press(HUDTodayBuilder.ItemID.resume, on: router.currentScreen, display)
+        await press(HUDTodayBuilder.ItemID.resume, on: router.currentScreen, display)
         XCTAssertFalse(router.isPresentingMenu)
         XCTAssertEqual(router.currentScreen?.title, "Now")
         XCTAssertEqual(opened, 0)

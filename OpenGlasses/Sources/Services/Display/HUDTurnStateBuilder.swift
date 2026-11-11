@@ -80,6 +80,8 @@ enum HUDTurnStateBuilder {
 /// caller waits out the gap and sends the newest one then. Pure.
 struct HUDPartialThrottle: Equatable {
     static let gap: TimeInterval = HUDSendPacer.textGap
+    /// Less than this left of the gap counts as none.
+    static let boundaryTolerance: TimeInterval = 0.001
 
     enum Decision: Equatable {
         case sendNow
@@ -94,8 +96,11 @@ struct HUDPartialThrottle: Equatable {
         guard !isFinal, let lastSentAt else { return .sendNow }
         let elapsed = now.timeIntervalSince(lastSentAt)
         // A clock that went backwards waits for nothing.
-        guard elapsed >= 0, elapsed < Self.gap else { return .sendNow }
-        return .wait(Self.gap - elapsed)
+        guard elapsed >= 0 else { return .sendNow }
+        // A gap that is over to within a millisecond is over: `Date` arithmetic is not exact, and
+        // a partial arriving on the boundary should go now rather than arm a nanosecond timer.
+        let remaining = Self.gap - elapsed
+        return remaining < Self.boundaryTolerance ? .sendNow : .wait(remaining)
     }
 
     mutating func sent(at now: Date) { lastSentAt = now }
