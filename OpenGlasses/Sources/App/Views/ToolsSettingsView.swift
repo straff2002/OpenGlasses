@@ -19,7 +19,9 @@ struct ToolsSettingsView: View {
             .filter { $0.name != ToolLookupTool.toolName }
             .filter { adminGate.presentation(.tool($0.name)).isShown }
             .map { (name: $0.name, displayName: Self.displayName(for: $0.name), description: $0.description, params: $0.parametersSchema) }
-            .sorted { $0.displayName < $1.displayName }
+            // Name breaks a tie: two tools with one display name would otherwise swap places by
+            // dictionary order between redraws, which a `List` reads as a move.
+            .sorted { $0.displayName != $1.displayName ? $0.displayName < $1.displayName : $0.name < $1.name }
     }
 
     /// Convert tool IDs like "get_weather" → "Weather", "convert_currency" → "Currency Conversion"

@@ -292,4 +292,23 @@ final class SiriActionCatalogTests: XCTestCase {
         XCTAssertNil(SiriActionBinding.prompt(text: "x").toolName)
         XCTAssertNil(SiriActionBinding.builtin(id: "take_photo").toolName)
     }
+
+    /// Two custom tools may share a name (the editor does not stop it) and a flow id can repeat;
+    /// the harvest feeds a `List` keyed by id, so each capability must appear once.
+    func testHarvestGivesEachCapabilityOneRow() {
+        let first = CustomToolDefinition(
+            id: "ct1", name: "garage_door", description: "Opens the garage",
+            parameters: [], actionType: .shortcut, shortcutName: "Garage", urlTemplate: nil)
+        let second = CustomToolDefinition(
+            id: "ct2", name: "garage_door", description: "Also the garage",
+            parameters: [], actionType: .shortcut, shortcutName: "Garage 2", urlTemplate: nil)
+        let harvested = CapabilityHarvester.harvest(
+            flows: [(id: "f1", title: "Flow"), (id: "f1", title: "Flow again")],
+            customTools: [first, second])
+        let ids = harvested.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "every row needs its own id: \(ids)")
+        XCTAssertEqual(harvested.count, 2)
+        XCTAssertEqual(harvested.first { $0.kind == .customTool }?.title, "garage_door")
+        XCTAssertEqual(harvested.first { $0.kind == .captureFlow }?.title, "Flow", "the first is kept")
+    }
 }

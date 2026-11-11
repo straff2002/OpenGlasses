@@ -812,12 +812,17 @@ class ConversationStore: ObservableObject {
             let authed = try await encryption.authenticate(reason: "Unlock your conversations")
             guard authed else { return false }
             let data = try await encryption.decryptFile(at: storageURL)
-            threads = try JSONDecoder().decode([ConversationThread].self, from: data)
+            // The same repair every other load path makes: the chat list is a `List` keyed by id.
+            let (decoded, repairedDuplicateIDs) = Self.repairingDuplicateThreadIDs(
+                try JSONDecoder().decode([ConversationThread].self, from: data))
+            threads = decoded
             saveBlocked = false
-            // What was just read *is* the file; nothing in memory is newer than it.
+            // What was just read *is* the file; nothing in memory is newer than it — unless the
+            // repair renamed a duplicate, which must be written back so the ids stay stable.
             needsSave = false
             isLocked = false
             recallCoordinator?.storeDidUnlock(threads: threads)
+            if repairedDuplicateIDs { save() }
             return true
         } catch {
             PrivacyLog.conversation(.conversations, .unlockFailed,

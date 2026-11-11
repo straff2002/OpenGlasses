@@ -216,6 +216,31 @@ final class CaptureFlowTests: XCTestCase {
         XCTAssertTrue(rejected.contains { $0.hasPrefix("future.json:") && $0.contains("newer") })
     }
 
+    /// Two files declaring one flow id (bundle + overlay copy, or two overlay files) used to both be
+    /// listed; the flows are rows in a `List` keyed by id, which asserts on a repeated id.
+    func testLoadStrictKeepsOneFlowPerIdOverlayFirstAndReportsTheRest() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("flows_\(UUID().uuidString)", isDirectory: true)
+        let bundle = root.appendingPathComponent("bundle", isDirectory: true)
+        let overlay = root.appendingPathComponent("overlay", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: overlay, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let data = try CaptureFlowBuilder.encode(sampleFlow())
+        try data.write(to: bundle.appendingPathComponent("a-bundle.json"))
+        try data.write(to: overlay.appendingPathComponent("b-overlay.json"))
+        try data.write(to: overlay.appendingPathComponent("c-overlay-copy.json"))
+
+        let (flows, rejected) = CaptureFlowLibrary.loadStrict(bundleDir: bundle, overlayDir: overlay)
+        XCTAssertEqual(flows.map(\.id), ["asset_inspection_v1"])
+        XCTAssertEqual(rejected.count, 2)
+        XCTAssertTrue(rejected.contains { $0.hasPrefix("a-bundle.json:") && $0.contains("repeats") },
+                      "the overlay wins over the bundle: \(rejected)")
+        XCTAssertTrue(rejected.contains { $0.hasPrefix("c-overlay-copy.json:") },
+                      "between two overlay files the first name wins: \(rejected)")
+    }
+
     func testExplicitLibraryHasNoRejections() {
         XCTAssertTrue(CaptureFlowLibrary(vaultId: "v", flows: [sampleFlow()]).rejected.isEmpty)
     }
