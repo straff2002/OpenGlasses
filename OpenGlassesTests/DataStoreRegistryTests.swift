@@ -330,6 +330,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.learningEntries, LearningEntryStore.fileProtection),
             (.vanStock, VanStockStore.fileProtection),
             (.goals, GoalStore.fileProtection),
+            (.preparedCards, PreparedCardStore.fileProtection),
             (.activityTrail, ActivityStore.fileProtection),
             (.captionSessions, CaptionSessionStore.fileProtection),
         ]
@@ -340,6 +341,17 @@ final class DataStoreRegistryTests: XCTestCase {
                            "\(store.rawValue): the registry must describe the class the owner writes")
         }
         XCTAssertEqual(SensitiveStore.faces.record.protection, .complete)
+    }
+
+    @MainActor
+    func testPreparedCardStoreAttributesMatchTheRegistry() throws {
+        let store = PreparedCardStore(directory: workspace)
+        let card = PreparedCard(id: PreparedCardID(kind: .leaveBy, occurrence: "probe"), headline: "Registry probe",
+                                subject: nil, signals: [CardSignal(source: .calendar, text: "10:00")], facts: [],
+                                primary: .dismiss, urgency: .upcoming, dueAt: nil,
+                                validUntil: Date().addingTimeInterval(3600))
+        store.record(.dismissed, for: card, now: Date())
+        try assertAttributes(of: workspace.appendingPathComponent("cards.json"), match: .preparedCards)
     }
 
     @MainActor

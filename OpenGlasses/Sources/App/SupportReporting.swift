@@ -244,6 +244,14 @@ extension AppState {
         // Plan IW P2: how many goals are on the go and how long the trail is — counts only.
         phone.append(GoalActivityReportLine.line(goals: GoalStore.shared.goals,
                                                  entries: ActivityStore.shared.entries, now: Date()))
+        // Plan KT §10: the Cards section — the switch, the kinds off, and per-kind counts. Case
+        // names and numbers only; never a headline, a name, an address or a draft.
+        phone += PreparedCardReport.lines(
+            enabled: Config.preparedCardsEnabled,
+            disabledKinds: Set(PreparedCardKind.allCases.filter { !Config.preparedCardKindEnabled($0) && !$0.isOptIn }),
+            customerTextsAllowed: Config.preparedCardCustomerTexts,
+            shownNow: myDayService.todayFeed.cards.count,
+            snapshot: PreparedCardMetricsStore.shared.snapshot())
         // Plan KH P1: how many of the scenarios were tried. A count, from the catalogue; no content.
         phone.append(ScenarioReportLine.line(progress: ScenarioProgressStore.shared.progress,
                                              catalogIDs: ScenarioCatalog.all.map(\.id)))

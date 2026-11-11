@@ -125,7 +125,15 @@ enum MyDayDeliveryPolicy {
         return (components.hour ?? 0) * 60 + (components.minute ?? 0)
     }
 
-    private static func isQuiet(minute: Int, start: Int, end: Int) -> Bool {
+    /// Whether `date` falls in the wearer's quiet hours, when they are on. Shared with the cards'
+    /// notifications (Plan KT §5.3), which quiet hours hold back the same way.
+    static func isQuiet(at date: Date, calendar: Calendar, settings: MyDayDeliverySettings) -> Bool {
+        guard settings.quietHoursEnabled else { return false }
+        return isQuiet(minute: minuteOfDay(for: date, calendar: calendar),
+                       start: bounded(settings.quietStartMinutes), end: bounded(settings.quietEndMinutes))
+    }
+
+    static func isQuiet(minute: Int, start: Int, end: Int) -> Bool {
         guard start != end else { return false }
         if start < end { return minute >= start && minute < end }
         return minute >= start || minute < end

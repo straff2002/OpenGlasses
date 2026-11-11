@@ -70,3 +70,17 @@ struct WeatherKitProvider: WeatherProviding {
         intensity.converted(to: .metersPerSecond).value * 3_600_000
     }
 }
+
+extension WeatherKitProvider {
+    /// The hourly forecast at a place over a window, as the My Day cards' weather chip reads it
+    /// (Plan KT §2: rain or cold at the destination during the event). One WeatherKit request,
+    /// made only for a card that has a destination; Medical Local Only is enforced by the caller.
+    static func hours(at location: CLLocation, from start: Date, to end: Date) async throws -> [CardWeatherHour] {
+        let forecast = try await WeatherService.shared.weather(
+            for: location, including: .hourly(startDate: start, endDate: end))
+        return forecast.forecast.map { hour in
+            CardWeatherHour(start: hour.date, precipitationChance: hour.precipitationChance,
+                            temperatureCelsius: hour.temperature.converted(to: .celsius).value)
+        }
+    }
+}

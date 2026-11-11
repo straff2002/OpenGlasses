@@ -128,6 +128,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | pilotReports | `PilotReportStore` | preference | wearer | platformDefault | no | recipient addresses and calendar dates only; up to eight sent-day markers pruned on successful send; cleared on organisation departure | `PilotReportStore.clear()` | n/a — no subject linkage |
 | playbooks | `PlaybookStore` | skillDefinition | wearer | platformDefault | no | none | none — playbooks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | preferences | `Config` | preference | wearer | platformDefault | no | none | none — settings are the wearer's configuration, changed not erased | n/a — no subject linkage |
+| preparedCards | `PreparedCardStore` | personalMemory | wearer | completeUntilFirstUserAuthentication | yes | each card's entry until a day after the card ends; "not useful" times for 14 days | `PreparedCardStore.deleteAll()` | `PreparedCardStore.forget(matching:)` |
 | ragDocuments | `DocumentStore` | documentCorpus | wearer | completeUntilFirstUserAuthentication | yes | none | `DocumentStore.clearAll()` | `DocumentStore.forget(documentId:)` |
 | readingSessions | `ReadingSessionStore` | personalMemory | wearer | complete | yes | none | none — sessions are removed individually | n/a — no subject linkage |
 | recordedSessions | `RecordedSessionStore` | media | thirdPartySubject | completeUnlessOpenInComplianceMode | no | none | `RecordedSessionStore.deleteAll()` | `RecordedSessionStore.delete(_:)` |

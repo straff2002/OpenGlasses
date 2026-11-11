@@ -83,6 +83,8 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
 
     /// Where a tap lands. Injected so the routing is provable without an app.
     private let openTab: (MainTab) -> Void
+    /// Where a tap on a My Day card's notification lands (Plan KT §5.3).
+    var openPreparedCard: ((PreparedCardID) -> Void)?
 
     init(openTab: @escaping (MainTab) -> Void) {
         self.openTab = openTab
@@ -111,7 +113,11 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
         Task { @MainActor in
-            if let tab = Self.requestedTab(from: userInfo) { self.openTab(tab) }
+            if let card = PreparedCardNotificationPolicy.cardID(from: userInfo) {
+                self.openPreparedCard?(card)
+            } else if let tab = Self.requestedTab(from: userInfo) {
+                self.openTab(tab)
+            }
             completionHandler()
         }
     }

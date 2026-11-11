@@ -63,6 +63,8 @@ struct MeetingSummaryTool: NativeTool {
         // Extract key information locally
         let facts = Self.facts(from: entries.map { (text: $0.text, timestamp: $0.timestamp) },
                                savedAt: now)
+        // Held in memory for the My Day cards' meeting follow-up (Plan KT P1); never written down.
+        if let facts { LatestMeetingSummary.shared.record(facts) }
         let actionItems = facts?.actionItems ?? []
         let decisions = facts?.decisions ?? []
         let topics = facts?.topics ?? []
@@ -304,4 +306,32 @@ struct MeetingSummaryFacts: Equatable, Sendable {
     let endedAt: Date
     let savedAt: Date
     let transcript: String
+}
+
+/// The last meeting summary this run made, for the My Day cards' meeting follow-up (Plan KT P1).
+/// In memory only, and only the latest: caption text is other people's words, so it is never
+/// written to disk, logged or kept past the process.
+final class LatestMeetingSummary: @unchecked Sendable {
+    static let shared = LatestMeetingSummary()
+
+    private let lock = NSLock()
+    private var facts: MeetingSummaryFacts?
+
+    func record(_ facts: MeetingSummaryFacts) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.facts = facts
+    }
+
+    var latest: MeetingSummaryFacts? {
+        lock.lock()
+        defer { lock.unlock() }
+        return facts
+    }
+
+    func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        facts = nil
+    }
 }

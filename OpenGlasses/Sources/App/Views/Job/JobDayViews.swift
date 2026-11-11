@@ -31,10 +31,31 @@ struct JobDayHomeCard: View {
 
     private var day: JobDay { feed.day }
 
+    /// Plan KT §5.2: the top card the job day has ready — a job card, or a personal one when My
+    /// Day's items are folded in — shown under the header, open or collapsed.
+    private var readyCard: (home: PreparedCardHomeModel, card: PreparedCard)? {
+        let service = appState.myDayService
+        let home = PreparedCardHomeModel.make(service.preparedFeed, memory: PreparedCardStore.shared.memory,
+                                              now: Date(), calendar: .autoupdatingCurrent,
+                                              includes: { $0.isJobKind || showsPersonal })
+        guard let top = home.top, let card = service.card(top.id) else { return nil }
+        return (home, card)
+    }
+
     var body: some View {
         OGCard {
             VStack(spacing: 0) {
                 header
+                if !compact, let ready = readyCard {
+                    Rectangle()
+                        .fill(OGTheme.hairline)
+                        .frame(height: 0.5)
+                        .accessibilityHidden(true)
+                    PreparedCardCompactView(home: ready.home, handlers: appState.cardHandlers(for: ready.card),
+                                            onMore: { appState.myDayPageRequested = true })
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                }
                 if !isCollapsed && !compact {
                     Rectangle()
                         .fill(OGTheme.hairline)
@@ -49,7 +70,9 @@ struct JobDayHomeCard: View {
         .onAppear { feed.showsPersonal = showsPersonal }
         .onChange(of: showsPersonal) { _, shows in feed.showsPersonal = shows }
         .task(id: showsPersonal) {
-            guard showsPersonal, case .idle = appState.myDayService.state else { return }
+            // My Day's items folded in, or its cards on (Plan KT P1): either needs a gathering.
+            guard showsPersonal || (Config.myDayEnabled && Config.preparedCardsEnabled),
+                  case .idle = appState.myDayService.state else { return }
             _ = await appState.myDayService.refresh(channel: nil)
         }
     }

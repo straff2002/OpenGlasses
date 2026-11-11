@@ -4,9 +4,14 @@ import SwiftUI
 /// On-demand phone surface for the same deterministic snapshot used by voice and Siri.
 struct MyDayView: View {
     @ObservedObject var service: MyDayService
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var cardStore = PreparedCardStore.shared
     @Environment(\.appAccent) private var accent
     @Environment(\.openURL) private var openURL
     @State private var actionMessage: String?
+    @AppStorage("preparedCardGoogleLineDismissed") private var googleLineDismissed = false
+    /// The card the wearer last cleared, for its Undo (§5.1).
+    @State private var lastDismissed: PreparedCard?
 
     var body: some View {
         NavigationStack {
@@ -26,6 +31,15 @@ struct MyDayView: View {
             } message: {
                 Text(actionMessage ?? "")
             }
+        }
+        // Plan KT §7.1: this page is a sheet, so a card's composer is presented from here.
+        .modifier(DraftComposerHost(appState: appState, onPage: true))
+        .onAppear { appState.draftComposerOnPage = true }
+        .onDisappear { appState.draftComposerOnPage = false }
+        .onChange(of: service.todayFeed.cards.map(\.id), initial: true) { _, _ in
+            let cards = service.todayFeed.cards
+            guard !cards.isEmpty else { return }
+            service.changeCards { $0.noteShown(cards, now: Date()) }
         }
     }
 
@@ -71,11 +85,63 @@ struct MyDayView: View {
         .padding(.horizontal, 4)
         .accessibilityElement(children: .combine)
 
+        // Plan KT §9.2: once, while Calendar is readable and has no Google calendar in it.
+        if service.googleCalendarMissing && !googleLineDismissed {
+            OGSection {
+                GoogleCalendarLine { googleLineDismissed = true }
+            }
+        }
+
+        if let kind = service.preparedFeed.turnedOffKind {
+            OGSection {
+                PreparedCardTurnedOffNotice(
+                    kind: kind,
+                    onUndo: { service.changeCards { $0.undoTurnOff(kind) } },
+                    onClose: { service.changeCards { $0.dismissTurnOffNotice() } })
+            }
+        }
+
+        // Plan KT §5.1: cards, then rows. A card replaces the rows it says the same thing as.
+        let cardModels = PreparedCardPresentation.page(service.preparedFeed, memory: cardStore.memory,
+                                                       now: Date(), calendar: .autoupdatingCurrent)
+        ForEach(cardModels) { model in
+            if let card = service.card(model.id) {
+                let handlers = pageHandlers(for: card)
+                OGCard {
+                    MyDaySwipeToClear(label: model.headline) {
+                        handlers.dismiss()
+                    } content: {
+                        PreparedCardView(model: model, handlers: handlers)
+                    }
+                }
+                .id(model.id)
+            }
+        }
+
+        if let dismissed = lastDismissed {
+            OGSection {
+                HStack(spacing: 12) {
+                    Text("Cleared “\(dismissed.headline)”")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button("Undo") {
+                        service.changeCards { $0.undo(dismissed.id, now: Date()) }
+                        lastDismissed = nil
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(16)
+            }
+        }
+
         // The whole day, not the card's share of it. This screen is what "See all" opens, so
         // anything the cap held back has to be here — otherwise clearing a row is the only way to
         // discover it existed.
-        let allItems = snapshot.allItems
-        if allItems.isEmpty {
+        let absorbed = service.todayFeed.absorbed
+        let allItems = snapshot.allItems.filter { !absorbed.contains(CardRowID($0.id)) }
+        if allItems.isEmpty && cardModels.isEmpty {
             OGSection {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Nothing urgent", systemImage: "checkmark.circle")
@@ -87,7 +153,7 @@ struct MyDayView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             }
-        } else {
+        } else if !allItems.isEmpty {
             OGSection(header: "Next") {
                 ForEach(Array(allItems.enumerated()), id: \.element.id) { index, item in
                     if index > 0 { OGDivider() }
@@ -127,6 +193,17 @@ struct MyDayView: View {
                 }
             }
         }
+    }
+
+    /// The shared handlers, with a cleared card remembered for its Undo.
+    private func pageHandlers(for card: PreparedCard) -> PreparedCardHandlers {
+        var handlers = appState.cardHandlers(for: card)
+        let clear = handlers.dismiss
+        handlers.dismiss = {
+            clear()
+            lastDismissed = card
+        }
+        return handlers
     }
 
     private func itemRow(_ item: MyDayItem) -> some View {
@@ -267,6 +344,8 @@ struct MyDayHomeView: View {
     /// change, so the panel below takes the height back on the same curve.
     var onRemoveFromHome: () -> Void = {}
 
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var cardStore = PreparedCardStore.shared
     @Environment(\.appAccent) private var accent
     @Environment(\.openURL) private var openURL
     @State private var showDetail = false
@@ -496,7 +575,22 @@ struct MyDayHomeView: View {
                 .font(.body.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
 
-            if snapshot.items.isEmpty {
+            // Plan KT §5.2: the top card, compact, and "N more ready". With no cards this is the
+            // card it always was.
+            let home = PreparedCardHomeModel.make(service.preparedFeed, memory: cardStore.memory,
+                                                  now: Date(), calendar: .autoupdatingCurrent)
+            if let top = home.top, let card = service.card(top.id) {
+                PreparedCardCompactView(home: home, handlers: appState.cardHandlers(for: card)) {
+                    showDetail = true
+                }
+            }
+
+            // Rows a card already says are left to the card.
+            let absorbed = service.todayFeed.absorbed
+            let dayItems = snapshot.items.filter { !absorbed.contains(CardRowID($0.id)) }
+            let wholeDay = snapshot.allItems.filter { !absorbed.contains(CardRowID($0.id)) }
+
+            if dayItems.isEmpty && home.top == nil {
                 Label("Nothing urgent", systemImage: "checkmark.circle")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -504,8 +598,8 @@ struct MyDayHomeView: View {
                 // Expanded, the card *is* the full day — the whole list, not the card's share of
                 // it, which is what the modal used to be for.
                 let visibleItems = isExpanded && !compact
-                    ? snapshot.allItems
-                    : Array(snapshot.items.prefix(compact ? 1 : 3))
+                    ? wholeDay
+                    : Array(dayItems.prefix(home.top == nil ? (compact ? 1 : 3) : (compact ? 0 : 2)))
                 ForEach(visibleItems) { item in
                     MyDaySwipeToClear(label: item.title) {
                         Task { await service.dismiss(item) }
@@ -572,7 +666,7 @@ struct MyDayHomeView: View {
                 // what the cap left — so a row that arrived when another was cleared looked like
                 // it had materialised, when it had been on the list the whole time and nothing on
                 // screen could say so.
-                let total = snapshot.allItems.count
+                let total = wholeDay.count
                 if !compact, !isExpanded, total > visibleItems.count {
                     Button("See all \(total) items") {
                         isExpanded = true

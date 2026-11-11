@@ -303,6 +303,15 @@ struct MainView: View {
         .sheet(item: $appState.deliveryShareItem) { item in
             ShareSheet(items: item.items, onComplete: item.onComplete)
         }
+        // A My Day card's draft in the platform composer (Plan KT §7.1). From the root, like the
+        // report's: a card on the home card, the job day's card or the My Day page opens the same
+        // sheet, and the wearer's Send there is the only send. A swipe-down is a cancel.
+        .modifier(DraftComposerHost(appState: appState, onPage: false))
+        // The My Day page a card's notification opens (Plan KT §5.3).
+        .sheet(isPresented: $appState.myDayPageRequested) {
+            MyDayView(service: appState.myDayService)
+                .environmentObject(appState)
+        }
         // A job handover to an expert (Plan KM P1), asked for by voice on any tab or from the job.
         .modifier(ExpertHandoverSheetHost(sends: appState.jobSends))
         // The support report, read in full before it is sent (support ask 2026-09-26).
@@ -343,6 +352,7 @@ struct MainView: View {
             || appState.vaultFileRequest != nil || appState.deliveryComposerRequest != nil
             || appState.deliveryShareItem != nil || appState.supportReportRequest != nil
             || appState.jobSends.handoverDraft != nil
+            || appState.draftComposerRequest != nil || appState.myDayPageRequested
         return .init(reviewID: appState.pendingTranscript?.id, onboarding: showOnboarding,
                      sheetPresented: sheetUp, carPlay: appState.carPlayConnected)
     }

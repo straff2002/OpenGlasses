@@ -127,6 +127,8 @@ final class SubjectErasureCoordinator {
         var learningEntries: LearningEntryStore?
         var goals: GoalStore?
         var activity: ActivityStore?
+        /// The My Day cards' kept state and draft edits (Plan KT P1).
+        var preparedCards: PreparedCardStore?
         /// The phone's checks of pictured tables (Plan JN P3).
         var tableChecks: TableCheckStore?
         /// Job handovers sent to this phone's owner as an expert (Plan KM P2).
@@ -172,6 +174,7 @@ final class SubjectErasureCoordinator {
         .assistingHandovers,
         .activityTrail,
         .goals,
+        .preparedCards,
         .recordings,
         .instantReplayBuffer,
         .jobRecordingBundles,
@@ -268,6 +271,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseActivityTrail(subject)
             case .goals:
                 receipt = eraseGoals(subject)
+            case .preparedCards:
+                receipt = erasePreparedCards(subject)
             case .recordings:
                 receipt = .unsupported(store, "a recording is not indexed by who is audible in it; "
                                        + "erasure is per file from the recordings screen")
@@ -751,6 +756,14 @@ final class SubjectErasureCoordinator {
             return .unsupported(.goals, "the goals file could not be opened; nothing in it was changed")
         }
         return .complete(.goals, removed: goals.forget(matching: subject.searchToken))
+    }
+
+    private func erasePreparedCards(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let cards = stores.preparedCards else {
+            return .unsupported(.preparedCards, "no card store was supplied")
+        }
+        guard case .person = subject else { return .complete(.preparedCards) }
+        return .complete(.preparedCards, removed: cards.forget(matching: subject.searchToken))
     }
 
     private func eraseConversations(_ subject: ErasureSubject) -> ErasureReceipt {

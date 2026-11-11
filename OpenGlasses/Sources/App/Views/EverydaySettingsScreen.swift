@@ -232,6 +232,12 @@ struct EverydaySettingsScreen: View {
                 } label: {
                     Label("What's in My Day", systemImage: "list.bullet.below.rectangle")
                 }
+                // Plan KT §5.6: the cards' own settings, under My Day.
+                NavigationLink {
+                    PreparedCardSettingsView(service: appState.myDayService)
+                } label: {
+                    Label("Ready-to-send cards", systemImage: "rectangle.stack.badge.person.crop")
+                }
             }
         case .myDayDelivery:
             if myDayEnabled {

@@ -40,6 +40,7 @@ final class SubjectErasureTests: XCTestCase {
     private var goals: GoalStore!
     private var activity: ActivityStore!
     private var captionSessions: CaptionSessionStore!
+    private var preparedCards: PreparedCardStore!
 
     private var queuePath: URL { workspace.appendingPathComponent("offline_queue.sqlite") }
 
@@ -69,6 +70,7 @@ final class SubjectErasureTests: XCTestCase {
         goals = GoalStore(directory: workspace, hipaaRetentionDays: { nil })
         activity = ActivityStore(directory: workspace, hipaaMode: { false }, hipaaRetentionDays: { nil })
         captionSessions = makeCaptionSessions()
+        preparedCards = PreparedCardStore(directory: workspace.appendingPathComponent("PreparedCards", isDirectory: true))
         exports = StagedExportCoordinator(
             channel: .agentExport, rootDirectoryName: "unused",
             store: ProtectedExportFileStore(
@@ -119,6 +121,7 @@ final class SubjectErasureTests: XCTestCase {
         stores.goals = goals
         stores.activity = activity
         stores.captionSessions = captionSessions
+        stores.preparedCards = preparedCards
         return stores
     }
 
@@ -189,6 +192,12 @@ final class SubjectErasureTests: XCTestCase {
         goals.add(Goal(id: UUID(), title: "Plan \(canary)'s farewell", createdAt: Date(),
                        steps: [GoalStep(id: UUID(), title: "Book the hall")], source: .wearer))
         goals.add(Goal(id: UUID(), title: "Clear the garage", createdAt: Date(), source: .wearer))
+        // A My Day card's draft the wearer edited to name them (Plan KT P1).
+        let card = PreparedCard(id: PreparedCardID(kind: .leaveBy, occurrence: "erasure"), headline: "Leave by 18:15",
+                                subject: nil, signals: [CardSignal(source: .calendar, text: "19:00")], facts: [],
+                                primary: .dismiss, urgency: .upcoming, dueAt: nil,
+                                validUntil: Date().addingTimeInterval(3600))
+        preparedCards.setEdit("Hi \(canary), on my way", base: "On my way", for: card, now: Date())
         activity.append(ActivityEntry(id: UUID(), at: Date(), kind: .action,
                                       title: "Sent a message for you",
                                       detail: "You approved: Send a message to \(canary)",
@@ -223,6 +232,7 @@ final class SubjectErasureTests: XCTestCase {
         note("captionSessions", captionSessions.sessions.flatMap(\.turns)
             .map { "\($0.speaker ?? "") \($0.said)" }.joined(separator: ","))
         note("learningCandidates", learningCandidates.candidates.map(\.finding).joined(separator: ","))
+        note("preparedCards", preparedCards.entries.values.compactMap(\.memory.editedText).joined(separator: ","))
         note("goals", goals.goals.map { "\($0.title) \($0.steps.map(\.title))" }.joined(separator: ","))
         note("activityTrail", activity.entries.map { "\($0.title) \($0.detail ?? "")" }.joined(separator: ","))
         note("recallIndex", recallIndex.search(phrase: canary, limit: 50).map(\.text).joined(separator: ","))
@@ -254,6 +264,7 @@ final class SubjectErasureTests: XCTestCase {
         goals = GoalStore(directory: workspace, hipaaRetentionDays: { nil })
         activity = ActivityStore(directory: workspace, hipaaMode: { false }, hipaaRetentionDays: { nil })
         captionSessions = makeCaptionSessions()
+        preparedCards = PreparedCardStore(directory: workspace.appendingPathComponent("PreparedCards", isDirectory: true))
         social = SocialContextStore(defaults: defaults)
         contextualNotes = ContextualNoteStore(defaults: defaults)
         objectMemory = ObjectMemoryStore(defaults: defaults)
