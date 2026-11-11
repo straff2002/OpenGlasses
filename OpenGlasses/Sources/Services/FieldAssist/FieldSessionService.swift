@@ -4584,16 +4584,37 @@ final class FieldSessionService: ObservableObject {
             history = []
             return
         }
-        var loaded: [FieldSession] = []
+        var loaded: [(folder: String, session: FieldSession)] = []
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         for dir in entries where (try? dir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
             let meta = dir.appendingPathComponent("session.json")
             if let data = try? Data(contentsOf: meta), let session = try? decoder.decode(FieldSession.self, from: data) {
-                loaded.append(session)
+                loaded.append((dir.lastPathComponent, session))
             }
         }
-        history = loaded.filter { !lockedSessionIDs.contains($0.id) }.sorted { $0.startedAt > $1.startedAt }
+        history = Self.historyOrder(loaded).filter { !lockedSessionIDs.contains($0.id) }
+    }
+
+    /// One session per id, newest first, the same order on every load. The Jobs tab draws this in
+    /// a `List` keyed by id and redraws it on a timer: a copied session folder would give two rows
+    /// one id, and two sessions started in the same instant would swap places by directory order
+    /// — either asserts in `UICollectionView`'s batch-update validation. Of two folders holding one
+    /// id, the folder named after it (where the logger writes) wins, then the first folder name.
+    nonisolated static func historyOrder(_ loaded: [(folder: String, session: FieldSession)]) -> [FieldSession] {
+        let preferred = loaded.sorted { lhs, rhs in
+            let lhsOwn = lhs.folder == lhs.session.id, rhsOwn = rhs.folder == rhs.session.id
+            if lhsOwn != rhsOwn { return lhsOwn }
+            return lhs.folder < rhs.folder
+        }
+        var seen = Set<String>()
+        return preferred
+            .filter { seen.insert($0.session.id).inserted }
+            .map(\.session)
+            .sorted { lhs, rhs in
+                if lhs.startedAt != rhs.startedAt { return lhs.startedAt > rhs.startedAt }
+                return lhs.id < rhs.id
+            }
     }
 
     /// If the previous app run was interrupted (in_progress session left behind), pick it up.

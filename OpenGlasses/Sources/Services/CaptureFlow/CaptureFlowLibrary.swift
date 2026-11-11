@@ -65,28 +65,60 @@ struct CaptureFlowLibrary {
     /// As `load`, additionally reporting every file that failed ("filename: reason") instead of
     /// silently dropping it.
     static func loadStrict(bundleDir: URL?, overlayDir: URL?) -> (flows: [CaptureFlow], rejected: [String]) {
-        var byFilename: [String: URL] = [:]
+        var byFilename: [String: (url: URL, fromOverlay: Bool)] = [:]
         if let bundleDir {
-            for url in jsonFiles(in: bundleDir) { byFilename[url.lastPathComponent] = url }
+            for url in jsonFiles(in: bundleDir) { byFilename[url.lastPathComponent] = (url, false) }
         }
         if let overlayDir {
-            for url in jsonFiles(in: overlayDir) { byFilename[url.lastPathComponent] = url }
+            for url in jsonFiles(in: overlayDir) { byFilename[url.lastPathComponent] = (url, true) }
         }
-        var flows: [CaptureFlow] = []
+        var candidates: [Candidate] = []
         var rejected: [String] = []
-        for (filename, url) in byFilename.sorted(by: { $0.key < $1.key }) {
-            guard let data = try? Data(contentsOf: url) else {
+        for (filename, source) in byFilename.sorted(by: { $0.key < $1.key }) {
+            guard let data = try? Data(contentsOf: source.url) else {
                 rejected.append("\(filename): unreadable")
                 continue
             }
             let (flow, rejection) = decodeReporting(data)
             if let flow {
-                flows.append(flow)
+                candidates.append(Candidate(file: filename, fromOverlay: source.fromOverlay, flow: flow))
             } else {
                 rejected.append("\(filename): \(rejection ?? "not valid flow JSON")")
             }
         }
-        return (flows.sorted { $0.id < $1.id }, rejected)
+        let (flows, duplicates) = resolve(candidates)
+        return (flows, rejected + duplicates)
+    }
+
+    /// One decoded flow file, as `resolve` weighs it.
+    struct Candidate {
+        let file: String
+        let fromOverlay: Bool
+        let flow: CaptureFlow
+    }
+
+    /// One flow per id, in id order — `ProcedureLibrary.resolve`'s rule. Two files declaring the
+    /// same id would otherwise both be listed, and the flows are rows in a `List` keyed by id
+    /// (Siri & Shortcuts), which asserts in `UICollectionView`'s batch-update validation on a
+    /// repeated id. The overlay's file wins over the bundle's; between two files from the same
+    /// place, the first file name does. Each file left out is reported, not silently dropped.
+    static func resolve(_ candidates: [Candidate]) -> (flows: [CaptureFlow], duplicates: [String]) {
+        let ordered = candidates.sorted { lhs, rhs in
+            if lhs.flow.id != rhs.flow.id { return lhs.flow.id < rhs.flow.id }
+            if lhs.fromOverlay != rhs.fromOverlay { return lhs.fromOverlay }
+            return lhs.file < rhs.file
+        }
+        var seen = Set<String>()
+        var flows: [CaptureFlow] = []
+        var duplicates: [String] = []
+        for candidate in ordered {
+            if seen.insert(candidate.flow.id).inserted {
+                flows.append(candidate.flow)
+            } else {
+                duplicates.append("\(candidate.file): repeats flow id \"\(candidate.flow.id)\"")
+            }
+        }
+        return (flows, duplicates)
     }
 
     private struct VersionProbe: Decodable {

@@ -121,7 +121,11 @@ enum CapabilityHarvester {
         // The grid's tiles, by the id the grid itself uses. A tile's label is the name the wearer
         // already reads on it, so the spoken name and the drawn one cannot drift apart.
         out += gridEntries.map { .init(kind: .gridAction, capabilityId: $0.id, title: $0.label) }
-        return out
+        // Each capability once. Custom tools are keyed by name (the name is what runs), and two
+        // can share one; a grid tile id can repeat across built-ins and quick actions. These are
+        // rows in the Siri & Shortcuts `List`, keyed by id — a repeated id asserts there.
+        var seen = Set<String>()
+        return out.filter { seen.insert($0.id).inserted }
     }
 }
 

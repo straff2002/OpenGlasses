@@ -77,7 +77,11 @@ final class RecordedSessionStore: ObservableObject {
     func load() {
         do {
             let data = try Data(contentsOf: storageURL)
+            // Each recording once: `add` replaces by id, but a file written before that (or merged
+            // by hand) may repeat one, and the recordings `List` is keyed by id.
+            var seen = Set<UUID>()
             sessions = try JSONDecoder().decode([RecordedSession].self, from: data)
+                .filter { seen.insert($0.id).inserted }
                 .map(Self.normalized)
             sortNewestFirst()
         } catch {

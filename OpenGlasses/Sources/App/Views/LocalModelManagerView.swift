@@ -604,7 +604,12 @@ struct LocalModelManagerView: View {
         for (id, descriptor) in acquisition.stagedDescriptors where rows[id] == nil {
             rows[id] = makeRow(descriptor: descriptor, installation: nil)
         }
-        return rows.values.sorted { $0.descriptor.displayName < $1.descriptor.displayName }
+        // Id breaks a tie, so two models with one display name keep their places between redraws.
+        return rows.sorted { lhs, rhs in
+            lhs.value.descriptor.displayName != rhs.value.descriptor.displayName
+                ? lhs.value.descriptor.displayName < rhs.value.descriptor.displayName
+                : lhs.key.rawValue < rhs.key.rawValue
+        }.map(\.value)
     }
 
     private func makeRow(descriptor: LocalModelDescriptor,

@@ -241,7 +241,7 @@ final class MyDayComposerTests: XCTestCase {
             now: date(20)
         )
         XCTAssertEqual(snapshot.period, .evening)
-        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["first", "prepare:first"])
+        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["tomorrow:first", "prepare:first"])
         XCTAssertTrue(snapshot.items[0].detail?.contains("Tomorrow") == true)
         XCTAssertEqual(snapshot.items[1].kind, .preparation)
         XCTAssertTrue(snapshot.headline.contains("Tomorrow starts with Event first"))
@@ -336,7 +336,7 @@ final class MyDayComposerTests: XCTestCase {
         let snapshot = MyDayComposer(calendar: calendar).compose(
             inputs: inputs(events: [tomorrow]), now: date(20))
         XCTAssertEqual(snapshot.period, .evening)
-        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["trip", "prepare:trip"])
+        XCTAssertEqual(snapshot.items.map(\.id.rawValue), ["tomorrow:trip", "prepare:trip"])
         XCTAssertTrue(snapshot.items[0].detail?.contains("all day") == true)
     }
 
@@ -495,5 +495,38 @@ final class MyDayComposerTests: XCTestCase {
         XCTAssertEqual(goals.map(\.title), ["Buy the paint"], "one goal row at most: the soonest due")
         XCTAssertEqual(goals.first?.detail, "Overdue · Paint the fence")
         XCTAssertEqual(goals.first?.urgency, .important)
+    }
+
+    // MARK: - One row per id (b664 crash: the card is a `List`, and two rows with one id assert)
+
+    /// Every occurrence of a recurring event carries the same EventKit identifier. In the evening,
+    /// tonight's occurrence is on today's list and tomorrow's is the preview — two rows, one series.
+    func testEveningPreviewOfARecurringEventKeepsTodaysRowAndItsOwnId() {
+        let tonight = event("daily", at: 21)
+        let tomorrow = event("daily", at: 21, day: 31)
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(events: [tonight, tomorrow]), now: date(20))
+        let ids = snapshot.allItems.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "every row needs its own id: \(ids)")
+        XCTAssertTrue(ids.contains(MyDayItemID(source: .calendar, rawValue: "daily")))
+        XCTAssertTrue(ids.contains(MyDayItemID(source: .calendar, rawValue: "tomorrow:daily")))
+    }
+
+    /// Last night's overnight occurrence is still running in the small hours while tonight's also
+    /// starts today: two of today's rows from one series. The higher-ranked (running) one stays.
+    func testTwoOccurrencesOfOneSeriesTodayGiveOneRow() {
+        let lastNight = MyDayCalendarEvent(id: "night-shift", title: "Night shift",
+                                           startDate: date(22, day: 29), endDate: date(6),
+                                           isAllDay: false, location: nil)
+        let tonight = MyDayCalendarEvent(id: "night-shift", title: "Night shift",
+                                         startDate: date(22), endDate: date(6, day: 31),
+                                         isAllDay: false, location: nil)
+        let snapshot = MyDayComposer(calendar: calendar).compose(
+            inputs: inputs(events: [tonight, lastNight]), now: date(3))
+        let ids = snapshot.allItems.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "every row needs its own id: \(ids)")
+        XCTAssertEqual(snapshot.allItems.filter { $0.id.rawValue == "night-shift" }.count, 1)
+        XCTAssertTrue(snapshot.allItems.first { $0.id.rawValue == "night-shift" }?.detail?
+            .hasPrefix("In progress") == true, "the running occurrence is the one kept")
     }
 }

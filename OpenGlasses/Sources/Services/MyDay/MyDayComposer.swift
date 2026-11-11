@@ -77,10 +77,16 @@ struct MyDayComposer: Sendable {
         // headline describing rows that are gone. Here, a cleared row also frees its slot for the
         // next-ranked one, which is what a wearer clearing clutter is asking for.
         let dismissed = inputs.dismissals
+        // Each row once. EventKit gives every occurrence of a recurring event the same
+        // identifier, so last night's occurrence still running and tonight's can both be today's,
+        // and the card is drawn in a `List` keyed by id — two rows with one id assert in
+        // `UICollectionView`'s batch-update validation. The first in rank order is kept.
+        var seen = Set<MyDayItemID>()
         let surviving = ranked
             .sorted(by: rankedOrder)
             .filter { !MyDayDismissalPolicy.isDismissed($0.item, in: dismissed) }
             .map(\.item)
+            .filter { seen.insert($0.id).inserted }
         // The cap still decides what the card and the spoken briefing carry — but what it left
         // out travels with the snapshot now instead of vanishing. A row appearing the moment
         // another was cleared is the same list all along; it only looked like conjuring because
@@ -169,11 +175,13 @@ struct MyDayComposer: Sendable {
         )
     }
 
+    /// Keyed apart from today's rows: tomorrow's first event is often the next occurrence of a
+    /// series already on today's list, and the two share an EventKit identifier.
     private func tomorrowItem(_ event: MyDayCalendarEvent) -> RankedItem {
         RankedItem(
             rank: 5,
             item: MyDayItem(
-                id: .init(source: .calendar, rawValue: event.id),
+                id: .init(source: .calendar, rawValue: "tomorrow:\(event.id)"),
                 kind: .event,
                 title: event.title,
                 detail: "Tomorrow, \(event.isAllDay ? "all day" : formatTime(event.startDate))" + locationSuffix(event.location),
