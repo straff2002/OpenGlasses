@@ -23,6 +23,10 @@ final class HUDLauncher {
     /// "What's new" branch (Plan BZ): gate + open action for the notification digest.
     var digestHasContent: (() -> Bool)?
     var openDigest: (() -> Void)?
+    /// Plan KT §6.2: whether the day has prepared cards, and opening them on the lens. **Ready** is
+    /// the first item on Today and the first branch of the Menu while there are any.
+    var cardsReady: (() -> Bool)?
+    var openCards: (() -> Void)?
 
     /// Navigate branch (Plan CA): recent destinations + start handler.
     var recentDestinations: (() -> [String])?
@@ -147,6 +151,9 @@ final class HUDLauncher {
     /// a branch in the Menu.
     private func todayScreen(_ glance: HUDTodayGlance) -> HUDScreen {
         var actions = HUDTodayBuilder.Actions(close: { [weak self] in self?.router.dismiss() })
+        if cardsReady?() == true, let openCards {
+            actions.ready = openCards
+        }
         if digestHasContent?() == true {
             actions.whatsNew = { [weak self] in self?.openDigest?() }
         }
@@ -179,6 +186,12 @@ final class HUDLauncher {
 
     private func rootBranches() -> [HUDItem] {
         var branches: [HUDItem] = []
+
+        // Plan KT §6.2: the day's prepared cards, first while there are any.
+        if cardsReady?() == true, let openCards {
+            branches.append(HUDItem(id: HUDTodayBuilder.ItemID.ready, label: HUDTodayBuilder.readyLabel,
+                                    icon: .reminder, style: .primary) { openCards() })
+        }
 
         // Resume the active Plan X task card — only while one is running.
         if router.isPresentingTask {

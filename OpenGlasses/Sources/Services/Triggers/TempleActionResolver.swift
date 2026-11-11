@@ -35,6 +35,8 @@ struct TempleContext: Equatable {
     var answerCardShowing: Bool = false
     /// Instant Replay's buffer is running, so there is something to keep.
     var replayRunning: Bool = false
+    /// Plan KT §6.2: the day has prepared cards and a display can show them.
+    var cardsReady: Bool = false
 }
 
 /// The concrete thing to do for a resolved tap.
@@ -63,6 +65,8 @@ enum TempleEffect: Equatable {
     case answerPage(forward: Bool)
     /// Keep the last 30 seconds of Instant Replay in Recordings.
     case saveReplay
+    /// Plan KT §6.2: the day's prepared cards on the display.
+    case openCards
 }
 
 enum TempleIgnoreReason: String, Equatable, CaseIterable {
@@ -79,12 +83,14 @@ enum TempleIgnoreReason: String, Equatable, CaseIterable {
     case noAnswerCard
     /// A replay tap while Instant Replay isn't running.
     case replayNotRunning
+    /// A cards tap with nothing ready, or no display to show it on.
+    case noCards
 
     /// A short spoken line for refusals the wearer can act on. The rest are a soft tone only — a
     /// stray tap while already listening does not need a sentence.
     var spokenLine: String? {
         switch self {
-        case .unassigned, .nothingToEnd, .alreadyListening, .busy, .noAnswerCard:
+        case .unassigned, .nothingToEnd, .alreadyListening, .busy, .noAnswerCard, .noCards:
             return nil
         case .agentModeOff:
             return String(localized: "Agent Mode is off.")
@@ -195,6 +201,13 @@ enum TempleActionResolver {
             guard activity != .busy else { return .ignored(.busy) }
             guard context.replayRunning else { return .ignored(.replayNotRunning) }
             return .run(.saveReplay)
+
+        case .today:
+            // Looking at cards doesn't fight a reply for the audio; only another mode that owns
+            // the loop keeps it out.
+            guard activity != .busy else { return .ignored(.busy) }
+            guard context.cardsReady else { return .ignored(.noCards) }
+            return .run(.openCards)
         }
     }
 }
@@ -235,7 +248,7 @@ enum TempleEarcon: Equatable, CaseIterable {
             // end-of-conversation tone. A second sound on top would blur both.
             case .startListening, .askAgent, .endConversation: return .ownCue
             case .interruptAndListen, .photoDescribe, .photoToCameraRoll, .readDigest, .quickAction,
-                 .musicPlayPause, .answerPage:
+                 .musicPlayPause, .answerPage, .openCards:
                 return .accepted
             case .endLiveSession: return .ended
             case .setMicMuted(let muted), .setLiveMicMuted(let muted): return muted ? .muted : .unmuted

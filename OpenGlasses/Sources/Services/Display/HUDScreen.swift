@@ -166,6 +166,11 @@ struct HUDScreen {
     /// first prominent button. Part of `renderKey` only when set, so default screens keep their keys.
     var focusItemID: String?
 
+    /// Plan KT §6.6: what the web mirror (Plan BP), a LAN page someone else could open, may show of
+    /// this screen. Nil shows all of it. The lens and the phone's own preview are unaffected. Not
+    /// part of `renderKey`: the key is what the lens shows.
+    var mirror: HUDMirrorRedaction?
+
     init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = [], focusItemID: String? = nil) {
         self.title = title
         self.lines = lines
@@ -199,6 +204,14 @@ struct HUDScreen {
         if let focusItemID { key += "|focus:\(focusItemID)" }
         return key
     }
+}
+
+/// Plan KT §6.6: how the web mirror redacts a screen. The mirror is the strictest surface.
+enum HUDMirrorRedaction: Equatable {
+    /// The screen's title and buttons, with these lines in place of its own (a draft's text).
+    case lines([HUDLine])
+    /// Nothing of the screen but this one line (a card with health content).
+    case hidden(placeholder: String)
 }
 
 /// Plan LC §2.3: the ids and labels that let the wearer leave a screen from the screen itself.

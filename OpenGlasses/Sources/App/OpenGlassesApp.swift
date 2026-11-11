@@ -2031,6 +2031,7 @@ class AppState: ObservableObject, AppStateProtocol {
             if tab == .job { self?.openJobs(.list) } else { self?.requestedTab = tab }
         }
         jobSendNotificationRouter?.openPreparedCard = { [weak self] id in self?.openPreparedCard(id) }
+        jobSendNotificationRouter?.openStagedCard = { [weak self] id in self?.openStagedCard(id) }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
     }
 
@@ -4726,8 +4727,17 @@ class AppState: ObservableObject, AppStateProtocol {
         myDayService.cardBuilder?.onDraftsChanged = { [weak self] in self?.myDayService.rejoinCards() }
         myDayService.calendarSources = { [weak self] in self?.eventKitStore.calendarSources() ?? [] }
         myDayService.onFeedChanged = { [weak self] feed, now in
-            self?.preparedCardNotifier.notify(feed: feed, now: now)
+            guard let self else { return }
+            self.preparedCardNotifier.notify(feed: feed, now: now)
+            // Plan KT P3: the lens follows the feed — the stack redraws if what it shows changed,
+            // a card that became immediate may be pushed, a staged card that left takes its
+            // notification, and a staged card tapped before the feed loaded opens now.
+            self.hudRouter.cardsChanged()
+            self.preparedCardGlances.evaluate()
+            self.preparedCardStager.feedChanged(feed)
+            self.openPendingStagedCard()
         }
+        configurePreparedCardLens()
         // A card's urgency moves with the clock: re-join once a minute while the app runs, so a
         // leave-by that reaches ten minutes notifies then. Rules over the last gathering only —
         // no source is read again.
@@ -4793,6 +4803,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 Task { await self.speechService.speak(text, source: .alert, mirrorToHUD: false) }
             }
         }
+        // Plan KT §6.2: **Ready**, first on Today and in the Menu while the day has cards.
+        hudLauncher.cardsReady = { [weak self] in self?.hudRouter.hasCards ?? false }
+        hudLauncher.openCards = { [weak self] in self?.hudRouter.openCards() }
         hudLauncher.digestHasContent = { [weak self] in self?.notificationDigest.hasContent ?? false }
         hudLauncher.openDigest = { [weak self] in
             Task { await self?.notificationDigest.presentGlance() }
@@ -5707,6 +5720,12 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var myDayPageRequested = false
     /// The My Day page is up as a sheet, so it — not the root — presents a card's composer.
     @Published var draftComposerOnPage = false
+    /// Plan KT §6.2: the few cards shown on the lens unasked.
+    lazy var preparedCardGlances = PreparedCardGlances(display: glassesDisplay, router: hudRouter)
+    /// Plan KT §6.4: "Send on phone" from the lens.
+    let preparedCardStager = PreparedCardStager()
+    /// A staged card's notification tapped before the feed had the card (a cold launch).
+    var pendingStagedCard: PreparedCardID?
     /// The My Day cards' own facts (Plan KT P1).
     lazy var preparedCardContext = LivePreparedCardContextSource(
         location: locationService, travel: travelTimeSource,
@@ -7718,8 +7737,16 @@ class AppState: ObservableObject, AppStateProtocol {
             // Notification digest (Plan BZ): "what's new" / "catch me up" pulls up the glance.
             // Global — works with or without a task card; strict whole-phrase match only.
             VoiceCommandHandler(label: "digest-briefing") { [weak self] text in
-                guard let self, Config.digestEnabled,
-                      HUDVoiceCommand.parse(text) == .briefing else { return false }
+                guard let self, HUDVoiceCommand.parse(text) == .briefing else { return false }
+                // Plan KT §6.2: with cards ready and a lens to show them, the same words open the
+                // card stack; with none, the digest as before.
+                if self.glassesDisplay.answerSurface != .none, self.glassesDisplay.displayAvailability != .inUse,
+                   self.hudRouter.openCards() {
+                    PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("preparedCards"))
+                    await self.resumeListeningOrReturnToWakeWord()
+                    return true
+                }
+                guard Config.digestEnabled else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("digestBriefing"))
                 await self.notificationDigest.presentGlance()
                 await self.resumeListeningOrReturnToWakeWord()

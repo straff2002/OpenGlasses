@@ -39,6 +39,21 @@ struct WebHUDPayload: Codable, Equatable {
     static let empty = WebHUDPayload(title: nil, lines: [], items: [], renderKey: "")
 
     static func from(screen: HUDScreen) -> WebHUDPayload {
+        // Plan KT §6.6: a screen that says what the mirror may show is shown that way, without
+        // its pages.
+        switch screen.mirror {
+        case .hidden(let placeholder)?:
+            return WebHUDPayload(title: nil,
+                                 lines: [Line(text: placeholder, icon: iconName(.none), emphasis: emphasisName(.meta))],
+                                 items: [], renderKey: "mirror-hidden|\(placeholder)")
+        case .lines(let replacement)?:
+            var redacted = HUDScreen(title: screen.title, lines: replacement, items: screen.items)
+            redacted.focusItemID = screen.focusItemID
+            return WebHUDPayload(title: redacted.title, lines: lines(redacted), items: items(redacted),
+                                 renderKey: redacted.renderKey)
+        case nil:
+            break
+        }
         var payload = WebHUDPayload(
             title: screen.title,
             lines: lines(screen),

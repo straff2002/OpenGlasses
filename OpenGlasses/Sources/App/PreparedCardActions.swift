@@ -105,6 +105,78 @@ extension AppState {
         myDayPageRequested = true
     }
 
+    // MARK: - Plan KT P3: the cards on the Display
+
+    /// The day's cards on the lens: the stack (`HUDRouter`), the glances pushed unasked
+    /// (`PreparedCardGlances`) and "Send on phone" (`PreparedCardStager`).
+    func configurePreparedCardLens() {
+        let service = myDayService
+        hudRouter.cardHooks = PreparedCardLensHooks(
+            cards: { [weak service] in service?.todayFeed.cards ?? [] },
+            run: { [weak self] action, card in self?.performCardActionFromLens(action, on: card) },
+            stage: { [weak self] card in await self?.preparedCardStager.stage(card) ?? .nothingToStage },
+            // Plan KT P4's phraser will say the card itself; P3 reads the draft as written.
+            readAloud: { [weak self] text in
+                Task { await self?.speechService.speak(text, source: .readAloud, mirrorToHUD: false) }
+            },
+            later: { [weak self] card in self?.performCardAction(.later, on: card) },
+            dismiss: { [weak self] card in self?.performCardAction(.dismiss, on: card) },
+            notUseful: { [weak service] card in service?.changeCards { $0.notUseful(card, now: Date()) } },
+            notePress: { [weak service] action in service?.cardBuilder?.noteLensPress(action) })
+
+        preparedCardGlances.cards = { [weak service] in service?.todayFeed.cards ?? [] }
+        preparedCardGlances.worn = { [weak self] in self?.glassesService.isWorn }
+        preparedCardGlances.quiet = {
+            MyDayDeliveryPolicy.isQuiet(at: Date(), calendar: .autoupdatingCurrent, settings: .current)
+        }
+        preparedCardGlances.open = { [weak self] id in self?.hudRouter.openCards(at: id) }
+        preparedCardGlances.notePushed = { [weak service] card in service?.cardBuilder?.notePushed(card) }
+
+        preparedCardStager.record = { [weak service] card in service?.changeCards { $0.stage(card, now: Date()) } }
+        preparedCardStager.openComposer = { [weak self] card in
+            guard let self else { return }
+            self.handOff(self.myDayService.card(card.id) ?? card)
+        }
+        preparedCardStager.appInFront = { UIApplication.shared.applicationState == .active }
+        preparedCardStager.unlocked = { UIApplication.shared.isProtectedDataAvailable }
+    }
+
+    /// A card's own action pressed on the lens. Done runs where it is; an action that needs the
+    /// phone (directions, an open, a call) runs when the app is in front, and otherwise opens the
+    /// card on the phone the next time it is unlocked (§6.4).
+    func performCardActionFromLens(_ action: PreparedAction, on card: PreparedCard) {
+        if case .complete = action {
+            performCardAction(action, on: card)
+            return
+        }
+        if UIApplication.shared.applicationState == .active, UIApplication.shared.isProtectedDataAvailable {
+            performCardAction(action, on: card)
+            return
+        }
+        openPreparedCard(card.id)
+        glassesDisplay.flash(PreparedCardHUDBuilder.openOnPhoneLine, duration: 3)
+    }
+
+    /// A tap on a staged card's notification: its composer, with the draft it was staged with.
+    func openStagedCard(_ id: PreparedCardID) {
+        preparedCardStager.composerOpened(id)
+        if let card = myDayService.card(id), card.draft != nil {
+            pendingStagedCard = nil
+            handOff(card)
+        } else {
+            // A cold launch: the feed has not been built yet. The page opens now and the composer
+            // as soon as the card is there.
+            pendingStagedCard = id
+            openPreparedCard(id)
+        }
+    }
+
+    func openPendingStagedCard() {
+        guard let id = pendingStagedCard, let card = myDayService.card(id), card.draft != nil else { return }
+        pendingStagedCard = nil
+        handOff(card)
+    }
+
     static var draftComposerAvailability: DraftComposerAvailability {
         #if DEBUG
         if UITestSupport.isSet(.standInComposer) {

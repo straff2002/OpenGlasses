@@ -26,6 +26,9 @@ enum TempleAction: Hashable, Identifiable {
     case answerPreviousPage
     /// Keep the last 30 seconds from Instant Replay. Nothing while the buffer isn't running.
     case saveReplay
+    /// Plan KT §6.2: open the day's prepared cards on the glasses' display. Nothing without cards
+    /// or a display to show them.
+    case today
     /// Run a saved Quick Action by id.
     case quickAction(String)
 
@@ -35,7 +38,7 @@ enum TempleAction: Hashable, Identifiable {
     static let builtIns: [TempleAction] = [
         .startTalking, .hangUp, .mute, .photoDescribe, .photoToCameraRoll,
         .readDigest, .toggleRecording, .musicPlayPause, .askAgent,
-        .answerNextPage, .answerPreviousPage, .saveReplay, .nothing,
+        .answerNextPage, .answerPreviousPage, .saveReplay, .today, .nothing,
     ]
 
     /// Persisted form. Stable — never rename a case's value.
@@ -54,6 +57,7 @@ enum TempleAction: Hashable, Identifiable {
         case .answerNextPage: return "answerNextPage"
         case .answerPreviousPage: return "answerPreviousPage"
         case .saveReplay: return "saveReplay"
+        case .today: return "today"
         case .quickAction(let id): return Self.quickActionPrefix + id
         }
     }
@@ -89,6 +93,8 @@ enum TempleAction: Hashable, Identifiable {
         case .answerNextPage: return String(localized: "Next page of an answer")
         case .answerPreviousPage: return String(localized: "Previous page of an answer")
         case .saveReplay: return String(localized: "Save Instant Replay")
+        case .today: return String(localized: "Today's cards on the display",
+                                   comment: "Temple tap action: shows the day's prepared My Day cards on the glasses.")
         case .quickAction: return String(localized: "Quick Action")
         }
     }

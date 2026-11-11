@@ -24,11 +24,15 @@ enum PreparedCardState: Codable, Equatable, Sendable {
     case done
     case dismissed
     case notUseful
+    /// Plan KT §6.4: the Display, the watch or the voice put the card's draft on the phone to send
+    /// ("Send on phone"). It stays on the page, ready, until the composer says sent or the card
+    /// ends at `validUntil`. The draft it was staged with is held in memory only.
+    case staged(at: Date)
 
     /// Whether a card in this state is on the page at `now`.
     func isShown(at now: Date) -> Bool {
         switch self {
-        case .fresh, .seen: true
+        case .fresh, .seen, .staged: true
         case .later(let until): now >= until
         case .handedOff(_, let result): result != .sent
         case .done, .dismissed, .notUseful: false
