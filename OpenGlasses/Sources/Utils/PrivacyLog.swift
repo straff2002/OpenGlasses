@@ -2249,7 +2249,7 @@ enum PrivacyLog {
     // Persona identity is omitted rather than fingerprinted, on the batch-2 precedent: the set is
     // small and wearer-visible, so a stable hash of "the persona used most" anonymises nothing.
 
-    enum AgentChannel: String { case scheduler, notifications, session, playbook }
+    enum AgentChannel: String { case scheduler, notifications, session, playbook, background }
 
     enum AgentEvent: String {
         case started, stopped, checkScheduled, onboardingRun
@@ -2271,6 +2271,13 @@ enum PrivacyLog {
         // pair covers the crash-window store failing to read or write.
         case resultDelivered, resultReplayed, resultAcknowledged, resultAckFailed
         case deliveryRecordReadFailed, deliveryRecordWriteFailed
+        // Plan LM — the shared background wake. `reason` is a fixed token (a trigger, a submit
+        // failure kind); `count` how many participants ran; `seconds` how long the pass took.
+        // Never what a participant found.
+        case backgroundRegistered, backgroundWake, backgroundCompleted, backgroundExpired
+        case backgroundRequested, backgroundRequestCancelled, backgroundRequestFailed
+        // Plan LM P2 — a notification button press, routed or dropped. `reason` is the category id.
+        case notificationActionRouted, notificationActionUnhandled
     }
 
     /// `priority` and `reason` are fixed app enums (`AgentNotification.Priority`, the dispatcher's

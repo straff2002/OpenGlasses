@@ -87,10 +87,34 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     var openPreparedCard: ((PreparedCardID) -> Void)?
     /// Where a tap on a card staged from the Display lands: its composer (Plan KT §6.4).
     var openStagedCard: ((PreparedCardID) -> Void)?
+    /// Where a button press goes (Plan LM P2) — the hub by default; injected for tests.
+    private let routeAction: @MainActor (NotificationActionPress) -> Void
 
-    init(openTab: @escaping (MainTab) -> Void) {
+    init(openTab: @escaping (MainTab) -> Void,
+         routeAction: @escaping @MainActor (NotificationActionPress) -> Void = { _ = NotificationActionHub.shared.route($0) }) {
         self.openTab = openTab
+        self.routeAction = routeAction
         super.init()
+    }
+
+    /// Handle one response: a button press goes to its handler, a tap opens its card or tab as before,
+    /// a dismissal does nothing. What `didReceive` does, callable without a `UNNotificationResponse`.
+    func handle(_ response: NotificationActionResponse, userInfo: [AnyHashable: Any]) {
+        switch response {
+        case .press(let press):
+            routeAction(press)
+        case .tap:
+            if let card = PreparedCardNotificationPolicy.cardID(from: userInfo),
+               PreparedCardStagingPolicy.isStaged(userInfo), let openStagedCard {
+                openStagedCard(card)
+            } else if let card = PreparedCardNotificationPolicy.cardID(from: userInfo) {
+                openPreparedCard?(card)
+            } else if let tab = Self.requestedTab(from: userInfo) {
+                openTab(tab)
+            }
+        case .dismiss:
+            break
+        }
     }
 
     /// Whether this notification asks for a tab, and which. Pure, so the test is a value test.
@@ -113,16 +137,13 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
-        let userInfo = response.notification.request.content.userInfo
+        let content = response.notification.request.content
+        let userInfo = content.userInfo
+        let parsed = NotificationActionResponse.parse(actionIdentifier: response.actionIdentifier,
+                                                      categoryIdentifier: content.categoryIdentifier,
+                                                      userInfo: userInfo)
         Task { @MainActor in
-            if let card = PreparedCardNotificationPolicy.cardID(from: userInfo),
-               PreparedCardStagingPolicy.isStaged(userInfo), let openStagedCard = self.openStagedCard {
-                openStagedCard(card)
-            } else if let card = PreparedCardNotificationPolicy.cardID(from: userInfo) {
-                self.openPreparedCard?(card)
-            } else if let tab = Self.requestedTab(from: userInfo) {
-                self.openTab(tab)
-            }
+            self.handle(parsed, userInfo: userInfo)
             completionHandler()
         }
     }

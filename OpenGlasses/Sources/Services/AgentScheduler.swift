@@ -200,10 +200,12 @@ class AgentScheduler: ObservableObject {
     /// Bring the check-in tasks in line with the goals, run the ones that are due, file each in the
     /// digest, say at most the day's allowance, and record each on the activity trail.
     ///
-    /// Reached only from the scheduler's own cycle, which runs only while Agent Mode is on — the
-    /// policy checks it again rather than trusting the caller.
-    func runGoalCheckIns(now: Date, wearerPresent: Bool) {
-        guard let goals = goals() else { return }
+    /// Reached from the scheduler's own cycle, which runs only while Agent Mode is on, and from the
+    /// shared background wake (Plan LM) — the policy checks Agent Mode again rather than trusting
+    /// either caller. Returns how many check-ins ran.
+    @discardableResult
+    func runGoalCheckIns(now: Date, wearerPresent: Bool) -> Int {
+        guard let goals = goals() else { return 0 }
         let stored = loadTasks()
         let current = GoalCheckInSchedule.reconciled(stored, goals: goals, now: now)
         let result = GoalCheckInPolicy.run(tasks: current, goals: goals,
@@ -225,6 +227,45 @@ class AgentScheduler: ObservableObject {
                              reason: PrivacyToken(spoke ? "spoke" : "digestOnly"),
                              count: result.outputs.count)
         }
+        return result.outputs.count
+    }
+
+    // MARK: - The shared background wake (Plan LM P1)
+
+    /// The participant id goal check-ins run under in the shared background wake.
+    static let goalCheckInsBackgroundID = "goal-check-ins"
+
+    /// Goal check-ins as a participant in the shared background wake. They make no model call, so
+    /// they are the one existing piece of scheduled work that is safe in a background wake as it
+    /// stands. In the background nothing is said: `wearerPresent` is false, so each check-in is
+    /// filed in the digest and waits for the wearer.
+    func goalCheckInBackgroundParticipant() -> BackgroundWorkParticipant {
+        BackgroundWorkParticipant(
+            id: Self.goalCheckInsBackgroundID,
+            minimumSeconds: 2,
+            nextWake: { [weak self] now in self?.nextGoalCheckInWake(now: now) },
+            run: { [weak self] _ in self?.runGoalCheckInsInBackground() ?? .nothingToDo }
+        )
+    }
+
+    /// When goal check-ins next want a wake: now when one is due, else in an hour while any goal
+    /// has check-ins on (a check-in's cadence is days, so an hourly look is ample), else never.
+    /// Nil with Agent Mode off, or while the goal store cannot be read.
+    func nextGoalCheckInWake(now: Date, calendar: Calendar = .current) -> Date? {
+        guard agentModeEnabled(), let goals = goals() else { return nil }
+        let tasks = GoalCheckInSchedule.reconciled(loadTasks(), goals: goals, now: now)
+        guard tasks.contains(where: { $0.enabled && $0.goalCheckInID != nil }) else { return nil }
+        let dueNow = GoalCheckInPolicy.due(tasks: tasks, goals: goals, agentModeEnabled: true,
+                                           now: now, calendar: calendar)
+        return dueNow.isEmpty ? now.addingTimeInterval(60 * 60) : now
+    }
+
+    /// One background run of the check-ins: filed, never said.
+    func runGoalCheckInsInBackground(now: Date = Date()) -> BackgroundWorkOutcome {
+        guard agentModeEnabled() else { return .notDue }
+        // An unreadable goal store (protected data while locked) is a "try again", not "nothing".
+        guard goals() != nil else { return .deferred }
+        return runGoalCheckIns(now: now, wearerPresent: false) > 0 ? .didWork : .nothingToDo
     }
 
     /// Keep the stored check-in tasks in line with `goals` — called whenever the goals change, so

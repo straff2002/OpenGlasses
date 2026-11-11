@@ -75,6 +75,11 @@ final class DataStoreRegistryTests: XCTestCase {
                 + "holds none of the result — the words live in memory and are gone after a "
                 + "relaunch, which is why a reloaded record can only hedge, never re-read",
 
+        "OpenGlasses/Sources/Services/Background/BackgroundWork.swift":
+            "the background wake record (Plan LM): the last 40 wakes' times, a trigger token, each "
+                + "participant's fixed id, an outcome enum and seconds, and the last request's dates "
+                + "with a fixed failure token. Developer-panel evidence; nothing the wearer said or did",
+
         "OpenGlasses/Sources/Services/LLM/PerMinuteAllowance.swift":
             "each saved model's learned tokens-a-minute allowance (Plan KL P1): two numbers and a "
                 + "fingerprint of the provider, the model id and the endpoint — nothing of the key. "
