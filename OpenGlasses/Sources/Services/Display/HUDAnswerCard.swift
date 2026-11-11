@@ -47,10 +47,25 @@ import Foundation
 /// change), and is dropped otherwise (`displayReturned`). The paging words are left to the model
 /// meanwhile ("next" may mean the next track), and "repeat", "tell me more", "save that" and "send
 /// that" reach everything the card offers as ordinary requests.
+///
+/// **Live modes (Plan LC §5).** Gemini Live, OpenAI Realtime, Qwen and Doubao speak with the
+/// model's own voice, so nothing they say reaches `absorb`. `LiveAnswerCardFeed` collects each
+/// model turn's transcript and, at the turn's end, hands it to `presentLiveAnswer` — one card per
+/// turn, never word by word, with what the wearer said as its question line and no follow-ups (a
+/// live model is never asked for the tail). Such an answer reopens a lens the wearer dismissed only
+/// when the wearer spoke (or pressed) that turn (`GlassesDisplayService.presentAnswerCard(wearerLed:)`).
+///
+/// **The picture behind a vision answer (Plan LC §5).** A turn that sent the model a camera frame
+/// stages the frame's thumbnail (`expectPicture` / `stagePicture`); the next new card takes it onto
+/// its first page (`HUDAnswerCardBuilder.page(picture:)`) when the backend draws pictures. A staged
+/// picture belongs to the next answer only: the turn's end, a whole answer spoken outside a turn,
+/// or `stagedPictureLifetime` drops one no card took.
 @MainActor
 final class HUDAnswerCard {
     /// Plan KP §3: a card with no press for this long clears.
     static let defaultIdleLifetime: TimeInterval = 60
+    /// Plan LC §5: a staged thumbnail no card has taken after this long belongs to no answer.
+    static let stagedPictureLifetime: TimeInterval = 90
 
     private let display: GlassesDisplayService
 
@@ -100,6 +115,15 @@ final class HUDAnswerCard {
     private var turnHasSearchSuggestions = false
     /// The card's turn staged a page: its Actions offer **Page** while the lens can show it.
     private(set) var hasPage = false
+    /// Plan LC §5: whether the open turn's answer is the wearer's (they spoke or pressed). Only a
+    /// live turn can say no; every Direct-mode answer is.
+    private var turnWearerLed = true
+    /// Plan LC §5: the thumbnail waiting for the next new card, when it was staged, and the ticket
+    /// that names the frame it was staged for (`expectPicture`).
+    private var stagedPicture: (picture: HUDPicture, at: Date)?
+    private var pictureTicket = 0
+    /// The card's first-page picture: the frame its vision answer analysed.
+    private(set) var picture: HUDPicture?
 
     /// The card's answer, pages and position.
     private(set) var answer = ""
@@ -180,8 +204,59 @@ final class HUDAnswerCard {
         turnHasCard = false
         turnFollowUps = []
         turnStagedPage = false
+        turnWearerLed = true
         turnWebSourceCount = 0
         turnHasSearchSuggestions = false
+    }
+
+    // MARK: - Live modes (Plan LC §5)
+
+    /// A live-mode model turn ended with `text` as its transcript: show it as a card of its own,
+    /// whole. `question` is what the wearer said that turn (nil when they said nothing);
+    /// `wearerLed` is whether they spoke or pressed that turn, which alone lets the card reopen a
+    /// lens they dismissed. Over a task card, a menu, a page view's frame or an approval card
+    /// (`GlassesDisplayService.acceptsAnswerCard` false) nothing shows: a live answer is heard,
+    /// and nothing it would flash is worth covering the wearer's work for.
+    func presentLiveAnswer(_ text: String, question: String?, wearerLed: Bool) {
+        let reply = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reply.isEmpty, display.acceptsAnswerCard else { return }
+        beginTurn(question: question)
+        turnWearerLed = wearerLed
+        turn?.finish(reply: reply)
+        update()
+        endTurn()
+    }
+
+    // MARK: - The picture behind a vision answer (Plan LC §5)
+
+    /// A frame is on its way to the model: any thumbnail staged for an earlier one is dropped, and
+    /// the returned ticket names this one for `stagePicture`.
+    func expectPicture() -> Int {
+        pictureTicket += 1
+        stagedPicture = nil
+        return pictureTicket
+    }
+
+    /// The thumbnail of the frame `ticket` named, ready. The next new card takes it. Ignored when a
+    /// later frame or the end of the turn has moved the ticket on (the thumbnail decodes off the
+    /// main actor and can land late), and for a backend that draws no pictures.
+    func stagePicture(_ picture: HUDPicture?, ticket: Int) {
+        guard ticket == pictureTicket, let picture, display.drawsPictures else { return }
+        stagedPicture = (picture, now())
+    }
+
+    /// No answer will take the staged thumbnail (its turn ended, or failed).
+    func dropStagedPicture() {
+        pictureTicket += 1
+        stagedPicture = nil
+    }
+
+    /// The staged thumbnail, taken by a new card: once, and only while it is fresh.
+    private func takeStagedPicture() -> HUDPicture? {
+        defer { stagedPicture = nil }
+        guard let staged = stagedPicture, display.drawsPictures,
+              now().timeIntervalSince(staged.at) < Self.stagedPictureLifetime else { return nil }
+        return staged.picture
     }
 
     /// Plan KV §4: the open turn staged a manual page. Its card's Actions offer **Page**.
@@ -228,6 +303,8 @@ final class HUDAnswerCard {
         }
         if turnHasCard, isShowing { armIdleTimer() }
         turn = nil
+        // Plan LC §5: a thumbnail this turn's card did not take belongs to no later answer.
+        dropStagedPicture()
     }
 
     /// Plan KZ: the open turn's reply rests on `count` web pages, and maybe Google's Search
@@ -279,6 +356,7 @@ final class HUDAnswerCard {
         turn?.finish(reply: text)
         update()
         turn = nil
+        dropStagedPicture()      // Plan LC §5: the whole answer was this line
         return true
     }
 
@@ -300,9 +378,11 @@ final class HUDAnswerCard {
             isOnActions = false
             followUps = turn.isFinished ? turnFollowUps : []
             hasPage = turnStagedPage
+            picture = takeStagedPicture()
             cardSerial += 1
             let screen = currentScreen()
-            guard display.presentAnswerCard(screen, onSelect: selectionHandler) else { return }
+            guard display.presentAnswerCard(screen, wearerLed: turnWearerLed,
+                                            onSelect: selectionHandler) else { return }
             shownScreen = screen
             turnHasCard = true
             armIdleTimer()
@@ -397,6 +477,7 @@ final class HUDAnswerCard {
         question = nil
         answerIsComplete = false
         hasPage = false
+        picture = nil
         shownScreen = nil
         answerMadeAt = nil
         if wasShowing { display.endInteractive() }
@@ -487,7 +568,7 @@ final class HUDAnswerCard {
         let readable = max(1, min(visiblePageCount, pages.count))
         let screens = (0..<readable).compactMap {
             HUDAnswerCardBuilder.page(pages, index: $0, followUps: followUps, question: question,
-                                      onAction: onAction)
+                                      picture: picture, onAction: onAction)
         }
         let index = min(pageIndex, readable - 1)
         var screen = screens.indices.contains(index) ? screens[index] : HUDScreen()

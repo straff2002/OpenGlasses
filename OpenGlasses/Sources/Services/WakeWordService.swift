@@ -77,7 +77,7 @@ class WakeWordService: NSObject, ObservableObject {
     /// `foreignOwner` and the consumer flag are filled in by the service.
     var wakeListenInputs: @MainActor () -> WakeListenPolicy.Inputs = {
         WakeListenPolicy.Inputs(listeningEnabled: true, silentMode: Config.silentMode,
-                                wakeListenMic: Config.wakeListenMic, micRoute: Config.micRoute,
+                                wakeListenMic: Config.wakeListenMic, micRoute: Config.conversationMicRoute,
                                 speechGateEnabled: Config.wakeSpeechGateEnabled)
     }
 

@@ -179,6 +179,8 @@ struct DisplayHUDSections: View {
                         Config.setGlassesDisplayEnabled(newValue)
                         if !newValue {
                             Task { await appState.glassesDisplay.shutdown() }
+                        } else {
+                            appState.glassesDisplay.wearerTurnedLensOn()
                         }
                     }
                 ),
@@ -191,6 +193,14 @@ struct DisplayHUDSections: View {
                     set: { Config.setHudChoiceButtonsEnabled($0) }
                 ),
                 info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
+            )
+            InfoToggle(
+                title: "Keep the mic on the iPhone while the display is on",
+                isOn: Binding(
+                    get: { Config.lensKeepsPhoneMic },
+                    set: { Config.lensKeepsPhoneMic = $0 }
+                ),
+                info: "On Ray-Ban Display, using the glasses' own microphone turns the in-lens display off and shows a call screen over it. With this on, conversations use the iPhone mic while the display is on, even when Microphone is set to Glasses Mic. A headset mic is not affected."
             )
             InfoToggle(
                 title: "Say when the display is busy",

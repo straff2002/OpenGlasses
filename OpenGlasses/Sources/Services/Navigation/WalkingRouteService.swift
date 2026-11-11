@@ -300,7 +300,11 @@ final class WalkingRouteService: ObservableObject {
             let line = ManeuverPhraser.hudLine(maneuver: step.maneuver, streetName: step.streetName,
                                                bandedMeters: band, metric: usesMetric)
             currentHUDLine = line
-            glassesDisplay?.showNavigation(line)
+            // Plan LC §6: the turn arrow above the line, drawn only for a lens that shows pictures
+            // now; a maneuver with no direction (a roundabout, the arrival) keeps the line alone.
+            let arrow = glassesDisplay?.wantsGuidancePictures == true
+                ? HUDTurnArrow.picture(for: step.maneuver) : nil
+            glassesDisplay?.showNavigation(line, arrow: arrow)
         }
 
         if let cue, Config.navigationVoiceCues {

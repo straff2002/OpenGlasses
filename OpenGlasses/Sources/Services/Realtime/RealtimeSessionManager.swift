@@ -133,6 +133,22 @@ class RealtimeSessionManager: ObservableObject {
         conversationRecorder.recentTurns(LiveContextHandover.maxTurns)
     }
 
+    /// Plan LC §5: the turn as the lens needs it — the wearer speaking, the model's transcript, the
+    /// turn's end — for `LiveAnswerCardFeed`, which puts each model turn on the answer card. Sent
+    /// from the same places the session already hears them, for every provider alike. Never for
+    /// the spoken interpreter, whose words are the other person's as often as the wearer's.
+    var onAnswerEvent: ((LiveAnswerEvent) -> Void)?
+
+    /// An answer event from a callback the provider delivers synchronously, queued behind the
+    /// transcript callbacks (which hop to the main actor) so the lens hears them in the order they
+    /// happened: an interruption must not land before the text it cut.
+    private func sendAnswerEvent(_ event: LiveAnswerEvent, identity: Int) {
+        Task { @MainActor [weak self] in
+            guard let self, self.isActive, self.sessionIdentity == identity else { return }
+            self.onAnswerEvent?(event)
+        }
+    }
+
     // Camera frame source — set by AppState to the existing CameraService's periodic captures
     var onRequestVideoFrame: (() async -> UIImage?)?
 
@@ -242,6 +258,8 @@ class RealtimeSessionManager: ObservableObject {
         sessionModel = model
         providerSession = RealtimeProviderSession(model: model)
         audioManager = RealtimeAudioEngine(config: model.profile!.audioConfiguration)
+        // Settled at audio setup below (Plan LC §5: `LensMicPolicy.liveAudio`); set here too so
+        // nothing reads a stale route before then.
         audioManager.route = interpreter == nil ? .standard : .interpreter
         interpreterPair = interpreter
         interpreterRouter = interpreter.map(InterpreterTurnRouter.init)
@@ -350,6 +368,8 @@ class RealtimeSessionManager: ObservableObject {
         providerSession.onUserSpeechStarted = { [weak self] in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             self.idleClock.noteSpeechHeard()
+            // Plan LC §5: through the main actor's queue, behind the transcript already on it.
+            if self.interpreterRouter == nil { self.sendAnswerEvent(.wearerSpeechStarted, identity: identity) }
             // A JSON provider's whole transcript can land after its turn ended. Left in place, it
             // would be read as the wearer's words at the end of the next turn, which is the
             // difference between a question answered and a session ended on an old "bye".
@@ -374,6 +394,7 @@ class RealtimeSessionManager: ObservableObject {
             // FF P1/PR5: an answer the wearer spoke over is committed marked. What they heard of it
             // is unknown, and a handover must never present it as delivered.
             self.conversationRecorder.noteInterruption()
+            if self.interpreterRouter == nil { self.sendAnswerEvent(.interrupted, identity: identity) }
             // The answer spoken over is not a reply to whatever was said over it, and a wearer who
             // cuts the idle warning off is answered as usual.
             self.turnHadReply = false
@@ -388,6 +409,8 @@ class RealtimeSessionManager: ObservableObject {
                 self.audioManager.resetPlaybackProgress()
                 let interpreting = self.interpreterRouter != nil
                 if !interpreting { self.conversationRecorder.completeTurn() }
+                // Plan LC §5: the idle warning is the session talking, not an answer.
+                if !interpreting { self.onAnswerEvent?(.turnComplete(publishes: !self.idleWarningInTurn)) }
                 self.applyInterpreter(self.interpreterRouter?.turnComplete(now: Date()))
                 // Delta-based transcripts finish at the turn boundary. JSON adapters already
                 // recorded their complete input transcript when that event arrived.
@@ -424,6 +447,7 @@ class RealtimeSessionManager: ObservableObject {
                 // FF P1/PR5: the phone's own record. Passed the whole accumulated string so it
                 // shares this joiner rather than re-implementing it.
                 if !interpreting { self.conversationRecorder.setWearerTurn(self.userTranscript) }
+                if !interpreting { self.onAnswerEvent?(.wearerWords(self.userTranscript)) }
                 // BR P1: a user turn resets the runaway-tool-call window.
                 self.toolCallRouter?.noteUserTurn()
                 // The wearer is asking about what is in front of them *now*. With the content gate
@@ -444,6 +468,7 @@ class RealtimeSessionManager: ObservableObject {
                     self.advanceInterpreter()
                 } else {
                     self.conversationRecorder.setAssistantTurn(self.aiTranscript)
+                    self.onAnswerEvent?(.assistantText(text))
                 }
             }
         }
@@ -619,10 +644,17 @@ class RealtimeSessionManager: ObservableObject {
         }
 
         // Audio setup — use iPhone mode when camera NOT streaming (no glasses connected),
-        // use glasses/videoChat mode when camera IS streaming (mic is on remote device)
-        useIPhoneAudioMode = !isCameraStreaming && interpreterPair == nil
+        // use glasses/videoChat mode when camera IS streaming (mic is on remote device).
+        // Plan LC §5: that glasses mic is the Glasses Mic route, so while the Meta Display is on it
+        // is the iPhone mic instead (its hands-free link ends the display session).
+        let audio = LensMicPolicy.liveAudio(cameraOnGlasses: isCameraStreaming,
+                                            interpreting: interpreterPair != nil,
+                                            lensOn: Config.lensIsOn, keepPhoneMic: Config.lensKeepsPhoneMic)
+        audioManager.route = audio.route
+        useIPhoneAudioMode = audio.useIPhoneMode
         PrivacyLog.realtimeSession(self.logProvider, .audioModeSelected,
-                                   detail: PrivacyToken(useIPhoneAudioMode ? "iPhone" : "glasses"))
+                                   detail: PrivacyToken(audio.route == .lensPhoneMic ? "lens-iPhone"
+                                                        : useIPhoneAudioMode ? "iPhone" : "glasses"))
         do {
             try await audioManager.setupAudioSession(useIPhoneMode: useIPhoneAudioMode)
         } catch {
@@ -693,7 +725,11 @@ class RealtimeSessionManager: ObservableObject {
                 let visionNow = updatedInstruction.contains("You CAN see")
                 PrivacyLog.realtimeSession(self.logProvider, .visionReconfigured, success: visionNow)
                 // Switch to glasses audio mode since camera implies glasses are connected
-                if !useIPhoneAudioMode {
+                if audioManager.route == .lensPhoneMic {
+                    // Plan LC §5: the lens keeps the mic on the phone; the camera changes nothing.
+                    PrivacyLog.realtimeSession(self.logProvider, .audioModeUnchanged,
+                                               detail: PrivacyToken("lens-iPhone"))
+                } else if !useIPhoneAudioMode {
                     PrivacyLog.realtimeSession(self.logProvider, .audioModeUnchanged,
                                                detail: PrivacyToken("glasses"))
                 } else {
@@ -769,6 +805,7 @@ class RealtimeSessionManager: ObservableObject {
         voiceEnd = LiveVoiceEndTracker()
         turnHadReply = false
         idleWarningInTurn = false
+        onAnswerEvent?(.sessionEnded)
         let wasInterpreting = interpreterPair != nil
         if wasInterpreting { localCueSynth.stopSpeaking(at: .immediate) }
         interpreterPair = nil

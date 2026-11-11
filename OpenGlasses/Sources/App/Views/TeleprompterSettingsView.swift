@@ -10,6 +10,7 @@ struct TeleprompterSettingsView: View {
     @State private var mode: PacingMode = Config.teleprompterMode
     @State private var wpm: Double = Double(Config.teleprompterWPM)
     @State private var lead: Int = Config.teleprompterLead
+    @State private var pageFollow: Bool = Config.teleprompterPageFollow
 
     @State private var draftTitle = ""
     @State private var draftText = ""
@@ -132,6 +133,12 @@ struct TeleprompterSettingsView: View {
                 }
             }
 
+            if mode == .audioPaced {
+                // Plan LC §6: voice-follow — the page turns when its last words are heard.
+                Toggle("Turn whole pages", isOn: $pageFollow)
+                    .onChange(of: pageFollow) { _, newValue in Config.teleprompterPageFollow = newValue }
+            }
+
             Stepper("Lead: \(lead) line\(lead == 1 ? "" : "s")", value: $lead,
                     in: PacingSpeed.leadRange.lowerBound...PacingSpeed.leadRange.upperBound)
                 .onChange(of: lead) { _, newValue in
@@ -147,7 +154,11 @@ struct TeleprompterSettingsView: View {
 
     private var pacingFooter: String {
         switch mode {
-        case .audioPaced: return String(localized: "Auto-advances by listening to what you read. Say \"faster\"/\"slower\", \"pause\", \"next\"/\"back\".")
+        case .audioPaced:
+            if pageFollow {
+                return String(localized: "Holds each page still and turns it when you read its last words. Say \"next\"/\"back\" to turn it yourself, or \"pause\". Lead does not apply while pages turn whole.")
+            }
+            return String(localized: "Auto-advances by listening to what you read. Say \"faster\"/\"slower\", \"pause\", \"next\"/\"back\".")
         #if AVENKIN_PHONE_ONLY
         case .voice: return String(localized: "No auto-advance — drive it with \"next\"/\"back\" by voice.")
         #else

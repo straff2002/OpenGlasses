@@ -39,11 +39,36 @@ protocol GlassesDisplayBackend: AnyObject {
     /// The size of the last picture sent, in bytes as it went to the transport, for the support
     /// report. Nil when the backend sent none or cannot say.
     var lastPictureBytes: Int? { get }
+
+    /// Plan LC §6: the caption frame (`HUDCaptionBuilder`). The default draws it as a heading (the
+    /// speaker) and one body (the rows), which a text-cell backend wraps to its own panel; the Meta
+    /// backend draws the three rows.
+    func showCaption(_ caption: HUDCaption) async throws
+
+    /// Plan LC §6: whether the backend plays a clip (Meta Display: DAT's `VideoPlayer`). Even G2,
+    /// the web mirror and the phone-only build: no, and a task card on them never offers **Watch**.
+    var playsVideo: Bool { get }
+    /// Play `video` as the lens's whole frame. `onEnded` hears how it ended (it ran out, it was
+    /// stopped, or the glasses reported an error), once.
+    func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws
+    /// Stop a clip that is playing. Nothing when none is.
+    func stopVideo() async
 }
 
 extension GlassesDisplayBackend {
     var drawsPictures: Bool { false }
     var lastPictureBytes: Int? { nil }
+
+    func showCaption(_ caption: HUDCaption) async throws {
+        try await showContent(title: caption.speaker, body: HUDCaptionBuilder.body(caption),
+                              icon: caption.listening ? .microphone : .none)
+    }
+
+    var playsVideo: Bool { false }
+    func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws {
+        throw GlassesDisplayError.noDisplay
+    }
+    func stopVideo() async {}
 }
 
 #if !AVENKIN_PHONE_ONLY
@@ -140,6 +165,11 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     }
     var onSessionReading: ((DisplaySessionReading) -> Void)?
 
+    /// Plan LC §2.2: the session we held reached `.stopped` without us stopping it — the wearer's
+    /// Back gesture or two-finger tap, or the glasses' hands-free mic coming up (iOS #342, #349). The
+    /// service reads it as a dismissal and does not reopen the lens for an ambient frame.
+    var onSessionEndedByDevice: (() -> Void)?
+
     /// A refused start reads as `.inUse` for this long, then the next frame may try once more. A
     /// refusal is not an interruption: the session never had the Display, so trying again later
     /// takes nothing back. Without the expiry a refusal would hold the HUD dark until relaunch,
@@ -174,6 +204,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     func showContent(title: String?, body: String, icon: HUDIcon) async throws {
         let display = try await ensureDisplay()
+        videoEnded = nil   // Plan LC §6: a frame replaces a clip
         let iconName = icon.metaIconName
         let hasTitle = !(title?.isEmpty ?? true)
 
@@ -206,14 +237,17 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 }
             }
         }
-        try await display.send(view)
+        try await HUDSendDeadline.run { try await display.send(view) }
     }
 
     func send(screen: HUDScreen) async throws {
         let display = try await ensureDisplay()
+        // Plan LC §6: a screen replaces a clip; the service already knows it left.
+        videoEnded = nil
         let view = makeScreenView(screen)
         if screen.picture != nil { lastPictureBytes = Self.pictureBytes(in: view) }
-        try await display.send(view)
+        // Plan LC §2.4: a send that has not come back in `HUDSendDeadline.seconds` has failed.
+        try await HUDSendDeadline.run { try await display.send(view) }
     }
 
     /// The encoded size of the picture in a built tree: DAT carries an `Image` as its `uri`.
@@ -221,14 +255,67 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         view.children.lazy.compactMap { $0 as? Image }.first.map { $0.uri.utf8.count }
     }
 
+    // MARK: - Captions and clips (Plan LC §6)
+
+    /// The caption screen: an items-less frame, top-aligned, through the same tree as any screen.
+    func showCaption(_ caption: HUDCaption) async throws {
+        try await send(screen: HUDCaptionBuilder.screen(caption))
+    }
+
+    var playsVideo: Bool { true }
+
+    /// The clip's ending callback, once: cleared when it fires or another frame replaces the clip.
+    private var videoEnded: (@MainActor (HUDVideoEnding) -> Void)?
+
+    /// Send `VideoPlayer` as the root view. The Display fetches the URL itself. Playback events
+    /// arrive on `Display.onPlaybackEvent`; an ended, stopped or error event ends the clip once, and
+    /// so does a `VideoError` reported through the player's own `onError`.
+    func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws {
+        let display = try await ensureDisplay()
+        videoEnded = onEnded
+        display.onPlaybackEvent = { [weak self] event in
+            let ending: HUDVideoEnding?
+            switch event.type {
+            case .ended: ending = .ended
+            case .stopped: ending = .stopped
+            case .error: ending = .failed
+            case .started, .unknown: ending = nil
+            @unknown default: ending = nil
+            }
+            guard let ending else { return }
+            Task { @MainActor in self?.endVideo(ending) }
+        }
+        let player = VideoPlayer(provider: .uri(video.url.absoluteString), codec: .mp4,
+                                 onError: { [weak self] _ in
+                                     Task { @MainActor in self?.endVideo(.failed) }
+                                 })
+        onDebugEvent?("HUD clip started")
+        try await HUDSendDeadline.run { try await display.send(player) }
+    }
+
+    func stopVideo() async {
+        guard videoEnded != nil, let display else { return }
+        await display.sendVideoStop()
+    }
+
+    private func endVideo(_ ending: HUDVideoEnding) {
+        guard let ended = videoEnded else { return }
+        videoEnded = nil
+        display?.onPlaybackEvent = nil
+        onDebugEvent?("HUD clip \(ending.rawValue)")
+        ended(ending)
+    }
+
     func clear() async throws {
         // Nothing to clear if we never started a session.
         guard let display else { return }
+        videoEnded = nil   // Plan LC §6: a clear replaces a clip
         // DAT 0.8.0: explicit clear instead of sending an empty FlexBox.
         try await display.clearDisplay()
     }
 
     func shutdown() async {
+        videoEnded = nil
         if let display {
             // Blank the waveguide BEFORE stopping, and give the clear a beat to land —
             // stopping with content still up can surface the system home screen on the
@@ -272,15 +359,20 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             (text: HUDTextShaper.condense(line.text), iconName: line.icon.metaIconName,
              style: line.emphasis.textStyle, color: line.emphasis.textColor)
         }
+        // Plan LC §2.1: exactly one button carries `.actionRole(.primary)`, so the glasses focus it
+        // when the frame first renders (and again on every re-send, which resets focus).
+        let focusID = screen.resolvedFocusItemID
         let buttonModels = screen.items.map { item in
             (id: item.id, label: HUDTextShaper.condense(item.label, max: HUDTextShaper.maxTitleLength),
-             style: item.style.buttonStyle, iconName: item.icon.metaIconName)
+             style: item.style.buttonStyle, iconName: item.icon.metaIconName, focused: item.id == focusID)
         }
         // Plan KV §6: the page view's picture, built here so the builder closure captures only the
         // Sendable `Image`, never the `UIImage`. It is drawn at the box the frame leaves it
         // (`LensPageFrame.pictureBox`), the column's full width, so `.fill` draws it one lens pixel
         // per image pixel and the lines, the picture and the button row all fit on the lens.
         let picture = screen.picture.map { Image(image: $0.image, sizePreset: .fill) }
+        // Plan LC §6: a turn arrow leads its guidance line; everything else draws under the lines.
+        let pictureLeads = screen.picture?.placement == .aboveLines
         // Under a button row, room for the focused button's glow (`LensPageFrame`): with the 12 px
         // margin the glow reached past the lens, and the lens scrolled every frame up by 20 px.
         let bottomPadding = LensPageFrame.bottomPadding(hasButtons: !buttonModels.isEmpty)
@@ -294,6 +386,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             if let headingText {
                 Text(headingText, style: .heading, color: .primary)
             }
+            if pictureLeads, let picture {
+                picture
+            }
             for line in lineModels {
                 if let iconName = line.iconName {
                     FlexBox(direction: .row, spacing: 6, alignment: .center) {
@@ -304,7 +399,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                     Text(line.text, style: line.style, color: line.color)
                 }
             }
-            if let picture {
+            if !pictureLeads, let picture {
                 picture
             }
             // DAT 0.9.0 `ButtonGroup`: the sanctioned container for button rows (bare
@@ -314,11 +409,19 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 ButtonGroup(alignment: .center) {
                     for button in buttonModels {
                         let id = button.id
-                        Button(label: button.label, style: button.style, iconName: button.iconName, onClick: { [weak self] in
+                        let onClick: @Sendable () -> Void = { [weak self] in
                             Task { @MainActor in
                                 if let onSelect { onSelect(id) } else { self?.onItemSelected?(id) }
                             }
-                        })
+                        }
+                        if button.focused {
+                            Button(label: button.label, style: button.style, iconName: button.iconName,
+                                   onClick: onClick)
+                                .actionRole(.primary)
+                        } else {
+                            Button(label: button.label, style: button.style, iconName: button.iconName,
+                                   onClick: onClick)
+                        }
                     }
                 }
             }
@@ -436,9 +539,20 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         sessionWatch?.cancel()
         let updates = session.stateUpdates()
         sessionWatch = Task { @MainActor [weak self] in
+            var reachedStarted = false
             for await state in updates {
                 guard let self, !Task.isCancelled, self.session === session else { return }
                 self.noteSessionState(state)
+                if state == .started { reachedStarted = true }
+                // Plan LC §2.2: `dropSession` cancels this watch before it stops the session, so a
+                // `.stopped` heard here, after the session was up, is one the app did not ask for.
+                // A start that never got there is a refused start (`prepareSession`), not this.
+                if state == .stopped, reachedStarted {
+                    self.onDebugEvent?("HUD display session ended by the glasses")
+                    self.dropSession(stopping: false)
+                    self.onSessionEndedByDevice?()
+                    return
+                }
             }
         }
     }
@@ -510,6 +624,13 @@ extension HUDIcon {
         case .location: return .house
         case .reminder: return .bell
         case .message: return .speechBubble
+        case .weather: return .cloud
+        case .clock: return .clock
+        // DAT 1.0 has no microphone glyph: the three-dot bubble ("someone is speaking") is the
+        // nearest the stable icon set offers for live capture.
+        case .microphone: return .threeDotSpeechBubble
+        case .music: return .musicNote
+        case .video: return .triangleRightCircle
         }
     }
 }

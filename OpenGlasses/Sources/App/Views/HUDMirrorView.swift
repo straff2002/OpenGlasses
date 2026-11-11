@@ -17,8 +17,7 @@ struct HUDMirrorView: View {
             if let frame = router.previewFrame {
                 // Plan KV P3: while the manual page is on the lens, its buttons work here too, through
                 // the same page session the band presses.
-                HUDPreviewView(screen: frame.screen,
-                               onPress: frame.isPressable ? { [router] id in router.pressFromPreview(id) } : nil)
+                HUDPreviewView(screen: frame.screen, onPress: pressHandler(for: frame))
                     .padding(.horizontal)
                 Text("Live — this is what's on the lens.")
                     .font(.footnote)
@@ -55,5 +54,14 @@ struct HUDMirrorView: View {
         .navigationTitle("HUD Mirror")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    /// The preview's press handler: the page session's, while the manual page is on the lens. Typed
+    /// out here rather than as an inline ternary of closures, which Xcode 27.2's type checker fails
+    /// on in the phone-only build ("failed to produce diagnostic for expression").
+    private func pressHandler(for frame: HUDPreviewFrame) -> (@MainActor @Sendable (String) -> Void)? {
+        guard frame.isPressable else { return nil }
+        let router = router
+        return { id in _ = router.pressFromPreview(id) }
     }
 }

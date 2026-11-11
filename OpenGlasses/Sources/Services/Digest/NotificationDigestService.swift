@@ -62,6 +62,15 @@ final class NotificationDigestService: ObservableObject {
         !DigestComposer.compose(items, now: Date(), topN: Config.digestMaxItems).isEmpty
     }
 
+    /// Plan LC §4: the digest's top item as its deterministic line, for the lens's Today glance.
+    /// Never the model rewrite (opening Today calls no model) and never marks anything seen: only
+    /// the glance itself does. Nil with the digest off or nothing live.
+    func topLine(now: Date = Date()) -> String? {
+        guard Config.digestEnabled else { return nil }
+        let digest = DigestComposer.compose(items, now: now, topN: Config.digestMaxItems)
+        return digest.items.first.map { DigestLineBuilder.fallbackLine(for: $0, now: now) }
+    }
+
     /// Whether an urgent item is pending (gates auto-surface on connect).
     var hasUrgentContent: Bool {
         let now = Date()

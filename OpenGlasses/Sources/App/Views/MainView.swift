@@ -170,6 +170,15 @@ struct MainView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        // Plan LC §1: Display glasses connected with the HUD off — the wearer chooses.
+        .overlay(alignment: .bottom) {
+            if !showOnboarding, appState.displayOfferShowing {
+                DisplayOfferBanner(turnOn: { appState.answerDisplayOffer(.turnOn) },
+                                   notNow: { appState.answerDisplayOffer(.notNow) })
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: appState.displayOfferShowing)
         .overlay(alignment: .bottom) {
             if !showOnboarding, appState.mayShowPilotReports, !appState.pilotReportDays.isEmpty {
                 PilotReportOffer(days: appState.pilotReportDays,

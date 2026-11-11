@@ -82,6 +82,11 @@ struct WebHUDPayload: Codable, Equatable {
         case .location: return "location"
         case .reminder: return "reminder"
         case .message: return "message"
+        case .weather: return "weather"
+        case .clock: return "clock"
+        case .microphone: return "microphone"
+        case .music: return "music"
+        case .video: return "video"
         }
     }
 

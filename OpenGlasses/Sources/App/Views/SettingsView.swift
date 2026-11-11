@@ -699,7 +699,14 @@ struct HardwarePrivacyView: View {
                 #if AVENKIN_PHONE_ONLY
                 Text("Where you are heard once the conversation starts, and where its replies play. Headset Mic keeps voice in your earbuds. iPhone Mic never uses a Bluetooth mic.")
                 #else
-                Text("Where you are heard once the conversation starts, and where its replies play. Glasses Mic is truly hands-free; while it is open, other audio on the glasses drops to call quality, and on Display glasses the call screen covers the lens HUD. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never uses a Bluetooth mic. Where the app waits for the wake word is set separately, under Devices & Privacy › Glasses.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Where you are heard once the conversation starts, and where its replies play. Glasses Mic is truly hands-free; while it is open, other audio on the glasses drops to call quality, and on Display glasses the call screen covers the lens HUD. Headset Mic keeps voice in your earbuds while the lens keeps the HUD; it never falls back to the glasses mic. iPhone Mic never uses a Bluetooth mic. Where the app waits for the wake word is set separately, under Devices & Privacy › Glasses.")
+                    // Plan LC §2.5: say so when the Glasses Mic choice is overridden for the display.
+                    if LensMicPolicy.overrides(preferred: micRoute, lensOn: Config.lensIsOn,
+                                               keepPhoneMic: Config.lensKeepsPhoneMic) {
+                        Text(LensMicPolicy.settingsFootnote)
+                    }
+                }
                 #endif
             }
 
@@ -721,6 +728,8 @@ struct HardwarePrivacyView: View {
                             Config.setGlassesDisplayEnabled(newValue)
                             if !newValue {
                                 Task { await appState.glassesDisplay.shutdown() }
+                            } else {
+                                appState.glassesDisplay.wearerTurnedLensOn()
                             }
                         }
                     ),

@@ -34,7 +34,8 @@ final class WebHUDMirrorTests: XCTestCase {
 
     func testAllIconsHaveWireNames() {
         let icons: [HUDIcon] = [.none, .info, .success, .warning, .error, .navigation,
-                                .hazard, .calendar, .location, .reminder, .message]
+                                .hazard, .calendar, .location, .reminder, .message, .weather, .clock,
+                                .microphone, .music, .video]
         let names = icons.map(WebHUDPayload.iconName)
         XCTAssertEqual(Set(names).count, icons.count, "wire names must be distinct")
     }

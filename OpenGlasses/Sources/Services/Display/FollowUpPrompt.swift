@@ -18,7 +18,9 @@ import Foundation
 /// Direct mode only. The clause is added to the full cloud prompt (`LLMService.buildSystemPrompt`
 /// with `offersFollowUps`), not to the short prompts of on-device models (a 2B model's window and
 /// memory are already tight, and it has its own lean prompt) or to the one-line lean cloud
-/// prompt, and never to Gemini Live or OpenAI Realtime, whose replies don't reach the HUD.
+/// prompt, and never to the live modes (Gemini Live, OpenAI Realtime, Qwen, Doubao): their turns
+/// reach the answer card since Plan LC §5, but as the transcript of what the model said aloud, so a
+/// tail asked of them would be spoken — a live card carries no follow-ups.
 ///
 /// Allowed under HIPAA mode: the follow-ups never leave the reply. The tail is taken off before
 /// the transcript, history, memory or speech see it, and its questions go only to the card.

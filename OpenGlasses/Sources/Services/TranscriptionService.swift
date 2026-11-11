@@ -121,7 +121,7 @@ class TranscriptionService: ObservableObject {
 
     /// The conversation mic the wearer chose, and the developer switch for the phone-mic voice
     /// processing experiment. Closures so `DictationCapturePolicy`'s inputs are read live per turn.
-    var micRouteProvider: () -> MicRoute = { Config.micRoute }
+    var micRouteProvider: () -> MicRoute = { Config.conversationMicRoute }
     var voiceProcessingSwitchProvider: () -> Bool = { Config.dictationVoiceProcessingEnabled }
 
     // MARK: - Engines (Additional Capabilities #8, Plan JM P2)

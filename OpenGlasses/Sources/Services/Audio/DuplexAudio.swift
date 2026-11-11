@@ -67,9 +67,15 @@ enum VoiceProcessingProbe {
 /// input on the phone's mic, with the speaker borrowed one line at a time. Overriding output to the
 /// speaker takes input to the built-in mic anyway, so the phone's mic is the only one that survives
 /// a flip, and leaving HFP out keeps the glasses from pulling input back.
+///
+/// `.lensPhoneMic` (Plan LC §5) is a live conversation while the Meta Display is on: the glasses'
+/// hands-free mic ends the display session (iOS #342), so input is the phone's mic and output stays
+/// on the glasses over A2DP — the interpreter's shape without its speaker flips. Like a standard
+/// session it falls to the phone speaker with no glasses there.
 enum RealtimeAudioRoute: Equatable {
     case standard
     case interpreter
+    case lensPhoneMic
 
     func sessionOptions() -> AVAudioSession.CategoryOptions {
         switch self {
@@ -77,6 +83,8 @@ enum RealtimeAudioRoute: Equatable {
         // No `.defaultToSpeaker`: with the glasses gone, output falls to the earpiece. A wearer who
         // loses the glasses mid-sentence must not have their private line play to the room.
         case .interpreter: return [.allowBluetoothA2DP]
+        // No `.allowBluetoothHFP`: nothing may ask for the glasses' hands-free link.
+        case .lensPhoneMic: return [.defaultToSpeaker, .allowBluetoothA2DP]
         }
     }
 
@@ -84,9 +92,13 @@ enum RealtimeAudioRoute: Equatable {
     func sessionMode(useIPhoneMode: Bool) -> AVAudioSession.Mode {
         switch self {
         case .standard: return useIPhoneMode ? .voiceChat : .videoChat
-        case .interpreter: return .default
+        case .interpreter, .lensPhoneMic: return .default
         }
     }
+
+    /// Input pinned to the phone's built-in mic, output left where the system puts it (the
+    /// glasses over A2DP when they are there).
+    var keepsMicOnPhone: Bool { self != .standard }
 }
 
 /// Whether audio handed to the player has yet to play.

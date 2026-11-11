@@ -216,18 +216,23 @@ final class RealtimeAudioEngine {
             try? session.setPreferredSampleRate(config.preferredSampleRate)
             try? session.setPreferredIOBufferDuration(0.064)
         }
-        if route == .interpreter {
+        if route.keepsMicOnPhone {
             // App speech on a phone-only route sets the speaker itself, and nothing here would
-            // know to clear it.
+            // know to clear it. Plan LC §5: the lens route keeps the glasses as the output.
             try? session.overrideOutputAudioPort(.none)
             preferBuiltInMic(session)
         } else {
             applyRoutePolicy(session, useIPhoneMode: useIPhoneMode)
         }
         installSessionObservers()
+        let modeToken: String
+        switch route {
+        case .interpreter: modeToken = "interpreter"
+        case .lensPhoneMic: modeToken = "lens-iPhoneMic"
+        case .standard: modeToken = useIPhoneMode ? "voiceChat-iPhone" : "videoChat-glasses"
+        }
         PrivacyLog.audio(.realtime, .modeSelected, owner: PrivacyToken(config.owner.rawValue),
-                         detail: PrivacyToken(route == .interpreter ? "interpreter"
-                                              : useIPhoneMode ? "voiceChat-iPhone" : "videoChat-glasses"))
+                         detail: PrivacyToken(modeToken))
     }
 
     /// Where the audio after this call plays. On the same queue as `playAudio`, so a line released
@@ -287,7 +292,10 @@ final class RealtimeAudioEngine {
         // Plan CC: decide the duplex tier for THIS capture. Voice processing is only attempted for
         // the co-located phone speaker+mic — in glasses mode the mic is remote and there is no echo
         // path to cancel, so the risk of the IO swap buys nothing.
-        prepareEngineOnQueue(wantVoiceProcessing: Config.duplexAudioEnabled && useIPhoneMode)
+        // Plan LC §5: never on a route that keeps the mic on the phone — voice processing can pull
+        // a Bluetooth route onto its hands-free link, which is what that route exists to avoid.
+        prepareEngineOnQueue(wantVoiceProcessing: Config.duplexAudioEnabled && useIPhoneMode
+                                 && !route.keepsMicOnPhone)
 
         // A graph reset re-activates the session under the long-lived engine, whose input node can
         // keep the rate it negotiated before the route moved. Voice processing already starts on a

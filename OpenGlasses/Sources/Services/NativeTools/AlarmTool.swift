@@ -164,6 +164,8 @@ struct AlarmTool: NativeTool {
         if case .alarmKit = choice, let realAlarm {
             do {
                 _ = try await realAlarm.schedule(plan)
+                // Plan LC §6: the lens hears it ring (the permission may have just been granted).
+                await MainActor.run { TimerCompletionWatch.shared.startWatchingAlarms() }
                 // Plan LA: a real alarm is on the clock.
                 ActionCompletionReport.record(.done(summary: "Alarm \(when)"))
                 return Wording.alarmSet(label: label, when: when, hoursUntil: hoursUntil, minutesUntil: minsUntil)

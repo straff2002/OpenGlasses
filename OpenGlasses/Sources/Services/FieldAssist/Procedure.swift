@@ -85,6 +85,11 @@ struct Procedure: Codable, Equatable, Identifiable {
         /// full heat cycle … only after the retest passes" (Plan GB P3). Optional in the schema;
         /// absent means false, and is left out when encoding.
         let requiresConfirmation: Bool?
+        /// Plan LC §6: a short clip showing the step, as an HTTPS MP4 the Display fetches itself
+        /// (at most 400 px a side and 70,000 px in all, Meta's `VideoPlayer` limits). Optional in the
+        /// schema; absent is no clip, and is left out when encoding. The lens offers **Watch** only
+        /// for a URL `HUDVideo.playable` accepts.
+        let videoURL: String?
 
         /// Whether completing here needs the technician's confirmation.
         var needsConfirmation: Bool { terminal && requiresConfirmation == true }
@@ -96,6 +101,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             case safetyNote = "safety_note"
             case calcRef = "calc_ref"
             case defaultNext = "default_next"
+            case videoURL = "video_url"
         }
 
         init(
@@ -110,7 +116,8 @@ struct Procedure: Codable, Equatable, Identifiable {
             defaultNext: String? = nil,
             terminal: Bool = false,
             outcome: String? = nil,
-            requiresConfirmation: Bool? = nil
+            requiresConfirmation: Bool? = nil,
+            videoURL: String? = nil
         ) {
             self.id = id
             self.title = title
@@ -124,6 +131,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             self.terminal = terminal
             self.outcome = outcome
             self.requiresConfirmation = requiresConfirmation
+            self.videoURL = videoURL
         }
 
         init(from decoder: Decoder) throws {
@@ -140,6 +148,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             terminal = try c.decodeIfPresent(Bool.self, forKey: .terminal) ?? false
             outcome = try c.decodeIfPresent(String.self, forKey: .outcome)
             requiresConfirmation = try c.decodeIfPresent(Bool.self, forKey: .requiresConfirmation)
+            videoURL = try c.decodeIfPresent(String.self, forKey: .videoURL)
         }
     }
 

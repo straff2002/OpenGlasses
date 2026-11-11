@@ -296,10 +296,10 @@ class AmbientCaptionService: ObservableObject {
                         self.compactor.acceptSegmentInterim(text)
                         let rendered = self.compactor.rendered
                         self.currentCaption = rendered
-                        self.glassesDisplay?.showText(rendered)
+                        self.showOnLens(rendered)
                     } else {
                         self.currentCaption = text
-                        self.glassesDisplay?.showText(text)
+                        self.showOnLens(text)
                     }
                     self.resetSilenceTimer()
 
@@ -407,12 +407,12 @@ class AmbientCaptionService: ObservableObject {
         if segment.isFinal {
             let renderLanguage = direction.renderLanguage(forDetected: segment.language)
                 ?? Config.translationWearerLanguage
-            if wearerLeg { glassesDisplay?.showText(segment.text) }
+            if wearerLeg { showOnLens(segment.text) }
             finalizeCaption(segment.text, original: segment.original,
                             language: segment.language, expectedLocale: renderLanguage)
         } else {
             currentCaption = segment.text
-            if wearerLeg { glassesDisplay?.showText(segment.text) }
+            if wearerLeg { showOnLens(segment.text) }
             resetSilenceTimer()
         }
     }
@@ -428,7 +428,8 @@ class AmbientCaptionService: ObservableObject {
             let liveLine = segment.speaker.map { "\(self.speakerRegistry.displayLabel(for: $0)): \(segment.text)" }
                 ?? segment.text
             self.currentCaption = liveLine
-            self.glassesDisplay?.showText(liveLine)
+            // Plan LC §6: on the lens the speaker is its own meta line over the words.
+            self.showOnLens(segment.text, speaker: segment.speaker)
             self.resetSilenceTimer()
             if segment.isFinal {
                 self.finalizeCaption(segment.text, speaker: segment.speaker)
@@ -440,6 +441,25 @@ class AmbientCaptionService: ObservableObject {
         wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
             Task { @MainActor in self?.diarizer?.sendAudio(buffer) }
         }
+    }
+
+    /// Plan LC §6: the live text as the lens's caption frame (`HUDCaptionBuilder`): up to three
+    /// rows, the last few finals of the same speaker carried in front of it, the speaker's label
+    /// when diarization gives one, and the mic mark while capture is live. The visual notes a
+    /// recording inserts into the history are not speech and are never carried.
+    private func showOnLens(_ live: String, speaker: Int? = nil) {
+        guard let glassesDisplay else { return }
+        let registry = speakerRegistry
+        let label = speaker.map { registry.displayLabel(for: $0) }
+        let recent = captionHistory.prefix(HUDCaptionBuilder.carriedFinals).reversed()
+            .filter { !$0.text.hasPrefix("[Visual:") }
+            .map { entry in
+                HUDCaptionBuilder.Final(text: entry.text, at: entry.timestamp,
+                                        speaker: entry.speaker.map { registry.displayLabel(for: $0) })
+            }
+        guard let caption = HUDCaptionBuilder.caption(live: live, speaker: label, recent: recent,
+                                                      now: Date(), listening: isTranscribing) else { return }
+        glassesDisplay.showCaption(caption)
     }
 
     private func stopRecognitionSession() {

@@ -16,6 +16,11 @@ enum HUDIcon: Equatable {
     case info, success, warning, error
     case navigation, hazard
     case calendar, location, reminder, message
+    /// Plan LC §4: the Today glance's weather row and its time-and-battery line.
+    case weather, clock
+    /// Plan LC §6: the caption screen's live-capture mark, the Now Playing card's track line, and a
+    /// Field Assist step's **Watch** (its clip).
+    case microphone, music, video
 }
 
 /// Shared HUD text shaping (Plan AH — extracted from `GlassesDisplayService` so every
@@ -102,6 +107,41 @@ struct HUDPicture {
     /// What the picture shows — the page, the crop and how it was drawn — so the render queue's
     /// de-duplication skips an identical frame without comparing pixels. Never page text.
     let contentKey: String
+
+    /// Where the backend draws it: under the screen's lines (a page crop, a vision thumbnail) or,
+    /// Plan LC §6, above them (the turn arrow, which leads its guidance line).
+    enum Placement: Equatable {
+        case belowLines
+        case aboveLines
+    }
+    var placement: Placement = .belowLines
+}
+
+/// Plan LC §6: a clip a Field Assist step points at, as the lens can play it — an HTTPS MP4 the
+/// Display fetches itself (DAT's `VideoPlayer(provider: .uri(_:), codec: .mp4)`). SDK-free, so the
+/// task card can offer **Watch** without knowing which backend is up; only a backend that
+/// `playsVideo` is ever handed one. The phone never downloads the clip; Meta's limits for it
+/// (at most 400 px a side and 70,000 px in all) are the clip author's to meet, and a clip the
+/// glasses refuse ends as an error, which returns to the task card.
+struct HUDVideo: Equatable {
+    let url: URL
+
+    /// A clip the lens can play, or nil: an absolute `https` URL with a host whose path ends in
+    /// `.mp4` (any case). Anything else (http, a file URL, a page, another container) is not
+    /// offered, because the glasses would only report an error.
+    static func playable(_ string: String?) -> HUDVideo? {
+        guard let raw = string?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              let url = URL(string: raw), url.scheme?.lowercased() == "https",
+              let host = url.host, !host.isEmpty,
+              url.pathExtension.lowercased() == "mp4" else { return nil }
+        return HUDVideo(url: url)
+    }
+}
+
+/// Plan LC §6: how a clip on the lens ended, mapped from DAT's `VideoPlaybackEventType`. Every
+/// ending returns the lens to the task card the clip was started from.
+enum HUDVideoEnding: String, Equatable {
+    case ended, stopped, failed
 }
 
 /// One renderable interactive screen.
@@ -120,10 +160,29 @@ struct HUDScreen {
     /// `renderKey`: the key is what this frame shows.
     var pageSet: HUDPageSet?
 
-    init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = []) {
+    /// Plan LC §2.1: the item that takes focus when the screen first renders (DAT 1.0's
+    /// `.actionRole(.primary)`: "the first primary action receives focus"). Nil lets
+    /// `resolvedFocusItemID` choose. Set by a builder where the likeliest next press is not the
+    /// first prominent button. Part of `renderKey` only when set, so default screens keep their keys.
+    var focusItemID: String?
+
+    init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = [], focusItemID: String? = nil) {
         self.title = title
         self.lines = lines
         self.items = items
+        self.focusItemID = focusItemID
+    }
+
+    /// Plan LC §2.1: the one item a backend marks as the focused default. The explicit
+    /// `focusItemID` when it names an item on this screen, else the first `.primary` item, else the
+    /// first `.secondary`, else the first item. Nil for a screen with no items. Exactly one button
+    /// is ever marked, so focus never depends on which of several "primary" buttons the firmware
+    /// happens to take.
+    var resolvedFocusItemID: String? {
+        if let focusItemID, items.contains(where: { $0.id == focusItemID }) { return focusItemID }
+        return items.first(where: { $0.style == .primary })?.id
+            ?? items.first(where: { $0.style == .secondary })?.id
+            ?? items.first?.id
     }
 
     /// Stable key over the *visible* content, used to skip redundant re-renders
@@ -132,8 +191,32 @@ struct HUDScreen {
         let head = title ?? ""
         let body = lines.map { "\($0.emphasis):\($0.icon):\($0.text)" }.joined(separator: "¦")
         let acts = items.map { "\($0.id):\($0.style):\($0.icon):\($0.label)" }.joined(separator: "¦")
-        guard let picture else { return "\(head)|\(body)|\(acts)" }
-        return "\(head)|\(body)|\(acts)|pic:\(picture.contentKey)"
+        var key = "\(head)|\(body)|\(acts)"
+        if let picture {
+            key += "|pic:\(picture.contentKey)"
+            if picture.placement == .aboveLines { key += "^" }
+        }
+        if let focusItemID { key += "|focus:\(focusItemID)" }
+        return key
+    }
+}
+
+/// Plan LC §2.3: the ids and labels that let the wearer leave a screen from the screen itself.
+/// The band's Back gesture ends the whole display session on hardware (iOS #349), so every
+/// interactive screen below the launcher's root carries one of these.
+enum HUDExit {
+    /// Item ids that leave or step back from a screen.
+    static let ids: Set<String> = [
+        "close", "back", "done", "dismiss", "stop",
+        "kp.close", "kp.back", "kp.answer",
+    ]
+
+    /// Whether `screen` has an item that leaves it.
+    static func hasExit(_ screen: HUDScreen) -> Bool {
+        screen.items.contains { item in
+            ids.contains(item.id) || item.id.hasSuffix(".close") || item.id.hasSuffix(".back")
+                || item.id.hasSuffix(".stop") || item.id.hasSuffix(".done") || item.id.hasSuffix(".deny")
+        }
     }
 }
 
