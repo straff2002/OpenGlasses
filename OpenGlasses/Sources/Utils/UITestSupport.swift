@@ -98,6 +98,13 @@ enum UITestSupport {
         /// and Activity screens need to have rows at all. Written through the shipping stores; the
         /// titles are invented.
         case seedGoals = "-OGUITestSeedGoals"
+        /// Plan KT P1: with `seedMyDay`, one ready card with a drafted text to an invented person,
+        /// built as a rule would build it and joined through the real card store.
+        case seedPreparedCard = "-OGUITestSeedPreparedCard"
+        /// A simulator has no Messages or Mail composer. This puts a plain stand-in sheet where the
+        /// platform composer would be, with Send and Cancel, so the hand-off and the composer's
+        /// result can be driven. Nothing is sent by it, as nothing is sent by the real one.
+        case standInComposer = "-OGUITestStandInComposer"
     }
 
     /// Whether a vault-link review is being staged for a screenshot.
@@ -319,6 +326,10 @@ enum UITestSupport {
 
         if isSet(.seedMyDay) {
             appState.myDayService.seedForUITest(seededDay())
+            if isSet(.seedPreparedCard) {
+                PreparedCardStore.shared.deleteAll()
+                appState.myDayService.seedCardsForUITest(seededCards(), items: seededDay().allItems)
+            }
         }
 
         if isSet(.vaultReceivedBadge) {
@@ -421,6 +432,36 @@ enum UITestSupport {
             sourceStates: MyDaySource.allCases.map(MyDaySourceState.available),
             nextRefreshAt: now.addingTimeInterval(900)
         )
+    }
+
+    /// A leave-by card with a drafted text to an invented person on a 555-01xx number, and a
+    /// second card so the home card's "1 more ready" opens the page.
+    private static func seededCards() -> [RuledCard] {
+        let now = Date()
+        let second = RuledCard(card: PreparedCard(
+            id: PreparedCardID(kind: .fitItIn, occurrence: "uitest-errand"),
+            headline: "Pick up the replacement charging case", subject: nil,
+            signals: [CardSignal(source: .reminders, text: "Due today")], facts: [],
+            primary: .dismiss, urgency: .upcoming, dueAt: now.addingTimeInterval(3 * 3600),
+            validUntil: now.addingTimeInterval(4 * 3600)))
+        return [seededCard(), second]
+    }
+
+    private static func seededCard() -> RuledCard {
+        let now = Date()
+        let start = now.addingTimeInterval(45 * 60)
+        let draft = PreparedDraft(
+            channel: .messages,
+            recipient: DraftRecipient(name: "Ana Example", addresses: ["555-0142"], source: .calendarAttendee),
+            text: "On my way — there about 18:40.", language: "en")
+        return RuledCard(card: PreparedCard(
+            id: PreparedCardID(kind: .leaveBy, occurrence: "uitest-gig"),
+            headline: "Leave by 18:15", subject: "Gig at the Example Hall",
+            signals: [CardSignal(source: .calendar, text: "19:00")],
+            facts: [CardFact(label: "Travel", value: "30 min · Driving")],
+            primary: .directions(destination: "1 Example Street", mode: .driving),
+            secondary: [.handOff(PreparedDraftRef(channel: .messages)), .later],
+            draft: draft, urgency: .important, dueAt: now.addingTimeInterval(15 * 60), validUntil: start))
     }
 
     /// Two finished conversations, the older one long enough to have to scroll.

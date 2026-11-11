@@ -12,6 +12,22 @@ final class MyDayService: ObservableObject {
     /// The last refresh's inputs as gathered, before composing (Plan KS: the watch's Today
     /// screens). Set before `state`, on every refresh.
     @Published private(set) var gathered: MyDayGathered?
+    /// Plan KT P1: the day as cards then rows — what the page, the home card and the job day's
+    /// card draw. Set before `state`, on every refresh, and again whenever the wearer acts on a card.
+    @Published private(set) var preparedFeed: PreparedCardFeed = .empty
+    /// Plan KT §9.2: Calendar is on and readable, and no Google calendar is in it.
+    @Published private(set) var googleCalendarMissing = false
+
+    /// The cards' joiner and state. Nil (tests, or before AppState wires it): rows only.
+    var cardBuilder: PreparedCardFeedBuilder?
+    /// The calendar accounts iOS Calendar has, for the Google calendar hint. Read only after a
+    /// Calendar load succeeded.
+    var calendarSources: () -> [CalendarSourceRecord] = { [] }
+    /// After every change to the feed — the cards' notifications read it.
+    var onFeedChanged: ((TodayFeed, Date) -> Void)?
+
+    /// What every surface reads (§3.1).
+    var todayFeed: TodayFeed { preparedFeed.feed }
 
     private let calendarSource: any CalendarDaySource
     private let remindersSource: any RemindersDaySource
@@ -103,6 +119,8 @@ final class MyDayService: ObservableObject {
                                      calendarIncluded: selection.calendar, events: [],
                                      calendarState: nil, weatherIncluded: selection.weather,
                                      weather: nil, weatherState: nil)
+            // Locked: nothing content-bearing was read, so no card can be built.
+            setFeed(.rowsOnly(snapshot), now: now)
             state = .loaded(snapshot)
             recordLatency(since: refreshStartedAt, at: now)
             return snapshot
@@ -124,23 +142,28 @@ final class MyDayService: ObservableObject {
         let sourceStates = [events?.state, reminders?.state, weather?.state, travel?.state, digest?.state,
                             goals?.state]
             .compactMap { $0 }
-        let snapshot = refreshComposer.compose(
-            inputs: MyDayInputs(
-                events: events?.value ?? [],
-                reminders: reminders?.value ?? [],
-                weather: weather?.value,
-                travel: travel?.value,
-                digestUpdates: digest?.value ?? [],
-                goalSteps: goals?.value ?? [],
-                sourceStates: sourceStates,
-                dismissals: dismissals.active(on: now)
-            ),
-            now: now
+        let inputs = MyDayInputs(
+            events: events?.value ?? [],
+            reminders: reminders?.value ?? [],
+            weather: weather?.value,
+            travel: travel?.value,
+            digestUpdates: digest?.value ?? [],
+            goalSteps: goals?.value ?? [],
+            sourceStates: sourceStates,
+            dismissals: dismissals.active(on: now)
         )
+        let snapshot = refreshComposer.compose(inputs: inputs, now: now)
         gathered = MyDayGathered(generatedAt: now, locked: false,
                                  calendarIncluded: selection.calendar, events: events?.value ?? [],
                                  calendarState: events?.state, weatherIncluded: selection.weather,
                                  weather: weather?.value ?? nil, weatherState: weather?.state)
+        if let state = events?.state, state.availability == .available {
+            googleCalendarMissing = !GoogleCalendarPresence.isPresent(in: calendarSources())
+        } else {
+            googleCalendarMissing = false
+        }
+        let feed = await cardBuilder?.build(inputs: inputs, snapshot: snapshot, now: now) ?? .rowsOnly(snapshot)
+        setFeed(feed, now: now)
         state = .loaded(snapshot)
         recordLatency(since: refreshStartedAt, at: now)
         return snapshot
@@ -242,7 +265,47 @@ final class MyDayService: ObservableObject {
         metrics.record(.action(action), at: date)
     }
 
+    // MARK: - Cards (Plan KT P1)
+
+    private func setFeed(_ feed: PreparedCardFeed, now: Date) {
+        if feed != preparedFeed { preparedFeed = feed }
+        onFeedChanged?(feed.feed, now)
+    }
+
+    /// Re-join the last gathering: after the wearer acted on a card, the job day moved, or a
+    /// setting changed. Reloads nothing.
+    func rejoinCards(now: Date = Date()) {
+        guard let feed = cardBuilder?.rejoin(now: now) else { return }
+        setFeed(feed, now: now)
+    }
+
+    /// Apply one change through the builder, then re-join.
+    func changeCards(now: Date = Date(), _ change: (PreparedCardFeedBuilder) -> Void) {
+        guard let cardBuilder else { return }
+        change(cardBuilder)
+        rejoinCards(now: now)
+    }
+
+    /// The card with `id` on the page now.
+    func card(_ id: PreparedCardID) -> PreparedCard? {
+        todayFeed.cards.first { $0.id == id }
+    }
+
+    /// "Done" on a fit-it-in card completes its reminder, then the card closes.
+    func completeCardReminder(_ card: PreparedCard, reminderId: String, now: Date = Date()) async throws -> String? {
+        let title = try await completeReminder(id: reminderId, now: now)
+        changeCards(now: now) { $0.done(card, now: now) }
+        return title
+    }
+
 #if DEBUG
+    /// UI-test seeding only: cards as a refresh would have built them, joined through the real
+    /// store, so an edit, a hand-off and a cancel behave as they do on a phone.
+    func seedCardsForUITest(_ ruled: [RuledCard], items: [MyDayItem]) {
+        cardBuilder?.seedForUITest(ruled, items: items)
+        rejoinCards()
+    }
+
     /// UI-test seeding only — see `UITestSupport`, and the note at the top of that file about what
     /// seeding is and is not. It sets the state a real refresh would have produced, so the card can
     /// be audited with rows in it without a calendar, a permission grant, or a device. Nothing

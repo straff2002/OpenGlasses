@@ -2030,6 +2030,7 @@ class AppState: ObservableObject, AppStateProtocol {
         jobSendNotificationRouter = JobSendNotificationRouter { [weak self] tab in
             if tab == .job { self?.openJobs(.list) } else { self?.requestedTab = tab }
         }
+        jobSendNotificationRouter?.openPreparedCard = { [weak self] id in self?.openPreparedCard(id) }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
     }
 
@@ -2475,11 +2476,16 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// The job-day card's facts (Plan HB). Held here rather than by the card, because the card yields
     /// its place to every turn and the full-screen day view it opens must not go with it.
-    lazy var jobDayFeed = JobDayFeed(sessions: FieldSessionService.shared, flow: guidedJobFlow,
-                                     upcoming: upcomingJobs, sends: jobSends, myDay: myDayService,
-                                     // A recording not yet with the office is still to do (Plan HE).
-                                     recordings: { [weak self] in self?.owedRecordings() ?? [] },
-                                     recordingChanges: owedRecordingChanges)
+    lazy var jobDayFeed: JobDayFeed = {
+        let feed = JobDayFeed(sessions: FieldSessionService.shared, flow: guidedJobFlow,
+                              upcoming: upcomingJobs, sends: jobSends, myDay: myDayService,
+                              // A recording not yet with the office is still to do (Plan HE).
+                              recordings: { [weak self] in self?.owedRecordings() ?? [] },
+                              recordingChanges: owedRecordingChanges)
+        // The job day moved: the My Day cards re-join against it (Plan KT P1).
+        feed.onCardFactsChanged = { [weak self] in self?.myDayService.rejoinCards() }
+        return feed
+    }()
 
     /// Open one settings category, from wherever the wearer is.
     func openSettings(_ category: SettingsCategoryID) {
@@ -2546,6 +2552,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan IW P1: goals and the activity trail can name a person; forgetting them reaches both.
         erasure.goals = GoalStore.shared
         erasure.activity = ActivityStore.shared
+        // Plan KT P1: a card's kept draft can name the person it is to.
+        erasure.preparedCards = PreparedCardStore.shared
         erasure.tableChecks = TableCheckStore()
         // Plan KM P2: handovers sent to this phone's owner as an expert can name a person.
         erasure.assistingHandovers = AssistingHandoverStore.shared
@@ -3148,6 +3156,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.learningEntries = LearningEntryStore.shared
             erasureStores.goals = GoalStore.shared
             erasureStores.activity = ActivityStore.shared
+            erasureStores.preparedCards = PreparedCardStore.shared
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
             erasureStores.captionSessions = CaptionSessionStore.shared
@@ -4704,6 +4713,19 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         notificationDigest.isOffline = { [weak self] in !(self?.reachability.isOnline ?? true) }
         myDayService.setDigestSource(NotificationDigestDaySource(service: notificationDigest))
+        // Plan KT P1: the cards — their facts, their state, the Google calendar hint and the one
+        // notification a card may post.
+        myDayService.cardBuilder = PreparedCardFeedBuilder(store: .shared, contextSource: preparedCardContext)
+        myDayService.calendarSources = { [weak self] in self?.eventKitStore.calendarSources() ?? [] }
+        myDayService.onFeedChanged = { [weak self] feed, now in
+            self?.preparedCardNotifier.notify(feed: feed, now: now)
+        }
+        // A card's urgency moves with the clock: re-join once a minute while the app runs, so a
+        // leave-by that reaches ten minutes notifies then. Rules over the last gathering only —
+        // no source is read again.
+        cancellables.append(Timer.publish(every: 60, tolerance: 10, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.myDayService.rejoinCards() })
         // Plan IW P2: My Day's goals row, and each goal check-in filed in the digest — one item
         // per goal, so a later check-in replaces the earlier one.
         myDayService.setGoalsSource(GoalStoreDaySource())
@@ -5671,6 +5693,19 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Non-nil while the Mail or Messages composer should be presented.
     @Published var deliveryComposerRequest: DeliveryComposerRequest?
+    /// A My Day card's draft in the platform composer (Plan KT §7.1), presented from the root.
+    @Published var draftComposerRequest: DraftComposerRequest?
+    /// The My Day page, asked for by a card's notification (Plan KT §5.3).
+    @Published var myDayPageRequested = false
+    /// The My Day page is up as a sheet, so it — not the root — presents a card's composer.
+    @Published var draftComposerOnPage = false
+    /// The My Day cards' own facts (Plan KT P1).
+    lazy var preparedCardContext = LivePreparedCardContextSource(
+        location: locationService, travel: travelTimeSource,
+        jobFeed: { [weak self] in self?.jobDayFeed },
+        fieldAssistOn: { UserDefaults.standard.bool(forKey: "fieldAssistEnabled") && Config.fieldAssistUnlocked })
+    /// Posts a card's one notification when it becomes immediate (Plan KT §5.3).
+    let preparedCardNotifier = PreparedCardNotifier()
     /// Held so the notification centre's delegate is not deallocated the moment it is set.
     var jobSendNotificationRouter: JobSendNotificationRouter?
     /// The job report in the share sheet, for a channel that has no composer of its own.

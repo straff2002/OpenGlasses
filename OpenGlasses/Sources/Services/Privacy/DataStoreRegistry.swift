@@ -65,6 +65,8 @@ enum SensitiveStore: String, CaseIterable {
     case agentNotificationQueue
     case notificationDigest
     case goals
+    /// The My Day cards' state and the wearer's edits of their drafts (Plan KT P1).
+    case preparedCards
 
     // Media
     case recordings
@@ -523,6 +525,21 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "GoalStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Goals/GoalStore.swift"],
                           location: "Application Support/Goals/goals.json")
+
+        case .preparedCards:
+            // What the wearer did with each My Day card (Plan KT §3.5): its state, their edit of
+            // its draft and the text the edit started from, and when; plus each kind's "not
+            // useful" times. No chips, facts or recipients. An edited draft can name the person
+            // it is to, so the erasure walk reaches it, and so it is excluded from backup.
+            return Record(store: self, dataClass: .personalMemory, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("each card's entry until a day after the card ends; "
+                                             + "\"not useful\" times for 14 days"),
+                          deleteAll: .api("PreparedCardStore.deleteAll()"),
+                          deleteSubject: .api("PreparedCardStore.forget(matching:)"),
+                          owner: "PreparedCardStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/MyDay/PreparedCards/PreparedCardStore.swift"],
+                          location: "Application Support/PreparedCards/cards.json")
 
         case .recordings:
             return Record(store: self, dataClass: .media, subjectLinkage: .thirdPartySubject,

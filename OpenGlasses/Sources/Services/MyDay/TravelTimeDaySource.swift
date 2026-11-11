@@ -171,11 +171,22 @@ final class MapKitTravelTimeDaySource: TravelTimeDaySource {
         let estimate: MyDayTravelEstimate
         let originQuery: String?
         let destinationQuery: String
+        /// Where the destination resolved to (Plan KT: the running-late distance and the
+        /// destination's forecast).
+        var destination: MyDayCoordinate? = nil
+    }
+
+    private struct JobTravelEntry {
+        let jobID: String
+        let address: String
+        let travel: CardJobTravel
+        let calculatedAt: Date
     }
 
     private weak var locationService: LocationService?
     private let settings: () -> MyDayTravelSettings
     private var cache: CacheEntry?
+    private var jobCache: JobTravelEntry?
 
     init(
         locationService: LocationService,
@@ -260,7 +271,8 @@ final class MapKitTravelTimeDaySource: TravelTimeDaySource {
                 ),
                 estimate: estimate,
                 originQuery: configuredOriginQuery(for: currentSettings),
-                destinationQuery: destinationQuery
+                destinationQuery: destinationQuery,
+                destination: MyDayCoordinate(destination.location.coordinate)
             )
             return .init(value: estimate, state: .available(.travel))
         } catch {
@@ -284,6 +296,50 @@ final class MapKitTravelTimeDaySource: TravelTimeDaySource {
         }
         components?.queryItems = queryItems
         return components?.url
+    }
+
+    // MARK: - Plan KT: the cards' travel facts
+
+    /// How far the wearer is from the last estimate's destination, in metres — only when the
+    /// estimate started from where they are, so "not there" is never guessed from a home address.
+    func distanceFromHere(eventID: String) -> Double? {
+        guard let cache, cache.estimate.eventID == eventID,
+              cache.metadata.originMode == .currentLocation,
+              let destination = cache.destination else { return nil }
+        return MyDayTravelCachePolicy.distanceMeters(from: cache.metadata.origin, to: destination)
+    }
+
+    /// Where the last estimate's destination resolved to.
+    func destinationCoordinate(eventID: String) -> MyDayCoordinate? {
+        guard let cache, cache.estimate.eventID == eventID else { return nil }
+        return cache.destination
+    }
+
+    /// Travel from where the wearer is to a job's address, worked out the way leave-by is, and
+    /// reused for five minutes. Nil without a location fix or a route.
+    func jobTravel(jobID: String, address: String, scheduledFor: Date, now: Date) async -> CardJobTravel? {
+        if let jobCache, jobCache.jobID == jobID, jobCache.address == address,
+           now.timeIntervalSince(jobCache.calculatedAt) < MyDayTravelCachePolicy.lifetime {
+            return jobCache.travel
+        }
+        let currentSettings = settings()
+        guard let locationService, let fix = await locationService.awaitFix(timeout: 2.5) else { return nil }
+        let origin = MyDayCoordinate(fix.coordinate)
+        do {
+            let destination = try await resolvePlace(address, near: origin)
+            let duration = try await routeDuration(from: origin, to: destination, mode: currentSettings.mode)
+            let buffer = TimeInterval(min(60, max(0, currentSettings.bufferMinutes)) * 60)
+            let travel = CardJobTravel(
+                jobID: jobID, travelDuration: duration,
+                leaveAt: scheduledFor.addingTimeInterval(-(duration + buffer)), mode: currentSettings.mode,
+                distanceMeters: MyDayTravelCachePolicy.distanceMeters(
+                    from: origin, to: MyDayCoordinate(destination.location.coordinate)))
+            jobCache = JobTravelEntry(jobID: jobID, address: address, travel: travel, calculatedAt: now)
+            return travel
+        } catch {
+            jobCache = nil
+            return nil
+        }
     }
 
     private func configuredOriginQuery(for settings: MyDayTravelSettings) -> String? {

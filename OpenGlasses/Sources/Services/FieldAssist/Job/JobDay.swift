@@ -100,6 +100,8 @@ struct JobDayInputs {
     var recordings: [JobDayRecording] = []
     /// My Day's items, or nil when the personal part is not shown (`HomeDayCard`).
     var personal: [MyDayItem]?
+    /// To-do rows a My Day card already shows (Plan KT §3.3), by row id.
+    var absorbedTodoIDs: Set<String> = []
     /// "10:30". Injected so tests do not depend on the simulator's locale.
     var timeText: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
     /// "Thu 9:00" — a time on another day.
@@ -262,11 +264,14 @@ enum JobDayComposer {
                     + relevantSessions.map { sessionRow($0, inputs: inputs) })
             .sorted(by: jobOrder)
 
+        // A My Day card that says the same thing replaces the row (Plan KT §3.3), so the day never
+        // shows a "Report not sent" card and a "Report not sent" row.
         let todos = owed(sessions: relevantSessions,
                          finishedInScope: relevantSessions.filter { !$0.isOpen && ($0.endedAt.map(isToday) ?? false) },
                          queue: inputs.queue, debrief: inputs.debrief,
                          signOffRequired: inputs.signOffRequired, recordings: inputs.recordings,
                          now: inputs.now)
+            .filter { !inputs.absorbedTodoIDs.contains($0.id) }
 
         let next: JobDay.Next? = jobs.isEmpty ? nextJob(inputs, after: startOfTomorrow) : nil
 

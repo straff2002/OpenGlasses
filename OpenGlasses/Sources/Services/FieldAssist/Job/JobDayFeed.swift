@@ -12,6 +12,11 @@ import Foundation
 final class JobDayFeed: ObservableObject {
 
     @Published private(set) var day: JobDay = .empty
+    /// The job day as the My Day cards read it (Plan KT P1): the jobs ahead and today's sessions.
+    @Published private(set) var cardFacts = CardJobFacts()
+
+    /// Called when `cardFacts` changes, so the cards re-join without reloading My Day's sources.
+    var onCardFactsChanged: (() -> Void)?
 
     private let sessions: FieldSessionService
     private let flow: GuidedJobFlow
@@ -50,6 +55,7 @@ final class JobDayFeed: ObservableObject {
             sends.$revision.map { _ in () }.eraseToAnyPublisher(),
             sends.queue.$queue.map { _ in () }.eraseToAnyPublisher(),
             myDay.$state.map { _ in () }.eraseToAnyPublisher(),
+            myDay.$preparedFeed.map { _ in () }.eraseToAnyPublisher(),
             recordingChanges,
             Timer.publish(every: 60, tolerance: 5, on: .main, in: .common).autoconnect()
                 .map { _ in () }.eraseToAnyPublisher(),
@@ -80,6 +86,9 @@ final class JobDayFeed: ObservableObject {
             active.state.isSettled ? nil : JobDayDebrief(sessionId: active.sessionId, label: active.jobNumber)
         }
 
+        // The rows a My Day card replaces (Plan KT §3.3): its own copy of a job-day to-do, and a
+        // personal row folded in below.
+        let absorbed = myDay.todayFeed.absorbed
         var personal: [MyDayItem]?
         if showsPersonal {
             if case .loaded(let snapshot) = myDay.state {
@@ -89,6 +98,7 @@ final class JobDayFeed: ObservableObject {
             } else {
                 personal = []
             }
+            personal = personal?.filter { !absorbed.contains(CardRowID($0.id)) }
         }
 
         let next = JobDayComposer.compose(JobDayInputs(
@@ -100,8 +110,20 @@ final class JobDayFeed: ObservableObject {
             debrief: debrief,
             signOffRequired: sessions.customerSignOffRequired,
             recordings: recordings(),
-            personal: personal))
+            personal: personal,
+            absorbedTodoIDs: Set(absorbed.filter { $0.source == CardRowID.jobDaySource }.map(\.rawValue))))
         if next != day { day = next }
+
+        let facts = CardJobFacts(
+            upcoming: upcoming.jobs.map { CardJob($0) },
+            sessions: gathered,
+            signOffRequired: sessions.customerSignOffRequired,
+            queuedReportSessionIDs: Set(sends.queue.queue.entries.filter { $0.state.isWaiting || $0.state == .failed }
+                .map(\.sessionId)))
+        if facts != cardFacts {
+            cardFacts = facts
+            onCardFactsChanged?()
+        }
     }
 
     private static func session(_ session: FieldSession, reportSent: Bool) -> JobDaySession {

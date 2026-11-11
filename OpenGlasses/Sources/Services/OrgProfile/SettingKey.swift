@@ -109,6 +109,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// it off, so a company that has not approved the vendor holds dictation to the phone, and
     /// never on — sending the wearer's voice to a vendor is the wearer's choice.
     case cloudDictationEnabled
+    /// "Text customers from cards" (Plan KT decision 8): an organisation may pin it off, so a
+    /// My Day card never offers to text a customer from the technician's own Messages, and never
+    /// on — it is the technician's phone and number.
+    case preparedCardCustomerTexts
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -171,7 +175,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled, .teamLearningReviewerDevice,
-             .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled:
+             .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled, .preparedCardCustomerTexts:
             return .ceiling(pinnedTo: false)
         case .pilotReportRecipients:
             return .startingValue(.strings)

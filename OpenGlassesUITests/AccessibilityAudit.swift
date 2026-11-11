@@ -44,6 +44,10 @@ enum LaunchState: String {
     case darkAppearance = "-OGUITestDarkAppearance"
     /// One goal part-way through and a morning's activity trail (Plan IW P2).
     case seedGoals = "-OGUITestSeedGoals"
+    /// With `seedMyDay`, two ready cards, the first with a drafted text (Plan KT P1).
+    case seedPreparedCard = "-OGUITestSeedPreparedCard"
+    /// A plain stand-in where the platform composer would be, which a simulator cannot show.
+    case standInComposer = "-OGUITestStandInComposer"
 }
 
 // MARK: - Deferrals

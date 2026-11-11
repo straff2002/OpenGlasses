@@ -7,78 +7,47 @@ import UIKit
 /// The operator's thumb is the point: iOS will not let an app send mail on the user's behalf, and
 /// that is the human-in-the-loop step this feature wants rather than a limitation it works around.
 /// Everything the composer shows — subject, body, attachments — comes off the deterministic record.
-struct ReportMailComposer: UIViewControllerRepresentable {
+///
+/// Presented through the shared `MailComposeSheet` (Plan KT §7.1), which a My Day card's draft
+/// uses too; what the composer is given and how its result is read are unchanged.
+struct ReportMailComposer: View {
 
     let model: ReportComposerModel
     let onFinish: (DeliveryOutcome) -> Void
 
-    func makeUIViewController(context: Context) -> MFMailComposeViewController {
-        let controller = MFMailComposeViewController()
-        controller.mailComposeDelegate = context.coordinator
-        controller.setToRecipients(model.recipients)
-        controller.setSubject(model.subject)
-        controller.setMessageBody(model.filledBody, isHTML: false)
-        for attachment in model.attachments {
-            guard let data = attachment.data else { continue }
-            controller.addAttachmentData(data, mimeType: attachment.kind.mimeType,
-                                         fileName: attachment.filename)
-        }
-        return controller
-    }
-
-    func updateUIViewController(_ controller: MFMailComposeViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
-
-    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
-        private let onFinish: (DeliveryOutcome) -> Void
-
-        init(onFinish: @escaping (DeliveryOutcome) -> Void) {
-            self.onFinish = onFinish
-        }
-
-        func mailComposeController(_ controller: MFMailComposeViewController,
-                                   didFinishWith result: MFMailComposeResult,
-                                   error: Error?) {
-            onFinish(ReportComposerOutcome.mail(result: result.rawValue, error: error))
+    var body: some View {
+        MailComposeSheet(content: MailComposeContent(
+            recipients: model.recipients, subject: model.subject, body: model.filledBody,
+            attachments: ReportComposerAttachments.compose(model))) { result, error in
+            onFinish(ReportComposerOutcome.mail(result: result, error: error))
         }
     }
 }
 
 /// The in-app Messages composer. The PDF rides along when the device can carry one; when it cannot,
 /// the body says so rather than leaving the reader to wonder where the work order went.
-struct ReportMessageComposer: UIViewControllerRepresentable {
+struct ReportMessageComposer: View {
 
     let model: ReportComposerModel
     let onFinish: (DeliveryOutcome) -> Void
 
-    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
-        let controller = MFMessageComposeViewController()
-        controller.messageComposeDelegate = context.coordinator
-        controller.recipients = model.recipients
-        controller.body = model.filledBody
-        for attachment in model.attachments {
-            guard let data = attachment.data else { continue }
-            controller.addAttachmentData(data, typeIdentifier: attachment.kind.uti,
-                                         filename: attachment.filename)
+    var body: some View {
+        MessageComposeSheet(content: MessageComposeContent(
+            recipients: model.recipients, body: model.filledBody,
+            attachments: ReportComposerAttachments.compose(model))) { result in
+            onFinish(ReportComposerOutcome.message(result: result))
         }
-        return controller
     }
+}
 
-    func updateUIViewController(_ controller: MFMessageComposeViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
-
-    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
-        private let onFinish: (DeliveryOutcome) -> Void
-
-        init(onFinish: @escaping (DeliveryOutcome) -> Void) {
-            self.onFinish = onFinish
-        }
-
-        func messageComposeViewController(_ controller: MFMessageComposeViewController,
-                                          didFinishWith result: MessageComposeResult) {
-            onFinish(ReportComposerOutcome.message(result: result.rawValue))
+/// The report's files as the shared composers carry them: each attachment that has its bytes,
+/// in the record's order.
+enum ReportComposerAttachments {
+    static func compose(_ model: ReportComposerModel) -> [ComposeAttachment] {
+        model.attachments.compactMap { attachment in
+            guard let data = attachment.data else { return nil }
+            return ComposeAttachment(data: data, mimeType: attachment.kind.mimeType,
+                                     typeIdentifier: attachment.kind.uti, filename: attachment.filename)
         }
     }
 }

@@ -1060,6 +1060,7 @@ extension SettingKey {
         case .cloudDictationEnabled: return "Cloud dictation is off"
         case .interpreterEnabled: return "The spoken interpreter is off"
         case .instantReplayEnabled: return "Instant Replay is off"
+        case .preparedCardCustomerTexts: return "My Day cards don't offer to text customers"
         default: return rawValue
         }
     }
