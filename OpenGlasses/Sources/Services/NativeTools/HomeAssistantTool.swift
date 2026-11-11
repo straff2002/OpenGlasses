@@ -89,6 +89,22 @@ struct HomeAssistantTool: NativeTool {
         }
     }
 
+    /// Plan KX §6: run one of the wearer's Home Assistant quick actions pressed on the lens
+    /// (`HomeFavouriteRunner`). The guards `execute` applies — Medical egress, the configured URL and
+    /// token, Plan GS's service-data allowlist — and no Conversation fallback, so the answer is a
+    /// plain yes or no. The confirmation floor is the caller's (it asks before calling this).
+    func runFavourite(domain: String, service: String, entityId: String, data raw: [String: Any]) async -> Bool {
+        guard MedicalEgressGuard.allows(.homeAssistantCommand),
+              !Config.homeAssistantURL.isEmpty, !Config.homeAssistantToken.isEmpty else { return false }
+        var data = HomeAssistantServiceData.empty
+        if !raw.isEmpty {
+            guard case .success(let validated) = HomeAssistantServiceData.validated(raw) else { return false }
+            data = validated
+        }
+        let result = await callService(domain: domain, service: service, entityId: entityId, data: data)
+        return result.hasPrefix("Done")
+    }
+
     // MARK: - Entity Resolution
 
     private func resolveEntityId(_ raw: String, action: String) async -> String {

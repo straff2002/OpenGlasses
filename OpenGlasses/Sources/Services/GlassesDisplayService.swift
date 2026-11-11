@@ -40,6 +40,8 @@ final class GlassesDisplayService: ObservableObject {
 
     private enum RenderOp: Equatable {
         case show(HUDContent)
+        /// Plan KX §6: the caption frame, three rows and the speaker (`HUDCaptionBuilder`).
+        case caption(HUDCaption)
         case clear
     }
 
@@ -49,6 +51,8 @@ final class GlassesDisplayService: ObservableObject {
     private enum Frame {
         case op(RenderOp)
         case screen(HUDScreen)
+        /// Plan KX §6: a Field Assist step's clip, played as the lens's whole frame.
+        case video(HUDVideo)
     }
 
     // MARK: - Backends (Plan AH)
@@ -529,6 +533,8 @@ final class GlassesDisplayService: ObservableObject {
         dismissedAnswerCard = showsAnswerCard ? currentScreen?.pageSet?.card : nil
         lensDismissed = true
         pending = nil
+        showsVideo = false
+        clipEndedHandler = nil
         isInteractive = false
         showsAnswerCard = false
         showsTurnState = false
@@ -669,7 +675,7 @@ final class GlassesDisplayService: ObservableObject {
     private func recordSend(_ kind: HUDSendRecord.Kind?, started: ContinuousClock.Instant,
                             outcome: HUDSendRecord.Outcome) {
         guard let kind else { return }
-        sendPacer.sent(endingAt: Date(), hadPicture: kind == .picture)
+        sendPacer.sent(endingAt: Date(), hadPicture: kind == .picture || kind == .video)
         lastSend = HUDSendRecord(kind: kind, milliseconds: Self.milliseconds(since: started), outcome: outcome)
     }
 
@@ -702,6 +708,10 @@ final class GlassesDisplayService: ObservableObject {
     enum HUDFrame: Equatable {
         case content(body: String, title: String?, icon: HUDIcon)
         case screen(renderKey: String)
+        /// Plan KX §6: a caption frame's rows and speaker.
+        case caption(rows: [String], speaker: String?)
+        /// Plan KX §6: a clip sent to play.
+        case video(url: URL)
         case clear
     }
 
@@ -751,14 +761,135 @@ final class GlassesDisplayService: ObservableObject {
 
     /// Show persistent navigation guidance (icon + body). Cleared explicitly via
     /// `clear()` when guidance stops.
-    func showNavigation(_ text: String, icon: HUDIcon = .navigation) {
+    ///
+    /// `arrow` (Plan KX §6): the walking route's turn arrow (`HUDTurnArrow`), drawn above the line
+    /// by a backend that draws pictures. The line goes alone — exactly as before — when there is no
+    /// arrow, the backend draws only text, or the link has been slow (`HUDGuidancePicturePolicy`).
+    func showNavigation(_ text: String, icon: HUDIcon = .navigation, arrow: HUDPicture? = nil) {
         // Plan KP: guidance and hazard lines are never paged and never wait behind an answer
         // card. An answer used to be a plain line the next guidance line replaced; a card gives
         // way the same way, rather than holding the line back for up to a minute.
         if showsAnswerCard { endInteractive() }
         // Plan KX §4: nor does the turn's Listening or Thinking card.
         if showsTurnState { endTurnState() }
+        if let arrow, let screen = guidanceScreen(text, icon: icon, arrow: arrow) {
+            guard acceptsAmbientFrame else { return }
+            enqueue(.screen(screen))
+            return
+        }
         present(HUDContent(title: nil, body: text, icon: icon), transient: false, duration: 0)
+    }
+
+    /// Plan KX §6: whether a guidance line's arrow goes now. Read by the walking route before it
+    /// asks for an arrow, so nothing is drawn for a lens that would not show it.
+    var wantsGuidancePictures: Bool {
+        guidancePictures.note(lastSend, at: now())
+        return isEnabled && drawsPictures && deviceSupportsDisplay() && guidancePictures.allows(at: now())
+    }
+
+    private var guidancePictures = HUDGuidancePicturePolicy()
+
+    /// The guidance line with its arrow, or nil when the line should go alone.
+    private func guidanceScreen(_ text: String, icon: HUDIcon, arrow: HUDPicture) -> HUDScreen? {
+        guard wantsGuidancePictures else { return nil }
+        let body = HUDTextShaper.condense(text)
+        guard !body.isEmpty else { return nil }
+        var screen = HUDScreen(lines: [HUDLine(body, icon: icon)])
+        screen.picture = arrow
+        return screen
+    }
+
+    /// Plan KX §6: what a persistent ambient frame (a caption, a guidance line) must pass: the HUD
+    /// on, something to show it, the lens ours, and nothing interactive held.
+    private var acceptsAmbientFrame: Bool {
+        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        return !holdsLens && !isInteractive
+    }
+
+    /// Plan KX §6: the caption screen (`HUDCaptionBuilder`) — up to three rows, the speaker, the mic
+    /// mark. Ambient and persistent, like the line it replaces (`showText`, whose contract is
+    /// unchanged): dropped under any interactive screen, while another app has the Display, and —
+    /// at `enqueue` — while the wearer has dismissed the lens.
+    func showCaption(_ caption: HUDCaption) {
+        guard acceptsAmbientFrame, !caption.rows.isEmpty else { return }
+        enqueue(.op(.caption(caption)))
+    }
+
+    // MARK: - Raised cards (Plan KX §6)
+
+    /// Whether a card the app raises by itself for the wearer (a timer that finished) may be held
+    /// now: the HUD on, something to show it, the lens ours and not dismissed, and nothing but an
+    /// answer card or the turn's card held. Not a wearer-led frame, so a dismissed lens stays shut.
+    var acceptsRaisedCard: Bool {
+        guard isEnabled, deviceSupportsDisplay() || Config.hudMirrorEnabled else { return false }
+        guard !holdsLens, !lensDismissed, !showsApprovalCard, heldPage == nil, !showsVideo else { return false }
+        return !isInteractive || showsAnswerCard || showsTurnState
+    }
+
+    /// Hold a raised card (Plan KX §6). False — and nothing changes — when `acceptsRaisedCard` is
+    /// false; the caller flashes a line instead.
+    @discardableResult
+    func presentRaisedCard(_ screen: HUDScreen, onSelect: @escaping (String) -> Void) -> Bool {
+        guard acceptsRaisedCard else { return false }
+        screenSelectionHandler = onSelect
+        currentScreen = screen
+        isInteractive = true
+        showsAnswerCard = false
+        showsTurnState = false
+        flashingOverInteractive = false
+        onDebugEvent?("HUD raised card")
+        enqueue(.screen(screen))
+        return true
+    }
+
+    // MARK: - Clips (Plan KX §6)
+
+    /// True while a Field Assist step's clip plays on the lens over its task card.
+    @Published private(set) var showsVideo = false
+    private var clipEndedHandler: ((HUDVideoEnding) -> Void)?
+    /// Test seam: whether the backend plays clips, without constructing it.
+    var testPlaysVideoOverride: Bool?
+
+    /// Whether a clip can play now: the HUD on, a display there, and a backend that plays them
+    /// (Meta Display). The web mirror, the Even G2 and the phone-only build never do.
+    var playsVideo: Bool {
+        isEnabled && deviceSupportsDisplay() && (testPlaysVideoOverride ?? activeBackend.playsVideo)
+    }
+
+    /// Play `video` over the held task card. The card is drawn again when the clip ends, is
+    /// stopped, or fails; anything else that takes the lens meanwhile (a notification, an approval)
+    /// replaces the clip, and the card comes back by that frame's own rules. `onEnded` hears how it
+    /// ended. False when no clip can play or no screen is held.
+    @discardableResult
+    func playVideo(_ video: HUDVideo, onEnded: @escaping (HUDVideoEnding) -> Void = { _ in }) -> Bool {
+        guard playsVideo, isInteractive, currentScreen != nil, !showsApprovalCard, heldPage == nil,
+              !holdsLens, !lensDismissed else { return false }
+        // The wearer asked for the clip: a notification flashing over the card gives way to it.
+        flashingOverInteractive = false
+        clipEndedHandler = onEnded
+        showsVideo = true
+        onDebugEvent?("HUD clip requested")
+        enqueue(.video(video))
+        return true
+    }
+
+    /// Stop the clip: the glasses are told, and the task card comes back.
+    func stopVideo() {
+        guard showsVideo else { return }
+        let backend = activeBackend
+        Task { await backend.stopVideo() }
+        clipEnded(.stopped)
+    }
+
+    /// The clip ended (the backend's playback event, or `stopVideo`). Once per clip.
+    func clipEnded(_ ending: HUDVideoEnding) {
+        guard showsVideo else { return }
+        showsVideo = false
+        let handler = clipEndedHandler
+        clipEndedHandler = nil
+        onDebugEvent?("HUD clip ended: \(ending.rawValue)")
+        if isInteractive, let currentScreen { enqueue(.screen(currentScreen)) }
+        handler?(ending)
     }
 
     /// Clear the HUD (keeps the transport alive for fast subsequent updates).
@@ -970,6 +1101,11 @@ final class GlassesDisplayService: ObservableObject {
         // Plan KX §2.2: the wearer dismissed the lens; only a wearer-led frame (which clears this
         // first) opens a session again. Nothing is held back for later either.
         guard !lensDismissed else { return }
+        // Plan KX §6: any other frame replaces a clip that is playing.
+        if showsVideo, !Self.isVideo(frame) {
+            showsVideo = false
+            clipEndedHandler = nil
+        }
         frameRevision &+= 1
         if case .screen = frame { heldScreenRevision = frameRevision }
         // Any frame after a transient one replaces it (its own auto-clear included).
@@ -1013,6 +1149,10 @@ final class GlassesDisplayService: ObservableObject {
                                 // requested frame can be superseded and never render at all — a
                                 // missing `hudRenderedAt` is that, not a missing mark call.
                                 TurnRecorder.markHUDRendered(at: Date())
+                            case .caption(let caption):
+                                sentKind = .text
+                                try await self.activeBackend.showCaption(caption)
+                                self.isDisplayActive = true
                             case .clear:
                                 sentKind = .clear
                                 try await self.activeBackend.clear()
@@ -1045,6 +1185,21 @@ final class GlassesDisplayService: ObservableObject {
                         }
                         self.lastScreenKey = screen.renderKey
                         self.lastRendered = nil
+                    case .video(let video):
+                        // What is on the lens after the clip is not the held screen: it is drawn again.
+                        self.lastScreenKey = nil
+                        self.lastRendered = nil
+                        guard self.showsVideo else { continue }
+                        if let sink = self.testRenderSink {
+                            sink(.video(url: video.url))
+                        } else if self.deviceSupportsDisplay() {
+                            sentKind = .video
+                            try await self.activeBackend.playVideo(video) { [weak self] ending in
+                                self?.clipEnded(ending)
+                            }
+                            self.isDisplayActive = true
+                            self.recordSend(sentKind, started: started, outcome: .sent)
+                        }
                     }
                 } catch {
                     let timedOut: Bool
@@ -1061,11 +1216,18 @@ final class GlassesDisplayService: ObservableObject {
                         continue
                     }
                     self.recordSend(sentKind, started: started, outcome: timedOut ? .timedOut : .failed)
+                    // Plan KX §6: a clip the glasses would not take ends as a failure; the card returns.
+                    if case .video = frame, self.showsVideo { self.clipEnded(.failed) }
                     break
                 }
             }
             self.isRendering = false
         }
+    }
+
+    private static func isVideo(_ frame: Frame) -> Bool {
+        if case .video = frame { return true }
+        return false
     }
 
     /// Plan KV §6: the screen as a backend gets it. One that does not draw pictures is never handed
@@ -1082,6 +1244,8 @@ final class GlassesDisplayService: ObservableObject {
         case .show(let content):
             mirrorScreen = HUDScreen(title: content.title,
                                      lines: [HUDLine(content.body, icon: content.icon)])
+        case .caption(let caption):
+            mirrorScreen = HUDCaptionBuilder.screen(caption)
         case .clear:
             mirrorScreen = nil
         }
@@ -1090,6 +1254,7 @@ final class GlassesDisplayService: ObservableObject {
     private static func descriptor(for op: RenderOp) -> HUDFrame {
         switch op {
         case .show(let content): return .content(body: content.body, title: content.title, icon: content.icon)
+        case .caption(let caption): return .caption(rows: caption.rows, speaker: caption.speaker)
         case .clear: return .clear
         }
     }

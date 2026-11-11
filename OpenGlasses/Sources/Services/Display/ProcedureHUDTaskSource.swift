@@ -45,7 +45,8 @@ final class ProcedureHUDTaskSource: HUDTaskSource {
             title: step.title,
             instruction: instruction.isEmpty ? nil : instruction,
             safetyNote: step.safetyNote,
-            icon: step.terminal ? .success : .navigation
+            icon: step.terminal ? .success : .navigation,
+            video: HUDVideo.playable(step.videoURL)
         )
     }
 

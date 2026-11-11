@@ -1,6 +1,6 @@
 # Plan KX — The Lens Made Ready (offered on connect, hardened for the real Display, and the screens the ecosystem shows are worth having)
 
-**Status:** 🚧 Drafted and building 2026-11-11, all phases headless; P0–P4 built. The device pass is owed and is folded
+**Status:** 🚧 Drafted and building 2026-11-11, all phases headless; P0–P5 built. The device pass is owed and is folded
 into KP P6 / KV P5 (nobody on the team has a Display yet; the partner's is still on order).
 **Track:** Display (Meta Ray-Ban Display through stable `MWDATDisplay` 1.0.1). Nothing here links or
 calls an experimental DAT API; gesture work stays in Plan [JV](JV-dat-experimental-testflight-lane.md).
@@ -253,6 +253,94 @@ model, so it is not expected).
 - **Field Assist clips:** a procedure step with an HTTPS MP4 offers **Watch** and plays it in a
   `VideoPlayer` (≤ 400 px a side, ≤ 70,000 px).
 
+**Built 2026-11-11 (P5a, captions).** Captions are a frame of their own, not `showText` (whose
+contract — one line condensed to `HUDTextShaper.maxBodyLength` — is unchanged for its other
+producers): `GlassesDisplayService.showCaption(_:)` takes an `HUDCaption` from `HUDCaptionBuilder`
+(pure). The live text follows the last three finals of the same speaker from the last 12 s (so a final
+no longer blanks the lens; a compacted caption that already carries the final is not repeated; the
+visual notes a recording inserts are never carried), wrapped forward at word boundaries into rows of
+at most 113 characters, the last three kept — 339 characters at most, under the backend's own
+120-character condense — and the first row marked "… " when older words were dropped. Diarization's
+speaker is a meta line over the rows; the new `HUDIcon.microphone` leads it (or the first row) while
+capture is live. Top-aligned: the Meta backend draws it as an items-less screen from the top of the
+column. Still ambient (dropped under any interactive screen, while another app has the Display, and
+while the wearer has dismissed the lens) and paced by P1's pump; the backend seam's new
+`showCaption` defaults to the old heading-plus-body frame, so the Even G2 wraps the rows to its own
+panel (8 × 44 cells holds the 340). Decided: DAT 1.0 has **no microphone glyph**, so
+`.microphone` maps to `.threeDotSpeechBubble` ("someone is speaking") on the lens.
+
+**Built 2026-11-11 (P5b, the turn arrow).** `HUDTurnArrow` (pure apart from the CoreGraphics draw)
+maps the walking route's `Maneuver` to a bearing — ahead and the start 0°, bear left/right ∓45°,
+turn ∓90°, U-turn 180°; a roundabout (which exit is in the words) and the arrival have none and keep
+the line alone — and draws a white arrow on black in a 120 px square at the start of a **552 × 120
+strip** (the thumbnail's reason: `.fill` would draw a bare 120 px square 552 px tall). Keyed by angle
+(`kx.nav.arrow:-90`), drawn once per angle and kept. `HUDPicture` gained a `placement`; the arrow is
+`.aboveLines`, so it leads its guidance line on the lens. `showNavigation(_:icon:arrow:)` sends the
+line and arrow as an ambient screen only where `wantsGuidancePictures` (the HUD on, a display, a
+backend that draws pictures, and the link not slow); otherwise exactly the old text frame, and it still
+ends an answer card or the turn's card first. "No more than once a second" is the pump's own 1 s gap
+after a picture; "text alone when the link is slow" is `HUDGuidancePicturePolicy`: a picture send that
+failed, timed out, was retried as text or took over 1 s keeps the arrow off for 30 s.
+
+**Built 2026-11-11 (P5c, timer and Now Playing cards).** Neither timer backend called the app back,
+so `TimerCompletionWatch` hears them: a `set_timer` timer is watched in-process until it is due (its
+due time is exact), and AlarmKit alarms through `AlarmManager.alarmUpdates` — only once alarms are
+already authorised; nothing prompts — one card per ring. `HUDTimerCard` holds `HUDTimerCardBuilder`'s
+card: **Timer done** / **Alarm**, the wearer's label, **Stop** (primary, focused) · **+5 min** · **Close**.
+Stop removes the timer's delivered notification or stops the AlarmKit alarm; +5 min sets the same
+label again five minutes on through the same backend (`TimerTool.scheduleNotification`, now shared,
+or `AlarmKitScheduler`). It is a raised card (`presentRaisedCard`, `acceptsRaisedCard`): over nothing,
+an answer card or the turn's card only; over a task card, menu, page view, approval card or clip it is
+a five-second line; never on a dismissed lens; presses issued against the card as drawn; it closes
+itself after 60 s. Not watched: the notification fallback for an alarm (a calendar trigger the app
+cannot stop once delivered). **Now Playing** is under Today › Menu while the Music app has something
+loaded: `HUDNowPlayingBuilder` draws the title (`HUDIcon.music`) and artist with **‹‹** · **Pause/Play**
+(primary, focused) · **››** · **Close**, through `MediaPlayerLibrary` (the system player
+`music_control` already drives), and redraws in place after a press (`HUDRouter.replaceTop`).
+**Decided: no Vol − / Vol +.** iOS gives an app no supported way to set the system volume —
+`MPMusicPlayerController.volume` has been deprecated since iOS 7, and moving `MPVolumeView`'s slider
+from code is the private-API pattern App Review rejects — so the buttons would do nothing; volume
+stays on the glasses' touchpad and the phone's buttons, and four buttons stay inside focus reach.
+Another app's playback (Spotify, Podcasts) cannot be read or driven by a third-party app.
+
+**Built 2026-11-11 (P5d, Home Assistant favourites).** Today › Menu › **Home** lists the wearer's
+Home Assistant quick actions (`HUDHomeFavouritesBuilder`, the ones naming a service, while Home
+Assistant is configured): five to a page with **More…** · **Back** · **Close**, the first focused. A
+press runs it directly (`HomeFavouriteRunner` → `HomeAssistantTool.runFavourite`: the tool's Medical
+egress, URL/token and Plan GS data-allowlist guards, no Conversation fallback, so the answer is yes or
+no) and flashes **✓ name** / **Couldn't run name** / **Not run: name** over the list, which stays up.
+The phone's quick action still goes through the model as before. An action the confirmation floor
+holds (`HighImpactToolPolicy`: unlock, open a cover or garage, arm/disarm) is never run on one press:
+it asks through `ToolConfirmationCoordinator`, which P2 draws as the approval card over the list.
+
+**Built 2026-11-11 (P5e, teleprompter voice-follow).** **Turn whole pages** (Teleprompter › Pacing,
+`Config.teleprompterPageFollow`, off by default) makes an audio-paced session hold a page still and
+turn it when its last words are heard, instead of moving a line at a time (one send a page on the
+Display). `TeleprompterPageFollow` (pure): a page starts at the cursor's word (so a page that ended
+mid-line does not show the read half again) and holds what fits the window; its end is its last five
+normalised words; `heardEnd(of:in:)` looks at the newest heard words only, needs the newest to be one
+of the page's last two, and the tail in order among them with one miss allowed from four words up;
+words match when they normalise alike, differ by a plural "s", or (four letters up) are one edit
+apart. `TeleprompterPageFollower` sets aside the words that turned a page, so a growing partial
+result turns one page, not several. **next** / **back** turn whole pages too; Lead does not apply. The
+mic is the audio-paced mode's existing recognition shell on the shared engine, whose input follows
+`Config.conversationMicRoute` (so Glasses Mic is the iPhone's while the Display is on). No gap: live
+ASR was already wired for audio-paced sessions; voice-follow only changes what is done with it.
+
+**Built 2026-11-11 (P5f, Field Assist clips).** `Procedure.Step` gained an optional `video_url`
+(absent is no clip, left out when encoding), carried as `HUDStep.video` when `HUDVideo.playable`
+accepts it — an absolute `https` URL whose path ends `.mp4`. The task card offers **Watch** (before
+Back) only for such a step on a backend that `playsVideo`; the seam gained `playsVideo`,
+`playVideo(_:onEnded:)` and `stopVideo()` (defaults: no, throw, nothing), so the Even G2, the web
+mirror and the phone-only build never offer it. The Meta backend sends a root
+`VideoPlayer(provider: .uri(_:), codec: .mp4, onError:)`, follows `Display.onPlaybackEvent` (ended,
+stopped, error → once), and stops with `sendVideoStop()`. The service plays it over the held task card
+(`playVideo`, `showsVideo`), draws the card again when it ends, stops or fails (a failure also flashes
+"Couldn't play that clip"), and lets any other frame replace it. The clip has no buttons and the
+band's Back ends the session, so "stop" (or "back", "close", "done") by voice stops it. Not done:
+Meta's ≤ 400 px / ≤ 70,000 px limits are the clip author's — the phone never downloads the clip to
+check — and no shipped vault procedure has a clip yet. The playbook task source has no video field.
+
 ## What KX leaves out
 
 Gestures, voice launch and the HFP-free camera-audio mic (Plan JV, TestFlight-only); reading other
@@ -276,7 +364,7 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
 - **P3** — listening/thinking states and the Today glance. ✅ Built 2026-11-11 (§4).
 - **P4** — live-mode answer cards and vision thumbnails. ✅ Built 2026-11-11 (§5).
 - **P5** — captions, navigation arrow, timer and media cards, Home Assistant list, teleprompter
-  voice-follow, Field Assist clips.
+  voice-follow, Field Assist clips. ✅ Built 2026-11-11 (§6; Vol −/+ dropped — no supported volume API).
 - **P6** — device pass (owed, with KP P6 / KV P5): wake-on-send, native scroll, characters per line,
   focus reach in a six-button group, what the session reports for Back / two-finger tap / a call / the
   HFP mic, and measured send times.

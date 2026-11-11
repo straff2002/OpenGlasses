@@ -39,11 +39,36 @@ protocol GlassesDisplayBackend: AnyObject {
     /// The size of the last picture sent, in bytes as it went to the transport, for the support
     /// report. Nil when the backend sent none or cannot say.
     var lastPictureBytes: Int? { get }
+
+    /// Plan KX §6: the caption frame (`HUDCaptionBuilder`). The default draws it as a heading (the
+    /// speaker) and one body (the rows), which a text-cell backend wraps to its own panel; the Meta
+    /// backend draws the three rows.
+    func showCaption(_ caption: HUDCaption) async throws
+
+    /// Plan KX §6: whether the backend plays a clip (Meta Display: DAT's `VideoPlayer`). Even G2,
+    /// the web mirror and the phone-only build: no, and a task card on them never offers **Watch**.
+    var playsVideo: Bool { get }
+    /// Play `video` as the lens's whole frame. `onEnded` hears how it ended (it ran out, it was
+    /// stopped, or the glasses reported an error), once.
+    func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws
+    /// Stop a clip that is playing. Nothing when none is.
+    func stopVideo() async
 }
 
 extension GlassesDisplayBackend {
     var drawsPictures: Bool { false }
     var lastPictureBytes: Int? { nil }
+
+    func showCaption(_ caption: HUDCaption) async throws {
+        try await showContent(title: caption.speaker, body: HUDCaptionBuilder.body(caption),
+                              icon: caption.listening ? .microphone : .none)
+    }
+
+    var playsVideo: Bool { false }
+    func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws {
+        throw GlassesDisplayError.noDisplay
+    }
+    func stopVideo() async {}
 }
 
 #if !AVENKIN_PHONE_ONLY
@@ -179,6 +204,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     func showContent(title: String?, body: String, icon: HUDIcon) async throws {
         let display = try await ensureDisplay()
+        videoEnded = nil   // Plan KX §6: a frame replaces a clip
         let iconName = icon.metaIconName
         let hasTitle = !(title?.isEmpty ?? true)
 
@@ -216,6 +242,8 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     func send(screen: HUDScreen) async throws {
         let display = try await ensureDisplay()
+        // Plan KX §6: a screen replaces a clip; the service already knows it left.
+        videoEnded = nil
         let view = makeScreenView(screen)
         if screen.picture != nil { lastPictureBytes = Self.pictureBytes(in: view) }
         // Plan KX §2.4: a send that has not come back in `HUDSendDeadline.seconds` has failed.
@@ -227,14 +255,67 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         view.children.lazy.compactMap { $0 as? Image }.first.map { $0.uri.utf8.count }
     }
 
+    // MARK: - Captions and clips (Plan KX §6)
+
+    /// The caption screen: an items-less frame, top-aligned, through the same tree as any screen.
+    func showCaption(_ caption: HUDCaption) async throws {
+        try await send(screen: HUDCaptionBuilder.screen(caption))
+    }
+
+    var playsVideo: Bool { true }
+
+    /// The clip's ending callback, once: cleared when it fires or another frame replaces the clip.
+    private var videoEnded: (@MainActor (HUDVideoEnding) -> Void)?
+
+    /// Send `VideoPlayer` as the root view. The Display fetches the URL itself. Playback events
+    /// arrive on `Display.onPlaybackEvent`; an ended, stopped or error event ends the clip once, and
+    /// so does a `VideoError` reported through the player's own `onError`.
+    func playVideo(_ video: HUDVideo, onEnded: @escaping @MainActor (HUDVideoEnding) -> Void) async throws {
+        let display = try await ensureDisplay()
+        videoEnded = onEnded
+        display.onPlaybackEvent = { [weak self] event in
+            let ending: HUDVideoEnding?
+            switch event.type {
+            case .ended: ending = .ended
+            case .stopped: ending = .stopped
+            case .error: ending = .failed
+            case .started, .unknown: ending = nil
+            @unknown default: ending = nil
+            }
+            guard let ending else { return }
+            Task { @MainActor in self?.endVideo(ending) }
+        }
+        let player = VideoPlayer(provider: .uri(video.url.absoluteString), codec: .mp4,
+                                 onError: { [weak self] _ in
+                                     Task { @MainActor in self?.endVideo(.failed) }
+                                 })
+        onDebugEvent?("HUD clip started")
+        try await HUDSendDeadline.run { try await display.send(player) }
+    }
+
+    func stopVideo() async {
+        guard videoEnded != nil, let display else { return }
+        await display.sendVideoStop()
+    }
+
+    private func endVideo(_ ending: HUDVideoEnding) {
+        guard let ended = videoEnded else { return }
+        videoEnded = nil
+        display?.onPlaybackEvent = nil
+        onDebugEvent?("HUD clip \(ending.rawValue)")
+        ended(ending)
+    }
+
     func clear() async throws {
         // Nothing to clear if we never started a session.
         guard let display else { return }
+        videoEnded = nil   // Plan KX §6: a clear replaces a clip
         // DAT 0.8.0: explicit clear instead of sending an empty FlexBox.
         try await display.clearDisplay()
     }
 
     func shutdown() async {
+        videoEnded = nil
         if let display {
             // Blank the waveguide BEFORE stopping, and give the clear a beat to land —
             // stopping with content still up can surface the system home screen on the
@@ -290,6 +371,8 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // (`LensPageFrame.pictureBox`), the column's full width, so `.fill` draws it one lens pixel
         // per image pixel and the lines, the picture and the button row all fit on the lens.
         let picture = screen.picture.map { Image(image: $0.image, sizePreset: .fill) }
+        // Plan KX §6: a turn arrow leads its guidance line; everything else draws under the lines.
+        let pictureLeads = screen.picture?.placement == .aboveLines
         // Under a button row, room for the focused button's glow (`LensPageFrame`): with the 12 px
         // margin the glow reached past the lens, and the lens scrolled every frame up by 20 px.
         let bottomPadding = LensPageFrame.bottomPadding(hasButtons: !buttonModels.isEmpty)
@@ -303,6 +386,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             if let headingText {
                 Text(headingText, style: .heading, color: .primary)
             }
+            if pictureLeads, let picture {
+                picture
+            }
             for line in lineModels {
                 if let iconName = line.iconName {
                     FlexBox(direction: .row, spacing: 6, alignment: .center) {
@@ -313,7 +399,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                     Text(line.text, style: line.style, color: line.color)
                 }
             }
-            if let picture {
+            if !pictureLeads, let picture {
                 picture
             }
             // DAT 0.9.0 `ButtonGroup`: the sanctioned container for button rows (bare
@@ -540,6 +626,11 @@ extension HUDIcon {
         case .message: return .speechBubble
         case .weather: return .cloud
         case .clock: return .clock
+        // DAT 1.0 has no microphone glyph: the three-dot bubble ("someone is speaking") is the
+        // nearest the stable icon set offers for live capture.
+        case .microphone: return .threeDotSpeechBubble
+        case .music: return .musicNote
+        case .video: return .triangleRightCircle
         }
     }
 }

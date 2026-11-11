@@ -4137,6 +4137,10 @@ struct Config {
         UserDefaults.standard.set(value, forKey: "teleprompterLead")
     }
 
+    /// Plan KX §6: audio-paced sessions turn a whole page when its last words are heard
+    /// (`TeleprompterPageFollow`) instead of moving a line at a time. Off by default.
+    @UserDefaultsBacked("teleprompterPageFollow", default: false) static var teleprompterPageFollow: Bool
+
     // MARK: - Browser Streaming Relay
 
     /// The MJPEG relay is **per-deployment**: whoever runs one pays for it, sees every room id that

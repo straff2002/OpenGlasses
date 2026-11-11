@@ -11,19 +11,24 @@ struct HUDStep: Equatable {
     let instruction: String?
     let safetyNote: String?
     let icon: GlassesDisplayService.HUDIcon
+    /// Plan KX §6: the step's clip, when it has one the lens can play (`HUDVideo.playable`). The
+    /// task card offers **Watch** for it on a backend that plays clips.
+    let video: HUDVideo?
 
     init(index: Int,
          total: Int?,
          title: String,
          instruction: String? = nil,
          safetyNote: String? = nil,
-         icon: GlassesDisplayService.HUDIcon = .none) {
+         icon: GlassesDisplayService.HUDIcon = .none,
+         video: HUDVideo? = nil) {
         self.index = index
         self.total = total
         self.title = title
         self.instruction = instruction
         self.safetyNote = safetyNote
         self.icon = icon
+        self.video = video
     }
 }
 

@@ -18,6 +18,9 @@ enum HUDIcon: Equatable {
     case calendar, location, reminder, message
     /// Plan KX §4: the Today glance's weather row and its time-and-battery line.
     case weather, clock
+    /// Plan KX §6: the caption screen's live-capture mark, the Now Playing card's track line, and a
+    /// Field Assist step's **Watch** (its clip).
+    case microphone, music, video
 }
 
 /// Shared HUD text shaping (Plan AH — extracted from `GlassesDisplayService` so every
@@ -104,6 +107,41 @@ struct HUDPicture {
     /// What the picture shows — the page, the crop and how it was drawn — so the render queue's
     /// de-duplication skips an identical frame without comparing pixels. Never page text.
     let contentKey: String
+
+    /// Where the backend draws it: under the screen's lines (a page crop, a vision thumbnail) or,
+    /// Plan KX §6, above them (the turn arrow, which leads its guidance line).
+    enum Placement: Equatable {
+        case belowLines
+        case aboveLines
+    }
+    var placement: Placement = .belowLines
+}
+
+/// Plan KX §6: a clip a Field Assist step points at, as the lens can play it — an HTTPS MP4 the
+/// Display fetches itself (DAT's `VideoPlayer(provider: .uri(_:), codec: .mp4)`). SDK-free, so the
+/// task card can offer **Watch** without knowing which backend is up; only a backend that
+/// `playsVideo` is ever handed one. The phone never downloads the clip; Meta's limits for it
+/// (at most 400 px a side and 70,000 px in all) are the clip author's to meet, and a clip the
+/// glasses refuse ends as an error, which returns to the task card.
+struct HUDVideo: Equatable {
+    let url: URL
+
+    /// A clip the lens can play, or nil: an absolute `https` URL with a host whose path ends in
+    /// `.mp4` (any case). Anything else (http, a file URL, a page, another container) is not
+    /// offered, because the glasses would only report an error.
+    static func playable(_ string: String?) -> HUDVideo? {
+        guard let raw = string?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              let url = URL(string: raw), url.scheme?.lowercased() == "https",
+              let host = url.host, !host.isEmpty,
+              url.pathExtension.lowercased() == "mp4" else { return nil }
+        return HUDVideo(url: url)
+    }
+}
+
+/// Plan KX §6: how a clip on the lens ended, mapped from DAT's `VideoPlaybackEventType`. Every
+/// ending returns the lens to the task card the clip was started from.
+enum HUDVideoEnding: String, Equatable {
+    case ended, stopped, failed
 }
 
 /// One renderable interactive screen.
@@ -154,7 +192,10 @@ struct HUDScreen {
         let body = lines.map { "\($0.emphasis):\($0.icon):\($0.text)" }.joined(separator: "¦")
         let acts = items.map { "\($0.id):\($0.style):\($0.icon):\($0.label)" }.joined(separator: "¦")
         var key = "\(head)|\(body)|\(acts)"
-        if let picture { key += "|pic:\(picture.contentKey)" }
+        if let picture {
+            key += "|pic:\(picture.contentKey)"
+            if picture.placement == .aboveLines { key += "^" }
+        }
         if let focusItemID { key += "|focus:\(focusItemID)" }
         return key
     }

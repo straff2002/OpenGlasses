@@ -94,6 +94,16 @@ final class TeleprompterService: ObservableObject {
     /// Cap on the recognized tail handed to the aligner — bounds work and keeps matching local.
     static let maxHeardTail = 16
 
+    /// Plan KX §6: what voice-follow has heard of the current recognition.
+    private var pageFollower = TeleprompterPageFollower()
+    /// Test seam: voice-follow on or off without the stored setting.
+    var testPageFollow: Bool?
+
+    /// Plan KX §6: this session turns pages by voice — audio-paced, with voice-follow on.
+    var followsPages: Bool {
+        mode == .audioPaced && (testPageFollow ?? Config.teleprompterPageFollow)
+    }
+
     init(store: TeleprompterScriptStore) {
         self.store = store
         pacing = PacingSpeed(wpm: Config.teleprompterWPM,
@@ -113,6 +123,7 @@ final class TeleprompterService: ObservableObject {
         normalizedTokens = script.tokens.map(\.normalized)
         cursor = 0
         self.mode = mode ?? Config.teleprompterMode
+        pageFollower.reset()
         isActive = true
         isPaused = false
         render()
@@ -166,9 +177,16 @@ final class TeleprompterService: ObservableObject {
         render()
     }
 
-    /// Advance to the start of the next source line.
+    /// Advance to the start of the next source line (with voice-follow, the next page).
     func advance() {
         guard isActive, let script else { return }
+        if followsPages {
+            cursor = TeleprompterPageFollow.page(script, from: cursor, geometry: geometry).range.upperBound
+            pageFollower.reset()
+            render()
+            checkCompletion()
+            return
+        }
         let line = lineOf(cursor)
         if let idx = script.tokens.firstIndex(where: { $0.line > line }) {
             cursor = idx
@@ -179,9 +197,24 @@ final class TeleprompterService: ObservableObject {
         checkCompletion()
     }
 
-    /// Go back to the start of the previous source line.
+    /// Go back to the start of the previous source line (with voice-follow, the previous page).
     func back() {
         guard isActive, let script, cursor > 0 else { return }
+        if followsPages {
+            // Pages are laid from the start, so the previous one is the last that starts before here.
+            var start = 0
+            var previous = 0
+            while start < cursor {
+                previous = start
+                let end = TeleprompterPageFollow.page(script, from: start, geometry: geometry).range.upperBound
+                guard end > start else { break }
+                start = end
+            }
+            cursor = previous
+            pageFollower.reset()
+            render()
+            return
+        }
         let line = lineOf(cursor)
         if let prevToken = script.tokens.last(where: { $0.line < line }) {
             let prevLine = prevToken.line
@@ -309,11 +342,25 @@ final class TeleprompterService: ObservableObject {
         guard isActive, !isPaused, mode == .audioPaced, !normalizedTokens.isEmpty else { return }
         let heard = TeleprompterText.tokenize(text)
         guard !heard.isEmpty else { return }
+        if followsPages {
+            followPage(heard)
+            return
+        }
         let tail = Array(heard.suffix(Self.maxHeardTail))
         let newCursor = ScriptAligner.advance(script: normalizedTokens, cursor: cursor,
                                               heard: tail, config: alignerConfig())
         guard newCursor != cursor else { return }
         cursor = newCursor
+        render()
+        checkCompletion()
+    }
+
+    /// Plan KX §6: turn the page when `heard` (the recognition so far) reaches its last words.
+    private func followPage(_ heard: [String]) {
+        guard let script else { return }
+        let page = TeleprompterPageFollow.page(script, from: cursor, geometry: geometry).range
+        guard pageFollower.hear(heard, tail: TeleprompterPageFollow.tail(script, range: page)) else { return }
+        cursor = page.upperBound
         render()
         checkCompletion()
     }
@@ -370,6 +417,7 @@ final class TeleprompterService: ObservableObject {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         recognitionRequest = request
+        pageFollower.reset()   // a new recognition: its results start from nothing
 
         wakeWordService.addAudioBufferConsumer(id: Self.recognitionConsumerID) { [weak self] buffer in
             Task { @MainActor in self?.recognitionRequest?.append(buffer) }
@@ -418,7 +466,9 @@ final class TeleprompterService: ObservableObject {
 
     private func render() {
         guard let script else { currentScreen = nil; return }
-        let window = TeleprompterPaginator.window(script, cursor: displayCursor(), geometry: geometry)
+        let window = followsPages
+            ? TeleprompterPageFollow.page(script, from: cursor, geometry: geometry).window
+            : TeleprompterPaginator.window(script, cursor: displayCursor(), geometry: geometry)
         let prog = script.wordCount == 0 ? 1.0 : Double(min(max(cursor, 0), script.wordCount)) / Double(script.wordCount)
         progress = prog
 

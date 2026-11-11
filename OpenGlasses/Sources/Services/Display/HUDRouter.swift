@@ -83,7 +83,9 @@ final class HUDRouter: ObservableObject {
         // Don't render the card over an open launcher menu, or the page view pushed over it; it
         // re-renders on resume/close.
         guard !isPresentingMenu, !isPresentingPage else { return }
-        let screen = Self.taskCard(source: source, current: current, next: source.next)
+        // Plan KX §6: a step's clip is offered only where the lens can play it.
+        let onWatch: ((HUDVideo) -> Void)? = display.playsVideo ? { [weak self] video in self?.watch(video) } : nil
+        let screen = Self.taskCard(source: source, current: current, next: source.next, onWatch: onWatch)
         currentScreen = screen
         display.present(screen: screen) { [weak self] id in
             self?.handleSelection(id)
@@ -95,6 +97,23 @@ final class HUDRouter: ObservableObject {
         item.action()
     }
 
+    /// Plan KX §6: play the step's clip over the task card. The card comes back when it ends; a clip
+    /// the glasses would not play says so in a short line over the card.
+    private func watch(_ video: HUDVideo) {
+        display.playVideo(video) { [weak self] ending in
+            guard ending == .failed else { return }
+            self?.display.flash(String(localized: "Couldn't play that clip",
+                                       comment: "Glasses: a Field Assist step's clip did not play."), duration: 3)
+        }
+    }
+
+    /// Plan KX §6: the words that stop a clip while it plays (the clip has no buttons, and the
+    /// band's Back would end the whole display session).
+    static func isStopClipCommand(_ text: String) -> Bool {
+        ["stop", "stop video", "stop the video", "stop clip", "stop the clip", "close", "back", "done"]
+            .contains(HUDLauncher.normalize(text))
+    }
+
     /// Voice leg of the band+voice+phone input model: while a task card is active,
     /// "next/done/skip/back" drive the source, and on a decision step a spoken branch
     /// label selects that branch (Plan AH — on EVEN there is no band, so without this
@@ -104,6 +123,12 @@ final class HUDRouter: ObservableObject {
     /// LLM). No-op otherwise.
     @discardableResult
     func handleVoiceCommand(_ text: String) async -> Bool {
+        // Plan KX §6: while a step's clip plays, "stop" (or "back", "close", "done") stops it and
+        // brings the card back, rather than moving the step under it.
+        if display.showsVideo, Self.isStopClipCommand(text) {
+            display.stopVideo()
+            return true
+        }
         // Plan KV §3: the page view's words, consulted only while the view is on the glasses. A
         // word with nothing to do ("next page" on the last one) goes on: to the task card under the
         // view, or to the model.
@@ -204,6 +229,14 @@ final class HUDRouter: ObservableObject {
         refresh()
     }
 
+    /// Plan KX §6: redraw the top screen in place (the Now Playing card after a press), without
+    /// growing the stack. Nothing when no menu is open.
+    func replaceTop(_ screen: HUDScreen) {
+        guard isPresentingMenu, !screenStack.isEmpty else { return }
+        screenStack[screenStack.count - 1] = screen
+        renderTop()
+    }
+
     /// Depth of the live menu stack (0 when closed). Exposed for tests.
     var menuDepth: Int { screenStack.count }
 
@@ -263,8 +296,14 @@ final class HUDRouter: ObservableObject {
 
     // MARK: - Card layout
 
+    /// Plan KX §6: the task card's **Watch** item.
+    static let watchItemID = "kx.task.watch"
+
     /// Build the Now/Next card. `static` and pure so it's unit-testable without a device.
-    static func taskCard(source: HUDTaskSource, current: HUDStep, next: HUDStep?) -> HUDScreen {
+    ///
+    /// Plan KX §6: `onWatch`, when given and the step has a clip, adds **Watch** before Back.
+    static func taskCard(source: HUDTaskSource, current: HUDStep, next: HUDStep?,
+                         onWatch: ((HUDVideo) -> Void)? = nil) -> HUDScreen {
         var lines: [HUDLine] = []
 
         if let total = current.total {
@@ -299,6 +338,11 @@ final class HUDRouter: ObservableObject {
                     Task { await source.choose(choice.id) }
                 }
             }
+        }
+        if let video = current.video, let onWatch {
+            items.append(HUDItem(id: watchItemID,
+                                 label: String(localized: "Watch", comment: "Glasses: plays a Field Assist step's clip."),
+                                 icon: .video, style: .secondary) { onWatch(video) })
         }
         items.append(HUDItem(id: "back", label: "Back", style: .outline) {
             Task { await source.back() }

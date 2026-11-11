@@ -41,7 +41,7 @@ struct HUDSendPacer: Equatable {
 /// Plan KX §2.4: the last send the render queue made, for the support report and the Developer
 /// panel. Case names and a duration only, never what the frame said.
 struct HUDSendRecord: Equatable {
-    enum Kind: String { case text, screen, picture, clear }
+    enum Kind: String { case text, screen, picture, clear, video }
     enum Outcome: String { case sent, failed, timedOut = "timed-out", retriedWithoutPicture = "retried-without-picture" }
 
     let kind: Kind

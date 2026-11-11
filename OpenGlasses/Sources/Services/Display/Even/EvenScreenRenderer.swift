@@ -91,6 +91,9 @@ enum EvenScreenRenderer {
         case .message: return "[✉]"
         case .weather: return "[☁]"
         case .clock: return "[◷]"
+        case .microphone: return "[◉]"
+        case .music: return "[♪]"
+        case .video: return "[▶]"
         }
     }
 

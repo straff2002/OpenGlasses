@@ -51,23 +51,33 @@ struct TimerTool: NativeTool {
             }
         }
 
-        // Create notification
-        let content = UNMutableNotificationContent()
-        content.title = label ?? "Timer"
-        content.body = label != nil ? "Your \(label!) timer is done!" : "Timer complete!"
-        content.sound = .default
-
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false)
-        let requestId = "timer-\(UUID().uuidString)"
-        let request = UNNotificationRequest(identifier: requestId, content: content, trigger: trigger)
-
-        try await center.add(request)
+        let requestId = try await Self.scheduleNotification(seconds: seconds, label: label)
+        // Plan KX §6: the lens's timer card hears it finish while the app runs.
+        let fireAt = Date().addingTimeInterval(TimeInterval(seconds))
+        await MainActor.run {
+            TimerCompletionWatch.shared.timerScheduled(id: requestId, label: label, fireAt: fireAt)
+        }
 
         let durationStr = formatDuration(seconds)
         if let label {
             return "Timer set: \(label) for \(durationStr)."
         }
         return "Timer set for \(durationStr)."
+    }
+
+    /// Schedule the timer's notification and return its request id. Also what the lens's **+5 min**
+    /// sets again (Plan KX §6), so a timer set from the glasses is the same timer.
+    static func scheduleNotification(seconds: Int, label: String?) async throws -> String {
+        let content = UNMutableNotificationContent()
+        content.title = label ?? "Timer"
+        content.body = label.map { "Your \($0) timer is done!" } ?? "Timer complete!"
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false)
+        let requestId = "timer-\(UUID().uuidString)"
+        let request = UNNotificationRequest(identifier: requestId, content: content, trigger: trigger)
+        try await UNUserNotificationCenter.current().add(request)
+        return requestId
     }
 
     private func formatDuration(_ seconds: Int) -> String {

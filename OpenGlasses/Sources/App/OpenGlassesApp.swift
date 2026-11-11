@@ -1451,6 +1451,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The approval card on the lens (Plan KX §3): the shared consent surface's ask, held until it
     /// is answered or times out to Deny.
     lazy var hudApprovalCard = HUDApprovalCard(display: glassesDisplay, coordinator: toolConfirmationCoordinator)
+    /// The timer card on the lens (Plan KX §6): a timer or alarm that finished, with Stop · +5 min.
+    lazy var hudTimerCard = HUDTimerCard(display: glassesDisplay)
+    /// Plan KX §6: the Music app's transport, for the lens's Now Playing card.
+    lazy var lensMediaPlayer = MediaPlayerLibrary()
     /// Listening → Thinking on the lens for a turn the wearer started (Plan KX §4), until the
     /// answer card replaces it.
     lazy var hudTurnState = HUDTurnState(display: glassesDisplay)
@@ -2872,6 +2876,13 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
         hudApprovalCard.start()
+
+        // Plan KX §6: a timer or AlarmKit alarm that finishes while the app runs raises the timer
+        // card on the lens (Stop · +5 min · Close), or a short line where the lens is busy.
+        hudTimerCard.stop = { TimerCompletionWatch.shared.stop($0) }
+        hudTimerCard.extend = { TimerCompletionWatch.shared.extend($0) }
+        TimerCompletionWatch.shared.onFinished = { [weak self] timer in self?.hudTimerCard.show(timer) }
+        TimerCompletionWatch.shared.startWatchingAlarms()
 
         // Readable memory by voice (Plan GG P3). Registered here rather than in the registry's
         // init because it needs the stores AppState owns. It reads no wider than the model could
@@ -4822,6 +4833,33 @@ class AppState: ObservableObject, AppStateProtocol {
         hudLauncher.runQuickAction = { [weak self] action in
             Task { @MainActor in await self?.executeQuickAction(action) }
         }
+
+        // Plan KX §6: Now Playing (the Music app's player) and the Home Assistant favourites, under
+        // the launcher's Menu. A favourite the confirmation floor holds (a lock, a garage door) asks
+        // first through the shared consent surface — the approval card on the lens.
+        hudLauncher.nowPlaying = { [weak self] in HUDNowPlaying(self?.lensMediaPlayer.nowPlaying()) }
+        hudLauncher.mediaTransport = { [weak self] action in
+            guard let player = self?.lensMediaPlayer else { return }
+            switch action {
+            case .previous: player.skipToPrevious()
+            case .toggle: player.isPlaying ? player.pause() : player.play()
+            case .next: player.skipToNext()
+            case .close: break
+            }
+        }
+        hudLauncher.homeFavourites = {
+            Config.homeAssistantURL.isEmpty ? [] : HUDHomeFavouritesBuilder.favourites(Config.quickActions)
+        }
+        hudLauncher.runHomeFavourite = { [weak self] action in
+            guard let self else { return .failed }
+            return await HomeFavouriteRunner.run(action, confirm: { summary in
+                await self.toolConfirmationCoordinator.requestConfirmation(toolName: "home_assistant", summary: summary)
+            }, perform: { call, data in
+                await HomeAssistantTool().runFavourite(domain: call.domain, service: call.service,
+                                                       entityId: call.entityId, data: data)
+            })
+        }
+        hudLauncher.flashLine = { [weak self] line in self?.glassesDisplay.flash(line, duration: 3) }
         hudLauncher.switchPersona = { [weak self] persona in
             guard let self else { return }
             self.activePersona = persona

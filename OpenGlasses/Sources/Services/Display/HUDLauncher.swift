@@ -52,6 +52,27 @@ final class HUDLauncher {
     /// opens the launcher at its branch list.
     var today: (() -> HUDTodayGlance?)?
 
+    /// Plan KX §6: the Now Playing card — what the Music app has loaded (nil: nothing, and the Menu
+    /// does not offer it) and its transport. Both wired by AppState.
+    var nowPlaying: (() -> HUDNowPlaying?)?
+    var mediaTransport: ((HUDMediaAction) -> Void)?
+    /// How long after a transport press the card is drawn again, so it shows the new state.
+    var mediaRefreshDelay: TimeInterval = 0.4
+    /// Test seam: run `body` after `delay` (production sleeps on the main actor).
+    var after: (_ delay: TimeInterval, _ body: @escaping @MainActor () -> Void) -> Void = { delay, body in
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            body()
+        }
+    }
+
+    /// Plan KX §6: the wearer's Home Assistant quick actions (empty: the Menu does not offer Home)
+    /// and how one runs. Both wired by AppState.
+    var homeFavourites: (() -> [QuickAction])?
+    var runHomeFavourite: ((QuickAction) async -> HomeFavouriteOutcome)?
+    /// Where a run's line goes (the lens's `flash`). Wired by AppState.
+    var flashLine: ((String) -> Void)?
+
     init(router: HUDRouter) {
         self.router = router
     }
@@ -203,6 +224,23 @@ final class HUDLauncher {
             })
         }
 
+        // Plan KX §6: the Now Playing card, while the Music app has something loaded.
+        if nowPlaying?() != nil {
+            branches.append(HUDItem(id: "branch:media", label: HUDNowPlayingBuilder.title, icon: .music,
+                                    style: .secondary) { [weak self] in
+                guard let self else { return }
+                self.router.push(self.nowPlayingScreen())
+            })
+        }
+        // Plan KX §6: the Home Assistant favourites, while there are any.
+        if !(homeFavourites?() ?? []).isEmpty {
+            branches.append(HUDItem(id: "branch:home", label: HUDHomeFavouritesBuilder.title, icon: .location,
+                                    style: .secondary) { [weak self] in
+                guard let self else { return }
+                self.router.push(self.homeScreen(page: 0))
+            })
+        }
+
         // Plan KP §5: the band check, last before Close.
         if bandPracticeAvailable?() == true {
             branches.append(HUDItem(id: "branch:band", label: BandPracticeCardBuilder.title,
@@ -212,6 +250,50 @@ final class HUDLauncher {
         }
 
         return branches
+    }
+
+    // MARK: - Now Playing and Home (Plan KX §6)
+
+    /// The Now Playing card as it stands now.
+    func nowPlayingScreen() -> HUDScreen {
+        HUDNowPlayingBuilder.screen(nowPlaying?()) { [weak self] action in
+            self?.media(action)
+        }
+    }
+
+    private func media(_ action: HUDMediaAction) {
+        guard action != .close else {
+            router.dismiss()
+            return
+        }
+        mediaTransport?(action)
+        // Drawn again once the player has moved, and only while the card is still the top screen.
+        after(mediaRefreshDelay) { [weak self] in
+            guard let self, HUDNowPlayingBuilder.isNowPlaying(self.router.currentScreen) else { return }
+            self.router.replaceTop(self.nowPlayingScreen())
+        }
+    }
+
+    /// The Home list's page `page`.
+    func homeScreen(page: Int) -> HUDScreen {
+        HUDHomeFavouritesBuilder.screen(
+            homeFavourites?() ?? [], page: page,
+            onRun: { [weak self] action in self?.runHome(action) },
+            onMore: { [weak self] next in
+                guard let self else { return }
+                self.router.push(self.homeScreen(page: next))
+            },
+            onBack: { [weak self] in self?.router.pop() },
+            onClose: { [weak self] in self?.router.dismiss() })
+    }
+
+    private func runHome(_ action: QuickAction) {
+        guard let runHomeFavourite else { return }
+        let label = action.label
+        Task { @MainActor [weak self] in
+            let outcome = await runHomeFavourite(action)
+            self?.flashLine?(HUDHomeFavouritesBuilder.line(for: outcome, label: label))
+        }
     }
 
     private func playbooks() -> [Playbook] { availablePlaybooks?() ?? [] }
