@@ -20,8 +20,10 @@ final class BackgroundRefreshCoordinator {
     /// A pass in flight, so a second wake or a Run now does not overlap it.
     private var passInFlight = false
 
-    init(ledger: BackgroundRunLedger = BackgroundRunLedger()) {
-        self.ledger = ledger
+    /// The ledger is built in the body, not as a default argument: a default argument is
+    /// evaluated outside the main actor, and the ledger's initializer is main-actor isolated.
+    init(ledger: BackgroundRunLedger? = nil) {
+        self.ledger = ledger ?? BackgroundRunLedger()
     }
 
     // MARK: - Participants
@@ -88,7 +90,9 @@ final class BackgroundRefreshCoordinator {
         case .unavailable: return "unavailable"
         case .tooManyPendingTaskRequests: return "tooManyPending"
         case .notPermitted: return "notPermitted"
-        @unknown default: return "other"
+        // `default`, not `@unknown default`: the SDK also has `.immediateRunIneligible`
+        // (continued-processing tasks), which an app-refresh request never gets.
+        default: return "other"
         }
     }
 
