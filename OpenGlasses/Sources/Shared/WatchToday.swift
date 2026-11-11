@@ -11,7 +11,12 @@ enum WatchTodayWire {
     static let contextKey = "today"
     /// Bumped when a field changes meaning. A watch that reads a newer version shows nothing
     /// rather than a misreading.
-    static let version = 1
+    ///
+    /// 2 (Plan KT P4): adds `cards`, the day's prepared cards. A payload of version 1 (from a phone
+    /// not yet updated) still reads, with no cards.
+    static let version = 2
+    /// Every version this build reads.
+    static let readableVersions: ClosedRange<Int> = 1...version
 }
 
 /// A calendar day as the phone saw it — year, month, day in the phone's calendar and time zone.
@@ -107,8 +112,49 @@ struct WatchTodayPayload: Codable, Equatable, Sendable {
     var weather: WatchTodayWeather?
     /// Present whenever `weather` is.
     var attribution: WatchTodayAttribution?
+    /// The day's prepared cards (Plan KT §6.7), at most `WatchPreparedCard.maxCards`, ranked.
+    /// Drawn above the calendar. Empty in a version 1 payload.
+    var cards: [WatchPreparedCard] = []
 
     static let maxEvents = 6
+
+    init(version: Int = WatchTodayWire.version, day: WatchTodayDay, generatedAt: Date,
+         calendarStatus: WatchTodaySectionStatus, events: [WatchTodayEvent], moreEvents: Int, redacted: Bool,
+         weatherStatus: WatchTodaySectionStatus, weather: WatchTodayWeather?, attribution: WatchTodayAttribution?,
+         cards: [WatchPreparedCard] = []) {
+        self.version = version
+        self.day = day
+        self.generatedAt = generatedAt
+        self.calendarStatus = calendarStatus
+        self.events = events
+        self.moreEvents = moreEvents
+        self.redacted = redacted
+        self.weatherStatus = weatherStatus
+        self.weather = weather
+        self.attribution = attribution
+        self.cards = cards
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case version, day, generatedAt, calendarStatus, events, moreEvents, redacted, weatherStatus, weather,
+             attribution, cards
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(Int.self, forKey: .version)
+        day = try container.decode(WatchTodayDay.self, forKey: .day)
+        generatedAt = try container.decode(Date.self, forKey: .generatedAt)
+        calendarStatus = try container.decode(WatchTodaySectionStatus.self, forKey: .calendarStatus)
+        events = try container.decode([WatchTodayEvent].self, forKey: .events)
+        moreEvents = try container.decode(Int.self, forKey: .moreEvents)
+        redacted = try container.decode(Bool.self, forKey: .redacted)
+        weatherStatus = try container.decode(WatchTodaySectionStatus.self, forKey: .weatherStatus)
+        weather = try container.decodeIfPresent(WatchTodayWeather.self, forKey: .weather)
+        attribution = try container.decodeIfPresent(WatchTodayAttribution.self, forKey: .attribution)
+        // Version 1 has no cards.
+        cards = try container.decodeIfPresent([WatchPreparedCard].self, forKey: .cards) ?? []
+    }
 
     /// What the phone sends while "Today on Your Watch" is off, so the watch can say so rather
     /// than ask the wearer to open the app.
@@ -121,10 +167,72 @@ struct WatchTodayPayload: Codable, Equatable, Sendable {
     var isSettingOff: Bool { calendarStatus == .settingOff && weatherStatus == .settingOff }
 }
 
+// MARK: - Prepared cards (Plan KT §6.7)
+
+/// The command the watch sends for a card, and its fields.
+enum WatchPreparedCardWire {
+    static let command = "preparedCardAction"
+    static let cardIDKey = "card_id"
+    static let actionKey = "action"
+}
+
+/// What a press on the wrist asks the phone to do with a card.
+enum WatchPreparedCardAction: String, Codable, CaseIterable, Sendable {
+    /// §6.4: put the draft on the phone, ready to send there — exactly the Display's Send on phone.
+    case stage
+    case directions
+    case later
+    case dismiss
+}
+
+/// A button on a wrist card: what it does, and the phone's own label for it ("Text Ana").
+struct WatchPreparedCardButton: Codable, Equatable, Hashable, Sendable {
+    let action: WatchPreparedCardAction
+    let label: String
+}
+
+/// One prepared card as the wrist shows it. Health cards never come here, and a draft's text only
+/// when the card's sensitivity and Medical Compliance allow it.
+struct WatchPreparedCard: Codable, Equatable, Identifiable, Sendable {
+    static let maxCards = 3
+    static let maxFacts = 2
+
+    /// The card's id (`PreparedCardID.rawValue`), sent back with a command.
+    let id: String
+    let headline: String
+    /// The chips, as the lens words them.
+    let chips: [CardSignal]
+    /// Up to `maxFacts`.
+    let facts: [CardFact]
+    /// The primary action's label, as the phone names it ("Directions", "Text Ana", "Send report").
+    let primaryLabel: String
+    /// What the wrist can press, primary first: stage and directions. Later and Dismiss are always
+    /// offered beside them.
+    let buttons: [WatchPreparedCardButton]
+    /// "To Ana · Messages", when there is a draft.
+    let draftTo: String?
+    /// The draft's text, when it may show on the wrist.
+    let draftText: String?
+    /// The card has a draft whose text is withheld on the wrist (Medical Compliance, or the budget).
+    let draftWithheld: Bool
+    /// After this the card is gone.
+    let validUntil: Date
+
+    func isLive(at now: Date) -> Bool { validUntil > now }
+
+    /// The same card without its draft's text.
+    func withoutDraftText() -> WatchPreparedCard {
+        WatchPreparedCard(id: id, headline: headline, chips: chips, facts: facts, primaryLabel: primaryLabel,
+                          buttons: buttons, draftTo: draftTo, draftText: nil,
+                          draftWithheld: draftWithheld || draftText != nil, validUntil: validUntil)
+    }
+}
+
 // MARK: - Codec
 
-/// Property-list encoding with a hard byte budget. Over budget drops trailing events (counted in
-/// `moreEvents`) and is otherwise refused with a reason, never cut silently.
+/// Property-list encoding with a hard byte budget. Over budget drops the cards' draft texts (the
+/// phone still has them), then trailing cards, then trailing events (counted in `moreEvents`), and
+/// is otherwise refused with a reason, never cut silently.
 enum WatchTodayCodec {
 
     /// 8 KB: six items with titles and places and the weather come to well under 2 KB. Apple
@@ -146,6 +254,20 @@ enum WatchTodayCodec {
         if data.count <= budget { return .success(Encoded(data: data, payload: payload)) }
         var trimmed = payload
         var smallest = data.count
+        // Draft texts first, from the last card up: the wrist still shows the card, and the phone
+        // the message.
+        for index in trimmed.cards.indices.reversed() where trimmed.cards[index].draftText != nil {
+            trimmed.cards[index] = trimmed.cards[index].withoutDraftText()
+            guard let attempt = plist(trimmed) else { return .failure(.encodingFailed) }
+            smallest = attempt.count
+            if attempt.count <= budget { return .success(Encoded(data: attempt, payload: trimmed)) }
+        }
+        while !trimmed.cards.isEmpty {
+            trimmed.cards.removeLast()
+            guard let attempt = plist(trimmed) else { return .failure(.encodingFailed) }
+            smallest = attempt.count
+            if attempt.count <= budget { return .success(Encoded(data: attempt, payload: trimmed)) }
+        }
         while !trimmed.events.isEmpty {
             trimmed.events.removeLast()
             trimmed.moreEvents += 1
@@ -156,10 +278,11 @@ enum WatchTodayCodec {
         return .failure(.overBudget(bytes: smallest, limit: budget))
     }
 
-    /// Nil for anything unreadable, and for a version this build does not know.
+    /// Nil for anything unreadable, and for a version this build does not know. An older version
+    /// reads (Plan KT P4: version 1 has no cards).
     static func decode(_ data: Data) -> WatchTodayPayload? {
         guard let payload = try? PropertyListDecoder().decode(WatchTodayPayload.self, from: data),
-              payload.version == WatchTodayWire.version else { return nil }
+              WatchTodayWire.readableVersions.contains(payload.version) else { return nil }
         return payload
     }
 

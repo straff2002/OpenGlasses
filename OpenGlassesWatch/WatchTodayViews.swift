@@ -54,7 +54,7 @@ struct WatchTodayPages: View {
         TabView {
             NowPlayingView()
                 .navigationTitle("Now Playing")
-            WatchTodayCalendarPage(payload: connectivity.today)
+            WatchTodayCalendarPage(payload: connectivity.today, connectivity: connectivity)
                 .navigationTitle("Calendar")
             WatchTodayWeatherPage(payload: connectivity.today)
                 .navigationTitle("Weather")
@@ -67,6 +67,8 @@ struct WatchTodayPages: View {
 
 struct WatchTodayCalendarPage: View {
     let payload: WatchTodayPayload?
+    /// For a press on a card (Plan KT §6.7). Nil draws the cards without buttons.
+    var connectivity: WatchConnectivityService?
 
     var body: some View {
         TimelineView(.everyMinute) { context in
@@ -86,6 +88,8 @@ struct WatchTodayCalendarPage: View {
 
     @ViewBuilder
     private func content(_ today: WatchTodayPayload, now: Date) -> some View {
+        // Plan KT §6.7: the day's prepared cards, above the calendar.
+        WatchPreparedCardList(cards: today.cards.filter { $0.isLive(at: now) }, connectivity: connectivity)
         if today.calendarStatus == .shown {
             let rows = WatchTodayTimeline.rows(today.events, now: now)
             if rows.isEmpty {

@@ -227,6 +227,37 @@ extension WatchConnectivityService {
     }
 }
 
+// MARK: - Prepared cards (Plan KT §6.7)
+
+extension WatchConnectivityService {
+    /// A press on a wrist card: the phone stages the draft (exactly the Display's Send on phone),
+    /// starts directions, or puts the card off or dismisses it. `completion` gets the phone's line
+    /// and whether it did it. Touches none of the shared status, so the last answer stays put.
+    func sendPreparedCardAction(_ action: WatchPreparedCardAction, cardID: String,
+                                completion: @escaping (_ message: String, _ done: Bool) -> Void) {
+        guard WCSession.default.isReachable else {
+            completion(String(localized: "Open Avenkin on your iPhone, then try again."), false)
+            return
+        }
+        let message: [String: Any] = [
+            "command": WatchPreparedCardWire.command,
+            WatchPreparedCardWire.cardIDKey: cardID,
+            WatchPreparedCardWire.actionKey: action.rawValue,
+        ]
+        WCSession.default.sendMessage(message, replyHandler: { reply in
+            DispatchQueue.main.async {
+                if let response = reply["response"] as? String {
+                    completion(response, true)
+                } else {
+                    completion(reply["error"] as? String ?? String(localized: "That didn't work."), false)
+                }
+            }
+        }, errorHandler: { error in
+            DispatchQueue.main.async { completion(error.localizedDescription, false) }
+        })
+    }
+}
+
 // MARK: - WCSessionDelegate
 
 extension WatchConnectivityService: WCSessionDelegate {

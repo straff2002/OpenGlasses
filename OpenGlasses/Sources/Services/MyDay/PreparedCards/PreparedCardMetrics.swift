@@ -19,6 +19,8 @@ enum PreparedCardMetricAction: String, CaseIterable, Sendable {
     case pushed
     /// Plan KT P3: put on the phone to send from the Display (§6.4).
     case staged
+    /// Plan KT P4: said unasked, because the Display could not show it (§6.5).
+    case spoken
 }
 
 /// Plan KT §10: a press on a card's Display screens, by button. Never which card, never its text.

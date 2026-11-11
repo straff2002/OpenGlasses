@@ -16,6 +16,12 @@ import Foundation
 /// | ours and free | pushed: a 20-second glance, **Open** · **Close** |
 ///
 /// One glance at a time: a second immediate card waits for the first to close.
+///
+/// **Spoken instead (Plan KT P4, §6.5).** When the lens cannot show it — glasses with no display
+/// (or the HUD off), the Display `.inUse` or `.off` — the card is said instead, once, through the
+/// glasses: never during a call, never while captions run, never in quiet hours, and never over
+/// the wearer's own turn. It shares the glances' once-memory, so a card is never both glanced and
+/// spoken. While `.inUse` and it cannot be said now, it is dropped as before (nothing queues).
 enum PreparedCardPushPolicy {
     static let pushableKinds: Set<PreparedCardKind> = [.leaveBy, .runningLate, .jobRunningLate, .jobOnMyWay]
     /// A pushed glance stays this long.
@@ -30,6 +36,23 @@ enum PreparedCardPushPolicy {
         var quiet: Bool
         /// Nothing the wearer is working with is on the lens, and a raised card may go up now.
         var lensFree: Bool
+        /// Whether a card can be said instead (P4). Unavailable by default: nothing is spoken.
+        var speech: Speech = .unavailable
+    }
+
+    /// Plan KT P4: whether a pushed card may be said now, when the lens cannot show it.
+    struct Speech: Equatable {
+        /// The glasses are connected (the line plays through them, never the phone's speaker).
+        var glassesConnected: Bool
+        var onCall: Bool
+        var captionsRunning: Bool
+        /// The wearer's own turn is under way: listening, thinking or speaking.
+        var busy: Bool
+
+        static let unavailable = Speech(glassesConnected: false, onCall: false, captionsRunning: false, busy: false)
+
+        /// Could be said at all (a call or captions rule it out; a turn only makes it wait).
+        var permitted: Bool { glassesConnected && !onCall && !captionsRunning }
     }
 
     struct Decision: Equatable {
@@ -37,6 +60,13 @@ enum PreparedCardPushPolicy {
         var push: PreparedCard?
         /// Cards that are spent without a push (the Display was in use when they came due).
         var drop: [PreparedCardID] = []
+        /// The card to say now instead (P4), if any.
+        var speak: PreparedCard?
+    }
+
+    /// Whether the lens could ever show a pushed glance: a display that is ours.
+    static func lensCanShow(_ context: Context) -> Bool {
+        context.availability == .ours && context.hasDisplay
     }
 
     static func isPushable(_ card: PreparedCard) -> Bool {
@@ -46,10 +76,22 @@ enum PreparedCardPushPolicy {
     static func decide(cards: [PreparedCard], pushed: Set<String>, context: Context) -> Decision {
         let due = cards.filter { isPushable($0) && !pushed.contains($0.id.rawValue) }
         guard !due.isEmpty else { return Decision() }
+        if lensCanShow(context) {
+            guard context.worn != false, !context.quiet, context.lensFree else { return Decision() }
+            return Decision(push: due.first)
+        }
+        // The lens can't show it (no display, the HUD off, `.inUse` or `.off`): say it instead.
+        let speech = context.speech
+        if speech.permitted, context.worn != false, !context.quiet {
+            guard !speech.busy else {
+                // Waits for the wearer's turn to end; in use, it is spent like a glance.
+                return context.availability == .inUse ? Decision(drop: due.map(\.id)) : Decision()
+            }
+            // One at a time; the rest of the due cards wait for the next look.
+            return Decision(speak: due.first)
+        }
         if context.availability == .inUse { return Decision(drop: due.map(\.id)) }
-        guard context.availability == .ours, context.hasDisplay, context.worn != false,
-              !context.quiet, context.lensFree else { return Decision() }
-        return Decision(push: due.first)
+        return Decision()
     }
 }
 
@@ -68,6 +110,12 @@ final class PreparedCardGlances {
     /// **Open**: the stack at this card.
     var open: (PreparedCardID) -> Void = { _ in }
     var notePushed: (PreparedCard) -> Void = { _ in }
+    /// Plan KT P4: whether a card can be said instead, and saying it.
+    var speech: () -> PreparedCardPushPolicy.Speech = { .unavailable }
+    var sayInstead: (PreparedCard) -> Void = { _ in }
+    var noteSpoken: (PreparedCard) -> Void = { _ in }
+    /// Medical Compliance withholding on the glance (`PreparedCardMedicalWithholding`).
+    var withholding: () -> Bool = { false }
     var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeGeometry
     /// Test seam: run `fire` after `delay`.
     var scheduleExpiry: (_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> Void = { delay, fire in
@@ -123,19 +171,26 @@ final class PreparedCardGlances {
     var context: PreparedCardPushPolicy.Context {
         PreparedCardPushPolicy.Context(availability: display.displayAvailability,
                                        hasDisplay: display.deviceSupportsDisplay() && Config.glassesDisplayEnabled,
-                                       worn: worn(), quiet: quiet(), lensFree: lensFree)
+                                       worn: worn(), quiet: quiet(), lensFree: lensFree, speech: speech())
     }
 
     /// Push the next due card if the lens can take it.
     func evaluate() {
         let decision = PreparedCardPushPolicy.decide(cards: cards(), pushed: pushed, context: context)
         remember(decision.drop.map(\.rawValue))
+        if let card = decision.speak {
+            // The same once-memory as a glance: said once, never glanced after.
+            remember([card.id.rawValue])
+            noteSpoken(card)
+            sayInstead(card)
+        }
         guard let card = decision.push else { return }
         show(card)
     }
 
     private func show(_ card: PreparedCard) {
-        let screen = PreparedCardHUDBuilder.glance(card, geometry: geometry()) { [weak self] press in
+        let screen = PreparedCardHUDBuilder.glance(card, geometry: geometry(),
+                                                   withholding: withholding()) { [weak self] press in
             self?.handle(press)
         }
         guard display.presentRaisedCard(screen, onSelect: { [weak self] id in
