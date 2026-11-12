@@ -51,17 +51,25 @@ enum FTSQueryBuilder {
     ]
 
     static func build(_ phrase: String, now: Date, calendar: Calendar = .current) -> ParsedQuery {
-        let lower = phrase.lowercased()
-        let (since, until, dateWords) = dateWindow(in: lower, now: now, calendar: calendar)
-
-        let tokens = lower
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { $0.count >= 2 && !stopwords.contains($0) && !dateWords.contains($0) }
+        let (tokens, since, until) = searchTerms(in: phrase, now: now, calendar: calendar)
 
         let match = tokens.isEmpty
             ? nil
             : tokens.map { "\"\($0)\"" }.joined(separator: " OR ")
         return ParsedQuery(match: match, since: since, until: until)
+    }
+
+    /// The topic words of a spoken phrase, with the question's meta-words ("what did we discuss
+    /// about") and its date words ("yesterday", "last week") taken off, plus the date window those
+    /// named. Shared by recall and `session_search` (Plan LP §7), so both read a phrase alike.
+    static func searchTerms(in phrase: String, now: Date = Date(),
+                            calendar: Calendar = .current) -> (terms: [String], since: Date?, until: Date?) {
+        let lower = phrase.lowercased()
+        let (since, until, dateWords) = dateWindow(in: lower, now: now, calendar: calendar)
+        let terms = lower
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 2 && !stopwords.contains($0) && !dateWords.contains($0) }
+        return (terms, since, until)
     }
 
     /// Detect a relative-date phrase and return its [since, until) window plus the words to

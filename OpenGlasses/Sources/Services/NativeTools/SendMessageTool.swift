@@ -1,11 +1,18 @@
 import Foundation
 import UIKit
 
+/// How a message is drafted for the user (Plan LP §6), shared by every tool that composes one so
+/// the rules read the same wherever the model meets them.
+enum MessageDraftingRules {
+    static let guidance = "Drafting: write as the user, in their words, and never add a fact they didn't give. If the reply could go either way (accept or decline, yes or no), ask which in a few words before drafting. Put only the words to be sent in body, nothing said around them, and when reading a draft back read the body only."
+    static let bodyDescription = "Only the words to be sent, written as the user would write them — nothing said around them."
+}
+
 /// Opens the Messages app with a pre-filled recipient and message body.
 /// Automatically resolves contact names to phone numbers.
 struct SendMessageTool: NativeTool {
     let name = "send_message"
-    let description = "Opens Messages with a pre-filled SMS/iMessage for the user to review and send — it cannot send automatically. Accepts a phone number OR a contact name (auto-looked-up in Contacts); if multiple matches are found, returns options for the user to choose."
+    let description = "Opens Messages with a pre-filled SMS/iMessage for the user to review and send — it cannot send automatically. Accepts a phone number OR a contact name (auto-looked-up in Contacts); if multiple matches are found, returns options for the user to choose. " + MessageDraftingRules.guidance
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -15,7 +22,7 @@ struct SendMessageTool: NativeTool {
             ],
             "body": [
                 "type": "string",
-                "description": "The message text to send"
+                "description": MessageDraftingRules.bodyDescription
             ]
         ],
         "required": ["to", "body"]

@@ -14,9 +14,10 @@ struct BrainTool: NativeTool {
     a relationship ('Alice works at Acme'). 'encounters' lists recent face-recognition sightings. \
     'forget' erases an entity. 'status' reports brain size. 'save_need' records a follow-up — what \
     a person wants, is looking for, or you owe them ('Bob wants a copy of the deck') — and 'needs' \
-    lists open follow-ups (per person, or all); 'resolve_need' marks one done. 'recall' searches \
-    your PAST CONVERSATIONS (what you actually said in earlier sessions) and returns a cited \
-    answer — use for "what did we decide about X?", "what did I say about Y last week?". \
+    lists open follow-ups (per person, or all); 'resolve_need' marks one done. 'recall' answers a \
+    question about what was said in PAST CONVERSATIONS, with citations, and reads 'yesterday' or \
+    'last week' in it — use for "what did we decide about X?", "what did I say about Y last \
+    week?"; to find a conversation by its topic words instead, use session_search. \
     'insights' gives an on-device usage recap (top topics + activity over the last N days) — \
     use for "what have I been up to this week?", "give me my usage recap".
     """

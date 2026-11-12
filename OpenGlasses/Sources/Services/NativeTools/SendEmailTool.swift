@@ -5,7 +5,7 @@ import UIKit
 /// Uses URL schemes to open the appropriate app with pre-filled content.
 struct MultiChannelMessageTool: NativeTool {
     let name = "send_via"
-    let description = "Opens WhatsApp, Telegram, or Email with a pre-filled message for the user to review and send — it cannot send automatically. For iMessage/SMS, use 'send_message' instead."
+    let description = "Opens WhatsApp, Telegram, or Email with a pre-filled message for the user to review and send — it cannot send automatically. For iMessage/SMS, use 'send_message' instead. " + MessageDraftingRules.guidance
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -19,7 +19,7 @@ struct MultiChannelMessageTool: NativeTool {
             ],
             "body": [
                 "type": "string",
-                "description": "Message body text"
+                "description": MessageDraftingRules.bodyDescription
             ],
             "subject": [
                 "type": "string",

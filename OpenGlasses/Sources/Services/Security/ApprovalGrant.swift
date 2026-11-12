@@ -142,6 +142,11 @@ struct ApprovalGrant: Sendable, Equatable {
     /// How long the yes stays spendable. A confirmation the wearer answered and then walked away
     /// from is not an approval for whatever arrives ten minutes later.
     let ttl: TimeInterval
+    /// The plan run a grant was issued for (Plan LP §1), or nil for a single call's yes. A scoped
+    /// grant is spent only by a call presenting the same scope, and an unscoped one only by a call
+    /// presenting none — so a plan's yes cannot pay for a call outside that plan, and an ordinary
+    /// yes cannot be picked up by a plan.
+    var scope: String? = nil
 
     static let defaultTTL: TimeInterval = 120
 
@@ -168,6 +173,8 @@ enum ApprovalRefusalReason: String, Sendable, Equatable {
     case definitionChanged
     /// The same tool and definition, but different arguments.
     case argumentsChanged
+    /// The grant belongs to a different plan run, or to no plan at all (Plan LP §1).
+    case scopeMismatch
 }
 
 enum ApprovalGrantVerdict: Sendable, Equatable {
@@ -219,10 +226,21 @@ final class ApprovalGrantStore {
     /// Record one person's yes to exactly this call.
     @discardableResult
     func issue(for binding: ApprovalBinding, at now: Date = Date(),
-               ttl: TimeInterval = ApprovalGrant.defaultTTL) -> ApprovalGrant {
-        let grant = ApprovalGrant(nonce: UUID().uuidString, binding: binding, issuedAt: now, ttl: ttl)
+               ttl: TimeInterval = ApprovalGrant.defaultTTL,
+               scope: String? = nil) -> ApprovalGrant {
+        let grant = ApprovalGrant(nonce: UUID().uuidString, binding: binding, issuedAt: now, ttl: ttl,
+                                  scope: scope)
         live[grant.nonce] = grant
         return grant
+    }
+
+    /// Drop every unspent grant issued under `scope` — a plan that finished, stopped or was
+    /// cancelled (Plan LP §1). A revoked nonce presented later is `noGrant`: it was never spent.
+    @discardableResult
+    func revoke(scope: String) -> Int {
+        let doomed = live.filter { $0.value.scope == scope }.map(\.key)
+        doomed.forEach { live[$0] = nil }
+        return doomed.count
     }
 
     /// Spend `nonce` against the call that is actually about to run.
@@ -230,7 +248,7 @@ final class ApprovalGrantStore {
     /// The comparison is field by field in a fixed order, so the refusal a caller gets names the
     /// first thing that differed rather than whichever check happened to run first.
     func redeem(nonce: String?, against binding: ApprovalBinding,
-                at now: Date = Date()) -> ApprovalGrantVerdict {
+                at now: Date = Date(), scope: String? = nil) -> ApprovalGrantVerdict {
         guard let nonce, let grant = live[nonce] else {
             if let nonce, spent.contains(where: { $0.nonce == nonce }) {
                 return .refused(.replayed)
@@ -241,6 +259,9 @@ final class ApprovalGrantStore {
             live[nonce] = nil
             return .refused(.expired)
         }
+        // Checked before the binding, and without spending: a plan's grant presented outside its
+        // plan stays where it is, to be revoked with the plan.
+        if grant.scope != scope { return .refused(.scopeMismatch) }
         let approved = grant.binding
         if approved.sessionID != binding.sessionID { return .refused(.sessionMismatch) }
         if approved.serverIdentity != binding.serverIdentity { return .refused(.serverMismatch) }
@@ -284,6 +305,8 @@ final class ApprovalGrantStore {
             return "'\(tool)' changed since the user approved it, so it did not run. Do not retry; tell the user it needs reviewing again."
         case .argumentsChanged:
             return "The details of '\(tool)' changed after the user approved it, so it did not run. Do not retry; ask the user to approve the new details."
+        case .scopeMismatch:
+            return "The approval for '\(tool)' was given for a different task, so it did not run. Do not retry; ask the user about this action specifically."
         }
     }
 }

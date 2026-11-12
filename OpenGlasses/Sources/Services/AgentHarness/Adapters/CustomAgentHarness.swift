@@ -47,6 +47,10 @@ struct CustomAgentHarness: AgentHarness {
     }
     var isConfigured: Bool { isConfiguredOverride ?? config.isConfigured }
 
+    /// The endpoint shape has start, status, cancel, input and ack — nothing that takes a message
+    /// into a working run — so a new job while one runs is asked about (Plan LP §3).
+    var followUpSupport: AgentFollowUpSupport { .unsupported }
+
     // MARK: - AgentHarness
 
     func start(prompt: String, project: String?) async throws -> AgentRun {
@@ -271,7 +275,7 @@ struct CustomAgentHarness: AgentHarness {
         case .unsupported:
             return .noStatusEndpoint       // no status URL template — polling can never work
         case .notConfigured, .transport, .unknownStatus, .agentModeOff,
-             .replyUnsupported, .uncertainDelivery, .ackUnsupported:
+             .replyUnsupported, .uncertainDelivery, .ackUnsupported, .runInFlight:
             return nil                      // transient until the bounded retries run out
         }
     }

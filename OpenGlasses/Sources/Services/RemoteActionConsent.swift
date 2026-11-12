@@ -25,6 +25,10 @@ enum RemoteActionSource: Equatable {
 struct RemoteActionConsentRequest: Equatable {
     let source: RemoteActionSource
     let summary: String
+    /// A question already worded for speaking ("That job's still running. Stop it and start this
+    /// one instead?"), said in place of the attributed "… wants: …. Approve?" line. The card still
+    /// carries the source and `summary`.
+    var spokenOverride: String? = nil
 
     /// Source-attributed line for the card + audit: "The gateway wants: take a photo".
     var attributedSummary: String { "\(source.line) wants: \(summary)" }
@@ -32,6 +36,7 @@ struct RemoteActionConsentRequest: Equatable {
     /// The spoken form. A summary that already ends a sentence (a question, say) is not given a
     /// second full stop.
     var spokenPrompt: String {
+        if let spokenOverride { return spokenOverride }
         let ended = attributedSummary.last.map { ".?!".contains($0) } ?? false
         return ended ? "\(attributedSummary) Approve?" : "\(attributedSummary). Approve?"
     }

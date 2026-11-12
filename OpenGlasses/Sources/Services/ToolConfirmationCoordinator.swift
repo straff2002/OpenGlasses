@@ -96,8 +96,10 @@ final class ToolConfirmationCoordinator: ObservableObject {
     /// If another confirmation is already outstanding, the new request is denied to avoid stacking
     /// prompts (the model can retry after the user has dealt with the first one). `source`
     /// attributes the ask on the card and in the spoken prompt (BN P1).
-    func requestConfirmation(toolName: String, summary: String, source: RemoteActionSource = .assistant) async -> Bool {
-        await ask(toolName: toolName, summary: summary, source: source, reply: .approval) == .approved
+    func requestConfirmation(toolName: String, summary: String, source: RemoteActionSource = .assistant,
+                             spokenPrompt: String? = nil) async -> Bool {
+        await ask(toolName: toolName, summary: summary, source: source, reply: .approval,
+                  spokenPrompt: spokenPrompt) == .approved
     }
 
     /// Ask the wearer to confirm — and, if they like, edit — an answer before it is sent (Plan FE
@@ -114,10 +116,13 @@ final class ToolConfirmationCoordinator: ObservableObject {
         return confirmed
     }
 
+    /// `spokenPrompt`, when given, is said instead of the attributed "… wants: …. Approve?" line —
+    /// for an ask whose sentence is already a question in its own words (a plan's one ask, Plan LP).
+    /// The card still shows the source and `summary`.
     private func ask(toolName: String, summary: String, source: RemoteActionSource,
-                     reply: ConfirmationReplyKind) async -> ConfirmationAnswer {
+                     reply: ConfirmationReplyKind, spokenPrompt: String? = nil) async -> ConfirmationAnswer {
         if pending != nil { return .denied }
-        onSpeakPrompt?(RemoteActionConsentRequest(source: source, summary: summary).spokenPrompt)
+        onSpeakPrompt?(spokenPrompt ?? RemoteActionConsentRequest(source: source, summary: summary).spokenPrompt)
         return await withCheckedContinuation { (continuation: CheckedContinuation<ConfirmationAnswer, Never>) in
             pending = PendingToolConfirmation(toolName: toolName, summary: summary, source: source,
                                               reply: reply, continuation: continuation)
@@ -147,6 +152,43 @@ final class ToolConfirmationCoordinator: ObservableObject {
         record(consent, for: source, at: now)
         return .approved(nonce: approvalGrants.issue(for: binding, at: now, ttl: ttl).nonce)
     }
+
+    /// Ask once for a whole plan's confirmable steps, and on a yes issue one bound grant per step
+    /// (Plan LP §1).
+    ///
+    /// Each grant is bound exactly as the step's own call would bind it — seam, tool, definition
+    /// digest, argument digest, session — and additionally scoped to the plan run, so it is spent
+    /// only by that step's call inside that run. Grants are issued here and only here, from the
+    /// wearer's live answer; nothing is issued for a no, a busy surface or withdrawn consent.
+    func requestPlanApproval(_ approval: PlanApproval, scope: String,
+                             source: RemoteActionSource = .assistant,
+                             at now: Date = Date(),
+                             ttl: TimeInterval = PlanApproval.grantLifetimeCeiling) async -> PlanApprovalOutcome {
+        guard !approval.items.isEmpty else { return .approved(grants: [:]) }
+        let consent = consentDecision(for: source, at: now)
+        guard consent.allowsPrompt else {
+            PrivacyLog.toolGate(.consentWithdrawn, tool: Self.planToolName)
+            return .consentWithdrawn
+        }
+        guard pending == nil else { return .busy }
+        let card = consent.promptPrefix.map { "\($0)\n\(approval.cardSummary)" } ?? approval.cardSummary
+        let spoken = consent.promptPrefix.map { "\($0) \(approval.spokenPrompt)" } ?? approval.spokenPrompt
+        let approved = await requestConfirmation(toolName: Self.planToolName, summary: card,
+                                                 source: source, spokenPrompt: spoken)
+        guard approved else { return .declined }
+        record(consent, for: source, at: now)
+        var grants: [Int: PlanStepGrant] = [:]
+        for item in approval.items {
+            let grant = approvalGrants.issue(for: item.binding, at: now,
+                                             ttl: min(ttl, PlanApproval.grantLifetimeCeiling),
+                                             scope: scope)
+            grants[item.stepIndex] = PlanStepGrant(nonce: grant.nonce, scope: scope)
+        }
+        return .approved(grants: grants)
+    }
+
+    /// The name a plan's card is raised under. Not a tool; it names the card in logs only.
+    static let planToolName = "agent_plan"
 
     private func consentDecision(for source: RemoteActionSource,
                                  at now: Date) -> RemoteActionConsentGate.Decision {

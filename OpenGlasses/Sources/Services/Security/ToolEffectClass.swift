@@ -277,6 +277,21 @@ enum ToolEffectClassifier {
                                 effectClass: ToolEffectClass, seam: ToolDispatchSeam) -> String {
         let base = PromptInjectionPolicy.actionSummary(toolName: tool, args: args)
         guard seam.isExternal else { return base }
+        // Plan LP §5: say what kind of data goes where, when the arguments show it.
+        if let described = ActionDataSummary.summary(args: args, destination: destination(tool: tool, seam: seam)) {
+            return described + " (an external tool this app hasn't reviewed)"
+        }
         return base + " — using an external tool this app hasn't reviewed"
+    }
+
+    /// Who an external call reaches, as a person would name it: the MCP server's label, the
+    /// user-authored tool's own name, or the gateway.
+    static func destination(tool: String, seam: ToolDispatchSeam) -> String? {
+        switch seam {
+        case .native: return nil
+        case .mcpServer: return ActionDataSummary.serverLabel(fromQualifiedName: tool)
+        case .custom: return tool
+        case .gateway: return "gateway"
+        }
     }
 }

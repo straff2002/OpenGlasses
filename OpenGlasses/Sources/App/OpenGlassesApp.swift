@@ -3218,6 +3218,15 @@ class AppState: ObservableObject, AppStateProtocol {
         llmService.onAgentNarrate = { [weak self] line in
             self?.glassesDisplay.showNotification(title: "Agent", body: line, icon: .info, duration: 4)
         }
+        // Plan LP §2: a plan of two or more steps says what it is about to do, once, before the
+        // first step runs. Direct mode only, like the plan loop itself.
+        llmService.onAgentSpeak = { [weak self] line in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.activeLiveInjector == nil else { return }
+                await self.speechService.speak(line, source: .progress)
+            }
+        }
         llmService.onAgentStep = { [weak self] index, total, step in
             let body = step.rationale.isEmpty ? step.tool : step.rationale
             self?.glassesDisplay.showNotification(title: "Step \(index) of \(total)", body: body, icon: .navigation, duration: 4)
@@ -3566,7 +3575,8 @@ class AppState: ObservableObject, AppStateProtocol {
         AgentSessionService.shared.requestUserConsent = { [weak self] request in
             guard let self else { return false }
             return await self.toolConfirmationCoordinator.requestConfirmation(
-                toolName: "code_agent", summary: request.summary, source: request.source)
+                toolName: "code_agent", summary: request.summary, source: request.source,
+                spokenPrompt: request.spokenOverride)
         }
         // Plan FE P1: the free-text half of the same boundary — the card shows the answer, the
         // wearer can edit it, and only what they confirm is forwarded to the agent.
