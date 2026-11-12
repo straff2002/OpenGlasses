@@ -333,7 +333,7 @@ enum CompanyVaultDownloads {
 
     /// The note for the vault a job is on, from what the enrolment record says is still to come.
     @MainActor
-    static func promptNote(vaultId: String, manager: OrgProfileManager = .shared) -> String? {
-        promptNote(titles: manager.record?.companyVaults?.downloading[vaultId] ?? [])
+    static func promptNote(vaultId: String, manager: OrgProfileManager? = nil) -> String? {
+        promptNote(titles: (manager ?? .shared).record?.companyVaults?.downloading[vaultId] ?? [])
     }
 }
