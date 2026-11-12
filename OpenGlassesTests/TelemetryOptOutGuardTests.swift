@@ -155,19 +155,20 @@ final class TelemetryOptOutGuardTests: XCTestCase {
     }
 
     /// Plan JS P2 — the telemetry rule for the app's own licence service: a seat-checked licence's
-    /// check-in sends four fields to the vendor, so the manifest declares a device identifier, its
+    /// check-in sends four fields to the vendor (and, Plan LR P2, a renewal the installed company
+    /// vaults' ids and versions), so the manifest declares a device identifier, its
     /// comment and header name the call, and the in-app privacy copy says so, in the same PR.
     func testSeatCheckIsDisclosedInTheManifestAndThePrivacyCopy() throws {
         let manifest = normalisedWhitespace(try sourceText(Self.privacyManifest))
         XCTAssertTrue(manifest.contains("<string>NSPrivacyCollectedDataTypeDeviceID</string>"),
                       "PrivacyInfo.xcprivacy no longer declares the seat check's device identifier")
-        XCTAssertTrue(manifest.contains("sending the enrolment id, a public key made for this phone, the app build and the profile id, and nothing else"),
+        XCTAssertTrue(manifest.contains("sending the enrolment id, a public key made for this phone, the app build and the profile id, and, on a renewal, the ids and versions of the organisation's own vaults installed on this phone, and nothing else"),
                       "PrivacyInfo.xcprivacy's header no longer names what the seat check sends")
         XCTAssertFalse(manifest.contains("Avenkin has no developer-operated backend"),
                        "the manifest may not deny the licence service the app now calls")
 
         let privacyCopy = normalisedWhitespace(try sourceText("OpenGlasses/Sources/App/Views/SettingsView.swift"))
-        let sentence = "A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build and the profile id; never a name, device model or location."
+        let sentence = "A seat-checked organisation licence checks this phone's seat with Avenkin's licence service about once a day, sending only the enrolment id, a key made for this phone, the app build, the profile id and the versions of your organisation's vaults on this phone; never a name, device model or location."
         XCTAssertEqual(privacyCopy.components(separatedBy: sentence).count - 1, 2,
                        "both Privacy footers (phone-only and glasses builds) disclose the seat check")
         XCTAssertFalse(privacyCopy.contains("no developer backend"))

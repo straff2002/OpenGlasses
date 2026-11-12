@@ -120,7 +120,8 @@ actor StubSeatService: DeviceSeatServer {
             guard let seat = seats.last(where: { $0.deviceKeyHash == lease.deviceKeyHash }),
                   let key = Data(base64Encoded: seat.devicePublicKey),
                   (try? SeatWire.openEnvelope(wire, action: .renew, publicKeyX963: key)) != nil else { return reply(.refuse(.freed)) }
-            return record(SeatPolicy.renew(lease, build: renew.build, profileId: profileId, licence: licence, seats: seats, now: now))
+            return record(SeatPolicy.renew(lease, build: renew.build, profileId: profileId, licence: licence, seats: seats, now: now,
+                                           vaults: renew.vaults))
         case .release:
             guard let release = try? decoder.decode(SeatReleaseRequest.self, from: body),
                   let lease = try? SeatWire.openLease(release.lease, publicKeys: [leaseKey.publicKey]),
@@ -211,7 +212,9 @@ final class DeviceSeatTests: XCTestCase {
         return try LicenseService.makeCode(payload: payload, privateKeyBase64: licenceKey.rawRepresentation.base64EncodedString())
     }
 
-    private func service() -> DeviceSeatService {
+    private func service() -> DeviceSeatService { DeviceSeatService(seams: seatSeams()) }
+
+    private func seatSeams() -> DeviceSeatService.Seams {
         var seams = DeviceSeatService.Seams()
         seams.server = server
         seams.keys = keys
@@ -224,7 +227,8 @@ final class DeviceSeatTests: XCTestCase {
         seams.build = { "660" }
         seams.now = { world.now }
         seams.entitlementChanged = {}
-        return DeviceSeatService(seams: seams)
+        seams.installedCompanyVaults = { [] }
+        return seams
     }
 
     private func decision() -> FieldAssistEntitlementDecision {
@@ -378,6 +382,36 @@ final class DeviceSeatTests: XCTestCase {
         XCTAssertEqual(lease?.notAfter, t0.addingTimeInterval(32 * 86_400))
         let received = await server.received
         XCTAssertEqual(received.map(\.0), [.claim, .renew])
+    }
+
+    /// Plan LR P2: the renewal names the company vaults installed on the phone, by id and version,
+    /// and the service keeps them on the seat for the fleet view. The claim carries none.
+    func testTheRenewalReportsTheInstalledCompanyVaults() async throws {
+        var seams = seatSeams()
+        seams.installedCompanyVaults = { [.init(vaultId: "lennox", version: "4")] }
+        let seats = DeviceSeatService(seams: seams)
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 2)
+        await seats.checkIn(enrolment)
+        let received = await server.received
+        let claim = try XCTUnwrap(JSONSerialization.jsonObject(with: received[0].1) as? [String: Any])
+        XCTAssertNil(claim["vaults"])
+        let renew = try SeatWire.decoder().decode(SeatRenewRequest.self, from: received[1].1)
+        XCTAssertEqual(renew.vaults, [SeatInstalledVault(vaultId: "lennox", version: "4")])
+        let held = await server.seats
+        XCTAssertEqual(SeatPolicy.fleetVersions(held, profileId: enrolment.profileId, now: world.now), ["lennox": ["4": 1]])
+    }
+
+    func testARenewalWithNoCompanyVaultsIsTheBytesItWas() async throws {
+        var seams = seatSeams()
+        seams.installedCompanyVaults = { [] }
+        let seats = DeviceSeatService(seams: seams)
+        await seats.checkIn(enrolment, force: true)
+        await advance(days: 2)
+        await seats.checkIn(enrolment)
+        let received = await server.received
+        let renew = try XCTUnwrap(JSONSerialization.jsonObject(with: received[1].1) as? [String: Any])
+        XCTAssertEqual(Set(renew.keys), ["build", "lease"])
     }
 
     func testALiveLeaseIsRenewedAtMostOnceADay() async {
