@@ -76,6 +76,10 @@ struct ConfigProfile: Codable, Equatable, Sendable {
     /// Company credentials sealed under the company secret (`OrgCredentialSeal`), by name: today
     /// `workiz`. Never readable from the profile; `OrgCredentialSync` opens them on the phone.
     var credentials: SealedCredentials?
+    /// Plan LR — where the company's own vaults and manuals are listed (`CompanyVaultCatalog`). A
+    /// pointer, never content; absent on every profile without company vaults, which then applies
+    /// exactly as before.
+    var companyVaults: CompanyVaultsReference?
     /// The settings, keyed by the raw `SettingKey` name. Raw on purpose: see `RawSetting`.
     var settings: [String: RawSetting]
 
@@ -173,6 +177,41 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         }
     }
 
+    /// `{catalog, generation, minAppBuild?}`, decoded without failing like `AIModel`: a malformed
+    /// entry reads as empty fields, which the company vault pass names rather than refusing the
+    /// profile. Mirrors `ProfileContract.CompanyVaults` in Tools/LicenceIssuance.
+    struct CompanyVaultsReference: Codable, Equatable, Sendable {
+        /// The catalog's HTTPS address.
+        var catalog: String?
+        /// Rises with every change the partner makes. The catalog is fetched only when this is
+        /// above the generation the phone has applied.
+        var generation: Int?
+        /// The oldest build that can read the catalog.
+        var minAppBuild: Int?
+
+        init(catalog: String?, generation: Int?, minAppBuild: Int? = nil) {
+            self.catalog = catalog
+            self.generation = generation
+            self.minAppBuild = minAppBuild
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try? decoder.container(keyedBy: CodingKeys.self)
+            catalog = try? container?.decodeIfPresent(String.self, forKey: .catalog)
+            generation = try? container?.decodeIfPresent(Int.self, forKey: .generation)
+            minAppBuild = try? container?.decodeIfPresent(Int.self, forKey: .minAppBuild)
+        }
+
+        /// The catalog address when it is HTTPS, has a host, and carries no credentials or fragment.
+        var catalogURL: URL? {
+            guard let catalog, let url = URL(string: catalog), url.scheme?.lowercased() == "https",
+                  let host = url.host, !host.isEmpty, url.user == nil, url.password == nil, url.fragment == nil else {
+                return nil
+            }
+            return url
+        }
+    }
+
     struct VaultPackReference: Codable, Equatable, Sendable {
         let packId: String
         /// An organisation-hosted location for its own documents. A pointer, never bytes.
@@ -188,6 +227,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
          lockdown: LockdownSpec? = nil,
          officeAuthority: OfficeAuthority? = nil,
          credentials: SealedCredentials? = nil,
+         companyVaults: CompanyVaultsReference? = nil,
          settings: [String: RawSetting] = [:],
          format: String = ConfigProfile.formatId,
          schemaVersion: Int = 1) {
@@ -212,6 +252,7 @@ struct ConfigProfile: Codable, Equatable, Sendable {
         self.lockdown = lockdown
         self.officeAuthority = officeAuthority
         self.credentials = credentials
+        self.companyVaults = companyVaults
         self.settings = settings
     }
 }

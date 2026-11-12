@@ -2028,6 +2028,11 @@ final class FieldSessionService: ObservableObject {
         if let note = unitSaidPromptNote {
             context = (context.map { $0 + "\n\n" } ?? "") + note
         }
+        // Plan LR: a company manual listed for this vault that has not arrived yet is named, so an
+        // answer that would have cited it says it is still downloading.
+        if let note = CompanyVaultDownloads.promptNote(vaultId: store.manifest.id) {
+            context = (context.map { $0 + "\n\n" } ?? "") + note
+        }
         if let runner {
             let procedureContext = runner.promptContext()
             if !procedureContext.isEmpty {

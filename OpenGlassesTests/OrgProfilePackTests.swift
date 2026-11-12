@@ -29,7 +29,9 @@ final class OrgProfilePackTests: XCTestCase {
         fetchText = nil
     }
 
-    private func makeManager() -> OrgProfileManager {
+    private func makeManager() -> OrgProfileManager { OrgProfileManager(seams: makeSeams()) }
+
+    private func makeSeams() -> OrgProfileManager.Seams {
         var seams = OrgProfileManager.Seams()
         seams.verificationKeys = ["k": signingKey.publicKey.rawRepresentation.base64EncodedString()]
         seams.now = { Date(timeIntervalSince1970: 1_790_000_000) }
@@ -54,7 +56,7 @@ final class OrgProfilePackTests: XCTestCase {
             if case .installed(let vaultId) = self.installOutcome { self.installed.insert(vaultId) }
             return self.installOutcome
         }
-        return OrgProfileManager(seams: seams)
+        return seams
     }
 
     private func document(pack: String? = "hvac_rtu_pack", defaultVault: String = "hvac_rtu") throws -> String {
@@ -149,6 +151,40 @@ final class OrgProfilePackTests: XCTestCase {
         XCTAssertEqual(stored?.pendingPackId, "hvac_rtu_pack", "a renewal must not drop the pack still to install")
         XCTAssertNil(settings[.fieldAssistEnabled], "nor write what waits for it")
         XCTAssertNotNil(stored?.heldStartingValues?["fieldAssistEnabled"])
+    }
+
+    /// Plan LR P1: a pack already installed is brought up to the catalog's version after a
+    /// renewal, between jobs only, and a failure is named and tried again at the next renewal.
+    func testAnInstalledPackIsUpdatedAfterARenewalButNeverMidJob() async throws {
+        var updates: [String] = []
+        var outcome: OrgPackInstaller.Outcome = .failed("download failed")
+        var job: String?
+        var seams = makeSeams()
+        seams.activeJobId = { job }
+        seams.updatePack = { packId in updates.append(packId); return outcome }
+        let manager = OrgProfileManager(seams: seams)
+        installOutcome = .installed(vaultId: "hvac_rtu")
+        let text = try document()
+        let review = try manager.review(document: text, source: .link,
+                                        sourceURL: URL(string: "https://config.northbridge.example/p")).get()
+        try manager.apply(review).get()
+        await manager.completePendingPack()
+        XCTAssertNil(stored?.pendingPackId)
+        fetchText = text
+
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(updates, ["hvac_rtu_pack"])
+        XCTAssertEqual(stored?.packInstallError, "download failed", "named on the managed row")
+
+        job = "job-1"
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(updates.count, 1, "never while a job is open")
+
+        job = nil
+        outcome = .installed(vaultId: "hvac_rtu")
+        await manager.renewIfDue(force: true)
+        XCTAssertEqual(updates.count, 2)
+        XCTAssertNil(stored?.packInstallError)
     }
 
     func testAProfileWithoutAPackWritesEverythingAtOnce() throws {

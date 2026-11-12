@@ -31,6 +31,11 @@ targets:
         buildPhase: resources
       - path: OpenGlassesTests/Fixtures
         buildPhase: resources
+      # Plan LR: the company vault contract's golden fixtures, shared with the licence core's
+      # tests. Invented content and keys derived from public labels.
+      - path: Contracts/fixtures/company-vaults-v1
+        type: folder
+        buildPhase: resources
       # Shared FX1 public assignment/archive fixtures (no production keys or content).
       - path: Contracts/fixtures/manual-assignment-v1.json
         buildPhase: resources

@@ -1917,6 +1917,15 @@ class AppState: ObservableObject, AppStateProtocol {
                 // Consent to record was given for this organisation's office. Another asks again.
                 Config.jobRecordingConsent = nil
             },
+            // Plan LR: the company's own vaults go with the rest of the firm's content.
+            eraseCompanyVaults: { [weak self] vaultIds in
+                guard let self, !vaultIds.isEmpty else { return }
+                for id in vaultIds where VaultImporter.installedManifest(id: id) != nil {
+                    await VaultImporter.uninstall(id: id, documentStore: self.documentStore)
+                }
+                VaultRegistry.shared.reloadUserManifests()
+                VaultRegistry.shared.resetCache()
+            },
             // An office is somewhere records are delivered to, as an endpoint is.
             hasEndpoint: { Config.deliverySettings.hasEndpoint || AppState.officeIsReportDestination },
             flushEndpoint: { [weak self] in _ = await self?.syncEngine.flush() },
@@ -3337,6 +3346,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan CT PR 2b: a lease that lapses during a job locks when that job closes, so the lease
         // is re-evaluated as jobs start and end; and it renews once at launch.
         OrgProfileManager.shared.observeJobs()
+        // Plan LR: staging a pass left behind is swept, and a change held for a job runs when it closes.
+        CompanyVaultService.shared.startAtLaunch()
         Task { await OrgProfileManager.shared.renewIfDue() }
         // Plan CT PR 4: a phone that has left the firm keeps trying to deliver what it owes.
         configureOrgDeparture()

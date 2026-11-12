@@ -187,7 +187,15 @@ final class VaultRegistry {
             let manager = OrgProfileManager.shared
             if manager.profile?.vaultPack?.packId == pack,
                (manager.contentLocked || !FieldAssistEntitlement.shared.has(.orgConfiguration)) { return false }
-            if let departure = OrgDepartureService.loadStored(), departure.packId == pack {
+            // Plan LR: a company vault is the organisation's as its pack is — locked with its
+            // content, unlocked by the enrolment that delivered it rather than by a pack claim.
+            if let company = manager.record?.companyVaults?.vaults[manifest.id], company.packId == pack,
+               manager.profile != nil {
+                guard !manager.contentLocked, FieldAssistEntitlement.shared.has(.orgConfiguration) else { return false }
+                return FieldAssistEntitlement.shared.has(.fieldWork)
+            }
+            if let departure = OrgDepartureService.loadStored(), departure.packId == pack
+                || (departure.companyVaultIds ?? []).contains(manifest.id) {
                 let renewed = manager.lease?.isInForce == true &&
                     (departure.reason == .lapsed || manager.record?.enrolmentId != departure.enrolmentId)
                 if !renewed { return false }

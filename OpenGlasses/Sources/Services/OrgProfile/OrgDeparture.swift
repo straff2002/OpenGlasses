@@ -54,6 +54,9 @@ struct OrgDeparture: Codable, Equatable, Sendable {
     var deliveredToFirm: Bool?
     /// Kept until cleanup succeeds, including across a crash during departure.
     var packId: String?
+    /// Plan LR: the company vaults the enrolment installed, kept with the pack id until cleanup
+    /// succeeds. Absent on every departure recorded before company vaults.
+    var companyVaultIds: [String]?
     var contentErasedAt: Date?
 
     var isPending: Bool { settledAt == nil }
@@ -90,6 +93,8 @@ final class OrgDepartureService: ObservableObject {
         var closeJobs: @MainActor (_ ids: [String], _ reason: OrgDeparture.Reason) throws -> Void = { _, _ in }
         /// The firm's vault (by the profile's pack id), jobs ahead and staged exports.
         var eraseContent: @MainActor (_ packId: String?) async -> Void = { _ in }
+        /// Plan LR: the company's own vaults, by id, with every manual in them.
+        var eraseCompanyVaults: @MainActor (_ vaultIds: [String]) async -> Void = { _ in }
         var hasEndpoint: @MainActor () -> Bool = { false }
         var flushEndpoint: @MainActor () async -> Void = {}
         /// Work records for these sessions the endpoint has not yet accepted.
@@ -115,7 +120,8 @@ final class OrgDepartureService: ObservableObject {
     /// The phone has left the firm. Erases the firm's content at once and starts the delivery of its
     /// records. Beginning again for the same enrolment changes nothing.
     func begin(_ reason: OrgDeparture.Reason, organizationName: String, enrolmentId: String,
-               enrolledAt: Date, packId: String?, undeliveredEraseDays: Int?) async {
+               enrolledAt: Date, packId: String?, undeliveredEraseDays: Int?,
+               companyVaultIds: [String] = []) async {
         if var current = departure, current.isPending, current.enrolmentId == enrolmentId {
             // An explicit withdrawal cannot inherit a prior offline lapse's grace or renewal.
             if current.reason == .lapsed, reason != .lapsed {
@@ -133,7 +139,8 @@ final class OrgDepartureService: ObservableObject {
         let started = OrgDeparture(organizationName: organizationName, enrolmentId: enrolmentId,
                                    reason: reason, startedAt: now,
                                    eraseBy: now.addingTimeInterval(TimeInterval(days) * 86_400),
-                                   sessionIds: seams.sessionIds(enrolledAt), packId: packId)
+                                   sessionIds: seams.sessionIds(enrolledAt), packId: packId,
+                                   companyVaultIds: companyVaultIds.isEmpty ? nil : companyVaultIds)
         departure = started
         seams.save(started)
         await settle()
@@ -151,6 +158,7 @@ final class OrgDepartureService: ObservableObject {
         if let active = seams.activeJobId(), pending.sessionIds.contains(active) { return }
         if pending.contentErasedAt == nil {
             await seams.eraseContent(pending.packId)
+            await seams.eraseCompanyVaults(pending.companyVaultIds ?? [])
             guard var current = departure, current.enrolmentId == pending.enrolmentId, current.isPending else { return }
             current.contentErasedAt = seams.now()
             departure = current

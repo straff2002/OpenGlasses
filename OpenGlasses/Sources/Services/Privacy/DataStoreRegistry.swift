@@ -681,8 +681,13 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .notSubjectLinked,
                           owner: "VaultLinkStagingStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Vault/VaultLinkStagingStore.swift",
-                                       "OpenGlasses/Sources/Services/Vault/VaultLinkInstaller.swift"],
-                          location: "Caches/VaultLinkStaging/{approval}/archive.zip")
+                                       "OpenGlasses/Sources/Services/Vault/VaultLinkInstaller.swift",
+                                       "OpenGlasses/Sources/Services/OrgProfile/CompanyVaultService.swift"],
+                          // Plan LR: a company's vault packs and sealed manuals use the same store
+                          // in a folder of their own, and an unsealed manual waits there for the
+                          // vault it goes into; both are removed by the pass that made them.
+                          location: "Caches/VaultLinkStaging/{approval}/archive.zip, and "
+                              + "Caches/CompanyVaultStaging/{download}/archive.zip for a company's vaults and manuals")
 
         case .tableChecks:
             // The checks this phone made of tables read from a picture (Plan JN P3), for a vault it
@@ -1071,7 +1076,9 @@ enum SensitiveStore: String, CaseIterable {
             // the firm, what it still owes the firm (`OrgDeparture`: which session logs, and by
             // when they are erased). No content: names, ids and dates. The wearer's, as the
             // delivery settings are; removing the profile is the delete, and a departure record
-            // is kept after it only until the firm's records have gone.
+            // is kept after it only until the firm's records have gone. Plan LR: the record also
+            // holds which company vaults and manual revisions are installed and the catalog it
+            // planned from (names, versions, hashes), and the departure lists the vaults to erase.
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
                           protection: .platformDefault, backupExcluded: false, retention: .none,
                           deleteAll: .api("OrgProfileManager.remove()"),
