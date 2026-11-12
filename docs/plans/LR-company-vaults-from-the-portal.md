@@ -1,7 +1,7 @@
 # Plan LR — Company Vaults from the Portal (upload once, every phone has it, updates arrive by themselves)
 
-**Status:** 📝 Drafted 2026-11-13. Nothing built. [Decisions](#decisions-for-greig) open; decision 1 (manuals
-may be uploaded, with size limits) was given while drafting.
+**Status:** 📝 Drafted 2026-11-13. Nothing built. All five [decisions](#decisions-for-greig) taken 2026-11-13:
+decision 1 (manuals may be uploaded, with size limits) while drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, the daily renewal, *Managed by
 ⟨org⟩*, pack at enrolment), Plan [EG](EG-vault-packs.md) (signed packs, the catalog fetch/verify/install path,
@@ -114,7 +114,8 @@ the portal shows the `minAppBuild` the company's phones need.
 - **Never mid-job.** An update or removal that would change a vault while `activeJobId` is set waits. A *new*
   vault, or a new manual in a vault the job isn't using, may install during a job.
 - **Wi-Fi for manuals** by default ([decision 3](#decisions-for-greig)). A *Download now* on the row uses
-  cellular once. Vault core files use any network.
+  cellular once. The company's *Manuals on any network* setting, set by the partner in the portal, lifts the
+  Wi-Fi wait for every phone in that company. Vault core files use any network.
 - **Space:** before a manual set, the plan needs its size × 2 plus 1 GB free; otherwise it names the shortfall.
 - **The technician's own manuals** added to a company vault are kept across updates. They are removed with
   the vault only after the removal notice.
@@ -167,8 +168,8 @@ useless until the service's first phase is deployed.
   comparison), so existing profiles get updates as well. **Exit:** an in-memory transport and a fixture company:
   v1 → v2 with an open job (waits, then installs), a manual added (only it moves), a manual replaced, a vault
   removed, a tampered manual refused, a replayed catalog refused, not enough space named.
-- **P2 — optional, the fleet view.** Installed versions on the seat renewal, with the disclosure. Only on
-  [decision 4](#decisions-for-greig).
+- **P2 — the fleet view.** Installed versions on the seat renewal, with the disclosure in the same PR
+  ([decision 4](#decisions-for-greig): yes, after P1).
 - **P3 — device pass.** Two phones on different networks, one enrolled fresh from the activation key: every
   vault and manual arrives; v2 uploaded mid-job installs after the job; a 100 MB manual waits for Wi-Fi, then
   *Download now* on cellular; airplane mode mid-download resumes at the next foreground.
@@ -178,11 +179,11 @@ useless until the service's first phase is deployed.
 1. **Manuals in company vaults.** *Given 2026-11-13:* the partner or the customer may upload their own manuals,
    with size limits. They are delivered sealed to that company's phones only, never through the public catalog,
    and the app still never sends a manual off the phone.
-2. **The limits** in the table. *Recommended:* as written. The 2 GB company total is the only one not already
+2. **The limits** in the table. *Taken 2026-11-13 as recommended:* as written. The 2 GB company total is the only one not already
    set by the app.
-3. **Manuals over cellular.** *Recommended:* Wi-Fi by default with *Download now* per vault, and a company
+3. **Manuals over cellular.** *Taken 2026-11-13 as recommended:* Wi-Fi by default with *Download now* per vault, and a company
    setting the partner can switch to "any network" for crews who live on hotspots.
-4. **The fleet view (P2).** *Recommended:* yes, after P1. It answers "has everyone got the new version?" without
+4. **The fleet view (P2).** *Taken 2026-11-13 as recommended:* yes, after P1. It answers "has everyone got the new version?" without
    a phone call, at the cost of one more disclosed field on the seat renewal.
-5. **Customer self-upload.** *Recommended:* the partner first; the company's own administrator uploads manuals
+5. **Customer self-upload.** *Taken 2026-11-13 as recommended:* the partner first; the company's own administrator uploads manuals
    in the service's second phase, limited to their own company and to manuals (not vault core files).
