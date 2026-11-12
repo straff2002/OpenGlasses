@@ -143,9 +143,38 @@ enum DeviceSeatLease {
         let profileId: String
     }
 
+    /// Plan LR P2: a renewal also carries the company's vaults installed on this phone, by id and
+    /// version, so the portal can show which phones have the new version. Nil — and so absent
+    /// from the bytes — on a phone with none, so such a renewal is exactly what it was. Nothing
+    /// else: no manual's name, nothing the technician added.
     struct RenewRequest: Codable, Equatable, Sendable {
         let build: String
         let lease: String
+        var vaults: [InstalledVault]? = nil
+    }
+
+    /// One company vault as a renewal reports it (`SeatInstalledVault` in the licence core).
+    struct InstalledVault: Codable, Equatable, Sendable {
+        let vaultId: String
+        let version: String
+    }
+
+    /// The most a request may weigh (`SeatWire.maximumRequestBytes`), and the most vaults one
+    /// renewal names (`SeatInstalledVault.maximumPerRenewal`).
+    nonisolated static let maximumRequestBytes = 4_096
+    nonisolated static let maximumVaultsPerRenewal = 16
+
+    /// The renewal for `lease`: with the installed vaults when there are any and they fit, and
+    /// without them otherwise, so reporting a version can never make a renewal one the service
+    /// refuses.
+    nonisolated static func renewRequest(build: String, lease: String, vaults: [InstalledVault]) -> RenewRequest {
+        let listed = Array(vaults.sorted { $0.vaultId < $1.vaultId }.prefix(maximumVaultsPerRenewal))
+        guard !listed.isEmpty else { return RenewRequest(build: build, lease: lease) }
+        let request = RenewRequest(build: build, lease: lease, vaults: listed)
+        guard let bytes = try? encode(request), bytes.count <= maximumRequestBytes else {
+            return RenewRequest(build: build, lease: lease)
+        }
+        return request
     }
 
     struct ReleaseRequest: Codable, Equatable, Sendable {

@@ -92,7 +92,11 @@ final class VaultPackCatalogService: ObservableObject {
 
     /// Download → checksum → extract → signature → structural checks → validator → install.
     /// Every failure lands in `installStates` with a reason; nothing partial reaches the registry.
-    func install(_ entry: VaultPackCatalogEntry) async {
+    ///
+    /// `keeping` is the manuals the installed vault already holds (`VaultDocumentCarry.current`),
+    /// laid in beside the new core files so an update never takes them away (Plan LR). A pack
+    /// itself still ships no documents: that is checked on the pack before anything is added.
+    func install(_ entry: VaultPackCatalogEntry, keeping: [VaultDocumentCarry.Kept] = []) async {
         guard let url = URL(string: entry.downloadURL) else {
             installStates[entry.id] = .failed("bad download URL")
             return
@@ -110,7 +114,7 @@ final class VaultPackCatalogService: ObservableObject {
             return
         }
         installStates[entry.id] = .installing
-        switch installPack(zipData: zipData, signatureBase64: entry.packSignature, expectedId: entry.id) {
+        switch installPack(zipData: zipData, signatureBase64: entry.packSignature, expectedId: entry.id, keeping: keeping) {
         case .success(let warnings):
             installStates[entry.id] = .installed(warnings: warnings)
             onInstalled()
@@ -125,7 +129,8 @@ final class VaultPackCatalogService: ObservableObject {
     }
 
     /// The offline half of `install`, usable by a sideload path: verified bytes → installed vault.
-    func installPack(zipData: Data, signatureBase64: String, expectedId: String?) -> Result<[String], InstallFailure> {
+    func installPack(zipData: Data, signatureBase64: String, expectedId: String?,
+                     keeping: [VaultDocumentCarry.Kept] = []) -> Result<[String], InstallFailure> {
         let packData: Data
         let files: [String: Data]
         switch VaultPackArchive.extract(zipData: zipData) {
@@ -163,6 +168,10 @@ final class VaultPackCatalogService: ObservableObject {
                 let url = staging.appendingPathComponent(path)
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: url)
+            }
+            if !keeping.isEmpty {
+                let composed = try VaultDocumentCarry.compose(keeping, into: staging, manifest: manifest)
+                try JSONEncoder().encode(composed).write(to: staging.appendingPathComponent("manifest.json"))
             }
             let report = try VaultImporter.installReporting(from: staging)
             try VaultImporter.recordPack(pack, for: report.manifest.id)

@@ -18,9 +18,11 @@
   device. Avenkin has no user account, and one developer-operated service: a
   seat-checked organisation licence checks this phone's seat with the vendor's
   licence service about once a day (claim, renew, release), sending the enrolment
-  id, a public key made for this phone, the app build and the profile id, and
-  nothing else; only a phone holding such a licence makes the call (DeviceID
-  below). Every other transmission is user-directed app functionality sent under
+  id, a public key made for this phone, the app build and the profile id, and,
+  on a renewal, the ids and versions of the organisation's own vaults installed
+  on this phone, and nothing else; only a phone holding such a licence makes the
+  call (DeviceID below). The same service hosts an organisation's own vaults and
+  manuals: the phone downloads them, and sends nothing but the requests for them. Every other transmission is user-directed app functionality sent under
   the user's own API keys to third-party providers (Anthropic / OpenAI / Gemini / Groq / OpenRouter
   / etc. for LLM + vision, ElevenLabs / OpenAI / xAI / Gemini for TTS, Deepgram for diarized
   captions, Deepgram or OpenAI for dictation when the wearer chooses a cloud
@@ -188,7 +190,9 @@
 		</dict>
 		<!-- Seat check for a seat-checked organisation licence: the enrolment id, a public key
 		     made for this phone (P-256, its private half in the Secure Enclave), the app build
-		     and the profile id, sent to the vendor's licence service about once a day. No name,
+		     and the profile id, sent to the vendor's licence service about once a day; a renewal
+		     also names the organisation's own vaults installed on the phone, by id and version
+		     (the organisation's content, not the wearer's: no manual name, nothing they added). No name,
 		     device model, vendor identifier or location; the service keeps no IP addresses.
 		     Only a phone holding a licence signed with seatCheck makes the call. -->
 		<dict>

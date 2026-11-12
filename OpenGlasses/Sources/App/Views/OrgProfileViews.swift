@@ -441,6 +441,16 @@ struct ManagedByOrganisationSection: View {
                                  systemImage: "arrow.down.circle")
                             .padding(12)
                     }
+                } else if let error = record.packInstallError, let packId = profile.vaultPack?.packId {
+                    // Plan LR: an update to a pack already installed failed; the installed one stays.
+                    OGDivider()
+                    OGNotice(text: "Couldn't update \(packId): \(error). It tries again at the next check.",
+                             systemImage: "exclamationmark.triangle")
+                        .padding(12)
+                }
+                // Plan LR: the company's own vaults, and Check for Updates.
+                if profile.companyVaults != nil, record.revoked != true {
+                    CompanyVaultRowsView(manager: manager, organization: profile.organizationName)
                 }
                 if manager.needsModelSetup, let model = manager.organizationModel {
                     OGDivider()

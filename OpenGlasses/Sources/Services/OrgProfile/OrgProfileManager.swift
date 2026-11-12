@@ -66,6 +66,12 @@ struct OrgEnrolmentRecord: Codable, Equatable, Sendable {
     /// When the firm's content was erased because the lease had lapsed for `eraseAfterLapseDays`.
     /// Cleared by the renewal that brings the phone back, which reinstalls the pack.
     var lapseErasedAt: Date?
+
+    // Plan LR — the company's own vaults and manuals.
+
+    /// What this phone holds of the company's vaults, and the catalog generation high-water mark.
+    /// Nil on every record from before company vaults, and on a phone that has none.
+    var companyVaults: CompanyVaultState?
 }
 
 /// What the person holding the phone is shown before a profile is applied: who it is from, what it
@@ -245,6 +251,12 @@ final class OrgProfileManager: ObservableObject {
         /// The profile's sealed company credentials into the Keychain, on every apply, renewal and
         /// launch (`OrgCredentialSync`). Does nothing by default; `production` wires it.
         var syncCredentials: @MainActor (ConfigProfile) -> Void = { _ in }
+        /// Plan LR: the company vault pass, after every renewal attempt (`.routine`) and on Check
+        /// for Updates. Does nothing by default; `production` wires `CompanyVaultService`.
+        var syncCompanyVaults: @MainActor (_ reason: CompanyVaultSyncReason) async -> Void = { _ in }
+        /// Plan LR P1: bring the profile's public-catalog pack up to the catalog's version, between
+        /// jobs. Does nothing by default; `production` wires `OrgPackInstaller`.
+        var updatePack: @MainActor (String) async -> OrgPackInstaller.Outcome? = { _ in nil }
 
         /// The app's seams: every default above, and the departure wired to `OrgDepartureService`.
         static var production: Seams {
@@ -263,6 +275,8 @@ final class OrgProfileManager: ObservableObject {
             seams.releaseSeat = { DeviceSeatService.shared.release() }
             seams.noteLicenceReplaced = { DeviceSeatService.shared.noteLicenceReplaced(previousCode: $0, enrolment: $1) }
             seams.syncCredentials = { OrgCredentialSync.shared.apply($0) }
+            seams.syncCompanyVaults = { await CompanyVaultService.shared.sync($0) }
+            seams.updatePack = { await OrgPackInstaller.install(packId: $0) }
             seams.beginDeparture = { reason, record, profile in
                 AppStateProvider.shared?.workiz.remove()
                 OrgCredentialSync.shared.forget()
@@ -276,7 +290,8 @@ final class OrgProfileManager: ObservableObject {
                         reason, organizationName: profile?.organizationName ?? "your organisation",
                         enrolmentId: record.enrolmentId, enrolledAt: record.enrolledAt,
                         packId: profile?.vaultPack?.packId,
-                        undeliveredEraseDays: profile?.undeliveredEraseDays)
+                        undeliveredEraseDays: profile?.undeliveredEraseDays,
+                        companyVaultIds: (record.companyVaults?.vaults.keys).map { $0.sorted() } ?? [])
                 }
             }
             return seams
@@ -527,6 +542,8 @@ final class OrgProfileManager: ObservableObject {
         newRecord.heldStartingValues = held.isEmpty ? nil : held
         newRecord.modelConfigId = record?.modelConfigId
         newRecord.modelSetupPending = record?.modelSetupPending
+        // The same company's vaults stay; a move's went with the organisation it left.
+        newRecord.companyVaults = leaving == nil ? record?.companyVaults : nil
         reconcileModel(review.result.aiModel, organizationName: review.profile.organizationName,
                        record: &newRecord)
         seams.saveRecord(newRecord)
@@ -600,6 +617,23 @@ final class OrgProfileManager: ObservableObject {
             latest.packInstallError = nil
             latest.heldStartingValues = nil
         }
+        seams.saveRecord(latest)
+        record = latest
+    }
+
+    /// Plan LR P1: a pack the profile names and the phone already has is brought up to the public
+    /// catalog's version after a renewal — between jobs only, so nothing changes under an open one.
+    /// A failure is named on the managed row and tried again at the next renewal.
+    private func updateInstalledPack() async {
+        guard let current = record, current.pendingPackId == nil, current.revoked != true,
+              let packId = profile?.vaultPack?.packId, seams.activeJobId() == nil,
+              let outcome = await seams.updatePack(packId) else { return }
+        guard var latest = record, latest.enrolmentId == current.enrolmentId, latest.pendingPackId == nil else { return }
+        switch outcome {
+        case .installed: latest.packInstallError = nil
+        case .failed(let reason): latest.packInstallError = reason
+        }
+        guard latest != record else { return }
         seams.saveRecord(latest)
         record = latest
     }
@@ -744,13 +778,16 @@ final class OrgProfileManager: ObservableObject {
         // Plan CT PR 4: the organisation's opt-in — erase its content once the lease has been lapsed
         // this long without a renewal. Jobs are already closed when access locks.
         // No network is needed; the pack is reinstalled if a renewal is ever heard.
-        var erasingForLapse = false
+        var erasingForLapse: OrgEnrolmentRecord?
         if case .lapsed(let since) = status, locked, current.lapseErasedAt == nil,
            let days = profile.eraseAfterLapseDays, ConfigProfile.erasureDaysRange.contains(days),
            now >= since.addingTimeInterval(TimeInterval(days) * 86_400) {
             current.lapseErasedAt = now
             if let packId = profile.vaultPack?.packId { current.pendingPackId = packId }
-            erasingForLapse = true
+            // The departure erases the company vaults this record names; the record then holds
+            // none, so the renewal that brings the phone back installs them again (Plan LR).
+            erasingForLapse = current
+            current.companyVaults?.forgetInstalled()
         }
         if current != record {
             seams.saveRecord(current)
@@ -771,7 +808,7 @@ final class OrgProfileManager: ObservableObject {
             }
         default: break
         }
-        if erasingForLapse { seams.beginDeparture(.lapsed, current, profile) }
+        if let departing = erasingForLapse { seams.beginDeparture(.lapsed, departing, profile) }
         return status
     }
 
@@ -784,8 +821,29 @@ final class OrgProfileManager: ObservableObject {
     /// verified, renews.
     func renewIfDue(force: Bool = false) async {
         await renewProfileIfDue(force: force)
+        // Plan LR: the company's vaults follow the profile they were listed in. The pass itself
+        // decides whether there is anything to do: a new generation, or work still waiting.
+        if isManaged { await seams.syncCompanyVaults(.routine) }
         // Plan JS P2: the seat lease rides the same pass, after any new licence the profile carried.
         if let enrolment = seatEnrolment { await seams.seatCheckIn(enrolment, force) }
+    }
+
+    /// *Check for Updates* under *Managed by ⟨org⟩*: renew the profile now, then fetch the company's
+    /// vault list whatever its generation, and install what is due.
+    func checkForUpdates() async {
+        await renewProfileIfDue(force: true)
+        if isManaged { await seams.syncCompanyVaults(.checkForUpdates) }
+        if let enrolment = seatEnrolment { await seams.seatCheckIn(enrolment, true) }
+    }
+
+    /// Store what the company vault pass found, for this enrolment only: an answer that arrives
+    /// after the phone left or re-enrolled changes nothing.
+    func saveCompanyVaults(_ state: CompanyVaultState, enrolmentId: String) {
+        guard var current = record, current.enrolmentId == enrolmentId, current.revoked != true else { return }
+        current.companyVaults = state
+        guard current != record else { return }
+        seams.saveRecord(current)
+        record = current
     }
 
     private func renewProfileIfDue(force: Bool) async {
@@ -822,7 +880,7 @@ final class OrgProfileManager: ObservableObject {
             } else {
                 renew(with: renewed, document: text)
                 // A renewal after a lapse erasure reinstalls the pack now, not at the next pass.
-                if record?.pendingPackId != nil { await completePendingPack() }
+                if record?.pendingPackId != nil { await completePendingPack() } else { await updateInstalledPack() }
             }
         default:
             break

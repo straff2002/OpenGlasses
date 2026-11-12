@@ -41,6 +41,21 @@ final class VaultLinkStagingStore {
         self.root = root ?? caches.appendingPathComponent("VaultLinkStaging", isDirectory: true)
     }
 
+    /// Plan LR: where a company's sealed manuals and vault packs sit between download and
+    /// install, and an opened manual between unsealing and the vault it goes into. The same
+    /// protection, backup exclusion and on-disk cap as a link's archive, in a folder of its own;
+    /// nothing survives the pass that made it, and a folder found at launch is swept.
+    static func companyVaults(fileManager: FileManager = .default) -> VaultLinkStagingStore {
+        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first ?? fileManager.temporaryDirectory
+        return VaultLinkStagingStore(root: caches.appendingPathComponent("CompanyVaultStaging", isDirectory: true),
+                                     fileManager: fileManager, maximumBytes: companyVaultMaximumBytes)
+    }
+
+    /// The largest file company staging holds: a vault pack, or a sealed PDF manual.
+    static var companyVaultMaximumBytes: Int {
+        max(CompanyVaultLimits.vaultCoreBytes, CompanyManualSeal.sealedLength(plaintextBytes: CompanyVaultLimits.pdfBytes))
+    }
+
     /// An empty, protected file, created before any untrusted byte is written.
     func create() throws -> StagedVaultArchive {
         let id = UUID()

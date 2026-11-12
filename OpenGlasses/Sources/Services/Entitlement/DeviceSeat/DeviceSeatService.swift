@@ -80,6 +80,11 @@ final class DeviceSeatService: ObservableObject {
         var now: () -> Date = Date.init
         /// Tells the screens the entitlement may have changed.
         var entitlementChanged: @MainActor () -> Void = { LicenseService.shared.objectWillChange.send() }
+        /// Plan LR P2: the company vaults installed on this phone, for the renewal's fleet view.
+        var installedCompanyVaults: @MainActor () -> [DeviceSeatLease.InstalledVault] = {
+            (OrgProfileManager.shared.record?.companyVaults?.vaults ?? [:])
+                .map { DeviceSeatLease.InstalledVault(vaultId: $0.key, version: $0.value.version) }
+        }
     }
 
     static let shared = DeviceSeatService()
@@ -178,7 +183,8 @@ final class DeviceSeatService: ObservableObject {
         let ownLease = current.lease.flatMap { DeviceSeatLease.open($0, keys: seams.leaseKeys) }
             .map { $0.deviceKeyHash == DeviceSeatLease.deviceKeyHash(publicKeyX963: key.publicKeyX963) } ?? false
         var reply = ownLease
-            ? await exchange(.renew, DeviceSeatLease.RenewRequest(build: seams.build(), lease: current.lease ?? ""), key: key, origin: origin)
+            ? await exchange(.renew, DeviceSeatLease.renewRequest(build: seams.build(), lease: current.lease ?? "",
+                                                                 vaults: seams.installedCompanyVaults()), key: key, origin: origin)
             : await exchange(.claim, claimRequest(enrolment, key: key), key: key, origin: origin)
         // The seat was freed: ask for one again, which there may or may not be room for — unless
         // the phone itself let the seat go (a release) while the renewal was out, which a claim

@@ -271,7 +271,7 @@ extension NetworkRoute {
         case .expertBridgeWebhook: return "Notify a Field Assist expert endpoint that help was requested."
         case .expertSignaling: return "Exchange WebRTC signaling so an expert can see the wearer's camera."
         case .webRTCBrowserStreaming: return "Relay camera frames to a browser viewer through the signaling server."
-        case .licenceSeatLease: return "Claim, renew or release this phone's seat on a seat-checked organisation licence with the vendor's licence service, about once a day: the enrolment id, a public key made for this phone, the app build and the profile id, and nothing else."
+        case .licenceSeatLease: return "Claim, renew or release this phone's seat on a seat-checked organisation licence with the vendor's licence service, about once a day: the enrolment id, a public key made for this phone, the app build and the profile id, and on a renewal the ids and versions of the organisation's own vaults installed here, and nothing else."
         case .workizAPI: return "Read assigned jobs and write a confirmed work report to the technician’s Workiz account."
         case .offlineEndpointSync: return "Flush queued offline records to the configured sync endpoint."
         case .twitchChatSocket: return "Read and post broadcast chat messages."

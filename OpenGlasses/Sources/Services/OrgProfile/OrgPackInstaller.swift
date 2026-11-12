@@ -8,6 +8,10 @@ import Foundation
 /// the structural checks and hands it to `VaultImporter`. The profile carries only the pack's id — a
 /// profile never carries a pack's bytes — so a pack the catalog does not list is a failure with a
 /// reason, never an install from anywhere else.
+///
+/// Plan LR P1: a pack already on the phone is brought up to the catalog's version — the same
+/// version comparison the Vault Packs screen makes — keeping the manuals the vault holds and the
+/// technician's overlay. `OrgProfileManager` asks only between jobs.
 enum OrgPackInstaller {
 
     enum Outcome: Equatable, Sendable {
@@ -31,10 +35,11 @@ enum OrgPackInstaller {
         guard let entry = catalog.entries.first(where: { $0.id == packId }) else {
             return .failed("The vault pack \(packId) is not in the catalog.")
         }
-        if VaultImporter.installedPack(for: entry.vaultId)?.id == packId {
+        if let installed = VaultImporter.installedPack(for: entry.vaultId), installed.id == packId,
+           !VaultPackRowState.isNewer(entry.version, than: installed.version) {
             return .installed(vaultId: entry.vaultId)
         }
-        await catalog.install(entry)
+        await catalog.install(entry, keeping: VaultDocumentCarry.current(vaultId: entry.vaultId))
         switch catalog.installStates[entry.id] {
         case .installed?:
             return .installed(vaultId: entry.vaultId)

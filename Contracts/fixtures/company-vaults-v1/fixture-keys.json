@@ -1,0 +1,8 @@
+{
+  "companySecretLabel" : "Avenkin public fixture company secret v1",
+  "derivation" : "private key and company secret are SHA-256 of the UTF-8 label",
+  "fixtureOnly" : true,
+  "packCatalogKeyLabel" : "Avenkin public fixture pack-catalog key v1",
+  "packCatalogPublicKey" : "iyLf5aGWfeLB0+3EM2NNyF9TCbo7KjOFbtFCVUeu8ho=",
+  "profileId" : "fixture-company"
+}

@@ -54,6 +54,16 @@ public enum ProfileContract {
     public struct OfficeAuthority: Codable, Equatable {
         public let organizationID: String; public let administratorPublicKey: String; public let transportPolicy: String
     }
+    /// Plan LR — where the company's own vaults are listed: a pointer, never content. Mirrors
+    /// `ConfigProfile.CompanyVaultsReference`. `generation` rises with every change the partner
+    /// makes, so a phone fetches the catalog only when it is above the one it has applied;
+    /// `minAppBuild` is the oldest build that can read it (older builds ignore the field).
+    public struct CompanyVaults: Codable, Equatable {
+        public let catalog: String; public let generation: Int; public let minAppBuild: Int?
+        public init(catalog: String, generation: Int, minAppBuild: Int? = nil) {
+            self.catalog = catalog; self.generation = generation; self.minAppBuild = minAppBuild
+        }
+    }
     /// Plan HA C2 — mirrors `ConfigProfile.LockdownSpec`.
     public struct Lockdown: Codable, Equatable {
         public let open: [String]?; public let lock: [String]?; public let closedTools: [String]?
@@ -82,18 +92,21 @@ public enum ProfileContract {
         public var officeAuthority: OfficeAuthority?
         /// Sealed company credentials by name (`Credential`), never a readable key.
         public var credentials: [String: String]?
+        /// Plan LR: the company vault catalog. Absent on every profile without company vaults.
+        public var companyVaults: CompanyVaults?
         public init(profileId: String, organizationName: String, leaseDays: Int, policyExpiry: String? = nil,
                     eraseAfterLapseDays: Int? = nil, undeliveredEraseDays: Int? = nil, licenceCode: String? = nil,
                     vaultPack: VaultPack? = nil, skillPacks: [String]? = nil, revokedEnrolmentIds: [String]? = nil,
                     settings: [String: Setting]? = nil, aiModel: AIModel? = nil, edition: String? = nil,
                     adminCard: String? = nil, lockdown: Lockdown? = nil, officeAuthority: OfficeAuthority? = nil,
-                    credentials: [String: String]? = nil) {
+                    credentials: [String: String]? = nil, companyVaults: CompanyVaults? = nil) {
             self.profileId = profileId; self.organizationName = organizationName; self.leaseDays = leaseDays
             self.policyExpiry = policyExpiry; self.eraseAfterLapseDays = eraseAfterLapseDays
             self.undeliveredEraseDays = undeliveredEraseDays; self.licenceCode = licenceCode; self.vaultPack = vaultPack
             self.skillPacks = skillPacks; self.revokedEnrolmentIds = revokedEnrolmentIds; self.settings = settings
             self.aiModel = aiModel; self.edition = edition; self.adminCard = adminCard; self.lockdown = lockdown
             self.officeAuthority = officeAuthority; self.credentials = credentials
+            self.companyVaults = companyVaults
         }
     }
 
@@ -120,6 +133,8 @@ public enum ProfileContract {
         public let lockdown: Lockdown?
         public let officeAuthority: OfficeAuthority?
         public let credentials: [String: String]?
+        /// Optional and omitted when nil, so a profile without company vaults is the bytes it was.
+        public let companyVaults: CompanyVaults?
         public let settings: [String: Setting]
     }
 
@@ -266,7 +281,18 @@ public enum ProfileContract {
         }
         if let model = input.aiModel { try checkAIModel(model) }
         if let boxes = input.credentials { try Credential.checkBoxes(boxes) }
+        if let vaults = input.companyVaults { try checkCompanyVaults(vaults) }
         for (key, setting) in input.settings ?? [:] { try checkSetting(key, setting) }
+    }
+
+    /// The company vault pointer: an HTTPS catalog address, a generation of 1 or more, and a
+    /// positive `minAppBuild` when there is one.
+    public static func checkCompanyVaults(_ vaults: CompanyVaults) throws {
+        guard CompanyVaultContract.isDownloadURL(vaults.catalog) else {
+            throw Invalid(message: "companyVaults.catalog must be an https address with no credentials or fragment")
+        }
+        guard vaults.generation >= 1 else { throw Invalid(message: "companyVaults.generation must be 1 or more") }
+        if let build = vaults.minAppBuild, build < 1 { throw Invalid(message: "companyVaults.minAppBuild must be positive") }
     }
 
     /// The office's organisation identifier rule: 1–80 of `A-Z a-z 0-9 - _ .`, never `.` or `..`.
@@ -284,6 +310,7 @@ public enum ProfileContract {
                  vaultPack: input.vaultPack, skillPacks: input.skillPacks, revokedEnrolmentIds: input.revokedEnrolmentIds,
                  aiModel: input.aiModel, edition: input.edition, adminPasscode: adminPasscode,
                  adminCard: input.adminCard?.lowercased(), lockdown: input.lockdown,
-                 officeAuthority: input.officeAuthority, credentials: input.credentials, settings: input.settings ?? [:])
+                 officeAuthority: input.officeAuthority, credentials: input.credentials,
+                 companyVaults: input.companyVaults, settings: input.settings ?? [:])
     }
 }
