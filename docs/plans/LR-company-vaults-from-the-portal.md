@@ -1,7 +1,10 @@
 # Plan LR — Company Vaults from the Portal (upload once, every phone has it, updates arrive by themselves)
 
-**Status:** 📝 Drafted 2026-11-13. Nothing built. All five [decisions](#decisions-for-greig) taken 2026-11-13:
-decision 1 (manuals may be uploaded, with size limits) while drafting, decisions 2–5 as recommended.
+**Status:** 🔨 P0, P1 and P2 built 2026-11-13 on `docs/lr-company-vaults` (not yet pushed), with the shared wire
+contract in `Tools/LicenceIssuance` and [Contracts/company-vaults.md](../../Contracts/company-vaults.md) — see
+[As built](#as-built). Owed: the service's first phase, the P3 device pass and the catalog sync. All five
+[decisions](#decisions-for-greig) taken 2026-11-13: decision 1 (manuals may be uploaded, with size limits) while
+drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) (the signed profile, the daily renewal, *Managed by
 ⟨org⟩*, pack at enrolment), Plan [EG](EG-vault-packs.md) (signed packs, the catalog fetch/verify/install path,
@@ -187,3 +190,96 @@ useless until the service's first phase is deployed.
    a phone call, at the cost of one more disclosed field on the seat renewal.
 5. **Customer self-upload.** *Taken 2026-11-13 as recommended:* the partner first; the company's own administrator uploads manuals
    in the service's second phase, limited to their own company and to manuals (not vault core files).
+
+## As built
+
+Built 2026-11-13: P0, P1 and P2 in four commits on one branch, the contract first.
+
+**The contract** (`Tools/LicenceIssuance/Sources/LicenceIssuance/CompanyVaults.swift`, `CompanyVaultContract`;
+written up for the service in [Contracts/company-vaults.md](../../Contracts/company-vaults.md)):
+- `ProfileContract.CompanyVaults {catalog, generation, minAppBuild?}` on `Input` and `Document`, checked by
+  `checkCompanyVaults` (HTTPS, generation ≥ 1). Omitted when nil, so a profile without it is the bytes it was.
+- The catalog: envelope `{payload, signature}`, Ed25519 by the pack-catalog key over
+  `openglasses.company-vault-catalog.v1\n` + payload; payload `format`, `version` 1, `profileId`, `generation`,
+  `issued`, `manualsOnAnyNetwork`, `vaults` (EG pack rows, `sizeBytes` required), `manuals` (`vaultId`,
+  `fileName`, `revision`, `sizeBytes`, `sealedSha256`, `downloadURL`, `kind`). `sign`, `open`, `check`,
+  `checkPackFiles`.
+- `ManualSeal`: AES-GCM under HKDF-SHA256(company secret, info `openglasses.company-manual.v1`), 1 MiB chunks,
+  each authenticating company, vault, file name, revision, header, index and last-chunk flag. `seal`, `open`,
+  the streaming `open(length:read:…)` and `sealFile(at:to:…)`, `sealedLength`.
+- `Limits`: PDF 128 MiB, Word 100 MiB, text 20 MiB, pack 250 MiB with files ≤ 20 MiB, company 2 GiB, 64 vaults
+  and 2,000 manuals a catalog.
+- `SeatRenewRequest.vaults: [SeatInstalledVault]?`, `SeatRecord.vaults`, `SeatPolicy.renew(…, vaults:)` and
+  `SeatPolicy.fleetVersions` for the portal.
+- Golden fixtures in `Contracts/fixtures/company-vaults-v1/` (invented content; keys are SHA-256 of public labels),
+  read by `CompanyVaultTests` in the package and `CompanyVaultContractTests` in the app.
+
+**P0 (phone):** `ConfigProfile.companyVaults` (`CompanyVaultsReference`, decoded without failing);
+`CompanyVaultCatalog` (verify, bound to the profile id; the generation high-water mark is on the enrolment
+record, `OrgEnrolmentRecord.companyVaults.highWater`; a lower generation is a replay, one below the profile's
+is "not caught up"; rows over a cap are left out and named); `CompanyManualSeal`; `CompanyVaultLimits`; and the
+pure `CompanyVaultPlan` with every case listed above, plus `CompanyVaultRow` (the rows' wording) and
+`CompanyVaultDownloads` (the still-downloading prompt line).
+
+**P1 (phone):** `CompanyVaultService` runs after every renewal attempt (`OrgProfileManager.renewIfDue`, which
+already runs at launch, foreground and daily), on *Check for Updates* (`OrgProfileManager.checkForUpdates`) and
+when a job closes. Packs install through `VaultPackCatalogService` with the company row and the pack key;
+manuals download through `BoundedHTTPClient` into protected staging (`VaultLinkStagingStore.companyVaults()`,
+`Caches/CompanyVaultStaging`), are checked for length and `sealedSha256`, opened, checked against `revision`, and
+laid into the vault by `VaultDocumentCarry.relay` then indexed by `VaultImporter.syncDocuments`. A pack update
+keeps the vault's manuals (`VaultPackCatalogService.install(_:keeping:)`), so the technician's own manuals and
+overlay survive. `CompanyVaultRowsView` under *Managed by ⟨org⟩*. `VaultRegistry.isUnlocked` locks a company
+vault with the organisation's content; the departure records `companyVaultIds` and erases them
+(`OrgDepartureService.Seams.eraseCompanyVaults`); a lapse erasure forgets them on the record so a renewal
+reinstalls them. `OrgPackInstaller` updates a public-catalog pack when the catalog's version is newer, keeping its
+manuals, and `OrgProfileManager` asks only between jobs after a renewal.
+
+**P2 (phone):** the seat renewal carries the installed company vaults (`DeviceSeatLease.renewRequest`), at most
+16 and only while the request stays within 4,096 bytes; none, and the bytes are unchanged. Disclosed in the same
+commit: `PrivacyInfo.xcprivacy` (header and seat comment; no new data type — the organisation's content
+versions, like the build number already sent), both Privacy footers in `SettingsView`, the
+`licenceSeatLease` route description, and `TelemetryOptOutGuardTests`.
+
+**Decided differently, or left out:**
+- A profile that stops carrying `companyVaults` changes nothing on the phone, rather than removing the vaults: the
+  service removes a vault by publishing a catalog without it. Leaving the firm still erases them.
+- The catalog and the downloads go through `BoundedHTTPClient` with no `NetworkRoute` case and no Medical Local
+  Only refusal, exactly as the profile fetch does (they send nothing of the phone's).
+- A manual row the phone refuses (over a cap, a bad name) is left out and named, and is not treated as a removal of
+  that manual; the rest of the catalog is used.
+- The space rule (size × 2 + 1 GB) is applied to vault packs as well as manual sets.
+- *Download now* is held in memory for one pass, not stored.
+- Company state lives on the enrolment record, so no new store was registered; the staging folder is registered
+  under `vaultLinkStaging`.
+- A re-lay revalidates every manual in the vault (the importer's own validator), which for a vault holding
+  gigabytes of PDFs takes time on the phone; the P3 pass should time it.
+- The pack must pass the phone's vault validator, so its `prompt_rules` must address fabrication and citation;
+  the contract says so.
+- Not headless-tested: the `VaultRegistry` lock for a company vault and the production departure wiring (they
+  read the shared manager); covered by review and P3.
+
+**New UI strings (not synced to the catalog):** "Check for Updates"; "Download now"; "Downloads these manuals
+over mobile data, this once."; "Version %@"; "Updated %@"; "%@ removed %@ from this phone, with the manuals in
+it."; "Couldn't update %@: %@. It tries again at the next check."; "Version %@ ready — installs after this job.";
+"Removed by your organisation — leaves this phone after this job."; "Manual changes ready — they install after
+this job."; "Manuals (%@) download on Wi-Fi."; "Not enough space for the %@ manuals: %@ needed."; "Needs a newer
+version of the app (build %lld or later)."; "Downloading %@."; "Downloading %lld manuals."; "Installing."; "Your
+organisation's vault list can't be read by this phone."; "Your organisation's vaults need a newer version of the
+app (build %lld or later)."; "Couldn't reach your organisation's vault list. It tries again when the app opens.";
+"Couldn't install %@: %@."; "Couldn't add the new manuals to %@. It tries again when the app opens."; "The manuals
+can't be opened on this phone. Enter your company's activation key again."; "%@ doesn't match your
+organisation's vault list, so it was refused."; "%@ can't be opened on this phone. Enter your company's activation
+key again."; "%@ didn't arrive whole. It tries again when the app opens."; "Couldn't download %@. It tries again
+when the app opens."; "it did not finish installing"; "The vault list could not be read."; "The vault list isn't
+signed by Avenkin, so nothing in it was used."; "The vault list needs a newer version of the app."; "The vault
+list is for another company, so nothing in it was used."; "An older vault list was served, so nothing in it was
+used."; "The vault list isn't up to date yet. It tries again later."; "%@ can't be installed: its entry in the
+vault list is incomplete."; "%@ is larger than the %@ a vault may be."; "A manual can't be downloaded: its entry
+in the vault list is incomplete."; "%@ is larger than the %@ this kind of manual may be."; "The vault is not
+installed on this phone."; "%@ is missing from the vault on this phone."; and the changed Privacy footer sentence
+(both builds): "…the app build, the profile id and the versions of your organisation's vaults on this phone;
+never a name, device model or location."
+
+**Owed:** the service's first phase (publishing the catalog, packs and sealed manuals); the P3 device pass; the
+catalog sync for the strings above.
+
