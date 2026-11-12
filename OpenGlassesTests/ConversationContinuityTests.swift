@@ -288,6 +288,71 @@ final class ConversationContinuityTests: XCTestCase {
         XCTAssertEqual(ConversationContinuity.recentThreads(in: store, limit: 1).map(\.id), [newer])
     }
 
+    // MARK: Date headings
+
+    private var utc: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    /// 12 Nov 2026, 09:00 UTC.
+    private var now: Date {
+        utc.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: 9))!
+    }
+
+    private func thread(_ title: String, daysAgo: Int, hour: Int = 12) -> ConversationThread {
+        var thread = ConversationThread(mode: "direct", title: title)
+        let day = utc.date(byAdding: .day, value: -daysAgo, to: utc.startOfDay(for: now))!
+        thread.updatedAt = utc.date(byAdding: .hour, value: hour, to: day)!
+        return thread
+    }
+
+    func testEachThreadSitsUnderTheHeadingForWhenItWasLastTouched() {
+        func bucket(_ daysAgo: Int, hour: Int = 12) -> ConversationContinuity.DateBucket {
+            ConversationContinuity.dateBucket(for: thread("t", daysAgo: daysAgo, hour: hour).updatedAt,
+                                              now: now, calendar: utc)
+        }
+        XCTAssertEqual(bucket(0, hour: 0), .today, "Just after midnight is still today")
+        XCTAssertEqual(bucket(-1), .today, "A clock moved back must not hide a thread")
+        XCTAssertEqual(bucket(1, hour: 23), .yesterday)
+        XCTAssertEqual(bucket(2), .previous7Days)
+        XCTAssertEqual(bucket(7), .previous7Days)
+        XCTAssertEqual(bucket(8), .previous30Days)
+        XCTAssertEqual(bucket(30), .previous30Days)
+        let october = utc.date(from: DateComponents(year: 2026, month: 10, day: 1))!
+        XCTAssertEqual(bucket(31), .month(october), "31 days before 12 Nov is 12 Oct")
+        let lastYear = utc.date(from: DateComponents(year: 2025, month: 11, day: 1))!
+        XCTAssertEqual(bucket(370), .month(lastYear))
+    }
+
+    func testSectionsKeepTheGivenOrderAndGroupOnlyLikeWithLike() {
+        let threads = [
+            thread("a", daysAgo: 0), thread("b", daysAgo: 0), thread("c", daysAgo: 1),
+            thread("d", daysAgo: 4), thread("e", daysAgo: 45), thread("f", daysAgo: 50),
+            thread("g", daysAgo: 80),
+        ]
+        let sections = ConversationContinuity.dateSections(threads, now: now, calendar: utc)
+        XCTAssertEqual(sections.map { $0.threads.map(\.title) },
+                       [["a", "b"], ["c"], ["d"], ["e", "f"], ["g"]])
+        XCTAssertEqual(sections.prefix(3).map(\.bucket), [.today, .yesterday, .previous7Days])
+        XCTAssertEqual(sections.flatMap(\.threads).map(\.id), threads.map(\.id),
+                       "Sectioning must not drop, repeat or reorder a thread")
+    }
+
+    func testAnEmptyHistoryHasNoHeadings() {
+        XCTAssertTrue(ConversationContinuity.dateSections([], now: now, calendar: utc).isEmpty)
+    }
+
+    func testOnlyAnEarlierYearsMonthCarriesTheYear() {
+        let october = utc.date(from: DateComponents(year: 2026, month: 10, day: 1))!
+        let lastOctober = utc.date(from: DateComponents(year: 2025, month: 10, day: 1))!
+        let thisYear = ConversationContinuity.title(for: .month(october), now: now, calendar: utc)
+        let earlier = ConversationContinuity.title(for: .month(lastOctober), now: now, calendar: utc)
+        XCTAssertFalse(thisYear.contains("2026"))
+        XCTAssertTrue(earlier.contains("2025"))
+    }
+
     // MARK: What the page draws (EB device round 2)
 
     /// The defect, at the seam that caused it: resuming a thread changed the store and the model's

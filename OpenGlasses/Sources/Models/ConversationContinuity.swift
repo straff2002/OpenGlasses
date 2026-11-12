@@ -25,6 +25,81 @@ enum ConversationContinuity {
         return Array(sorted.prefix(limit))
     }
 
+    // MARK: - Date sections
+
+    /// The stretch of time a list heading covers. Recent days are named; anything older than a
+    /// month is grouped by calendar month, so a long history reads as a handful of headings
+    /// rather than one per day.
+    enum DateBucket: Hashable {
+        case today, yesterday, previous7Days, previous30Days
+        /// The first moment of the month the threads were last touched in.
+        case month(Date)
+    }
+
+    struct DateSection: Identifiable {
+        let bucket: DateBucket
+        let threads: [ConversationThread]
+        var id: DateBucket { bucket }
+    }
+
+    /// Which heading a thread last touched at `date` sits under. A date in the future (a clock
+    /// moved back) counts as today rather than vanishing into a bucket of its own.
+    static func dateBucket(for date: Date, now: Date = Date(),
+                           calendar: Calendar = .current) -> DateBucket {
+        let day = calendar.startOfDay(for: date)
+        let today = calendar.startOfDay(for: now)
+        let daysAgo = calendar.dateComponents([.day], from: day, to: today).day ?? 0
+        switch daysAgo {
+        case ...0: return .today
+        case 1: return .yesterday
+        case 2...7: return .previous7Days
+        case 8...30: return .previous30Days
+        default:
+            let month = calendar.dateInterval(of: .month, for: date)?.start ?? day
+            return .month(month)
+        }
+    }
+
+    /// `threads` under date headings. The order within and across sections is the order given —
+    /// pass them newest first (`recentThreads`) and the headings come out newest first too.
+    static func dateSections(_ threads: [ConversationThread], now: Date = Date(),
+                             calendar: Calendar = .current) -> [DateSection] {
+        var order: [DateBucket] = []
+        var byBucket: [DateBucket: [ConversationThread]] = [:]
+        for thread in threads {
+            let bucket = dateBucket(for: thread.updatedAt, now: now, calendar: calendar)
+            if byBucket[bucket] == nil { order.append(bucket) }
+            byBucket[bucket, default: []].append(thread)
+        }
+        return order.map { DateSection(bucket: $0, threads: byBucket[$0] ?? []) }
+    }
+
+    /// The heading's words. A month in the current year is named alone ("October"); an earlier
+    /// year's carries the year ("October 2025").
+    static func title(for bucket: DateBucket, now: Date = Date(),
+                      calendar: Calendar = .current) -> String {
+        switch bucket {
+        case .today:
+            return String(localized: "Today", comment: "Conversation list heading: last touched today.")
+        case .yesterday:
+            return String(localized: "Yesterday", comment: "Conversation list heading: last touched yesterday.")
+        case .previous7Days:
+            return String(localized: "Previous 7 Days",
+                          comment: "Conversation list heading: last touched in the past week.")
+        case .previous30Days:
+            return String(localized: "Previous 30 Days",
+                          comment: "Conversation list heading: last touched in the past month.")
+        case .month(let start):
+            // The calendar's own time zone, or a month's first moment can format as the last day
+            // of the month before.
+            var style = Date.FormatStyle(calendar: calendar, timeZone: calendar.timeZone).month(.wide)
+            if calendar.component(.year, from: start) != calendar.component(.year, from: now) {
+                style = style.year()
+            }
+            return start.formatted(style)
+        }
+    }
+
     /// The active thread, if there is one.
     static func activeThread(in store: ConversationStore) -> ConversationThread? {
         guard let id = store.activeThreadId else { return nil }
