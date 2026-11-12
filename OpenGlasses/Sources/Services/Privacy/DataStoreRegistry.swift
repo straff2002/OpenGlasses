@@ -369,13 +369,16 @@ enum SensitiveStore: String, CaseIterable {
                           location: "Documents/known_faces.json")
 
         case .socialContext:
+            // Plan LN decision 4: moved out of the preferences domain into a file beside
+            // `brain.sqlite`, at the same class and backup exclusion; the old key is migrated once.
             return Record(store: self, dataClass: .socialProfile, subjectLinkage: .thirdPartySubject,
-                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .none,
                           deleteAll: .unavailable("people are forgotten one at a time"),
                           deleteSubject: .api("SocialContextStore.clearFacts(for:)"),
                           owner: "SocialContextStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/NativeTools/SocialContextTool.swift"],
-                          location: "preferences key `socialContext`")
+                          location: "Documents/social_context.json")
 
         case .speakerNames:
             return Record(store: self, dataClass: .biometric, subjectLinkage: .thirdPartySubject,

@@ -32,7 +32,13 @@ struct SocialContextTool: NativeTool {
             guard let fact = args["fact"] as? String, !fact.isEmpty else {
                 return "What should I remember about \(name)?"
             }
-            SocialContextStore.shared.addFact(person: name, fact: fact)
+            // Plan LN: a note about someone else's health, money, beliefs or legal trouble — or an
+            // ID number — is never kept, here or in the graph. The model hears the one sentence
+            // to say instead of a claim that it was noted.
+            let decision = SocialContextStore.shared.addFact(person: name, fact: fact)
+            guard decision.isKept else {
+                return decision.spokenNotice ?? MemoryRefusalNotice.sentence(for: decision.declinedCategory ?? .health)
+            }
             // Feed the knowledge graph: the person becomes an entity (so meetings can
             // link to them) and "works at Stripe" becomes a typed edge.
             BrainStore.shared.upsertEntity(kind: "person", name: name)
@@ -101,29 +107,118 @@ struct PersonEntry: Codable {
     let firstSeen: Date
 }
 
-class SocialContextStore {
+/// The people tool's notes, one entry per person.
+///
+/// Lives in `social_context.json` beside `brain.sqlite`, with the same first-unlock protection and
+/// backup exclusion (Plan LN decision 4). It used to be the preferences key `socialContext`, which
+/// sits in the app's preferences file at the platform default protection and goes into every
+/// backup; facts about other people do not belong there. The first open moves the key's contents
+/// into the file and removes the key — once, idempotently, and never at the cost of the data: a
+/// failed move leaves the key where it was and reads carry on from it.
+///
+/// Every note goes through `MemoryWriteGate` (destination `.people`, so always about someone else).
+final class SocialContextStore {
     static let shared = SocialContextStore()
-    private let key = "socialContext"
 
-    /// Injectable so an erasure test can seed and clear a person without touching the wearer's
-    /// own preference domain.
+    /// The preferences key the notes lived under before the move.
+    static let legacyDefaultsKey = "socialContext"
+    static let fileName = "social_context.json"
+
+    /// Injectable so tests can seed and clear a person without touching the wearer's own
+    /// preference domain or documents.
     private let defaults: UserDefaults
+    private let fileURL: URL
+    private let fileManager: FileManager
+    private let lock = NSLock()
 
-    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+    init(directory: URL? = nil, defaults: UserDefaults = .standard,
+         fileManager: FileManager = .default) {
+        let dir = directory ?? fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.defaults = defaults
+        self.fileManager = fileManager
+        self.fileURL = dir.appendingPathComponent(Self.fileName)
+        migrateFromDefaultsIfNeeded()
+        StoreProtection.apply(.completeUntilFirstUserAuthentication, backupExcluded: true,
+                              to: fileURL, fileManager: fileManager)
+    }
+
+    // MARK: - Migration (Plan LN decision 4)
+
+    /// Whether the notes still sit in the old preferences key.
+    var hasLegacyEntries: Bool { defaults.object(forKey: Self.legacyDefaultsKey) != nil }
+
+    /// Move the old key into the file: read it, write the file, then remove the key. A file that
+    /// already exists is the result of an earlier move (or a later write), so the key is only
+    /// removed. Anything that fails leaves the key in place for the next launch.
+    private func migrateFromDefaultsIfNeeded() {
+        guard let data = defaults.data(forKey: Self.legacyDefaultsKey) else { return }
+        if fileManager.fileExists(atPath: fileURL.path) {
+            defaults.removeObject(forKey: Self.legacyDefaultsKey)
+            PrivacyLog.store(.socialContext, .legacyRetired)
+            return
+        }
+        guard let entries = try? JSONDecoder().decode([PersonEntry].self, from: data) else {
+            PrivacyLog.store(.socialContext, .loadFailed, detail: PrivacyToken("legacyUndecodable"))
+            return
+        }
+        guard write(entries) else { return }
+        defaults.removeObject(forKey: Self.legacyDefaultsKey)
+        PrivacyLog.store(.socialContext, .migrated, count: entries.count)
+    }
+
+    // MARK: - Storage
 
     private func load() -> [PersonEntry] {
-        guard let data = defaults.data(forKey: key),
-              let entries = try? JSONDecoder().decode([PersonEntry].self, from: data) else { return [] }
+        lock.lock(); defer { lock.unlock() }
+        let data: Data?
+        if fileManager.fileExists(atPath: fileURL.path) {
+            data = try? Data(contentsOf: fileURL)
+            if data == nil { PrivacyLog.store(.socialContext, .readFailed) }
+        } else {
+            // Not moved yet (the move failed this launch): the old key is still the truth.
+            data = defaults.data(forKey: Self.legacyDefaultsKey)
+        }
+        guard let data, let entries = try? JSONDecoder().decode([PersonEntry].self, from: data) else { return [] }
         return entries
     }
 
     private func persist(_ entries: [PersonEntry]) {
-        if let data = try? JSONEncoder().encode(entries) {
-            defaults.set(data, forKey: key)
+        lock.lock(); defer { lock.unlock() }
+        // A write that lands in the file retires the old key: the file now holds everything the
+        // key did (it was read from the key when the file did not exist yet).
+        if write(entries), defaults.object(forKey: Self.legacyDefaultsKey) != nil {
+            defaults.removeObject(forKey: Self.legacyDefaultsKey)
+            PrivacyLog.store(.socialContext, .legacyRetired)
         }
     }
 
-    func addFact(person: String, fact: String) {
+    /// Write the file atomically at first-unlock protection, excluded from backup.
+    @discardableResult
+    private func write(_ entries: [PersonEntry]) -> Bool {
+        do {
+            let data = try JSONEncoder().encode(entries)
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            StoreProtection.apply(.completeUntilFirstUserAuthentication, backupExcluded: true,
+                                  to: fileURL, fileManager: fileManager)
+            return true
+        } catch {
+            PrivacyLog.store(.socialContext, .saveFailed, error: SafeErrorSummary(error))
+            return false
+        }
+    }
+
+    // MARK: - Notes
+
+    /// Add a note about `person`, unless the write gate declines it. Returns the gate's decision;
+    /// nothing is written unless it keeps the note.
+    @discardableResult
+    func addFact(person: String, fact: String, origin: MemoryOrigin = .toldMe) -> MemoryWritePolicy.Decision {
+        let decision = MemoryWriteGate.decide(key: person, value: fact, origin: origin,
+                                              destination: .people)
+        if let category = decision.declinedCategory {
+            PrivacyLog.store(.socialContext, .declined, detail: PrivacyToken(category.rawValue))
+            return decision
+        }
         var entries = load()
         let normalized = person.lowercased()
         if let idx = entries.firstIndex(where: { $0.name.lowercased() == normalized }) {
@@ -132,6 +227,7 @@ class SocialContextStore {
             entries.append(PersonEntry(name: person, facts: [PersonFact(fact: fact, addedAt: Date())], firstSeen: Date()))
         }
         persist(entries)
+        return decision
     }
 
     func facts(for person: String) -> [String] {
@@ -157,15 +253,17 @@ class SocialContextStore {
         persist(entries)
     }
 
-    /// Generate prompt context for the AI to be aware of known people.
+    /// The people the wearer has told the assistant about, for the prompt — inside the same
+    /// untrusted-data envelope as saved memory (Plan LN §4): a note the wearer relayed can carry
+    /// words someone else chose, and it is reference data, never an instruction.
     func promptContext() -> String? {
         let entries = load()
         guard !entries.isEmpty else { return nil }
-        var block = "\nPEOPLE YOU KNOW (from previous interactions):"
+        var block = "PEOPLE YOU KNOW (from previous interactions; bring one up only when the user does):"
         for entry in entries.prefix(20) {
             let factList = entry.facts.suffix(3).map(\.fact).joined(separator: "; ")
             block += "\n- \(entry.name): \(factList)"
         }
-        return block
+        return PromptInjectionPolicy.wrap(toolName: "people_notes", content: block)
     }
 }

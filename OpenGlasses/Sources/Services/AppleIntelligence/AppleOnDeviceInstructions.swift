@@ -106,8 +106,11 @@ enum AppleOnDeviceInstructions {
                     clipped = String(text.prefix(memoryLimit)) + "…"
                     memoryDropped = text.count - memoryLimit
                 }
+                // Plan LN §5: the two-line manners ride with the memory, and leave with it when
+                // the budget drops the block.
                 return "Known about the user: \(clipped)\nTo remember a fact the user shares, add "
-                    + "[REMEMBER: key = value] to your reply; to forget one, [FORGET: key]. The tags are removed before speaking."
+                    + "[REMEMBER: key = value] to your reply; to forget one, [FORGET: key]. The tags are removed before speaking.\n"
+                    + MemoryMannersPrompt.shortForm
             }
 
         // The parts after the persona, in order. Optional ones are dropped, weather first, only if

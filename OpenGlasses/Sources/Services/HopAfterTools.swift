@@ -216,6 +216,14 @@ struct AttemptToolLedger: Equatable {
         return calls[max(0, start)...].map(\.quietCall)
     }
 
+    /// Plan LN §3: whether a tool whose output is untrusted ran, or may have, this turn — the web,
+    /// OCR, translation, captions, mail, an MCP server, the gateway
+    /// (`PromptInjectionPolicy.isUntrustedOutput`). An inferred memory from such a turn is not
+    /// kept: what the page or the sign said is not something the wearer told us.
+    var readUntrustedOutput: Bool {
+        ran.contains { PromptInjectionPolicy.isUntrustedOutput(toolName: $0.tool, isKnownNativeTool: $0.isNative) }
+    }
+
     var toolsRan: HopAfterTools.ToolsRan {
         let ran = self.ran
         if ran.isEmpty { return .none }

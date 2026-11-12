@@ -20,6 +20,25 @@ struct MemoryView: View {
                 }
             }
 
+            if model.showsSensitiveReviewPrompt {
+                Section {
+                    Button {
+                        model.startSensitiveReview()
+                    } label: {
+                        Label(MemoryScreenModel.sensitiveReviewPrompt(count: model.sensitiveReviewCount),
+                              systemImage: "eye.trianglebadge.exclamationmark")
+                    }
+                }
+            }
+
+            if model.showingSensitiveOnly {
+                Section {
+                    Button("Show everything") { model.finishSensitiveReview() }
+                } footer: {
+                    Text("These were saved before Avenkin stopped keeping card numbers and other people's private details. Nothing has been changed — forget the ones you don't want kept.")
+                }
+            }
+
             if model.showsEmptyState {
                 ContentUnavailableView {
                     Label("Nothing saved yet", systemImage: "brain.head.profile")

@@ -2011,6 +2011,9 @@ enum PrivacyLog {
         /// Kept caption sessions (Plan KP P5): how many lines a kept session had, how many expired
         /// or were cleared, and failures. Never a word of what was said, a speaker or a time.
         case captionSessions
+        /// The people tool's notes (Plan LN decision 4): opened, migrated off the preferences
+        /// domain, saved, and failures. Never a name or a note.
+        case socialContext
     }
 
     /// Which pool a memory belongs to. The namespace behind this is a persona id — a small,
@@ -2042,6 +2045,9 @@ enum PrivacyLog {
         /// A relation refused by the closed vocabulary. The count is the whole event: the
         /// rejected string came from free text, so it is counted in memory and never logged.
         case dropped
+        /// A write the memory gate would not keep (Plan LN): `detail` is the category
+        /// (`MemorySensitivity.Category`) — never the fact, the key or who it was about.
+        case declined
     }
 
     @discardableResult

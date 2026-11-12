@@ -24,27 +24,70 @@ final class MemoryScreenModel: ObservableObject {
     /// The outcome of the last forget, shown until dismissed.
     @Published var lastForget: MemoryForgetResult?
     @Published private(set) var lastCorrectionFailed = false
+    /// Plan LN §6: the list is narrowed to the facts that look sensitive while the wearer reviews
+    /// them.
+    @Published private(set) var showingSensitiveOnly = false
+    /// The facts saved before the write gate existed that it would not keep as they stand, worked
+    /// out once per load (read-only — nothing is deleted or moved by it).
+    @Published private(set) var sensitiveFactIDs: Set<MemoryFactID> = []
 
     private let repository: MemoryFactRepository
     private let forgetter: MemoryFactForgetter?
     private let corrector: MemoryFactCorrector?
+    private let reviewDefaults: UserDefaults
+
+    /// Set once the wearer has finished the sensitive-facts review, so the prompt to review is
+    /// shown once rather than on every visit.
+    static let sensitiveReviewDoneKey = "memorySensitiveReviewDone"
 
     init(repository: MemoryFactRepository, forgetter: MemoryFactForgetter?,
-         corrector: MemoryFactCorrector?, initialQuery: String = "") {
+         corrector: MemoryFactCorrector?, initialQuery: String = "",
+         reviewDefaults: UserDefaults = .standard) {
         self.repository = repository
         self.forgetter = forgetter
         self.corrector = corrector
         self.query = initialQuery
+        self.reviewDefaults = reviewDefaults
     }
 
     func reload() {
         listing = repository.load()
+        sensitiveFactIDs = Set(MemorySensitivityReview.flagged(listing.facts).map(\.id))
+        if showingSensitiveOnly, sensitiveFactIDs.isEmpty { finishSensitiveReview() }
+    }
+
+    // MARK: - Sensitive facts (Plan LN §6)
+
+    var sensitiveReviewCount: Int { sensitiveFactIDs.count }
+
+    /// "N saved facts look sensitive — review", until the wearer has been through them once.
+    var showsSensitiveReviewPrompt: Bool {
+        !showingSensitiveOnly && sensitiveReviewCount > 0
+            && !reviewDefaults.bool(forKey: Self.sensitiveReviewDoneKey)
+    }
+
+    func startSensitiveReview() {
+        guard sensitiveReviewCount > 0 else { return }
+        showingSensitiveOnly = true
+    }
+
+    /// Back to the whole list. The prompt is not offered again.
+    func finishSensitiveReview() {
+        showingSensitiveOnly = false
+        reviewDefaults.set(true, forKey: Self.sensitiveReviewDoneKey)
+    }
+
+    static func sensitiveReviewPrompt(count: Int) -> String {
+        String(localized: "\(count) saved facts look sensitive — review",
+               comment: "Memory screen button: some facts saved before the assistant stopped keeping sensitive details look sensitive; opens a list of just those. The number is how many.")
     }
 
     // MARK: - What is shown
 
     var visibleFacts: [MemoryFact] {
-        MemoryFactRepository.search(listing.facts, query: query)
+        let pool = showingSensitiveOnly ? listing.facts.filter { sensitiveFactIDs.contains($0.id) }
+                                        : listing.facts
+        return MemoryFactRepository.search(pool, query: query)
     }
 
     var sections: [Section] {

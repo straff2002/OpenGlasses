@@ -318,6 +318,18 @@ final class DataStoreRegistryTests: XCTestCase {
                              match: .conversationThreads)
     }
 
+    /// Plan LN decision 4: the people tool's notes are a file beside `brain.sqlite` now, at its
+    /// class and excluded from backup like it.
+    func testSocialContextFileAttributesMatchTheRegistry() throws {
+        let suite = "DataStoreRegistryTests.social.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = SocialContextStore(directory: workspace, defaults: defaults)
+        store.addFact(person: "Rangi", fact: "works the night shift at the depot")
+        try assertAttributes(of: workspace.appendingPathComponent(SocialContextStore.fileName),
+                             match: .socialContext)
+    }
+
     @MainActor
     func testFaceDatabaseAttributesMatchTheRegistry() throws {
         let service = FaceRecognitionService(directory: workspace)
@@ -557,7 +569,7 @@ final class DataStoreRegistryTests: XCTestCase {
         let exemptFromTheRule: Set<SensitiveStore> = [
             // Not file-backed by the app: an OS service and preference-backed stores, whose
             // exclusion is not the app's to set. Recorded here rather than quietly skipped.
-            .spotlightIndex, .socialContext, .speakerNames, .contextualNotes, .objectMemory,
+            .spotlightIndex, .speakerNames, .contextualNotes, .objectMemory,
             // The wearer's own writing, deliberately left restorable; see the registry's note.
             .agentDocuments, .recordings, .capturedPhotos, .recordedSessions, .vaultLedger,
         ]
