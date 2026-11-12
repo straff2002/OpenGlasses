@@ -5,6 +5,11 @@ import AVFoundation
 /// Falls back to iOS AVSpeechSynthesizer if no API key or quota exhausted
 @MainActor
 class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
+
+    /// The ElevenLabs model every reply is sent to. Multilingual, so the reply-language rule lets
+    /// the user's own language through (`ReplyLanguagePolicy`).
+    nonisolated static let elevenLabsModelID = "eleven_flash_v2_5"
+
     @Published var isSpeaking: Bool = false
 
     /// When true, TTS only speaks when glasses are connected (privacy mode).
@@ -1389,7 +1394,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
 
         let body: [String: Any] = [
             "text": text,
-            "model_id": "eleven_flash_v2_5",
+            "model_id": Self.elevenLabsModelID,
             "voice_settings": [
                 "stability": 0.5,
                 "similarity_boost": 0.75,

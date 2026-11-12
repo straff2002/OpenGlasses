@@ -31,6 +31,23 @@ enum SystemPromptBuilder {
             rules.append("- Asked for \(phrases): the tool for it is off on this phone because its trade is not "
                 + "turned on. Do not answer from your own knowledge; say exactly: \"\(FieldTradeGate.redirectMessage(trade))\"")
         }
+        // Sums answered from the model's head go wrong on decimals and units, and a wrong decimal
+        // read out on a job is a wrong job. Only alongside the tools it names.
+        let offersCalculate = toolNames.contains("calculate")
+        let offersConvert = toolNames.contains("convert_units")
+        if offersCalculate || offersConvert {
+            var routes: [String] = []
+            if offersCalculate {
+                routes.append("any arithmetic with decimals, percentages or more than two numbers goes through calculate")
+            }
+            if offersConvert { routes.append("every unit conversion goes through convert_units") }
+            var rule = "- Do not work numbers out in your head: " + routes.joined(separator: ", and ")
+                + ". Say the result, not the working."
+            if toolNames.contains("domain_calc") {
+                rule += " A trade calculation domain_calc covers still goes to domain_calc."
+            }
+            rules.append(rule)
+        }
         if toolNames.contains("health_check") {
             rules.append("""
             - Health safety is NOT answerable from your own knowledge: for ANY question about whether a \
@@ -41,6 +58,49 @@ enum SystemPromptBuilder {
         }
         return rules.map(flatten).joined(separator: "\n")
     }
+
+    /// How a spoken reply is shaped: it is heard through a speaker in the ear, not read on a
+    /// screen, so a closing offer costs the user a turn to decline, a repeated question means the
+    /// first answer didn't land, and a garbled transcript must not become a sent message.
+    ///
+    /// Appended beside `appGuide` on every route, so it reaches a preset the user wrote too. Fixed
+    /// text: the one variable is the reply-language line, which changes only with the voice
+    /// setting, so the cacheable head does not move turn to turn.
+    static func spokenManners(replyLanguage: ReplyLanguagePolicy.Clause) -> String {
+        """
+        SPOKEN REPLIES:
+        Your reply is heard, not read, so:
+        - End on the answer. Don't close with an offer or a question unless you cannot go on without the answer. \
+        Next questions go only in the FOLLOW-UPS tail when one is asked for, never in what you say.
+        - A question asked again means the first answer didn't land: answer it shorter or another way, and never \
+        say "as I said".
+        - Match the user's length: a short question gets a short answer. When they are venting rather than asking, \
+        acknowledge it; don't try to fix it.
+        - \(ReplyLanguagePolicy.text(replyLanguage))
+        - When the user corrects you and you are confident they are wrong, say why once and allow that you could be \
+        mistaken. Don't agree just to agree, and don't argue the point twice.
+        - Speech recognition is imperfect. For a question, answer the likeliest meaning. Before sending a message, \
+        making a call or controlling the home from words that don't quite make sense, ask what they meant.
+        """
+    }
+
+    /// `spokenManners` in two lines, for the on-device prompts beside `onDeviceAppGuide`.
+    static func onDeviceSpokenManners(replyLanguage: ReplyLanguagePolicy.Clause) -> String {
+        """
+        SPOKEN REPLIES: End on the answer, with no closing offer or question unless you need one to go on. Asked \
+        again, answer shorter or another way, never "as I said"; match the user's length.
+        \(ReplyLanguagePolicy.shortText(replyLanguage)) If a correction seems wrong, say why once. Before a message, \
+        call or home control from words that don't quite make sense, ask.
+        """
+    }
+
+    /// What every vision block says about the camera: in the user's words, what they are looking
+    /// at, so "In the image I can see…" does not leak into a spoken reply.
+    static let visionWordingLine = "Talk about what the user is looking at, never \"the image\" or \"the photo\"."
+
+    /// When a cluttered view leaves the subject unclear: one specific guess, not an inventory.
+    static let visionAmbiguityLine = "When it isn't clear what they mean, say so and give one specific guess "
+        + "(\"the grey box on the left looks like a contactor\") rather than describing everything in view."
 
     /// Where the assistant's own settings live in this app, so "how do I change your voice?" gets
     /// the real path. Without it the model has never heard of the app it runs in and answers from

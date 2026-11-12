@@ -54,7 +54,8 @@ final class SystemPromptBuilderTests: XCTestCase {
     }
 
     func testNoRoutingRulesWithoutGatedTools() {
-        XCTAssertEqual(SystemPromptBuilder.routingRules(toolNames: ["get_weather", "calculate"]), "")
+        // `calculate` has its own rule since Plan LO §3 (`SpokenMannersTests`).
+        XCTAssertEqual(SystemPromptBuilder.routingRules(toolNames: ["get_weather", "flashlight"]), "")
         XCTAssertEqual(SystemPromptBuilder.routingRules(toolNames: []), "")
     }
 

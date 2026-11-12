@@ -12,7 +12,8 @@ import Foundation
 ///
 /// - the wearer's persona, without its camera section (this model never sees a photo), condensed
 ///   on a sentence boundary with `AppleToolSchema.condense` only when it does not fit whole;
-/// - the authored short app guide and safety policy (`SystemPromptBuilder.onDeviceAppGuide`,
+/// - the authored short app guide, spoken manners and safety policy
+///   (`SystemPromptBuilder.onDeviceAppGuide`, `.onDeviceSpokenManners`,
 ///   `PromptInjectionPolicy.onDeviceSystemPromptPolicy`) — every rule kept, in fewer words, rather
 ///   than the long ones cut off mid-list;
 /// - a compact job summary while a job is open, never manual passages, and a plain line that
@@ -71,6 +72,9 @@ enum AppleOnDeviceInstructions {
     struct Inputs: Equatable {
         var persona: String
         var appGuide: String
+        /// The two-line spoken manners (`SystemPromptBuilder.onDeviceSpokenManners`). Empty leaves
+        /// the block out.
+        var spokenManners: String = ""
         var safetyPolicy: String
         /// "Monday, 20 October 2026, 9:14 AM (Pacific/Auckland)".
         var dateTime: String
@@ -118,6 +122,9 @@ enum AppleOnDeviceInstructions {
         var parts: [(name: String, text: String, optional: Int?)] = [
             ("app guide (on-device)", inputs.appGuide, nil),
         ]
+        if !inputs.spokenManners.isEmpty {
+            parts.append(("spoken manners (on-device)", inputs.spokenManners, nil))
+        }
         if let job = inputs.job {
             parts.append(("field assist: job summary", job.render(), nil))
         }
