@@ -1,6 +1,6 @@
 # Plan LM — The Background and Notification Foundation (one background wake for every plan, buttons on a notification, and a record of what really ran)
 
-**Status:** 🚧 P0–P2 built 2026-11-12: written 2026-11-11 in a container with no Swift toolchain, then compiled and tested on a Mac the next day (rebased onto main, one compile fix, Debug tests and a Release simulator build green). P3 is Plan DZ PR6, not started; the P4 device pass is owed. The four new UI strings were synced into the catalog with translations the same day. Drafted the same day
+**Status:** 🚧 P0–P2 built 2026-11-12: written 2026-11-11 in a container with no Swift toolchain, then compiled and tested on a Mac the next day (rebased onto main, one compile fix, Debug tests and a Release simulator build green). P3 (Plan DZ PR6) built 2026-11-12, headless; the P4 device pass is owed. The four new UI strings were synced into the catalog with translations the same day. Drafted the same day
 after the owner asked what plans and intentions exist for background refresh and said "sure, then
 build it".
 **Track:** App-wide infrastructure. Nothing here is a feature a wearer asks for by name.
@@ -188,7 +188,24 @@ posts the category yet; LG and LE are its first users.
 **P3 — Durable scheduler state.** Plan DZ PR6 as specified there: `SchedulePolicy`,
 `AgentScheduleStore`, typed run outcomes, backoff, one catch-up run instead of a storm, run history
 in `ScheduledTasksView`. With it, prompt tasks may become a participant — cloud model only,
-deferred for a local one, never past the budget. **Not started.**
+deferred for a local one, never past the budget. **Built 2026-11-12 (headless).** Two choices
+against DZ's text, both to keep every existing flow and an older build working: task *definitions*
+stay in the `agentScheduledTasks` preference (so create, edit, delete, the `agent_schedule` tool and
+a rollback read them unchanged; a success still writes `lastRun`), and only the execution state
+moved, into `AgentScheduleStateStore` (Application Support/AgentSchedule/state.json, atomic writes,
+platform-default protection so a background wake after first unlock can read it, never written
+over when unreadable); and that store is a main-actor class, not an actor, because the scheduler and
+every caller already run on the main actor. `SchedulePolicy` (pure): `ScheduledTaskRunStatus`
+(succeeded / deferred / couldNotCheck / failed / cancelled, with fixed reason tokens), retry waits
+5, 15, 30, 60, 120 minutes capped at two hours with up to a tenth of jitter, a 5-minute wait after a
+deferral that never counts as a failure, recurrence from the last *success* only (a week missed is
+one run), a warning through `AgentNotificationQueue` after three failures and six hours without a
+success, not repeated for 24 hours unless the reason changes, cleared by a success; 20 runs of
+history per task. A pin to a model or persona that is gone is `couldNotCheck`, never another model.
+Scheduled Tasks › a task shows last success, last attempt, next run, the failure streak and reason,
+and the last five runs; **Run now** goes through the same run and record (it used to send the
+prompt as a conversation turn). Prompt tasks on a cloud model are the second participant
+(`prompt-tasks`, 15 s minimum), after the check-ins; a run still going at the deadline is cancelled.
 
 **P4 — Device pass.** On a real phone, release build, Background App Refresh on:
 1. Does a background launch build `AppState` (and so register participants), or does a wake arrive

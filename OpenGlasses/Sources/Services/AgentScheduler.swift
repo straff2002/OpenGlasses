@@ -21,6 +21,12 @@ class AgentScheduler: ObservableObject {
     /// reconciled or run (an unreadable store reads as no goals, which would drop every check-in).
     var goals: () -> [Goal]? = { GoalStore.shared.isUnreadable ? nil : GoalStore.shared.goals }
     var agentModeEnabled: () -> Bool = { Config.agentModeEnabled }
+    /// Plan LM P3: each prompt task's execution state — attempts, backoff, warnings, history.
+    /// Nil reads the shared store; tests set their own.
+    var stateStore: AgentScheduleStateStore?
+    private var store: AgentScheduleStateStore { stateStore ?? .shared }
+    /// 0…1, spreading retry waits a little (`SchedulePolicy.retryDelay`); tests fix it.
+    var jitter: () -> Double = { Double.random(in: 0...1) }
 
     /// Built-in scheduled tasks. Users can add more via quick actions.
     struct ScheduledTask: Codable, Identifiable, Equatable {
@@ -164,32 +170,166 @@ class AgentScheduler: ObservableObject {
         let now = Date()
         // Goal check-ins first: they make no model call, so a slow prompt task cannot hold one up.
         runGoalCheckIns(now: now, wearerPresent: appState.agentNotificationQueue.canDeliverImmediately)
+        await runDuePromptTask(trigger: .scheduled,
+                               inForeground: UIApplication.shared.applicationState != .background, now: now)
+    }
+
+    // MARK: - Prompt tasks (Plan LM P3 / Plan DZ PR6)
+
+    /// Run at most one due prompt task and record how it went. A deferred task lets the next due
+    /// one try (a cloud task can run while a local one waits); anything else ends the cycle — one
+    /// task per cycle, and a run stopped for the wearer's turn leaves the turn alone. Nil when
+    /// nothing was due.
+    @discardableResult
+    func runDuePromptTask(trigger: ScheduledRunTrigger, inForeground: Bool,
+                          now: Date) async -> ScheduledTaskRunStatus? {
         let tasks = loadTasks()
-
+        store.prune(keeping: Set(tasks.map(\.id)))
+        var last: ScheduledTaskRunStatus?
         // `isDue` is false for every typed task, so only prompt tasks reach the model here.
-        for task in tasks where ScheduleDuePolicy.isDue(task: task, now: now, calendar: .current) {
-
-            // A task's name is the wearer's own instruction to their agent ("check whether the
-            // clinic replied"), so which task ran is not written down; the model it was pinned
-            // to is a catalog id and is.
-            PrivacyLog.agent(.scheduler, .taskStarted,
-                             model: task.modelId.map(PrivacyToken.init),
-                             minutes: task.intervalMinutes)
-            let outcome = await executeTask(task)
-            if outcome == .yielded {
-                // Stopped for the wearer's own turn: not run, and nothing else runs over that turn.
-                break
-            }
-            if outcome == .deferred {
-                // On-device model can't run while backgrounded — don't mark it run;
-                // try the next eligible task (a cloud-backed one can still run).
-                continue
-            }
-            markTaskRun(task.id)
-
-            // Only run one task per cycle to avoid overwhelming
+        for task in tasks where SchedulePolicy.isDue(task: task, state: store.state(for: task.id),
+                                                     now: now, calendar: .current) {
+            let status = await runPromptTask(task, trigger: trigger, inForeground: inForeground)
+            last = status
+            if case .deferred = status { continue }
             break
         }
+        return last
+    }
+
+    /// "Run now" from Scheduled Tasks: the same run, outcome and record as a scheduled one, due or
+    /// not (a pending backoff is the wearer's to override).
+    @discardableResult
+    func runNow(taskID: String) async -> ScheduledTaskRunStatus? {
+        guard let task = loadTasks().first(where: { $0.id == taskID && $0.isPromptTask }) else { return nil }
+        return await runPromptTask(task, trigger: .manual,
+                                   inForeground: UIApplication.shared.applicationState != .background)
+    }
+
+    /// Run one prompt task and write what it came to: the attempt, success or the failure streak
+    /// and its backoff, the history line, and — after enough failures — one warning.
+    private func runPromptTask(_ task: ScheduledTask, trigger: ScheduledRunTrigger,
+                               inForeground: Bool) async -> ScheduledTaskRunStatus {
+        // A task's name is the wearer's own instruction to their agent ("check whether the
+        // clinic replied"), so which task ran is not written down; the model it was pinned
+        // to is a catalog id and is.
+        PrivacyLog.agent(.scheduler, .taskStarted,
+                         model: task.modelId.map(PrivacyToken.init),
+                         reason: PrivacyToken(trigger.rawValue),
+                         minutes: task.intervalMinutes)
+        let started = Date()
+        let status = await executeTask(task, inForeground: inForeground)
+        let finished = Date()
+        record(status, for: task, trigger: trigger, seconds: finished.timeIntervalSince(started), at: finished)
+        return status
+    }
+
+    /// Write a run's outcome. Only a success advances the task's recurrence (`lastRun`, which an
+    /// older build also reads); a failure never does.
+    func record(_ status: ScheduledTaskRunStatus, for task: ScheduledTask, trigger: ScheduledRunTrigger,
+                seconds: Double, at now: Date) {
+        var state = SchedulePolicy.apply(status, to: store.state(for: task.id) ?? ScheduledTaskState(taskID: task.id),
+                                         trigger: trigger, seconds: seconds, at: now, jitter: jitter())
+        if case .succeeded = status { markTaskRun(task.id, at: now) }
+        if status.countsAsFailure {
+            PrivacyLog.agent(.scheduler, .taskBackedOff, reason: PrivacyToken(status.token),
+                             count: state.consecutiveFailures)
+        }
+        if SchedulePolicy.shouldWarn(state, now: now) {
+            appState?.agentNotificationQueue.enqueue(message: Self.warning(for: task), source: Self.warningSource,
+                                                     priority: .low)
+            PrivacyLog.agent(.scheduler, .taskWarned, reason: PrivacyToken(status.token),
+                             count: state.consecutiveFailures)
+            state = SchedulePolicy.markWarned(state, at: now)
+        }
+        store.update(state)
+    }
+
+    /// The source label a scheduled-task warning carries through the notification queue.
+    static let warningSource = "Scheduled task"
+
+    /// What the wearer is told after repeated failures: which task, and that it keeps trying.
+    /// The task's name is theirs; it is said to them, never logged.
+    static func warning(for task: ScheduledTask) -> String {
+        String(localized: "Your scheduled task \u{201C}\(task.name)\u{201D} hasn't been able to run for a while. I'll keep trying; Scheduled Tasks shows why.")
+    }
+
+    /// The task's execution state, for Scheduled Tasks.
+    func state(for taskID: String) -> ScheduledTaskState? { store.state(for: taskID) }
+
+    // MARK: - Prompt tasks in the shared background wake (Plan LM P3)
+
+    /// The participant id prompt tasks run under in the shared background wake.
+    static let promptTasksBackgroundID = "prompt-tasks"
+
+    /// Prompt tasks as a participant in the shared background wake: another chance to run the same
+    /// policy, never a promise of timing. Cloud models only — a local model is deferred in the
+    /// background — and never past the wake's deadline: a run still going then is cancelled.
+    func promptTaskBackgroundParticipant() -> BackgroundWorkParticipant {
+        BackgroundWorkParticipant(
+            id: Self.promptTasksBackgroundID,
+            minimumSeconds: 15,
+            nextWake: { [weak self] now in self?.nextPromptTaskWake(now: now) },
+            run: { [weak self] deadline in await self?.runPromptTasksInBackground(deadline: deadline) ?? .nothingToDo }
+        )
+    }
+
+    /// When a prompt task next wants a wake: the soonest of the tasks a background wake could run
+    /// (enabled, on a cloud model). Nil with Agent Mode off.
+    func nextPromptTaskWake(now: Date, calendar: Calendar = .current) -> Date? {
+        guard agentModeEnabled() else { return nil }
+        let runnable = loadTasks().filter { Self.runsOnCloudModel($0) }
+        var states: [String: ScheduledTaskState] = [:]
+        for task in runnable { states[task.id] = store.state(for: task.id) }
+        return SchedulePolicy.nextWake(tasks: runnable, states: states, now: now, calendar: calendar)
+    }
+
+    /// One background run: at most one due task, cancelled at `deadline`.
+    func runPromptTasksInBackground(deadline: Date) async -> BackgroundWorkOutcome {
+        guard agentModeEnabled() else { return .notDue }
+        guard let appState else { return .deferred }
+        guard !appState.isProcessing, !appState.isListening else { return .deferred }
+        let work = Task { @MainActor [weak self] in
+            await self?.runDuePromptTask(trigger: .background, inForeground: false, now: Date())
+        }
+        let watchdog = Task { @MainActor in
+            let wait = deadline.timeIntervalSinceNow
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
+            if !Task.isCancelled { work.cancel() }
+        }
+        let status = await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+        watchdog.cancel()
+        return Self.backgroundOutcome(status)
+    }
+
+    nonisolated static func backgroundOutcome(_ status: ScheduledTaskRunStatus?) -> BackgroundWorkOutcome {
+        switch status {
+        case nil: return .nothingToDo
+        case .succeeded?: return .didWork
+        case .deferred?: return .deferred
+        case .cancelled?: return .cancelled
+        case .couldNotCheck?, .failed?: return .failed
+        }
+    }
+
+    /// Whether the model a task would run on is a cloud one: its persona's, its pinned model, or
+    /// the active one. A pin to a model that is gone is not runnable at all.
+    static func runsOnCloudModel(_ task: ScheduledTask) -> Bool {
+        guard task.isPromptTask, task.enabled else { return false }
+        let modelID: String?
+        if let personaID = task.personaId {
+            modelID = Config.enabledPersonas.first(where: { $0.id == personaID })?.modelId
+        } else if let pinned = task.modelId {
+            modelID = pinned
+        } else {
+            return Config.activeModel.map { $0.llmProvider != .local } ?? false
+        }
+        guard let modelID, let model = Config.savedModels.first(where: { $0.id == modelID }) else { return false }
+        return model.llmProvider != .local
     }
 
     // MARK: - Goal check-ins (Plan IW P2)
@@ -279,21 +419,10 @@ class AgentScheduler: ObservableObject {
 
     // MARK: - Execution
 
-    /// Outcome of a scheduled run. `.deferred` means it didn't run and should be
-    /// retried later (e.g. an on-device model can't run while backgrounded) — the
-    /// caller must NOT mark it as run. `.yielded` means it was stopped for the wearer's own turn:
-    /// not run either, and the cycle ends.
-    private enum TaskRunOutcome { case completed, deferred, yielded }
-
-    /// What one prompt run came to: whether it counts as run, and — when it did run — what the
-    /// trail records about it.
+    /// What one prompt run came to: its status, and — when the model ran — what the trail records.
     private struct PromptRun {
-        let outcome: TaskRunOutcome
+        let status: ScheduledTaskRunStatus
         let result: ScheduledRunResult?
-
-        static let deferred = PromptRun(outcome: .deferred, result: nil)
-        static let yielded = PromptRun(outcome: .yielded, result: nil)
-        static let notRun = PromptRun(outcome: .completed, result: nil)
     }
 
     /// One trail entry for one run (Plan IW P1). Deliberately independent of `speakResult`: a
@@ -303,10 +432,28 @@ class AgentScheduler: ObservableObject {
         recorder?.record(ActivityFeed.scheduledRun(taskName: task.name, result: result, at: now))
     }
 
+    /// Why a task pinned to a persona or a model cannot run, or nil when it can. A pin to
+    /// something that is gone never falls back to another model.
+    static func pinFailure(for task: ScheduledTask) -> ScheduleCheckFailure? {
+        if let personaID = task.personaId {
+            guard let persona = Config.enabledPersonas.first(where: { $0.id == personaID }) else {
+                return .pinnedPersonaMissing
+            }
+            return Config.savedModels.contains(where: { $0.id == persona.modelId }) ? nil : .pinnedModelMissing
+        }
+        if let modelID = task.modelId, !Config.savedModels.contains(where: { $0.id == modelID }) {
+            return .pinnedModelMissing
+        }
+        return nil
+    }
+
     /// Execute a scheduled task, switching to its designated model/persona if specified.
-    @discardableResult
-    private func executeTask(_ task: ScheduledTask) async -> TaskRunOutcome {
-        guard let appState else { return .completed }
+    private func executeTask(_ task: ScheduledTask, inForeground: Bool) async -> ScheduledTaskRunStatus {
+        guard let appState else { return .couldNotCheck(reason: .noAppState) }
+        if let failure = Self.pinFailure(for: task) {
+            PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken(failure.rawValue))
+            return .couldNotCheck(reason: failure)
+        }
 
         // Save current model so we can restore after
         let previousModelId = Config.activeModelId
@@ -331,9 +478,9 @@ class AgentScheduler: ObservableObject {
         // Run the task. Inside the run, the router knows its tool calls are the scheduled task's.
         let run = await ActivityScope.$scheduledTask.withValue(task.name) {
             await executeAgentPrompt(task.prompt, speakResult: task.speakResult, scheduled: true,
+                                     inForeground: inForeground,
                                      personaId: task.personaId, personaName: personaName)
         }
-        let outcome = run.outcome
         if let result = run.result {
             Self.recordRun(of: task, result: result, recorder: activityRecorder, at: Date())
         }
@@ -345,23 +492,31 @@ class AgentScheduler: ObservableObject {
             PrivacyLog.agent(.scheduler, .modelRestored, model: PrivacyToken(previousModelId))
         }
 
-        return outcome
+        return run.status
     }
 
     @discardableResult
     private func executeAgentPrompt(_ prompt: String, speakResult: Bool, scheduled: Bool,
+                                    inForeground: Bool = true,
                                     personaId: String? = nil, personaName: String? = nil) async -> PromptRun {
-        guard let appState else { return .notRun }
+        guard let appState else { return PromptRun(status: .couldNotCheck(reason: .noAppState), result: nil) }
 
         // Don't let a scheduled task auto-load the on-device model. Loading the (multi-GB)
         // MLX model is slow and, on launch, makes startup drag (and has crashed). If the
         // active model is on-device and not already in memory, defer — the user loads it
         // on demand via the home-screen "Load" control, after which scheduled tasks run.
-        if let local = appState.llmService.localLLMService,
-           let active = Config.activeModel, active.llmProvider == .local,
-           !(local.isModelLoaded && local.loadedModelId == active.model) {
-            PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("modelNotLoaded"))
-            return .deferred
+        // A loaded one still cannot run in the background.
+        let readiness: ScheduleModelReadiness
+        if let active = Config.activeModel, active.llmProvider == .local {
+            let local = appState.llmService.localLLMService
+            readiness = (local?.isModelLoaded == true && local?.loadedModelId == active.model)
+                ? .localLoaded : .localNotLoaded
+        } else {
+            readiness = .cloud
+        }
+        if let reason = SchedulePolicy.readinessDecision(readiness, inForeground: inForeground) {
+            PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken(reason.rawValue))
+            return PromptRun(status: .deferred(reason: reason), result: nil)
         }
 
         isRunning = true
@@ -395,6 +550,11 @@ class AgentScheduler: ObservableObject {
                     : try await llm.sendMessage(wrappedPrompt, locationContext: location,
                                                 memoryContext: memory, agentContext: agent)
             }
+            // A background wake that ended under the request: not a result to act on.
+            if Task.isCancelled {
+                PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("cancelled"))
+                return PromptRun(status: .cancelled, result: nil)
+            }
 
             let processed = Config.userMemoryEnabled
                 ? appState.userMemory.parseAndExecuteCommands(in: response)
@@ -404,7 +564,7 @@ class AgentScheduler: ObservableObject {
             let trimmed = processed.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed == "[NOTHING]" || trimmed.lowercased().contains("[nothing]") {
                 PrivacyLog.agent(.scheduler, .taskProducedNothing)
-                return PromptRun(outcome: .completed, result: .nothingToReport)
+                return PromptRun(status: .succeeded(reported: false), result: .nothingToReport)
             }
 
             appState.lastResponse = processed
@@ -422,18 +582,23 @@ class AgentScheduler: ObservableObject {
             // The response is what the agent found out about the wearer's day — the single most
             // content-bearing string this file holds — so only its length survives.
             PrivacyLog.agent(.scheduler, .taskCompleted, characters: processed.count)
-            return PromptRun(outcome: .completed, result: .reported(processed))
+            return PromptRun(status: .succeeded(reported: true), result: .reported(processed))
         } catch is LLMService.OffConversationRunYielded {
             // The wearer started a turn: not run, so it is tried again next cycle.
             PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("yieldedToTurn"))
-            return .yielded
+            return PromptRun(status: .cancelled, result: nil)
         } catch LocalLLMError.backgrounded {
             // On-device model can't run while backgrounded — defer, don't consume the run.
             PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("backgrounded"))
-            return .deferred
+            return PromptRun(status: .deferred(reason: .localModelInBackground), result: nil)
         } catch {
+            if Task.isCancelled || error is CancellationError
+                || SafeErrorSummary(error).category == .cancelled {
+                PrivacyLog.agent(.scheduler, .taskDeferred, reason: PrivacyToken("cancelled"))
+                return PromptRun(status: .cancelled, result: nil)
+            }
             PrivacyLog.agent(.scheduler, .taskFailed, error: SafeErrorSummary(error))
-            return PromptRun(outcome: .completed, result: .failed)
+            return PromptRun(status: .failed(SanitizedTaskFailure(error)), result: .failed)
         }
     }
 
@@ -447,10 +612,10 @@ class AgentScheduler: ObservableObject {
         return ScheduledTask.defaults
     }
 
-    private func markTaskRun(_ id: String) {
+    private func markTaskRun(_ id: String, at now: Date = Date()) {
         var tasks = loadTasks()
         if let idx = tasks.firstIndex(where: { $0.id == id }) {
-            tasks[idx].lastRun = Date()
+            tasks[idx].lastRun = now
             if let data = try? JSONEncoder().encode(tasks) {
                 UserDefaults.standard.set(data, forKey: "agentScheduledTasks")
             }

@@ -4,8 +4,9 @@
 ([#414](https://github.com/straff2002/OpenGlasses/pull/414)), **P2 / PR4 ✅ complete**
 ([#417](https://github.com/straff2002/OpenGlasses/pull/417)), **P2 / PR5 ✅ complete**
 ([#418](https://github.com/straff2002/OpenGlasses/pull/418)) — all flags off, structural proof only:
-no MLX or GGUF weights loaded on real hardware yet. PR6 (durable scheduler), PR7 (memory curation),
-PR8 (multimodal adapter), and PR9 (skill-pack storage) not started.
+no MLX or GGUF weights loaded on real hardware yet. **P1 / PR6 (durable scheduler) ✅ built 2026-11-12** as Plan
+[LM](LM-background-and-notification-foundation.md) P3 (headless; the two deviations from the text below are recorded there).
+PR7 (memory curation), PR8 (multimodal adapter), and PR9 (skill-pack storage) not started.
 **Priority:** P1 for the text-only GGUF runtime and model acquisition path; P1 reliability work for
 scheduled tasks; P2 for memory curation; vision and skill-pack storage remain gated follow-ups.
 

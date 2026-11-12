@@ -151,9 +151,10 @@ struct ScheduledTasksView: View {
                         save()
                     }
                 },
-                onRun: {
-                    Task { await runTaskNow(task) }
-                }
+                state: appState.agentScheduler.state(for: task.id),
+                nextRun: SchedulePolicy.nextRun(task: task, state: appState.agentScheduler.state(for: task.id),
+                                                now: Date(), calendar: .current),
+                onRun: { await runTaskNow(task) }
             )
             .environmentObject(appState)
         } label: {
@@ -230,9 +231,13 @@ struct ScheduledTasksView: View {
         save()
     }
 
-    private func runTaskNow(_ task: AgentScheduler.ScheduledTask) async {
-        guard !appState.isProcessing else { return }
-        await appState.sendTextMessage(task.prompt)
+    /// Plan LM P3: the same run, outcome and record as a scheduled one. Returns the task's state
+    /// after it, for the detail screen.
+    private func runTaskNow(_ task: AgentScheduler.ScheduledTask) async -> ScheduledTaskState? {
+        guard !appState.isProcessing else { return appState.agentScheduler.state(for: task.id) }
+        await appState.agentScheduler.runNow(taskID: task.id)
+        tasks = AgentScheduler.savedTasks()
+        return appState.agentScheduler.state(for: task.id)
     }
 }
 
@@ -246,7 +251,11 @@ struct ScheduledTaskDetailView: View {
 
     let task: AgentScheduler.ScheduledTask
     var onSave: (AgentScheduler.ScheduledTask) -> Void
-    var onRun: () -> Void
+    /// Plan LM P3: how its runs have gone, and when it can next run.
+    @State var state: ScheduledTaskState?
+    var nextRun: Date?
+    var onRun: () async -> ScheduledTaskState?
+    @State private var running = false
 
     @State private var name: String = ""
     @State private var prompt: String = ""
@@ -269,6 +278,8 @@ struct ScheduledTaskDetailView: View {
                     LabeledContent("Created By", value: createdBy)
                 }
             }
+
+            runsSection
 
             // Name
             Section("Name") {
@@ -331,11 +342,15 @@ struct ScheduledTaskDetailView: View {
             // Actions
             Section {
                 Button {
-                    onRun()
+                    running = true
+                    Task { @MainActor in
+                        state = await onRun()
+                        running = false
+                    }
                 } label: {
                     Label("Run Now", systemImage: "play.fill")
                 }
-                .disabled(appState.isProcessing)
+                .disabled(appState.isProcessing || running)
             }
         }
         .navigationTitle(name.isEmpty ? "Task" : name)
@@ -361,6 +376,62 @@ struct ScheduledTaskDetailView: View {
             if hasChanges {
                 saveChanges()
             }
+        }
+    }
+
+    /// Last success, last attempt, when it can next run, the failure streak and its reason, and
+    /// the recent runs. Never what a run said.
+    @ViewBuilder
+    private var runsSection: some View {
+        Section {
+            if let success = state?.lastSuccessAt {
+                LabeledContent("Last Success") {
+                    Text(success, style: .relative).foregroundStyle(.secondary)
+                }
+            }
+            if let attempt = state?.lastAttemptAt, attempt != state?.lastSuccessAt {
+                LabeledContent("Last Attempt") {
+                    Text(attempt, style: .relative).foregroundStyle(.secondary)
+                }
+            }
+            if task.enabled, let nextRun {
+                LabeledContent("Next Run") {
+                    if nextRun <= Date() {
+                        Text("Now").foregroundStyle(.secondary)
+                    } else {
+                        Text(nextRun, style: .time).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if let state, state.consecutiveFailures > 0, let failure = state.lastFailure {
+                LabeledContent("Failures in a Row", value: "\(state.consecutiveFailures)")
+                Text(ScheduledRunWording.outcome(failure))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(Array((state?.recentRuns ?? []).suffix(5).reversed().enumerated()), id: \.offset) { _, run in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ScheduledRunWording.outcome(run.status))
+                        .font(.footnote)
+                    HStack(spacing: 6) {
+                        Text(run.at, style: .relative)
+                        Text(verbatim: "·")
+                        Text(ScheduledRunWording.trigger(run.trigger))
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if state?.recentRuns.isEmpty ?? true {
+                Text("No runs recorded yet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Runs")
+        } footer: {
+            Text("A run that fails waits a little longer each time before it tries again. After repeated failures you're told once.")
         }
     }
 
