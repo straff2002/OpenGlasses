@@ -1,7 +1,8 @@
 # Plan LN — Memory Manners (what it never keeps, and how it brings up what it does)
 
-**Status:** 📝 Drafted 2026-11-12. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-12 — P0–P2 in one PR; P3 device pass owed; catalog sync owed (the new
+strings are listed under [As built](#as-built-2026-11-12)). The [decisions](#decisions-for-greig-taken-2026-11-12)
+were all taken as recommended.
 **Track:** Everyday assistant — memory. Every mode that writes memory (Direct, the periodic memory review,
 Agent Mode, the people tool, the brain), and the prompts that tell the model how to use it.
 **Builds on:** Plan [GG](GG-readable-memory.md) (`MemoryOrigin` told-me / inferred, `MemoryOriginClassifier`,
@@ -38,7 +39,7 @@ and treat saved memory as data in the prompt. What we don't have:
 - The periodic memory review, after a conversation where the wearer mentioned their therapist → nothing saved
   about it. The review only keeps sensitive facts the wearer asked it to keep.
 - "Remember I'm allergic to penicillin." → saved, in the Health group, as today. A sensitive fact about the
-  wearer that the wearer asked to keep is the wearer's choice ([decision 1](#decisions-for-greig-open)). It
+  wearer that the wearer asked to keep is the wearer's choice ([decision 1](#decisions-for-greig-taken-2026-11-12)). It
   never goes to the gateway.
 - "What's a good place for lunch?" → an answer. The wearer's knee is not mentioned. Their stated vegetarianism
   is, because it changes the answer.
@@ -95,7 +96,7 @@ and treat saved memory as data in the prompt. What we don't have:
 | `legalOrHarm` | arrests, convictions, being a victim, abuse, self-harm | word lists |
 | `minor` | the wearer stating they are under 18 or at school | narrow patterns on first-person statements only |
 
-Word lists live in one table, English first ([decision 2](#decisions-for-greig-open)). The classifier errs
+Word lists live in one table, English first ([decision 2](#decisions-for-greig-taken-2026-11-12)). The classifier errs
 towards matching: a false refusal costs one unsaved fact, which the wearer can say again more plainly; a
 missed one keeps something that should never have been kept.
 
@@ -167,21 +168,107 @@ review and Agent Mode get the never-keep list too. The prompt is the first layer
 
 A one-time, read-only pass classifies existing facts with §1 and shows "N saved facts look sensitive — review"
 on the Memory screen, filtered to them. Nothing is deleted or moved without the wearer
-([decision 3](#decisions-for-greig-open)).
+([decision 3](#decisions-for-greig-taken-2026-11-12)).
 
-## Decisions for Greig (open)
+## Decisions for Greig (taken 2026-11-12)
 
-1. **The wearer's own sensitive facts, asked for.** *Recommended:* keep, local only — the Memory screen's Health
+All four taken as recommended.
+
+1. **The wearer's own sensitive facts, asked for.** ✅ *Taken as recommended.* *Recommended:* keep, local only — the Memory screen's Health
    group exists for exactly "remember I'm allergic to penicillin", and refusing it would be the app overruling the
    wearer about their own life. Alternative: refuse every sensitive category, health included, and point to the
    Health Vault.
-2. **Languages.** *Recommended:* English word lists in P0, the identifier shapes (language-free) everywhere, and
+2. **Languages.** ✅ *Taken as recommended (English lists, identifier shapes everywhere, no footer).* *Recommended:* English word lists in P0, the identifier shapes (language-free) everywhere, and
    the other 18 UI languages as a follow-up table in the style of Plan JY. Until then the prompt rule is the only
    layer in those languages — say so in the Memory screen's footer? (Recommend no: it's a guard, not a feature.)
-3. **Existing facts.** *Recommended:* the review prompt of §6, never an automatic delete.
-4. **People tool storage.** `SocialContextStore` keeps facts about other people in `UserDefaults`, outside the
+3. **Existing facts.** ✅ *Taken as recommended.* *Recommended:* the review prompt of §6, never an automatic delete.
+4. **People tool storage.** ✅ *Taken as recommended (moved in P1).* `SocialContextStore` keeps facts about other people in `UserDefaults`, outside the
    protected SQLite stores. *Recommended:* move it beside `brain.sqlite` in this plan's P1 (same protection class,
    backup exclusion, tombstones). Alternative: a separate plan.
+
+## As built (2026-11-12)
+
+P0–P2 in one branch; P3 (device pass) owed; catalog sync owed.
+
+**P0 — pure core** (`Services/Memory/Manners/`):
+- `MemorySensitivity` — `classify(key:value:) -> Set<Category>` over one English table per category
+  (word-boundary matching; a trailing `*` is a word prefix), `hasIdentifierShape` (Luhn-checked
+  13–19 digit runs, spaces/hyphens allowed, and the first 13–19 digits of a longer run; IBAN with
+  the mod-97 check, case-insensitive), `isMinorStatement` (first-person only: "I'm 15", "I'm in
+  grade 9", "year 7–13", "I go to high school", an `age` key under 18), and
+  `subject(key:value:utteranceSpeakerIsWearer:)` (relationship words, a possessive name — any case
+  in a key, capitalised in a sentence — a named statement "Sam has…", a he/she/they opener).
+- `MemoryWritePolicy.decide(categories:subject:origin:destination:)` — the §2 matrix; destinations
+  `memory`, `people`, `brain` (both always about someone else) and `offer` (never a spoken refusal).
+  Only `toldMe` counts as told; every other origin is treated as inferred.
+- `MemoryInstructionCheck` — §3: inferred-in-an-untrusted-turn → `untrustedSource`; a value that
+  weakens a safeguard (auto-approve, don't ask/warn/check, skip a confirmation, always agree, the
+  system prompt or earlier instructions) → `assistantInstruction` whoever proposes it; an inferred
+  imperative opener or confirm/approve/warn/agree mention → `assistantInstruction`.
+- `MemoryWriteGate.decide(…)` — the instruction check, then subject matter, subject and rule. The
+  one call every writer makes. `MemoryRefusalNotice` — the three one-sentence refusals.
+
+**P1 — wired:**
+- `SemanticMemoryStore.storeFact(_:value:origin:sourceRef:global:turnReadUntrustedOutput:)` behind
+  `remember` / `rememberGlobal` / the reply's tags; `.keepLocalOnly` writes skip `pushToGateway`
+  (`gatewayPushesOffered` counts what was offered). `parseAndExecuteCommands` gained
+  `readUntrustedOutput:` (default false), fed from `AttemptToolLedger.readUntrustedOutput` at every
+  call site in `OpenGlassesApp` and `AgentScheduler` (the main text turn only trusts the ledger
+  when it is this turn's generation). A refused told-me tag appends one sentence.
+- `SocialContextStore.addFact` returns the gate's decision; the tool returns the refusal sentence
+  instead of "Noted" and feeds the graph only what was kept. `promptContext()` is now inside
+  `PromptInjectionPolicy.wrap(toolName: "people_notes", …)`.
+- `BrainStore`: `addEdge` (every relation but the `mentioned_in` bookkeeping), `addNeed` (new
+  `origin:`, default told-me) and `upsertEntity` (the name alone) go through the gate;
+  `gateDecision(src:relation:dst:origin:)` / `needDecision(person:text:origin:)` let `BrainTool`
+  say the refusal rather than "Linked"/"Noted".
+- `MemoryNudgeAnalyzer.nudge` never offers what the gate would refuse (judged as the told-me
+  write an accepted offer becomes); agent-mode auto-saves follow because they start from a nudge.
+- `PrivacyLog`: new `StoreEvent.declined` (detail = category, never text) and
+  `StoreName.socialContext`; local-only writes carry `detail: localOnly`.
+- Decision 4: `SocialContextStore` lives in `Documents/social_context.json` (first-unlock
+  protection, backup excluded via `StoreProtection`). First open reads the `socialContext` key,
+  writes the file, removes the key; a file already there retires the key; a failed write leaves
+  the key and reads carry on from it. `DataStoreRegistry` and the ET matrix row updated;
+  `socialContext` left the "not file-backed" exemption in the backup-exclusion test.
+
+**P2 — prompts and review:**
+- `MemoryMannersPrompt` holds the §5 rules once (`useRules`, `keepRules`, two-line `shortForm`).
+  Used by `LLMService.memoryPromptBlock` (full), its `compact:` form on `leanOnDevicePrompt`,
+  `AppleOnDeviceInstructions` (so the condensed cloud prompt too), the lean cloud tier (the use
+  line only — it is never asked to write memory), `SemanticMemoryStore.nudgePrompt`, the
+  `AgentScheduler` memory-reflection and onboarding prompts and `AgentDocumentStore.defaultSoul`.
+  The memory header no longer says "reference naturally". The soul's chattiness examples no longer
+  bring up a remembered walk or hike.
+- §6: `MemorySensitivityReview.flagged(_:)` (pure) marks facts the gate would not keep as they
+  stand (a told-me health fact about the wearer is kept, so not flagged). The Memory screen shows
+  "N saved facts look sensitive — review" once (`memorySensitiveReviewDone`), filters to them, and
+  "Show everything" returns; nothing is deleted or moved.
+
+**Deviations, and why:**
+- A captured scene (`origin: fromScan` into `SemanticMemoryStore`, from `remember_scene`) is not
+  refused: it is the wearer's deliberate record, like the notes and documents this plan leaves out
+  of scope, and a pharmacy sign or a warning label would otherwise lose the whole scene. It is still
+  not pushed to the gateway when the gate would not keep it there.
+- `SemanticMemoryStore.correct` (the wearer editing a fact on the phone) is not refused; it syncs
+  only when the gate would keep the value as `.keep`.
+- No persona-shared export of saved facts exists today, so "local only" is the gateway skip; no
+  column records it. If a later sync re-pushes stored facts, it must re-run the gate.
+- No tombstones for the people file: the tool forgets a person by clearing them, and the gate
+  stops the sensitive notes from coming back.
+- One refusal sentence covers ID and card numbers ("I don't keep card or ID numbers in memory.")
+  rather than one per identifier kind.
+- Default prompts that an install has already saved (a scheduled task's text, the agent's
+  `soul.md`) keep their old wording; the gate holds the rules for them.
+
+**New user-visible strings (catalog sync owed):** "I don't keep card or ID numbers in memory.",
+"I don't keep instructions like that in memory.", "I don't keep details like that about other
+people.", "%lld saved facts look sensitive — review", "Show everything", and the review footer
+"These were saved before Avenkin stopped keeping card numbers and other people's private details.
+Nothing has been changed — forget the ones you don't want kept."
+
+**Tests:** `MemorySensitivityTests`, `MemoryWritePolicyTests`, `MemoryMannersWiringTests`, plus
+`DataStoreRegistryTests.testSocialContextFileAttributesMatchTheRegistry`.
 
 ## Phases (one PR)
 
