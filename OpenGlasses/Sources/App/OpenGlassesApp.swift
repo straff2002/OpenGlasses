@@ -6342,7 +6342,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             )
             TurnRecorder.mark(.generationDone)
-            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId) : rawResponse
+            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
             lastResponse = response
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "user", content: userLog)
@@ -6406,7 +6406,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             )
             TurnRecorder.mark(.generationDone)
-            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId) : rawResponse
+            let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
             lastResponse = response
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "user", content: "[Photo] \(prompt)")
@@ -6734,7 +6734,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 }
             )
             TurnRecorder.mark(.generationDone)
-            var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse) : rawResponse
+            var response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
             // A phone-camera capture must SAY so — the phone sees the desk, not what the
             // glasses are pointed at, and an unannounced camera swap reads as hallucination.
             if GlassesSupportPolicy.isSupported, cameraService.lastCaptureSource == .phone {
@@ -7894,7 +7894,7 @@ class AppState: ObservableObject, AppStateProtocol {
                             )
                         },
                         postProcess: { rawResponse in
-                            var response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: self.conversationStore.activeThreadId) : rawResponse
+                            var response = Config.userMemoryEnabled ? self.userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: self.conversationStore.activeThreadId, readUntrustedOutput: self.llmService.turnToolLedger.readUntrustedOutput) : rawResponse
                             // Phone-camera captures must announce themselves (see captureAndAnalyzePhoto).
                             if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                                 response = "From the phone camera — the glasses weren't available. " + response
@@ -8953,7 +8953,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 postProcess: { [self] rawResponse in
                     // Parse and execute memory commands from the response
                     guard Config.userMemoryEnabled else { return rawResponse }
-                    let response = userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId)
+                    // Plan LN §3: only this turn's ledger says what it read — a brain that keeps
+                    // none left an earlier turn's.
+                    let readUntrusted = llmService.turnToolLedger.generation != ledgerGenerationAtStart
+                        && llmService.turnToolLedger.readUntrustedOutput
+                    let response = userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId, readUntrustedOutput: readUntrusted)
 
                     // Periodic nudge: after N turns, inject a hidden review prompt
                     // into the LLM history so the next response considers what to remember
@@ -9262,7 +9266,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     return reply
                 },
                 postProcess: { [self] rawResponse in
-                    Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId) : rawResponse
+                    Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
                 },
                 accept: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else {

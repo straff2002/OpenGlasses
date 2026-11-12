@@ -143,11 +143,20 @@ final class BrainStore: ObservableObject {
     // MARK: - Entities
 
     /// Insert the entity if it doesn't exist (case-insensitive on name within a kind); returns its id.
+    ///
+    /// Plan LN: a name is free text and can carry anything ("Sam (diabetic)", a card number). One
+    /// the write gate would not keep is not inserted; the id is returned unstored, as on a failed
+    /// prepare.
     @discardableResult
     func upsertEntity(kind: String, name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let existing = entityId(kind: kind, name: trimmed) { return existing }
         let id = UUID().uuidString
+        if let category = MemoryWriteGate.decide(key: "", value: trimmed, origin: .inferred,
+                                                 destination: .brain).declinedCategory {
+            PrivacyLog.store(.brain, .declined, detail: PrivacyToken(category.rawValue))
+            return id
+        }
         let sql = "INSERT INTO entities (id, kind, name, normalized, created_at) VALUES (?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return id }
@@ -223,6 +232,15 @@ final class BrainStore: ObservableObject {
             RelationOntology.recordDrop(canonical)
             return
         }
+        // Plan LN: the relation vocabulary holds nothing sensitive, but either end can ("works at
+        // the oncology ward"). `mentioned_in` is bookkeeping — its far end is a source reference,
+        // not a claim about anyone.
+        if canonical != "mentioned_in",
+           let category = Self.gateDecision(src: srcName, relation: canonical, dst: dstName,
+                                            origin: origin).declinedCategory {
+            PrivacyLog.store(.brain, .declined, detail: PrivacyToken(category.rawValue))
+            return
+        }
         // Plan GG tombstones: a claim the wearer had forgotten (or corrected away) comes back only
         // on their own word, never from an extraction, a meeting or the memory loop.
         let digest = Self.claimDigest(srcName, canonical, dstName)
@@ -289,6 +307,22 @@ final class BrainStore: ObservableObject {
             sqlite3_bind_null(stmt, 12)
         }
         _ = sqlite3_step(stmt)
+    }
+
+    /// What the write gate decides for one claim (Plan LN). A claim with no origin is treated as
+    /// the assistant's own inference.
+    static func gateDecision(src: String, relation: String, dst: String,
+                             origin: MemoryOrigin?) -> MemoryWritePolicy.Decision {
+        let canonical = RelationOntology.canonical(relation)
+        let claim = "\(src) \(RelationOntology.phrase(for: canonical)) \(dst)"
+        return MemoryWriteGate.decide(key: "", value: claim, origin: origin ?? .inferred,
+                                      destination: .brain)
+    }
+
+    /// What the write gate decides for one follow-up about `person` (Plan LN).
+    static func needDecision(person: String, text: String,
+                             origin: MemoryOrigin = .toldMe) -> MemoryWritePolicy.Decision {
+        MemoryWriteGate.decide(key: person, value: text, origin: origin, destination: .brain)
     }
 
     // MARK: - Per-fact access (Plan GG)
@@ -551,11 +585,17 @@ final class BrainStore: ObservableObject {
 
     /// Record a follow-up for `person` (what they want / you owe them). Upserts the person entity so
     /// the dossier links up. Returns the new need's id.
+    ///
+    /// A follow-up the write gate declines (Plan LN — "ask Sam how chemo went") is not stored.
     @discardableResult
-    func addNeed(person: String, text: String) -> String {
+    func addNeed(person: String, text: String, origin: MemoryOrigin = .toldMe) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let id = UUID().uuidString
         guard !trimmed.isEmpty, !person.trimmingCharacters(in: .whitespaces).isEmpty else { return id }
+        if let category = Self.needDecision(person: person, text: trimmed, origin: origin).declinedCategory {
+            PrivacyLog.store(.brain, .declined, detail: PrivacyToken(category.rawValue))
+            return id
+        }
         upsertEntity(kind: "person", name: person)
         let sql = "INSERT INTO needs (id, person, text, created_at, resolved_at) VALUES (?, ?, ?, ?, NULL)"
         var stmt: OpaquePointer?

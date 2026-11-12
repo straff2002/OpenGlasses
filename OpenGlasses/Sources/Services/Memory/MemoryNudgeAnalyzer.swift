@@ -39,7 +39,17 @@ enum MemoryNudgeAnalyzer {
         "i am allergic", "i drive ", "i'm from ", "im from ", "i was born ", "call me ",
     ]
 
+    /// Plan LN: never offer to keep what the write gate would refuse — a card number, someone
+    /// else's diagnosis, an instruction to skip a check. Judged as the told-me write an accepted
+    /// offer would become; the wearer's own allergy is still offered (it is kept, locally).
     static func nudge(for turn: CompletedTurn) -> MemoryNudge? {
+        guard let nudge = candidate(for: turn) else { return nil }
+        let decision = MemoryWriteGate.decide(key: "", value: nudge.payload, origin: .toldMe,
+                                              destination: .offer)
+        return decision.isKept ? nudge : nil
+    }
+
+    private static func candidate(for turn: CompletedTurn) -> MemoryNudge? {
         let raw = turn.userText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard raw.count >= 8 else { return nil }
         let lower = raw.lowercased()

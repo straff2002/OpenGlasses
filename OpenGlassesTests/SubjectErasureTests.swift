@@ -59,7 +59,7 @@ final class SubjectErasureTests: XCTestCase {
         brain = BrainStore(directory: workspace)
         documents = DocumentStore(directory: workspace)
         faces = FaceRecognitionService(directory: workspace)
-        social = SocialContextStore(defaults: defaults)
+        social = SocialContextStore(directory: workspace, defaults: defaults)
         contextualNotes = ContextualNoteStore(defaults: defaults)
         objectMemory = ObjectMemoryStore(defaults: defaults)
         evolvedSkills = EvolvedSkillStore(directory: workspace)
@@ -141,7 +141,8 @@ final class SubjectErasureTests: XCTestCase {
                       dstKind: "org", dstName: "Acme")
 
         _ = memory.remember("colleague", value: "\(canary) prefers morning meetings")
-        social.addFact(person: canary, fact: "allergic to shellfish")
+        // Plan LN: an everyday note — a health one about someone else is never kept to erase.
+        social.addFact(person: canary, fact: "drives the forklift on Tuesdays")
         contextualNotes.save(ContextualNote(id: UUID().uuidString,
                                             content: "met \(canary) at the depot",
                                             tags: [], latitude: nil, longitude: nil,
@@ -272,7 +273,7 @@ final class SubjectErasureTests: XCTestCase {
         captionSessions = makeCaptionSessions()
         preparedCards = PreparedCardStore(directory: workspace.appendingPathComponent("PreparedCards", isDirectory: true))
         writingStyle = WritingStyleStore(directory: workspace.appendingPathComponent("PreparedCards", isDirectory: true))
-        social = SocialContextStore(defaults: defaults)
+        social = SocialContextStore(directory: workspace, defaults: defaults)
         contextualNotes = ContextualNoteStore(defaults: defaults)
         objectMemory = ObjectMemoryStore(defaults: defaults)
     }

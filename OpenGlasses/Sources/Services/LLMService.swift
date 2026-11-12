@@ -487,7 +487,8 @@ class LLMService: ObservableObject {
     static func leanOnDevicePrompt(locationContext: String?, memoryContext: String?, hasImage: Bool, turn: String, weatherContext: String? = nil, device: AssistantIdentity.Device = .phone) async -> String {
         var prompt = await buildSystemPrompt(
             locationContext: locationContext, includeTools: false, includeOpenClaw: false,
-            hasImage: hasImage, memoryContext: memoryContext, turn: turn, device: device).combined
+            hasImage: hasImage, memoryContext: memoryContext, turn: turn,
+            compactMemoryRules: true, device: device).combined
         if let weatherContext {
             prompt += "\n\nCURRENT WEATHER (fetched just now — answer from this; do NOT call get_weather and do NOT say you will check): \(weatherContext)"
         }
@@ -544,7 +545,7 @@ class LLMService: ObservableObject {
                 MemoryContextRecorder.noteClip(renderedCharacters: clip.text.count,
                                                droppedCharacters: clip.droppedCharacters)
             }
-            prompt += "\n\nKnown about the wearer: \(clip.text)"
+            prompt += "\n\nKnown about the wearer: \(clip.text)\n" + MemoryMannersPrompt.useLine
         }
         return prompt
     }
@@ -622,8 +623,16 @@ class LLMService: ObservableObject {
     /// against what is injected (Plan FC P3) without reaching into a private method or rebuilding
     /// a whole prompt. The rendered block is appended verbatim — this tier never clips it — which
     /// is why `MemoryContextSnapshot.renderedCharacters` is the prompt's answer here as well.
-    static func memoryPromptBlock(_ memory: String) -> String {
+    ///
+    /// `compact` is the on-device form (Plan LN §5): the tags and the two-line manners, nothing
+    /// else, for a model whose whole prompt has to fit a small window.
+    static func memoryPromptBlock(_ memory: String, compact: Bool = false) -> String {
         var block = "\n\n\(memory)"
+        if compact {
+            block += "\n\nTo remember a fact the user shares, add [REMEMBER: key = value] to your reply; to forget one, [FORGET: key]. The tags are removed before speaking.\n"
+                + MemoryMannersPrompt.shortForm
+            return block
+        }
         block += """
 
 
@@ -632,8 +641,12 @@ class LLMService: ObservableObject {
             You can forget facts with [FORGET: key]. These tags will be stripped before speaking.
             Memories persist across all conversations — they are the bridge between sessions.
 
+            Using memory:
+            \(MemoryMannersPrompt.useRules.map { "- \($0)" }.joined(separator: "\n"))
+
             What to remember: names, preferences, family members, routines, interests, important dates, relationships, stated goals.
             Only remember when the user explicitly shares personal info — don't infer or assume.
+            \(MemoryMannersPrompt.keepRules.map { "- \($0)" }.joined(separator: "\n"))
 
             Memory hygiene — keep memory accurate and compact:
             - Before adding a fact, check the existing memories listed above. If one already covers that key, update it rather than creating a duplicate.
@@ -650,7 +663,7 @@ class LLMService: ObservableObject {
     /// location, skills, job and manual context, …) — so a route that can place the tail after the
     /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
     /// single string, head first.
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -826,7 +839,7 @@ class LLMService: ObservableObject {
         }
         closeBlock("image instructions")
         if let memory = memoryContext {
-            prompt += Self.memoryPromptBlock(memory)
+            prompt += Self.memoryPromptBlock(memory, compact: compactMemoryRules)
         }
         closeBlock("memory")
         if let playbook = playbookContext {
@@ -893,7 +906,8 @@ class LLMService: ObservableObject {
             if !block.isEmpty { prompt += "\n\n\(block)" }
         }
         closeBlock("job notes")
-        // Inject social context (people the user knows)
+        // Inject social context (people the user knows) — already in the untrusted-data envelope
+        // saved memory uses (Plan LN §4).
         if shouldInclude(.social), let social = SocialContextStore.shared.promptContext() {
             prompt += "\n\n\(social)"
         }

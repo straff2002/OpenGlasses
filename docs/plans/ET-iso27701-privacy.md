@@ -140,7 +140,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | scenarioProgress | `ScenarioProgressStore` | preference | wearer | platformDefault | no | none | `ScenarioProgressStore.deleteAll()` | n/a — no subject linkage |
 | semanticMemory | `SemanticMemoryStore` | personalMemory | wearer | completeUntilFirstUserAuthentication | yes | expires_at purge, wearer history retention days, budget eviction | `SemanticMemoryStore.clearAll()` | `SemanticMemoryStore.forget(_:)` |
 | skillPacks | `SkillPackStore` | skillDefinition | none | platformDefault | no | none | none — packs are uninstalled individually | n/a — no subject linkage |
-| socialContext | `SocialContextStore` | socialProfile | thirdPartySubject | platformDefault | no | none | none — people are forgotten one at a time | `SocialContextStore.clearFacts(for:)` |
+| socialContext | `SocialContextStore` | socialProfile | thirdPartySubject | completeUntilFirstUserAuthentication | yes | none | none — people are forgotten one at a time | `SocialContextStore.clearFacts(for:)` |
 | speakerNames | `SpeakerRegistry` | biometric | thirdPartySubject | platformDefault | no | none | none — names are cleared per speaker | `SpeakerRegistry.setName(nil, for:)` |
 | spotlightIndex | `SpotlightIndexService` | derivedIndex | wearer | operatingSystemManaged | no | none | `SpotlightIndexService.purgeAll()` | `SpotlightIndexing.delete(ids:)` |
 | stagedExports | `StagedExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | `StagedExportCoordinator.revokeAll()` | none — an export is a lease, released rather than searched |

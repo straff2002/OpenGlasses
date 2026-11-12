@@ -110,6 +110,12 @@ struct BrainTool: NativeTool {
                 return "I don't record a relationship called \"\(relation)\". Use one of: " +
                        RelationOntology.sortedRelations.joined(separator: ", ") + "."
             }
+            // Plan LN: a link the write gate would not keep is not made, and the model hears the
+            // one sentence to say instead.
+            let gate = BrainStore.gateDecision(src: src, relation: normalizedRelation, dst: dst, origin: .toldMe)
+            guard gate.isKept else {
+                return gate.spokenNotice ?? MemoryRefusalNotice.sentence(for: gate.declinedCategory ?? .health)
+            }
             brain.addEdge(srcKind: "person", srcName: src, relation: normalizedRelation,
                           dstKind: RelationOntology.destinationKind(for: normalizedRelation),
                           dstName: dst, sourceRef: "told directly", origin: .toldMe)
@@ -139,6 +145,10 @@ struct BrainTool: NativeTool {
             guard let text = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !text.isEmpty else {
                 return "What's the follow-up for \(person)?"
+            }
+            let gate = BrainStore.needDecision(person: person, text: text)
+            guard gate.isKept else {
+                return gate.spokenNotice ?? MemoryRefusalNotice.sentence(for: gate.declinedCategory ?? .health)
             }
             brain.addNeed(person: person, text: text)
             return "Noted — follow-up for \(person): \(text)."
