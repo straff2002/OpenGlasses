@@ -1,6 +1,6 @@
 # Plan LM — The Background and Notification Foundation (one background wake for every plan, buttons on a notification, and a record of what really ran)
 
-**Status:** 🚧 P0–P2 built 2026-11-12: written 2026-11-11 in a container with no Swift toolchain, then compiled and tested on a Mac the next day (rebased onto main, one compile fix, Debug tests and a Release simulator build green). P3 is Plan DZ PR6, not started; the P4 device pass is owed, and the five new UI strings are owed a catalog sync. Drafted the same day
+**Status:** 🚧 P0–P2 built 2026-11-12: written 2026-11-11 in a container with no Swift toolchain, then compiled and tested on a Mac the next day (rebased onto main, one compile fix, Debug tests and a Release simulator build green). P3 is Plan DZ PR6, not started; the P4 device pass is owed. The four new UI strings were synced into the catalog with translations the same day. Drafted the same day
 after the owner asked what plans and intentions exist for background refresh and said "sure, then
 build it".
 **Track:** App-wide infrastructure. Nothing here is a feature a wearer asks for by name.
