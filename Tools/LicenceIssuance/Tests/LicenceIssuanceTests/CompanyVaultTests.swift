@@ -285,7 +285,7 @@ final class CompanyVaultTests: XCTestCase {
                   "pointer-v1.json")
 
         // The pack: an EG pack, signed by the fixture key over pack.json and every file's digest.
-        let manifest = #"{"documents":[],"files":["safety.md","fault_codes.md"],"gating":{"iap":"com.openglasses.vault.fixture_rtu"},"id":"fixture_rtu","name":"Fixture Rooftop Units","prompt_rules":["Invented fixture content. Never use it on a real unit."],"version":"1.0.0"}"#
+        let manifest = #"{"documents":[],"files":["safety.md","fault_codes.md"],"gating":{"iap":"com.openglasses.vault.fixture_rtu"},"id":"fixture_rtu","name":"Fixture Rooftop Units","prompt_rules":["Invented fixture content. Never use it on a real unit.","Never fabricate a value.","Cite the source file for every claim."],"version":"1.0.0"}"#
         let files: [String: Data] = [
             "manifest.json": Data(manifest.utf8),
             "safety.md": Data("# Safety\n\nInvented fixture: isolate the unit before opening any panel.\n".utf8),
