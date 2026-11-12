@@ -3484,6 +3484,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan LM P1: goal check-ins are the first participant in the shared background wake. They
         // check Agent Mode themselves, so registering them with it off asks iOS for nothing.
         BackgroundRefreshCoordinator.shared.add(agentScheduler.goalCheckInBackgroundParticipant())
+        // Plan LM P3: prompt tasks on a cloud model are the second, after the check-ins (which make
+        // no model call and so go first in a short wake).
+        BackgroundRefreshCoordinator.shared.add(agentScheduler.promptTaskBackgroundParticipant())
 
         setupServiceCallbacks()
 

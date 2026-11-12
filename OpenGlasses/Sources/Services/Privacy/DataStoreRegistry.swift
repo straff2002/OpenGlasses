@@ -492,8 +492,9 @@ enum SensitiveStore: String, CaseIterable {
                           deleteAll: .unavailable("tasks are cancelled individually"),
                           deleteSubject: .notSubjectLinked,
                           owner: "AgentScheduler",
-                          ownerPaths: ["OpenGlasses/Sources/Services/AgentScheduler.swift"],
-                          location: "preferences key `agentScheduledTasks`")
+                          ownerPaths: ["OpenGlasses/Sources/Services/AgentScheduler.swift",
+                                       "OpenGlasses/Sources/Services/Scheduling/AgentScheduleStateStore.swift"],
+                          location: "preferences key `agentScheduledTasks`; run state in Application Support/AgentSchedule/state.json")
 
         case .agentNotificationQueue:
             return Record(store: self, dataClass: .personalMemory, subjectLinkage: .wearer,

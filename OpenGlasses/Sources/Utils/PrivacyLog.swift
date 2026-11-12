@@ -2254,6 +2254,9 @@ enum PrivacyLog {
     enum AgentEvent: String {
         case started, stopped, checkScheduled, onboardingRun
         case taskStarted, taskCompleted, taskFailed, taskDeferred, taskProducedNothing
+        // Plan LM P3 — a prompt task's failure streak and its one warning. `reason` is the run's
+        // fixed status token (`failed.offline`), `count` the streak. Never the task's name.
+        case taskBackedOff, taskWarned
         // Plan IW P2 — goal check-ins: how many ran in a cycle and whether any was said. Never the
         // goal, which is the wearer's words.
         case goalCheckInsRan
