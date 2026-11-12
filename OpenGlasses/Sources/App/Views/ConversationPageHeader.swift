@@ -220,34 +220,45 @@ struct ConversationSwitcherSheet: View {
     }
 
     private var list: some View {
-        List {
-            Section {
-                ForEach(threads) { thread in
-                    Button {
-                        resume(thread)
-                    } label: {
-                        row(thread)
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing) {
-                        Button("Delete", role: .destructive) {
-                            pendingDeletion = ConversationContinuity.deletionScope(forThread: thread)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel(ConversationContinuity.spokenLabel(
-                        for: thread, activeThreadId: store.activeThreadId))
-                    .accessibilityHint("Double-tap to carry on with this conversation.")
-                    // A swipe leaves no mark in the accessibility tree, so delete is also a
-                    // named action — the only way to reach it without sight.
-                    .accessibilityActions {
-                        Button("Delete conversation") {
-                            pendingDeletion = ConversationContinuity.deletionScope(forThread: thread)
-                        }
+        let sections = ConversationContinuity.dateSections(threads)
+        return List {
+            ForEach(sections) { section in
+                Section {
+                    rows(section.threads)
+                } header: {
+                    Text(ConversationContinuity.title(for: section.bucket))
+                } footer: {
+                    if section.id == sections.last?.id {
+                        Text("Picking a conversation makes it the one you're in — what you say next carries on from where it left off, with everything already said in context.")
                     }
                 }
-            } footer: {
-                Text("Picking a conversation makes it the one you're in — what you say next carries on from where it left off, with everything already said in context.")
+            }
+        }
+    }
+
+    private func rows(_ threads: [ConversationThread]) -> some View {
+        ForEach(threads) { thread in
+            Button {
+                resume(thread)
+            } label: {
+                row(thread)
+            }
+            .buttonStyle(.plain)
+            .swipeActions(edge: .trailing) {
+                Button("Delete", role: .destructive) {
+                    pendingDeletion = ConversationContinuity.deletionScope(forThread: thread)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(ConversationContinuity.spokenLabel(
+                for: thread, activeThreadId: store.activeThreadId))
+            .accessibilityHint("Double-tap to carry on with this conversation.")
+            // A swipe leaves no mark in the accessibility tree, so delete is also a
+            // named action — the only way to reach it without sight.
+            .accessibilityActions {
+                Button("Delete conversation") {
+                    pendingDeletion = ConversationContinuity.deletionScope(forThread: thread)
+                }
             }
         }
     }

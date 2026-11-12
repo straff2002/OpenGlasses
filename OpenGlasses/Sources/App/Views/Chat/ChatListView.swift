@@ -96,15 +96,21 @@ struct ChatListView: View {
     private var threadList: some View {
         // One snapshot for the rows and the swipe: the offsets `onDelete` hands back index the
         // rows as drawn, and the store can re-sort or prune them before the swipe lands.
-        let threads = sortedThreads
+        // Each section's offsets index that section's rows, so each deletes from its own slice.
+        let sections = ConversationContinuity.dateSections(sortedThreads)
         return List {
-            ForEach(threads) { thread in
-                NavigationLink(value: thread.id) {
-                    ThreadRow(thread: thread)
+            ForEach(sections) { section in
+                Section(ConversationContinuity.title(for: section.bucket)) {
+                    ForEach(section.threads) { thread in
+                        NavigationLink(value: thread.id) {
+                            ThreadRow(thread: thread)
+                        }
+                    }
+                    .onDelete { offsets in
+                        ListDeletion.ids(at: offsets, in: section.threads)
+                            .forEach { store.deleteThread($0) }
+                    }
                 }
-            }
-            .onDelete { offsets in
-                ListDeletion.ids(at: offsets, in: threads).forEach { store.deleteThread($0) }
             }
         }
         .ogFormStyle()
