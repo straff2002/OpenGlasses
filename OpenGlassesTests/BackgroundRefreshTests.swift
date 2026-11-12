@@ -310,4 +310,50 @@ final class BackgroundRefreshTests: XCTestCase {
         XCTAssertTrue(modes.contains("fetch"))
         XCTAssertFalse(modes.contains("processing"), "no BGProcessingTask until a feature needs one (Plan LM)")
     }
+
+    // MARK: - The notification-button test (P4 check 5)
+
+    func testTheButtonTestHasItsOwnCategoryWithTheSameButtons() {
+        let test = NotificationButtonTest.category
+        XCTAssertNotEqual(test.id, NotificationActionCatalog.askUntilDone.id,
+                          "a test press must never reach LE's or LG's handler")
+        XCTAssertEqual(test.actions.map(\.id), ["avenkin.developer-test.done", "avenkin.developer-test.stop-today"])
+        XCTAssertEqual(test.actions.map(\.title), NotificationActionCatalog.askUntilDone.actions.map(\.title))
+        XCTAssertFalse(test.actions.contains { $0.opensApp })
+        XCTAssertNotNil(NotificationActionCatalog.category(id: test.id))
+    }
+
+    func testButtonTestPressesKeepTheLastTenAndReadAsOneLine() {
+        var presses: [NotificationButtonTestPress] = []
+        for i in 0..<12 {
+            presses = NotificationButtonTestPress.appending(
+                NotificationButtonTestPress(pressedAt: Date(timeIntervalSince1970: TimeInterval(i)),
+                                            actionID: "avenkin.developer-test.done", appState: "background",
+                                            secondsSinceLaunch: 3.24),
+                to: presses)
+        }
+        XCTAssertEqual(presses.count, NotificationButtonTestPress.maxKept)
+        XCTAssertEqual(presses.first?.pressedAt, Date(timeIntervalSince1970: 2))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(presses.last?.line(calendar: calendar),
+                       "1970-01-01 00:00:11 · avenkin.developer-test.done · background · 3.2s after launch")
+    }
+
+    @MainActor
+    func testATestPressIsRecordedAndSurvivesAReload() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "NotificationButtonTest-\(UUID().uuidString)"))
+        let log = NotificationButtonTestLog(defaults: defaults)
+        let hub = NotificationActionHub()
+        NotificationButtonTest.registerHandler(hub: hub, recorder: log)
+        XCTAssertTrue(hub.route(NotificationActionPress(categoryID: NotificationButtonTest.category.id,
+                                                        actionID: "avenkin.developer-test.stop-today",
+                                                        subject: "developer-test")))
+        XCTAssertEqual(log.presses.map(\.actionID), ["avenkin.developer-test.stop-today"])
+        XCTAssertNotNil(log.presses.first?.secondsSinceLaunch)
+        XCTAssertEqual(NotificationButtonTestLog(defaults: defaults).presses, log.presses)
+        XCTAssertFalse(hub.route(NotificationActionPress(categoryID: NotificationActionCatalog.askUntilDone.id,
+                                                         actionID: "avenkin.done", subject: nil)),
+                       "the test registers only its own category")
+    }
 }

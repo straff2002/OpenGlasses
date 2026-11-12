@@ -1,6 +1,6 @@
 # Plan LM — The Background and Notification Foundation (one background wake for every plan, buttons on a notification, and a record of what really ran)
 
-**Status:** 🚧 P0–P2 built 2026-11-12: written 2026-11-11 in a container with no Swift toolchain, then compiled and tested on a Mac the next day (rebased onto main, one compile fix, Debug tests and a Release simulator build green). P3 (Plan DZ PR6) built 2026-11-12, headless; the P4 device pass is owed. The four new UI strings were synced into the catalog with translations the same day. Drafted the same day
+**Status:** 🚧 P0–P2 built 2026-11-12: written 2026-11-11 in a container with no Swift toolchain, then compiled and tested on a Mac the next day (rebased onto main, one compile fix, Debug tests and a Release simulator build green). P3 (Plan DZ PR6) built 2026-11-12, headless; the P4 device pass is owed; the Developer panel gained a notification-button test for its check 5 the same day. The four new UI strings were synced into the catalog with translations the same day. Drafted the same day
 after the owner asked what plans and intentions exist for background refresh and said "sure, then
 build it".
 **Track:** App-wide infrastructure. Nothing here is a feature a wearer asks for by name.
@@ -171,18 +171,18 @@ the hub never guesses.
 `BackgroundRunSummary.line`, `NotificationActionCatalog` and `NotificationActionResponse.parse`.
 Headless tests: earliest-begin floor and nil; due and time-left rules; record round-trip and the
 40-entry bound; summary lines; catalog ids unique and stable; parse of a button, a tap, a dismissal
-and a foreign category. **Written, not yet compiled.**
+and a foreign category. **Built 2026-11-12 (PR 1029).**
 
 **P1 — The wake.** `BackgroundWorkRunner` (testable with fake participants and a fake clock),
 `BackgroundRefreshCoordinator` (`BGTaskScheduler` registration from
 `application(_:didFinishLaunchingWithOptions:)`, the handler, expiration, submit on background and
 after each wake), the ledger store, `Info.plist` keys, goal check-ins as the first participant, the
 Developer panel section, `PrivacyLog.agent(.background, …)` events. Tests: runner order, skip and
-cancel; a participant that overruns cannot hold the record; the plist guard. **Written, not yet compiled.**
+cancel; a participant that overruns cannot hold the record; the plist guard. **Built 2026-11-12 (PR 1029).**
 
 **P2 — Notification buttons.** Category registration at launch, `NotificationActionHub`, routing in
 `JobSendNotificationRouter.didReceive`. Tests: a press reaches its handler with its subject; a tap
-still opens its tab; an unhandled press is dropped. **Written, not yet compiled** — no notification
+still opens its tab; an unhandled press is dropped. **Built 2026-11-12 (PR 1029)** — no notification
 posts the category yet; LG and LE are its first users.
 
 **P3 — Durable scheduler state.** Plan DZ PR6 as specified there: `SchedulePolicy`,
@@ -218,6 +218,11 @@ prompt as a conversation turn). Prompt tasks on a cloud model are the second par
 The answers go into JO's and LE's promise copy. On the Simulator, Xcode's
 `_simulateLaunchForTaskWithIdentifier:` debugger command and the panel's **Run now** cover the code
 paths, not the timing.
+For check 5, Developer › **Notification Buttons** posts a test notification in 20 seconds with the
+same two buttons under their own category (`avenkin.developer-test`, so a test press never reaches
+LE's or LG's handler) and lists each press with the app's state when it arrived and its seconds
+since launch: `background` a few seconds after launch means the press woke a killed app, which also
+answers check 1 for a notification launch. Added 2026-11-12, before the device pass.
 
 ## Decisions for Greig (open)
 

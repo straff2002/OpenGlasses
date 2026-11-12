@@ -2045,6 +2045,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan LM P2: the app's notification buttons, registered once, beside the one delegate that
         // routes their presses.
         NotificationActionCatalog.register()
+        // Plan LM P4: the Developer panel's test notification records its presses here.
+        NotificationButtonTest.registerHandler()
     }
 
     private func configureGuidedJobFlow() {

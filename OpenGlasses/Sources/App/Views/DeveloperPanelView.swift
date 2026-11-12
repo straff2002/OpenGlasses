@@ -150,6 +150,7 @@ struct DeveloperPanelView: View {
 
             // Plan LM P1: what the shared background wake actually did — the device pass's evidence.
             BackgroundRefreshSection(ledger: BackgroundRefreshCoordinator.shared.ledger)
+            NotificationButtonTestSection(log: NotificationButtonTestLog.shared)
 
             OGSection(
                 header: "Debug Events",
@@ -187,6 +188,45 @@ struct DeveloperPanelView: View {
             }
         }
         .navigationTitle("Developer")
+    }
+}
+
+/// Plan LM P4 — a test notification with the Done / Stop for today buttons, and what each press
+/// recorded. Kill the app after posting it to test a press that has to launch the app.
+private struct NotificationButtonTestSection: View {
+    @ObservedObject var log: NotificationButtonTestLog
+    @State private var status: String?
+
+    var body: some View {
+        OGSection(
+            header: "Notification Buttons",
+            footer: "Posts a notification with Done and Stop for today in 20 seconds. Kill the app first to test a cold launch: a press that arrives \"background\" a few seconds after launch woke the app for it."
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                if let status { Text(verbatim: status) }
+                if log.presses.isEmpty {
+                    Text(verbatim: "No presses recorded yet.")
+                } else {
+                    ForEach(Array(log.presses.reversed().enumerated()), id: \.offset) { _, press in
+                        Text(verbatim: press.line())
+                    }
+                }
+            }
+            .font(.caption2.monospaced())
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            OGDivider()
+            Button {
+                Task { @MainActor in
+                    let posted = await NotificationButtonTest.post()
+                    status = posted ? "Test notification in 20 s." : "Notifications are not allowed."
+                }
+            } label: {
+                OGRow("Post a test notification with buttons", icon: "bell.badge", mutedIcon: true, showsChevron: false)
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 

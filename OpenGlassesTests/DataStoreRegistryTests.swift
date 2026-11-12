@@ -80,6 +80,11 @@ final class DataStoreRegistryTests: XCTestCase {
                 + "participant's fixed id, an outcome enum and seconds, and the last request's dates "
                 + "with a fixed failure token. Developer-panel evidence; nothing the wearer said or did",
 
+        "OpenGlasses/Sources/Services/Notifications/NotificationButtonTest.swift":
+            "the Developer panel's notification-button test (Plan LM P4): the last 10 presses' times, "
+                + "a fixed action id, an app-state token and seconds since launch. Developer-panel "
+                + "evidence; nothing the wearer said or did",
+
         "OpenGlasses/Sources/Services/LLM/PerMinuteAllowance.swift":
             "each saved model's learned tokens-a-minute allowance (Plan KL P1): two numbers and a "
                 + "fingerprint of the provider, the model id and the endpoint — nothing of the key. "
