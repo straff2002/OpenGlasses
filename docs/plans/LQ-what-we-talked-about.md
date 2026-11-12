@@ -45,6 +45,9 @@ back to where it came from? Partly. Facts said during a turn are saved and carry
   conversation. Forget a note and it's gone and isn't written again. The existing offer to delete the
   conversation follows, as for any forgotten fact.
 - With HIPAA mode on, no note is written and the word-prefix summary stays. Nothing is sent.
+- On a phone an organisation manages, its profile can switch notes off. The switch then shows as set by
+  that organisation, no notes are written, and nothing is sent. Removing the profile puts back what the
+  wearer had chosen.
 - A conversation where the wearer only said "what time is it" twice gets no note.
 - Notes never quote a manual page, a web page or an email at length. A conversation where the wearer
   mentioned their neighbour's diagnosis gets a note that leaves the diagnosis out (LN's rule).
@@ -90,6 +93,13 @@ back to where it came from? Partly. Facts said during a turn are saved and carry
   `appState.activateConversationThread`), asking first only when a job owns another conversation.
 - `ConversationRecallCoordinator` keeps an in-memory FTS index of user/assistant turns, rebuilt on unlock
   (`.conversationRecallIndex`, `processMemoryOnly`). It is fed by `ConversationRecallProjectionEvent`.
+- Organisation profiles (Plan [CT](CT-org-configuration-profiles.md)) move settings only through `SettingKey`, an
+  allow-list in which each key declares the one way it may move. Agent Mode, face recognition, the
+  interpreter, Instant Replay and cloud dictation are `.ceiling(pinnedTo: false)`: a profile may switch them
+  off, never on. `Config` reads them through `PolicyEnvelope.bool(_:stored:)`, which clamps on read and never
+  overwrites the wearer's own value. The setter refuses while `PolicyEnvelope.isLocked(_:)`, and the control
+  shows locked with the organisation named. `.orgPolicyDidChange` is posted when a profile is applied or
+  removed. Neither the timeline switch nor anything about conversation history is a `SettingKey` today.
 - `SubjectErasureCoordinator.eraseConversations`: `.conversationThread(id)` deletes the thread; `.person`
   leaves thread text, clears timeline notes naming them, and says so in the receipt.
 
@@ -187,22 +197,24 @@ digest is how other conversations find it.
 
 In order, each refusal named from a closed set that is safe to log:
 
-1. **The setting is on.** `Config.conversationDigestsEnabled`, default on, beside the timeline switch in
+1. **No organisation profile pins it off** (`orgPinnedOff`, §9). Checked first and named on its own, so a
+   log reader can tell a company's choice from the wearer's.
+2. **The setting is on.** `Config.conversationDigestsEnabled`, default on, beside the timeline switch in
    `EverydaySettingsScreen`. Not behind Agent Mode ([decision 1](#decisions-for-greig-open)): it sends the wearer's
    words to the model those words already went to, once per conversation, like the timeline.
-2. **HIPAA mode is off.** No note at all under HIPAA, on-device included. A medical conversation's note needs
+3. **HIPAA mode is off.** No note at all under HIPAA, on-device included. A medical conversation's note needs
    its own review (KK decision 3's reasoning).
-3. **A model is configured.**
-4. **The destination is the same.** The active provider is the one that answered the thread's last turn
+4. **A model is configured.**
+5. **The destination is the same.** The active provider is the one that answered the thread's last turn
    (new `ConversationThread.lastAnswerProvider: String?`, written when a reply is saved). A wearer who
    switched provider since then gets no note for that thread (`providerChanged`;
    [decision 4](#decisions-for-greig-open)).
-5. **An on-device model runs only in the foreground.** `RelationEnrichmentPolicy.isOnDevice(provider)` while
+6. **An on-device model runs only in the foreground.** `RelationEnrichmentPolicy.isOnDevice(provider)` while
    backgrounded → `deferred`, which leaves the thread in the backlog. It is not a refusal
    ([decision 3](#decisions-for-greig-open)).
-6. **The store is open and writable**, and the thread still exists.
-7. **No pass is running for the thread**, and it is not backing off (`TimelinePassBackoff`, reused).
-8. **No spend cap is reached** (`TimelinePassPolicy.isAtSpendCap`, reused; never moves to a cheaper model,
+7. **The store is open and writable**, and the thread still exists.
+8. **No pass is running for the thread**, and it is not backing off (`TimelinePassBackoff`, reused).
+9. **No spend cap is reached** (`TimelinePassPolicy.isAtSpendCap`, reused; never moves to a cheaper model,
    which would be a new destination). The daily backlog cap is the backlog's, not a policy reason.
 
 The call goes through the same structured-completion seam the brain uses (`completeStructured`), injected as a
@@ -263,6 +275,28 @@ All new copy goes in the string catalog, with no plan letters.
   the wearer asked to forget.
 - Retention and the 200-thread cap need nothing new: the digest is part of the thread.
 
+### 9 · An organisation can switch notes off
+
+`SettingKey.conversationDigestsEnabled` is declared `.ceiling(pinnedTo: false)`, the same way as
+`instantReplayEnabled`. `Config.conversationDigestsEnabled` reads through `PolicyEnvelope.bool`, and its setter
+refuses while the key is locked. The Settings switch renders locked, naming the organisation, through the
+path every other locked key uses. An organisation can switch notes off on its phones and never on: writing
+notes about a person's conversations is the person's choice, not the employer's.
+
+While pinned off:
+- `ConversationDigestPolicy` refuses with `orgPinnedOff` (§5, reason 1). Its conditions read
+  `PolicyEnvelope.isLocked(.conversationDigestsEnabled)` directly, so the reason is not reported as the
+  wearer's `settingOff`.
+- The backlog does not run. A pin that arrives (`.orgPolicyDidChange`) while it is running stops it before
+  the next thread, because each call is decided afresh. A call already in flight finishes, and its note is
+  still put through the same check before it is saved, so it is dropped.
+- Notes that already exist are a separate question ([decision 9](#decisions-for-greig-open)). A pin never
+  deletes anything: clamp on read is the rule, so removing the profile changes nothing but the switch.
+
+This is independent of the job-thread rule (§2). Job threads never get notes, managed or not. The pin is for
+an organisation that wants no notes at all on its phones, including the technician's own chats in the van.
+Pinning the timeline switch is not part of this plan.
+
 ## Decisions for Greig (open)
 
 1. **Gate.** *Recommended:* its own switch, default on, not behind Agent Mode, like the timeline (KK
@@ -287,6 +321,10 @@ All new copy goes in the string catalog, with no plan letters.
 8. **Facts from notes.** *Recommended:* none. Per-turn writers already save facts, and a second inferred
    writer doubles the risk of false memories. Alternative: offer a note's to-do points as reminders, one tap
    each.
+9. **Notes that already exist when an organisation pins notes off.** *Recommended:* they stay, in Memory and
+   in recall. They were written before the pin, from the wearer's own conversations, and a profile only ever
+   clamps, never deletes. Alternative: hide them from recall and the Memory screen while the pin is in force,
+   still without deleting them.
 
 ## Phases
 
@@ -305,20 +343,25 @@ is still unbuilt, P1 waits, and it does not ship its own copy of LN's gate.
 - the input reads timeline entries and the tail, leaves out redacted entries and replies after untrusted
   tools, and fits its budget;
 - a 12-word quoted run drops its point;
-- the backlog orders by date and caps per day.
+- the backlog orders by date and caps per day;
+- an organisation pin refuses with `orgPinnedOff` ahead of every other reason.
 
 ### P1 — written and forgotten (headless, after LN P0)
 `lastAnswerProvider` written on reply save. `ConversationStore.saveDigest(_:for:)` with the save guards
-(locked, thread gone, redacted). `ConversationDigestPass` hung on `onThreadLeft` beside `distill`, with a
+(locked, thread gone, redacted, organisation pin). `ConversationDigestPass` hung on `onThreadLeft` beside `distill`, with a
 `Summarise` seam, backoff and `PrivacyLog` lines that never carry text. Backlog run on foreground. LN's gate
-in acceptance. Settings switch. Erasure (§8) and the registry note. Tests:
+in acceptance. Settings switch, and `SettingKey.conversationDigestsEnabled` as a ceiling with its locked
+control (§9). Erasure (§8) and the registry note. Tests:
 - leave by end, by idle gap and by replace: each writes once;
 - HIPAA writes nothing and sends nothing;
 - a switched provider writes nothing;
 - a neighbour's diagnosis point is dropped and the rest kept;
 - a forgotten note is not rewritten after a resume;
 - person erasure clears points naming them;
-- deleting a thread leaves no digest anywhere.
+- deleting a thread leaves no digest anywhere;
+- with the key pinned off: no call is made, the setter is refused, a call in flight when the pin arrives
+  saves nothing, and removing the profile restores the wearer's own value. The `SettingKey` lists in
+  `SettingsVisibilityPolicyTests` include the new key.
 
 ### P2 — found again (headless)
 `session_search` scoring and output with the envelope. The recall-index digest row and its delete. Chat
