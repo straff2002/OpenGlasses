@@ -1,7 +1,9 @@
 # Plan LE — The Evening Check-in (what's still waiting on your reply, decision or approval)
 
-**Status:** 📝 Drafted 2026-11-11. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 📝 Drafted 2026-11-11. Nothing built. All eight [decisions](#decisions-for-greig-taken-2026-11-12)
+taken as recommended on 2026-11-12. Whether the "check-in is ready" notification carries Plan
+[LM](LM-background-and-notification-foundation.md)'s buttons (drafted before LM existed) waits for
+LM's device pass.
 **Track:** Everyday assistant. Phone and spoken audio first; the Display and the watch follow.
 **Builds on:** Plan [DY](DY-my-day-everyday-briefing.md) (`MyDayDeliveryPolicy`, `MyDayScheduledDeliveryService`,
 quiet hours, `MyDaySpeechPolicy`), Plan [IW](IW-goals-and-activity-trail.md) (`ActivityStore`, `ActivityPhraser`,
@@ -204,9 +206,9 @@ Everything is read from stores on the phone. No network, no model, no new data k
 dismissed fingerprints (`OpenLoopDismissals`, in the style of `MyDayDismissals`). With Medical Compliance or
 local-only modes on, nothing changes, because nothing leaves the phone. The notification text names nothing.
 
-## Decisions for Greig (open)
+## Decisions for Greig (taken 2026-11-12)
 
-Recommendations first.
+All eight taken as recommended.
 
 1. **A separate check-in time, not a change to the evening briefing.** The evening slot looks at tomorrow;
    the check-in looks at today. Merge them only when they fall within 30 minutes. (Alternative: replace

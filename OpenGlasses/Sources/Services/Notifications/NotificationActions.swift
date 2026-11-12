@@ -41,7 +41,7 @@ enum NotificationActionCatalog {
     )
 
     /// Every category the app registers.
-    static let all: [NotificationCategorySpec] = [askUntilDone]
+    static let all: [NotificationCategorySpec] = [askUntilDone, NotificationButtonTest.category]
 
     static func category(id: String) -> NotificationCategorySpec? {
         all.first { $0.id == id }
