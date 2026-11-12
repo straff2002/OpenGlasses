@@ -1484,6 +1484,9 @@ enum PrivacyLog {
         case engineFailed, engineFallback
         case requested, received, playing, playbackFinished, decodeFailed
         case voiceSelected, quotaExhausted, modelUnavailable, quotaCacheReset, toneFailed, voicesRequestFailed
+        // Plan LO — the system voice switched for a reply in another language; the language code
+        // only, never the words.
+        case voiceLanguageSwitched
         // Plan KL P3 — a cloud voice refused the key and is latched off for it; a voice list not
         // fetched for a key already refused.
         case keyNotAccepted, voicesRequestSkipped

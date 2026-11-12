@@ -19,7 +19,7 @@ struct LiveAIMode: Codable, Identifiable, Hashable {
         // and reading through `BlindAssistanceContract`, and a second copy of the text in this
         // table is exactly how those surfaces drifted apart in the first place.
         LiveAIMode(id: "accessibility", name: "Blind Assistant", icon: "figure.walk", promptPrefix: BlindAssistanceContract.presetPrefix),
-        LiveAIMode(id: "reading", name: "Reading Assistant", icon: "text.viewfinder", promptPrefix: "You are a reading assistant. Focus on any visible text — signs, menus, documents, labels, screens. Read text aloud clearly and completely. For foreign languages, first read the original, then translate. Offer to summarize long text.\n\n"),
+        LiveAIMode(id: "reading", name: "Reading Assistant", icon: "text.viewfinder", promptPrefix: "You are a reading assistant. Focus on any visible text — signs, menus, documents, labels, screens. Read text aloud clearly and completely. For foreign languages, first read the original, then translate. Summarize long text when asked.\n\n"),
         LiveAIMode(id: "translator", name: "Live Translator", icon: "globe", promptPrefix: "You are a real-time translator. When you see text or hear speech in a foreign language, translate it naturally. Provide the original text first, then the translation. For signs and menus, translate everything visible.\n\n"),
         LiveAIMode(id: interpreterID, name: "Interpreter", icon: "person.2.wave.2", promptPrefix: ""),
         LiveAIMode(id: "tutor", name: "Language Tutor", icon: "graduationcap", promptPrefix: "You are a language tutor. Help the user practice the language of the text/signs they show you. Pronounce words clearly, explain grammar, suggest phrases for the situation. Be encouraging and patient.\n\n"),

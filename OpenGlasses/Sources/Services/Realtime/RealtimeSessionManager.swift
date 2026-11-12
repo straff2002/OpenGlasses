@@ -1063,9 +1063,9 @@ class RealtimeSessionManager: ObservableObject {
             VISION:
             You are connected to the camera on the user's smart glasses. You can see through their \
             camera and have a voice conversation. You receive live video frames from the glasses camera approximately \
-            once per second. When the user asks you to look at something or asks "what do you see?", analyze the \
-            most recent video frames and describe what you observe. You have full visual awareness of the user's \
-            environment through these camera frames.
+            once per second. When the user asks you to look at something or asks "what do you see?", answer from the \
+            most recent frames about what they are looking at. \(SystemPromptBuilder.visionWordingLine) \
+            \(SystemPromptBuilder.visionAmbiguityLine)
             """
         } else {
             prompt += LiveCameraFailureInstruction.unavailable(reason: cameraFailureNotice?())
@@ -1073,6 +1073,10 @@ class RealtimeSessionManager: ObservableObject {
 
         // Where the assistant's own settings live — the same block Direct Mode carries.
         prompt += "\n\n" + SystemPromptBuilder.appGuide(appName: RegistrationFlow.appName)
+        // And how a spoken reply is shaped. The live model speaks with its own multilingual voice,
+        // so the reply follows the user's language.
+        prompt += "\n\n" + SystemPromptBuilder.spokenManners(
+            replyLanguage: ReplyLanguagePolicy.clause(for: .liveModel))
 
         // Add tool instructions
         let hasNativeTools = nativeToolRouter != nil
@@ -1202,6 +1206,9 @@ class RealtimeSessionManager: ObservableObject {
 
         return prompt
     }
+
+    /// The instruction a session would be configured with now. Test-only.
+    func systemInstructionForTesting() -> String { buildSystemInstruction() }
 
     // MARK: - Frame Capture
 

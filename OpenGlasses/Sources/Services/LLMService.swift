@@ -488,7 +488,7 @@ class LLMService: ObservableObject {
         var prompt = await buildSystemPrompt(
             locationContext: locationContext, includeTools: false, includeOpenClaw: false,
             hasImage: hasImage, memoryContext: memoryContext, turn: turn,
-            compactMemoryRules: true, device: device).combined
+            compactMemoryRules: true, compactSpokenManners: true, device: device).combined
         if let weatherContext {
             prompt += "\n\nCURRENT WEATHER (fetched just now — answer from this; do NOT call get_weather and do NOT say you will check): \(weatherContext)"
         }
@@ -510,6 +510,8 @@ class LLMService: ObservableObject {
         let built = AppleOnDeviceInstructions.build(.init(
             persona: Config.systemPrompt(device: device),
             appGuide: SystemPromptBuilder.onDeviceAppGuide(appName: RegistrationFlow.appName),
+            spokenManners: SystemPromptBuilder.onDeviceSpokenManners(
+                replyLanguage: ReplyLanguagePolicy.clause(for: ReplyLanguagePolicy.directModeVoice())),
             safetyPolicy: PromptInjectionPolicy.onDeviceSystemPromptPolicy,
             dateTime: currentDateTimeLine(),
             location: locationContext,
@@ -571,6 +573,8 @@ class LLMService: ObservableObject {
         let built = AppleOnDeviceInstructions.build(.init(
             persona: Config.systemPrompt(device: device),
             appGuide: SystemPromptBuilder.onDeviceAppGuide(appName: RegistrationFlow.appName),
+            spokenManners: SystemPromptBuilder.onDeviceSpokenManners(
+                replyLanguage: ReplyLanguagePolicy.clause(for: ReplyLanguagePolicy.directModeVoice())),
             safetyPolicy: PromptInjectionPolicy.onDeviceSystemPromptPolicy,
             dateTime: currentDateTimeLine(),
             location: locationContext,
@@ -663,7 +667,7 @@ class LLMService: ObservableObject {
     /// location, skills, job and manual context, …) — so a route that can place the tail after the
     /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
     /// single string, head first.
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, compactSpokenManners: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -696,12 +700,7 @@ class LLMService: ObservableObject {
             prompt += """
 
             VISION & CAMERA:
-            - \(Config.cameraSentence) When the user says "look at this", "what is this", "read this", "identify this", "take a photo", or similar, a photo will be captured and sent to you automatically.
-            - You CAN see images — never say you lack camera or vision access.
-            - Keep vision answers to 1–2 short sentences. Name the main subject. Skip background, lighting, and composition unless asked.
-            - For text/signs/menus in foreign languages: transcribe the original text, then translate it.
-            - For objects, products, landmarks: identify them briefly — do not catalog every detail.
-            - After reading text from an image, offer to copy it to clipboard or translate it.
+            \(Config.visionAndCameraRules)
             """
         }
 
@@ -711,6 +710,13 @@ class LLMService: ObservableObject {
         // about the app matches no classifier section, and the text never changes turn to turn.
         prompt += "\n\n" + SystemPromptBuilder.appGuide(appName: RegistrationFlow.appName)
         closeBlock("app guide")
+        // How a spoken reply is shaped, beside the app guide so a preset the user wrote carries it
+        // too. Stable: its one variable, the reply-language line, moves only with the voice setting.
+        let replyLanguage = ReplyLanguagePolicy.clause(for: ReplyLanguagePolicy.directModeVoice())
+        prompt += "\n\n" + (compactSpokenManners
+            ? SystemPromptBuilder.onDeviceSpokenManners(replyLanguage: replyLanguage)
+            : SystemPromptBuilder.spokenManners(replyLanguage: replyLanguage))
+        closeBlock("spoken manners")
 
         if includeTools && shouldInclude(.tools) {
             var toolSection = """
@@ -826,11 +832,11 @@ class LLMService: ObservableObject {
 
 
             VISION INPUT:
-            This turn includes an image captured from the user's camera. You can analyze that image for this response.
-            Do not say you lack camera or image access when an image is attached. If the image is unclear, say what you can and cannot make out.
+            This turn includes a photo from the user's camera of what they are looking at, and you can see it for this response. \(SystemPromptBuilder.visionWordingLine)
+            Do not say you lack camera or image access when a photo is attached. If it is unclear, say what you can and cannot make out. \(SystemPromptBuilder.visionAmbiguityLine)
 
             IDENTIFY & OCR:
-            When the user asks to "identify", "read", "OCR", or "what does this say", carefully read ALL text visible in the image.
+            When the user asks to "identify", "read", "OCR", or "what does this say", carefully read ALL text visible in what they are looking at.
             - For signs, menus, labels, documents: transcribe the text accurately.
             - For foreign language text (e.g. Japanese, Chinese, Korean, Arabic, etc.): first transcribe the original text, then provide a translation into the user's language (English by default). Format as: "[Original text] — [Translation]".
             - For objects, products, landmarks: describe what you see and identify it.
