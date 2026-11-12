@@ -1,7 +1,7 @@
 # Plan LQ — What We Talked About (a short note of each finished conversation, kept with memory, one tap back to it)
 
-**Status:** 📝 Drafted 2026-11-12. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 📝 Drafted 2026-11-12. Nothing built. Decision 9 is taken. The other [decisions](#decisions-for-greig-open)
+below are recommendations and are still open.
 **Track:** Everyday assistant — memory and recall. Every mode that saves a conversation thread (voice, Chat
 tab, live modes that write to the store), the Memory screen, `session_search` and the recall index.
 **Builds on:** Plan [KK](KK-conversation-timeline.md) (`ConversationThread.timeline`, `TimelineSummaryPass`,
@@ -290,7 +290,7 @@ While pinned off:
 - The backlog does not run. A pin that arrives (`.orgPolicyDidChange`) while it is running stops it before
   the next thread, because each call is decided afresh. A call already in flight finishes, and its note is
   still put through the same check before it is saved, so it is dropped.
-- Notes that already exist are a separate question ([decision 9](#decisions-for-greig-open)). A pin never
+- Notes that already exist stay, in Memory and in recall ([decision 9](#decisions-for-greig-open), taken). A pin never
   deletes anything: clamp on read is the rule, so removing the profile changes nothing but the switch.
 
 This is independent of the job-thread rule (§2). Job threads never get notes, managed or not. The pin is for
@@ -321,10 +321,10 @@ Pinning the timeline switch is not part of this plan.
 8. **Facts from notes.** *Recommended:* none. Per-turn writers already save facts, and a second inferred
    writer doubles the risk of false memories. Alternative: offer a note's to-do points as reminders, one tap
    each.
-9. **Notes that already exist when an organisation pins notes off.** *Recommended:* they stay, in Memory and
-   in recall. They were written before the pin, from the wearer's own conversations, and a profile only ever
-   clamps, never deletes. Alternative: hide them from recall and the Memory screen while the pin is in force,
-   still without deleting them.
+9. **Notes that already exist when an organisation pins notes off.** ✅ *Taken as recommended, 2026-11-12:*
+   they stay, in Memory and in recall. They were written before the pin, from the wearer's own conversations, and a profile only ever
+   clamps, never deletes. (The alternative was to hide them from recall and the Memory screen while the pin is
+   in force, still without deleting them.)
 
 ## Phases
 
