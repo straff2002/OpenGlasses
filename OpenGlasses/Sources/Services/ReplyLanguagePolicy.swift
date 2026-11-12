@@ -36,7 +36,9 @@ enum ReplyLanguagePolicy {
     }
 
     /// The languages each voice can speak, as the app drives it.
-    /// - The iOS voice: always (decision 2 of the plan) — the system has a voice for every language.
+    /// - The iOS voice: always (decision 2 of the plan). It switches voice per reply to an installed
+    ///   one for the reply's language when the reply is confidently in another language
+    ///   (`TTSVoiceResolver.voiceForReply`), and iOS ships a voice for every language it supports.
     /// - ElevenLabs: the model the app sends (`TextToSpeechService.elevenLabsModelID`) is
     ///   multilingual; only an English-only model would limit it.
     /// - OpenAI, xAI and Gemini: their speech models read the text in whatever language it is in

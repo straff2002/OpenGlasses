@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import NaturalLanguage
 
 /// Text-to-speech service using ElevenLabs for natural voice
 /// Falls back to iOS AVSpeechSynthesizer if no API key or quota exhausted
@@ -1587,8 +1588,10 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     private func speakOnceWithiOS(text: String) async -> SynthesizerHealthPolicy.Verdict {
         let utterance = AVSpeechUtterance(string: text)
 
-        // Respect the saved voice and device language order before voice quality.
-        let voice = Self.bestAvailableVoice()
+        // Respect the saved voice and device language order before voice quality — then switch to
+        // an installed voice for the reply's own language when it is confidently another one, so
+        // a Spanish answer is not read in an English voice.
+        let voice = Self.replyVoice(for: text, chosen: Self.bestAvailableVoice())
         utterance.voice = voice
         // A voice identifier is treated as an identifier, not a catalog name: a wearer who has
         // installed a custom or personal voice is identifiable by it.
@@ -1662,6 +1665,34 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             return allVoices.first { $0.identifier == selected.identifier }
         }
         return AVSpeechSynthesisVoice(language: "en-US")
+    }
+
+    /// The voice for one reply: `chosen`, or an installed voice for the reply's language when the
+    /// recognizer is confident it is one `chosen` does not speak (`TTSVoiceResolver.voiceForReply`).
+    /// One recognizer pass per utterance; the installed voices are listed only when a switch is in
+    /// question.
+    private static func replyVoice(for text: String, chosen: AVSpeechSynthesisVoice?) -> AVSpeechSynthesisVoice? {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let detected = recognizer.dominantLanguage.map { language in
+            TTSVoiceResolver.DetectedLanguage(
+                code: language.rawValue,
+                confidence: recognizer.languageHypotheses(withMaximum: 2)[language] ?? 0)
+        }
+        let (letters, logographic) = TTSVoiceResolver.letterCount(of: text)
+        guard TTSVoiceResolver.wantsLanguageSwitch(chosenLanguage: chosen?.language, detected: detected,
+                                                   letters: letters, logographic: logographic) else { return chosen }
+        let all = AVSpeechSynthesisVoice.speechVoices()
+        guard let picked = TTSVoiceResolver.voiceForReply(
+            chosen: chosen.map(voiceDescriptor), detected: detected, letters: letters, logographic: logographic,
+            preferredLanguages: Locale.preferredLanguages, voices: all.map(voiceDescriptor)),
+              picked.identifier != chosen?.identifier,
+              let voice = all.first(where: { $0.identifier == picked.identifier }) else { return chosen }
+        // The language is a case name, never the words; the voice is fingerprinted as above.
+        PrivacyLog.tts(.voiceLanguageSwitched, engine: PrivacyToken("system"),
+                       quality: voice.quality.rawValue, voice: PrivateIdentifier(voice.identifier),
+                       detail: PrivacyToken(detected?.code ?? "unknown"))
+        return voice
     }
 
     /// Installed voices in the user's languages, plus English and their saved voice.

@@ -29,6 +29,76 @@ enum TTSVoiceResolver {
         }.sorted(by: qualityOrder)
     }
 
+    // MARK: - A voice for the reply's language
+
+    /// The language a reply was detected as, and how sure the detection was (0…1).
+    struct DetectedLanguage: Equatable {
+        /// BCP 47, as the recognizer names it ("es", "zh-Hans").
+        let code: String
+        let confidence: Double
+    }
+
+    /// How sure the detection must be before the voice changes. The dominant hypothesis has to
+    /// clear it: an English sentence quoting one Spanish word stays well under, a Spanish sentence
+    /// sits near 1. Below it the chosen voice reads the reply, as it always did.
+    static let switchConfidence = 0.8
+    /// Letters a reply needs before its language is trusted: a name, a number or "OK" reads the
+    /// same in any voice, and the recognizer guesses wildly on them. Han, kana and Hangul carry
+    /// more per character, so fewer of them are enough.
+    static let minimumSwitchLetters = 12
+    static let minimumLogographicSwitchLetters = 4
+
+    /// Letters in `text`, and whether it is written in a logographic or syllabic script. Pure.
+    static func letterCount(of text: String) -> (letters: Int, logographic: Bool) {
+        var letters = 0
+        var logographic = 0
+        for scalar in text.unicodeScalars where scalar.properties.isAlphabetic {
+            letters += 1
+            switch scalar.value {
+            case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF: logographic += 1
+            default: break
+            }
+        }
+        return (letters, logographic * 2 > letters)
+    }
+
+    /// Whether a reply is worth looking for another voice for: long enough, detected with
+    /// confidence, and in a language the chosen voice does not speak. Pure; checked before the
+    /// installed voices are listed, so most replies cost one recognizer pass and nothing more.
+    static func wantsLanguageSwitch(chosenLanguage: String?, detected: DetectedLanguage?,
+                                    letters: Int, logographic: Bool) -> Bool {
+        guard let detected, detected.confidence >= switchConfidence else { return false }
+        guard letters >= (logographic ? minimumLogographicSwitchLetters : minimumSwitchLetters) else { return false }
+        if let chosenLanguage, matchesLanguage(chosenLanguage, detected.code) { return false }
+        return true
+    }
+
+    /// The voice that reads one reply. The chosen voice (the saved one, or `resolve`'s pick) is
+    /// kept unless the reply is confidently in a language it does not speak and a voice for that
+    /// language is installed; then the best of those: a region the user has among their device
+    /// languages first, then the chosen voice's own region, then quality, as `resolve` ranks.
+    /// Pure.
+    static func voiceForReply(chosen: Voice?, detected: DetectedLanguage?, letters: Int, logographic: Bool,
+                              preferredLanguages: [String], voices: [Voice]) -> Voice? {
+        guard wantsLanguageSwitch(chosenLanguage: chosen?.language, detected: detected,
+                                  letters: letters, logographic: logographic),
+              let detected else { return chosen }
+        let candidates = voices.filter { matchesLanguage($0.language, detected.code) }
+        guard !candidates.isEmpty else { return chosen }
+        let preferred = preferredLanguages.map(canonical)
+        let chosenRegion = chosen.flatMap { Locale.Language(identifier: $0.language).region?.identifier }
+        func rank(_ voice: Voice) -> (Int, Int) {
+            let preferredIndex = preferred.firstIndex(of: canonical(voice.language)) ?? preferred.count
+            let region = Locale.Language(identifier: voice.language).region?.identifier
+            return (preferredIndex, chosenRegion != nil && region == chosenRegion ? 0 : 1)
+        }
+        return candidates.sorted { lhs, rhs in
+            let (l, r) = (rank(lhs), rank(rhs))
+            if l != r { return l < r }
+            return qualityOrder(lhs, rhs)
+        }.first
+    }
+
     // MARK: - Pointing at the better system voices
 
     /// `AVSpeechSynthesisVoiceQuality.premium.rawValue`; `.enhanced` is 2 and the compact voice

@@ -200,6 +200,15 @@ P0 and P1 in one change; nothing user-facing on screen, no new UI strings.
   `.visionAmbiguityLine`) in the shipped VISION & CAMERA rules, the `hasImage` VISION INPUT block (which now says
   "a photo … of what they are looking at" and reads text "visible in what they are looking at") and the live
   VISION block (which no longer says "describe what you observe").
+- **Decision 2, the iOS voice made true (review follow-up):** the policy counts the iOS voice as speaking every
+  language, but it used to read every reply in the one saved (or device-language) voice. `speakOnceWithiOS` now
+  runs one `NLLanguageRecognizer` pass per utterance and asks the pure `TTSVoiceResolver.voiceForReply`: the
+  chosen voice is kept when the reply's language matches it, when the dominant hypothesis is under
+  `switchConfidence` (0.8), when the reply is short (under 12 letters, or 4 Han/kana/Hangul characters — a name or a
+  number), or when no voice for that language is installed; otherwise the best installed voice for it, ranked by a
+  matching device-language region, then the chosen voice's region, then quality, as `resolve` ranks. The installed
+  voices are listed only when a switch is in question. A switch logs `voiceLanguageSwitched` with the language code
+  and the fingerprinted voice, never the words. Tests: `TTSVoiceReplyLanguageTests`.
 - **Tests:** `SpokenMannersTests` (the block in Direct, lean on-device, Apple on-device, condensed and live prompts,
   with a custom preset; the head byte-identical across two turns; the short form two lines and within the
   on-device budget; the arithmetic rule only with its tools; the policy per voice, app language and setting; no
@@ -233,9 +242,8 @@ glasses.
   the new rule does not pull superheat or a duct size away from `domain_calc`.
 - The reply-language clause reads the voice setting, not the engine that ends up speaking a given sentence: a
   chosen cloud voice that falls back to Kokoro offline keeps the "follow the user" line (by design, so the head
-  does not move). The iOS voice is counted as speaking every language (decision 2); the app picks one system voice
-  per the saved choice or the device languages, so a Spanish reply through an English system voice is still
-  possible — worth a look in P2.
+  does not move). The iOS voice is counted as speaking every language (decision 2) because it now switches voice
+  per reply; a language with no voice installed is still read by the chosen one — worth a look in P2.
 
 ## Risks
 

@@ -107,3 +107,69 @@ final class TTSVoiceResolverTests: XCTestCase {
                                                     voices: voices))
     }
 }
+
+/// Plan LO — the iOS voice reads a reply in its own language: an installed voice for a reply
+/// confidently in another language, the chosen voice otherwise.
+final class TTSVoiceReplyLanguageTests: XCTestCase {
+    private func voice(_ id: String, _ language: String, _ quality: Int = 1) -> TTSVoiceResolver.Voice {
+        .init(identifier: id, language: language, quality: quality, name: id)
+    }
+
+    private let english = TTSVoiceResolver.Voice(identifier: "saved-en", language: "en-GB", quality: 2, name: "saved-en")
+    private var installed: [TTSVoiceResolver.Voice] {
+        [english, voice("es-compact", "es-ES", 1), voice("es-premium", "es-ES", 3), voice("es-mx", "es-MX", 1),
+         voice("de", "de-DE", 2)]
+    }
+    private let spanish = TTSVoiceResolver.DetectedLanguage(code: "es", confidence: 0.97)
+
+    private func pick(_ detected: TTSVoiceResolver.DetectedLanguage?, letters: Int = 40, logographic: Bool = false,
+                      preferred: [String] = ["en-GB"], voices: [TTSVoiceResolver.Voice]? = nil) -> String? {
+        TTSVoiceResolver.voiceForReply(chosen: english, detected: detected, letters: letters, logographic: logographic,
+                                       preferredLanguages: preferred, voices: voices ?? installed)?.identifier
+    }
+
+    func testTheSameLanguageKeepsTheChosenVoice() {
+        XCTAssertEqual(pick(.init(code: "en", confidence: 0.99)), "saved-en")
+    }
+
+    func testConfidentSpanishWithASpanishVoiceInstalledSwitches() {
+        XCTAssertEqual(pick(spanish), "es-premium", "highest quality when no region is preferred")
+        XCTAssertEqual(pick(spanish, preferred: ["en-GB", "es-MX"]), "es-mx", "a device language's region first")
+    }
+
+    func testTheChosenVoicesRegionWinsBeforeQuality() {
+        let voices = [english, voice("es-us", "es-US", 3), voice("es-gb", "es-GB", 1)]
+        XCTAssertEqual(pick(spanish, voices: voices), "es-gb")
+    }
+
+    func testLowConfidenceKeepsTheChosenVoice() {
+        XCTAssertEqual(pick(.init(code: "es", confidence: TTSVoiceResolver.switchConfidence - 0.01)), "saved-en")
+        XCTAssertEqual(pick(nil), "saved-en", "nothing detected")
+    }
+
+    func testNoVoiceForTheLanguageKeepsTheChosenVoice() {
+        XCTAssertEqual(pick(.init(code: "ja", confidence: 0.99)), "saved-en")
+    }
+
+    func testShortTextKeepsTheChosenVoice() {
+        XCTAssertEqual(pick(spanish, letters: TTSVoiceResolver.minimumSwitchLetters - 1), "saved-en")
+        XCTAssertEqual(TTSVoiceResolver.letterCount(of: "Sí, 42.").letters, 2)
+    }
+
+    func testLogographicTextNeedsFewerCharacters() {
+        let zh = [english, voice("zh", "zh-CN", 2)]
+        let counted = TTSVoiceResolver.letterCount(of: "六点关门")
+        XCTAssertEqual(counted.letters, 4)
+        XCTAssertTrue(counted.logographic)
+        XCTAssertEqual(pick(.init(code: "zh-Hans", confidence: 0.95), letters: counted.letters,
+                            logographic: counted.logographic, voices: zh), "zh")
+        XCTAssertEqual(pick(.init(code: "zh-Hans", confidence: 0.95), letters: 3, logographic: true, voices: zh), "saved-en")
+        XCTAssertFalse(TTSVoiceResolver.letterCount(of: "The pharmacy closes at six tonight.").logographic)
+    }
+
+    func testTraditionalChineseIsNotReadBySimplifiedVoice() {
+        let voices = [english, voice("zh-cn", "zh-CN", 3)]
+        XCTAssertEqual(pick(.init(code: "zh-Hant", confidence: 0.95), letters: 8, logographic: true, voices: voices),
+                       "saved-en", "no Traditional voice installed: keep the chosen one")
+    }
+}
