@@ -148,10 +148,19 @@ public struct SeatClaimRequest: Codable, Equatable, Sendable {
 }
 
 /// A renewal presents the lease the phone holds; the service finds the seat by its key hash.
+///
+/// Plan LR P2: a renewal may also carry the company vaults installed on the phone, by id and
+/// version (`SeatInstalledVault`), for the portal's fleet view. Optional and omitted when there are
+/// none, so a renewal from a phone without company vaults is byte-for-byte what it was, and a
+/// service built before the field ignores it. A disclosed field: the privacy manifest, the in-app
+/// copy and `DeviceSeatTests` name it.
 public struct SeatRenewRequest: Codable, Equatable, Sendable {
     public let build: String
     public let lease: String
-    public init(build: String, lease: String) { self.build = build; self.lease = lease }
+    public let vaults: [SeatInstalledVault]?
+    public init(build: String, lease: String, vaults: [SeatInstalledVault]? = nil) {
+        self.build = build; self.lease = lease; self.vaults = vaults
+    }
 }
 
 /// Giving a seat back: the phone's owner removed the organisation from it.
@@ -221,12 +230,15 @@ public struct SeatRecord: Codable, Equatable, Sendable {
     /// counts, though the phone keeps working until the lease it holds runs out.
     public var freedAt: Date?
     public var freedBy: String?
+    /// Plan LR P2: the company vaults the phone reported on its latest renewal. Nil until it reports.
+    public var vaults: [SeatInstalledVault]?
     public init(profileId: String, deviceKeyHash: String, devicePublicKey: String, enrolmentId: String,
                 claimedAt: Date, leaseNotAfter: Date, lastSeenAt: Date, build: String,
-                freedAt: Date? = nil, freedBy: String? = nil) {
+                freedAt: Date? = nil, freedBy: String? = nil, vaults: [SeatInstalledVault]? = nil) {
         self.profileId = profileId; self.deviceKeyHash = deviceKeyHash; self.devicePublicKey = devicePublicKey
         self.enrolmentId = enrolmentId; self.claimedAt = claimedAt; self.leaseNotAfter = leaseNotAfter
         self.lastSeenAt = lastSeenAt; self.build = build; self.freedAt = freedAt; self.freedBy = freedBy
+        self.vaults = vaults
     }
 }
 
@@ -285,8 +297,20 @@ public enum SeatPolicy {
 
     /// A renewal of the seat a verified lease names. A freed seat is refused (the phone then
     /// claims, and gets a seat only if there is room); a seat that lapsed unheard is claimed afresh.
+    ///
+    /// `vaults` is what the renewal reported (Plan LR P2): kept on the granted seat when given,
+    /// limited to `SeatInstalledVault.maximumPerRenewal` well-formed entries; nil keeps what the
+    /// seat last reported.
     public static func renew(_ lease: SeatLeasePayload, build: String, profileId: String, licence: SeatLicence?,
-                             seats: [SeatRecord], now: Date) -> Outcome {
+                             seats: [SeatRecord], now: Date, vaults: [SeatInstalledVault]? = nil) -> Outcome {
+        let outcome = renewSeat(lease, build: build, profileId: profileId, licence: licence, seats: seats, now: now)
+        guard let vaults, case .grant(var seat, let granted) = outcome else { return outcome }
+        seat.vaults = Array(vaults.filter(\.isWellFormed).prefix(SeatInstalledVault.maximumPerRenewal))
+        return .grant(seat: seat, lease: granted)
+    }
+
+    private static func renewSeat(_ lease: SeatLeasePayload, build: String, profileId: String, licence: SeatLicence?,
+                                  seats: [SeatRecord], now: Date) -> Outcome {
         guard let licence else { return .refuse(.unknownProfile) }
         guard licence.seatCheck else { return .refuse(.notSeatChecked) }
         guard licence.expires.map({ now < $0 }) ?? true else { return .refuse(.licenceLapsed) }
