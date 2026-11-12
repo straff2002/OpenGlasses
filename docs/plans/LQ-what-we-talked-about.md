@@ -138,8 +138,12 @@ A thread qualifies when (pure, `ConversationDigestEligibility`):
 - it has no digest, or messages after `coversThroughMessageID` (a resumed conversation left again gets one
   rewrite, from the old note plus the new turns);
 - `redacted` is not set;
-- no job or debrief owns it (`jobTitle == nil`, not the bound or debrief thread;
-  [decision 2](#decisions-for-greig-open)).
+- no Field Assist session, open or ended, names it as its `conversationThreadId`, and it is not the debrief
+  thread ([decision 2](#decisions-for-greig-open)). `jobTitle` is not enough: `applyThreadTitle` sets it only
+  once the job has a reference, and `applyJobTitle` leaves it nil on a thread the technician renamed. A
+  normal job end calls `endThread`, so `onThreadLeft` does fire for a job's thread. Only the
+  access-withdrawal path deletes the thread without it. This check, rather than the seam, is what keeps
+  job threads out, and the backlog applies the same check.
 
 **Backlog.** A thread that qualified but was not written (no network, the phone locked, an on-device model
 while backgrounded, a spend cap) is picked up by `ConversationDigestBacklog` (pure): eligible, not active,
@@ -297,7 +301,7 @@ is still unbuilt, P1 waits, and it does not ship its own copy of LN's gate.
 - every policy reason, in order;
 - on-device and backgrounded gives `deferred`, not a skip;
 - a resumed thread qualifies once per new tail;
-- a job thread never qualifies;
+- a job thread never qualifies, including one with no job number and one the technician renamed;
 - the input reads timeline entries and the tail, leaves out redacted entries and replies after untrusted
   tools, and fits its budget;
 - a 12-word quoted run drops its point;
