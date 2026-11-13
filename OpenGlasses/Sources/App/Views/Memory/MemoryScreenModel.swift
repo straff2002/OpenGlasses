@@ -10,13 +10,15 @@ final class MemoryScreenModel: ObservableObject {
         let group: MemoryFactGroup
         let facts: [MemoryFact]
         var id: MemoryFactGroup { group }
-        /// Health starts folded away; the wearer opens it on purpose.
-        var collapsedByDefault: Bool { group == .health }
+        /// Health and the notes of conversations start folded away; the wearer opens them on purpose.
+        var collapsedByDefault: Bool { group == .health || group == .conversations }
     }
 
     @Published private(set) var listing: MemoryFactListing = .empty
     @Published var query: String = ""
     @Published var healthExpanded = false
+    /// Plan LQ: the Conversations group, collapsed by default (decision 6).
+    @Published var conversationsExpanded = false
     /// The forget the wearer has asked for and not yet confirmed.
     @Published var pendingForget: MemoryForgetPlan?
     /// Whether the confirmed forget also removes the matching lines of the assistant's notes.
@@ -33,6 +35,9 @@ final class MemoryScreenModel: ObservableObject {
 
     private let repository: MemoryFactRepository
     private let forgetter: MemoryFactForgetter?
+    /// The saved threads, for the "From this conversation" row. Empty when no conversation store
+    /// is wired, which shows no row.
+    private var savedThreads: [ConversationThread] { forgetter?.stores.conversations?.threads ?? [] }
     private let corrector: MemoryFactCorrector?
     private let reviewDefaults: UserDefaults
 
@@ -113,6 +118,7 @@ final class MemoryScreenModel: ObservableObject {
         case .preferences: return String(localized: "Preferences", comment: "Memory screen group heading.")
         case .unfinished: return String(localized: "Unfinished things", comment: "Memory screen group heading.")
         case .other: return String(localized: "Other", comment: "Memory screen group heading.")
+        case .conversations: return String(localized: "Conversations", comment: "Memory screen group heading, collapsed by default: a short note of each finished conversation.")
         case .health: return String(localized: "Health", comment: "Memory screen group heading, collapsed by default.")
         }
     }
@@ -139,6 +145,7 @@ final class MemoryScreenModel: ObservableObject {
         case .agentNote: return String(localized: "Assistant's notes", comment: "Which kind of memory a fact is: a line of the assistant's own notes.")
         case .object: return String(localized: "Where you left something", comment: "Which kind of memory a fact is.")
         case .savedPlace: return String(localized: "Saved place", comment: "Which kind of memory a fact is.")
+        case .conversationDigest: return String(localized: "Conversation note", comment: "Which kind of memory a fact is: a short note the assistant wrote of a finished conversation.")
         }
     }
 
@@ -149,6 +156,7 @@ final class MemoryScreenModel: ObservableObject {
         case "brain": source = String(localized: "People and connections", comment: "Memory source name.")
         case "agentNotes": source = String(localized: "The assistant's notes", comment: "Memory source name.")
         case "places": source = String(localized: "Places", comment: "Memory source name.")
+        case "conversations": source = String(localized: "Notes of conversations", comment: "Memory source name.")
         default: source = issue.sourceID
         }
         switch issue.status {
@@ -168,6 +176,22 @@ final class MemoryScreenModel: ObservableObject {
             parts.append(fact.createdAt.formatted(date: .abbreviated, time: .omitted))
         }
         return parts.joined(separator: ". ")
+    }
+
+    // MARK: - The way back (Plan LQ §7)
+
+    /// The conversation a fact came from, while it is still saved: its title and date, for the
+    /// detail's "From this conversation" row. Nil for a fact with no live conversation.
+    func originatingConversation(for fact: MemoryFact) -> OriginatingConversation? {
+        guard let id = fact.conversationThreadID,
+              let thread = savedThreads.first(where: { $0.id == id }) else { return nil }
+        return OriginatingConversation(threadID: thread.id, title: thread.title, date: thread.updatedAt)
+    }
+
+    struct OriginatingConversation: Equatable {
+        let threadID: String
+        let title: String
+        let date: Date
     }
 
     // MARK: - Forget

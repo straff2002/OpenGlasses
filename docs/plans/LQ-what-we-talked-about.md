@@ -1,7 +1,8 @@
 # Plan LQ — What We Talked About (a short note of each finished conversation, kept with memory, one tap back to it)
 
-**Status:** 📝 Drafted 2026-11-12. Nothing built. All nine [decisions](#decisions-for-greig-taken) taken as
-recommended 2026-11-12; ready to build from P0.
+**Status:** 🚧 Built 2026-11-14: P0–P3 in one branch (headless). P4 device pass owed; string-catalog
+sync owed (new copy is in Swift only). All nine [decisions](#decisions-for-greig-taken) taken as
+recommended 2026-11-12. See [As built](#as-built-2026-11-14) for where the build differs from the design.
 **Track:** Everyday assistant — memory and recall. Every mode that saves a conversation thread (voice, Chat
 tab, live modes that write to the store), the Memory screen, `session_search` and the recall index.
 **Builds on:** Plan [KK](KK-conversation-timeline.md) (`ConversationThread.timeline`, `TimelineSummaryPass`,
@@ -389,6 +390,72 @@ cloud model), or after the next unlock (an on-device model). Ask for it a day la
 a fact's conversation from Memory, then check that the next voice turn did not join it. HIPAA on: no note,
 no request in the network log. Whether a cloud backlog should use LM's background wake is decided here,
 from what the pass shows.
+
+## As built (2026-11-14)
+
+P0–P3 shipped together; LN was already merged, so P1 used its gate directly. Code lives under
+`Services/Memory/Digest/` (`ConversationDigest`, `…Eligibility`, `…Input`, `…Acceptance`, `…Policy`,
+`…Backlog` with `ConversationDigestBacklogLedger`, `…Pass`), with `ConversationDigestFactSource` beside
+the other Memory adapters. Tests: `ConversationDigestCoreTests` (P0), `ConversationDigestPassTests` (P1),
+`ConversationDigestRecallTests` (P2), `ConversationDigestMemoryTests` (P3), plus updates to
+`SettingsGroupTests`, `SettingsVisibilityPolicyTests` and the `SubjectErasureTests` canary.
+
+Deviations and choices the design left open:
+
+- **LN's gate.** `MemoryWritePolicy` has no `.local` destination; points go through `MemoryWriteGate`
+  (instruction check, then subject matter) as an inferred `.memory` write. For an inferred write every
+  destination gives the same answer: anything sensitive is dropped, about the wearer or anyone else.
+  `MemoryInstructionCheck` drops an inferred value that mentions agreeing, confirming, approving or
+  warning, which would have dropped ordinary points ("agreed on Thursday"), so the prompt tells the
+  model not to use those words. A point it still writes that way is dropped, as designed.
+- **The structured call.** `completeStructured` returns a JSON object or nil and says nothing about
+  being cut off, so an answer it returns counts as finished; nil is `ConversationDigestError.unavailable`
+  and backs the thread off. The draft is read from the object (`ConversationDigestDraft`) and every
+  field is checked by acceptance.
+- **"After the new turn is answered."** `onThreadLeft` queues the thread (`ConversationDigestPass.enqueue`);
+  the queue drains after the next accepted reply (`startTimelinePass`) or at once when no turn is
+  running (start fresh, an end from the screen). A turn that fails leaves it to the foreground backlog.
+- **`lastAnswerProvider`** is written by `ConversationStore.appendMessage` for every assistant message,
+  through an injected `answerProvider` closure (`Config.activeModel?.llmProvider.rawValue`). A reply the
+  offline fallback gave is recorded as `"offline"`, which matches no provider, so that thread gets no
+  note until a provider answers it again. A thread with no recorded provider is `providerChanged`.
+- **Erased timeline entries still cover their span** in the input, as they do for the timeline: their
+  messages may name the person who was erased, so they are not sent; the entry only has no text to give.
+- **An edit or regenerate** that removes the message a note covers through, or any earlier one, drops
+  the note (as `truncate` drops `compressedSummary`); a forgotten note's marker is kept.
+- **The backlog's "shipped" line** is `ConversationDigestBacklogLedger.since`, recorded in
+  `UserDefaults` the first time the app runs with this code (decision 7); a thread is picked only if it
+  was touched after it. The day's count is two plain values beside it (`conversationDigestBacklogDay`,
+  `…Count`), never text. Only a written note counts against the day's 20.
+- **Job threads** come from `FieldSessionService.history` and `activeSession` (`conversationThreadId`)
+  plus `GuidedJobFlow.debrief?.threadId`, read afresh for every call.
+- **Recall index.** One row per note (`digest:<thread id>`, role `note`), replaced by the new projection
+  event `.digestUpsert(threadIDs:)` and removed by `.threadDelete` with the thread's turns. A person
+  erasure deletes matching rows first (the existing full-text reach), then `dropDigestPoints(naming:)`
+  re-projects what is left.
+- **`session_search`** scores a note's headline and each point as it scored `summary` (+2 a field) and
+  returns `Note (date): headline` with the points inside `PromptInjectionPolicy.wrap(toolName:
+  "conversation_note", …)`. It falls back to `Summary:` when there is no note.
+- **Siri.** The Spotlight conversation records (`SpotlightIndexService`) and the on-screen entity carry
+  the headline, never the points. The watch payload moved into `WatchConnectivityManager
+  .recentThreadsPayload(_:)` so it is tested.
+- **Memory.** The resolved link lives in `MemoryFact.conversationThreadID`, set by the adapters and
+  checked against the live threads in `MemoryFactRepository.load()` through `MemoryFactConversationLink`;
+  the forget plan uses the same function. `BrainStore.Edge.sessionID` reads `edges.session_id`. Notes are
+  left out of the `my_memory` tool's scope and the spoken "what do you know about me" summary (decision 5:
+  found by a search, not carried as something known about the wearer). The forget sheet's "Also remove
+  these" toggle covers note points as well as note lines; `MemoryFactErasure.digestPoints` carries them.
+- **Settings.** The switch is a new Memory-group member, "Notes of Finished Conversations"
+  (`SettingsGroupMemberID.conversationNotes`, follows the parent, hard-disabled in HIPAA mode), drawn
+  read-only with `ManagedSettingNote` when pinned. The key is in `SettingsVisibilityPolicy.alwaysShown`, so
+  a technician sees it set by the organisation rather than missing.
+- **Live modes** write no caption text into a thread as a user message (checked at build time), so
+  nothing more is left out of the input.
+- **P3's UI test** is headless: `ChatThreadOpening` is the piece of `ChatThreadView` that decides when a
+  thread activates, and `ConversationDigestMemoryTests` drives it against a real store. No existing
+  `OpenGlassesUITests` path reaches Memory › fact › conversation cheaply, and the active thread is not
+  visible on screen to assert. The P4 device pass checks it on the phone.
+- **Not done here:** the string catalog (a separate sync PR) and P4.
 
 ## Risks
 

@@ -61,12 +61,13 @@ struct SessionSearchTool: NativeTool {
             var threadScore = 0
             var matched: [ConversationMessage] = []
 
-            // Check title and summary first
+            // Check title and summary first. Plan LQ §6: a conversation's note is scored the way
+            // the word-prefix summary is, its headline and each point, and stands in for it.
             let titleLower = thread.title.lowercased()
-            let summaryLower = (thread.summary ?? "").lowercased()
+            let summaryFields = Self.summaryFields(of: thread).map { $0.lowercased() }
             for kw in keywords {
                 if titleLower.contains(kw) { threadScore += 3 }
-                if summaryLower.contains(kw) { threadScore += 2 }
+                for field in summaryFields where field.contains(kw) { threadScore += 2 }
             }
 
             // Search message content
@@ -106,7 +107,9 @@ struct SessionSearchTool: NativeTool {
             let date = dateFormatter.string(from: thread.updatedAt)
             var section = "**\(thread.title)** (\(date))"
 
-            if let summary = thread.summary {
+            if let note = Self.noteSection(for: thread) {
+                section += "\n" + note
+            } else if let summary = thread.summary {
                 section += "\nSummary: \(summary)"
             }
 
@@ -127,6 +130,24 @@ struct SessionSearchTool: NativeTool {
 
         let header = "Found \(scored.count) matching conversation\(scored.count == 1 ? "" : "s") (showing top \(topResults.count)):\n"
         return header + output.joined(separator: "\n\n")
+    }
+
+    /// What is scored as the conversation's summary: its note's headline and points when it has
+    /// one, the word-prefix summary otherwise.
+    static func summaryFields(of thread: ConversationThread) -> [String] {
+        if let digest = thread.digest, let headline = digest.visibleHeadline {
+            return [headline] + digest.points.map(\.text)
+        }
+        return thread.summary.map { [$0] } ?? []
+    }
+
+    /// The note, dated, inside the same envelope saved memory goes back in: it was written by a
+    /// model from text that may have come from outside, so it is data, never an instruction.
+    static func noteSection(for thread: ConversationThread) -> String? {
+        guard let digest = thread.digest, let headline = digest.visibleHeadline else { return nil }
+        let date = digest.writtenAt.formatted(date: .abbreviated, time: .omitted)
+        let lines = ["Note (\(date)): \(headline)"] + digest.points.map { "- \($0.text)" }
+        return PromptInjectionPolicy.wrap(toolName: "conversation_note", content: lines.joined(separator: "\n"))
     }
 
     /// Whether a conversation last touched at `date` falls in [since, until). Open ends match.

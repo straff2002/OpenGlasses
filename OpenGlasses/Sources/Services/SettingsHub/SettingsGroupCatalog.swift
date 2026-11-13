@@ -31,6 +31,7 @@ enum SettingsGroupMemberID: String, CaseIterable, Sendable {
     case userMemory = "userMemoryEnabled"
     case conversationHistory = "conversationPersistenceEnabled"
     case earlierInConversation = "conversationTimelineEnabled"
+    case conversationNotes = "conversationDigestsEnabled"
     case memorySuggestions = "memoryNudgesEnabled"
     case memoryEnrichment = "brainEnrichmentEnabled"
     case myDay = "myDayEnabled"
@@ -117,6 +118,10 @@ enum SettingsGroupCatalog {
                       onFirstTime: true),
                 .init(id: .earlierInConversation, title: String(localized: "Remember Earlier in Long Conversations"),
                       kind: .follows, onFirstTime: true, hardDisabledInMedicalMode: true),
+                // Plan LQ: on for everyone, an organisation may pin it off, never on.
+                .init(id: .conversationNotes, title: String(localized: "Notes of Finished Conversations"),
+                      kind: .follows, onFirstTime: true, settingKey: .conversationDigestsEnabled,
+                      hardDisabledInMedicalMode: true),
                 .init(id: .memorySuggestions, title: String(localized: "Memory Suggestions"), kind: .follows),
                 .init(id: .goals, title: String(localized: "Goals"), kind: .link),
                 .init(id: .activity, title: String(localized: "Activity"), kind: .link),

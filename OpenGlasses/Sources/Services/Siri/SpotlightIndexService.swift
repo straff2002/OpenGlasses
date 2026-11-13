@@ -53,7 +53,8 @@ enum SiriContentProvider {
            !appState.conversationStore.isLocked {
             let summaries = appState.conversationStore.threads.map {
                 ConversationSummaryInput(
-                    id: $0.id, title: $0.title, summary: $0.summary, updatedAt: $0.updatedAt)
+                    // Plan LQ §6: the note's headline when there is one, else the word-prefix summary.
+                    id: $0.id, title: $0.title, summary: $0.listSummary, updatedAt: $0.updatedAt)
             }
             records += SiriContentAdapters.conversations(summaries)
         }

@@ -61,7 +61,8 @@ struct MemoryView: View {
                     }
                 } else if section.collapsedByDefault {
                     Section {
-                        DisclosureGroup(isExpanded: $model.healthExpanded) {
+                        DisclosureGroup(isExpanded: section.group == .conversations
+                                        ? $model.conversationsExpanded : $model.healthExpanded) {
                             rows(section.facts)
                         } label: {
                             Text(verbatim: "\(MemoryScreenModel.title(for: section.group)) (\(section.facts.count))")
@@ -216,8 +217,45 @@ struct MemoryFactDetailView: View {
                     if let persona = fact.persona {
                         LabeledContent("Persona") { Text(verbatim: persona) }
                     }
+                    // Plan LQ §7: one tap back to the conversation, opened to read. Reading it
+                    // does not make it the conversation the next voice turn joins.
+                    if fact.id.store != .conversationDigest,
+                       let origin = model.originatingConversation(for: fact) {
+                        NavigationLink {
+                            ChatThreadView(threadId: origin.threadID, activation: .onSend)
+                        } label: {
+                            LabeledContent("From this conversation") {
+                                Text(verbatim: "\u{201C}\(origin.title)\u{201D}, "
+                                     + origin.date.formatted(.dateTime.day().month(.abbreviated)))
+                            }
+                        }
+                    }
                 } header: {
                     Text("Where it came from")
+                }
+
+                if fact.id.store == .conversationDigest {
+                    if !fact.details.isEmpty {
+                        Section {
+                            ForEach(fact.details, id: \.self) { point in
+                                Text(verbatim: point)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        } header: {
+                            Text("What was said")
+                        } footer: {
+                            Text("Written by the AI after the conversation ended. It can be wrong: open the conversation to check.")
+                        }
+                    }
+                    if let thread = fact.conversationThreadID {
+                        Section {
+                            NavigationLink {
+                                ChatThreadView(threadId: thread, activation: .onSend)
+                            } label: {
+                                Label("Open the conversation", systemImage: "bubble.left.and.bubble.right")
+                            }
+                        }
+                    }
                 }
 
                 if fact.capabilities.contains(.correct) {
@@ -288,6 +326,18 @@ struct MemoryForgetSheet: View {
                         Text("These lines were found by matching words, so check them first.")
                     }
                 }
+                if !plan.digestPoints.isEmpty {
+                    Section {
+                        ForEach(plan.digestPoints, id: \.self) { point in
+                            Text(verbatim: point.text).font(.callout)
+                        }
+                        Toggle("Also remove these", isOn: $removeNoteLines)
+                    } header: {
+                        Text("Notes of conversations mention it")
+                    } footer: {
+                        Text("These were found by matching words, so check them first.")
+                    }
+                }
                 if plan.gatewayCopyPossible {
                     Section {
                         Text("A copy may have been sent to a connected gateway. Avenkin will ask it to delete that copy, but can't confirm it's gone.")
@@ -296,8 +346,13 @@ struct MemoryForgetSheet: View {
                 }
                 if plan.conversationThreadID != nil {
                     Section {
-                        Text("It's also in the conversation where you said it. You'll be offered the chance to delete that conversation afterwards.")
-                            .font(.footnote)
+                        if plan.fact.id.store == .conversationDigest {
+                            Text("The note won't be written again. You'll be offered the chance to delete the conversation itself afterwards.")
+                                .font(.footnote)
+                        } else {
+                            Text("It's also in the conversation where you said it. You'll be offered the chance to delete that conversation afterwards.")
+                                .font(.footnote)
+                        }
                     }
                 }
             }

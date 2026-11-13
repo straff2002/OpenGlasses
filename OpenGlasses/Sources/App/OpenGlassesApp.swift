@@ -398,6 +398,8 @@ struct OpenGlassesApp: App {
                                          set: { appState.memoryHandOffQuery = $0 })) { handOff in
                         NavigationStack {
                             MemoryView(model: appState.memoryFacts.makeScreenModel(query: handOff.query))
+                                // A fact's conversation opens from here (Plan LQ §7).
+                                .environmentObject(appState)
                                 .toolbar {
                                     ToolbarItem(placement: .confirmationAction) {
                                         Button("Done") { appState.memoryHandOffQuery = nil }
@@ -770,6 +772,8 @@ struct OpenGlassesApp: App {
                 } else {
                     // A turn whose save failed while the phone was locked is written now.
                     appState.conversationStore.flushPendingSave()
+                    // Plan LQ: the notes of conversations left while the app was away.
+                    appState.runConversationDigestBacklog()
                 }
                 // Sync listening state from UserDefaults (may have been toggled via widget intent)
                 let storedEnabled = Config.listeningEnabled
@@ -2448,6 +2452,27 @@ class AppState: ObservableObject, AppStateProtocol {
             return try await self.llmService.completeTimelineSummary(request)
         })
 
+    /// Plan LQ: the note of each finished conversation, written after it is left
+    /// (`conversationStore.onThreadLeft`) and, for the ones missed, when the app comes to the
+    /// foreground. Its calls go through the stateless structured-completion path, so they never
+    /// touch the live conversation history.
+    lazy var conversationDigestPass = ConversationDigestPass(
+        store: conversationStore,
+        summarise: { [weak self] request in
+            guard let self, let object = await self.llmService.completeStructured(
+                systemPrompt: request.system, userText: request.user,
+                jsonSchema: ConversationDigestInput.jsonSchema,
+                toolName: ConversationDigestInput.toolName, maxTokens: request.maxTokens) else {
+                throw ConversationDigestError.unavailable
+            }
+            return ConversationDigestCompletion(draft: ConversationDigestDraft(object: object),
+                                                finishedNormally: true)
+        },
+        isUntrustedTool: { [weak self] name in
+            PromptInjectionPolicy.isUntrustedOutput(
+                toolName: name, isKnownNativeTool: self?.nativeToolRegistry.tool(named: name) != nil)
+        })
+
     /// The guided job flow (Plan FO P1): one conversation per job, the job-number question the app
     /// asks itself, and the held re-scope when a different machine turns up.
     ///
@@ -3769,9 +3794,15 @@ class AppState: ObservableObject, AppStateProtocol {
         // corroborated becomes permanent, a newer answer retires the one it replaced, and a claim
         // heard once a fortnight ago and never again is dropped. One seam, so no caller has to
         // remember to run it.
-        conversationStore.onThreadLeft = { sessionID in
+        conversationStore.onThreadLeft = { [weak self] sessionID in
             BrainStore.shared.distill(sessionID: sessionID)
+            // Plan LQ: the left conversation's note, after the turn that left it is answered.
+            self?.noteConversationLeft(sessionID)
         }
+        // Plan LQ: a reply records who answered it, so a note goes only where the words went.
+        conversationStore.answerProvider = { Config.activeModel?.llmProvider.rawValue }
+        // Only conversations left from now on are ever picked up by the backlog (decision 7).
+        _ = ConversationDigestBacklogLedger().since()
 
         // Memory & Recall Phase 4 — on-device usage insights from conversation history.
         InsightsService.shared.configure(conversationStore: conversationStore)
@@ -8465,6 +8496,49 @@ class AppState: ObservableObject, AppStateProtocol {
             atSpendCap: llmService.timelineSpendCapReached())
         let pass = timelineSummaryPass
         Task { @MainActor in await pass.run(turn, settings: settings) }
+        // Plan LQ: a conversation this turn left behind gets its note now the reply is in.
+        drainConversationDigests()
+    }
+
+    // MARK: - Conversation notes (Plan LQ)
+
+    /// The settings a note's call is decided on, read afresh for every call.
+    func conversationDigestSettings() -> ConversationDigestPass.Settings {
+        let sessions = FieldSessionService.shared
+        var jobThreads = Set(sessions.history.compactMap(\.conversationThreadId))
+        if let active = sessions.activeSession?.conversationThreadId { jobThreads.insert(active) }
+        if let debrief = guidedJobFlow.debrief?.threadId { jobThreads.insert(debrief) }
+        return ConversationDigestPass.Settings(
+            orgPinnedOff: PolicyEnvelope.isLocked(.conversationDigestsEnabled),
+            enabled: Config.conversationDigestsEnabled, hipaaMode: Config.hipaaMode,
+            provider: Config.activeModel?.llmProvider,
+            inForeground: UIApplication.shared.applicationState == .active,
+            atSpendCap: llmService.timelineSpendCapReached(),
+            jobThreadIDs: jobThreads)
+    }
+
+    /// A conversation was left. Its note waits for the turn that left it to be answered; with no
+    /// turn running (start fresh, an end from the screen), it is written now.
+    func noteConversationLeft(_ threadID: String) {
+        conversationDigestPass.enqueue(threadID)
+        if !isProcessing { drainConversationDigests() }
+    }
+
+    func drainConversationDigests() {
+        let pass = conversationDigestPass
+        guard !pass.pending.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            await pass.drain { self?.conversationDigestSettings() ?? .refused }
+        }
+    }
+
+    /// The app is in front: write the notes that were missed, one at a time, under the daily cap.
+    func runConversationDigestBacklog() {
+        let pass = conversationDigestPass
+        Task { @MainActor [weak self] in
+            await pass.runBacklog(settings: { self?.conversationDigestSettings() ?? .refused },
+                                  ledger: ConversationDigestBacklogLedger())
+        }
     }
 
     /// Plan KR P5: how a Direct turn's reply ended, for `TurnBackgroundTime`. Whether it went

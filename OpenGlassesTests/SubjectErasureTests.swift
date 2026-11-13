@@ -166,6 +166,21 @@ final class SubjectErasureTests: XCTestCase {
                               startedAt: said.timestamp, endedAt: said.timestamp, tier: .chunk,
                               text: "Asked what \(canary) said about the plant."),
             ]
+            // Plan LQ: the conversation's note — one point naming them, and the rest kept.
+            conversations.threads[index].digest = ConversationDigest(
+                headline: "Roof plant fan motor",
+                points: [.init(kind: .learned, text: "\(canary) said the fan motor needs replacing"),
+                         .init(kind: .toDo, text: "Order a new fan motor")],
+                coversThroughMessageID: said.id, writtenAt: Date(), tier: .cloud)
+        }
+        // ...and a note whose headline names them, which is cleared whole.
+        let named = conversations.startThread(mode: "test")
+        conversations.appendMessage(role: "user", content: "plan the visit")
+        if let index = conversations.threads.firstIndex(where: { $0.id == named.id }),
+           let said = conversations.threads[index].messages.first {
+            conversations.threads[index].digest = ConversationDigest(
+                headline: "Visit with \(canary) on Monday", points: [],
+                coversThroughMessageID: said.id, writtenAt: Date(), tier: .cloud)
         }
 
         queue.enqueue(QueuedOp.make(kind: .logEntry, sessionId: "s1",
@@ -232,6 +247,8 @@ final class SubjectErasureTests: XCTestCase {
         note("goals", goals.goals.map { "\($0.title) \($0.steps.map(\.title))" }.joined(separator: ","))
         note("activityTrail", activity.entries.map { "\($0.title) \($0.detail ?? "")" }.joined(separator: ","))
         note("recallIndex", recallIndex.search(phrase: canary, limit: 50).map(\.text).joined(separator: ","))
+        note("conversationDigest", conversations.threads.compactMap { $0.digest?.searchableText }
+            .joined(separator: ","))
         note("conversationTimeline", conversations.threads.flatMap { $0.timeline ?? [] }
             .map(\.text).joined(separator: ","))
         note("documents", documents.passages(containingToken: canary, limit: 50)

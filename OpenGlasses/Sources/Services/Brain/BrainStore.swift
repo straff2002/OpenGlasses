@@ -52,6 +52,9 @@ final class BrainStore: ObservableObject {
         /// Where the claim came from (Plan GG). `legacyUnknown` for a row written before the
         /// column existed, or by a caller that did not say.
         var origin: MemoryOrigin = .legacyUnknown
+        /// The conversation thread the claim was heard in (`edges.session_id`), when the writer
+        /// said (Plan LQ §7). Nil for a book, an import, or a row written before the column.
+        var sessionID: String? = nil
 
         /// How the edge reads to the model. The failure mode that matters is a guess or a
         /// retired fact being read as a present-tense truth, so both say so in words.
@@ -983,7 +986,7 @@ final class BrainStore: ObservableObject {
     private static let edgeColumns = """
     s.name, s.kind, e.relation, d.name, d.kind, e.source_ref, e.created_at, e.state, \
     e.confidence, e.observations, e.distinct_sessions, e.valid_from, e.last_seen, e.superseded_at, \
-    e.id, e.origin
+    e.id, e.origin, e.session_id
     """
 
     private static func currencyClause(_ includeSuperseded: Bool) -> String {
@@ -1033,7 +1036,9 @@ final class BrainStore: ObservableObject {
                     ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 13)) : nil,
                 id: String(cString: sqlite3_column_text(stmt, 14)),
                 origin: MemoryOrigin(storageValue: sqlite3_column_type(stmt, 15) != SQLITE_NULL
-                    ? String(cString: sqlite3_column_text(stmt, 15)) : nil)
+                    ? String(cString: sqlite3_column_text(stmt, 15)) : nil),
+                sessionID: sqlite3_column_type(stmt, 16) != SQLITE_NULL
+                    ? String(cString: sqlite3_column_text(stmt, 16)) : nil
             ))
         }
         return rows

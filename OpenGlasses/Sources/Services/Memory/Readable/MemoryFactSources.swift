@@ -43,7 +43,9 @@ struct SemanticFactSource: MemoryFactSource {
                    sourceRef: entry.sourceRef,
                    createdAt: entry.createdAt,
                    persona: entry.namespace == "global" ? nil : entry.namespace,
-                   correctableValue: entry.value)
+                   correctableValue: entry.value,
+                   // Plan LQ §7: a fact said in a conversation names it as its source.
+                   conversationThreadID: entry.sourceRef)
     }
 }
 
@@ -84,7 +86,9 @@ struct BrainFactSource: MemoryFactSource {
                    origin: edge.origin,
                    sourceRef: edge.sourceRef,
                    createdAt: edge.validFrom ?? edge.createdAt,
-                   correctableValue: edge.dstName)
+                   correctableValue: edge.dstName,
+                   // Plan LQ §7: `sourceRef` is "memory-loop" or a book; the thread is the session.
+                   conversationThreadID: edge.sessionID)
     }
 }
 
@@ -177,5 +181,35 @@ struct PlacesFactSource: MemoryFactSource {
                        correctableValue: place.label)
         }
         return .available(sourceID, facts)
+    }
+}
+
+/// Plan LQ §7 — the notes of finished conversations, one fact per thread that has one, under
+/// Conversations. Inferred by construction: a model wrote it. Forget only, never correct: the note
+/// is derived, and an edited note would no longer describe its conversation.
+@MainActor
+struct ConversationDigestFactSource: MemoryFactSource {
+    let conversations: ConversationStore
+
+    var sourceID: String { "conversations" }
+
+    func page() -> MemorySourcePage {
+        guard conversations.isTimelineWritable else {
+            return .failed(sourceID, conversations.isLocked
+                           ? .locked : .unavailable("the conversations could not be read"))
+        }
+        return .available(sourceID, Self.facts(from: conversations.threads))
+    }
+
+    nonisolated static func facts(from threads: [ConversationThread]) -> [MemoryFact] {
+        threads.compactMap { thread in
+            guard let digest = thread.digest, let headline = digest.visibleHeadline else { return nil }
+            return MemoryFact(id: MemoryFactID(store: .conversationDigest, recordID: thread.id),
+                              text: headline, kind: .conversationDigest, origin: .inferred,
+                              sourceRef: thread.title, createdAt: digest.writtenAt,
+                              capabilities: .forget, persona: nil,
+                              conversationThreadID: thread.id,
+                              details: digest.points.map(\.text))
+        }
     }
 }

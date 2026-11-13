@@ -103,11 +103,14 @@ enum SettingsVisibilityPolicy {
     ///   beside it stays on the phone and stays the wearer's.
     /// - **Instant Replay**, pinned off: a rolling minute of the people in front of the glasses.
     ///   The wearer is told it is off rather than left looking for a switch that is gone.
+    /// - **Notes of finished conversations**, pinned off (Plan LQ §9): the switch shows as set by
+    ///   the organisation, so the wearer knows why no notes are written.
     static let alwaysShown: Set<ManagedSetting> = [.key(.privacyFilterEnabled), .area(.requestRouting),
                                                    .key(.aiConnectionCueEnabled),
                                                    .key(.cloudDictationEnabled),
                                                    .key(.interpreterEnabled),
-                                                   .key(.instantReplayEnabled)]
+                                                   .key(.instantReplayEnabled),
+                                                   .key(.conversationDigestsEnabled)]
 
     /// Whether the organisation's policy stops whoever is looking from changing `setting`.
     static func isLocked(_ setting: ManagedSetting, in context: ManagedSettingsContext) -> Bool {

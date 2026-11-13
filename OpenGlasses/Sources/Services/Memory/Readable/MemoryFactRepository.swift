@@ -68,18 +68,26 @@ final class MemoryFactRepository {
     /// False while the phone is locked and protected files cannot be read. Every source then
     /// reports `.locked` without being asked, so nothing is read around the lock.
     private let protectedDataAvailable: @MainActor () -> Bool
+    /// Plan LQ §7: the threads still in the conversation store. A fact keeps its conversation link
+    /// only while its thread is one of them; nil clears every link.
+    private let liveThreadIDs: (@MainActor () -> Set<String>)?
 
     init(sources: [any MemoryFactSource],
-         protectedDataAvailable: @escaping @MainActor () -> Bool = { true }) {
+         protectedDataAvailable: @escaping @MainActor () -> Bool = { true },
+         liveThreadIDs: (@MainActor () -> Set<String>)? = nil) {
         self.sources = sources
         self.protectedDataAvailable = protectedDataAvailable
+        self.liveThreadIDs = liveThreadIDs
     }
 
     func load() -> MemoryFactListing {
         guard protectedDataAvailable() else {
             return Self.merge(sources.map { .failed($0.sourceID, .locked) })
         }
-        return Self.merge(sources.map { $0.page() })
+        let listing = Self.merge(sources.map { $0.page() })
+        return MemoryFactListing(
+            facts: MemoryFactConversationLink.resolving(listing.facts, liveThreadIDs: liveThreadIDs?()),
+            unavailableSources: listing.unavailableSources)
     }
 
     /// Pure merge. Newest first, ties broken by identity so the order never depends on which

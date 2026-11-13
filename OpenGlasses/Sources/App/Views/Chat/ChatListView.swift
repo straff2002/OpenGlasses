@@ -173,7 +173,8 @@ private struct ThreadRow: View {
     let thread: ConversationThread
 
     private var displaySummary: String? {
-        if let summary = thread.summary, !summary.isEmpty { return summary }
+        // Plan LQ §6: the conversation's note, when it has one, in place of the word-prefix summary.
+        if let summary = thread.listSummary, !summary.isEmpty { return summary }
         return ConversationStore.generateSummary(from: thread.messages)
     }
 

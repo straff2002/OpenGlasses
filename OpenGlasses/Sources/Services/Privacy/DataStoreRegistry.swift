@@ -300,6 +300,10 @@ enum SensitiveStore: String, CaseIterable {
     var record: Record {
         switch self {
 
+        // Each thread may carry derived, model-written text: its timeline notes (Plan KK) and its
+        // conversation note, `ConversationThread.digest` (Plan LQ). Both live in this file, so the
+        // protection, retention and deletes below cover them; a person erasure clears the parts that
+        // name them (`dropTimelineEntries(naming:)`, `dropDigestPoints(naming:)`).
         case .conversationThreads:
             return Record(store: self, dataClass: .conversationContent, subjectLinkage: .wearer,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,

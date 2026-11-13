@@ -24,6 +24,9 @@ enum MemoryFactStore: String, Codable, CaseIterable, Sendable {
     case object
     /// A saved place (`SavedLocationStore`).
     case savedPlace
+    /// The note of a finished conversation (Plan LQ), on its `ConversationThread`. The record id
+    /// is the thread's id.
+    case conversationDigest
 }
 
 /// Stable identity: the owning store plus that store's own record id.
@@ -88,10 +91,12 @@ enum MemoryOrigin: Hashable, Sendable {
 
 /// How the wearer thinks about their facts. Health sits apart and is collapsed by default.
 enum MemoryFactGroup: String, CaseIterable, Sendable {
-    case people, places, preferences, unfinished, other, health
+    case people, places, preferences, unfinished, other, conversations, health
 
-    /// Display order on the phone: the four everyday groups, then the catch-all, then Health.
-    static let displayOrder: [MemoryFactGroup] = [.people, .places, .preferences, .unfinished, .other, .health]
+    /// Display order on the phone: the four everyday groups, then the catch-all, then the notes of
+    /// finished conversations (Plan LQ, collapsed), then Health.
+    static let displayOrder: [MemoryFactGroup] = [.people, .places, .preferences, .unfinished, .other,
+                                                  .conversations, .health]
 }
 
 /// What a fact is, in the terms of the store that holds it — the input to grouping.
@@ -106,6 +111,8 @@ enum MemoryFactKind: Equatable, Sendable {
     case agentNote
     case object
     case savedPlace
+    /// The note of a finished conversation (Plan LQ).
+    case conversationDigest
 }
 
 /// What the wearer may do to a fact from the phone or by voice. A store that cannot change or
@@ -133,13 +140,20 @@ struct MemoryFact: Identifiable, Equatable, Sendable {
     /// The value a correction replaces — the semantic value, the relation's destination, the
     /// note's text. What "Actually, she lives in Nelson" swaps out.
     let correctableValue: String
+    /// Plan LQ §7: the conversation this fact came from, when it is known and still exists. Set by
+    /// the adapters (a semantic fact's `sourceRef`, a brain relation's session) and checked against
+    /// the live threads by `MemoryFactConversationLink`, the one place that decides it.
+    var conversationThreadID: String?
+    /// Plan LQ: a conversation note's points, shown in its detail. Empty for every other fact.
+    var details: [String] = []
 
     var group: MemoryFactGroup { MemoryFactGrouper.group(for: kind) }
 
     init(id: MemoryFactID, text: String, kind: MemoryFactKind, origin: MemoryOrigin,
          sourceRef: String? = nil, createdAt: Date,
          capabilities: MemoryFactCapabilities = .all, persona: String? = nil,
-         correctableValue: String? = nil) {
+         correctableValue: String? = nil, conversationThreadID: String? = nil,
+         details: [String] = []) {
         self.id = id
         self.text = text
         self.kind = kind
@@ -149,6 +163,8 @@ struct MemoryFact: Identifiable, Equatable, Sendable {
         self.capabilities = capabilities
         self.persona = persona
         self.correctableValue = correctableValue ?? text
+        self.conversationThreadID = conversationThreadID
+        self.details = details
     }
 }
 
@@ -177,6 +193,8 @@ enum MemoryFactGrouper {
             return .unfinished
         case .object, .savedPlace:
             return .places
+        case .conversationDigest:
+            return .conversations
         }
     }
 

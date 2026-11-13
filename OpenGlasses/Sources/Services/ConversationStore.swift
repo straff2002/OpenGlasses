@@ -111,6 +111,14 @@ struct ConversationThread: Codable, Identifiable, Sendable {
     /// the save guards, retention and `deleteThread` all cover it. Nil on a thread saved before it
     /// existed, which decodes unchanged.
     var timeline: [TimelineEntry]?
+    /// Plan LQ: a short model-written note of the conversation, written after it is left, so other
+    /// conversations can find it and Memory can open it. Derived from `messages` and kept here for
+    /// the reason `timeline` is. Nil on a thread with no note and on one saved before it existed.
+    var digest: ConversationDigest?
+    /// Plan LQ: the provider (`LLMProvider.rawValue`) that answered the thread's last turn, written
+    /// when a reply is saved. A note is written only by the same provider (decision 4). Nil on a
+    /// thread saved before it existed, or answered only by the offline fallback.
+    var lastAnswerProvider: String?
 
     init(mode: String, title: String = "New Conversation", personaId: String? = nil) {
         self.id = UUID().uuidString
@@ -168,6 +176,18 @@ class ConversationStore: ObservableObject {
     /// ended, or a new thread replaced it. One seam rather than a `distill` call scattered across
     /// the six places a thread changes; `AppState` wires it to the brain's distillation pass.
     var onThreadLeft: (@MainActor (String) -> Void)?
+
+    /// Plan LQ: the provider answering now, recorded on the thread with each saved reply. Set by
+    /// `AppState`; nil leaves the field untouched.
+    var answerProvider: (@MainActor () -> String?)?
+
+    /// Plan LQ §9: whether an organisation profile has switched conversation notes off. Read at
+    /// save time, so a note whose call was in flight when the pin arrived is never kept.
+    var digestsPinnedOff: @MainActor () -> Bool = { PolicyEnvelope.isLocked(.conversationDigestsEnabled) }
+
+    /// The provider value recorded for a reply the offline fallback gave on the phone. It matches
+    /// no provider, so such a thread gets no note until a provider answers it again.
+    nonisolated static let offlineAnswerProvider = "offline"
 
     var storageDirectory: URL { storageURL.deletingLastPathComponent() }
 
@@ -335,6 +355,13 @@ class ConversationStore: ObservableObject {
                                       endedQuietly: endedQuietly)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = msg.timestamp
+        if role == "assistant" {
+            if answeredOnDevice {
+                threads[idx].lastAnswerProvider = Self.offlineAnswerProvider
+            } else if let answerProvider {
+                threads[idx].lastAnswerProvider = answerProvider()
+            }
+        }
         if threads[idx].id == activeThreadId { lastActivity = (threads[idx].id, msg.timestamp) }
         if let turn = indexedTurn(msg, threadID: threads[idx].id) {
             saveAndProject(.messageUpsert(turn))
@@ -559,8 +586,16 @@ class ConversationStore: ObservableObject {
             threads[tIdx].timeline = kept.isEmpty ? nil : kept
         }
         threads[tIdx].compressedSummary = nil
+        // Plan LQ: a note that describes any removed message describes words the wearer took back,
+        // so it goes; a forgotten note's marker stays, so it is still not written again.
+        var projectedIDs = removedIDs
+        if let digest = threads[tIdx].digest, !digest.isRedacted,
+           (messageIDs.firstIndex(of: digest.coversThroughMessageID) ?? mIdx) >= mIdx {
+            threads[tIdx].digest = nil
+            projectedIDs.append(ConversationDigest.recallRowID(threadID: threadId))
+        }
         threads[tIdx].updatedAt = Date()
-        saveAndProject(.messageDelete(ids: removedIDs))
+        saveAndProject(.messageDelete(ids: projectedIDs))
     }
 
     /// Empty every timeline entry, in every thread, that names `token` as a whole word, and drop
@@ -597,6 +632,108 @@ class ConversationStore: ObservableObject {
         guard removed > 0 else { return 0 }
         save()
         PrivacyLog.conversation(.conversations, .timelineRedacted, count: removed)
+        return removed
+    }
+
+    // MARK: - Conversation notes (Plan LQ)
+
+    /// Why a note's write was refused. A closed set, safe to log.
+    enum DigestSaveOutcome: String, Equatable, Sendable {
+        case saved
+        /// Locked, or after a failed read.
+        case storeUnavailable
+        /// An organisation profile switched notes off while the call was in flight.
+        case orgPinnedOff
+        /// The thread was deleted or erased meanwhile.
+        case threadGone
+        /// The note was forgotten meanwhile; it is not written again.
+        case redacted
+        /// The message the note covers through is gone: an edit or a regenerate took it.
+        case spanChanged
+    }
+
+    /// Keep a note the pass wrote, re-checking what may have changed while the model answered.
+    /// `updatedAt` is not touched: a note is not activity, and would move the thread in the list.
+    func saveDigest(_ digest: ConversationDigest, for threadId: String) -> DigestSaveOutcome {
+        guard isTimelineWritable else { return .storeUnavailable }
+        guard !digestsPinnedOff() else { return .orgPinnedOff }
+        guard let index = threads.firstIndex(where: { $0.id == threadId }) else { return .threadGone }
+        if threads[index].digest?.isRedacted == true { return .redacted }
+        guard threads[index].messages.contains(where: { $0.id == digest.coversThroughMessageID }) else {
+            return .spanChanged
+        }
+        threads[index].digest = digest
+        saveAndProject(.digestUpsert(threadIDs: [threadId]))
+        return .saved
+    }
+
+    /// Forget a thread's note: its text goes, its coverage stays and it is marked redacted, so it
+    /// is not written again after a resume. The thread itself is untouched.
+    /// - Returns: whether a note was there to forget and the store could write.
+    @discardableResult
+    func forgetDigest(threadId: String) -> Bool {
+        guard isTimelineWritable, let index = threads.firstIndex(where: { $0.id == threadId }),
+              let digest = threads[index].digest, !digest.isRedacted else { return false }
+        threads[index].digest = digest.redacting()
+        saveAndProject(.digestUpsert(threadIDs: [threadId]))
+        PrivacyLog.conversation(.conversations, .digestForgotten, thread: PrivateIdentifier(threadId))
+        return true
+    }
+
+    /// Clear every note point, in every thread, that names `token` as a whole word; a headline that
+    /// does clears the whole note and marks it redacted (Plan LQ §8, beside
+    /// `dropTimelineEntries(naming:)`).
+    /// - Returns: how many points and notes were cleared, or nil when the store cannot be searched
+    ///   honestly (locked, or after a failed read).
+    @discardableResult
+    func dropDigestPoints(naming token: String) -> Int? {
+        guard !isLocked, !saveBlocked else { return nil }
+        var removed = 0
+        var changed: [String] = []
+        for index in threads.indices {
+            guard let digest = threads[index].digest, !digest.isRedacted else { continue }
+            if TimelineInvalidation.mentions(digest.headline, token) {
+                threads[index].digest = digest.redacting()
+                removed += 1
+                changed.append(threads[index].id)
+                continue
+            }
+            let kept = digest.points.filter { !TimelineInvalidation.mentions($0.text, token) }
+            guard kept.count != digest.points.count else { continue }
+            removed += digest.points.count - kept.count
+            threads[index].digest = ConversationDigest(
+                headline: digest.headline, points: kept, coversThroughMessageID: digest.coversThroughMessageID,
+                writtenAt: digest.writtenAt, tier: digest.tier)
+            changed.append(threads[index].id)
+        }
+        guard removed > 0 else { return 0 }
+        saveAndProject(.digestUpsert(threadIDs: changed))
+        PrivacyLog.conversation(.conversations, .digestRedacted, count: removed)
+        return removed
+    }
+
+    /// Remove exactly these note points, which the wearer saw and chose when forgetting a fact
+    /// they mentioned (Plan LQ §8).
+    /// - Returns: how many went.
+    @discardableResult
+    func removeDigestPoints(_ references: [ConversationDigestPointReference]) -> Int {
+        guard isTimelineWritable, !references.isEmpty else { return 0 }
+        var removed = 0
+        var changed: [String] = []
+        for (threadId, texts) in Dictionary(grouping: references, by: \.threadID) {
+            guard let index = threads.firstIndex(where: { $0.id == threadId }),
+                  let digest = threads[index].digest, !digest.isRedacted else { continue }
+            let doomed = Set(texts.map(\.text))
+            let kept = digest.points.filter { !doomed.contains($0.text) }
+            guard kept.count != digest.points.count else { continue }
+            removed += digest.points.count - kept.count
+            threads[index].digest = ConversationDigest(
+                headline: digest.headline, points: kept, coversThroughMessageID: digest.coversThroughMessageID,
+                writtenAt: digest.writtenAt, tier: digest.tier)
+            changed.append(threadId)
+        }
+        guard removed > 0 else { return 0 }
+        saveAndProject(.digestUpsert(threadIDs: changed))
         return removed
     }
 

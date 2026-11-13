@@ -58,7 +58,8 @@ final class SettingsGroupTests: XCTestCase {
 
     func testOnWithNothingToRestoreLeavesOffWhatIsOffByDefault() {
         let change = state(.memory).parentChange(to: true)
-        XCTAssertEqual(applied(change, to: []), [.userMemory, .conversationHistory, .earlierInConversation],
+        XCTAssertEqual(applied(change, to: []), [.userMemory, .conversationHistory, .earlierInConversation,
+                                                 .conversationNotes],
                        "Memory Suggestions speaks up unprompted, so it stays the wearer's to turn on")
     }
 
@@ -116,7 +117,7 @@ final class SettingsGroupTests: XCTestCase {
         let onlyTheConsentWasOn = state(.memory, remembered: [.memoryEnrichment]).parentChange(to: true)
         XCTAssertTrue(applied(onlyTheConsentWasOn, to: []).contains(.userMemory))
         let nothingComesOnFirstTime = state(.memory, hidden: [.userMemory, .conversationHistory,
-                                                              .earlierInConversation])
+                                                              .earlierInConversation, .conversationNotes])
             .parentChange(to: true)
         XCTAssertEqual(applied(nothingComesOnFirstTime, to: []), [.memorySuggestions])
     }
@@ -182,6 +183,22 @@ final class SettingsGroupTests: XCTestCase {
         XCTAssertEqual(member?.onFirstTime, true, "on for everyone, a setting turns it off")
     }
 
+    /// Plan LQ: the notes of finished conversations follow the Memory parent like the timeline,
+    /// never in HIPAA mode, and carry the key an organisation may pin off.
+    func testConversationNotesFollowTheMemoryParent() {
+        let member = SettingsGroupCatalog.member(.conversationNotes)
+        XCTAssertEqual(member?.kind, .follows)
+        XCTAssertEqual(member?.hardDisabledInMedicalMode, true)
+        XCTAssertEqual(member?.onFirstTime, true)
+        XCTAssertEqual(member?.settingKey, .conversationDigestsEnabled)
+        XCTAssertEqual(SettingsGroupMemberID.conversationNotes.rawValue, "conversationDigestsEnabled")
+        let on = state(.memory, medical: true).parentChange(to: true)
+        XCTAssertFalse(on.writes.contains { $0.member == .conversationNotes })
+        let pinned = state(.memory, readOnly: [.conversationNotes]).parentChange(to: true)
+        XCTAssertFalse(pinned.writes.contains { $0.member == .conversationNotes },
+                       "a parent never writes a key the organisation pinned")
+    }
+
     /// The stored value is the wearer's, and comes back when the mode ends.
     func testAParentLeavesARefusedMemberAlone() {
         let off = state(.memory, on: [.userMemory, .memoryEnrichment], medical: true).parentChange(to: false)
@@ -197,8 +214,8 @@ final class SettingsGroupTests: XCTestCase {
 
     func testTheSummaryCountsSwitchesOnly() {
         XCTAssertEqual(state(.memory, on: [.userMemory, .conversationHistory, .memorySuggestions]).summary,
-                       "On · 3 of 5")
-        XCTAssertEqual(state(.memory, on: [.userMemory]).summary, "On · 1 of 5")
+                       "On · 3 of 6")
+        XCTAssertEqual(state(.memory, on: [.userMemory]).summary, "On · 1 of 6")
     }
 
     func testOffSaysOff() {

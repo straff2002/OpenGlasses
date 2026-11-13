@@ -110,6 +110,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// My Day card never offers to text a customer from the technician's own Messages, and never
     /// on — it is the technician's phone and number.
     case preparedCardCustomerTexts
+    /// Notes of finished conversations (Plan LQ §9): an organisation may pin them off, so no note
+    /// is written about anyone's conversations on its phones, and never on: writing notes about a
+    /// person's conversations is the person's choice, not the employer's.
+    case conversationDigestsEnabled
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -172,7 +176,8 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled, .teamLearningReviewerDevice,
-             .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled, .preparedCardCustomerTexts:
+             .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled, .preparedCardCustomerTexts,
+             .conversationDigestsEnabled:
             return .ceiling(pinnedTo: false)
         case .pilotReportRecipients:
             return .startingValue(.strings)
