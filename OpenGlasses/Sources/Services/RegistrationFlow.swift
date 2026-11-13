@@ -18,6 +18,17 @@ enum RegistrationFlow {
 
     static func isRegistered(stateRaw: Int) -> Bool { stateRaw >= registeredStateRawValue }
 
+    /// Whether a Connect press should hand off to Meta AI to register: only while not registered.
+    ///
+    /// A registered app has nothing to gain from asking again, and asking can cost it the pair.
+    /// Developers report that `startRegistration()` on an app that is already registered resets
+    /// Meta AI's Developer Mode registration, after which every session start fails with "the DAT
+    /// app on the glasses needs an update" until the wearer unregisters and registers again. The
+    /// reports come from the SDK's issue trackers, not from our own hardware, but the guard costs
+    /// nothing: a registered wearer's Connect goes straight to the wait below, which is what the
+    /// `.alreadyRegistered` catch already did once the SDK had thrown.
+    static func shouldStartRegistration(stateRaw: Int) -> Bool { !isRegistered(stateRaw: stateRaw) }
+
     /// The bundle ID the published app ships under. A contributor build signs with its own, and
     /// that is what separates "Meta hasn't let this wearer in" from "this build's link-back is
     /// broken" — the two stall registration identically.

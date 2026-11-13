@@ -45,6 +45,41 @@ final class RegistrationFlowTests: XCTestCase {
             "Meta AI approval has been observed to take ~25s; the old 10s deadline gave up too early")
     }
 
+    // MARK: - Registering only when not registered
+
+    /// A registered app never asks Meta AI to register again: doing so is reported to reset
+    /// Developer Mode's registration and fail every session start afterwards.
+    func testRegistersOnlyWhileNotRegistered() {
+        XCTAssertTrue(RegistrationFlow.shouldStartRegistration(stateRaw: 0))
+        XCTAssertTrue(RegistrationFlow.shouldStartRegistration(stateRaw: 2))
+        XCTAssertFalse(RegistrationFlow.shouldStartRegistration(stateRaw: 3))
+        XCTAssertFalse(RegistrationFlow.shouldStartRegistration(stateRaw: 4))
+    }
+
+    /// The policy only helps if the one call site asks it. Read the source: every
+    /// `startRegistration()` in the app sits behind `shouldStartRegistration`, and there is only
+    /// the one, in `GlassesConnectionService.connect()`.
+    func testEveryRegistrationCallIsGuarded() throws {
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let sources = repo.appendingPathComponent("OpenGlasses/Sources")
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        var callSites: [(file: String, guarded: Bool)] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+            for (index, line) in lines.enumerated() where line.contains(".startRegistration(") {
+                let code = line.trimmingCharacters(in: .whitespaces)
+                if code.hasPrefix("//") || code.hasPrefix("///") { continue }
+                let window = lines[max(0, index - 4)..<index].joined(separator: "\n")
+                callSites.append((url.lastPathComponent, window.contains("shouldStartRegistration")))
+            }
+        }
+        XCTAssertEqual(callSites.map(\.file), ["GlassesConnectionService.swift"],
+                       "registration has one call site; a new one needs the same guard")
+        for site in callSites {
+            XCTAssertTrue(site.guarded, "\(site.file) calls startRegistration() without the guard")
+        }
+    }
+
     // MARK: - Registration failure copy (device-traced 2026-08-23)
 
     /// The bug this pins: `startRegistration()` throws `.alreadyRegistered` on every connect after
