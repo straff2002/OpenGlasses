@@ -37,9 +37,10 @@ final class PublicSiteGuardTests: XCTestCase {
 
     /// The consumers read the base, not a copy of it.
     func testTheConsumersReadTheBase() {
-        XCTAssertEqual(ActivationKey.defaultDirectory, PublicSite.activationDirectory)
-        XCTAssertEqual(ActivationKeyResolver().directory.appendingPathComponent("abc").absoluteString,
-                       "https://avenkin.com/activation/abc")
+        // Plan LS: the licence host first, the public site's copy second, and nothing else.
+        XCTAssertEqual(ActivationKey.defaultSources, [LicenceHost.activationDirectory, PublicSite.activationDirectory])
+        XCTAssertEqual(ActivationKeyResolver().sources.map { $0.appendingPathComponent("abc").absoluteString },
+                       ["https://licence.avenkin.com/a/abc", "https://avenkin.com/activation/abc"])
         XCTAssertEqual(DiagnosticsReportBuilder.issueBaseURL, PublicSite.support.absoluteString)
 
         let defaults = UserDefaults.standard
@@ -59,6 +60,58 @@ final class PublicSiteGuardTests: XCTestCase {
         XCTAssertEqual(Config.skillPackCatalogURL, "https://packs.example.org/catalog.json")
         Config.setVaultPackCatalogURL("https://vaults.example.org/catalog.json")
         XCTAssertEqual(Config.vaultPackCatalogURL, "https://vaults.example.org/catalog.json")
+    }
+
+    // MARK: - The licence host (Plan LS)
+
+    /// The host's address, spelled in pieces so this file is not itself a hit for its own scan.
+    private static let licenceHostName = "licence" + "." + "avenkin.com"
+
+    func testTheLicenceHostAndItsActivationPathArePinned() {
+        XCTAssertEqual(LicenceHost.baseURL.absoluteString, "https://" + Self.licenceHostName)
+        // Permanent once a build reads it: every installed build asks here first.
+        XCTAssertEqual(LicenceHost.activationDirectory.absoluteString, "https://" + Self.licenceHostName + "/a/")
+        XCTAssertEqual(LicenceHost.activationDirectory.host, LicenceHost.baseURL.host)
+    }
+
+    /// The activation lookup and the codes it opens name the same host: the seat service is the
+    /// origin of a code's profile address, and that origin is where a key's file is looked up.
+    func testTheLicenceHostIsTheOriginTheCodesName() {
+        let profileAddress = "https://" + Self.licenceHostName + "/p/p-fixture"
+        XCTAssertEqual(DeviceSeatLease.seatOrigin(profileAddress: profileAddress), LicenceHost.baseURL)
+    }
+
+    /// No source file writes the licence host's name except `LicenceHost` (comments aside), so a
+    /// second copy of the address cannot drift from the pinned one.
+    func testNoSourceFileWritesTheLicenceHostOutsideLicenceHost() throws {
+        let root = Self.repoRoot.resolvingSymlinksInPath()
+        let sourcesRoot = root.appendingPathComponent("OpenGlasses/Sources")
+        guard let enumerator = FileManager.default.enumerator(
+            at: sourcesRoot, includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]) else {
+            return XCTFail("could not enumerate OpenGlasses/Sources — the guard lost sight of the sources")
+        }
+        var scanned = 0
+        var seenInLicenceHost = false
+        var findings: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            scanned += 1
+            let relative = String(url.resolvingSymlinksInPath().path.dropFirst(root.path.count + 1))
+            for (index, line) in text.components(separatedBy: "\n").enumerated()
+            where line.contains(Self.licenceHostName) && !Self.isComment(line) {
+                if relative == "OpenGlasses/Sources/Utils/LicenceHost.swift" {
+                    seenInLicenceHost = true
+                } else {
+                    findings.append("\(relative):\(index + 1)")
+                }
+            }
+        }
+        XCTAssertGreaterThan(scanned, 500, "the scan found too few files to be looking at the sources")
+        XCTAssertTrue(seenInLicenceHost, "the scan no longer finds LicenceHost's own address — it is looking at the wrong thing")
+        XCTAssertTrue(findings.isEmpty,
+                      "The licence host is written outside LicenceHost. Read it from LicenceHost "
+                      + "(Utils/LicenceHost.swift) instead: " + findings.joined(separator: ", "))
     }
 
     // MARK: - No address outside the base

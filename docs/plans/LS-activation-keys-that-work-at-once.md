@@ -1,6 +1,8 @@
 # Plan LS — Activation Keys That Work at Once (sign up, hand over the key, start the pilot in the same visit)
 
-**Status:** 📝 Drafted 2026-11-14. Nothing built. Six [decisions](#decisions-for-greig) open.
+**Status:** 🔨 P0 built 2026-11-14 (headless; see [As built](#as-built)). All six [decisions](#decisions-for-greig)
+taken 2026-11-14 as recommended. Owed: the service's P1 in the private repository, the P2 device pass, and P3
+when decision 3's condition is met.
 **Track:** Field Assist — fleet. Activation, the licence host, the public site.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) 3a (the activation key and its sealed file), Plan
 [JS](JS-licence-sales-and-device-seats.md) (the vendor-run service, one key per customer for life, the licence
@@ -221,25 +223,51 @@ both.
 
 ## Decisions for Greig
 
-1. **When new keys stop going to the public repository, and the host signs out of GitHub.** *Recommended:* the day
+1. **When new keys stop going to the public repository, and the host signs out of GitHub.** *Taken 2026-11-14 as recommended:* the day
    the P0 build is live on the App Store and on TestFlight. Before that day, keep both, so a key works on any build
    (instantly on the new one, within minutes on the old). After it, a technician on an older build is told to
    update first. The portal's sign-up page states the minimum build next to the key. A new technician installs
    the current build anyway, so only an existing install that hasn't updated meets this. *Alternative:* stop at P1
    deploy, which removes the credential sooner, but a new key fails on every build without P0 until it ships.
-2. **Copy every existing key onto the licence host.** *Recommended:* yes, in P1, including the hand-minted ones
+2. **Copy every existing key onto the licence host.** *Taken 2026-11-14 as recommended:* yes, in P1, including the hand-minted ones
    already public in `activation/`. They are sealed and already public, so copying them exposes nothing. The
    licence host then answers for every key, and the public site matters only to old builds.
-3. **When to retire the public-site copy (P3).** *Recommended:* when seat renewals show no enrolled phone on a
+3. **When to retire the public-site copy (P3).** *Taken 2026-11-14 as recommended:* when seat renewals show no enrolled phone on a
    build older than P0's, and at least 90 days after P0 reaches TestFlight, by which time every older TestFlight
    build has expired. Licences without seat checks don't report a build, so the 90 days is the floor. The files
    stay in the repository's history either way; they are sealed.
-4. **A withdrawn key on the licence host is final.** *Recommended:* yes. `410` stops the lookup without asking the
+4. **A withdrawn key on the licence host is final.** *Taken 2026-11-14 as recommended:* yes. `410` stops the lookup without asking the
    public site, so a rotation takes effect at once on new builds instead of waiting for the repository job or
    the CDN.
-5. **The path, `/a/<name>`.** *Recommended:* `/a/`, matching `/p/` and `/c/` on the same host. It is permanent
+5. **The path, `/a/<name>`.** *Taken 2026-11-14 as recommended:* `/a/`, matching `/p/` and `/c/` on the same host. It is permanent
    once a build reads it, so it is chosen now and pinned by the guard.
 6. **Make old builds instant too, by putting the public site behind the same edge.** That would mean a route on
-   `avenkin.com/activation/*` that asks the licence host first. *Recommended:* no. The public site is served
+   `avenkin.com/activation/*` that asks the licence host first. *Taken 2026-11-14 as recommended:* no. The public site is served
    straight from GitHub today, not through Cloudflare. Moving its hosting to fix a window that ends when a build
    updates costs more than it saves, and it would keep a GitHub-hosted path in the activation flow.
+
+## As built
+
+**P0, 2026-11-14** (headless):
+- `LicenceHost` (`Utils/LicenceHost.swift`): `baseURL` `https://licence.avenkin.com`, `activationDirectory` `/a/`.
+- `ActivationKey.defaultSources` = `[LicenceHost.activationDirectory, PublicSite.activationDirectory]`,
+  replacing `defaultDirectory`. `ActivationKeyResolver` takes `sources` (with `init(directory:)` kept for one
+  source), asks them in order through `ask(_:for:)`, which answers `.file`, `.missing`, `.withdrawn` or
+  `.unreachable`, and follows the outcome table: a file that does not open or a `410` ends the lookup, and with
+  no file anywhere the first source's answer decides between `.unknownKey` and `.unreachable`. The failure
+  wording is unchanged.
+- **Found while building, and fixed:** `BoundedHTTPClient` checked the content type of every answer, errors
+  included. So a `503` or `410` without `text/plain`, an edge's own HTML error page above all, reached the
+  resolver as a refused type, which it reads as "no file", and the phone would have said "not recognised" when
+  the host could not look. `Profile` gains `readsOnlyTheStatusOfAnError` (default off; on only for
+  `.activationKey`): a 4xx or 5xx then ends at its status line, its body never read. Every other profile is
+  unchanged. A `2xx` in HTML is still refused.
+- `Contracts/activation-lookup.md`: the request, the four answers and their headers, and the phone's table.
+- Tests: `ActivationKeyTests` (every row of the table, with the order of what was asked; the same file name on
+  both sources; a withdrawn key never reaching the public site; no sources), `BoundedHTTPClientTests` (an error
+  answer is its status alone under the activation profile and not under the others; `text/plain; charset=utf-8`
+  accepted), `PublicSiteGuardTests` (the resolver's order; the host and `/a/` pinned; the host is the origin
+  `DeviceSeatLease.seatOrigin` derives from a profile address on it; no source file but `LicenceHost` writes it).
+- Unchanged, as planned: the file name and bytes, both signing domains (`StorageIdentifierGuardTests`),
+  `ActivationKeyMint`, `OrgEnrolmentService`, the route registry, the privacy manifest and the in-app copy.
+  A search of `OpenGlasses/Sources` and `privacy.html` found no copy that names where a key is looked up.
