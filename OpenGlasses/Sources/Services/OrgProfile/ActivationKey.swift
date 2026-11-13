@@ -7,7 +7,7 @@ import CryptoKit
 /// `K7Q3-X9PD-M2VA-8RTN`: fifteen random Crockford base32 characters (75 bits) and one check
 /// character. It *resolves* to the licence without a vendor server:
 ///
-/// - the static host already serving the catalogs holds one file per key, named
+/// - the licence host, and before Plan LS the public site, holds one file per key, named
 ///   hex(SHA-256(`"openglasses.activation-id.v1\n"` + key));
 /// - the file is sealed with AES-GCM under HKDF-SHA256(key, info `"openglasses.activation-key.v1"`),
 ///   base64 encoded. Version 1's plaintext is the bare licence code; version 2's is sorted-key JSON
@@ -38,9 +38,11 @@ struct ActivationKey: Equatable, Sendable {
     /// activation key already issued would derive the wrong key and fail to open its licence.
     /// Pinned by `StorageIdentifierGuardTests`.
     static let sealingSigningDomain = "openglasses.activation-key.v1"
-    /// Where the sealed files are published (`activation/` in `Scripts/stage-pages-site.sh`), on the
-    /// public site. Builds that read the old Pages address reach the same files through its redirect.
-    static let defaultDirectory = PublicSite.activationDirectory
+    /// Where a sealed file is looked for, in order (Plan LS). The licence host serves a key's file
+    /// before the portal shows the key, and is the authority. The public site (`activation/` in
+    /// `Scripts/stage-pages-site.sh`) holds keys issued before the change, and is asked only when
+    /// the licence host has no file or cannot answer; it goes when no build in use needs it.
+    static let defaultSources = [LicenceHost.activationDirectory, PublicSite.activationDirectory]
 
     /// The longest input still read as an attempt at a key — sixteen characters plus dashes and a
     /// few spaces. Anything longer is a licence code, whatever its characters.
@@ -285,6 +287,12 @@ struct ActivationKey: Equatable, Sendable {
 /// The fetch goes through `BoundedHTTPClient` under a profile sized for a few hundred bytes. The
 /// licence that comes back is only a candidate: whoever called goes on to verify it exactly as if it
 /// had been typed.
+///
+/// Plan LS: the sources are asked one after the other, and the next only when the one before has no
+/// file for the key or could not answer, so a key the licence host serves never reaches the public
+/// site. A file that does not open, or a withdrawn key (410), ends the lookup. With no file anywhere,
+/// the first source decides what the technician is told: it is the authority, so only its "no such
+/// key" makes the key unknown; when it could not look, the lookup could not either.
 struct ActivationKeyResolver: Sendable {
 
     enum Failure: Error, Equatable, LocalizedError {
@@ -308,8 +316,32 @@ struct ActivationKeyResolver: Sendable {
     /// The HTTP status and body of one GET.
     typealias Fetch = @Sendable (URL) async throws -> (status: Int, body: Data)
 
-    var directory: URL = ActivationKey.defaultDirectory
-    var fetch: Fetch = ActivationKeyResolver.boundedFetch
+    /// What one source said about a key.
+    enum Answer: Equatable, Sendable {
+        /// A 2xx with a body: a file, still to be opened.
+        case file(Data)
+        /// The source looked and has no file of that name (404, or a reply that is never a file).
+        case missing
+        /// The source looked and the key was withdrawn (410). Final.
+        case withdrawn
+        /// The source could not be asked, or could not look (no network, a timeout, a 5xx).
+        case unreachable
+    }
+
+    /// The directories asked, in order. Never empty in use; an empty list resolves nothing.
+    var sources: [URL]
+    var fetch: Fetch
+
+    init(sources: [URL] = ActivationKey.defaultSources,
+         fetch: @escaping Fetch = ActivationKeyResolver.boundedFetch) {
+        self.sources = sources
+        self.fetch = fetch
+    }
+
+    /// One directory only (tests and fixtures).
+    init(directory: URL, fetch: @escaping Fetch = ActivationKeyResolver.boundedFetch) {
+        self.init(sources: [directory], fetch: fetch)
+    }
 
     func resolve(_ key: ActivationKey) async throws -> String {
         try await resolveContents(key).licenceCode
@@ -318,26 +350,40 @@ struct ActivationKeyResolver: Sendable {
     /// The licence code and, from a version 2 file, the company secret. The secret is kept only once
     /// the enrolment it came with has been applied (`OrgEnrolmentService.confirm`).
     func resolveContents(_ key: ActivationKey) async throws -> ActivationKey.Contents {
-        let address = directory.appendingPathComponent(key.fileName)
+        var authority: Answer?
+        for directory in sources {
+            let answer = await ask(directory, for: key)
+            if authority == nil { authority = answer }
+            switch answer {
+            case .file(let body):
+                guard let contents = key.openContents(body) else { throw Failure.unreadable }
+                return contents
+            case .withdrawn:
+                throw Failure.unknownKey
+            case .missing, .unreachable:
+                continue
+            }
+        }
+        throw authority == .missing ? Failure.unknownKey : Failure.unreachable
+    }
+
+    /// One source's answer for one key.
+    func ask(_ directory: URL, for key: ActivationKey) async -> Answer {
         let reply: (status: Int, body: Data)
         do {
-            reply = try await fetch(address)
+            reply = try await fetch(directory.appendingPathComponent(key.fileName))
         } catch let error as BoundedHTTPClient.ClientError
                     where error == .unacceptableMIMEType || error == .responseTooLarge {
-            // The static host answers a missing file with its HTML error page. A sealed file is
-            // never HTML and never large, so either means there is no file for this key.
-            throw Failure.unknownKey
+            // A 2xx that is HTML or large is a page, never a sealed file: there is no file here.
+            return .missing
         } catch {
-            throw Failure.unreachable
+            return .unreachable
         }
         switch reply.status {
-        case 200...299:
-            guard let contents = key.openContents(reply.body) else { throw Failure.unreadable }
-            return contents
-        case 404, 410:
-            throw Failure.unknownKey
-        default:
-            throw Failure.unreachable
+        case 200...299: return .file(reply.body)
+        case 404: return .missing
+        case 410: return .withdrawn
+        default: return .unreachable
         }
     }
 

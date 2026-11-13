@@ -253,6 +253,138 @@ final class ActivationKeyTests: XCTestCase {
         }
     }
 
+    // MARK: - Two sources (Plan LS)
+
+    private typealias Reply = Result<(status: Int, body: Data), Error>
+
+    /// The licence host and the public site, each with its own scripted reply, and one log of
+    /// what was asked, in order.
+    private final class Sources: @unchecked Sendable {
+        static let licence = URL(string: "https://licence.example/a/")!
+        static let site = URL(string: "https://site.example/activation/")!
+
+        private let lock = NSLock()
+        private var _urls: [URL] = []
+        let licenceReply: Reply
+        let siteReply: Reply
+
+        init(licence: Reply, site: Reply) {
+            licenceReply = licence
+            siteReply = site
+        }
+
+        /// Every address asked, in order.
+        var urls: [URL] { lock.withLock { _urls } }
+
+        /// The hosts asked, in order: "licence", "site".
+        var asked: [String] { urls.map { $0.host == Self.licence.host ? "licence" : "site" } }
+
+        func fetch(_ url: URL) throws -> (status: Int, body: Data) {
+            lock.withLock { _urls.append(url) }
+            return try (url.host == Self.licence.host ? licenceReply : siteReply).get()
+        }
+
+        var resolver: ActivationKeyResolver {
+            ActivationKeyResolver(sources: [Self.licence, Self.site], fetch: { try self.fetch($0) })
+        }
+    }
+
+    private var sealedReply: Reply { .success((200, Data(vectorSealed.utf8))) }
+    private static var notFound: Reply { .success((404, Data())) }
+    private static var gone: Reply { .success((410, Data())) }
+    private static var down: Reply { .success((503, Data())) }
+    private static var offline: Reply { .failure(URLError(.notConnectedToInternet)) }
+    private static var htmlPage: Reply { .failure(BoundedHTTPClient.ClientError.unacceptableMIMEType) }
+
+    /// Resolves the vector key against two scripted sources: the code, or the failure.
+    private func lookUp(licence: Reply, site: Reply) async throws -> (Result<String, ActivationKeyResolver.Failure>, [String]) {
+        let sources = Sources(licence: licence, site: site)
+        do {
+            let code = try await sources.resolver.resolve(try key(vector))
+            return (.success(code), sources.asked)
+        } catch let failure as ActivationKeyResolver.Failure {
+            return (.failure(failure), sources.asked)
+        }
+    }
+
+    func testTheDefaultSourcesAreTheLicenceHostThenThePublicSite() {
+        XCTAssertEqual(ActivationKeyResolver().sources, [LicenceHost.activationDirectory, PublicSite.activationDirectory])
+        XCTAssertEqual(ActivationKeyResolver(directory: Sources.site).sources, [Sources.site])
+    }
+
+    func testAKeyTheLicenceHostServesNeverReachesThePublicSite() async throws {
+        let (result, asked) = try await lookUp(licence: sealedReply, site: sealedReply)
+        XCTAssertEqual(try result.get(), "LICENCE.CODE")
+        XCTAssertEqual(asked, ["licence"])
+    }
+
+    func testTheFileNameIsTheSameOnBothSources() async throws {
+        let sources = Sources(licence: Self.notFound, site: sealedReply)
+        _ = try await sources.resolver.resolve(try key(vector))
+        XCTAssertEqual(sources.urls.map(\.absoluteString),
+                       ["https://licence.example/a/\(vectorFile)", "https://site.example/activation/\(vectorFile)"])
+    }
+
+    func testAFileThatDoesNotOpenOnTheLicenceHostEndsTheLookup() async throws {
+        let other = try ActivationKey.generate().seal("SOMEONE.ELSE")
+        let (result, asked) = try await lookUp(licence: .success((200, Data(other.utf8))), site: sealedReply)
+        XCTAssertEqual(result.failure, .unreadable)
+        XCTAssertEqual(asked, ["licence"])
+    }
+
+    func testAWithdrawnKeyIsFinalAndThePublicSiteIsNotAsked() async throws {
+        let (result, asked) = try await lookUp(licence: Self.gone, site: sealedReply)
+        XCTAssertEqual(result.failure, .unknownKey)
+        XCTAssertEqual(asked, ["licence"], "a rotated key must not live on through the public site's copy")
+    }
+
+    func testAKeyIssuedBeforeTheChangeIsFoundOnThePublicSite() async throws {
+        for licence in [Self.notFound, Self.htmlPage, .failure(BoundedHTTPClient.ClientError.responseTooLarge)] {
+            let (result, asked) = try await lookUp(licence: licence, site: sealedReply)
+            XCTAssertEqual(try result.get(), "LICENCE.CODE")
+            XCTAssertEqual(asked, ["licence", "site"])
+        }
+    }
+
+    func testNoFileAnywhereIsAnUnknownKeyWhenTheLicenceHostLooked() async throws {
+        for site in [Self.notFound, Self.htmlPage, Self.down, Self.offline] {
+            let (result, asked) = try await lookUp(licence: Self.notFound, site: site)
+            XCTAssertEqual(result.failure, .unknownKey, "the licence host looked: the key is unknown")
+            XCTAssertEqual(asked, ["licence", "site"])
+        }
+    }
+
+    func testTheLicenceHostDownFallsBackToThePublicSite() async throws {
+        for licence in [Self.down, Self.offline, .success((502, Data())), .failure(BoundedHTTPClient.ClientError.firstByteTimeout)] {
+            let (result, asked) = try await lookUp(licence: licence, site: sealedReply)
+            XCTAssertEqual(try result.get(), "LICENCE.CODE")
+            XCTAssertEqual(asked, ["licence", "site"])
+        }
+    }
+
+    func testTheLicenceHostDownAndNoFileOnTheSiteIsUnreachableNotUnknown() async throws {
+        for site in [Self.notFound, Self.htmlPage, Self.down, Self.offline] {
+            let (result, _) = try await lookUp(licence: Self.down, site: site)
+            XCTAssertEqual(result.failure, .unreachable, "the authority could not look, so \"not recognised\" would be a guess")
+        }
+    }
+
+    func testAWithdrawnAnswerFromThePublicSiteIsAlsoFinal() async throws {
+        let (result, asked) = try await lookUp(licence: Self.down, site: Self.gone)
+        XCTAssertEqual(result.failure, .unknownKey)
+        XCTAssertEqual(asked, ["licence", "site"])
+    }
+
+    func testNoSourcesResolveNothing() async throws {
+        do {
+            _ = try await ActivationKeyResolver(sources: [], fetch: { _ in XCTFail("nothing to ask"); return (200, Data()) })
+                .resolve(try key(vector))
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual(error as? ActivationKeyResolver.Failure, .unreachable)
+        }
+    }
+
     // MARK: - Entry
 
     @MainActor
@@ -272,5 +404,12 @@ final class ActivationKeyTests: XCTestCase {
         let resolved = await service.resolveEntry("k7q3 x9pd m2va 8rtz")
         XCTAssertEqual(resolved, .licence("LICENCE.CODE"))
         XCTAssertEqual(host.requests.count, 1)
+    }
+}
+
+private extension Result {
+    var failure: Failure? {
+        if case .failure(let failure) = self { return failure }
+        return nil
     }
 }

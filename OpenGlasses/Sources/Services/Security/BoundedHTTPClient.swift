@@ -20,6 +20,12 @@ struct BoundedHTTPClient {
         let firstByteTimeout: TimeInterval
         /// The largest gap allowed between two delivered chunks once bytes are flowing.
         let idleTimeout: TimeInterval
+        /// Whether an error answer (4xx or 5xx) reaches the caller as its status alone, its body
+        /// never read and its content type never checked. Off by default: the other profiles'
+        /// callers read a host's error page as a refusal of its type. On for a lookup whose caller
+        /// tells "the host looked and found nothing" (404, 410) from "the host could not look"
+        /// (5xx), which an edge's own HTML error page would otherwise blur (Plan LS).
+        let readsOnlyTheStatusOfAnError: Bool
 
         /// Three deadlines rather than one, because a single total budget lets a hostile peer
         /// accept the connection and then hold a socket, a task and a staging file open for the
@@ -36,7 +42,8 @@ struct BoundedHTTPClient {
             allowsPrivateHTTP: Bool,
             totalTimeout: TimeInterval,
             firstByteTimeout: TimeInterval = 8,
-            idleTimeout: TimeInterval = 5
+            idleTimeout: TimeInterval = 5,
+            readsOnlyTheStatusOfAnError: Bool = false
         ) {
             self.name = name
             self.maximumBytes = maximumBytes
@@ -46,6 +53,7 @@ struct BoundedHTTPClient {
             self.totalTimeout = totalTimeout
             self.firstByteTimeout = firstByteTimeout
             self.idleTimeout = idleTimeout
+            self.readsOnlyTheStatusOfAnError = readsOnlyTheStatusOfAnError
         }
 
         static let qrContext = Profile(
@@ -112,8 +120,9 @@ struct BoundedHTTPClient {
         )
 
         /// A sealed licence for an activation key (Plan CT 3a): a few hundred bytes of base64 from
-        /// the static host. HTML is not accepted: the host answers a missing key with its HTML error
-        /// page, and the resolver reads that refusal as "no file for this key".
+        /// the licence host or the public site. An error answer reaches the resolver as its status
+        /// alone (Plan LS), so a 404 or 410 means the host looked and a 5xx means it could not,
+        /// whatever error page came with it. A 2xx in HTML is still refused: it is never a file.
         static let activationKey = Profile(
             name: "activationKey",
             maximumBytes: 8 * 1024,
@@ -122,7 +131,8 @@ struct BoundedHTTPClient {
             allowsPrivateHTTP: false,
             totalTimeout: 20,
             firstByteTimeout: 8,
-            idleTimeout: 5
+            idleTimeout: 5,
+            readsOnlyTheStatusOfAnError: true
         )
 
         #if DEBUG
@@ -742,6 +752,12 @@ final class HTTPResponseParser {
             return
         }
         if code == 204 || code == 304 || (100...199).contains(code) {
+            mode = .done
+            return
+        }
+        if profile.readsOnlyTheStatusOfAnError, code >= 400 {
+            // Only the status is the answer: the body is never read, so its type, encoding and
+            // size cannot turn "could not look" into "nothing there".
             mode = .done
             return
         }

@@ -184,6 +184,50 @@ final class BoundedHTTPClientTests: XCTestCase {
         }
     }
 
+    /// Plan LS: the activation profile hears an error answer as its status alone, so an edge's own
+    /// HTML error page (any size, any encoding) cannot turn "could not look" into "nothing there".
+    func testTheActivationProfileReadsOnlyTheStatusOfAnError() throws {
+        let url = URL(string: "https://licence.example/a/abc")!
+        XCTAssertTrue(BoundedHTTPClient.Profile.activationKey.readsOnlyTheStatusOfAnError)
+        for (head, status) in [
+            ("HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/html\r\nContent-Length: 999999\r\n\r\n<html>", 503),
+            ("HTTP/1.1 522 Origin Timeout\r\nContent-Type: text/html\r\nContent-Encoding: gzip\r\n\r\n", 522),
+            ("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n", 404),
+            ("HTTP/1.1 404 Not Found\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 9\r\n\r\n<html>404", 404),
+            ("HTTP/1.1 410 Gone\r\nCache-Control: no-store\r\n\r\n", 410),
+        ] {
+            let parser = HTTPResponseParser(url: url, profile: .activationKey, sink: { _ in XCTFail("an error body is never read") })
+            XCTAssertTrue(try parser.feed(Data(head.utf8)), head)
+            XCTAssertEqual(try parser.response().statusCode, status)
+            XCTAssertEqual(try parser.response().byteCount, 0)
+        }
+
+        // A 2xx is still a file only in the profile's types: an HTML page is never one.
+        let page = HTTPResponseParser(url: url, profile: .activationKey, sink: { _ in })
+        XCTAssertThrowsError(try page.feed(Data("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 1\r\n\r\n".utf8))) { error in
+            XCTAssertEqual(error as? BoundedHTTPClient.ClientError, .unacceptableMIMEType)
+        }
+
+        // The licence host's `text/plain; charset=utf-8` is accepted, its body delivered.
+        var body = Data()
+        let file = HTTPResponseParser(url: url, profile: .activationKey, sink: { body.append($0) })
+        XCTAssertTrue(try file.feed(Data("HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 4\r\n\r\nQUJD".utf8)))
+        XCTAssertEqual(try file.response().statusCode, 200)
+        XCTAssertEqual(String(decoding: body, as: UTF8.self), "QUJD")
+    }
+
+    /// Every other profile keeps checking an error answer's type, as its callers expect.
+    func testOtherProfilesStillCheckAnErrorAnswersType() throws {
+        let url = URL(string: "https://example.test/catalog.json")!
+        for profile in [BoundedHTTPClient.Profile.qrContext, .signedCatalog, .skillPack, .orgProfile] {
+            XCTAssertFalse(profile.readsOnlyTheStatusOfAnError, profile.name)
+        }
+        let parser = HTTPResponseParser(url: url, profile: .signedCatalog, sink: { _ in })
+        XCTAssertThrowsError(try parser.feed(Data("HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: 1\r\n\r\n".utf8))) { error in
+            XCTAssertEqual(error as? BoundedHTTPClient.ClientError, .unacceptableMIMEType)
+        }
+    }
+
     func testHTTPResponseParserStreamsChunkedBodyAndRejectsOverflow() throws {
         let url = URL(string: "https://example.test/context")!
         let tiny = BoundedHTTPClient.Profile(

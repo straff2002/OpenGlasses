@@ -2,7 +2,8 @@
 
 Other contracts in this folder: [company vaults](company-vaults.md) (a company's own vaults and
 sealed manuals from the licence service, and the seat renewal's installed versions; reference code
-in the licence core, fixtures, and the phone's half), [captured manual](captured-manual.md) (IF P0: immutable source
+in the licence core, fixtures, and the phone's half), [activation lookup](activation-lookup.md) (where
+the phone finds an activation key's sealed file on the licence host, and what each answer means), [captured manual](captured-manual.md) (IF P0: immutable source
 manifest, shared Swift/Go checks, signed report extension and proposed reviewed-vault provenance;
 no capture or sender), [job file](job-file.md) (format 2: an office-assigned identifier
 and revision, signed over exact bytes; format 3: another system's identity for the job, the
