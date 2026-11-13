@@ -90,7 +90,8 @@ jobs:
 
   test:
     runs-on: macos-26
-    timeout-minutes: 90
+    # Setup before the build (~7 min) + the build's 60 + the tests' 50, with a little to spare.
+    timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,8 +189,9 @@ jobs:
       - name: Build unit tests
         # Run 40017646633 spent ~27.5 minutes building, then ~21 minutes testing. A shared
         # 50-minute limit killed the step after all tests passed. Bound these phases separately
-        # so a cold build cannot consume the test runner's time for results and shutdown.
-        timeout-minutes: 45
+        # so a cold build cannot consume the test runner's time for results and shutdown. Builds
+        # take ~20-28 minutes; the limit leaves room for a runner two to three times slower.
+        timeout-minutes: 60
         run: |
           set -o pipefail
           python3 Scripts/measure-xcode-build.py build-resources.jsonl \
@@ -209,9 +211,12 @@ jobs:
             || { tail -100 xcodebuild-build.log; exit 1; }
 
       - name: Run unit tests
-        # Tests took ~21 minutes in the run above. Leave time for Xcode's result finalization
-        # while keeping this phase and the whole job bounded; a success line alone is not a pass.
-        timeout-minutes: 35
+        # Tests took ~21 minutes in the run above and 23-28 minutes on green runs in November
+        # 2026, but a slow hosted runner runs every suite two to three times slower: run
+        # 43355721534 was still passing tests when a 35-minute limit stopped it. Leave room for
+        # that and for Xcode's result finalization while keeping this phase and the whole job
+        # bounded; a success line alone is not a pass.
+        timeout-minutes: 50
         run: |
           set -o pipefail
           # -skipPackagePluginValidation/-skipMacroValidation: a fresh runner has trusted no
