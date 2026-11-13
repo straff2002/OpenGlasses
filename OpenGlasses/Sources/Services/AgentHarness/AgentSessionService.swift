@@ -120,6 +120,15 @@ final class AgentSessionService: ObservableObject {
     /// Questions already surfaced, by `(id, revision)`.
     private var announcedQuestions: Set<AgentQuestion.Identity> = []
 
+    /// The same question or failure coming round again during this job (Plan LP §4). Counted for
+    /// the life of the job — a new dispatch starts it again, a return to running does not.
+    private var blockers = RecurringBlocker()
+    /// The "do you want me to stop it?" ask in flight, if any.
+    private var stopAskTask: Task<Void, Never>?
+
+    /// Wait for a recurring-blocker ask to be answered (tests).
+    func awaitStopAsk() async { await stopAskTask?.value }
+
     /// A fingerprint per delivered result revision, in order. Its `count` is the next revision
     /// number, and its last entry is what a repeated terminal report is compared against.
     private var deliveredFingerprints: [String] = []
@@ -173,6 +182,10 @@ final class AgentSessionService: ObservableObject {
         // layer, not only at the tool layer (`AgentControlTool`). Latent today (its only caller is
         // tool-gated), but this is the gate-at-the-service-layer lesson the phase codifies.
         guard Config.agentModeEnabled else { return .failure(.agentModeOff) }
+        // Plan LP §3: a job that is still going is never replaced from here. Stopping it is the
+        // wearer's call, asked at `startOrSteer`; a caller that reaches `dispatch` directly with
+        // one in flight is refused rather than allowed to cancel it out from under them.
+        guard runPhase == .idle else { return .failure(.runInFlight) }
         guard let harness = activeHarness else { return .failure(.notConfigured(Config.defaultAgentHarness)) }
         guard harness.isConfigured else { return .failure(.notConfigured(harness.kind)) }
 
@@ -205,6 +218,9 @@ final class AgentSessionService: ObservableObject {
             result = AgentRunResult()
             resetQuestionState()
             resetDeliveryState()
+            blockers = RecurringBlocker()
+            stopAskTask?.cancel()
+            stopAskTask = nil
             lastSummary = nil
             connectionState = .connected
             contactLostAt = nil
@@ -216,6 +232,88 @@ final class AgentSessionService: ObservableObject {
             return .failure(error)
         } catch {
             return .failure(.transport(error.localizedDescription))
+        }
+    }
+
+    // MARK: - A new job while one runs (Plan LP §3)
+
+    /// Where the job stands for a new `start`. A run we have lost contact with — and said so — is
+    /// not counted as running: we can neither steer nor stop it, and the wearer has been told.
+    var runPhase: AgentRunPhase {
+        guard let run = activeRun, !run.status.isTerminal else { return .idle }
+        if case .lost = connectionState { return .idle }
+        return run.status == .awaitingInput ? .awaitingInput : .running
+    }
+
+    /// What a `start` came to.
+    enum StartOutcome: Equatable {
+        case started(AgentRun)
+        /// Handed to the running job as a follow-up.
+        case steered
+        /// The wearer chose to leave the running job alone; nothing new was started.
+        case keptRunning
+        /// The running job could not be stopped, so the new one was not started.
+        case couldNotStop
+        /// There was no way to ask the wearer, so nothing changed.
+        case couldNotAsk
+        case failed(AgentHarnessError)
+    }
+
+    /// The entry for a `start`: a fresh job when nothing runs; while one does, a follow-up into it
+    /// where the harness can take one, otherwise the wearer is asked whether to stop it and start
+    /// this one. A stop is a recorded cancellation, never a silent replacement.
+    func startOrSteer(prompt: String, project: String?,
+                      explicitAttach: Bool? = nil) async -> StartOutcome {
+        let route = AgentFollowUpRouting.route(phase: runPhase,
+                                               support: runHarness?.followUpSupport ?? .unknown)
+        switch route {
+        case .startFresh:
+            return Self.outcome(await dispatch(prompt: prompt, project: project, explicitAttach: explicitAttach))
+        case .steer:
+            if let harness = runHarness, let run = activeRun {
+                do {
+                    try await harness.sendFollowUp(run, text: prompt)
+                    PrivacyLog.agent(.session, .followUpSteered, characters: prompt.count)
+                    return .steered
+                } catch {
+                    // The channel said yes and then failed: fall back to asking, never to replacing.
+                }
+            }
+            return await askToReplace(prompt: prompt, project: project, explicitAttach: explicitAttach)
+        case .askToReplace:
+            return await askToReplace(prompt: prompt, project: project, explicitAttach: explicitAttach)
+        }
+    }
+
+    private func askToReplace(prompt: String, project: String?,
+                              explicitAttach: Bool?) async -> StartOutcome {
+        guard let requestUserConsent else { return .couldNotAsk }
+        let request = RemoteActionConsentRequest(source: .codingAgent,
+                                                 summary: AgentFollowUpRouting.replaceSummary,
+                                                 spokenOverride: AgentFollowUpRouting.replacePrompt)
+        guard await requestUserConsent(request) else {
+            PrivacyLog.agent(.session, .replaceDeclined)
+            return .keptRunning
+        }
+        // It may have finished while the wearer was being asked; then there is nothing to stop.
+        if runPhase != .idle, let harness = runHarness, let run = activeRun {
+            do {
+                try await harness.cancel(run)
+            } catch {
+                return .couldNotStop
+            }
+            PrivacyLog.agent(.session, .runReplaced)
+            finish(status: .cancelled, cancellation: .local)
+            // The stop's own record finishes before the new job's dispatch clears the slate.
+            await awaitDelivery()
+        }
+        return Self.outcome(await dispatch(prompt: prompt, project: project, explicitAttach: explicitAttach))
+    }
+
+    private static func outcome(_ result: Result<AgentRun, AgentHarnessError>) -> StartOutcome {
+        switch result {
+        case .success(let run): return .started(run)
+        case .failure(let error): return .failed(error)
         }
     }
 
@@ -242,7 +340,15 @@ final class AgentSessionService: ObservableObject {
             handleQuestion(question)
             return
         }
-        if let line = AgentSummarizer.narration(for: event) {
+        // Plan LP §4: a failed command is said the first time, kept quiet the second, and the
+        // third time the wearer is asked whether to stop the job.
+        if case .commandRun(let command, ok: false) = event {
+            switch blockers.note(.error, text: command) {
+            case .announce: if let line = AgentSummarizer.narration(for: event) { emit(line) }
+            case .quiet: break
+            case .askToStop: askToStop(.error, text: command)
+            }
+        } else if let line = AgentSummarizer.narration(for: event) {
             emit(line)
         }
         switch event {
@@ -276,6 +382,7 @@ final class AgentSessionService: ObservableObject {
     private func handleQuestion(_ question: AgentQuestion) {
         activeRun?.status = .awaitingInput
         let isNew = !announcedQuestions.contains(question.identity)
+        let previousID = pendingQuestion?.id
         if isNew {
             // A different question replaces the pending one: any reply still in hand was for the
             // old one and must not be sent against the new.
@@ -286,11 +393,43 @@ final class AgentSessionService: ObservableObject {
             }
             announcedQuestions.insert(question.identity)
             pendingQuestion = question
-            emit(AgentSummarizer.cap(question.prompt))
+            // Plan LP §4: the same words asked again under a new id (the job went back to running
+            // and asked again) is a new question to answer, but not news. Said once, kept the
+            // second time, and the third time the wearer is asked whether to stop the job. It
+            // stays answerable throughout. A revision of the question already pending is that
+            // question on changed terms, and is said as before.
+            let isRevision = previousID == question.id
+            switch isRevision ? .announce : blockers.note(.question, text: question.prompt) {
+            case .announce: emit(AgentSummarizer.cap(question.prompt))
+            case .quiet: break
+            case .askToStop: askToStop(.question, text: question.prompt)
+            }
         } else if pendingQuestion == nil {
             // Already announced, but we had cleared it (e.g. a delivered reply the endpoint has
             // not caught up with). Track it again without saying it twice.
             pendingQuestion = question
+        }
+    }
+
+    /// Ask, once per blocker, whether to stop a job that keeps coming back to the same thing. A
+    /// yes is an explicit, recorded cancel of this job — and only this one, if it is still going.
+    private func askToStop(_ kind: RecurringBlocker.Kind, text: String) {
+        PrivacyLog.agent(.session, .blockerRecurred, reason: PrivacyToken(kind.rawValue),
+                         count: RecurringBlocker.askAt)
+        guard let requestUserConsent else {
+            // No way to ask: say it, as the first time was said, rather than nothing.
+            emit(AgentSummarizer.cap(text))
+            return
+        }
+        let runID = activeRun?.id
+        let request = RemoteActionConsentRequest(source: .codingAgent,
+                                                 summary: RecurringBlocker.stopSummary(kind),
+                                                 spokenOverride: RecurringBlocker.stopPrompt(kind, text: text))
+        stopAskTask = Task { @MainActor [weak self] in
+            let stop = await requestUserConsent(request)
+            guard let self, stop, let runID, self.activeRun?.id == runID,
+                  self.activeRun?.status.isTerminal == false else { return }
+            await self.cancel()
         }
     }
 

@@ -244,6 +244,8 @@ enum PrivacyLog {
         case vaultOnlySealed
         /// A turn that asked for nobody tried to page an expert (Plan KE).
         case expertNotRequested
+        /// A plan step ran on the grant the wearer's one yes to the plan issued for it (Plan LP).
+        case planApprovalSpent
     }
 
     @discardableResult
@@ -1634,6 +1636,9 @@ enum PrivacyLog {
         // conversation (`LLMService.sendOffConversation`); no fields.
         case scheduledRunYielded
         case planLoopEmpty, planLoopCompleted, cascadeSwitched
+        // Plan LP — a plan's one ask: `count` the steps it covered; how it came back as `reason`
+        // (a fixed token); `revoked` grants left unspent when the plan ended. Never the steps.
+        case planApprovalAsked, planApprovalAnswered, planGrantsRevoked
         // The chain started on the model that answered the last turn, not the lead it hopped
         // away from (`ModelCascadeMemory`): the configuration it started on, fingerprinted.
         case cascadeLeadDeferred
@@ -2290,6 +2295,10 @@ enum PrivacyLog {
         case backgroundRequested, backgroundRequestCancelled, backgroundRequestFailed
         // Plan LM P2 — a notification button press, routed or dropped. `reason` is the category id.
         case notificationActionRouted, notificationActionUnhandled
+        // Plan LP — a new job while one runs: passed to the running job as a follow-up, the
+        // running job stopped to start the new one, or left running at the wearer's word; and a
+        // job's blocker coming round again (`count` how many times). Never the words.
+        case followUpSteered, runReplaced, replaceDeclined, blockerRecurred
     }
 
     /// `priority` and `reason` are fixed app enums (`AgentNotification.Priority`, the dispatcher's

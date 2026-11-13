@@ -281,14 +281,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
             screenedArgs = verdict.redactedArgs ?? args
         }
 
-        let decision = ToolAuthorizationPolicy.evaluate(.init(
-            call: call,
-            agentModeEnabled: Config.agentModeEnabled,
-            safetyContext: safetyContext,
-            composedTargets: composedTargetPolicy,
-            seam: profile.seam,
-            effectClass: profile.effectClass,
-            turnReadWeb: TurnWebExposure.turnReadWeb))
+        let decision = authorizationDecision(call, profile: profile, safetyContext: safetyContext)
 
         // What the trail records if the call goes on to dispatch (Plan IW P1).
         var dispatchGate = ActivityGateRecord(gate: .ran(approvalSummary: nil),
@@ -332,6 +325,27 @@ final class NativeToolRouter: ToolExecutionAuthority {
             // The confirmation summary quotes the arguments back ("send \'meet at 8\' to …"),
             // which is the very thing the gate is holding — so the tool name is all that is kept.
             PrivacyLog.toolGate(.confirmationRequired, tool: name)
+            // Plan LP §1: a step of a plan the wearer approved as a whole carries its grant. It is
+            // spent here, against the call as it stands now, exactly as an answer to the prompt
+            // below would be; anything that no longer matches — changed arguments, a moved
+            // definition, another plan's grant — spends nothing and the call asks on its own.
+            if let planned = PlanApprovalScope.stepGrant, call.context.depth == 0 {
+                let atDispatch = dispatchProfile(for: call)
+                let spending = coordinator.approvalGrants.binding(
+                    seam: atDispatch.seam, toolName: name,
+                    definitionDigest: atDispatch.definitionDigest, args: args)
+                let verdict = coordinator.approvalGrants.redeem(nonce: planned.nonce, against: spending,
+                                                                scope: planned.scope)
+                if case .consumed = verdict {
+                    PrivacyLog.toolGate(.planApprovalSpent, tool: name)
+                    dispatchGate.gate = .ran(approvalSummary: summary)
+                    break
+                }
+                if let refusal = verdict.refusal {
+                    authorizationEvents.record(call: call, verdict: refusal.rawValue)
+                }
+                PrivacyLog.toolGate(.approvalNotBound, tool: name)
+            }
             // What the wearer is being asked about, fixed at the moment of asking.
             let asked = coordinator.approvalGrants.binding(
                 seam: profile.seam, toolName: name, definitionDigest: profile.definitionDigest,
@@ -477,6 +491,60 @@ final class NativeToolRouter: ToolExecutionAuthority {
         activityRecorder?.settle(operationID: record.operationID, outcome: outcome)
     }
 
+    /// The policy ladder's verdict for a call on its resolved profile. One function, so the
+    /// dispatch point and a plan's preflight (Plan LP) can never disagree about what asks.
+    private func authorizationDecision(_ call: ResolvedToolCall, profile: DispatchProfile,
+                                       safetyContext: SafetyContext) -> ToolAuthorizationDecision {
+        ToolAuthorizationPolicy.evaluate(.init(
+            call: call,
+            agentModeEnabled: Config.agentModeEnabled,
+            safetyContext: safetyContext,
+            composedTargets: composedTargetPolicy,
+            seam: profile.seam,
+            effectClass: profile.effectClass,
+            turnReadWeb: TurnWebExposure.turnReadWeb))
+    }
+
+    // MARK: - Plan approval (Plan LP §1)
+
+    /// What dispatching this plan step would decide, worked out in the order `authorizeAndDispatch`
+    /// uses — feature and expert gates, the egress screen, then the ladder with the step's exact
+    /// arguments — and nothing recorded, because nothing is being dispatched.
+    func planPreflight(name: String, args: [String: Any]) -> PlanStepPreflight {
+        let call = ResolvedToolCall.root(name: name, arguments: ToolArguments(args), origin: .model)
+        guard let coordinator = confirmationCoordinator,
+              featureGateRefusal(call, recording: false) == nil,
+              expertRequestRefusal(call, recording: false) == nil else { return .noAsk }
+        let profile = dispatchProfile(for: call)
+        let raw = call.arguments.rawValues
+        if case .mcpServer = profile.seam, let mcp = mcpClient,
+           let tool = mcp.offeredTool(matching: name),
+           let server = mcp.server(id: tool.serverId), server.enabled,
+           EgressScreen.evaluate(raw, policy: server.policy).blockReason != nil {
+            return .noAsk   // withheld at dispatch whatever anyone says; nothing to ask about
+        }
+        let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
+        guard case .confirm(let summary) = authorizationDecision(call, profile: profile,
+                                                                 safetyContext: safetyContext) else {
+            return .noAsk
+        }
+        return .confirm(summary: summary,
+                        binding: coordinator.approvalGrants.binding(
+                            seam: profile.seam, toolName: name,
+                            definitionDigest: profile.definitionDigest, args: raw))
+    }
+
+    func requestPlanApproval(_ approval: PlanApproval, scope: String,
+                             ttl: TimeInterval) async -> PlanApprovalOutcome {
+        guard let coordinator = confirmationCoordinator else { return .unavailable }
+        return await coordinator.requestPlanApproval(approval, scope: scope, ttl: ttl)
+    }
+
+    @discardableResult
+    func revokePlanGrants(scope: String) -> Int {
+        confirmationCoordinator?.approvalGrants.revoke(scope: scope) ?? 0
+    }
+
     // MARK: - AI feature gate (Plan HR P2 item 6)
 
     /// The refusal for a call whose AI feature is switched off, or nil when it may proceed.
@@ -485,13 +553,17 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// answer until the wearer turns the feature back on; the text is `AIFeatureGate.disabledMessage`,
     /// exactly what the tool's own inline check returns, so the model hears one sentence whichever
     /// gate caught the call. Recorded as a content-free security event like every other refusal.
-    private func featureGateRefusal(_ call: ResolvedToolCall) -> ToolExecutionOutcome? {
+    /// `recording: false` asks the same question without writing a refusal down — a plan's
+    /// preflight (Plan LP), which only wants to know whether a step would stop here.
+    private func featureGateRefusal(_ call: ResolvedToolCall, recording: Bool = true) -> ToolExecutionOutcome? {
         // A vault-only job (Plan KE). First, because no other answer here may lead round the seal.
         // A name the registry does not answer for is shut as well: it would fall through to MCP or
         // the gateway, which a sealed job does not reach, whichever name it arrived under.
         if vaultOnlySealed(), VaultOnlyPolicy.isSealed(tool: call.name) || registry.tool(named: call.name) == nil {
-            authorizationEvents.record(call: call, verdict: ToolRefusalReason.vaultOnlySealed.rawValue)
-            PrivacyLog.toolGate(.vaultOnlySealed, tool: call.name)
+            if recording {
+                authorizationEvents.record(call: call, verdict: ToolRefusalReason.vaultOnlySealed.rawValue)
+                PrivacyLog.toolGate(.vaultOnlySealed, tool: call.name)
+            }
             return .rejected(reason: VaultOnlyPolicy.refusal(tool: call.name))
         }
         // A tool of a trade the technician has not turned on is not declared (`FieldTradeGate`);
@@ -502,23 +574,29 @@ final class NativeToolRouter: ToolExecutionAuthority {
         if case .string(let value)? = call.arguments["operation"] { operation = value }
         if let redirect = FieldTradeGate.redirect(forTool: call.name, operation: operation,
                                                   activeTrades: activeTrades()) {
-            authorizationEvents.record(call: call, verdict: ToolRefusalReason.featureDisabled.rawValue)
+            if recording {
+                authorizationEvents.record(call: call, verdict: ToolRefusalReason.featureDisabled.rawValue)
+            }
             return .rejected(reason: redirect)
         }
         guard let feature = AIFeatureGate.disabledFeature(forTool: call.name) else { return nil }
-        authorizationEvents.record(call: call, verdict: ToolRefusalReason.featureDisabled.rawValue)
+        if recording {
+            authorizationEvents.record(call: call, verdict: ToolRefusalReason.featureDisabled.rawValue)
+        }
         return .rejected(reason: AIFeatureGate.disabledMessage(feature))
     }
 
     /// The refusal for paging an expert on a turn that did not ask for one (Plan KE P1), or nil.
-    private func expertRequestRefusal(_ call: ResolvedToolCall) -> ToolExecutionOutcome? {
+    private func expertRequestRefusal(_ call: ResolvedToolCall, recording: Bool = true) -> ToolExecutionOutcome? {
         guard EscalateToExpertTool.pagesAnExpert(tool: call.name, args: call.arguments.rawValues),
               let refusal = EscalateToExpertTool.refusal(said: technicianWords(), previousReply: previousReply(),
                                                          expertName: call.arguments.rawValues["expert_name"] as? String,
                                                          action: call.arguments.rawValues["action"] as? String)
         else { return nil }
-        authorizationEvents.record(call: call, verdict: ToolRefusalReason.expertNotRequested.rawValue)
-        PrivacyLog.toolGate(.expertNotRequested, tool: call.name)
+        if recording {
+            authorizationEvents.record(call: call, verdict: ToolRefusalReason.expertNotRequested.rawValue)
+            PrivacyLog.toolGate(.expertNotRequested, tool: call.name)
+        }
         return .rejected(reason: refusal)
     }
 
@@ -644,6 +722,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 guard !Task.isCancelled else { break }
                 elapsed += 10
                 PrivacyLog.toolRun(.stillRunning, tool: name, seconds: Double(elapsed))
+                // Plan LP §2: a plan that opened with a sentence has already said what is going
+                // on, so its first "still working" is not said again.
+                if reportProgress, PlanNarrationScope.current?.absorbsStillWorking() == true { continue }
                 if reportProgress { self?.onLongRunningUpdate?(elapsed) }
             }
         }

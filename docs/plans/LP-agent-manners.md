@@ -1,7 +1,7 @@
 # Plan LP — Agent Manners (ask once before a plan, say what's happening, don't start over by accident)
 
-**Status:** 📝 Drafted 2026-11-12. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-13 (P0–P1); P2 device pass owed. The four [decisions](#decisions-for-greig)
+were taken 2026-11-13, as recommended. What was built, and every deviation, is under [As built](#as-built).
 **Track:** Agent Mode and the remote agents — how multi-step work asks, talks and stops. Spoken first; the lens
 and the phone already show more.
 **Builds on:** `AgentRunner`, `PlanValidator`, `PlanExecutor` (`Services/Agent/`), `ToolConfirmationCoordinator` and
@@ -146,7 +146,13 @@ body only.
   are made distinct: `session_search` finds a conversation by topic words; `brain recall` answers a question about
   what was said, including "yesterday" and "last week".
 
-## Decisions for Greig (open)
+## Decisions for Greig
+
+Taken 2026-11-13, as recommended (1–4 below). Decision 1's grant lifetime is "as long as the plan runs",
+capped at five minutes (`PlanApproval.grantLifetimeCeiling`), with every unspent grant revoked when the plan
+ends, stops at a step, is declined or is cancelled. Decision 4 leaves a saved writing style out of this plan:
+it is memory, and it waits on Plan LN's write gate.
+
 
 1. **One ask for the whole plan.** *Recommended:* as §1, one spoken sentence and one card, with a grant per step
    bound to its exact arguments. Alternative: keep per-step asks but queue them instead of refusing the second.
@@ -183,6 +189,89 @@ a recurring question, an MCP approval card.
 - **A spoken opener plus LA's quiet tone** for a plan of actions: the opener is skipped when Quiet after actions is
   on and every step is an action LA would end quietly.
 - **Harness follow-up support varies.** The routing is per capability; unknown means ask.
+
+## As built
+
+Built 2026-11-13, P0 and P1 together, headless. P2 (the device pass) is owed.
+
+**§1 Ask once (`Agent/PlanApproval.swift`).** `NativeToolRouter.planPreflight` works out each step's verdict
+in the order dispatch uses — feature and expert gates, the MCP egress screen, then
+`ToolAuthorizationPolicy.evaluate` with the step's exact arguments (the ladder and the effect-class floor
+after it, through one shared `authorizationDecision`), recording nothing. `PlanValidator.requiresConfirmation`
+is not read. `PlanApproval.shape` gathers the `.confirm` steps: none → nothing; one → that step asks at its own
+call exactly as before; two or three → one ask; four or more → two halves, asked one after the other before any
+step runs ("Then I'll …" for the second). `ToolConfirmationCoordinator.requestPlanApproval` asks once (consent
+register consulted as for any ask; refused with `.busy` when another card is up), and on a yes issues one grant
+per step, bound exactly as the step's call would bind it (seam, tool, definition digest, argument digest,
+session) and additionally **scoped to the plan run** (`ApprovalGrant.scope`): a scoped grant is spent only by a
+call presenting the same scope, an unscoped one only by a call presenting none (`scopeMismatch`, checked
+without spending). `PlanExecutor` hands each step its own grant through the task-local
+`PlanApprovalScope.stepGrant`; the router's `.confirm` branch redeems it against the call as it stands at
+dispatch (re-derived profile) for a root call only, and anything that does not match spends nothing, is written
+to the authorization ring, and the call asks on its own. A no (to either half), a busy surface or withdrawn
+consent returns before any step runs. `AgentRunner` revokes the run's unspent grants in a `defer`
+(`ApprovalGrantStore.revoke(scope:)`), so they die with the plan however it ends.
+
+**§2 Opener (`Agent/PlanOpener.swift`).** Two or more steps: "I'll a, b and c." from the rationales (three
+steps or fewer, all with a rationale), else the planner's goal when it is not just the request echoed back,
+else "I'll work through this in N steps.". None when the plan is asking first, or when Quiet after actions is
+on and every step passes `QuietTurnJudge.holdsPreamble` (a reviewed native tool that changes something —
+Plan LA's own before-it-runs test). Spoken through a new `LLMService.onAgentSpeak` (AppState → TTS,
+`.progress`, Direct mode only). When the opener or the ask was said, the router's still-working timer skips its
+first line for that plan (`PlanNarrationScope`, inherited by the timer's task). "Step i of N" stays on the lens.
+
+**§3 Follow-up during a job (`AgentHarness/AgentFollowUpRouting.swift`).** `AgentHarness.followUpSupport` +
+`sendFollowUp` (defaults `.unknown` / throws). `AgentSessionService.startOrSteer`: nothing running → start;
+running and `.accepts` → follow-up, "Passed that on to the job that's already running."; running with
+`.unsupported`/`.unknown`, or awaiting an answer → ask "That job's still running. Stop it and start this one
+instead?" through the wearer's consent card. A yes cancels the old job at the far end and finishes it as a
+local cancellation (its "Cancelled the agent run." delivery is recorded before the new dispatch), then starts
+the new one; a cancel that fails starts nothing. `dispatch` gained the in-flight guard (`.runInFlight`).
+`code_agent start` goes through `startOrSteer`.
+
+**§4 Recurring blocker (`AgentHarness/RecurringBlocker.swift`).** Counted for the life of the job, reset only
+by a new dispatch: 1st said, 2nd kept (still pending and answerable), 3rd asks "It keeps asking: “…” Do you
+want me to stop it?"; a yes is an explicit cancel of that job only.
+
+**§5 Approval copy (`Security/ActionDataSummary.swift`).** For an external seam, `approvalSummary` names
+the data kinds (location coordinates, an address, a photo, a file, health data, contact details, a message, some
+text) and the destination (an MCP server's label from the qualified name, a custom tool's name, the gateway):
+"Send location coordinates to 'trip-planner' (an external tool this app hasn't reviewed)". Every argument the
+table cannot place is still shown as `key=value`; with nothing recognised, today's form stays.
+
+**§6 Drafting.** `MessageDraftingRules` in `send_message` and `send_via` (which is also the email tool):
+write as the user, add no fact, ask accept/decline when ambiguous, body holds only the words sent and is the
+only thing read back.
+
+**§7 Tools and conversations.** `lookup_tools` takes a `query` (names no longer required): recall's
+meta-word stripping plus a small lookup list, a light stem, name hits over description hits, at most five
+names with one line each; MCP lines inside the untrusted-output envelope. `FTSQueryBuilder.searchTerms` is the
+shared stripping; `session_search` uses it (a date with no topic word lists that window's conversations).
+`session_search` and brain `recall` now describe themselves apart.
+
+**Deviations.**
+- §4: the count lives in `AgentSessionService`, not `CustomAgentHarness`, and is keyed by the question's
+  normalised words rather than its identity. A re-asked question gets a new derived identity every time the
+  job runs again (correctly — a reply must answer that ask), so identity can never see the repeat; counting in
+  the session covers every harness. "Normalised error text" is a failed command (`commandRun(ok: false)`):
+  the session's `.error` event is terminal, so it cannot recur within a job.
+- §4 changes a Plan FE P1 expectation on purpose: two questions with the same words and different ids are
+  both surfaced and answerable, but the words are now said once (`AgentQuestionReplyTests` updated). A
+  revision of the pending question (same id) is still said again, uncounted.
+- §4 ask quotes the blocker ("It keeps asking: “Which branch should I use?” …") rather than paraphrasing it.
+- §3: no shipping harness declares a follow-up channel (the custom endpoint shape has none; it says
+  `.unsupported`), so today every live case asks; the steer path is in place and tested with a fake.
+- §3: a job we have lost contact with (and said so) is not "running" for this purpose — it can be neither
+  steered nor stopped — so a new start goes ahead as before.
+- §5: coordinates read "location coordinates", not "your location": the table cannot tell whose they are.
+  The data-kind form is used only on external seams; native copy is unchanged, since "Send …" would misname a
+  note or a timer.
+- §7: `lookup_tools` by name still returns MCP definitions as JSON outside the envelope, as before; only the
+  new keyword path envelopes.
+- Risks: the two halves are both asked before the first step, so a no to either still means nothing ran.
+
+**New user-facing localizable strings:** none (the card shows the joined summaries verbatim, through the
+existing `Text(pending.summary)`).
 
 ## Out of scope
 

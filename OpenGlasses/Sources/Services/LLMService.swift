@@ -202,6 +202,8 @@ class LLMService: ObservableObject {
     /// gets the plan header; `onAgentStep` gets per-step (index, total, step) progress.
     var onAgentNarrate: ((String) -> Void)?
     var onAgentStep: ((Int, Int, AgentStep) -> Void)?
+    /// A plan's spoken opener (Plan LP §2), wired by AppState to TTS.
+    var onAgentSpeak: ((String) -> Void)?
 
     /// Local on-device LLM service (MLX Swift)
     var localLLMService: LocalLLMService?
@@ -2219,9 +2221,19 @@ class LLMService: ObservableObject {
             guard let self else { return "" }
             return try await self.completeStateless(req, system: sys)
         }
-        let runner = AgentRunner(router: router, planner: planner)
+        let runner = AgentRunner(router: router, planner: planner, approvals: router)
         runner.onNarrate = { [weak self] line in self?.onAgentNarrate?(line) }
         runner.onStep = { [weak self] index, total, step in self?.onAgentStep?(index, total, step) }
+        runner.onSpeak = { [weak self] line in self?.onAgentSpeak?(line) }
+        // Plan LP §2: the opener is skipped when Quiet after actions would end every step quietly —
+        // the same test the stream gate applies to a round of calls before it knows how they end.
+        runner.stepEndsQuietly = { [weak self] step in
+            guard let self else { return false }
+            let call = QuietTurnCall(tool: step.tool, effect: self.callEffect(ofTool: step.tool, args: step.args),
+                                     outcome: .running, completion: nil,
+                                     isNative: router.registry.tool(named: step.tool) != nil)
+            return QuietTurnJudge.holdsPreamble(forRound: [call])
+        }
 
         guard let result = await runner.run(request: request, availableTools: available) else { return nil }
         PrivacyLog.model(.planLoopCompleted, count: result.completedSteps,

@@ -4,13 +4,13 @@ import Foundation
 /// Enables cross-session recall: "what did we discuss about X last week?"
 struct SessionSearchTool: NativeTool {
     let name = "session_search"
-    let description = "Search past conversations for relevant context. Use when the user references a previous discussion, asks 'what did we talk about', or needs to recall something from an earlier session."
+    let description = "Find an earlier conversation by its topic words ('boiler', 'Lisbon trip') and show its title and a few excerpts. To answer a question about what was said, including 'yesterday' or 'last week', use brain with action 'recall' instead."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
             "query": [
                 "type": "string",
-                "description": "Keywords to search for in past conversations"
+                "description": "Topic words to find the conversation by, e.g. 'boiler service'"
             ],
             "max_results": [
                 "type": "integer",
@@ -36,13 +36,18 @@ struct SessionSearchTool: NativeTool {
             return "Conversation store not available."
         }
 
-        let keywords = query.lowercased().split(separator: " ").map(String.init)
-        guard !keywords.isEmpty else {
-            return "No valid search keywords provided."
+        // Plan LP §7: the question's own words ("what did we discuss about", "yesterday") are not
+        // topic words — matched as substrings they found every conversation. Stripped the way
+        // recall strips them; a date they named narrows the conversations searched.
+        let parsed = FTSQueryBuilder.searchTerms(in: query)
+        let keywords = parsed.terms
+        guard !keywords.isEmpty || parsed.since != nil else {
+            return "Give a topic word or two to find the conversation by."
         }
 
         // Access MainActor-isolated properties
         let threads = await MainActor.run { store.threads }
+            .filter { Self.isInWindow($0.updatedAt, since: parsed.since, until: parsed.until) }
         let activeId = await MainActor.run { store.activeThreadId }
 
         // Score each thread by keyword match density
@@ -77,6 +82,8 @@ struct SessionSearchTool: NativeTool {
                 }
             }
 
+            // With no topic words left, a date alone finds the conversations it names.
+            if keywords.isEmpty { threadScore = 1 }
             if threadScore > 0 {
                 scored.append((thread, threadScore, matched))
             }
@@ -120,5 +127,12 @@ struct SessionSearchTool: NativeTool {
 
         let header = "Found \(scored.count) matching conversation\(scored.count == 1 ? "" : "s") (showing top \(topResults.count)):\n"
         return header + output.joined(separator: "\n\n")
+    }
+
+    /// Whether a conversation last touched at `date` falls in [since, until). Open ends match.
+    static func isInWindow(_ date: Date, since: Date?, until: Date?) -> Bool {
+        if let since, date < since { return false }
+        if let until, date >= until { return false }
+        return true
     }
 }

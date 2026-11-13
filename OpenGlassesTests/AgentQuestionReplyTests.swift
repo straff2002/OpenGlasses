@@ -174,8 +174,10 @@ final class AgentQuestionReplyTests: XCTestCase {
         ])
 
         XCTAssertEqual(drive.questions.map(\.id), ["q1", "q2"], "in arrival order")
-        XCTAssertEqual(drive.spoken.filter { $0 == "Continue?" }.count, 2,
-                       "a new question is a new ask however familiar its wording")
+        // Plan LP §4: the second is a new ask (surfaced and answerable as q2) but the same words
+        // again are not said again; the third time the wearer is asked whether to stop.
+        XCTAssertEqual(drive.spoken.filter { $0 == "Continue?" }.count, 1,
+                       "the same words again are kept, not repeated")
     }
 
     /// An endpoint that names no question: the identity is derived from run, wording and arrival
@@ -194,7 +196,8 @@ final class AgentQuestionReplyTests: XCTestCase {
         XCTAssertEqual(drive.questions.count, 2, "polled repeat suppressed; re-entry surfaced")
         XCTAssertNotEqual(drive.questions[0].id, drive.questions[1].id)
         XCTAssertTrue(drive.questions.allSatisfy { $0.id.hasPrefix("derived-") })
-        XCTAssertEqual(drive.spoken.filter { $0 == "Continue?" }.count, 2)
+        // Plan LP §4: the re-entry is a new question, but the same words are said once.
+        XCTAssertEqual(drive.spoken.filter { $0 == "Continue?" }.count, 1)
     }
 
     func testDerivedIDIsDeterministicAndSurvivesRelaunch() {

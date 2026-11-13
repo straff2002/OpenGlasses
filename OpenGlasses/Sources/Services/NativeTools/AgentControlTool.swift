@@ -76,12 +76,22 @@ struct AgentControlTool: NativeTool {
                 return "What should the agent do? Give me a task to start."
             }
             let project = (args["project"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            switch await session.dispatch(prompt: prompt,
-                                          project: project?.isEmpty == false ? project : nil,
-                                          explicitAttach: args["attach"] as? Bool) {
-            case .success(let run):
+            // Plan LP §3: while a job runs, a new start is a follow-up to it or a question —
+            // never a silent replacement.
+            switch await session.startOrSteer(prompt: prompt,
+                                              project: project?.isEmpty == false ? project : nil,
+                                              explicitAttach: args["attach"] as? Bool) {
+            case .started(let run):
                 return "Started the agent on \(run.project ?? "your task"). I'll let you know when it's done."
-            case .failure(let error):
+            case .steered:
+                return "Passed that on to the job that's already running."
+            case .keptRunning:
+                return "The user chose to keep the running job, so no new job was started."
+            case .couldNotStop:
+                return "The running job couldn't be stopped, so the new one wasn't started. It's still running."
+            case .couldNotAsk:
+                return "A job is already running, and there's no way to ask the user about replacing it right now, so no new job was started."
+            case .failed(let error):
                 return "Couldn't start the agent: \(error.localizedDescription)"
             }
 

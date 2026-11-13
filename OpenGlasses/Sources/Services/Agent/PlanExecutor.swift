@@ -9,6 +9,7 @@ protocol ToolExecuting: AnyObject {
 }
 
 extension NativeToolRouter: ToolExecuting {}
+extension NativeToolRouter: PlanApprovalAuthority {}
 
 /// The outcome of running a plan.
 struct PlanRunResult: Equatable {
@@ -38,10 +39,12 @@ final class PlanExecutor {
         self.router = router
     }
 
-    func execute(_ plan: AgentPlan) async -> PlanRunResult {
+    /// - Parameter grants: the plan's one approval (Plan LP §1) — a grant per approved step index,
+    ///   handed to that step's dispatch only. `runID` names the run they were scoped to.
+    func execute(_ plan: AgentPlan, grants: [Int: PlanStepGrant] = [:],
+                 runID: String = UUID().uuidString) async -> PlanRunResult {
         var transcript: [String] = []
         var completed = 0
-        let runID = UUID().uuidString
 
         for (index, step) in plan.steps.enumerated() {
             onStep?(index + 1, plan.steps.count, step)
@@ -54,9 +57,13 @@ final class PlanExecutor {
             // with the plan's goal beside it. Only the step's tool, action and reason ride along —
             // never its arguments.
             let context = PlannedStepContext(goal: plan.goal, step: step.record)
-            let outcome = await ActivityScope.$plannedStep.withValue(context) {
-                await router.executeRoot(name: step.tool, args: step.args, origin: .model,
-                                         invocationID: stepInvocationID)
+            // A step's grant rides with that step's own dispatch and no other: the next step
+            // gets its own, or none, and asks at its call if it needs to.
+            let outcome = await PlanApprovalScope.$stepGrant.withValue(grants[index]) {
+                await ActivityScope.$plannedStep.withValue(context) {
+                    await router.executeRoot(name: step.tool, args: step.args, origin: .model,
+                                             invocationID: stepInvocationID)
+                }
             }
             switch outcome {
             case .completed(let text):

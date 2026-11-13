@@ -46,6 +46,13 @@ protocol AgentHarness {
     /// `ackUnsupported`, which is recorded against the delivery and **never** fails the run —
     /// a completed task does not become incomplete because a POST did not land.
     func acknowledgeDelivery(_ run: AgentRun, ack: AgentDeliveryAck) async throws
+
+    /// Whether a run that is working can be handed a follow-up message (Plan LP §3).
+    var followUpSupport: AgentFollowUpSupport { get }
+
+    /// Hand the running job a follow-up — the wearer's correction or addition. Only called when
+    /// `followUpSupport` is `.accepts`.
+    func sendFollowUp(_ run: AgentRun, text: String) async throws
 }
 
 extension AgentHarness {
@@ -69,6 +76,13 @@ extension AgentHarness {
     /// tell" — the same lesson as the reply default above.
     func acknowledgeDelivery(_ run: AgentRun, ack: AgentDeliveryAck) async throws {
         throw AgentHarnessError.ackUnsupported
+    }
+
+    /// Nobody has said a harness takes follow-ups, so a new job while one runs is asked about.
+    var followUpSupport: AgentFollowUpSupport { .unknown }
+
+    func sendFollowUp(_ run: AgentRun, text: String) async throws {
+        throw AgentHarnessError.unsupported("Follow-up messages")
     }
 
     /// Plan CN default: an adapter with no image channel simply ignores the attachment rather than
@@ -99,6 +113,9 @@ enum AgentHarnessError: LocalizedError, Equatable {
     /// delivery record; never spoken and never allowed to change the run's outcome.
     case ackUnsupported
     case agentModeOff   // BK P0: dispatch is an autonomous action — gated at the service layer
+    /// A job is still running (Plan LP §3). `dispatch` refuses rather than silently replace it;
+    /// replacing one is the wearer's decision, made at `startOrSteer`.
+    case runInFlight
 
     var errorDescription: String? {
         switch self {
@@ -126,6 +143,8 @@ enum AgentHarnessError: LocalizedError, Equatable {
             return "This agent has no way to be told a result was read out."
         case .agentModeOff:
             return "Agent Mode is off; remote agent dispatch is disabled."
+        case .runInFlight:
+            return "A job is already running."
         }
     }
 }
