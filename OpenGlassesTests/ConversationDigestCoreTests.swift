@@ -328,7 +328,8 @@ final class ConversationDigestCoreTests: XCTestCase {
         XCTAssertEqual(dropped, [.copied])
 
         let copiedHeadline = ConversationDigestAcceptance.evaluate(
-            completion(headline: quoted, points: []), messages: messages)
+            completion(headline: "turn the isolation valve a quarter turn clockwise before removing the cartridge",
+                       points: []), messages: messages)
         XCTAssertEqual(copiedHeadline, .rejected(.headlineCopied))
     }
 
