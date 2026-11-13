@@ -4145,6 +4145,25 @@ struct Config {
 
     static func setConversationTimelineEnabled(_ enabled: Bool) { conversationTimelineEnabled = enabled }
 
+    /// Plan LQ: when on, a finished conversation gets a short note of what was decided, learned or
+    /// left to do, written by the model that answered it, so other conversations and Memory can
+    /// find it. On by default and not behind Agent Mode (decision 1): it sends the wearer's words
+    /// to the model they already went to, once per conversation. Never in HIPAA mode, never for a
+    /// job's conversation. An organisation profile may pin it off
+    /// (`SettingKey.conversationDigestsEnabled`), never on; the stored value is the wearer's.
+    static var conversationDigestsEnabled: Bool {
+        get {
+            PolicyEnvelope.bool(.conversationDigestsEnabled,
+                                stored: UserDefaults.standard.object(forKey: "conversationDigestsEnabled") as? Bool ?? true)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.conversationDigestsEnabled) else { return }
+            UserDefaults.standard.set(newValue, forKey: "conversationDigestsEnabled")
+        }
+    }
+
+    static func setConversationDigestsEnabled(_ enabled: Bool) { conversationDigestsEnabled = enabled }
+
     // MARK: - Teleprompter
 
     /// Default pacing mode for new teleprompter sessions.

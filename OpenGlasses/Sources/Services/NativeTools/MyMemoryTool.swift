@@ -189,6 +189,9 @@ enum MyMemoryToolScope {
         facts.filter { fact in
             if let persona = fact.persona, persona != activePersona { return false }
             if fact.id.store == .agentNote, !agentModeEnabled { return false }
+            // Plan LQ decision 5: a conversation's note comes up when a search finds it
+            // (`session_search`), not as something the assistant knows about the wearer.
+            if fact.id.store == .conversationDigest { return false }
             return true
         }
     }

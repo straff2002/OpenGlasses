@@ -112,20 +112,27 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         session.sendMessage(QuietDoneWatchMessage.payload, replyHandler: nil, errorHandler: nil)
     }
 
+    /// The recent conversations the watch lists: the last five, title and one line each. The line
+    /// is the conversation's note headline when it has one, else the word-prefix summary (Plan LQ
+    /// §6). Never a message body.
+    nonisolated static func recentThreadsPayload(_ threads: [ConversationThread]) -> [[String: String]] {
+        threads.prefix(5).map { thread in
+            [
+                "id": thread.id,
+                "title": thread.title,
+                "summary": thread.listSummary ?? "",
+                "updatedAt": ISO8601DateFormatter().string(from: thread.updatedAt)
+            ]
+        }
+    }
+
     /// The phone's status as the watch reads it: flat keys, plus `job` while a job is open. The
     /// surface publisher adds `surfaces` and `today`.
     private func statusContext() -> [String: Any]? {
         guard let appState else { return nil }
 
         // Recent conversation threads (last 5, title + summary only)
-        let recentThreads: [[String: String]] = appState.conversationStore.threads.prefix(5).map { thread in
-            [
-                "id": thread.id,
-                "title": thread.title,
-                "summary": thread.summary ?? "",
-                "updatedAt": ISO8601DateFormatter().string(from: thread.updatedAt)
-            ]
-        }
+        let recentThreads = Self.recentThreadsPayload(appState.conversationStore.threads)
 
         // Top 4 quick actions
         let quickActions: [[String: String]] = Config.quickActions.prefix(4).map { action in

@@ -11,6 +11,7 @@ enum SettingsGroupStore {
         case .userMemory: return Config.userMemoryEnabled
         case .conversationHistory: return Config.conversationPersistenceEnabled
         case .earlierInConversation: return Config.conversationTimelineEnabled
+        case .conversationNotes: return Config.conversationDigestsEnabled
         case .memorySuggestions: return Config.memoryNudgesEnabled
         case .memoryEnrichment: return Config.brainEnrichmentEnabled
         case .myDay: return Config.myDayEnabled
@@ -30,6 +31,7 @@ enum SettingsGroupStore {
         case .userMemory: Config.setUserMemoryEnabled(value)
         case .conversationHistory: Config.setConversationPersistenceEnabled(value)
         case .earlierInConversation: Config.setConversationTimelineEnabled(value)
+        case .conversationNotes: Config.setConversationDigestsEnabled(value)
         case .memorySuggestions: Config.setMemoryNudgesEnabled(value)
         case .memoryEnrichment: Config.setBrainEnrichmentEnabled(value)
         case .myDay: Config.setMyDayEnabled(value)

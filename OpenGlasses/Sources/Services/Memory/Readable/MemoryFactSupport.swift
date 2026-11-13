@@ -132,8 +132,8 @@ enum MemoryNoteMatcher {
             let parts = fact.text.components(separatedBy: " ")
             guard let first = parts.first else { return [] }
             return [first, fact.correctableValue].filter { $0.count >= 3 }
-        case .agentNote:
-            return []   // the fact *is* a line; it is removed as itself
+        case .agentNote, .conversationDigest:
+            return []   // the fact *is* a line (or a note); it is removed as itself
         default:
             let value = fact.correctableValue.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.count >= 4 ? [value] : []
@@ -145,6 +145,21 @@ enum MemoryNoteMatcher {
         guard !needles.isEmpty else { return [] }
         return lines.filter { line in
             needles.allSatisfy { line.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        }
+    }
+
+    /// Plan LQ §8: the points of conversation notes that mention a fact, found the same way.
+    static func digestPoints(in threads: [ConversationThread],
+                             mentioning fact: MemoryFact) -> [ConversationDigestPointReference] {
+        let needles = needles(for: fact)
+        guard !needles.isEmpty else { return [] }
+        return threads.flatMap { thread -> [ConversationDigestPointReference] in
+            guard let digest = thread.digest, !digest.isRedacted else { return [] }
+            return digest.points
+                .filter { point in
+                    needles.allSatisfy { point.text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+                }
+                .map { ConversationDigestPointReference(threadID: thread.id, text: $0.text) }
         }
     }
 }
@@ -164,12 +179,13 @@ enum MemorySpokenSummary {
         case .preferences: return count == 1 ? "1 preference" : "\(count) preferences"
         case .unfinished: return count == 1 ? "1 unfinished thing" : "\(count) unfinished things"
         case .other: return count == 1 ? "1 other thing" : "\(count) other things"
-        case .health: return ""
+        case .health, .conversations: return ""
         }
     }
 
     static func summary(_ facts: [MemoryFact]) -> String {
-        let speakable = facts.filter { $0.group != .health }
+        // Notes of conversations are not things known about the wearer (Plan LQ): left out, like Health.
+        let speakable = facts.filter { $0.group != .health && $0.group != .conversations }
         guard !speakable.isEmpty else {
             return "I don't have anything saved about you yet. Say \"remember that…\" and I'll keep it."
         }

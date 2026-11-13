@@ -36,6 +36,8 @@ struct MemoryFactStores {
             return text.components(separatedBy: "\n").contains { AgentNoteLine.recordID(for: $0) == id.recordID }
         case .object: return objects?.find(id.recordID) != nil
         case .savedPlace: return savedPlaces?.place(recordID: id.recordID) != nil
+        case .conversationDigest:
+            return conversations?.threads.first { $0.id == id.recordID }?.digest?.visibleHeadline != nil
         }
     }
 
@@ -60,6 +62,9 @@ struct MemoryForgetPlan: Equatable {
     /// The conversation the fact was said in, when it is known and still exists. Transcripts are
     /// not memory; the wearer is offered — never forced — the chance to delete it as well.
     let conversationThreadID: String?
+    /// Plan LQ §8: points of conversation notes that mention the fact, found the way note lines
+    /// are and shown the same way, so a note does not keep a fact the wearer asked to forget.
+    var digestPoints: [ConversationDigestPointReference] = []
 }
 
 /// What forgetting one fact did.
@@ -115,14 +120,17 @@ final class MemoryFactForgetter {
 
     func plan(for fact: MemoryFact) -> MemoryForgetPlan {
         let lines = (stores.agentDocuments?.content(for: .memory) ?? "").components(separatedBy: "\n")
-        let thread = fact.sourceRef.flatMap { ref in
-            stores.conversations?.threads.contains { $0.id == ref } == true ? ref : nil
-        }
+        let threads = stores.conversations?.threads ?? []
+        // Plan LQ §7: the field the adapters resolved, checked by the same rule the screen uses.
+        let thread = MemoryFactConversationLink.resolve(fact.conversationThreadID,
+                                                        liveThreadIDs: Set(threads.map(\.id)))
         return MemoryForgetPlan(
             fact: fact,
             noteLines: MemoryNoteMatcher.lines(lines, mentioning: fact),
             gatewayCopyPossible: fact.id.store == .semantic,
-            conversationThreadID: thread)
+            conversationThreadID: thread,
+            digestPoints: fact.id.store == .conversationDigest
+                ? [] : MemoryNoteMatcher.digestPoints(in: threads, mentioning: fact))
     }
 
     func forget(_ plan: MemoryForgetPlan, removeNoteLines: Bool) async -> MemoryForgetResult {
@@ -141,7 +149,8 @@ final class MemoryFactForgetter {
         if let own = stores.noteLine(id) { lines.append(own) }
 
         var receipts = await coordinator.erase(.memoryFact(MemoryFactErasure(
-            id: id, noteLines: lines, gatewayKey: gatewayKey)))
+            id: id, noteLines: lines, gatewayKey: gatewayKey,
+            digestPoints: removeNoteLines ? plan.digestPoints : [])))
 
         // Saved places are not part of the subject walk (they are never about anyone else), so
         // the one place that can hold them is removed here and accounted for alongside.
@@ -180,6 +189,7 @@ final class MemoryFactForgetter {
         case .agentNote: return stores.agentDocuments != nil
         case .object: return stores.objects != nil
         case .savedPlace: return stores.savedPlaces != nil
+        case .conversationDigest: return stores.conversations != nil
         }
     }
 }
@@ -257,6 +267,10 @@ final class MemoryFactCorrector {
             guard objects.find(id.recordID)?.locationDescription == value else { return .failed }
             return MemoryCorrectionResult(verified: true, newID: id)
 
+        case .conversationDigest:
+            // A note is derived: an edited note would no longer describe its conversation.
+            return .failed
+
         case .savedPlace:
             guard let places = stores.savedPlaces,
                   let newRecord = places.relabel(recordID: id.recordID, to: value),
@@ -269,4 +283,26 @@ final class MemoryFactCorrector {
 
 private extension MemoryCorrectionResult {
     static let failed = MemoryCorrectionResult(verified: false, newID: nil)
+}
+
+// MARK: - The conversation a fact came from (Plan LQ §7)
+
+/// The one rule for "From this conversation": a fact names a conversation only while that thread
+/// is still in the store. A deleted or trimmed thread gives no link, and nothing else is guessed.
+enum MemoryFactConversationLink {
+
+    static func resolve(_ candidate: String?, liveThreadIDs: Set<String>) -> String? {
+        guard let candidate, liveThreadIDs.contains(candidate) else { return nil }
+        return candidate
+    }
+
+    /// `facts` with each conversation link kept only when the thread is live; nil `liveThreadIDs`
+    /// (no conversation store wired) clears every link.
+    static func resolving(_ facts: [MemoryFact], liveThreadIDs: Set<String>?) -> [MemoryFact] {
+        facts.map { fact in
+            var resolved = fact
+            resolved.conversationThreadID = liveThreadIDs.flatMap { resolve(fact.conversationThreadID, liveThreadIDs: $0) }
+            return resolved
+        }
+    }
 }

@@ -8,12 +8,16 @@ import UniformTypeIdentifiers
 /// keep going. Reads/writes through `ConversationStore` + `AppState.sendTextMessage`.
 struct ChatThreadView: View {
     let threadId: String
+    /// Plan LQ §7: whether opening the view makes this the open conversation. The Chat tab
+    /// activates on appear; Memory opens a conversation to read, and only a message sent from it
+    /// makes it the one the next voice turn joins.
+    let activation: ChatThreadActivation
 
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var didResume = false
+    @State private var opening: ChatThreadOpening
     @State private var speakReplies = false
     @State private var showModelPicker = false
     @State private var showPersonaPicker = false
@@ -27,6 +31,12 @@ struct ChatThreadView: View {
     @ObservedObject private var weatherThreads = WeatherAttributionThreads.shared
 
     private let bottomAnchor = "chat-bottom"
+
+    init(threadId: String, activation: ChatThreadActivation = .onAppear) {
+        self.threadId = threadId
+        self.activation = activation
+        _opening = State(initialValue: ChatThreadOpening(activation: activation))
+    }
 
     private var store: ConversationStore { appState.conversationStore }
     private var thread: ConversationThread? { store.threads.first { $0.id == threadId } }
@@ -65,7 +75,7 @@ struct ChatThreadView: View {
                 contentType: .conversation,
                 itemId: thread.id,
                 title: thread.title,
-                text: thread.summary ?? "",
+                text: thread.listSummary ?? "",
                 keywords: [],
                 date: thread.updatedAt
             ))
@@ -201,9 +211,7 @@ struct ChatThreadView: View {
     }
 
     private func resumeIfNeeded() {
-        guard !didResume else { return }
-        didResume = true
-        activateThread()
+        opening.appeared(activate: activateThread)
     }
 
     /// Make this thread the one new messages append to, and load its history into the LLM context.
@@ -394,5 +402,32 @@ struct TypingIndicator: View {
             phase = (phase + 1) % 3
         }
         .accessibilityLabel("Assistant is typing")
+    }
+}
+
+/// Plan LQ §7 — when a conversation opened on the phone becomes the open one.
+enum ChatThreadActivation: Equatable, Sendable {
+    /// The Chat tab: opening it is choosing to carry on with it.
+    case onAppear
+    /// Memory: opening it is reading it. Only sending a message from it activates it, through the
+    /// same `activateThread()` and its job question.
+    case onSend
+}
+
+/// What opening a thread view does, kept out of the view so it is tested headlessly. Sending always
+/// activates (each send path calls `activateThread()` itself); appearing activates once, and only
+/// for `.onAppear`.
+struct ChatThreadOpening: Equatable, Sendable {
+    let activation: ChatThreadActivation
+    private(set) var didAppear = false
+
+    init(activation: ChatThreadActivation) {
+        self.activation = activation
+    }
+
+    mutating func appeared(activate: () -> Void) {
+        guard !didAppear else { return }
+        didAppear = true
+        if activation == .onAppear { activate() }
     }
 }

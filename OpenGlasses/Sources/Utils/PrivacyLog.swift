@@ -1893,6 +1893,9 @@ enum PrivacyLog {
         // Plan KK P3: the block in a request — entries shown, estimated tokens, and whether it
         // replaced the omission note or why there was none. Never its text.
         case timelineInRequest
+        // Plan LQ, conversation notes: counts, durations and named reasons only. Never the text.
+        case digestSkipped, digestWritten, digestFailed, digestSaveRefused, digestPointsDropped
+        case digestForgotten, digestRedacted, digestBacklog
         case loaded, recovered, saveSkipped, saveFailed
         case encryptionEnabled, encryptionDisabled, encryptionFailed
         case unlockFailed, locked, awaitingAuthentication

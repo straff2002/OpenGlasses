@@ -106,7 +106,10 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
         XCTAssertEqual(Policy.alwaysShown, [.key(.privacyFilterEnabled), .area(.requestRouting),
                                             .key(.aiConnectionCueEnabled),
                                             .key(.cloudDictationEnabled), .key(.interpreterEnabled),
-                                            .key(.instantReplayEnabled)])
+                                            .key(.instantReplayEnabled), .key(.conversationDigestsEnabled)])
+        // Plan LQ §9: conversation notes pinned off are drawn read-only, naming the organisation.
+        let lqContext = technician(lockEverything, keys: [.conversationDigestsEnabled])
+        XCTAssertEqual(Policy.presentation(.key(.conversationDigestsEnabled), in: lqContext), .readOnly)
         // Plan HP P2: the AI cue pinned on is drawn read-only for the technician — a disclosure.
         let hpContext = technician(lockEverything, keys: [.aiConnectionCueEnabled])
         XCTAssertEqual(Policy.presentation(.key(.aiConnectionCueEnabled), in: hpContext), .readOnly)

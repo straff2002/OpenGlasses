@@ -1,7 +1,8 @@
 # Plan LQ — What We Talked About (a short note of each finished conversation, kept with memory, one tap back to it)
 
-**Status:** 📝 Drafted 2026-11-12. Nothing built. The [decisions](#decisions-for-greig-open) below are
-recommendations and are still open.
+**Status:** 🚧 Built 2026-11-14: P0–P3 in one branch (headless). P4 device pass owed; string-catalog
+sync owed (new copy is in Swift only). All nine [decisions](#decisions-for-greig-taken) taken as
+recommended 2026-11-12. See [As built](#as-built-2026-11-14) for where the build differs from the design.
 **Track:** Everyday assistant — memory and recall. Every mode that saves a conversation thread (voice, Chat
 tab, live modes that write to the store), the Memory screen, `session_search` and the recall index.
 **Builds on:** Plan [KK](KK-conversation-timeline.md) (`ConversationThread.timeline`, `TimelineSummaryPass`,
@@ -45,6 +46,9 @@ back to where it came from? Partly. Facts said during a turn are saved and carry
   conversation. Forget a note and it's gone and isn't written again. The existing offer to delete the
   conversation follows, as for any forgotten fact.
 - With HIPAA mode on, no note is written and the word-prefix summary stays. Nothing is sent.
+- On a phone an organisation manages, its profile can switch notes off. The switch then shows as set by
+  that organisation, no notes are written, and nothing is sent. Removing the profile puts back what the
+  wearer had chosen.
 - A conversation where the wearer only said "what time is it" twice gets no note.
 - Notes never quote a manual page, a web page or an email at length. A conversation where the wearer
   mentioned their neighbour's diagnosis gets a note that leaves the diagnosis out (LN's rule).
@@ -90,6 +94,13 @@ back to where it came from? Partly. Facts said during a turn are saved and carry
   `appState.activateConversationThread`), asking first only when a job owns another conversation.
 - `ConversationRecallCoordinator` keeps an in-memory FTS index of user/assistant turns, rebuilt on unlock
   (`.conversationRecallIndex`, `processMemoryOnly`). It is fed by `ConversationRecallProjectionEvent`.
+- Organisation profiles (Plan [CT](CT-org-configuration-profiles.md)) move settings only through `SettingKey`, an
+  allow-list in which each key declares the one way it may move. Agent Mode, face recognition, the
+  interpreter, Instant Replay and cloud dictation are `.ceiling(pinnedTo: false)`: a profile may switch them
+  off, never on. `Config` reads them through `PolicyEnvelope.bool(_:stored:)`, which clamps on read and never
+  overwrites the wearer's own value. The setter refuses while `PolicyEnvelope.isLocked(_:)`, and the control
+  shows locked with the organisation named. `.orgPolicyDidChange` is posted when a profile is applied or
+  removed. Neither the timeline switch nor anything about conversation history is a `SettingKey` today.
 - `SubjectErasureCoordinator.eraseConversations`: `.conversationThread(id)` deletes the thread; `.person`
   leaves thread text, clears timeline notes naming them, and says so in the receipt.
 
@@ -139,7 +150,7 @@ A thread qualifies when (pure, `ConversationDigestEligibility`):
   rewrite, from the old note plus the new turns);
 - `redacted` is not set;
 - no Field Assist session, open or ended, names it as its `conversationThreadId`, and it is not the debrief
-  thread ([decision 2](#decisions-for-greig-open)). `jobTitle` is not enough: `applyThreadTitle` sets it only
+  thread ([decision 2](#decisions-for-greig-taken)). `jobTitle` is not enough: `applyThreadTitle` sets it only
   once the job has a reference, and `applyJobTitle` leaves it nil on a thread the technician renamed. A
   normal job end calls `endThread`, so `onThreadLeft` does fire for a job's thread. Only the
   access-withdrawal path deletes the thread without it. This check, rather than the seam, is what keeps
@@ -149,7 +160,7 @@ A thread qualifies when (pure, `ConversationDigestEligibility`):
 while backgrounded, a spend cap) is picked up by `ConversationDigestBacklog` (pure): eligible, not active,
 quiet for at least `conversationIdleGap`, newest first, at most 20 a day. It runs when the app comes to the
 foreground, one thread at a time. Only threads left after the feature ships are picked up
-([decision 7](#decisions-for-greig-open)).
+([decision 7](#decisions-for-greig-taken)).
 
 ### 3 · What the model is given (no second copy of the timeline)
 
@@ -187,22 +198,24 @@ digest is how other conversations find it.
 
 In order, each refusal named from a closed set that is safe to log:
 
-1. **The setting is on.** `Config.conversationDigestsEnabled`, default on, beside the timeline switch in
-   `EverydaySettingsScreen`. Not behind Agent Mode ([decision 1](#decisions-for-greig-open)): it sends the wearer's
+1. **No organisation profile pins it off** (`orgPinnedOff`, §9). Checked first and named on its own, so a
+   log reader can tell a company's choice from the wearer's.
+2. **The setting is on.** `Config.conversationDigestsEnabled`, default on, beside the timeline switch in
+   `EverydaySettingsScreen`. Not behind Agent Mode ([decision 1](#decisions-for-greig-taken)): it sends the wearer's
    words to the model those words already went to, once per conversation, like the timeline.
-2. **HIPAA mode is off.** No note at all under HIPAA, on-device included. A medical conversation's note needs
+3. **HIPAA mode is off.** No note at all under HIPAA, on-device included. A medical conversation's note needs
    its own review (KK decision 3's reasoning).
-3. **A model is configured.**
-4. **The destination is the same.** The active provider is the one that answered the thread's last turn
+4. **A model is configured.**
+5. **The destination is the same.** The active provider is the one that answered the thread's last turn
    (new `ConversationThread.lastAnswerProvider: String?`, written when a reply is saved). A wearer who
    switched provider since then gets no note for that thread (`providerChanged`;
-   [decision 4](#decisions-for-greig-open)).
-5. **An on-device model runs only in the foreground.** `RelationEnrichmentPolicy.isOnDevice(provider)` while
+   [decision 4](#decisions-for-greig-taken)).
+6. **An on-device model runs only in the foreground.** `RelationEnrichmentPolicy.isOnDevice(provider)` while
    backgrounded → `deferred`, which leaves the thread in the backlog. It is not a refusal
-   ([decision 3](#decisions-for-greig-open)).
-6. **The store is open and writable**, and the thread still exists.
-7. **No pass is running for the thread**, and it is not backing off (`TimelinePassBackoff`, reused).
-8. **No spend cap is reached** (`TimelinePassPolicy.isAtSpendCap`, reused; never moves to a cheaper model,
+   ([decision 3](#decisions-for-greig-taken)).
+7. **The store is open and writable**, and the thread still exists.
+8. **No pass is running for the thread**, and it is not backing off (`TimelinePassBackoff`, reused).
+9. **No spend cap is reached** (`TimelinePassPolicy.isAtSpendCap`, reused; never moves to a cheaper model,
    which would be a new destination). The daily backlog cap is the backlog's, not a policy reason.
 
 The call goes through the same structured-completion seam the brain uses (`completeStructured`), injected as a
@@ -218,7 +231,7 @@ closure so tests never touch the network.
   `.threadDelete` removes it). A recall hit on a digest names its thread, as a turn hit does. Rebuilt on
   unlock like the rest of the index, never on disk.
 - **No standing block.** Notes are not added to every prompt. LN's manners hold: a past conversation comes
-  up when the wearer asks or a tool finds it ([decision 5](#decisions-for-greig-open)).
+  up when the wearer asks or a tool finds it ([decision 5](#decisions-for-greig-taken)).
 - **Chat list, watch, Siri** show `digest.headline` when there is one, `summary` otherwise. `summary` is still
   written, so a thread with no note (HIPAA, short, no model) looks the same as today.
 
@@ -243,7 +256,7 @@ fact came from would quietly make a week-old conversation the one the next voice
 
 **Conversations group.** `ConversationDigestFactSource` lists threads with a digest as `MemoryFact`s (store
 `.conversationDigest`, kind `.conversationDigest`, origin `.inferred`, text = headline). They sit in a new
-`MemoryFactGroup.conversations`, collapsed by default, newest first ([decision 6](#decisions-for-greig-open)).
+`MemoryFactGroup.conversations`, collapsed by default, newest first ([decision 6](#decisions-for-greig-taken)).
 The detail view shows the points and **Open the conversation**. Capabilities: forget, but no correct, because
 the note is derived and an edited note would no longer describe the thread. Forget clears the digest's text,
 sets `redacted` and keeps `coversThroughMessageID`, so it is not written again. Then the existing "Delete that
@@ -263,30 +276,58 @@ All new copy goes in the string catalog, with no plan letters.
   the wearer asked to forget.
 - Retention and the 200-thread cap need nothing new: the digest is part of the thread.
 
-## Decisions for Greig (open)
+### 9 · An organisation can switch notes off
 
-1. **Gate.** *Recommended:* its own switch, default on, not behind Agent Mode, like the timeline (KK
+`SettingKey.conversationDigestsEnabled` is declared `.ceiling(pinnedTo: false)`, the same way as
+`instantReplayEnabled`. `Config.conversationDigestsEnabled` reads through `PolicyEnvelope.bool`, and its setter
+refuses while the key is locked. The Settings switch renders locked, naming the organisation, through the
+path every other locked key uses. An organisation can switch notes off on its phones and never on: writing
+notes about a person's conversations is the person's choice, not the employer's.
+
+While pinned off:
+- `ConversationDigestPolicy` refuses with `orgPinnedOff` (§5, reason 1). Its conditions read
+  `PolicyEnvelope.isLocked(.conversationDigestsEnabled)` directly, so the reason is not reported as the
+  wearer's `settingOff`.
+- The backlog does not run. A pin that arrives (`.orgPolicyDidChange`) while it is running stops it before
+  the next thread, because each call is decided afresh. A call already in flight finishes, and its note is
+  still put through the same check before it is saved, so it is dropped.
+- Notes that already exist stay, in Memory and in recall ([decision 9](#decisions-for-greig-taken)). A pin never
+  deletes anything: clamp on read is the rule, so removing the profile changes nothing but the switch.
+
+This is independent of the job-thread rule (§2). Job threads never get notes, managed or not. The pin is for
+an organisation that wants no notes at all on its phones, including the technician's own chats in the van.
+Pinning the timeline switch is not part of this plan.
+
+## Decisions for Greig (taken)
+
+All nine taken as recommended, 2026-11-12.
+
+1. **Gate.** ✅ *Taken as recommended:* its own switch, default on, not behind Agent Mode, like the timeline (KK
    decision 1): same destination, one call per conversation, nothing done on the wearer's behalf.
-   Alternative: behind Agent Mode, per the rule that autonomous work lives there. Notes would then be
+   Not taken: behind Agent Mode, per the rule that autonomous work lives there. Notes would then be
    missing for most wearers.
-2. **Job and debrief threads.** *Recommended:* none. The work record is the job's summary, and a job's thread
-   is full of employer and manual content. Alternative: include them, with the copying check as the only
+2. **Job and debrief threads.** ✅ *Taken as recommended:* none. The work record is the job's summary, and a job's thread
+   is full of employer and manual content. Not taken: include them, with the copying check as the only
    guard.
-3. **On-device models.** *Recommended:* write the note in the foreground, and leave it in the backlog while
-   backgrounded. Alternative: cloud only, so a wearer on Apple's on-device model never gets notes.
-4. **A provider switched since the conversation.** *Recommended:* no note for that thread. The words would go
-   somewhere they never went. Alternative: use the active provider (simpler, and the wearer did choose it).
-5. **Standing prompt use.** *Recommended:* none; recall on demand only. Alternative: carry the last
+3. **On-device models.** ✅ *Taken as recommended:* write the note in the foreground, and leave it in the backlog while
+   backgrounded. Not taken: cloud only, so a wearer on Apple's on-device model never gets notes.
+4. **A provider switched since the conversation.** ✅ *Taken as recommended:* no note for that thread. The words would go
+   somewhere they never went. Not taken: use the active provider (simpler, and the wearer did choose it).
+5. **Standing prompt use.** ✅ *Taken as recommended:* none; recall on demand only. Not taken: carry the last
    conversation's note into the next one when it starts within a day ("carry on with the tap").
-6. **A Conversations group on the Memory screen.** *Recommended:* yes, collapsed. It is the "what it knows from
-   our conversations" view the question asked for. Alternative: notes only on the Chat list, and Memory
+6. **A Conversations group on the Memory screen.** ✅ *Taken as recommended:* yes, collapsed. It is the "what it knows from
+   our conversations" view the question asked for. Not taken: notes only on the Chat list, and Memory
    carries just the "From this conversation" link.
-7. **Older conversations.** *Recommended:* only conversations left after the feature ships, so there is no
-   first-run spend over 200 threads. Alternative: a "Write notes for older conversations" button beside
+7. **Older conversations.** ✅ *Taken as recommended:* only conversations left after the feature ships, so there is no
+   first-run spend over 200 threads. Not taken: a "Write notes for older conversations" button beside
    the switch, under the daily cap.
-8. **Facts from notes.** *Recommended:* none. Per-turn writers already save facts, and a second inferred
-   writer doubles the risk of false memories. Alternative: offer a note's to-do points as reminders, one tap
+8. **Facts from notes.** ✅ *Taken as recommended:* none. Per-turn writers already save facts, and a second inferred
+   writer doubles the risk of false memories. Not taken: offer a note's to-do points as reminders, one tap
    each.
+9. **Notes that already exist when an organisation pins notes off.** ✅ *Taken as recommended:*
+   they stay, in Memory and in recall. They were written before the pin, from the wearer's own conversations, and a profile only ever
+   clamps, never deletes. Not taken: hide them from recall and the Memory screen while the pin is
+   in force, still without deleting them.
 
 ## Phases
 
@@ -305,20 +346,25 @@ is still unbuilt, P1 waits, and it does not ship its own copy of LN's gate.
 - the input reads timeline entries and the tail, leaves out redacted entries and replies after untrusted
   tools, and fits its budget;
 - a 12-word quoted run drops its point;
-- the backlog orders by date and caps per day.
+- the backlog orders by date and caps per day;
+- an organisation pin refuses with `orgPinnedOff` ahead of every other reason.
 
 ### P1 — written and forgotten (headless, after LN P0)
 `lastAnswerProvider` written on reply save. `ConversationStore.saveDigest(_:for:)` with the save guards
-(locked, thread gone, redacted). `ConversationDigestPass` hung on `onThreadLeft` beside `distill`, with a
+(locked, thread gone, redacted, organisation pin). `ConversationDigestPass` hung on `onThreadLeft` beside `distill`, with a
 `Summarise` seam, backoff and `PrivacyLog` lines that never carry text. Backlog run on foreground. LN's gate
-in acceptance. Settings switch. Erasure (§8) and the registry note. Tests:
+in acceptance. Settings switch, and `SettingKey.conversationDigestsEnabled` as a ceiling with its locked
+control (§9). Erasure (§8) and the registry note. Tests:
 - leave by end, by idle gap and by replace: each writes once;
 - HIPAA writes nothing and sends nothing;
 - a switched provider writes nothing;
 - a neighbour's diagnosis point is dropped and the rest kept;
 - a forgotten note is not rewritten after a resume;
 - person erasure clears points naming them;
-- deleting a thread leaves no digest anywhere.
+- deleting a thread leaves no digest anywhere;
+- with the key pinned off: no call is made, the setter is refused, a call in flight when the pin arrives
+  saves nothing, and removing the profile restores the wearer's own value. The `SettingKey` lists in
+  `SettingsVisibilityPolicyTests` include the new key.
 
 ### P2 — found again (headless)
 `session_search` scoring and output with the envelope. The recall-index digest row and its delete. Chat
@@ -344,6 +390,72 @@ cloud model), or after the next unlock (an on-device model). Ask for it a day la
 a fact's conversation from Memory, then check that the next voice turn did not join it. HIPAA on: no note,
 no request in the network log. Whether a cloud backlog should use LM's background wake is decided here,
 from what the pass shows.
+
+## As built (2026-11-14)
+
+P0–P3 shipped together; LN was already merged, so P1 used its gate directly. Code lives under
+`Services/Memory/Digest/` (`ConversationDigest`, `…Eligibility`, `…Input`, `…Acceptance`, `…Policy`,
+`…Backlog` with `ConversationDigestBacklogLedger`, `…Pass`), with `ConversationDigestFactSource` beside
+the other Memory adapters. Tests: `ConversationDigestCoreTests` (P0), `ConversationDigestPassTests` (P1),
+`ConversationDigestRecallTests` (P2), `ConversationDigestMemoryTests` (P3), plus updates to
+`SettingsGroupTests`, `SettingsVisibilityPolicyTests` and the `SubjectErasureTests` canary.
+
+Deviations and choices the design left open:
+
+- **LN's gate.** `MemoryWritePolicy` has no `.local` destination; points go through `MemoryWriteGate`
+  (instruction check, then subject matter) as an inferred `.memory` write. For an inferred write every
+  destination gives the same answer: anything sensitive is dropped, about the wearer or anyone else.
+  `MemoryInstructionCheck` drops an inferred value that mentions agreeing, confirming, approving or
+  warning, which would have dropped ordinary points ("agreed on Thursday"), so the prompt tells the
+  model not to use those words. A point it still writes that way is dropped, as designed.
+- **The structured call.** `completeStructured` returns a JSON object or nil and says nothing about
+  being cut off, so an answer it returns counts as finished; nil is `ConversationDigestError.unavailable`
+  and backs the thread off. The draft is read from the object (`ConversationDigestDraft`) and every
+  field is checked by acceptance.
+- **"After the new turn is answered."** `onThreadLeft` queues the thread (`ConversationDigestPass.enqueue`);
+  the queue drains after the next accepted reply (`startTimelinePass`) or at once when no turn is
+  running (start fresh, an end from the screen). A turn that fails leaves it to the foreground backlog.
+- **`lastAnswerProvider`** is written by `ConversationStore.appendMessage` for every assistant message,
+  through an injected `answerProvider` closure (`Config.activeModel?.llmProvider.rawValue`). A reply the
+  offline fallback gave is recorded as `"offline"`, which matches no provider, so that thread gets no
+  note until a provider answers it again. A thread with no recorded provider is `providerChanged`.
+- **Erased timeline entries still cover their span** in the input, as they do for the timeline: their
+  messages may name the person who was erased, so they are not sent; the entry only has no text to give.
+- **An edit or regenerate** that removes the message a note covers through, or any earlier one, drops
+  the note (as `truncate` drops `compressedSummary`); a forgotten note's marker is kept.
+- **The backlog's "shipped" line** is `ConversationDigestBacklogLedger.since`, recorded in
+  `UserDefaults` the first time the app runs with this code (decision 7); a thread is picked only if it
+  was touched after it. The day's count is two plain values beside it (`conversationDigestBacklogDay`,
+  `…Count`), never text. Only a written note counts against the day's 20.
+- **Job threads** come from `FieldSessionService.history` and `activeSession` (`conversationThreadId`)
+  plus `GuidedJobFlow.debrief?.threadId`, read afresh for every call.
+- **Recall index.** One row per note (`digest:<thread id>`, role `note`), replaced by the new projection
+  event `.digestUpsert(threadIDs:)` and removed by `.threadDelete` with the thread's turns. A person
+  erasure deletes matching rows first (the existing full-text reach), then `dropDigestPoints(naming:)`
+  re-projects what is left.
+- **`session_search`** scores a note's headline and each point as it scored `summary` (+2 a field) and
+  returns `Note (date): headline` with the points inside `PromptInjectionPolicy.wrap(toolName:
+  "conversation_note", …)`. It falls back to `Summary:` when there is no note.
+- **Siri.** The Spotlight conversation records (`SpotlightIndexService`) and the on-screen entity carry
+  the headline, never the points. The watch payload moved into `WatchConnectivityManager
+  .recentThreadsPayload(_:)` so it is tested.
+- **Memory.** The resolved link lives in `MemoryFact.conversationThreadID`, set by the adapters and
+  checked against the live threads in `MemoryFactRepository.load()` through `MemoryFactConversationLink`;
+  the forget plan uses the same function. `BrainStore.Edge.sessionID` reads `edges.session_id`. Notes are
+  left out of the `my_memory` tool's scope and the spoken "what do you know about me" summary (decision 5:
+  found by a search, not carried as something known about the wearer). The forget sheet's "Also remove
+  these" toggle covers note points as well as note lines; `MemoryFactErasure.digestPoints` carries them.
+- **Settings.** The switch is a new Memory-group member, "Notes of Finished Conversations"
+  (`SettingsGroupMemberID.conversationNotes`, follows the parent, hard-disabled in HIPAA mode), drawn
+  read-only with `ManagedSettingNote` when pinned. The key is in `SettingsVisibilityPolicy.alwaysShown`, so
+  a technician sees it set by the organisation rather than missing.
+- **Live modes** write no caption text into a thread as a user message (checked at build time), so
+  nothing more is left out of the input.
+- **P3's UI test** is headless: `ChatThreadOpening` is the piece of `ChatThreadView` that decides when a
+  thread activates, and `ConversationDigestMemoryTests` drives it against a real store. No existing
+  `OpenGlassesUITests` path reaches Memory › fact › conversation cheaply, and the active thread is not
+  visible on screen to assert. The P4 device pass checks it on the phone.
+- **Not done here:** the string catalog (a separate sync PR) and P4.
 
 ## Risks
 

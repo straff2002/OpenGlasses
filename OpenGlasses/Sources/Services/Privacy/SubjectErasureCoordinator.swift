@@ -50,6 +50,9 @@ struct MemoryFactErasure: Equatable {
     var noteLines: [String] = []
     /// The key a gateway copy was stored under, when the fact may have been sent to one.
     var gatewayKey: String?
+    /// Plan LQ §8: conversation-note points that mention the fact, the ones the wearer was shown
+    /// and chose to remove with it.
+    var digestPoints: [ConversationDigestPointReference] = []
 }
 
 /// What one store did about one subject.
@@ -403,8 +406,22 @@ final class SubjectErasureCoordinator {
             return .complete(store, removed: documents.removeMemoryLines(exactly: fact.noteLines))
 
         case .conversationThreads:
-            return .unsupported(store, "a conversation is not memory; the fact is still in the "
-                                + "conversation where it was said, and deleting that is offered separately")
+            // Plan LQ: a conversation's note is the one thing in this store a forget removes as
+            // itself. It is cleared and marked so it is not written again; the thread stays.
+            if id.store == .conversationDigest {
+                guard let conversations = stores.conversations else {
+                    return .unsupported(store, "no conversation store was supplied")
+                }
+                guard conversations.forgetDigest(threadId: id.recordID) else {
+                    return .unsupported(store, "the conversation note could not be forgotten; it is still saved")
+                }
+                return .complete(store, removed: 1)
+            }
+            let points = fact.digestPoints.isEmpty
+                ? 0 : (stores.conversations?.removeDigestPoints(fact.digestPoints) ?? 0)
+            return ErasureReceipt(store: store, localComplete: false, remotePending: false, removed: points,
+                                  unsupported: "a conversation is not memory; the fact is still in the "
+                                    + "conversation where it was said, and deleting that is offered separately")
 
         case .offlineQueue:
             guard remotePending, let key = fact.gatewayKey else { return .complete(store) }
@@ -784,7 +801,10 @@ final class SubjectErasureCoordinator {
             // source, like the recall index. Cleared rather than removed, so its span stays
             // covered and the summary pass cannot write the name back from the thread text. The
             // receipt stays unsupported because the text it was made from is still there.
-            guard conversations.dropTimelineEntries(naming: subject.searchToken) != nil else {
+            // Plan LQ §8: the thread's note too — points naming them go, and a headline naming
+            // them clears the note and marks it so it is not written back.
+            let notesReached = conversations.dropDigestPoints(naming: subject.searchToken) != nil
+            guard conversations.dropTimelineEntries(naming: subject.searchToken) != nil, notesReached else {
                 return .unsupported(.conversationThreads,
                                     "a thread is not about one subject; its matching turns are "
                                         + "removed from the recall index, but the conversation store "

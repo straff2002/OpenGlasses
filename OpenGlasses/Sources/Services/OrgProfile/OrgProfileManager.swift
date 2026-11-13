@@ -1118,6 +1118,7 @@ extension SettingKey {
         case .interpreterEnabled: return "The spoken interpreter is off"
         case .instantReplayEnabled: return "Instant Replay is off"
         case .preparedCardCustomerTexts: return "My Day cards don't offer to text customers"
+        case .conversationDigestsEnabled: return "Notes of finished conversations are off"
         default: return rawValue
         }
     }

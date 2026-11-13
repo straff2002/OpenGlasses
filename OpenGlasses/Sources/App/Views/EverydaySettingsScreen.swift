@@ -20,6 +20,7 @@ struct EverydaySettingsScreen: View {
     @AppStorage("userMemoryEnabled") private var userMemoryEnabled = true
     @AppStorage("conversationPersistenceEnabled") private var conversationPersistenceEnabled = true
     @AppStorage("conversationTimelineEnabled") private var conversationTimelineEnabled = true
+    @AppStorage("conversationDigestsEnabled") private var conversationDigestsEnabled = true
     @AppStorage("memoryNudgesEnabled") private var memoryNudgesEnabled = false
     @AppStorage("brainEnrichmentEnabled") private var brainEnrichmentEnabled = false
     @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
@@ -192,6 +193,27 @@ struct EverydaySettingsScreen: View {
                         Text("Off in Medical Compliance mode.")
                     } else {
                         Text("Uses the same AI as the conversation, and counts in Usage.")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+        case .conversationNotes:
+            // Medical Compliance mode refuses it whatever the switch says; an organisation's pin
+            // shows read-only, naming the organisation, through the same note every locked key uses.
+            VStack(alignment: .leading, spacing: 4) {
+                InfoToggle(
+                    title: "Notes of Finished Conversations",
+                    isOn: hipaaMode ? .constant(false) : binding(.conversationNotes, in: group),
+                    info: "When a conversation ends, the AI that answered it writes a short note of what was decided, found out or left to do. You can ask about it later in other words, find it under Conversations in What Avenkin Remembers, and open the conversation from there. Never for a job's conversation, and a note you forget is not written again."
+                )
+                .disabled(hipaaMode || PolicyEnvelope.isLocked(.conversationDigestsEnabled))
+                ManagedSettingNote(key: .conversationDigestsEnabled)
+                Group {
+                    if hipaaMode {
+                        Text("Off in Medical Compliance mode.")
+                    } else {
+                        Text("Uses the same AI as the conversation, once per conversation, and counts in Usage.")
                     }
                 }
                 .font(.footnote)

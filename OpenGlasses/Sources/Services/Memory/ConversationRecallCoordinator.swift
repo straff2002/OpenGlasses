@@ -19,6 +19,9 @@ enum ConversationRecallProjectionEvent: Equatable, Sendable {
     case messageUpsert(IndexedTurn)
     case messageDelete(ids: [String])
     case threadDelete(id: String)
+    /// Plan LQ §6: these threads' notes were written, changed or forgotten. Each thread's one note
+    /// row is replaced from the persisted snapshot, or removed when it has no note to show.
+    case digestUpsert(threadIDs: [String])
     case storeReplaced
 }
 
@@ -106,6 +109,14 @@ final class ConversationRecallCoordinator: ObservableObject {
             index.delete(messageIDs: ids)
         case .threadDelete(let id):
             index.delete(threadID: id)
+        case .digestUpsert(let threadIDs):
+            for id in threadIDs {
+                index.delete(id: ConversationDigest.recallRowID(threadID: id))
+                if let thread = persistedSnapshot.first(where: { $0.id == id }),
+                   let row = ConversationDigestRecallRow.turn(for: thread) {
+                    index.index(row)
+                }
+            }
         case .storeReplaced:
             rebuild(from: persistedSnapshot)
             return
@@ -162,8 +173,8 @@ final class ConversationRecallCoordinator: ObservableObject {
     }
 
     private static func indexedTurns(from threads: [ConversationThread]) -> [IndexedTurn] {
-        threads.flatMap { thread in
-            thread.messages.compactMap { message in
+        threads.flatMap { thread -> [IndexedTurn] in
+            let turns: [IndexedTurn] = thread.messages.compactMap { message in
                 guard message.role == "user" || message.role == "assistant" else { return nil }
                 guard !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     return nil
@@ -171,6 +182,9 @@ final class ConversationRecallCoordinator: ObservableObject {
                 return IndexedTurn(id: message.id, threadID: thread.id, role: message.role,
                                    text: message.content, timestamp: message.timestamp)
             }
+            // Plan LQ §6: a thread's note is one more row, named by its thread like a turn.
+            guard let note = ConversationDigestRecallRow.turn(for: thread) else { return turns }
+            return turns + [note]
         }
     }
 }

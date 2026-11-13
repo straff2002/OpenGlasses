@@ -21,7 +21,15 @@ final class MemoryFactServices {
         if let objects = stores.objects, let places = stores.savedPlaces {
             sources.append(PlacesFactSource(objects: objects, savedPlaces: places))
         }
-        repository = MemoryFactRepository(sources: sources, protectedDataAvailable: protectedDataAvailable)
+        if let conversations = stores.conversations {
+            sources.append(ConversationDigestFactSource(conversations: conversations))
+        }
+        var liveThreadIDs: (@MainActor () -> Set<String>)?
+        if let conversations = stores.conversations {
+            liveThreadIDs = { Set(conversations.threads.map(\.id)) }
+        }
+        repository = MemoryFactRepository(sources: sources, protectedDataAvailable: protectedDataAvailable,
+                                          liveThreadIDs: liveThreadIDs)
         forgetter = MemoryFactForgetter(stores: stores, coordinator: coordinator,
                                         invalidations: invalidations)
         corrector = MemoryFactCorrector(stores: stores)
