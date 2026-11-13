@@ -93,7 +93,7 @@ chunk, checks the plaintext against `revision`, and only then lays the manual in
 
 `CompanyVaultContract.Limits` (decision 2), refused by the service before anything is stored and
 checked again by the phone: a PDF ≤ 128 MiB; a Word manual ≤ 100 MiB; Markdown ≤ 20 MiB; a vault's
-pack ≤ 250 MiB with each file ≤ 20 MiB (`checkPackFiles`); everything one company stores ≤ 2 GiB
+pack ≤ 250 MiB with each file ≤ 20 MiB (`checkPackFiles`); everything one company stores ≤ 1 GiB
 to start (`check(_:companyTotalBytes:)` takes the company's own); at most 64 vaults and 2,000
 manuals per catalog.
 

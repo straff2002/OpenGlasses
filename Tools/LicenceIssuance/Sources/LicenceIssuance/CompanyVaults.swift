@@ -52,7 +52,7 @@ public enum CompanyVaultContract {
         /// Each file inside a pack (`VaultPackArchive.maxEntryBytes`).
         public static let vaultCoreFileBytes = 20 * 1_048_576
         /// Everything one company stores, to start; the vendor can raise it per company.
-        public static let companyTotalBytes: Int64 = 2 * 1_073_741_824
+        public static let companyTotalBytes: Int64 = 1_073_741_824
         /// A catalog envelope, before it is parsed.
         public static let catalogEnvelopeBytes = 1_048_576
         /// Rows in one catalog.
