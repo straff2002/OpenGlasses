@@ -347,6 +347,15 @@ final class NativeToolRegistry {
         brainTool.memoryStore = semanticMemory
         brainTool.documentStore = documentStore
         brainTool.activeNamespace = activeNamespace   // Project scoping (Plan AN / BM P8)
+        // An encounter the user logs without naming a place records where the phone is.
+        brainTool.currentPlace = { [weak locationService] in
+            guard let locationService else { return nil }
+            let coordinate = locationService.currentLocation?.coordinate
+            guard locationService.locationContext != nil || coordinate != nil else { return nil }
+            return BrainTool.EncounterPlace(name: locationService.locationContext,
+                                            latitude: coordinate?.latitude,
+                                            longitude: coordinate?.longitude)
+        }
         register(brainTool)
 
         // Semantic memory tools — only available when memory is enabled

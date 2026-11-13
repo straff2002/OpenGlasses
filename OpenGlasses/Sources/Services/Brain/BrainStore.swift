@@ -537,8 +537,9 @@ final class BrainStore: ObservableObject {
 
     // MARK: - Encounters
 
-    /// Log that a person was encountered. Face recognition was the writer until it was removed on
-    /// 2026-11-13; encounters logged before then stay readable and are erased with the person.
+    /// Log that a person was encountered. The writer is the brain tool's `log_encounter`, from what
+    /// the user says ("I'm meeting Sam at the café"). Face recognition wrote here until it was
+    /// removed on 2026-11-13; its entries stay readable and are erased with the person.
     func logEncounter(person: String, locationName: String? = nil,
                       latitude: Double? = nil, longitude: Double? = nil, context: String? = nil) {
         upsertEntity(kind: "person", name: person)

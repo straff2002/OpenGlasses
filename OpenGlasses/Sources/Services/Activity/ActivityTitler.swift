@@ -94,7 +94,7 @@ enum ActivityTitler {
         "brain": .init("Updated your memory", actions: [
             "save_need": "Noted something you need to follow up",
             "resolve_need": "Marked a follow-up as done", "link": "Linked two things in your memory",
-            "forget": "Forgot something you asked me to",
+            "forget": "Forgot something you asked me to", "log_encounter": "Noted who you met",
         ], reads: ["query", "recall", "insights", "person", "encounters", "needs", "status"]),
         "my_memory": .init("Updated what I remember about you", actions: [
             "forget": "Forgot something you asked me to", "correct": "Corrected something I remembered",
