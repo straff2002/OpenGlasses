@@ -220,6 +220,47 @@ Notes from the field:
   authored `Info.plist` and that `MetaTelemetryBlock.install()` still precedes
   `Wearables.configure()`.
 
+## Meta's policy binds unpublished apps too
+
+The [Acceptable Use Policy](https://wearables.developer.meta.com/acceptable-use-policy) (updated
+2026-09-22) applies to every DAT integration, published or not. It forbids using device sensors for
+unique identification of people by physical characteristics (faces, voices) unless Meta approves an
+exception in advance (accessibility is the named example); covertly collecting recognisable audio or
+video of anyone; analysing people around the wearer to enable unwanted approaches; and hiding or
+obscuring the capture LED. Face recognition was removed for the first reason (2026-11-13). Any
+feature that would identify a person from what the glasses see or hear needs Meta's written
+exception before it is built, not after.
+
+## Field reports (Meta's issue trackers, not yet seen on our hardware — checked 2026-11-13)
+
+Treat these as likely causes when a device report matches, and confirm on GiPhone before building
+around them.
+
+- **Register only when not registered.** `startRegistration()` on an app that is already
+  registered is reported to reset Meta AI's Developer Mode registration, after which session starts
+  fail with `datAppOnTheGlassesUpdateRequired` (android #192, ios #180). `connect()` asks
+  `RegistrationFlow.shouldStartRegistration(stateRaw:)` first, and `RegistrationFlowTests` fails on
+  any unguarded call. Reported recovery, each step once and never looped: unregister + register;
+  then reset + configure; then reboot the glasses. The glasses-side install fails below 10 % battery.
+- **Opening the glasses mic over HFP can end DAT sessions.** Camera sessions on some glasses
+  firmware (android #206), and every Display session on current software (android #210, ios #342).
+  Meta says glasses software 192.1 fixes most displayless cases and the Display fix comes later. A
+  Display or camera session that ends while the wake word or a call has the glasses mic is this
+  until shown otherwise. The SDK exposes no glasses software version to log.
+- **The Back gesture ends a Display session and is not delivered to the app** in 1.0.x, even with
+  `consumeBack` (ios #349). Keep a way to dismiss on the lens and a way to bring it back from the
+  phone.
+- **The Display dims after 20 s without input and sleeps at 25 s.** No API observes or controls
+  it, and whether a new `send` wakes it is unconfirmed. When the wearer must look, cue them by sound.
+- **iPhone 17 on iOS 26: HFP may carry no audio either way** (Meta known issue, fixed in iOS 27).
+- **Ray-Ban Meta Audio (no camera) is not supported by DAT** in any release (ios #345): it never
+  lists or connects. It is a plain Bluetooth headset.
+- **App Store review and DAT**: developers report that because the SDK links ExternalAccessory,
+  Apple asks for an MFi product id that Meta cannot issue (ios discussion #313). The store-bound
+  build is the phone-only variant (`OPENGLASSES_PHONE_ONLY=1`); glasses builds go through TestFlight.
+- Meta runs a docs MCP server at `https://mcp.developer.meta.com/wearables` (HTTP, no auth), useful
+  for checking an API before trusting this file or memory.
+
 ## Links
 
 - [iOS API Reference](https://wearables.developer.meta.com/docs/reference/ios_swift/dat/latest)
