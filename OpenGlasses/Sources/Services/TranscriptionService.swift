@@ -528,9 +528,13 @@ class TranscriptionService: ObservableObject {
             let recordingFormat = inputNode.outputFormat(forBus: 0)
             try Self.requireUsableTapFormat(recordingFormat, channel: .dictation)
 
+            // The tap runs on the Core Audio render thread. Capture the request, as the shared path
+            // above does: reading `self.recognitionRequest` there raced the main actor's writes to
+            // it (Swift 5 mode lets this @MainActor closure compile while running off-main).
+            let request = recognitionRequest
             let keep = comparisonTap()
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-                self?.recognitionRequest?.append(buffer)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
+                request.append(buffer)
                 keep?(buffer)
             }
 
