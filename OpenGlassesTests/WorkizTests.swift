@@ -171,6 +171,24 @@ final class WorkizJobMapperTests: XCTestCase {
         XCTAssertTrue(reopened.workizNotice?.contains("cancelled") == true)
         reopened.removeWorkizJobs(); XCTAssertEqual(reopened.jobs, [typed]); XCTAssertNil(reopened.workizLastPull)
     }
+    func testPullNeverAddsASecondJobUnderAnIdAnOfficeFileUpdateKept() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UpcomingJobStore(directory: directory)
+        let pulled = WorkizJobMapper.map(try WorkizAPI.job(WorkizFixtures.data("job")), technicianID: "USR-jamie", now: WorkizFixtures.now, timeZone: WorkizFixtures.zone)
+        store.reconcileWorkiz([pulled], at: WorkizFixtures.now, notice: "")
+        // "Update job 1234" from an office job file: same id, the file's provenance (no connector).
+        var updated = pulled
+        updated.provenance = JobFileProvenance(fileName: "job-1234.ogjob", signature: .unsigned, signer: nil,
+                                               receivedAt: WorkizFixtures.now, digest: "fixture")
+        updated.notes = "From the office file"
+        store.update(updated, at: WorkizFixtures.now)
+        // The next pull brings the same Workiz job back, twice over (both scans can list it).
+        store.reconcileWorkiz([pulled, pulled], at: WorkizFixtures.now, notice: "")
+        XCTAssertEqual(store.jobs.map(\.id), [pulled.id])
+        XCTAssertEqual(store.jobs.first?.notes, "From the office file")
+        XCTAssertEqual(Set(UpcomingJobStore(directory: directory).jobs.map(\.id)).count, 1)
+    }
 }
 
 @MainActor

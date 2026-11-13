@@ -50,8 +50,15 @@ final class UpcomingJobStore: ObservableObject {
     func reconcileWorkiz(_ incoming: [UpcomingJob], at date: Date, notice: String) {
         // Only the ahead store changes. A started session has already copied its snapshot.
         let others = jobs.filter { $0.provenance?.connector != "workiz" }
+        // A Workiz job the technician updated from an office job file keeps its "workiz:" id but
+        // takes the file's provenance, so it is one of `others` now, and the pull brings the same
+        // id back. The updated copy stays and the pulled one is dropped: two jobs with one id are
+        // two List rows with one identity, which UIKit asserts on (the build 664 crash).
+        let kept = Set(others.map(\.id))
+        var seen = Set<String>()
+        let pulled = incoming.filter { !kept.contains($0.id) && seen.insert($0.id).inserted }
         let space = max(0, Self.entryCap - others.count)
-        jobs = Self.ordered(others + incoming.prefix(space)); save()
+        jobs = Self.ordered(others + pulled.prefix(space)); save()
         workizLastPull = date; workizNotice = notice.isEmpty ? nil : notice
         if let data = try? JSONEncoder().encode(WorkizPull(date: date, notice: workizNotice)) {
             try? data.write(to: workizStampURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
