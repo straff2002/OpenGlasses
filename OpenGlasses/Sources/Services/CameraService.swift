@@ -163,7 +163,7 @@ class CameraService: ObservableObject, FilteredStillProviding {
     /// The most recent video frame captured from the glasses camera.
     ///
     /// **Raw pixels.** Only the consumers `OutboundFrameConsumer` lists under an unfiltered scope
-    /// may read this — the on-device Vision taps, the phone's own preview, face recognition. Every
+    /// may read this — the on-device Vision taps and the phone's own preview. Every
     /// reader that sends a still to a model, writes one to disk or Photos, or hands one to another
     /// process goes through `filteredStill(for:source:)` instead, and
     /// `OutboundFrameConsumerTests` fails the build for a reader that does neither.

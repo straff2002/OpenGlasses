@@ -143,15 +143,6 @@ final class TurnAdmissionAndBudgetTests: XCTestCase {
             "You asked which train is next. The next one is at ten past."))
     }
 
-    /// The item 1 phrasing this ships alongside must trip the longer window, or the user gets cut
-    /// off answering the very question the ambiguity fix introduced.
-    func testAmbiguousRecognitionPhrasingEarnsTheLongerWindow() {
-        let spoken = FaceRecognitionService.ambiguityPrompt(names: ["Sam", "Alex"])
-        XCTAssertEqual(SpeechContinuationPolicy.silenceWindow(afterSpeaking: spoken),
-                       SpeechContinuationPolicy.questionWindow,
-                       "the ambiguity prompt asks the user something; the window must let them answer")
-    }
-
     /// The policy may lengthen the wait, never shorten it — no input may drop below today's 2.0 s.
     func testWindowIsNeverShorterThanTheOldFlatValue() {
         let inputs = ["", "ok", "Which one?", "Done.", "How many would you like",

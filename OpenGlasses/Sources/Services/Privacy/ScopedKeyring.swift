@@ -8,11 +8,16 @@ import Security
 ///
 /// The membership of this enum is deliberately small, and it is the honest part. A scoped key is
 /// only worth having where the data is *actually sealed under it*; a key that exists beside
-/// plaintext is a control that looks like protection and provides none. Two classes qualify today:
+/// plaintext is a control that looks like protection and provides none. One class qualifies today,
+/// and one is retired:
 ///
 /// - `conversationContent` — sealed by `ConversationEncryptionService` when the wearer turns
 ///   conversation encryption on, under a key held behind user presence.
-/// - `faces` — the enrolled biometric templates, sealed here.
+/// - `faces` — **retired.** The enrolled face templates were sealed under it until face
+///   recognition was removed on 2026-11-13. Nothing seals under it any more; the case stays so
+///   `RetiredFaceDataCleanup` can destroy the key an existing install still holds, and so an
+///   erasure-ledger entry written before the removal still decodes and replays. Never seal new
+///   data under it.
 ///
 /// Clinical transcripts are **not** here, and the reason is a product decision rather than an
 /// oversight: they are written as plain `.txt` into a folder the wearer opens in Files and shares
@@ -63,8 +68,8 @@ final class KeychainScopedKeyStore: ScopedKeyStore {
     /// filed under.
     ///
     /// **Never change this value** (including in a rename): the keys are looked up by it, so a new
-    /// value cannot find them and everything sealed under a scoped key (enrolled face templates,
-    /// scoped conversation content) becomes unreadable — the outcome of a crypto-erasure, applied
+    /// value cannot find them and everything sealed under a scoped key (scoped conversation
+    /// content) becomes unreadable — the outcome of a crypto-erasure, applied
     /// to data nobody asked to erase. Pinned
     /// by `StorageIdentifierGuardTests`.
     static let storageService = "OpenGlasses.ScopedKey"

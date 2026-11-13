@@ -60,8 +60,7 @@ enum PhoneCapturePolicy {
         "study": .askOnPhone,
         "teleprompter": .askOnPhone,
         "parking": .askOnPhone,
-        // Glasses only — live-stream features, and identifying people.
-        "face_recognition": .glassesOnly,
+        // Glasses only — live-stream features.
         "fitness_coach": .glassesOnly,
         "live_coach": .glassesOnly,
         "navigation_assist": .glassesOnly,

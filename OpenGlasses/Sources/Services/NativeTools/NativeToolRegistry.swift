@@ -12,7 +12,7 @@ final class NativeToolRegistry {
     var mcpClientSource: (@MainActor () -> MCPClient?)?
 
     init(locationService: LocationService, conversationStore: ConversationStore? = nil,
-         faceRecognitionService: FaceRecognitionService? = nil, cameraService: CameraService? = nil,
+         cameraService: CameraService? = nil,
          memoryRewindService: MemoryRewindService? = nil,
          ambientCaptionService: AmbientCaptionService? = nil,
          openClawBridge: OpenClawBridge? = nil,
@@ -109,14 +109,6 @@ final class NativeToolRegistry {
             register(ConversationSummaryTool(conversationStore: store))
             register(SessionSearchTool(conversationStore: store))
         }
-        // Face recognition, the live-stream tools and the reading companion watch a live picture,
-        // which only glasses give (`PhoneCapturePolicy.glassesOnlyTools`, Plan GV): a phone-only
-        // build registers none of them.
-        #if !AVENKIN_PHONE_ONLY
-        if let faceService = faceRecognitionService, let camera = cameraService {
-            register(FaceRecognitionTool(faceService: faceService, cameraService: camera))
-        }
-        #endif
         if let rewind = memoryRewindService {
             register(MemoryRewindTool(rewindService: rewind))
         }
@@ -196,8 +188,7 @@ final class NativeToolRegistry {
                 onCaptureSucceeded: { AppStateProvider.shared?.noteRequestedCaptureSucceeded() }))
             register(VisionAssessTool())   // structured vision (read the instrument, etc.) via StructuredVisionService.shared
             // Plan CG: badge OCR → person record in the brain store.
-            register(BadgeScanTool(cameraService: camera, locationService: locationService,
-                                   faceService: faceRecognitionService))
+            register(BadgeScanTool(cameraService: camera, locationService: locationService))
             #if !AVENKIN_PHONE_ONLY
             if let recorder = videoRecorder {
                 register(VideoRecordingTool(cameraService: camera, videoRecorder: recorder,
@@ -462,7 +453,7 @@ final class NativeToolRegistry {
 
         return allEnabled.filter { name in
             // Camera-dependent tools: only include when glasses are connected
-            let cameraTools: Set = ["scan_code", "scan_document", "capture_photo", "face_recognition", "qr_context", "video_recording"]
+            let cameraTools: Set = ["scan_code", "scan_document", "capture_photo", "qr_context", "video_recording"]
             if cameraTools.contains(name) && !glassesConnected { return false }
 
             // Home tools: only include when configured

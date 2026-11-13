@@ -86,9 +86,9 @@ final class OutboundFrameConsumerTests: XCTestCase {
 
         for (index, rawLine) in contents.components(separatedBy: .newlines).enumerated() {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
-            // Only column-zero declarations count. A nested `struct KnownFace` inside
-            // `FaceRecognitionService` would otherwise be credited with its enclosing type's
-            // subscriptions, and the roster would be policing a name nobody wrote down.
+            // Only column-zero declarations count. A nested type would otherwise be credited with
+            // its enclosing type's subscriptions, and the roster would be policing a name nobody
+            // wrote down.
             if rawLine == line, let declared = Self.declaredType(in: line) { currentType = declared }
             guard !line.hasPrefix("//"), !line.hasPrefix("*"), !line.hasPrefix("/*") else { continue }
             guard Self.tapPatterns.contains(where: { line.contains($0) }) else { continue }
@@ -137,7 +137,7 @@ final class OutboundFrameConsumerTests: XCTestCase {
         XCTAssertGreaterThan(found.count, 20,
                              "Expected the frame-tap scrape to find the known call sites; found \(found.count)")
         let types = Set(found.map(\.type))
-        for expected in ["AppState", "CameraService", "FaceRecognitionService",
+        for expected in ["AppState", "CameraService", "ReadingCompanionService",
                          "WebRTCStreamingService", "StructuredVisionService", "CapturePhotoTool",
                          "DwellCaptureService"] {
             XCTAssertTrue(types.contains(expected),

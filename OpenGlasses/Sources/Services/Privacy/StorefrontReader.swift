@@ -2,11 +2,11 @@ import Foundation
 import StoreKit
 
 /// Plan HP P1 item 6 — which App Store storefront this install came through, as an ISO 3166-1
-/// alpha-2 code. `MarketAvailability` reads it once per launch to answer the policy (Plan HS), and
+/// alpha-2 code. `MarketAvailability` reads it once per launch (Plan HS), and
 /// the support report prints it as one line.
 ///
 /// A storefront is the account's App Store country, not where the phone is: it says which market
-/// the app was distributed in, which is the question the policy asks, and it is not the wearer's
+/// the app was distributed in, which is the question a region rule asks, and it is not the wearer's
 /// location. It is a country code, not personal data, and it never goes into a log.
 protocol StorefrontReader: Sendable {
     /// The storefront's country as ISO 3166-1 alpha-2, or nil when it cannot be read.
@@ -18,8 +18,7 @@ protocol StorefrontReader: Sendable {
 /// StoreKit reports the country as ISO 3166-1 **alpha-3** ("FRA"); the policy and the support
 /// report use alpha-2 ("FR"). Every EEA storefront is mapped, plus the neighbours a test names, so
 /// the conversion can never make an EEA storefront look foreign. A code outside the table is
-/// passed through upper-cased: it can only be a non-EEA storefront, which the policy treats as
-/// available either way.
+/// passed through upper-cased: it can only be a non-EEA storefront.
 struct StoreKitStorefrontReader: StorefrontReader {
 
     func countryCode() async -> String? {

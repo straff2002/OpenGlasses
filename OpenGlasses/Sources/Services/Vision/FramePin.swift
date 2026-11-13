@@ -6,7 +6,7 @@ import UIKit
 ///
 /// A pin gates **only the model-facing frame path** — the push chokepoint, the poll fallbacks,
 /// and Direct-mode photo reuse, all in AppState wiring. Every other `framePublisher` consumer
-/// (recording, broadcast, face recognition, reading, expert streams) keeps receiving live
+/// (recording, broadcast, reading, expert streams) keeps receiving live
 /// frames; that's why the gate lives at the chokepoints and not inside `CameraService`.
 
 // MARK: - Pin state

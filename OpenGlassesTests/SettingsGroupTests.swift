@@ -252,7 +252,6 @@ final class SettingsGroupTests: XCTestCase {
     /// Decision 7: these keep their own switches, wherever they live.
     func testNoConsentThatStandsAloneIsUnderAParent() {
         let keys = Set(SettingsGroupCatalog.all.flatMap(\.members).filter(\.isSwitch).map(\.id.rawValue))
-        XCTAssertFalse(keys.contains("faceRecognitionEnabled"))
         XCTAssertFalse(keys.contains("agentModeEnabled"))
     }
 

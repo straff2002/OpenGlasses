@@ -88,9 +88,6 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case remoteInvokeCaptureEnabled
     case mcpServerEnabled
     case agentModeEnabled
-    /// Face recognition (Plan HP P1 item 2): an organisation may switch it off on its phones, never
-    /// on — enrolling a bystander's face is the wearer's choice, not an employer's.
-    case faceRecognitionEnabled
     /// The spoken interpreter: a bystander's voice goes to the cloud. An organisation may switch it
     /// off on its phones, never on.
     case interpreterEnabled
@@ -174,7 +171,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .privacyFilterEnabled, .aiConnectionCueEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
-             .mcpServerEnabled, .agentModeEnabled, .faceRecognitionEnabled, .teamLearningReviewerDevice,
+             .mcpServerEnabled, .agentModeEnabled, .teamLearningReviewerDevice,
              .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled, .preparedCardCustomerTexts:
             return .ceiling(pinnedTo: false)
         case .pilotReportRecipients:

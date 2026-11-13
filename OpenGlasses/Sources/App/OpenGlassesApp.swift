@@ -276,14 +276,13 @@ struct OpenGlassesApp: App {
         // Temple taps became remappable (Plan GJ): a wearer who had the single-gesture switch on
         // keeps double tap = start talking; everyone else gets the new defaults. Once, behind a flag.
         TempleGestureSettingsMigration.run()
-        // Face recognition now defaults off (Plan HP P1). An install that already had it — onboarding
-        // done before this build, or a face enrolled — is seeded on; a fresh install is seeded off;
-        // a switch the wearer already set is left alone. Once, behind a flag, and before anything
-        // reads `AIFeatureGate`.
-        CapabilityDefaultMigration.run()
-        // Read the App Store storefront once for this launch (Plan HS P1 item 1), so the storefront
-        // gate answers synchronously from here on. Until it lands, everything is available: a
-        // legal gate never fires on missing data.
+        // Face recognition was removed (2026-11-13): erase the face templates and preferences it
+        // left behind — the scoped key first, then the file. Until it completes once, and again if
+        // the database file ever comes back.
+        RetiredFaceDataCleanup.run()
+        // Read the App Store storefront once for this launch (Plan HS P1 item 1), so the regional
+        // defaults that depend on it answer synchronously from here on. Until it lands the
+        // storefront is unknown, and unknown is never read as a particular market.
         MainActor.assumeIsolated {
             MarketAvailability.shared.startReading()
         }
@@ -1433,7 +1432,6 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Drives periodic power-posture re-evaluation (Plan BV P2); also nudged on battery/thermal/
     /// power-state notifications.
     private var powerTimer: Timer?
-    let faceRecognition = FaceRecognitionService()
     let memoryRewind = MemoryRewindService()
     let privacyFilter = PrivacyFilterService()
 
@@ -2807,7 +2805,6 @@ class AppState: ObservableObject, AppStateProtocol {
         nativeToolRegistry = NativeToolRegistry(
             locationService: locationService,
             conversationStore: conversationStore,
-            faceRecognitionService: faceRecognition,
             cameraService: cameraService,
             memoryRewindService: memoryRewind,
             ambientCaptionService: ambientCaptions,
@@ -3117,29 +3114,6 @@ class AppState: ObservableObject, AppStateProtocol {
             return try await TurnRecorder.offTurn { try await self.llmService.sendMessage(prompt) }
         }
         medicalExportService.hipaaService = hipaaService
-        faceRecognition.onRecognition = { [weak self] name in
-            Task { @MainActor in
-                guard let self else { return }
-                // Log the encounter (who/where/when) in the brain's encounter log.
-                BrainStore.shared.logEncounter(
-                    person: name,
-                    locationName: self.locationService.locationContext,
-                    latitude: self.locationService.currentLocation?.coordinate.latitude,
-                    longitude: self.locationService.currentLocation?.coordinate.longitude
-                )
-                // Whisper the name quietly via TTS
-                await self.speechService.speak("That's \(name).", source: .narration)
-            }
-        }
-        // CO Item 1: a near-tie is spoken as a question, not resolved to the leader. No encounter
-        // is logged — writing the wrong person into the encounter history would outlive the moment
-        // and quietly corrupt every later "when did I last see…" answer.
-        faceRecognition.onAmbiguousRecognition = { [weak self] names in
-            Task { @MainActor in
-                guard let self else { return }
-                await self.speechService.speak(FaceRecognitionService.ambiguityPrompt(names: names), source: .confirmation)
-            }
-        }
 
         // W03.3: retention now runs whatever the mode, because a clinic that turned compliance
         // mode off did not thereby ask for its transcripts to be kept forever. Each class's policy
@@ -3170,7 +3144,6 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.conversations = conversationStore
             erasureStores.semanticMemory = userMemory
             erasureStores.documents = documentStore
-            erasureStores.faces = faceRecognition
             erasureStores.agentDocuments = agentDocs
             erasureStores.recordedSessions = recordedSessionStore
             erasureStores.offlineQueue = offlineQueue
@@ -3194,7 +3167,8 @@ class AppState: ObservableObject, AppStateProtocol {
                                                     in: .userDomainMask).first!
                 switch erasable {
                 case .conversationContent: return [docs.appendingPathComponent("conversations.json")]
-                case .faces: return [docs.appendingPathComponent("known_faces.json")]
+                // Retired with face recognition; kept so an older ledger entry still replays.
+                case .faces: return [docs.appendingPathComponent(RetiredFaceDataCleanup.databaseFileName)]
                 }
             }
             Task { @MainActor in await ErasureReplay.replay(ledger: ledger, sources: replaySources) }
@@ -7172,9 +7146,6 @@ class AppState: ObservableObject, AppStateProtocol {
         // Pause proactive alerts (non-essential background work)
         proactiveAlerts.pauseAlerts()
 
-        // Reduce face recognition frequency if running (CPU-intensive Vision work)
-        faceRecognition.reduceFrequency()
-
         // Suspend privacy filter (Gaussian blur is GPU-intensive, not visible when backgrounded)
         privacyFilter.suspend()
 
@@ -7196,7 +7167,6 @@ class AppState: ObservableObject, AppStateProtocol {
         PrivacyLog.app(.foregroundRestored)
 
         proactiveAlerts.resumeAlerts()
-        faceRecognition.restoreFrequency()
         privacyFilter.resume()
 
         addDebugEvent("Background optimization: normal mode restored")

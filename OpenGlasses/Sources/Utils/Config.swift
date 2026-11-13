@@ -3783,15 +3783,6 @@ struct Config {
     /// the reading to the camera log (Instant Replay P0). Off by default.
     @UserDefaultsBacked("frameCadenceLoggingEnabled", default: false) static var frameCadenceLoggingEnabled: Bool
 
-    /// Plan CO Item 1 — similarity gap the leading face must open over the runner-up before the
-    /// name is spoken as a fact. Inside this margin the app names the possibilities instead of
-    /// guessing. Configurable because the right value can only be found against real enrolments;
-    /// raising it makes the app more cautious, lowering it more confidently wrong.
-    @UserDefaultsBacked("faceMatchAmbiguityMargin", default: Double(FaceMatcher.defaultMargin))
-    static var faceMatchAmbiguityMarginValue: Double
-
-    static var faceMatchAmbiguityMargin: Float { Float(faceMatchAmbiguityMarginValue) }
-
     // MARK: - Agent Vision Attachment (Plan CN)
 
     /// Whether a delegated remote-agent task may carry a still from the wearer's camera.
@@ -4744,29 +4735,9 @@ struct Config {
     /// that already shipped: the default preserves today's behaviour and the switch is what is new.
     /// A feature that already had its own switch keeps it rather than gaining a second.
 
-    /// Recognising and naming faces from the camera. Biometric.
-    ///
-    /// The one exception to "every one defaults on" (Plan HP P1 item 2): a biometric identification
-    /// feature is opt-in, so the default is **off**. `CapabilityDefaultMigration` runs at launch and
-    /// seeds this on for an install that already had it (onboarding completed before this build, or
-    /// a face enrolled), so nobody loses the capability because the default moved. An organisation
-    /// profile may pin it off (`SettingKey.faceRecognitionEnabled`), never on; the ceiling clamps on
-    /// read and leaves the wearer's own value alone.
-    static var faceRecognitionEnabled: Bool {
-        get {
-            PolicyEnvelope.bool(.faceRecognitionEnabled,
-                                stored: UserDefaults.standard.object(forKey: "faceRecognitionEnabled") as? Bool ?? false)
-        }
-        set {
-            guard !PolicyEnvelope.isLocked(.faceRecognitionEnabled) else { return }
-            UserDefaults.standard.set(newValue, forKey: "faceRecognitionEnabled")
-        }
-    }
-
     /// Assistive Mode's Social mode — describing what is visible about the person in front of the
     /// wearer, never how they feel (Plan HR). On by default, as it shipped, on personal and work
-    /// phones alike since Plan HS P1 item 2 (`AssistiveModePolicy`). `CapabilityDefaultMigration`
-    /// does not touch it.
+    /// phones alike since Plan HS P1 item 2 (`AssistiveModePolicy`).
     @UserDefaultsBacked("assistiveSocialEnabled", default: true) static var assistiveSocialEnabled: Bool
 
     /// Say "Connecting to Avenkin AI." when a voice conversation or a live session starts, once per

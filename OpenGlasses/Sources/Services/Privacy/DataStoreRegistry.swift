@@ -45,7 +45,6 @@ enum SensitiveStore: String, CaseIterable {
     case agentDocuments
 
     // People
-    case faces
     case socialContext
     case speakerNames
 
@@ -358,15 +357,6 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "AgentDocumentStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/AgentDocumentStore.swift"],
                           location: "Documents/{soul,skills,memory}.md")
-
-        case .faces:
-            return Record(store: self, dataClass: .biometric, subjectLinkage: .thirdPartySubject,
-                          protection: .complete, backupExcluded: true, retention: .none,
-                          deleteAll: .api("FaceRecognitionService.forgetAllFaces()"),
-                          deleteSubject: .api("FaceRecognitionService.forgetFace(name:)"),
-                          owner: "FaceRecognitionService",
-                          ownerPaths: ["OpenGlasses/Sources/Services/FaceRecognitionService.swift"],
-                          location: "Documents/known_faces.json")
 
         case .socialContext:
             // Plan LN decision 4: moved out of the preferences domain into a file beside

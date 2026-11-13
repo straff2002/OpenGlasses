@@ -50,13 +50,8 @@ final class PhoneOnlyBuildTests: XCTestCase {
         let accessibility = Config.accessibilityModeEnabled
         defer { Config.setAccessibilityModeEnabled(accessibility) }
         Config.setAccessibilityModeEnabled(true)
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PhoneOnlyBuildTests-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let faces = FaceRecognitionService(directory: directory)
         let camera = CameraService()
-        let registry = NativeToolRegistry(locationService: LocationService(),
-                                          faceRecognitionService: faces, cameraService: camera)
+        let registry = NativeToolRegistry(locationService: LocationService(), cameraService: camera)
         registry.register(LiveTranslationTool())
         registry.register(TeleprompterTool(service: TeleprompterService(store: TeleprompterScriptStore()),
                                            documentStore: nil))
@@ -66,23 +61,18 @@ final class PhoneOnlyBuildTests: XCTestCase {
             XCTAssertFalse(tool.description.lowercased().contains("glasses"), tool.name)
             XCTAssertFalse(String(describing: tool.parametersSchema).lowercased().contains("glasses"), tool.name)
         }
-        withExtendedLifetime((faces, camera)) {}
+        withExtendedLifetime(camera) {}
     }
 
     func testToolsThatNeedALivePictureAreNotRegistered() {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PhoneOnlyBuildTests-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let faces = FaceRecognitionService(directory: directory)
         let camera = CameraService()
-        let registry = NativeToolRegistry(locationService: LocationService(),
-                                          faceRecognitionService: faces, cameraService: camera)
+        let registry = NativeToolRegistry(locationService: LocationService(), cameraService: camera)
         let names = Set(registry.allTools.map(\.name))
         // `fitness_coach` stays, without its form check.
         let gone = PhoneCapturePolicy.glassesOnlyTools.subtracting(["fitness_coach"]).union(["reading_session"])
         XCTAssertTrue(names.isDisjoint(with: gone), "\(names.intersection(gone))")
         XCTAssertTrue(names.contains("capture_photo"))
-        withExtendedLifetime((faces, camera)) {}
+        withExtendedLifetime(camera) {}
     }
 
     func testTheSystemPromptNeverSaysGlasses() {

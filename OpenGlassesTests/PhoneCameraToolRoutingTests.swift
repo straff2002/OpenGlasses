@@ -126,7 +126,7 @@ final class PhoneCameraToolRoutingTests: XCTestCase {
     func testAGlassesOnlyToolRefusesWithoutGlasses() async {
         let rig = rig()
         do {
-            _ = try await asTool("face_recognition") { try await rig.service.capturePhoto() }
+            _ = try await asTool("fitness_coach") { try await rig.service.capturePhoto() }
             XCTFail("a glasses-only tool must not get a phone picture")
         } catch {
             XCTAssertTrue(error is CameraService.GlassesOnlyCaptureError)
@@ -221,8 +221,8 @@ final class PhoneCameraToolRoutingTests: XCTestCase {
         XCTAssertEqual(withGlasses.backend.captureCount, 0, "unchanged: no frame, no capture")
 
         let glassesOnly = rig()
-        let b = await asTool("face_recognition") {
-            await glassesOnly.service.filteredStill(for: .faceRecognition)
+        let b = await asTool("fitness_coach") {
+            await glassesOnly.service.filteredStill(for: .onDeviceVision)
         }
         XCTAssertNil(b.still)
         XCTAssertTrue(glassesOnly.sheet.requests.isEmpty)

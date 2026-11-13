@@ -122,8 +122,8 @@ enum RetentionPolicyBook {
 
         case .biometric:
             return RetentionPolicy(dataClass: dataClass, trigger: .off(
-                "a face is enrolled deliberately and forgotten deliberately; expiring one silently "
-                    + "would un-recognise somebody the wearer asked to be reminded of"),
+                "a speaker's name is attached deliberately and cleared deliberately; expiring one "
+                    + "silently would unlabel somebody the wearer chose to name"),
                 source: "product decision")
 
         case .knowledgeGraph:

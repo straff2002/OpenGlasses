@@ -52,7 +52,7 @@ enum SpeechSource: String, CaseIterable, Sendable {
     /// Getting around: walking directions, navigation and assistive guidance, Scan Assist
     /// reminders, the parking photo.
     case navigation
-    /// Describing what the camera sees: scene narration and its notices, a recognised face.
+    /// Describing what the camera sees: scene narration and its notices.
     case narration
     /// Coaching while the wearer works: the live coach, first aid.
     case coaching

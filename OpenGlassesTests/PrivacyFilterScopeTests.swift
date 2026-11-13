@@ -16,10 +16,11 @@ final class PrivacyFilterScopeTests: XCTestCase {
         XCTAssertTrue(PrivacyFilterScope.agentAttachment.isFiltered)
     }
 
-    /// Face recognition must see raw pixels: the blur is indiscriminate, so filtering ahead of it
-    /// would blur the very faces the user enrolled and break recognition outright.
-    func testFaceRecognitionIsExempt() {
-        XCTAssertFalse(PrivacyFilterScope.faceRecognition.isFiltered)
+    /// Face recognition was the first exemption, because it needed raw pixels. It was removed on
+    /// 2026-11-13, and with it the scope: nothing is exempt from the blur in order to identify
+    /// someone.
+    func testNoScopeIsExemptForFaceRecognition() {
+        XCTAssertNil(PrivacyFilterScope(rawValue: "faceRecognition"))
     }
 
     /// Recording and broadcast were deliberately uncovered in CO Item 0, asserted so that building

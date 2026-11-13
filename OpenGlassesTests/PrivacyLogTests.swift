@@ -194,8 +194,6 @@ final class PrivacyLogTests: XCTestCase {
                               milliseconds: 58, extractionMilliseconds: 34, seconds: 0.4,
                               detail: PrivacyToken(text),
                               error: SafeErrorSummary(MaliciousError())),
-            PrivacyLog.face(.recognized, confidence: .high, candidates: 1, enrolled: 12,
-                            error: SafeErrorSummary(MaliciousError())),
             PrivacyLog.homeBridge(.homeKit, .homesUpdated, status: 1, count: 3, attempt: 2,
                                   error: SafeErrorSummary(MaliciousError())),
             PrivacyLog.medical(.audit, .auditRecorded, operation: PrivacyToken(text),
@@ -283,25 +281,12 @@ final class PrivacyLogTests: XCTestCase {
 
     /// The batch-3 canary, on the two shapes the classification table calls regulated.
     ///
-    /// A recognised name and a home entity id are the values these subsystems hold at the exact
-    /// moment they log, and both used to be written out verbatim — `👤 Recognized: <name>` and
-    /// `Fuzzy matched '<query>' → <entity> (name: <friendly name>)`. Neither has a parameter now,
-    /// so the assertion is that the name cannot be passed at all: what comes back is the fact of
-    /// a match, a confidence band, and how many people are enrolled.
+    /// A home entity id is the value this subsystem holds at the exact moment it logs, and it used
+    /// to be written out verbatim — `Fuzzy matched '<query>' → <entity> (name: <friendly name>)`.
+    /// It has no parameter now, so the assertion is that it cannot be passed at all. (Face
+    /// recognition's recognised name was the other half of this canary until the feature was
+    /// removed on 2026-11-13.)
     func testRegulatedNamesHaveNoParameterAtAll() {
-        let recognition = PrivacyEventEncoder.encode(
-            PrivacyLog.face(.recognized, confidence: .init(similarity: 0.91),
-                            candidates: 1, enrolled: 12))
-        XCTAssertFalse(recognition.contains("SENTINEL"), recognition)
-        XCTAssertFalse(recognition.lowercased().contains("alvarez"), recognition)
-        XCTAssertEqual(recognition,
-                       "[vision] face event=recognized confidence=high count=1 total=12")
-
-        // The ambiguous case names *several* people; it survives as how many were in contention.
-        let ambiguous = PrivacyEventEncoder.encode(PrivacyLog.face(.ambiguous, candidates: 2,
-                                                                   enrolled: 12))
-        XCTAssertEqual(ambiguous, "[vision] face event=ambiguous count=2 total=12")
-
         // A home entity is low-entropy — a hash of "light.master_bedroom" is not anonymous — so
         // it is omitted rather than fingerprinted, and the event says only how it resolved.
         let resolved = PrivacyEventEncoder.encode(PrivacyLog.homeEntityResolved(.fuzzy))
@@ -440,16 +425,6 @@ final class PrivacyLogTests: XCTestCase {
                              error: .sqlite(code: 1, extended: 1)))
         XCTAssertFalse(line.contains("SENTINEL"), line)
         XCTAssertTrue(line.contains("error=storage(sqlite.1)#1"), line)
-    }
-
-    /// The similarity score is a biometric measurement, so it is banded before it is logged.
-    func testFaceConfidenceIsABandNotAScore() {
-        XCTAssertEqual(PrivacyLog.FaceConfidence(similarity: 0.42), .low)
-        XCTAssertEqual(PrivacyLog.FaceConfidence(similarity: 0.71), .medium)
-        XCTAssertEqual(PrivacyLog.FaceConfidence(similarity: 0.97), .high)
-        let line = PrivacyEventEncoder.encode(
-            PrivacyLog.face(.recognized, confidence: .init(similarity: 0.8421)))
-        XCTAssertFalse(line.contains("0.84"), "the raw similarity must not reach the log: \(line)")
     }
 
     /// A model configuration name is wearer-authored; a model id is a catalog name. The pair has
@@ -737,7 +712,7 @@ final class PrivacyLogTests: XCTestCase {
     /// `MetaCameraBackend` is the bulk of it and the least sensitive part — DAT session and
     /// stream plumbing, which is public operation class and stays, in typed form, because it is
     /// the hardest thing in the app to diagnose without a device. The sensitive ones are small:
-    /// `FaceRecognitionService` printed the name it had just recognised, `HomeAssistantEntityCache`
+    /// `FaceRecognitionService` (since removed) printed the name it had just recognised, `HomeAssistantEntityCache`
     /// printed the matched entity and its friendly name, `LocationService` printed the
     /// reverse-geocoded place, `ProactiveAlertService` printed the whole spoken alert, and
     /// `HIPAAComplianceService` mirrored every audit line — action *and* detail — into the device
@@ -760,7 +735,6 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Services/Accessibility/NavigationAssistService.swift",
         "OpenGlasses/Sources/Services/Accessibility/AssistiveModeService.swift",
         "OpenGlasses/Sources/Services/LiveCoachService.swift",
-        "OpenGlasses/Sources/Services/FaceRecognitionService.swift",
         "OpenGlasses/Sources/Services/NativeTools/HomeKitTool.swift",
         "OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift",
         "OpenGlasses/Sources/Services/ProactiveAlertService.swift",
@@ -1086,8 +1060,6 @@ final class PrivacyLogTests: XCTestCase {
     /// into anything the migrated files hand to `PrivacyLog`.
     func testRegulatedValuesAreNotPassedToTheFacade() throws {
         let forbidden: [(String, [String])] = [
-            ("OpenGlasses/Sources/Services/FaceRecognitionService.swift",
-             ["name", "names"]),
             ("OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift",
              ["entityId", "friendlyName", "query"]),
             ("OpenGlasses/Sources/Services/LocationService.swift",
@@ -1297,15 +1269,13 @@ final class PrivacyLogTests: XCTestCase {
              ["think block: %d chars — %@"]),
             ("OpenGlasses/Sources/Services/ConversationStore.swift",
              ["Started thread %@ (project %@)"]),
-            // P1 batch 3: the face recogniser printed the name it had just matched and every
-            // name in an ambiguous tie; the Home Assistant cache printed the spoken query, the
+            // P1 batch 3: the face recogniser (since removed) printed the name it had just
+            // matched and every name in an ambiguous tie; the Home Assistant cache printed the spoken query, the
             // matched entity id and its friendly name; HomeKit printed the accessory; the
             // location service printed the reverse-geocoded place; the geofence printed the
             // alert it was about to speak; the proactive alerter printed every alert and the
             // calendar title behind a playbook; and the HIPAA audit trail mirrored its own
             // detail line into the device log.
-            ("OpenGlasses/Sources/Services/FaceRecognitionService.swift",
-             ["👤 Recognized:", "👤 Ambiguous:"]),
             ("OpenGlasses/Sources/Services/HomeAssistantEntityCache.swift",
              ["Fuzzy matched"]),
             ("OpenGlasses/Sources/Services/NativeTools/HomeKitTool.swift",

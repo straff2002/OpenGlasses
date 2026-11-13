@@ -28,58 +28,58 @@ final class ErasureSemanticsTests: XCTestCase {
     // MARK: - Scoped keys
 
     func testSealedBytesRoundTripAndAreNotThePlaintext() throws {
-        let plaintext = Data("Zylkorath's faceprint".utf8)
-        let sealed = try XCTUnwrap(keyring.seal(plaintext, for: .faces))
+        let plaintext = Data("Zylkorath's transcript".utf8)
+        let sealed = try XCTUnwrap(keyring.seal(plaintext, for: .conversationContent))
 
         XCTAssertTrue(keyring.isSealed(sealed))
         XCTAssertFalse(sealed.contains(Data("Zylkorath".utf8)),
                        "the sealed blob still contains the plaintext")
-        XCTAssertEqual(try keyring.open(sealed, for: .faces), plaintext)
+        XCTAssertEqual(try keyring.open(sealed, for: .conversationContent), plaintext)
     }
 
     func testUnsealedBytesAreReturnedUnchangedSoAdoptionDoesNotLoseData() throws {
         let legacy = Data(#"[{"name":"someone"}]"#.utf8)
         XCTAssertFalse(keyring.isSealed(legacy))
-        XCTAssertEqual(try keyring.open(legacy, for: .faces), legacy)
+        XCTAssertEqual(try keyring.open(legacy, for: .conversationContent), legacy)
     }
 
     func testSealingDegradesToPlaintextWhenNoKeyCanBeMinted() {
         keys.refusesKeys = true
-        XCTAssertNil(keyring.seal(Data("x".utf8), for: .faces),
+        XCTAssertNil(keyring.seal(Data("x".utf8), for: .conversationContent),
                      "a keyring that cannot mint a key must say so rather than pretend to seal")
     }
 
     func testOpeningSealedBytesAfterTheKeyIsGoneFails() throws {
-        let sealed = try XCTUnwrap(keyring.seal(Data("secret".utf8), for: .faces))
-        keyring.eraseClass(.faces, files: [])
-        XCTAssertThrowsError(try keyring.open(sealed, for: .faces)) { error in
+        let sealed = try XCTUnwrap(keyring.seal(Data("secret".utf8), for: .conversationContent))
+        keyring.eraseClass(.conversationContent, files: [])
+        XCTAssertThrowsError(try keyring.open(sealed, for: .conversationContent)) { error in
             XCTAssertEqual(error as? ScopedKeyringError, .keyUnavailable)
         }
     }
 
     /// The whole point of a scoped key: the copy this app never sees is unreadable afterwards.
     func testErasingASealedClassIsReportedAsCryptographicAndTheSnapshotIsUnreadable() throws {
-        let file = workspace.appendingPathComponent("known_faces.json")
-        let sealed = try XCTUnwrap(keyring.seal(Data("faceprints".utf8), for: .faces))
+        let file = workspace.appendingPathComponent("conversations.json")
+        let sealed = try XCTUnwrap(keyring.seal(Data("transcript".utf8), for: .conversationContent))
         try sealed.write(to: file)
         // Stand in for a copy in a snapshot or a backup: bytes this app cannot delete.
         let snapshot = sealed
 
-        let receipt = keyring.eraseClass(.faces, files: [file])
+        let receipt = keyring.eraseClass(.conversationContent, files: [file])
 
         XCTAssertEqual(receipt.coverage, .cryptographic)
         XCTAssertTrue(receipt.keyDestroyed)
         XCTAssertEqual(receipt.filesRemoved, 1)
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
-        XCTAssertThrowsError(try keyring.open(snapshot, for: .faces),
+        XCTAssertThrowsError(try keyring.open(snapshot, for: .conversationContent),
                              "the copy the erasure could not reach is still readable")
     }
 
     func testErasingAClassThatWasWritingPlaintextIsReportedAsLogicalOnly() throws {
-        let file = workspace.appendingPathComponent("known_faces.json")
-        try Data("faceprints in the clear".utf8).write(to: file)
+        let file = workspace.appendingPathComponent("conversations.json")
+        try Data("transcript in the clear".utf8).write(to: file)
 
-        let receipt = keyring.eraseClass(.faces, files: [file])
+        let receipt = keyring.eraseClass(.conversationContent, files: [file])
 
         XCTAssertEqual(receipt.filesRemoved, 1)
         switch receipt.coverage {
@@ -96,47 +96,23 @@ final class ErasureSemanticsTests: XCTestCase {
         // removal fails, the key is still gone and the bytes left behind cannot be opened.
         let directory = workspace.appendingPathComponent("locked", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let file = directory.appendingPathComponent("known_faces.json")
-        let sealed = try XCTUnwrap(keyring.seal(Data("faceprints".utf8), for: .faces))
+        let file = directory.appendingPathComponent("conversations.json")
+        let sealed = try XCTUnwrap(keyring.seal(Data("transcript".utf8), for: .conversationContent))
         try sealed.write(to: file)
 
-        let receipt = keyring.eraseClass(.faces, files: [file], fileManager: RefusingFileManager())
+        let receipt = keyring.eraseClass(.conversationContent, files: [file], fileManager: RefusingFileManager())
 
         XCTAssertTrue(receipt.keyDestroyed)
         XCTAssertEqual(receipt.failures, 1)
-        XCTAssertThrowsError(try keyring.open(sealed, for: .faces))
+        XCTAssertThrowsError(try keyring.open(sealed, for: .conversationContent))
     }
 
     /// Clinical transcripts are deliberately not an erasable class; the plan says why, and this
-    /// pins that nobody adds one without the sealing that would make it true.
+    /// pins that nobody adds one without the sealing that would make it true. `.faces` is retired
+    /// with face recognition and stays only so its key can be destroyed and an old ledger entry
+    /// still decodes.
     func testOnlyClassesWhoseBytesAreSealedAreErasable() {
         XCTAssertEqual(Set(ErasableClass.allCases), [.conversationContent, .faces])
-    }
-
-    // MARK: - The face database, sealed end to end
-
-    func testTheFaceDatabaseIsSealedOnDiskAndStillReadsBack() throws {
-        let service = FaceRecognitionService(directory: workspace, keyring: keyring)
-        _ = service.forgetFace(name: "nobody")   // forces a save
-
-        let file = workspace.appendingPathComponent("known_faces.json")
-        let onDisk = try Data(contentsOf: file)
-        XCTAssertTrue(keyring.isSealed(onDisk), "the face database was written in the clear")
-
-        let reopened = FaceRecognitionService(directory: workspace, keyring: keyring)
-        XCTAssertEqual(reopened.knownFaces.count, 0)
-    }
-
-    func testAPlaintextFaceDatabaseWrittenBeforeSealingStillOpens() throws {
-        let file = workspace.appendingPathComponent("known_faces.json")
-        let legacy = [FaceRecognitionService.KnownFace(name: "Zylkorath",
-                                                       faceprint: Array(repeating: 0.1, count: 128))]
-        try JSONEncoder().encode(legacy).write(to: file)
-
-        let service = FaceRecognitionService(directory: workspace, keyring: keyring)
-
-        XCTAssertEqual(service.knownFaces.map(\.name), ["Zylkorath"],
-                       "adopting sealing must not lose a database written before it")
     }
 
     // MARK: - The ledger
@@ -230,6 +206,8 @@ final class ErasureSemanticsTests: XCTestCase {
         XCTAssertEqual(ledger.entries.count, 1, "a replay must not record itself as a new erasure")
     }
 
+    /// Run against the retired face class: an entry recorded before face recognition was removed
+    /// still replays, and the file is still removed if it comes back.
     func testReplayReRemovesAClassFileThatCameBack() async throws {
         let ledger = ErasureLedger(directory: workspace)
         let file = workspace.appendingPathComponent("known_faces.json")

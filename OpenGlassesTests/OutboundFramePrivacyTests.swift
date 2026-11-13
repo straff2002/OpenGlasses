@@ -178,21 +178,22 @@ final class OutboundFramePrivacyTests: XCTestCase {
 
     /// Every exemption is exempt for the same two reasons, and both must hold: the frames do not
     /// leave the device, and an indiscriminate blur would destroy the signal the consumer reads.
-    /// Face recognition would lose the enrolled faces; on-device narration (Plan CV) would lose the
+    /// On-device narration (Plan CV) would lose the
     /// people a blind wearer is being told about; the on-screen preview and the on-device Vision
     /// taps (W04.1) read pixels and emit only text or geometry. Pinning the whole set means a new
     /// exemption has to be argued for here rather than added quietly.
     func testExemptionsAreExactlyTheNonEgressConsumers() {
         let exempt = PrivacyFilterScope.allCases.filter { !$0.isFiltered }
-        XCTAssertEqual(exempt, [.faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision,
-                                .officeRecording])
-        // Four of the five are exempt for the two reasons above, and nothing under them leaves
-        // the device.
+        XCTAssertEqual(exempt, [.sceneNarration, .onDevicePreview, .onDeviceVision, .officeRecording])
+        // Three of the four are exempt for the two reasons above, and nothing under them leaves
+        // the device. Face recognition was the fifth until it was removed on 2026-11-13; no scope
+        // is exempt for the sake of identifying someone.
         XCTAssertEqual(exempt.filter { !$0.leavesTheDevice },
-                       [.faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision])
+                       [.sceneNarration, .onDevicePreview, .onDeviceVision])
+        XCTAssertNil(PrivacyFilterScope(rawValue: "faceRecognition"))
     }
 
-    /// Plan HE. The fifth exemption is argued here because it is the one that *is* an egress: a
+    /// Plan HE. The fourth exemption is argued here because it is the one that *is* an egress: a
     /// recorded job goes, unblurred unless the organisation requires otherwise, to the
     /// organisation's own office. It is exempt from the app-wide blur because capture has to be
     /// raw — a relay-fed recording has a hole wherever the blur could not run, which is whenever
@@ -220,7 +221,7 @@ final class OutboundFramePrivacyTests: XCTestCase {
         XCTAssertTrue(PrivacyFilterScope.expertStream.usesOutboundRelay)
         XCTAssertFalse(PrivacyFilterScope.liveSession.usesOutboundRelay)
         XCTAssertFalse(PrivacyFilterScope.pinnedFrame.usesOutboundRelay)
-        XCTAssertFalse(PrivacyFilterScope.faceRecognition.usesOutboundRelay)
+        XCTAssertFalse(PrivacyFilterScope.sceneNarration.usesOutboundRelay)
     }
 
     /// Every relay-fed consumer must also be a filtered one — a scope that routes through the blur

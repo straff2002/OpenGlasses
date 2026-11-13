@@ -105,7 +105,6 @@ extension GeofenceTool { var executionSemantics: ToolExecutionSemantics { .local
 extension CalendarTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension AppleRemindersTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension AlarmTool { var executionSemantics: ToolExecutionSemantics { .local(.bestEffort) } }
-extension FaceRecognitionTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension FitnessCoachingTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension GolfModeTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension CaptureFlowTool { var executionSemantics: ToolExecutionSemantics { .local() } }

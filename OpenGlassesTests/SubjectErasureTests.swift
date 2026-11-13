@@ -26,7 +26,6 @@ final class SubjectErasureTests: XCTestCase {
     private var memory: SemanticMemoryStore!
     private var brain: BrainStore!
     private var documents: DocumentStore!
-    private var faces: FaceRecognitionService!
     private var social: SocialContextStore!
     private var contextualNotes: ContextualNoteStore!
     private var objectMemory: ObjectMemoryStore!
@@ -58,7 +57,6 @@ final class SubjectErasureTests: XCTestCase {
         memory = SemanticMemoryStore(directory: workspace)
         brain = BrainStore(directory: workspace)
         documents = DocumentStore(directory: workspace)
-        faces = FaceRecognitionService(directory: workspace)
         social = SocialContextStore(directory: workspace, defaults: defaults)
         contextualNotes = ContextualNoteStore(defaults: defaults)
         objectMemory = ObjectMemoryStore(defaults: defaults)
@@ -111,7 +109,6 @@ final class SubjectErasureTests: XCTestCase {
         stores.brain = brain
         stores.semanticMemory = memory
         stores.social = social
-        stores.faces = faces
         stores.contextualNotes = contextualNotes
         stores.objectMemory = objectMemory
         stores.evolvedSkills = evolvedSkills
@@ -130,12 +127,6 @@ final class SubjectErasureTests: XCTestCase {
 
     /// Put the subject into every store the walk can reach.
     private func seed() async {
-        // A face, written the way the service stores one — enrolling needs a camera.
-        let known = [FaceRecognitionService.KnownFace(name: canary, faceprint: Array(repeating: 0.1, count: 128))]
-        try? JSONEncoder().encode(known)
-            .write(to: workspace.appendingPathComponent("known_faces.json"), options: .atomic)
-        faces = FaceRecognitionService(directory: workspace)
-
         _ = brain.upsertEntity(kind: "person", name: canary)
         brain.addEdge(srcKind: "person", srcName: canary, relation: "works_at",
                       dstKind: "org", dstName: "Acme")
@@ -218,8 +209,6 @@ final class SubjectErasureTests: XCTestCase {
             guard let text, text.localizedCaseInsensitiveContains(canary) else { return }
             found[store] = text
         }
-        note("faces", faces.listKnownFaces())
-        note("faces.knownFaces", faces.knownFaces.map(\.name).joined(separator: ","))
         note("brain.neighbors", brain.neighbors(of: canary).map(\.dstName).joined(separator: ","))
         note("brain.entityNames", brain.entityNames(mentionedIn: "did \(canary) call").joined(separator: ","))
         note("memory.values", memory.memories.map { "\($0.key)=\($0.value)" }.joined(separator: ","))
@@ -262,7 +251,6 @@ final class SubjectErasureTests: XCTestCase {
         memory = SemanticMemoryStore(directory: workspace)
         brain = BrainStore(directory: workspace)
         documents = DocumentStore(directory: workspace)
-        faces = FaceRecognitionService(directory: workspace)
         evolvedSkills = EvolvedSkillStore(directory: workspace)
         agentDocuments = AgentDocumentStore(directory: workspace)
         recordedSessions = RecordedSessionStore(documentsDirectory: workspace)
@@ -367,7 +355,7 @@ final class SubjectErasureTests: XCTestCase {
         let receipts = await SubjectErasureCoordinator(stores: .init()).erase(.person(canary))
         XCTAssertEqual(receipts.count, SubjectErasureCoordinator.order.count)
         XCTAssertTrue(receipts.allSatisfy { !$0.localComplete || $0.removed == 0 })
-        XCTAssertTrue(receipts.contains { $0.unsupported?.contains("no face service") == true })
+        XCTAssertTrue(receipts.contains { $0.unsupported?.contains("no social store") == true })
     }
 
     func testSummaryIsContentFree() async {

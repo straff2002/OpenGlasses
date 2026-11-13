@@ -16,8 +16,8 @@ import Foundation
 /// whether a *feature* exists at all.
 enum AIFeature: String, CaseIterable {
 
-    // Biometric
-    case faceRecognition
+    // Person-facing, each screened `.none`. Face recognition, the one feature screened biometric,
+    // was removed on 2026-11-13.
     case speakerIdentification
     /// Assistive Mode's Social mode: what is visible about the person in view — expression, gaze,
     /// posture, what they are doing — and never how they feel (Plan HP, redesigned by Plan HR).
@@ -97,18 +97,6 @@ enum AIFeature: String, CaseIterable {
 
     var record: Record {
         switch self {
-
-        case .faceRecognition:
-            return Record(feature: self, title: "Face recognition",
-                          sensitiveCategories: [.biometric],
-                          disableSwitch: Switch(key: "faceRecognitionEnabled",
-                                                isEnabled: { Config.faceRecognitionEnabled },
-                                                setEnabled: { Config.faceRecognitionEnabled = $0 },
-                                                preexisting: false),
-                          toolNames: ["face_recognition"],
-                          stores: [.faces],
-                          dataRetainedWhenDisabled: "Face embeddings and the names attached to them stay in the known-faces file until they are erased; turning the feature off stops new matching and new enrolment, it does not delete what was already learned.",
-                          erasure: .api("FaceRecognitionService.forgetAllFaces()"))
 
         case .speakerIdentification:
             // Screened `.none`, not `.biometric` (EU AI Act review §3.7, Plan HP P1 item 5).

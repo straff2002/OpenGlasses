@@ -103,7 +103,7 @@ extension Config {
     /// Recognizer picker writes it alongside `asrEnginePreference` — on for a cloud choice, off for
     /// any other — so the switch is the choice itself, and an organisation profile can pin it off
     /// (`SettingKey.cloudDictationEnabled`), never on. The ceiling clamps on read and leaves the
-    /// wearer's own value alone, as `faceRecognitionEnabled` does.
+    /// wearer's own value alone, as `interpreterEnabled` does.
     static var cloudDictationEnabled: Bool {
         get {
             PolicyEnvelope.bool(.cloudDictationEnabled,

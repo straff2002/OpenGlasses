@@ -17,13 +17,10 @@ struct BadgeScanTool: NativeTool {
 
     let cameraService: any FilteredStillProviding
     let locationService: LocationService
-    weak var faceService: FaceRecognitionService?
 
-    init(cameraService: any FilteredStillProviding, locationService: LocationService,
-         faceService: FaceRecognitionService? = nil) {
+    init(cameraService: any FilteredStillProviding, locationService: LocationService) {
         self.cameraService = cameraService
         self.locationService = locationService
-        self.faceService = faceService
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -101,9 +98,6 @@ struct BadgeScanTool: NativeTool {
             reply += " The badge QR looked like an event card, so I kept it as context."
         } else if nameFromQROnly {
             reply += " That name came from the badge QR only — I couldn't read the printed text to double-check it."
-        }
-        if faceService != nil {
-            reply += " Say 'remember this person as \(personName)' to link their face too."
         }
         return reply
     }
