@@ -11,7 +11,11 @@ struct BrainTool: NativeTool {
     people, notes, meetings, knowledge graph) and returns cited findings plus what's missing — \
     prefer it over individual memory tools when unsure where something lives. 'person' builds a \
     dossier (facts, relationships, encounters) — use before/after meeting someone. 'link' records \
-    a relationship ('Alice works at Acme'). 'encounters' lists logged encounters with people (when and where). \
+    a relationship ('Alice works at Acme'). 'log_encounter' notes that the user is meeting or just \
+    met someone, when they say so ('I'm meeting Sam at the café', 'just bumped into Priya') — the \
+    person, optionally the place and what it was about; the time is now and, without a place, \
+    the phone's location. Not for a meeting still to come (use a reminder or the calendar). \
+    'encounters' lists logged encounters with people (when and where). \
     'forget' erases an entity. 'status' reports brain size. 'save_need' records a follow-up — what \
     a person wants, is looking for, or you owe them ('Bob wants a copy of the deck') — and 'needs' \
     lists open follow-ups (per person, or all); 'resolve_need' marks one done. 'recall' answers a \
@@ -26,15 +30,16 @@ struct BrainTool: NativeTool {
         [
             "type": "object",
             "properties": [
-                "action": ["type": "string", "description": "query, recall, insights, person, link, encounters, save_need, needs, resolve_need, forget, or status",
-                           "enum": ["query", "recall", "insights", "person", "link", "encounters", "save_need", "needs", "resolve_need", "forget", "status"]],
+                "action": ["type": "string", "description": "query, recall, insights, person, link, log_encounter, encounters, save_need, needs, resolve_need, forget, or status",
+                           "enum": ["query", "recall", "insights", "person", "link", "log_encounter", "encounters", "save_need", "needs", "resolve_need", "forget", "status"]],
                 "days": ["type": "integer", "description": "On 'insights': how many days back to recap (default 7)."],
                 "question": ["type": "string", "description": "On 'query': what to look up across memory. On 'recall': what to find in past conversations (may include 'yesterday'/'last week')."],
-                "person": ["type": "string", "description": "On 'person'/'encounters'/'save_need'/'needs'/'resolve_need'/'forget': the person or entity name."],
+                "person": ["type": "string", "description": "On 'person'/'log_encounter'/'encounters'/'save_need'/'needs'/'resolve_need'/'forget': the person or entity name."],
+                "place": ["type": "string", "description": "On 'log_encounter': where, if the user named it (e.g. 'the café on Main St'). Leave out to use the phone's location."],
                 "source": ["type": "string", "description": "On 'link': subject entity (e.g. 'Alice')."],
                 "relation": ["type": "string", "description": "On 'link': one of works_at, leads, reports_to, founded, owns, invested_in, member_of, lives_in, based_in, married_to, parent_of, sibling_of, studied_at, attended, or knows."],
                 "target": ["type": "string", "description": "On 'link': object entity (e.g. 'Acme')."],
-                "text": ["type": "string", "description": "On 'save_need': the follow-up (e.g. 'wants an intro to Dana'). On 'resolve_need': optional text to match the need to close."],
+                "text": ["type": "string", "description": "On 'save_need': the follow-up (e.g. 'wants an intro to Dana'). On 'resolve_need': optional text to match the need to close. On 'log_encounter': optional, what the meeting was about (e.g. 'coffee about the Henderson job')."],
             ],
             "required": ["action"],
         ]
@@ -51,6 +56,18 @@ struct BrainTool: NativeTool {
     /// Other sources (graph, documents, people, notes) are separate stores and are unaffected.
     /// Injectable so tests don't have to mutate the shared defaults.
     var memoryEnabled: () -> Bool = { Config.userMemoryEnabled }
+    /// Where the phone is, for an encounter the user logs without naming a place: a place name
+    /// when one is known, and the coordinates. Nil when location is unavailable or not wired.
+    var currentPlace: (@MainActor () -> EncounterPlace?)?
+    /// The graph the tool reads and writes. Tests pass their own; production uses the shared one.
+    var brainStore: BrainStore?
+
+    /// The phone's position as an encounter records it.
+    struct EncounterPlace: Equatable {
+        var name: String?
+        var latitude: Double?
+        var longitude: Double?
+    }
 
     /// Said instead of a "no remembered facts" gap: with memory off nothing was searched, so
     /// claiming nothing matched would be false.
@@ -70,7 +87,7 @@ struct BrainTool: NativeTool {
 
     func execute(args: [String: Any]) async throws -> String {
         let action = (args["action"] as? String ?? "query").lowercased()
-        let brain = BrainStore.shared
+        let brain = brainStore ?? BrainStore.shared
 
         switch action {
         case "query", "search", "ask":
@@ -121,6 +138,9 @@ struct BrainTool: NativeTool {
                           dstKind: RelationOntology.destinationKind(for: normalizedRelation),
                           dstName: dst, sourceRef: "told directly", origin: .toldMe)
             return "Linked: \(src) \(RelationOntology.phrase(for: normalizedRelation)) \(dst)."
+
+        case "log_encounter", "met", "met_with", "meeting":
+            return await logEncounter(args: args, brain: brain)
 
         case "encounters", "sightings":
             let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -185,7 +205,7 @@ struct BrainTool: NativeTool {
                    "Semantic memory \(memoryCount); \(docCount) documents; \(SocialContextStore.shared.allPeople().count) people with notes."
 
         default:
-            return "Unknown action. Use: query, recall, insights, person, link, encounters, save_need, needs, resolve_need, forget, or status."
+            return "Unknown action. Use: query, recall, insights, person, link, log_encounter, encounters, save_need, needs, resolve_need, forget, or status."
         }
     }
 
@@ -326,6 +346,51 @@ struct BrainTool: NativeTool {
                    "or link relationships, and the dossier builds itself."
         }
         return "DOSSIER — \(person):\n\n" + sections.joined(separator: "\n\n")
+    }
+
+    // MARK: - Logging an encounter
+
+    /// Records that the user met `person`, from what they said. The encounter log's only writer
+    /// since face recognition was removed (2026-11-13): who comes from the user's words, never
+    /// from a face. A place the user named is kept as said, without the phone's coordinates (they
+    /// may be talking about somewhere else); without one, the phone's location is used. What the
+    /// meeting was about goes through the same write gate as a follow-up (Plan LN): a note the gate
+    /// declines is left out, the encounter itself is still logged, and the model hears the notice.
+    private func logEncounter(args: [String: Any], brain: BrainStore) async -> String {
+        guard let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !person.isEmpty else {
+            return "Who did you meet?"
+        }
+        let namedPlace = (args["place"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var note = (args["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if note?.isEmpty == true { note = nil }
+
+        var declinedNotice: String?
+        if let text = note {
+            let gate = BrainStore.needDecision(person: person, text: text)
+            if !gate.isKept {
+                declinedNotice = gate.spokenNotice ?? MemoryRefusalNotice.sentence(for: gate.declinedCategory ?? .health)
+                note = nil
+            }
+        }
+
+        let place: EncounterPlace?
+        if let namedPlace, !namedPlace.isEmpty {
+            place = EncounterPlace(name: namedPlace)
+        } else if let currentPlace {
+            place = await currentPlace()
+        } else {
+            place = nil
+        }
+
+        brain.logEncounter(person: person, locationName: place?.name,
+                           latitude: place?.latitude, longitude: place?.longitude, context: note)
+
+        var reply = "Noted: you met \(person)"
+        if let name = place?.name { reply += " at \(name)" }
+        reply += "."
+        if let declinedNotice { reply += " " + declinedNotice }
+        return reply
     }
 
     // MARK: - Helpers
