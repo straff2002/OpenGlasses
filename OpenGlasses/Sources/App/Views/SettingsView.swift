@@ -1208,28 +1208,6 @@ struct GlassesSettingsView: View {
                 Text("The glasses run their own companion app for developer access, updated separately from the firmware and from the Meta AI app on your phone. If streaming is refused as needing an update, this is usually the one to open.")
             }
 
-            // Plan HP P2 item 8: face recognition only runs on the glasses camera, so its switch
-            // and the people it can name live here, under the glasses.
-            Section {
-                NavigationLink {
-                    EnrolledFacesView(faceService: appState.faceRecognition)
-                } label: {
-                    HStack {
-                        Label("Enrolled Faces", systemImage: "person.crop.square")
-                        Spacer()
-                        Text(EnrolledFacesPresentation.linkStatus(
-                            enabled: Config.faceRecognitionEnabled,
-                            enrolled: appState.faceRecognition.knownFaces.count,
-                            available: MarketAvailability.shared.availability(of: .faceRecognition) == .available))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Text("Face Recognition")
-            } footer: {
-                Text("Off unless you turn it on. Names only the people you enrol, and they aren't told.")
-            }
-
             // Instant Replay rides the glasses camera's stream, so its switch lives here too.
             InstantReplaySettingsSection(replay: appState.instantReplay)
         }

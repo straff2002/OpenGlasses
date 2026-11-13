@@ -10,9 +10,12 @@ import Combine
 /// app, so the Settings toggle was inert and the promise it made was false. Wiring it back raises
 /// the question the original never answered: *which* consumers? Two constraints decide it.
 ///
-/// 1. **Face recognition must see raw pixels.** The blur is indiscriminate (the known-contact
-///    exemption list was removed in BK P6 as dead code), so filtering ahead of recognition would
-///    blur the very faces the user deliberately enrolled and break the feature outright.
+/// 1. **An on-device reader that needs the people in the picture must see raw pixels.** The blur
+///    is indiscriminate (the known-contact exemption list was removed in BK P6 as dead code), so
+///    filtering ahead of such a reader destroys the signal it exists to read. Face recognition was
+///    the first consumer this constraint was written for; it was removed on 2026-11-13, and with it
+///    the only exemption that existed for the sake of identifying someone. What remains exempt is
+///    exempt because its pixels never leave the device (the cases below say which).
 /// 2. **Blurring costs a Vision pass plus a Core Image composite per frame.** The model-facing
 ///    paths are already throttled; camera-rate consumers share the off-main `OutboundFrameRelay`.
 ///
@@ -35,8 +38,6 @@ enum PrivacyFilterScope: String, CaseIterable {
     case pinnedFrame
     /// A still attached to a delegated remote-agent task (Plan CN).
     case agentAttachment
-    /// Face enrolment and matching. Never filtered — see constraint 1.
-    case faceRecognition
     /// Continuous scene narration on the **on-device** VLM (Plan CV). Never filtered, and the
     /// reason is the same as constraint 1 rather than an oversight: frames never leave the device,
     /// so there is no egress to filter, and the blur is indiscriminate — it would degrade exactly
@@ -124,7 +125,7 @@ enum PrivacyFilterScope: String, CaseIterable {
              .recording, .broadcast, .expertStream, .visionAssessment, .assistiveGuidance,
              .toolPhotoCapture, .photoLibrary, .remoteFrameRequest, .officeRecordingBlur, .expertHandover:
             return true
-        case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision, .officeRecording:
+        case .sceneNarration, .onDevicePreview, .onDeviceVision, .officeRecording:
             return false
         }
     }
@@ -142,7 +143,7 @@ enum PrivacyFilterScope: String, CaseIterable {
     /// destination is the organisation's own office, and the roster names its exits.
     var leavesTheDevice: Bool {
         switch self {
-        case .faceRecognition, .sceneNarration, .onDevicePreview, .onDeviceVision:
+        case .sceneNarration, .onDevicePreview, .onDeviceVision:
             return false
         case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .recording, .broadcast,
              .expertStream, .visionAssessment, .assistiveGuidance, .toolPhotoCapture, .photoLibrary,
@@ -157,7 +158,7 @@ enum PrivacyFilterScope: String, CaseIterable {
     var usesOutboundRelay: Bool {
         switch self {
         case .recording, .broadcast, .expertStream: return true
-        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment, .faceRecognition,
+        case .liveSession, .directModelTurn, .pinnedFrame, .agentAttachment,
              .sceneNarration, .onDevicePreview, .onDeviceVision, .visionAssessment,
              .assistiveGuidance, .toolPhotoCapture, .photoLibrary, .remoteFrameRequest,
              .officeRecording, .officeRecordingBlur, .expertHandover: return false
@@ -313,7 +314,7 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
     /// The single entry point for call sites: blur for `scope`, or hand the frame back untouched
     /// when that consumer is exempt (`PrivacyFilterScope.isFiltered`) or the filter is off.
     ///
-    /// Callers pass their scope rather than deciding for themselves, so "is face recognition
+    /// Callers pass their scope rather than deciding for themselves, so "is this consumer
     /// exempt?" is answered in one tested place instead of at each chokepoint.
     func filtered(_ image: UIImage, for scope: PrivacyFilterScope) -> UIImage {
         guard scope.isFiltered else { return image }

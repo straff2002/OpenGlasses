@@ -125,11 +125,6 @@ enum ActivityTitler {
         "new_topic": .init("Started a new topic"),
         "pin_frame": .init("Pinned a picture from the camera"),
         "reading": .init("Recorded a reading", actions: ["correct_reading": "Corrected a reading"]),
-        "face_recognition": .init("Changed face recognition", actions: [
-            "remember": "Remembered a face you asked me to", "forget": "Forgot a face you asked me to",
-            "on": "Turned face recognition on", "off": "Turned face recognition off",
-            "toggle": "Switched face recognition",
-        ], reads: ["list", "status"]),
 
         // Time and places
         "calendar": .init("Changed your calendar", actions: [

@@ -43,7 +43,7 @@ Everything below goes only to addresses and systems you set up.
 | Live expert call | Camera and sound to the expert, through your signalling server, only while the call runs. Never in Medical Compliance mode: a help request still goes out, and the expert gets the job record. |
 | First-aid triage | Never. Camera triage is for personal use and is not offered in Field Assist editions or on a phone your profile manages. First-aid coaching, the spoken protocols, is, and it keeps no record. |
 
-What you never receive, because nothing collects it: a continuous feed of location, camera or captions; a productivity score, ranking or activity log; the person's conversation history, memories, AI request records or enrolled faces, which stay on the phone. We run no server and no account system, so nothing passes through us and we keep no copy.
+What you never receive, because nothing collects it: a continuous feed of location, camera or captions; a productivity score, ranking or activity log; the person's conversation history, memories or AI request records, which stay on the phone. We run no server and no account system, so nothing passes through us and we keep no copy.
 
 ## 5. Pinning settings with an organisation profile
 
@@ -51,7 +51,6 @@ An organisation profile is a signed document we prepare with you. Each phone enr
 
 | Setting | Profile key | Can be pinned |
 |---|---|---|
-| Face recognition | `faceRecognitionEnabled` | Off only. Recognising a bystander is never an employer's to switch on. |
 | "Connecting to Avenkin AI" at voice startup | `aiConnectionCueEnabled` | On only |
 | Bystander face blur | `privacyFilterEnabled` | On only |
 | Agent mode | `agentModeEnabled` | Off only. While it is off, no remote command runs at all. |
@@ -69,11 +68,12 @@ An organisation profile is a signed document we prepare with you. Each phone enr
 
 While it is in place the profile also sets your organisation's name, report recipients and channel, whether office reports carry the transcript, the key your job files are signed with, your colour, whether the assistant looks up tool definitions on demand (`organizationToolDefinitionsMode`: automatic, always or never), and the experts your technicians can call (`organizationExperts`: name, number or FaceTime handle, specialties, staff or contracted, on-call hours, and for a contracted expert the rate used on statements, never charged), and what a job sent to an expert carries: the conversation (`expertHandoverTranscript`: include, ask or never; without it, on for your own list and off for a technician's own additions), the site's address for your own staff experts (`expertHandoverIncludesAddress`; otherwise the town only, and never the customer's name or contact), and how long the expert's app keeps it (`expertHandoverRetentionDays`, 1 to 30, default 30), and whether the customer's report shows an expert's time and name (`customerReportShowsExpertTime`; off by default, when the customer's report shows an expert's coaching as work done with no name, and never a rate). It can name the AI provider and model, lock whole groups of settings and close tools in a Field Assist edition, and give starting values the technician may change later (Field Assist on, the default vault and mode, the support address).
 
+A profile written before 13 November 2026 may still pin `faceRecognitionEnabled` off. Face recognition has since been removed from the app, so the phone still accepts that profile, applies everything else in it, and lists that one setting as retired.
+
 ## 6. What a technician can switch off themselves
 
 Anything below can be switched off on the phone without asking anyone, unless your profile has pinned it the other way.
 
-- **Face recognition:** Settings › Devices & Privacy › Glasses › Enrolled Faces. "Forget Everyone" on the same screen removes every enrolled face.
 - **Bystander face blur:** Settings › Devices & Privacy › Hardware & Privacy.
 - **First-Aid Coaching and Triage:** Settings › Everyday › Health & Fitness, or Settings › Devices & Privacy › Health & Fitness where Everyday isn't shown.
 - **"Connecting to Avenkin AI":** Settings, under Voice.
@@ -81,7 +81,7 @@ Anything below can be switched off on the phone without asking anyone, unless yo
 - **Agent features:** Agentic Features in Settings.
 - **The assistant's voice in recordings and streams:** "Include Assistant Voice", off unless switched on.
 
-What stays on the phone whatever is switched on: conversation history, memories, notes, enrolled faces, the 14-day record of AI requests (which holds no words), and recordings until someone sends one. The technician can delete each of these in the app.
+What stays on the phone whatever is switched on: conversation history, memories, notes, the 14-day record of AI requests (which holds no words), and recordings until someone sends one. The technician can delete each of these in the app.
 
 ## 7. Where to read more
 

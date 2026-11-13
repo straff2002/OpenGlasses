@@ -76,7 +76,6 @@ struct CameraCapabilities: Equatable, Sendable {
 enum CameraDependentFeature: String, CaseIterable, Sendable {
     case photoCapture
     case livePreview
-    case faceRecognition
     case signLanguage
     case readingCompanion
     /// Continuous scene narration — the assistive loop that describes a space as it changes.
@@ -93,7 +92,7 @@ enum CameraDependentFeature: String, CaseIterable, Sendable {
         switch self {
         case .photoCapture:
             return false
-        case .livePreview, .faceRecognition, .signLanguage, .readingCompanion, .sceneNarration,
+        case .livePreview, .signLanguage, .readingCompanion, .sceneNarration,
              .framePinning, .videoRecording, .broadcast, .expertStream, .offlineLiveSession,
              .ambientCameraCaptions:
             return true
@@ -105,7 +104,6 @@ enum CameraDependentFeature: String, CaseIterable, Sendable {
         switch self {
         case .photoCapture: return "Photo Capture"
         case .livePreview: return "Live Preview"
-        case .faceRecognition: return "Face Recognition"
         case .signLanguage: return "Sign Language"
         case .readingCompanion: return "Reading Companion"
         case .sceneNarration: return "Scene Narration"

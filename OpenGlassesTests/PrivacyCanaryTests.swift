@@ -189,18 +189,6 @@ final class PrivacyCanaryTests: XCTestCase {
                 await HomeAssistantEntityCache().refreshIfNeeded(force: true)
             },
 
-            Probe(subsystem: "face database", expects: "[vision] face") {
-                let store = FaceDatabaseFixture()
-                defer { store.restore() }
-                // A face DB full of canary-named people, loaded by the real service.
-                store.write(#"[{"id":"CANARY-FACE-1","name":"\#(Canary.person)","faceprint":[0.1,0.2],"addedAt":0,"lastSeen":0}]"#)
-                _ = FaceRecognitionService()
-                // …and a corrupt one, so the decode failure runs too: a `DecodingError`'s own
-                // description quotes the JSON it choked on.
-                store.write(#"{"person":"\#(Canary.person)","note":"\#(Canary.medication)"}"#)
-                _ = FaceRecognitionService()
-            },
-
             Probe(subsystem: "JSON store salvage", expects: "[store] store") {
                 let directory = FileManager.default.temporaryDirectory
                     .appendingPathComponent("CanaryStore_\(UUID().uuidString)", isDirectory: true)
@@ -447,32 +435,6 @@ private final class InertPhoneCamera: PhoneCameraCapturing {
 
 private struct ProbeRecord: Codable {
     let title: String
-}
-
-/// Swaps the face database out from under `FaceRecognitionService`, whose storage URL is the
-/// documents directory, and puts the wearer's own file back afterwards.
-@MainActor
-private final class FaceDatabaseFixture {
-    private let url: URL
-    private let saved: Data?
-
-    init() {
-        url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("known_faces.json")
-        saved = try? Data(contentsOf: url)
-    }
-
-    func write(_ json: String) {
-        try? Data(json.utf8).write(to: url, options: .atomic)
-    }
-
-    func restore() {
-        if let saved {
-            try? saved.write(to: url, options: .atomic)
-        } else {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
 }
 
 // MARK: - The corpus

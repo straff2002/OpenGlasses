@@ -24,8 +24,8 @@ final class AIFeatureRegistryTests: XCTestCase {
         set(feature, enabled: false)
     }
 
-    /// Flip a feature on for the duration of one test. Face recognition defaults off since Plan HP,
-    /// so a test that starts from "on" says so rather than relying on the default.
+    /// Flip a feature on for the duration of one test, so a test that starts from "on" says so
+    /// rather than relying on the default.
     private func enable(_ feature: AIFeature) {
         set(feature, enabled: true)
     }
@@ -52,14 +52,28 @@ final class AIFeatureRegistryTests: XCTestCase {
         }
     }
 
-    /// The four categories the assessment named each have at least one feature. A category with no
+    /// The categories the assessment named each have at least one feature. A category with no
     /// feature means either the screening missed something or the category is dead.
+    ///
+    /// `.biometric` is the exception, and deliberately: face recognition, its one member, was
+    /// removed on 2026-11-13. The category stays in the vocabulary because the screening still asks
+    /// the question — speaker identification and Social mode are screened against it and recorded
+    /// `.none` — and the case below pins that nothing has come back under it unnoticed.
     func testEverySensitiveCategoryIsCovered() {
-        for category in [AIFeature.SensitiveCategory.biometric, .health, .workerSafety, .externalActuation] {
+        for category in [AIFeature.SensitiveCategory.health, .workerSafety, .externalActuation] {
             XCTAssertTrue(
                 AIFeature.allCases.contains { $0.record.sensitiveCategories.contains(category) },
                 "no AI feature is registered under \(category.rawValue)")
         }
+    }
+
+    /// No AI feature identifies or categorises a person from a face or a voice. A feature that
+    /// would must be argued for afresh — it is what the glasses platform's acceptable-use policy
+    /// forbids without an exception, and what made the app high-risk under the EU AI Act.
+    func testNoFeatureIsBiometric() {
+        let biometric = AIFeature.allCases.filter { $0.record.sensitiveCategories.contains(.biometric) }
+        XCTAssertEqual(biometric, [], "a biometric feature is back: \(biometric)")
+        XCTAssertNil(AIFeature(rawValue: "faceRecognition"))
     }
 
     /// `.none` is a screening result, not a shrug: it may not be combined with a real category.
@@ -83,7 +97,7 @@ final class AIFeatureRegistryTests: XCTestCase {
     /// A registered tool name must be a tool. This is the check that catches a renamed tool.
     ///
     /// Scraped from the sources rather than read off a live `NativeToolRegistry`, because several of
-    /// these tools are registered conditionally — face recognition needs a camera service, the
+    /// these tools are registered conditionally — several need a camera service, the
     /// worker-safety tools are gated on entitlement — so a registry built headless answers to fewer
     /// names than the app has. Trying it the other way round is what surfaced that: four features
     /// "claimed a tool that does not exist" purely because the test's registry had not been given
@@ -104,7 +118,7 @@ final class AIFeatureRegistryTests: XCTestCase {
                 declared.insert(String(line[start.upperBound..<end]))
             }
         }
-        XCTAssertTrue(declared.contains("face_recognition"), "the scrape itself is broken")
+        XCTAssertTrue(declared.contains("first_aid"), "the scrape itself is broken")
 
         for feature in AIFeature.allCases {
             for name in feature.record.toolNames {
@@ -138,12 +152,12 @@ final class AIFeatureRegistryTests: XCTestCase {
     }
 
     func testDisabledFeatureContributesItsToolsToTheDisabledSet() {
-        enable(.faceRecognition)
+        enable(.firstAidAssist)
         enable(.healthVault)
-        XCTAssertFalse(AIFeatureGate.isToolDisabled("face_recognition"))
-        disable(.faceRecognition)
-        XCTAssertTrue(AIFeatureGate.isToolDisabled("face_recognition"))
-        XCTAssertTrue(AIFeatureGate.disabledToolNames.contains("face_recognition"))
+        XCTAssertFalse(AIFeatureGate.isToolDisabled("first_aid"))
+        disable(.firstAidAssist)
+        XCTAssertTrue(AIFeatureGate.isToolDisabled("first_aid"))
+        XCTAssertTrue(AIFeatureGate.disabledToolNames.contains("first_aid"))
         // Other features are untouched.
         XCTAssertFalse(AIFeatureGate.isToolDisabled("health_vault"))
     }
@@ -154,9 +168,6 @@ final class AIFeatureRegistryTests: XCTestCase {
 
     // MARK: - The entry points honour the switch
 
-    /// `FaceRecognitionTool` is deliberately absent from these four: constructing it needs a
-    /// `CameraService`, which reaches the glasses SDK and cannot be built headless. Its gate is
-    /// covered by the disabled-tool-set case above and by the erasure test below.
     func testHealthSafetyToolRefusesWhenTheFeatureIsOff() async throws {
         disable(.healthSafetyAdvisor)
         let answer = try await HealthSafetyTool().execute(args: ["subject": "ibuprofen"])
@@ -182,46 +193,6 @@ final class AIFeatureRegistryTests: XCTestCase {
     }
 
     // MARK: - Turning it off and erasing leaves nothing
-
-    /// W08.5's actual requirement: a release can disable a use case *without retaining excess
-    /// personal data*. Face recognition is the sharpest case — the data is other people's
-    /// biometrics — so the claim is exercised end to end, against the file on disk rather than the
-    /// in-memory array, because that file is what would survive a relaunch.
-    func testDisablingFaceRecognitionAndErasingLeavesNoBiometricBehind() throws {
-        let workspace = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AIFeature_\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: workspace) }
-
-        // Seeded the way the service stores a face: enrolling needs a camera.
-        let canary = "Zylkorath"
-        let seeded = [FaceRecognitionService.KnownFace(name: canary,
-                                                       faceprint: Array(repeating: 0.1, count: 128))]
-        let file = workspace.appendingPathComponent("known_faces.json")
-        try JSONEncoder().encode(seeded).write(to: file, options: .atomic)
-
-        var service = FaceRecognitionService(directory: workspace)
-        XCTAssertEqual(service.knownFaces.count, 1)
-
-        // Disabling alone does NOT delete — and the registry says so rather than implying otherwise.
-        disable(.faceRecognition)
-        XCTAssertFalse(AIFeatureGate.isEnabled(.faceRecognition))
-        XCTAssertTrue(AIFeature.faceRecognition.record.dataRetainedWhenDisabled
-            .lowercased().contains("stay"))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
-
-        // The erase hook the registry names is what removes it.
-        XCTAssertEqual(AIFeature.faceRecognition.record.erasure,
-                       .api("FaceRecognitionService.forgetAllFaces()"))
-        XCTAssertEqual(service.forgetAllFaces(), 1)
-
-        // Reopened from disk: nothing of the person survives, in the array or in the bytes.
-        service = FaceRecognitionService(directory: workspace)
-        XCTAssertTrue(service.knownFaces.isEmpty)
-        let bytes = try Data(contentsOf: file)
-        XCTAssertNil(bytes.range(of: Data(canary.utf8)), "the erased name is still in the file")
-        XCTAssertFalse(service.listKnownFaces().contains(canary))
-    }
 
     /// The health-side equivalent. The vault is the wearer's own document store, so the honest
     /// claim is that disabling stops the model reading it and does not delete it — and the registry

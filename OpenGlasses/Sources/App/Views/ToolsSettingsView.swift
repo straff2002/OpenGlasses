@@ -66,7 +66,6 @@ struct ToolsSettingsView: View {
             "smart_home": String(localized: "Smart Home"),
             "run_shortcut": String(localized: "Siri Shortcuts"),
             "summarize_conversation": String(localized: "Summarize"),
-            "face_recognition": String(localized: "Face Recognition"),
             "memory_rewind": String(localized: "Memory Rewind"),
             "geofence": String(localized: "Geofence Alerts"),
             "send_via": String(localized: "Multi-Channel Message"),

@@ -124,14 +124,8 @@ final class AssistiveModePolicyTests: XCTestCase {
         XCTAssertTrue(record.dataRetainedWhenDisabled.lowercased().hasPrefix("nothing"))
     }
 
-    /// Default on, and the face-recognition migration does not touch it.
-    func testSocialSwitchDefaultsOnAndTheMigrationLeavesItAlone() {
-        let suite = "AssistiveModePolicyTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        CapabilityDefaultMigration.run(defaults: defaults, faceDatabaseHasEntries: { false })
-        XCTAssertNil(defaults.object(forKey: "assistiveSocialEnabled"))
-
+    /// Default on.
+    func testSocialSwitchDefaultsOn() {
         let saved = UserDefaults.standard.object(forKey: "assistiveSocialEnabled")
         defer {
             if let saved { UserDefaults.standard.set(saved, forKey: "assistiveSocialEnabled") }

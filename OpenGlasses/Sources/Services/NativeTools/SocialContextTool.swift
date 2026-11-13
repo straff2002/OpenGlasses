@@ -1,7 +1,7 @@
 import Foundation
 
 /// Social context: per-person memory that builds a dossier over time.
-/// Extends face recognition by storing notes, topics, and context about each person.
+/// Stores notes, topics, and context about each person.
 /// "Remember that John works at Stripe and likes hiking"
 /// "What do I know about John?"
 struct SocialContextTool: NativeTool {

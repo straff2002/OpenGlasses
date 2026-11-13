@@ -11,7 +11,7 @@ struct BrainTool: NativeTool {
     people, notes, meetings, knowledge graph) and returns cited findings plus what's missing — \
     prefer it over individual memory tools when unsure where something lives. 'person' builds a \
     dossier (facts, relationships, encounters) — use before/after meeting someone. 'link' records \
-    a relationship ('Alice works at Acme'). 'encounters' lists recent face-recognition sightings. \
+    a relationship ('Alice works at Acme'). 'encounters' lists logged encounters with people (when and where). \
     'forget' erases an entity. 'status' reports brain size. 'save_need' records a follow-up — what \
     a person wants, is looking for, or you owe them ('Bob wants a copy of the deck') — and 'needs' \
     lists open follow-ups (per person, or all); 'resolve_need' marks one done. 'recall' answers a \
@@ -126,7 +126,7 @@ struct BrainTool: NativeTool {
             let person = (args["person"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             let encounters = brain.encounters(for: person?.isEmpty == false ? person : nil, limit: 8)
             if encounters.isEmpty {
-                return person.map { "No logged encounters with \($0)." } ?? "No encounters logged yet. They're recorded automatically when face recognition spots a known person."
+                return person.map { "No logged encounters with \($0)." } ?? "No encounters logged yet."
             }
             return "Recent encounters:\n" + encounters.map(describe).joined(separator: "\n")
 
@@ -322,8 +322,8 @@ struct BrainTool: NativeTool {
         }
 
         guard !sections.isEmpty else {
-            return "The brain has nothing on \(person) yet. Add facts ('remember that \(person)…'), " +
-                   "teach face recognition, or link relationships, and the dossier builds itself."
+            return "The brain has nothing on \(person) yet. Add facts ('remember that \(person)…') " +
+                   "or link relationships, and the dossier builds itself."
         }
         return "DOSSIER — \(person):\n\n" + sections.joined(separator: "\n\n")
     }

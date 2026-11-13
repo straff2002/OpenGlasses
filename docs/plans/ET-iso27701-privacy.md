@@ -84,7 +84,6 @@ subject column distinguishes the wearer from a third party who never installed t
 | expertCard | `ExpertCardStore` | preference | wearer | platformDefault | no | none | `ExpertCardStore.remove()` | n/a — no subject linkage |
 | expertLedger | `ExpertLedgerStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | rows older than 400 days go; cap 2000 | `ExpertLedgerStore.removeAll()` | n/a — no subject linkage |
 | expertList | `ExpertListStore` | preference | wearer | platformDefault | no | none | `ExpertListStore.removeAll()` | n/a — no subject linkage |
-| faces | `FaceRecognitionService` | biometric | thirdPartySubject | complete | yes | none | `FaceRecognitionService.forgetAllFaces()` | `FaceRecognitionService.forgetFace(name:)` |
 | fieldDeliverySettings | `DeliverySettings` | preference | wearer | platformDefault | no | none | none — configuration, cleared by reconfiguring | n/a — no subject linkage |
 | fieldSessionLogs | `SessionLogger` | operationalAudit | wearer | platformDefault | no | none | none — a session log is the engineer's compliance record | n/a — no subject linkage |
 | geofenceReminders | `GeofenceTool` | locationData | wearer | platformDefault | no | none | none — reminders are removed individually as they fire | n/a — no subject linkage |

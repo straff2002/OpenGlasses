@@ -9,8 +9,8 @@ import Foundation
 //   1. **A group has a parent toggle only if it has a real switch to follow.** Getting Around and
 //      Translate have rows that open screens and nothing to switch on as a whole, so they are plain
 //      lists. A parent there would be a switch that means nothing.
-//   2. **Some things are never a `.follows` member:** face recognition, Agentic Features, and
-//      sharing health data with the AI (Decision 7). The first two are not in any group. Sharing
+//   2. **Some things are never a `.follows` member:** Agentic Features and sharing health data
+//      with the AI (Decision 7). Agentic Features is not in any group. Sharing
 //      and Memory Enrichment appear as `.separateConsent`, because each sends something off the
 //      phone that the parent's own consent does not cover. Sharing goes further: a parent may turn
 //      it off, and nothing but its own switch turns it back on (`parentMayRestore`).

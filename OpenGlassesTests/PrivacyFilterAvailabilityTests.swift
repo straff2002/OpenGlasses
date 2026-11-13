@@ -133,7 +133,7 @@ final class PrivacyFilterAvailabilityTests: XCTestCase {
         XCTAssertNotIdentical(filter.filtered(source, for: .directModelTurn), source)
 
         // An exempt scope is exempt in every state — it was never filtered to begin with.
-        XCTAssertIdentical(filter.filtered(source, for: .faceRecognition), source)
+        XCTAssertIdentical(filter.filtered(source, for: .onDeviceVision), source)
     }
 
     // MARK: - The relay, through real transitions

@@ -184,16 +184,12 @@ enum OutboundFrameConsumer: String, CaseIterable {
     case colorIdentifierTool
     /// Conference badge OCR + QR reconciliation.
     case badgeScanTool
-    /// `identify_person` — face matching, exempt for the same reason the service is.
-    case faceRecognitionTool
     /// The fitness coach's form check: `NativeToolRegistry` hands the tool a frame provider that
     /// feeds an on-device Vision pose pass. Still a raw read, because the provider is synchronous.
     case fitnessPoseFrame
 
     // MARK: - Exempt (no egress, or the blur would break the feature)
 
-    /// Face enrolment and matching. Needs raw pixels by definition.
-    case faceRecognition
     /// Continuous scene narration on the on-device VLM.
     case sceneNarration
     /// The live camera preview on the phone's own screen.
@@ -325,7 +321,6 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .expertMeetingLinkTransport: return "MeetingLinkTransport"
         case .expertPeerTransport: return "WebRTCPeerTransport"
         case .expertTransportProtocol: return "ExpertStreamTransport"
-        case .faceRecognition: return "FaceRecognitionService"
         case .sceneNarration: return "SceneNarrationService"
         case .livePreview: return "LivePreviewView"
         case .phoneViewfinder: return "PhoneViewfinder"
@@ -358,7 +353,6 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .qrContextTool: return "QRContextTool"
         case .colorIdentifierTool: return "ColorIdentifierTool"
         case .badgeScanTool: return "BadgeScanTool"
-        case .faceRecognitionTool: return "FaceRecognitionTool"
         case .fitnessPoseFrame: return "NativeToolRegistry"
         case .jobRecordingCapture: return "JobRecordingCoordinator"
         case .jobRecordingBlurPass: return "BundleBlurPass"
@@ -380,7 +374,6 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .directModelTurn: return .directModelTurn
         case .pinnedFrame: return .pinnedFrame
         case .agentAttachment, .hermesAgentTurnAttachment, .hermesBridgePhotoRequest: return .agentAttachment
-        case .faceRecognition: return .faceRecognition
         case .sceneNarration: return .sceneNarration
         case .livePreview, .phoneViewfinder: return .onDevicePreview
         case .readingCompanion, .fingerspelling, .dwellCapture: return .onDeviceVision
@@ -390,7 +383,6 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .jobPhoneEvidence, .parkingSignCapture, .parkingPhonePhoto: return .toolPhotoCapture
         case .dwellCaptureSave: return .photoLibrary
         case .mcpFrameRequest: return .remoteFrameRequest
-        case .faceRecognitionTool: return .faceRecognition
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
@@ -403,7 +395,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
 
     var tap: Tap {
         switch self {
-        case .outboundRelayInput, .appRelayAttachment, .faceRecognition, .readingCompanion,
+        case .outboundRelayInput, .appRelayAttachment, .readingCompanion,
              .fingerspelling, .dwellCapture, .jobRecordingCapture: return .rawCameraPublisher
         case .jobRecordingBlurPass, .jobRecordingOfficeSync: return .jobRecordingFolder
         case .liveSessionPush, .livePreview: return .rawCameraCallback
@@ -424,7 +416,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .mcpFrameRequest, .studyScan, .teleprompterScan, .readingAccessibilityTool,
              .smartCaptureTool, .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
-             .faceRecognitionTool, .lookCloselyCapture, .parkingSignCapture: return .filteredStill
+             .lookCloselyCapture, .parkingSignCapture: return .filteredStill
         }
     }
 
@@ -438,7 +430,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
              .expertTransportProtocol: return .relay
         case .liveSessionPush, .liveSessionPollFallback, .directModelTurn, .pinnedFrame,
              .agentAttachment, .hermesAgentTurnAttachment, .hermesBridgePhotoRequest: return .chokepoint
-        case .faceRecognition, .sceneNarration, .livePreview, .phoneViewfinder, .readingCompanion,
+        case .sceneNarration, .livePreview, .phoneViewfinder, .readingCompanion,
              .fingerspelling, .dwellCapture, .jobRecordingCapture: return .exemptByScope
         case .jobRecordingOfficeSync: return .organisationExit
         case .structuredVisionAssessment, .safetyAssessment, .refrigerantGaugeReading,
@@ -450,7 +442,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
         case .studyScan, .teleprompterScan, .readingAccessibilityTool, .smartCaptureTool,
              .medicationIdentifierTool, .manualLookupTool, .equipmentLookupTool,
              .barcodeScannerTool, .qrContextTool, .colorIdentifierTool, .badgeScanTool,
-             .faceRecognitionTool, .fitnessPoseFrame: return .exemptByScope
+             .fitnessPoseFrame: return .exemptByScope
         }
     }
 
@@ -463,7 +455,7 @@ enum OutboundFrameConsumer: String, CaseIterable {
 
     /// Types allowed to read a raw still — `CameraService.latestFrame` — rather than going through
     /// `filteredStill(for:source:)`. Everything whose tap is a raw one: the on-device consumers, the
-    /// preview, face recognition, and the chokepoint readers that filter the still themselves.
+    /// preview, and the chokepoint readers that filter the still themselves.
     ///
     /// A `heldImage` consumer is **not** among them: it never asked the camera for anything, so a
     /// raw still appearing in it would be a new tap nobody argued for.

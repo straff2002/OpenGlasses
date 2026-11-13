@@ -849,47 +849,6 @@ enum PrivacyLog {
         return emit(.init(.vision, .vision, fields))
     }
 
-    // MARK: - Faces
-    //
-    // A recognised name is the single most identifying string this app ever holds, and the log
-    // is the one sink that would keep it after the announcement has been spoken and forgotten.
-    // There is no name parameter here — not even fingerprinted, because the enrolled set is a
-    // handful of people and a stable hash of "the person seen most often" is an identifier in
-    // everything but spelling. What is left is the fact of a match, how many candidates were in
-    // contention, and how sure the matcher was, in three buckets.
-
-    enum FaceEvent: String {
-        case started, stopped, frequencyReduced, frequencyRestored
-        case recognized, ambiguous
-        case databaseLoaded, loadFailed, saveFailed
-    }
-
-    /// A coarse band, never the similarity itself: a raw score is a measurement of one person's
-    /// face against one enrolment, and three of them in a row would characterise the enrolment.
-    enum FaceConfidence: String {
-        case low, medium, high
-
-        init(similarity: Double) {
-            switch similarity {
-            case ..<0.7: self = .low
-            case ..<0.85: self = .medium
-            default: self = .high
-            }
-        }
-    }
-
-    @discardableResult
-    static func face(_ event: FaceEvent, confidence: FaceConfidence? = nil,
-                     candidates: Int? = nil, enrolled: Int? = nil,
-                     error: SafeErrorSummary? = nil) -> PrivacyEvent {
-        var fields: [PrivacyEvent.Field] = [.init(.event, .token(PrivacyToken(event.rawValue)))]
-        if let confidence { fields.append(.init(.confidence, .token(PrivacyToken(confidence.rawValue)))) }
-        if let candidates { fields.append(.init(.count, .count(candidates))) }
-        if let enrolled { fields.append(.init(.total, .count(enrolled))) }
-        if let error { fields.append(.init(.error, .summary(error))) }
-        return emit(.init(.vision, .face, fields))
-    }
-
     // MARK: - Home
 
     /// Operation classes, not commands. An entity id names a room and a device in someone's
@@ -2516,7 +2475,7 @@ struct PrivacyEvent: Equatable {
         case audio
         case model, modelCompaction, localModel, memoryContext
         case conversation
-        case camera, photoLibrary, vision, face
+        case camera, photoLibrary, vision
         case homeBridge, medical, location, proactiveAlert
         case store, transfer
         case recording, device, agent, purchase, app
@@ -2547,7 +2506,7 @@ struct PrivacyEvent: Equatable {
         case stored, retrieved, included, dropped, clamped
         case store, thread, minutes
         case resolution, frameRate, width, height
-        case posture, percent, extraction, confidence, days
+        case posture, percent, extraction, days
         case slot, scope, version, signed
         case surface, command, product, priority, bitrate, measuredBitrate
         // Plan HW P1 — how long nothing had arrived from the glasses when a stall was called.

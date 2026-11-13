@@ -22,12 +22,10 @@ class AgentDocumentStore: ObservableObject {
     private nonisolated static let soulReach = "their phone or their watch."
     private nonisolated static let translationNote = ""
     private nonisolated static let voiceChannelNote = " — through the phone"
-    private nonisolated static let faceSkill = ""
     #else
     private nonisolated static let soulReach = "their phone, their watch, or their smart glasses when they wear them — then I see through the glasses camera, hear what they hear, and speak in their ear."
     private nonisolated static let translationNote = " (phone mic for nearby speakers, glasses mic for the wearer's own voice)"
     private nonisolated static let voiceChannelNote = " — through the phone, or the glasses when they are on"
-    private nonisolated static let faceSkill = "\n- Face recognition with social context recall"
     #endif
 
     /// Default soul for a fresh install.
@@ -168,7 +166,7 @@ class AgentDocumentStore: ObservableObject {
     ## Knowledge
     - Web search (Perplexity/Tavily/Brave/SearXNG, DuckDuckGo fallback)
     - Weather, news, currency conversion, dictionary
-    - Remember where things are (object memory with GPS)\(faceSkill)
+    - Remember where things are (object memory with GPS)
 
     ## Agentic
     - Manage scheduled background tasks (manage_schedule tool)
@@ -341,6 +339,22 @@ class AgentDocumentStore: ObservableObject {
 
     // MARK: - Load / Save
 
+    /// Lines the default skills document once carried for a capability the app no longer has. A
+    /// skills file written by an earlier build still holds them, and the agent reads that file as
+    /// a list of what it can do — so each is taken out, exactly as the app wrote it, the next time
+    /// the file is read. A line the wearer wrote themselves is never matched: only these exact
+    /// lines are.
+    ///
+    /// Face recognition was removed on 2026-11-13.
+    nonisolated static let retiredSkillLines = ["- Face recognition with social context recall"]
+
+    /// `content` without the retired lines.
+    nonisolated static func removingRetiredSkillLines(from content: String) -> String {
+        let lines = content.components(separatedBy: "\n")
+        let kept = lines.filter { !retiredSkillLines.contains($0.trimmingCharacters(in: .whitespaces)) }
+        return kept.count == lines.count ? content : kept.joined(separator: "\n")
+    }
+
     func loadAll() {
         soul = load(.soul)
         skills = load(.skills)
@@ -359,6 +373,13 @@ class AgentDocumentStore: ObservableObject {
                 // An empty file is a valid, possibly intentional state — not "first run".
                 let content = try String(contentsOf: url, encoding: .utf8)
                 unreadable.remove(type)
+                if type == .skills {
+                    let current = Self.removingRetiredSkillLines(from: content)
+                    if current != content {
+                        try? current.write(to: url, atomically: true, encoding: .utf8)
+                        return current
+                    }
+                }
                 return content
             } catch {
                 // Transient read failure: serve the default in-memory, but leave the file alone —

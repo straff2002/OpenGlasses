@@ -1,5 +1,15 @@
 # EU AI Act review of Avenkin, October 2026
 
+> **Addendum, 13 November 2026: face recognition removed.** The owner removed face recognition from the app on 13 November 2026. Two reasons. Meta's Wearables Developer Acceptable Use Policy (updated 22 September 2026) does not allow glasses sensors to be used to identify people uniquely from physical characteristics such as faces or voices without an exception Meta grants in advance, and it binds unpublished apps too; the feature identified people from glasses-camera stills. And it was the one feature that made Avenkin a remote biometric identification system under Annex III 1(a). It had been opt-in since Plan HP, so few wearers used it.
+>
+> What this retires, without rewriting the review below, which stays as it was written:
+>
+> - **§3.1 is closed.** There is no remote biometric identification system to classify. The opt-in, the enrolment approval, the Enrolled Faces screen, the organisation pin and the storefront arming that answered it are gone with the feature.
+> - **§5 action 1 and the face recognition half of action 9 are moot**, as are the two face recognition rows of "What a user can enable on their own" and the face recognition row of §4.
+> - **§6 Decision 2** (withdraw from EU builds from 2 December 2027) is overtaken: the feature is withdrawn everywhere, now. The storefront gate armed for it (`MarketAvailabilityPolicy`, Plan HS P1 item 1) had no other armed row and no other consumer, so its per-capability table went too; the storefront is still read for regional defaults and the support report.
+> - **On installs that had enrolled anyone**, the app erases the face templates, their scoped key and the feature's preferences the first time it opens after the update (`RetiredFaceDataCleanup`), so no biometric data outlives the feature. An organisation profile that still pins `faceRecognitionEnabled` off verifies and applies, and reports that key as retired.
+> - Still open and unaffected: §3.2 (Social mode, observe-only since Plan HR), §3.3 (first-aid triage, personal-only since Plan HS), §3.4 to §3.9, and the action items that are not about face recognition.
+
 **Date:** 2026-10-06. **Code reviewed:** `main` at `f3d90a0d` (build 463). **Law as of:** 6 October 2026.
 **Status:** engineering review. It states positions so that decisions can be made; it is not legal advice and makes no compliance determination. Counsel should confirm the four decisions in §6 before any EU release relies on them.
 **Builds on:** [EV](plans/EV-ai-governance-and-eu-ai-act.md) (6 Sept 2026), which deliberately stopped at an issue map. This review takes the positions EV left open, against the law as it now stands and the code as it now is.

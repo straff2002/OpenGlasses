@@ -17,9 +17,9 @@ final class PhoneCapturePolicyTests: XCTestCase {
         }
     }
 
-    func testLiveStreamToolsAndFaceRecognitionStayOnTheGlasses() {
+    func testLiveStreamToolsStayOnTheGlasses() {
         XCTAssertEqual(PhoneCapturePolicy.glassesOnlyTools,
-                       ["face_recognition", "fitness_coach", "live_coach", "navigation_assist",
+                       ["fitness_coach", "live_coach", "navigation_assist",
                         "video_recording", "record_clip", "pin_frame", "instant_replay"])
     }
 
@@ -42,7 +42,7 @@ final class PhoneCapturePolicyTests: XCTestCase {
                                                         glassesConnected: false), 30 + wait)
         XCTAssertEqual(PhoneCapturePolicy.timeoutBudget(base: 30, toolName: "safety_assessment",
                                                         glassesConnected: true), 30)
-        XCTAssertEqual(PhoneCapturePolicy.timeoutBudget(base: 30, toolName: "face_recognition",
+        XCTAssertEqual(PhoneCapturePolicy.timeoutBudget(base: 30, toolName: "fitness_coach",
                                                         glassesConnected: false), 30)
         XCTAssertEqual(PhoneCapturePolicy.timeoutBudget(base: 30, toolName: "get_weather",
                                                         glassesConnected: false), 30,

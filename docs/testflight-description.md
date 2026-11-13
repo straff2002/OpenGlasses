@@ -27,5 +27,5 @@ For service technicians: hands-free guidance grounded in your own manufacturers'
 Field Assist needs a subscription or an organisation licence.
 
 PRIVACY
-No analytics or advertising SDKs. Face recognition is off unless you turn it on. An optional filter blurs bystanders' faces before camera images are sent to an AI or streamed.
+No analytics or advertising SDKs. No face recognition. An optional filter blurs bystanders' faces before camera images are sent to an AI or streamed.
 ```

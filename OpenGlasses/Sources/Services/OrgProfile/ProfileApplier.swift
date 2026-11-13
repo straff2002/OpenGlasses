@@ -14,6 +14,13 @@ import Foundation
 /// phone at enrolment.
 enum ProfileApplier {
 
+    /// Settings a profile could once set whose feature has since been removed. A profile signed
+    /// before the removal still carries them: it verifies and applies as before, and each of these
+    /// is reported as `.retired` and has no effect, rather than being mistaken for a key from a
+    /// newer build. `faceRecognitionEnabled` pinned face recognition off; face recognition was
+    /// removed on 2026-11-13, so off is the only state left and there is nothing to pin.
+    static let retiredKeys: Set<String> = ["faceRecognitionEnabled"]
+
     struct Drop: Equatable, Sendable {
         /// The key as the profile spelled it — which may not be a key this build knows.
         let key: String
@@ -21,6 +28,10 @@ enum ProfileApplier {
 
         enum Reason: Equatable, Sendable {
             case unknownKey
+            /// A key this app once took and no longer does, because the feature it set was
+            /// removed (`ProfileApplier.retiredKeys`). Not a fault in the profile: a profile signed
+            /// for an earlier build still verifies and applies, and this entry has nothing to do.
+            case retired
             /// No value, or one this build cannot read (a number, an object).
             case unreadableValue
             case wrongType(expected: SettingKey.ValueType)
@@ -160,7 +171,8 @@ enum ProfileApplier {
         for name in layer.settings.keys.sorted() {
             guard let raw = layer.settings[name] else { continue }
             guard let key = SettingKey(rawValue: name) else {
-                result.drops.append(Drop(key: name, reason: .unknownKey))
+                result.drops.append(Drop(key: name,
+                                         reason: Self.retiredKeys.contains(name) ? .retired : .unknownKey))
                 continue
             }
             guard let value = raw.value else {

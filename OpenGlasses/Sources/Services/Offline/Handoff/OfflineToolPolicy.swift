@@ -44,7 +44,6 @@ enum OfflineToolPolicy {
         "emergency_info": .local,
         "equipment_lookup": .local,
         "evidence": .local,
-        "face_recognition": .local,
         "field_session": .local,
         "first_aid": .local,
         "fitness_coach": .local,

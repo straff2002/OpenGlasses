@@ -60,23 +60,43 @@ final class OrgProfileApplierTests: XCTestCase {
         XCTAssertEqual(SettingKey.remoteInvokeCaptureEnabled.kind, .ceiling(pinnedTo: false))
     }
 
-    /// Plan HP P1 item 2: an organisation may switch face recognition off on its phones and may
-    /// never switch it on — enrolling a bystander is the wearer's choice, not the employer's.
-    func testFaceRecognitionCanBePinnedOffAndNeverOn() {
-        XCTAssertEqual(SettingKey.faceRecognitionEnabled.kind, .ceiling(pinnedTo: false))
-        XCTAssertEqual(SettingKey.faceRecognitionEnabled.rawValue, AIFeature.faceRecognition.record.disableSwitch.key,
-                       "the ceiling must pin the same key the AI feature gate reads")
+    /// Face recognition was removed on 2026-11-13. A profile signed before then may still pin
+    /// `faceRecognitionEnabled` off: it must verify, apply everything else it carries, and report
+    /// the retired key as retired — never refuse the profile, never mistake the key for one from a
+    /// newer build, and never write it anywhere.
+    func testAProfileThatStillPinsFaceRecognitionOffVerifiesAndApplies() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let keyId = "test-key"
+        let old = layer([
+            "faceRecognitionEnabled": RawSetting(.bool(false), .ceiling),
+            "agentModeEnabled": RawSetting(.bool(false), .ceiling),
+            "organizationDisplayName": RawSetting(.string("Northbridge Mechanical"), .default),
+        ])
+        let document = try ProfileVerification.makeDocument(
+            old, privateKeyBase64: signingKey.rawRepresentation.base64EncodedString())
+        let verified = try ProfileVerification.verify(
+            document, keys: [keyId: signingKey.publicKey.rawRepresentation.base64EncodedString()])
+        guard case .profile(let profile) = verified else { return XCTFail("not a profile") }
+        XCTAssertEqual(profile.settings["faceRecognitionEnabled"]?.value, .bool(false),
+                       "the signed bytes still carry the retired key")
 
-        let off = apply(["faceRecognitionEnabled": RawSetting(.bool(false), .ceiling)])
-        XCTAssertEqual(off.ceilings[.faceRecognitionEnabled], .bool(false))
-        XCTAssertTrue(off.drops.isEmpty)
+        let result = ProfileApplier.apply(profile: profile, resolvableVaultIds: vaults)
+        XCTAssertNil(SettingKey(rawValue: "faceRecognitionEnabled"))
+        XCTAssertEqual(result.drops, [.init(key: "faceRecognitionEnabled", reason: .retired)])
+        XCTAssertEqual(result.ceilings[.agentModeEnabled], .bool(false), "the rest of the profile applies")
+        XCTAssertEqual(result.owned[.organizationDisplayName], .string("Northbridge Mechanical"))
+        XCTAssertFalse(result.ceilings.keys.map(\.rawValue).contains("faceRecognitionEnabled"))
+        XCTAssertTrue(ProfileApplier.Drop.Reason.retired.explanation.contains("no longer"))
 
+        // Pinned on is no different: there is nothing left to pin either way.
         let on = apply(["faceRecognitionEnabled": RawSetting(.bool(true), .ceiling)])
-        XCTAssertNil(on.ceilings[.faceRecognitionEnabled])
-        XCTAssertEqual(on.drops, [.init(key: "faceRecognitionEnabled", reason: .wrongDirection)])
+        XCTAssertEqual(on.drops, [.init(key: "faceRecognitionEnabled", reason: .retired)])
+    }
 
-        XCTAssertNotEqual(SettingKey.faceRecognitionEnabled.ceilingDescription, "faceRecognitionEnabled",
-                          "the review sheet names it in words")
+    /// A key no build has ever known is still `.unknownKey`, not `.retired`.
+    func testAnUnknownKeyIsNotMistakenForARetiredOne() {
+        let result = apply(["somethingFromANewerBuild": RawSetting(.bool(false), .ceiling)])
+        XCTAssertEqual(result.drops, [.init(key: "somethingFromANewerBuild", reason: .unknownKey)])
     }
 
     /// Plan JM P2: an organisation may hold dictation to the phone, and may never send the wearer's

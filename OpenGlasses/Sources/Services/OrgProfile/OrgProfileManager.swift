@@ -1112,7 +1112,6 @@ extension SettingKey {
         case .mcpServerEnabled: return "The MCP glasses server is off"
         #endif
         case .agentModeEnabled: return "Agentic features are off"
-        case .faceRecognitionEnabled: return "Face recognition is off"
         case .aiConnectionCueEnabled: return "Voice startup always says it is connecting to Avenkin AI"
         case .teamLearningReviewerDevice: return "This phone can't approve team learnings"
         case .cloudDictationEnabled: return "Cloud dictation is off"
@@ -1173,6 +1172,7 @@ extension ProfileApplier.Drop.Reason {
     var explanation: String {
         switch self {
         case .unknownKey: return "not a setting this version of the app lets a profile set"
+        case .retired: return "the feature it set is no longer in the app, so there is nothing to set"
         case .unreadableValue: return "its value could not be read"
         case .wrongType: return "its value is the wrong kind"
         case .wrongDirection: return "a profile may only tighten this setting"

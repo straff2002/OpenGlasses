@@ -113,7 +113,6 @@ final class SubjectErasureCoordinator {
         var brain: BrainStore?
         var semanticMemory: SemanticMemoryStore?
         var social: SocialContextStore?
-        var faces: FaceRecognitionService?
         var contextualNotes: ContextualNoteStore?
         var objectMemory: ObjectMemoryStore?
         var evolvedSkills: EvolvedSkillStore?
@@ -163,7 +162,6 @@ final class SubjectErasureCoordinator {
         .brainGraph,
         .semanticMemory,
         .socialContext,
-        .faces,
         .speakerNames,
         .contextualNotes,
         .objectMemory,
@@ -247,8 +245,6 @@ final class SubjectErasureCoordinator {
                 receipt = made
             case .socialContext:
                 receipt = eraseSocial(subject)
-            case .faces:
-                receipt = eraseFaces(subject)
             case .speakerNames:
                 receipt = .unsupported(store, "a diarization label is keyed by voice cluster id; "
                                        + "the wearer renames or clears it from the captions screen")
@@ -426,7 +422,7 @@ final class SubjectErasureCoordinator {
                                   removed: 0, unsupported: nil)
 
         default:
-            // Recall indexes, documents, faces, recordings and the rest are not where a remembered
+            // Recall indexes, documents, recordings and the rest are not where a remembered
             // fact is kept.
             return .complete(store)
         }
@@ -629,16 +625,6 @@ final class SubjectErasureCoordinator {
         let before = social.facts(for: name).count
         social.clearFacts(for: name)
         return .complete(.socialContext, removed: before)
-    }
-
-    private func eraseFaces(_ subject: ErasureSubject) -> ErasureReceipt {
-        guard let faces = stores.faces else {
-            return .unsupported(.faces, "no face service was supplied")
-        }
-        guard case .person(let name) = subject else { return .complete(.faces) }
-        let before = faces.knownFaces.count
-        _ = faces.forgetFace(name: name)
-        return .complete(.faces, removed: before - faces.knownFaces.count)
     }
 
     private func eraseContextualNotes(_ subject: ErasureSubject) -> ErasureReceipt {
