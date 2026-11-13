@@ -725,6 +725,9 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 // Plan LP §2: a plan that opened with a sentence has already said what is going
                 // on, so its first "still working" is not said again.
                 if reportProgress, PlanNarrationScope.current?.absorbsStillWorking() == true { continue }
+                // A scheduled run is nobody's turn: there is no one waiting to be told it's still
+                // going. (This task inherits the run's task-locals.)
+                if LLMService.OffConversationScope.isActive { continue }
                 if reportProgress { self?.onLongRunningUpdate?(elapsed) }
             }
         }

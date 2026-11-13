@@ -9,10 +9,10 @@ final class PresenceMotionCaptionTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_700_000_000)
     private func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
 
-    private func signals(ageSeconds: TimeInterval, voice: Bool = false, connected: Bool = true,
+    private func signals(ageSeconds: TimeInterval, voice: Bool = false,
                          foreground: Bool = true, motion: Bool = false) -> PresenceSignals {
         PresenceSignals(lastInteraction: at(-ageSeconds), voiceActive: voice,
-                        connected: connected, foreground: foreground, motionActive: motion)
+                        foreground: foreground, motionActive: motion)
     }
 
     // MARK: - Motion fusion
@@ -26,8 +26,7 @@ final class PresenceMotionCaptionTests: XCTestCase {
     }
 
     func testMotionDoesNotOverrideAway() {
-        // Disconnected (or backgrounded) ⇒ away regardless of motion — nothing can run.
-        XCTAssertEqual(PresenceEvaluator.mode(for: signals(ageSeconds: 1, connected: false, motion: true), now: t0, thresholds: .default), .away)
+        // Backgrounded ⇒ away regardless of motion — nothing can run.
         XCTAssertEqual(PresenceEvaluator.mode(for: signals(ageSeconds: 1, foreground: false, motion: true), now: t0, thresholds: .default), .away)
     }
 
@@ -45,7 +44,7 @@ final class PresenceMotionCaptionTests: XCTestCase {
 
     func testDefaultSignalsHaveNoMotion() {
         // The added field defaults off, so existing call sites are unaffected.
-        let s = PresenceSignals(lastInteraction: t0, voiceActive: false, connected: true, foreground: true)
+        let s = PresenceSignals(lastInteraction: t0, voiceActive: false, foreground: true)
         XCTAssertFalse(s.motionActive)
     }
 

@@ -129,6 +129,16 @@ final class PresenceLiveIntegrationTests: XCTestCase {
         XCTAssertTrue(line.contains("third"))
     }
 
+    func testHeldStoreKeepsOneEntryPerAction() {
+        // A scheduled task held every 15 minutes is one suggestion, not a list of the same one.
+        let store = HeldRecommendationStore()
+        store.record(summary: "run the Check Email shortcut", at: t0)
+        store.record(summary: "call Bob", at: at(1))
+        store.record(summary: "run the Check Email shortcut", at: at(900))
+        XCTAssertEqual(store.held.map(\.summary), ["call Bob", "run the Check Email shortcut"])
+        XCTAssertEqual(store.held.last?.date, at(900))
+    }
+
     // MARK: - PresenceMonitor re-engagement hook
 
     func testReEngageFiresWhenRisingFromIdle() {
@@ -137,7 +147,7 @@ final class PresenceLiveIntegrationTests: XCTestCase {
         let monitor = PresenceMonitor(
             thresholds: PresenceThresholds(activeWindow: 30, idleThreshold: 300, debounceDwell: 10),
             lastInteraction: { self.at(-age) }, voiceActive: { voice },
-            connected: { true }, foreground: { true })
+            foreground: { true })
 
         var fired = 0
         monitor.onReEngage = { fired += 1 }
@@ -160,7 +170,7 @@ final class PresenceLiveIntegrationTests: XCTestCase {
         let monitor = PresenceMonitor(
             thresholds: PresenceThresholds(activeWindow: 30, idleThreshold: 300, debounceDwell: 10),
             lastInteraction: { self.at(-age) }, voiceActive: { false },
-            connected: { true }, foreground: { true })
+            foreground: { true })
 
         var fired = 0
         monitor.onReEngage = { fired += 1 }

@@ -35,8 +35,11 @@ final class HeldRecommendationStore: ObservableObject {
     var isEmpty: Bool { held.isEmpty }
     var count: Int { held.count }
 
-    /// Record a held action. Trims to `cap`, keeping the most recent.
+    /// Record a held action. Trims to `cap`, keeping the most recent. The same action held again —
+    /// a scheduled task retrying every 15 minutes — is one entry, moved to the latest time, so the
+    /// summary never reads "run the shortcut; run the shortcut; run the shortcut".
     func record(summary: String, at date: Date) {
+        held.removeAll { $0.summary == summary }
         held.append(HeldRecommendation(date: date, summary: summary))
         if held.count > cap {
             held.removeFirst(held.count - cap)

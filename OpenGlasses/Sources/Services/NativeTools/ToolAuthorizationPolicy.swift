@@ -182,11 +182,9 @@ enum ToolAuthorizationPolicy {
         "'\(name)' was blocked by a safety rule (\(reason)). Do not retry; tell the user it was blocked for safety."
     }
 
+    /// Away is not using the app at all — neither the glasses nor the open phone app — so the
+    /// copy no longer names the glasses (presence stopped reading their link as the person).
     static func holdMessage(_ name: String) -> String {
-        #if AVENKIN_PHONE_ONLY
-        return "'\(name)' wasn't run because you've been away; I've held it to raise when you're back. Do not retry automatically."
-        #else
-        return "'\(name)' wasn't run because you've been away from the glasses; I've held it to raise when you're back. Do not retry automatically."
-        #endif
+        "'\(name)' wasn't run because you've been away; I've held it to raise when you're back. Do not retry automatically."
     }
 }

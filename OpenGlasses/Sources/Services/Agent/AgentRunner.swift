@@ -137,17 +137,50 @@ final class AgentRunner {
     }
 
     /// Deterministic, natural-ish spoken summary built from the step rationales + outcome — no
-    /// extra model round-trip.
+    /// extra model round-trip. It is said to the person as it stands, so it is built only from
+    /// the plan's own rationales and the kind of stop: never the router's reason, which is written
+    /// for the model, and never a tool's internal name.
     static func summary(plan: AgentPlan, run: PlanRunResult) -> String {
-        let done = plan.steps.prefix(run.completedSteps)
-            .map { $0.rationale.isEmpty ? $0.tool : $0.rationale }
+        let done = plan.steps.prefix(run.completedSteps).enumerated()
+            .map { index, step in clause(step.rationale) ?? "did step \(index + 1)" }
         if run.aborted {
-            let didPart = done.isEmpty ? "I couldn't get started" : "I \(joinClauses(done))"
-            let reason = run.abortReason ?? "a step didn't complete"
-            return "\(didPart), then stopped — \(reason)."
+            let index = run.stop?.stepIndex ?? run.completedSteps
+            let step = plan.steps.indices.contains(index) ? plan.steps[index] : nil
+            let what = step.map { clause($0.rationale) ?? "do step \(index + 1)" } ?? "do the rest"
+            var line = stopSentence(run.stop?.kind ?? .failed, what: what)
+            // Every stop sentence opens with "I", so it follows "but" as it stands.
+            if !done.isEmpty { line = "I \(joinClauses(done)), but \(line)" }
+            if index + 1 < plan.steps.count, run.stop?.kind != .unsure { line += " I stopped there." }
+            return line
         }
         if done.isEmpty { return "There was nothing to do for that." }
         return "Done — I \(joinClauses(done))."
+    }
+
+    /// One sentence for the step a plan stopped at; `what` is that step's rationale, a verb phrase.
+    static func stopSentence(_ kind: PlanStop.Kind, what: String) -> String {
+        switch kind {
+        case .held: return "I didn't \(what) — you've been away, so I've held it for when you're back."
+        case .declined: return "I didn't \(what), since you said no."
+        case .needsApproval: return "I didn't \(what) — it needs your OK, and I couldn't ask just then."
+        case .notAllowed: return "I didn't \(what) — it isn't allowed right now."
+        case .failed: return "I couldn't \(what) — it didn't go through."
+        case .unsure: return "I'm not sure I managed to \(what), so I stopped there."
+        }
+    }
+
+    /// A rationale as a clause inside a sentence: trimmed, without a closing full stop, and with a
+    /// capital first letter lowered unless it starts an acronym ("Run it." → "run it"; "SMS Sam"
+    /// stays). Nil when there is nothing left.
+    static func clause(_ rationale: String) -> String? {
+        var text = rationale.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let last = text.last, ".!".contains(last) { text.removeLast() }
+        guard let first = text.first else { return nil }
+        let second = text.dropFirst().first
+        if first.isUppercase, !(second?.isUppercase ?? false) {
+            text = first.lowercased() + text.dropFirst()
+        }
+        return text
     }
 
     /// "a, b and c" from a list of short clauses.

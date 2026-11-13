@@ -2,7 +2,9 @@ import SwiftUI
 import UIKit
 
 /// Pre-built Shortcut templates that users can preview, select, and install.
-/// Each template creates a Siri Shortcut + a matching scheduled task.
+/// Installing one creates its scheduled task, switched off: the task runs a Siri Shortcut the
+/// person builds themselves, and until that Shortcut exists every run would fail (the "Check
+/// Email" task ran every 15 minutes in an app with no email access of its own).
 struct ShortcutTemplatesView: View {
     @EnvironmentObject var appState: AppState
     @State private var templates = ShortcutTemplate.allTemplates
@@ -107,7 +109,7 @@ struct ShortcutTemplatesView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Each template creates a Siri Shortcut and a matching scheduled task. Tap to preview what it does before installing.")
+                Text("Each template adds a scheduled task that runs a Siri Shortcut you build yourself. Tap to preview what it does before installing.")
             }
 
             // Install button
@@ -126,7 +128,7 @@ struct ShortcutTemplatesView: View {
                             .foregroundStyle(.secondary)
                     }
                 } footer: {
-                    Text("Creates scheduled tasks in the app. For the actual Siri Shortcuts, you'll be guided to create them in the Shortcuts app.")
+                    Text("Adds the scheduled tasks switched off. Build each Shortcut in the Shortcuts app, then switch its task on in Scheduled Tasks.")
                 }
             }
 
@@ -137,11 +139,11 @@ struct ShortcutTemplatesView: View {
                         .font(.footnote.weight(.medium))
                     Text("1. Select the templates you want")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("2. Tap Install — this creates scheduled tasks in the app")
+                    Text("2. Tap Install — this adds their scheduled tasks, switched off")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("3. Create the matching Shortcuts in the Shortcuts app (we'll show you how)")
+                    Text("3. Build each Shortcut in the Shortcuts app, with the same name and the steps shown")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("4. The agent runs each Shortcut on schedule and summarizes results")
+                    Text("4. Switch the task on in Scheduled Tasks; the agent then runs the Shortcut on schedule and summarizes results")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -160,21 +162,13 @@ struct ShortcutTemplatesView: View {
             // Skip if already installed
             if tasks.contains(where: { $0.id == template.taskId }) { continue }
 
-            let task = AgentScheduler.ScheduledTask(
-                id: template.taskId,
-                name: template.name,
-                prompt: template.taskPrompt,
-                intervalMinutes: template.intervalMinutes,
-                enabled: true,
-                speakResult: template.speakResult
-            )
-            tasks.append(task)
+            tasks.append(template.scheduledTask)
             AgentScheduler.saveTasks(tasks)
             created += 1
         }
 
         installResult = created > 0
-            ? "Created \(created) scheduled task\(created == 1 ? "" : "s"). Now create the matching Shortcuts in the Shortcuts app."
+            ? "Added \(created) scheduled task\(created == 1 ? "" : "s"), switched off. Build the matching Shortcut\(created == 1 ? "" : "s") in the Shortcuts app, then switch \(created == 1 ? "it" : "them") on in Scheduled Tasks."
             : "All selected templates are already installed."
     }
 }
@@ -196,6 +190,20 @@ struct ShortcutTemplate: Identifiable {
     let speakResult: Bool
     var selected: Bool = false
 
+    /// The scheduled task installing this template adds — always switched off. It runs a Shortcut
+    /// the person has to build first, and the app can't tell whether they have, so they switch it
+    /// on once they have.
+    var scheduledTask: AgentScheduler.ScheduledTask {
+        AgentScheduler.ScheduledTask(
+            id: taskId,
+            name: name,
+            prompt: taskPrompt,
+            intervalMinutes: intervalMinutes,
+            enabled: false,
+            speakResult: speakResult
+        )
+    }
+
     static let allTemplates: [ShortcutTemplate] = [
         // MARK: Communication
         ShortcutTemplate(
@@ -203,7 +211,7 @@ struct ShortcutTemplate: Identifiable {
             name: "Check Email",
             icon: "envelope",
             category: "Communication",
-            description: "Checks Apple Mail for unread emails and summarizes urgent ones.",
+            description: "Runs a Check Email shortcut you build, which reads Apple Mail, and summarizes urgent ones. This app can't read your email without it.",
             shortcutSteps: "1. Find Emails (Unread, Last 1 Hour)\n2. Get Subject + Sender for each\n3. Output as text list",
             agentBehavior: "Reads the email summaries, identifies urgent ones, and only notifies you about those. Routine newsletters and promotions are silently ignored.",
             scheduleDescription: "Every 15 minutes",

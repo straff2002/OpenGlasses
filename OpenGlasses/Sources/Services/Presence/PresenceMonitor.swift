@@ -23,8 +23,6 @@ struct PresenceSignals: Equatable {
     var lastInteraction: Date
     /// Live voice activity right now (wake-word / transcription pipeline mid-utterance).
     var voiceActive: Bool
-    /// Are the glasses connected (DAT session up)?
-    var connected: Bool
     /// Is the app in the foreground? (MLX inference is foreground-only — backgrounded ⇒ paused is a
     /// correctness constraint, not just a battery optimisation. See the Local Model Background note.)
     var foreground: Bool
@@ -40,8 +38,11 @@ enum PresenceEvaluator {
 
     /// Fuse a snapshot into a raw (pre-debounce) mode. `now` is injected.
     static func mode(for signals: PresenceSignals, now: Date, thresholds: PresenceThresholds) -> EngagementMode {
-        // Disconnected or backgrounded trumps everything — nothing should run.
-        guard signals.connected, signals.foreground else { return .away }
+        // Backgrounded trumps everything — nothing should run. Whether the glasses are connected
+        // is deliberately not a signal: they are one way in, not the only one, and someone typing
+        // or talking to the open app without them is as present as someone wearing them. Treating
+        // "no glasses" as away held every acting tool a phone-only user asked for.
+        guard signals.foreground else { return .away }
 
         // Live voice or a very recent interaction ⇒ fully engaged.
         let age = now.timeIntervalSince(signals.lastInteraction)
@@ -51,7 +52,7 @@ enum PresenceEvaluator {
         // floor the quiet bands at `.present` — never drop a moving user to `.idle` (Plan W v2).
         if signals.motionActive { return .present }
 
-        // Connected & foreground, quiet, stationary: present until the idle threshold, then idle.
+        // Foreground, quiet, stationary: present until the idle threshold, then idle.
         return age < thresholds.idleThreshold ? .present : .idle
     }
 
@@ -99,7 +100,7 @@ struct ModeDebouncer {
 /// Fuses cheap on-device signals into a presence `mode`/`engagement` and the resulting
 /// `ThrottleDecision` (Plan W). The signal *sources* are injected closures (default to a neutral
 /// "fully present" so the monitor is constructible without the app), keeping `update(now:)` a
-/// deterministic, testable step. Wiring the real sources (transcription pipeline, DAT session,
+/// deterministic, testable step. Wiring the real sources (transcription pipeline, typed turns,
 /// scene phase, CoreMotion) and applying `decision` to the live loops + Plan S autonomy ceiling is
 /// the deferred integration — this type is the tested core those consumers read.
 @MainActor
@@ -108,11 +109,10 @@ final class PresenceMonitor: ObservableObject {
     @Published private(set) var mode: EngagementMode
     @Published private(set) var decision: ThrottleDecision
 
-    /// Injected signal providers. Defaults describe an idealised present-and-connected device so the
+    /// Injected signal providers. Defaults describe an idealised present, foreground app so the
     /// monitor has sane behaviour before the app wires real sources.
     var lastInteraction: () -> Date
     var voiceActive: () -> Bool
-    var connected: () -> Bool
     var foreground: () -> Bool
     /// Active physical motion right now (Plan W v2). Defaults `false` so the monitor behaves exactly
     /// as before until AppState wires a CoreMotion provider.
@@ -128,12 +128,10 @@ final class PresenceMonitor: ObservableObject {
     init(thresholds: PresenceThresholds = .default,
          lastInteraction: @escaping () -> Date = { Date() },
          voiceActive: @escaping () -> Bool = { false },
-         connected: @escaping () -> Bool = { true },
          foreground: @escaping () -> Bool = { true }) {
         self.thresholds = thresholds
         self.lastInteraction = lastInteraction
         self.voiceActive = voiceActive
-        self.connected = connected
         self.foreground = foreground
         self.debouncer = ModeDebouncer(dwell: thresholds.debounceDwell, initial: .active)
         self.mode = .active
@@ -147,7 +145,6 @@ final class PresenceMonitor: ObservableObject {
         let signals = PresenceSignals(
             lastInteraction: lastInteraction(),
             voiceActive: voiceActive(),
-            connected: connected(),
             foreground: foreground(),
             motionActive: motionActive()
         )

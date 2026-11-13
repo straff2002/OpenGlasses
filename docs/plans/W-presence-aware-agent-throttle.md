@@ -26,6 +26,8 @@
 
 Plan W is **complete** — nothing outstanding.
 
+**Amended 2026-11-13 — the glasses' link is no longer a presence signal.** `away` had meant "glasses disconnected *or* app backgrounded", so someone using the open app without glasses was away: every acting tool they asked for was held ("wasn't run because you've been away from the glasses"), and a phone-only build was away all the time. `PresenceSignals.connected` is gone; `away` is now backgrounded only, and a foreground app is judged by interaction exactly as before (active → present → idle). A typed turn now counts as an interaction (`sendTextMessage` → `noteUserInteraction()`), as a spoken one always did. The held copy no longer names the glasses. A backgrounded app with the glasses connected is still `away`; whether a wearer talking to the glasses with the phone locked should count is a separate question, left as it was. The same day `HeldRecommendationStore.record` started keeping one entry per action, so a scheduled task held every 15 minutes is one suggestion on re-engagement, not a list of the same one.
+
 ---
 
 ## Concept (reframed for a wearable)
