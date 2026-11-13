@@ -166,7 +166,7 @@ final class CompanyVaultTests: XCTestCase {
         XCTAssertEqual(CompanyVaultContract.Limits.textBytes, 20_971_520)
         XCTAssertEqual(CompanyVaultContract.Limits.vaultCoreBytes, 262_144_000)
         XCTAssertEqual(CompanyVaultContract.Limits.vaultCoreFileBytes, 20_971_520)
-        XCTAssertEqual(CompanyVaultContract.Limits.companyTotalBytes, 2_147_483_648)
+        XCTAssertEqual(CompanyVaultContract.Limits.companyTotalBytes, 1_073_741_824)
     }
 
     // MARK: - The manual seal

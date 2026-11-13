@@ -142,7 +142,7 @@ generation. A per-company storage meter, and the limits below, enforced before a
 | One Word manual | 100 MB (text copy ≤ 20 MB) | `ManualFileUpload` today |
 | One Markdown / text file | 20 MB | `ManualFileUpload` today |
 | A vault's core files (one pack) | 250 MB, each file ≤ 20 MB | the link cap and the pack entry cap |
-| Everything one company stores | 2 GB to start, the vendor can raise it | the vendor's disk and backups |
+| Everything one company stores | 1 GB to start (lowered from 2 GB on 2026-11-13), the vendor can raise it | the vendor's disk and backups |
 | What one phone downloads | the company's total | the free-space rule above decides, not a second cap |
 
 The service refuses an over-limit upload with the limit in the message. The phone enforces the per-file caps
@@ -182,8 +182,8 @@ useless until the service's first phase is deployed.
 1. **Manuals in company vaults.** *Given 2026-11-13:* the partner or the customer may upload their own manuals,
    with size limits. They are delivered sealed to that company's phones only, never through the public catalog,
    and the app still never sends a manual off the phone.
-2. **The limits** in the table. *Taken 2026-11-13 as recommended:* as written. The 2 GB company total is the only one not already
-   set by the app.
+2. **The limits** in the table. *Taken 2026-11-13 as recommended:* as written. The company total, the only one not already set by
+   the app, started at 2 GB and was lowered to 1 GB by the owner the same day (the vendor raises it per company).
 3. **Manuals over cellular.** *Taken 2026-11-13 as recommended:* Wi-Fi by default with *Download now* per vault, and a company
    setting the partner can switch to "any network" for crews who live on hotspots.
 4. **The fleet view (P2).** *Taken 2026-11-13 as recommended:* yes, after P1. It answers "has everyone got the new version?" without
@@ -207,7 +207,7 @@ written up for the service in [Contracts/company-vaults.md](../../Contracts/comp
 - `ManualSeal`: AES-GCM under HKDF-SHA256(company secret, info `openglasses.company-manual.v1`), 1 MiB chunks,
   each authenticating company, vault, file name, revision, header, index and last-chunk flag. `seal`, `open`,
   the streaming `open(length:read:…)` and `sealFile(at:to:…)`, `sealedLength`.
-- `Limits`: PDF 128 MiB, Word 100 MiB, text 20 MiB, pack 250 MiB with files ≤ 20 MiB, company 2 GiB, 64 vaults
+- `Limits`: PDF 128 MiB, Word 100 MiB, text 20 MiB, pack 250 MiB with files ≤ 20 MiB, company 1 GiB (2 GiB until 2026-11-13), 64 vaults
   and 2,000 manuals a catalog.
 - `SeatRenewRequest.vaults: [SeatInstalledVault]?`, `SeatRecord.vaults`, `SeatPolicy.renew(…, vaults:)` and
   `SeatPolicy.fleetVersions` for the portal.
