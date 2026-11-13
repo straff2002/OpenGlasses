@@ -296,15 +296,21 @@ class GlassesConnectionService: ObservableObject {
                           state: PrivacyToken(String(stateBefore.rawValue)))
 
         do {
-            do {
-                try await Wearables.shared.startRegistration()
-            } catch RegistrationError.alreadyRegistered {
-                // Not a failure — it is the precondition for success, and it is the *normal* state
-                // on every connect after the first. Treating it as an error skipped the whole path
-                // below, so a wearer whose glasses dropped mid-session could press Connect forever
-                // and get "Connection failed: User is already registered" each time: the one state
-                // from which reconnecting is guaranteed possible was the one state we refused to
-                // reconnect from. Device-traced 2026-08-23, after a glasses disconnect mid-reply.
+            // Register only when not registered yet (`RegistrationFlow.shouldStartRegistration`):
+            // asking again is reported to reset Developer Mode's registration and break every
+            // session start that follows.
+            if RegistrationFlow.shouldStartRegistration(stateRaw: stateBefore.rawValue) {
+                do {
+                    try await Wearables.shared.startRegistration()
+                } catch RegistrationError.alreadyRegistered {
+                    // Not a failure — it is the precondition for success. The guard above makes it
+                    // rare (registration landing between the read and the call), but treating it
+                    // as an error once skipped the whole path below, so a wearer whose glasses
+                    // dropped mid-session could press Connect forever and get "Connection failed:
+                    // User is already registered" each time. Device-traced 2026-08-23.
+                    PrivacyLog.device(.glasses, .alreadyRegistered)
+                }
+            } else {
                 PrivacyLog.device(.glasses, .alreadyRegistered)
             }
 
