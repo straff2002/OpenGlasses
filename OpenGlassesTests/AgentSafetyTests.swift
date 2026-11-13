@@ -168,7 +168,8 @@ final class AgentSafetyTests: XCTestCase {
         XCTAssertTrue(result.aborted)
         XCTAssertEqual(result.completedSteps, 1)
         XCTAssertEqual(router.calls.count, 2)                    // stopped at the failed step
-        XCTAssertTrue(result.abortReason?.contains("send_message") ?? false)
+        XCTAssertEqual(result.stop, PlanStop(stepIndex: 1, kind: .notAllowed))   // the step it stopped at
+        XCTAssertTrue(result.transcript.last?.contains("send_message") ?? false)
     }
 
     func testInjectedToolOutputCannotAlterThePlan() async {

@@ -15,8 +15,50 @@ extension NativeToolRouter: PlanApprovalAuthority {}
 struct PlanRunResult: Equatable {
     let completedSteps: Int
     let aborted: Bool
-    let abortReason: String?
+    /// Where and why the plan stopped; nil when it ran to the end.
+    let stop: PlanStop?
     let transcript: [String]   // one outcome line per attempted step
+}
+
+/// Why a plan stopped at a step, in terms the person can be told. The router's own reason is
+/// written for the model ("…Do not retry automatically.") and carries the tool's internal name,
+/// so it never reaches the spoken summary; this is what does.
+struct PlanStop: Equatable {
+    enum Kind: Equatable {
+        /// The presence ceiling held it for when the person is back.
+        case held
+        /// The person said no to it.
+        case declined
+        /// It needed a yes, and there was no way to ask just then.
+        case needsApproval
+        /// A rule or policy would not let it run.
+        case notAllowed
+        /// It was tried and failed before doing anything.
+        case failed
+        /// It started and may or may not have landed.
+        case unsure
+    }
+
+    /// Zero-based index of the step the plan stopped at.
+    let stepIndex: Int
+    let kind: Kind
+
+    /// Reads a step's outcome. The rejections are told apart by the policy's own copy for that
+    /// tool, so a rejection the policy did not word is `.notAllowed`, never mistaken for a hold.
+    static func kind(of outcome: ToolExecutionOutcome, tool: String) -> Kind? {
+        switch outcome {
+        case .completed: return nil
+        case .outcomeUnknown: return .unsure
+        case .failedBeforeExecution: return .failed
+        case .rejected(let reason):
+            if reason.hasPrefix(ToolAuthorizationPolicy.holdMessage(tool)) { return .held }
+            if reason.hasPrefix(ToolAuthorizationPolicy.declineMessage(tool)) { return .declined }
+            if reason.hasPrefix(ToolAuthorizationPolicy.unavailableConfirmationMessage(tool)) {
+                return .needsApproval
+            }
+            return .notAllowed
+        }
+    }
 }
 
 /// Runs a validated `AgentPlan` step-by-step through the `NativeToolRouter` (Plan S).
@@ -65,31 +107,18 @@ final class PlanExecutor {
                                              invocationID: stepInvocationID)
                 }
             }
-            switch outcome {
-            case .completed(let text):
+            guard let kind = PlanStop.kind(of: outcome, tool: step.tool) else {
                 completed += 1
-                transcript.append("✓ \(step.tool): \(String(text.prefix(120)))")
-            case .outcomeUnknown(_, let message):
-                // The plan still stops here, but it must not claim the step didn't happen — the
-                // rest of the plan may be building on an effect that did land.
-                transcript.append("? \(step.tool): \(message)")
-                return PlanRunResult(
-                    completedSteps: completed,
-                    aborted: true,
-                    abortReason: "step \(index + 1) of \(plan.steps.count) (\(step.tool)) may or may not have completed: \(message)",
-                    transcript: transcript
-                )
-            case .rejected(let reason), .failedBeforeExecution(let reason):
-                transcript.append("✗ \(step.tool): \(reason)")
-                return PlanRunResult(
-                    completedSteps: completed,
-                    aborted: true,
-                    abortReason: "step \(index + 1) of \(plan.steps.count) (\(step.tool)) did not complete: \(reason)",
-                    transcript: transcript
-                )
+                transcript.append("✓ \(step.tool): \(String(outcome.text.prefix(120)))")
+                continue
             }
+            // The plan stops here. An unsure step must not be told as one that didn't happen —
+            // the rest of the plan may be building on an effect that did land.
+            transcript.append("\(kind == .unsure ? "?" : "✗") \(step.tool): \(outcome.text)")
+            return PlanRunResult(completedSteps: completed, aborted: true,
+                                 stop: PlanStop(stepIndex: index, kind: kind), transcript: transcript)
         }
 
-        return PlanRunResult(completedSteps: completed, aborted: false, abortReason: nil, transcript: transcript)
+        return PlanRunResult(completedSteps: completed, aborted: false, stop: nil, transcript: transcript)
     }
 }

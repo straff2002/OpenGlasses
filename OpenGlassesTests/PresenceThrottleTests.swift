@@ -71,9 +71,8 @@ final class PresenceThrottleTests: XCTestCase {
     // MARK: - PresenceEvaluator fusion
 
     private func signals(ageSeconds: TimeInterval, voice: Bool = false,
-                         connected: Bool = true, foreground: Bool = true) -> PresenceSignals {
-        PresenceSignals(lastInteraction: at(-ageSeconds), voiceActive: voice,
-                        connected: connected, foreground: foreground)
+                         foreground: Bool = true) -> PresenceSignals {
+        PresenceSignals(lastInteraction: at(-ageSeconds), voiceActive: voice, foreground: foreground)
     }
 
     func testRecentInteractionIsActive() {
@@ -97,10 +96,12 @@ final class PresenceThrottleTests: XCTestCase {
         XCTAssertEqual(m, .idle)
     }
 
-    func testDisconnectedIsAwayDespiteRecentVoice() {
-        let m = PresenceEvaluator.mode(for: signals(ageSeconds: 1, voice: true, connected: false),
-                                       now: t0, thresholds: .default)
-        XCTAssertEqual(m, .away)
+    /// The glasses are one way in, not the only one: someone using the open app without them is
+    /// not away. Treating "no glasses" as away held every acting tool a phone-only user asked for.
+    func testUsingTheAppWithoutGlassesIsNotAway() {
+        XCTAssertEqual(PresenceEvaluator.mode(for: signals(ageSeconds: 1), now: t0, thresholds: .default), .active)
+        XCTAssertEqual(PresenceEvaluator.mode(for: signals(ageSeconds: 60), now: t0, thresholds: .default), .present)
+        XCTAssertEqual(PresenceEvaluator.mode(for: signals(ageSeconds: 400), now: t0, thresholds: .default), .idle)
     }
 
     func testBackgroundedIsAway() {
@@ -112,7 +113,7 @@ final class PresenceThrottleTests: XCTestCase {
     func testEvaluateEngagementMatchesMode() {
         XCTAssertEqual(PresenceEvaluator.evaluate(signals(ageSeconds: 5), now: t0, thresholds: .default).engagement, 1.0)
         XCTAssertEqual(PresenceEvaluator.evaluate(signals(ageSeconds: 400), now: t0, thresholds: .default).engagement, 0.2)
-        XCTAssertEqual(PresenceEvaluator.evaluate(signals(ageSeconds: 1, connected: false), now: t0, thresholds: .default).engagement, 0.0)
+        XCTAssertEqual(PresenceEvaluator.evaluate(signals(ageSeconds: 1, foreground: false), now: t0, thresholds: .default).engagement, 0.0)
     }
 
     // MARK: - ModeDebouncer anti-flap
@@ -148,7 +149,7 @@ final class PresenceThrottleTests: XCTestCase {
         let monitor = PresenceMonitor(
             thresholds: PresenceThresholds(activeWindow: 30, idleThreshold: 300, debounceDwell: 10),
             lastInteraction: { self.at(-5) },   // 5s ago → active
-            voiceActive: { false }, connected: { true }, foreground: { true })
+            voiceActive: { false }, foreground: { true })
         monitor.update(now: t0)
         XCTAssertEqual(monitor.mode, .active)
         XCTAssertEqual(monitor.engagement, 1.0)
@@ -161,7 +162,7 @@ final class PresenceThrottleTests: XCTestCase {
         let monitor = PresenceMonitor(
             thresholds: PresenceThresholds(activeWindow: 30, idleThreshold: 300, debounceDwell: 10),
             lastInteraction: { self.at(-age) }, voiceActive: { voice },
-            connected: { true }, foreground: { true })
+            foreground: { true })
 
         // Monitor starts committed .active; a drop must dwell. Settle to idle across the dwell.
         monitor.update(now: at(0))

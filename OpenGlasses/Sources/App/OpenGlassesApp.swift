@@ -7177,9 +7177,9 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Wire the presence monitor's signal sources, the loops it throttles, and re-engagement
     /// surfacing. Called once at launch after the services exist.
     private func configurePresence() {
-        // Signal sources (cheap, on-device): DAT connectivity, scene-phase foreground (MLX is
-        // foreground-only), live voice activity, and the last explicit command timestamp.
-        presenceMonitor.connected = { [weak self] in self?.isConnected ?? false }
+        // Signal sources (cheap, on-device): scene-phase foreground (MLX is foreground-only), live
+        // voice activity, and the last explicit command timestamp — spoken or typed. The glasses'
+        // link is not one of them: the open app is just as much a way in as the glasses.
         presenceMonitor.foreground = { [weak self] in self?.isForegroundActive ?? true }
         presenceMonitor.voiceActive = { [weak self] in self?.wakeWordService.isListening ?? false }
         presenceMonitor.lastInteraction = { [weak self] in self?.lastInteractionAt ?? Date() }
@@ -7526,7 +7526,7 @@ class AppState: ObservableObject, AppStateProtocol {
         AgentSessionService.shared.setRegistry(makeAgentRegistry())
     }
 
-    /// Note an explicit user interaction (wake word / transcription) for the presence
+    /// Note an explicit user interaction (wake word / transcription / typed turn) for the presence
     /// `lastInteraction` signal, re-evaluating at once so throttled loops resume promptly.
     func noteUserInteraction() {
         lastInteractionAt = Date()
@@ -9101,6 +9101,9 @@ class AppState: ObservableObject, AppStateProtocol {
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
         noteTypeInstead(.typedTurn)   // Plan JM P1: a typed turn clears the "Type instead" chip
+        // Plan W: a typed turn is the person being here, as a spoken one is. A held question
+        // replayed on return is not a fresh interaction.
+        if recordUserTurn { noteUserInteraction() }
 
         currentTranscription = query
         turnUtterance = query

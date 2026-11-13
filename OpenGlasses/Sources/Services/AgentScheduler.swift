@@ -532,7 +532,9 @@ class AgentScheduler: ObservableObject {
 
         IMPORTANT: If there is nothing noteworthy to report, respond with exactly "[NOTHING]" \
         and nothing else. Only speak up if there is something the user would actually want to know. \
-        Do not report routine/expected states. Be decisive — either report something useful or say [NOTHING].
+        Do not report routine/expected states. Be decisive — either report something useful or say [NOTHING]. \
+        If a tool wasn't run because the user has been away, say [NOTHING]: it is raised with them \
+        when they're back.
         """ : prompt
 
         do {

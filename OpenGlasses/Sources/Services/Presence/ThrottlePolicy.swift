@@ -1,13 +1,14 @@
 import Foundation
 
-/// How engaged the user currently is with the glasses (Plan W). Fused from cheap on-device signals
-/// by [[PresenceMonitor]]; consumed by `ThrottlePolicy` to scale loop cadence and the autonomy
-/// ceiling. Ordered by `rank` (most → least engaged) so a `minMode` floor can clamp it.
+/// How engaged the user currently is with the app, through the glasses or the phone (Plan W).
+/// Fused from cheap on-device signals by [[PresenceMonitor]]; consumed by `ThrottlePolicy` to
+/// scale loop cadence and the autonomy ceiling. Ordered by `rank` (most → least engaged) so a
+/// `minMode` floor can clamp it.
 enum EngagementMode: String, CaseIterable, Comparable, Codable {
-    case active     // actively talking / looking — recent interaction or live voice
-    case present    // connected, in-foreground, but no recent interaction
-    case idle       // connected but disengaged past the idle threshold (>5 min)
-    case away       // disconnected or backgrounded — nothing should run
+    case active     // actively talking / typing / looking — recent interaction or live voice
+    case present    // in the foreground, but no recent interaction
+    case idle       // in the foreground but disengaged past the idle threshold (>5 min)
+    case away       // backgrounded — nothing should run
 
     /// Higher = more engaged. Used to order modes and apply a `minMode` floor.
     var rank: Int {

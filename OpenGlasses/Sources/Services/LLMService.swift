@@ -1407,7 +1407,12 @@ class LLMService: ObservableObject {
         // planning — the structural prompt-injection defense. Falls back to single-shot when the
         // request can't be planned/validated (still safe; every call is supervised either way).
         // Plan GE: not on a phone turn — the planner would reach for tools that need the network.
-        if Config.agentModeEnabled, hasNativeTools, turnImage == nil, !offlineHandoffTurn,
+        // Not on a scheduled run either: the plan speaks its opener aloud and always ends in a
+        // summary to say, so a 15-minute task announced "I'll check your email" each time and
+        // could never answer [NOTHING]. The single-shot loop is supervised call by call all the same.
+        if Self.mayPlan(agentMode: Config.agentModeEnabled, hasNativeTools: hasNativeTools,
+                        hasImage: turnImage != nil, offlineHandoff: offlineHandoffTurn,
+                        scheduledRun: OffConversationScope.isActive),
            await classifyMultiStep(text) {
             if let summary = await runAgentPlan(request: text, nativeToolNames: nativeToolNames) {
                 conversationHistory.append(["role": "user", "content": text])
@@ -2192,6 +2197,15 @@ class LLMService: ObservableObject {
     }
 
     // MARK: - Plan-then-execute (Plan S)
+
+    /// Whether a turn may go through the plan-then-execute loop at all, before the multi-step
+    /// classifier is asked. Never for a scheduled run (`sendOffConversation`): the plan speaks its
+    /// opener aloud and always has a summary to say, so it cannot stay quiet when there is nothing
+    /// to report.
+    nonisolated static func mayPlan(agentMode: Bool, hasNativeTools: Bool, hasImage: Bool,
+                                    offlineHandoff: Bool, scheduledRun: Bool) -> Bool {
+        agentMode && hasNativeTools && !hasImage && !offlineHandoff && !scheduledRun
+    }
 
     /// Decide whether to route `text` through the plan-then-execute loop (Plan S Phase 2).
     /// The pure keyword heuristic decides for free; when the LLM classifier is enabled and

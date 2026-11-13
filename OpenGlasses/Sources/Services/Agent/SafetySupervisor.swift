@@ -92,11 +92,7 @@ enum SafetySupervisor {
         switch autonomy {
         case .autoAct:   return nil
         case .recommend: return .block(reason: "held — you've been idle, so ‘\(tool)’ wasn't run automatically")
-        #if AVENKIN_PHONE_ONLY
         case .paused:    return .block(reason: "‘\(tool)’ is paused while you're away")
-        #else
-        case .paused:    return .block(reason: "‘\(tool)’ is paused while you're away from the glasses")
-        #endif
         }
     }
 
