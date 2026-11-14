@@ -82,9 +82,34 @@ extension Config {
         set { UserDefaults.standard.set(newValue, forKey: "myDayLastEveningDeliveryDay") }
     }
 
+    /// Plan LE: the Evening Check-in. Off by default (decision 2); no settings row until P1.
+    static var myDayCheckInEnabled: Bool {
+        get { storedBool("myDayCheckInEnabled", default: false) }
+        set { UserDefaults.standard.set(newValue, forKey: "myDayCheckInEnabled") }
+    }
+
+    /// The check-in time the wearer chose, or nil while they have not: the default then follows
+    /// Field Assist (`MyDayCheckInDefaults`, decision 9). Setting nil goes back to the default.
+    static var myDayCheckInMinutes: Int? {
+        get { (UserDefaults.standard.object(forKey: "myDayCheckInMinutes") as? Int).map(boundedDayMinutes) }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(boundedDayMinutes(newValue), forKey: "myDayCheckInMinutes")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "myDayCheckInMinutes")
+            }
+        }
+    }
+
+    static var myDayLastCheckInDeliveryDay: String {
+        get { UserDefaults.standard.string(forKey: "myDayLastCheckInDeliveryDay") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "myDayLastCheckInDeliveryDay") }
+    }
+
     static func resetMyDayDeliveryHistory() {
         myDayLastMorningDeliveryDay = ""
         myDayLastEveningDeliveryDay = ""
+        myDayLastCheckInDeliveryDay = ""
         myDayLastDeliveredLeaveByID = ""
     }
 

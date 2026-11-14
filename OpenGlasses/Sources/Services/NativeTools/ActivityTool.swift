@@ -62,7 +62,7 @@ final class ActivityTool: NativeTool {
             return phraser.summary(of: entries, window: .since(start))
         case "next":
             let recentWaiting = entries.filter {
-                $0.outcome == .waitingOnYou && now.timeIntervalSince($0.at) <= ActivityPhraser.scheduledHorizon
+                $0.isAwaitingWearer && now.timeIntervalSince($0.at) <= ActivityPhraser.scheduledHorizon
             }
             return phraser.whatsNext(goals: goals().goals.filter { $0.state == .active },
                                      scheduled: upcoming(now: now, calendar: phraser.calendar),

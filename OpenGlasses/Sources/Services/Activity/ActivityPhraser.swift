@@ -78,8 +78,9 @@ struct ActivityPhraser: Sendable {
 
     func summary(of allEntries: [ActivityEntry], window: ActivityWindow) -> String {
         let inWindow = entries(allEntries, in: window)
-        let waiting = inWindow.filter { $0.outcome == .waitingOnYou }
-        let finished = inWindow.filter { $0.outcome != .waitingOnYou }
+        // Plan LE §3: a held entry the wearer has since answered is no longer waiting on them.
+        let waiting = inWindow.filter(\.isAwaitingWearer)
+        let finished = inWindow.filter { !$0.isAwaitingWearer }
         let waitingLine = waitingSentence(waiting)
         let when = label(for: window)
 
@@ -154,7 +155,14 @@ struct ActivityPhraser: Sendable {
         switch entry.outcome {
         case .failed: return entry.title + ", but it didn't work."
         case .uncertain: return entry.title + ", but I couldn't confirm it went through."
-        case .done, .waitingOnYou: return SpokenPhrasing.sentence(entry.title)
+        case .done: return SpokenPhrasing.sentence(entry.title)
+        case .waitingOnYou:
+            switch entry.resolution {
+            case .approved: return entry.title + ": you said yes."
+            case .declined: return entry.title + ": you said no."
+            case .expired: return entry.title + ": it lapsed."
+            case nil: return SpokenPhrasing.sentence(entry.title)
+            }
         }
     }
 
@@ -208,7 +216,7 @@ struct ActivityPhraser: Sendable {
             }
         }
 
-        let waiting = entries.filter { $0.outcome == .waitingOnYou }
+        let waiting = entries.filter(\.isAwaitingWearer)
         guard !items.isEmpty else {
             if waiting.isEmpty { return "Nothing's coming up, and nothing is waiting on you." }
             return "Nothing else is coming up. " + waitingSentence(waiting)
