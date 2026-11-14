@@ -120,6 +120,18 @@ enum ActivityOutcome: String, Codable, Equatable, Sendable, CaseIterable {
     case waitingOnYou = "waiting_on_you"
 }
 
+/// How a held entry was answered after it was held (Plan LE §3). Written by the recorder when the
+/// held operation reaches the authorization boundary again (P1); absent on every entry recorded
+/// before it existed, and on every entry still waiting.
+enum ActivityResolution: String, Codable, Equatable, Sendable, CaseIterable {
+    /// The wearer said yes when the operation came back to them.
+    case approved = "approved"
+    /// The wearer said no.
+    case declined = "declined"
+    /// It outlived its operation's own expiry without an answer.
+    case expired = "expired"
+}
+
 /// A link from an entry (or a goal step) to the record that holds the detail. Persisted as
 /// `operation:<id>`, `trace:<id>`, `thread:<id>` or `goal:<id>`.
 enum ActivityRef: Hashable, Sendable {
@@ -214,13 +226,33 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
     let origin: ActivityOrigin
     var outcome: ActivityOutcome
     let refs: [ActivityRef]
+    /// When a held entry was answered (Plan LE §3). Nil while it waits, and on old entries.
+    var resolvedAt: Date?
+    /// How it was answered. `outcome` keeps what was true when the entry was written; this says
+    /// what became of it.
+    var resolution: ActivityResolution?
+
+    /// Still waiting on the wearer: waiting when written, and not answered since. The only test
+    /// "is this waiting on you?" — a resolved held entry never is.
+    var isAwaitingWearer: Bool {
+        outcome == .waitingOnYou && resolution == nil && resolvedAt == nil
+    }
+
+    /// The same entry, answered.
+    func resolved(_ resolution: ActivityResolution, at date: Date) -> ActivityEntry {
+        var copy = self
+        copy.resolution = resolution
+        copy.resolvedAt = date
+        return copy
+    }
 
     /// Over-long text is shortened rather than refused: an entry is a record that something
     /// happened, and losing the record would hide the action.
     init(id: UUID, at: Date, kind: ActivityKind, title: String, detail: String? = nil,
          tool: String? = nil, goalID: UUID? = nil, stepID: UUID? = nil,
          authorisation: ActivityAuthorisation, origin: ActivityOrigin,
-         outcome: ActivityOutcome, refs: [ActivityRef] = []) {
+         outcome: ActivityOutcome, refs: [ActivityRef] = [],
+         resolvedAt: Date? = nil, resolution: ActivityResolution? = nil) {
         self.id = id
         self.at = at
         self.kind = kind
@@ -233,10 +265,13 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
         self.origin = origin
         self.outcome = outcome
         self.refs = refs
+        self.resolvedAt = resolvedAt
+        self.resolution = resolution
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, at, kind, title, detail, tool, goalID, stepID, authorisation, origin, outcome, refs
+        case resolvedAt, resolution
     }
 
     init(from decoder: Decoder) throws {
@@ -252,7 +287,11 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
                   authorisation: try container.decode(ActivityAuthorisation.self, forKey: .authorisation),
                   origin: try container.decode(ActivityOrigin.self, forKey: .origin),
                   outcome: try container.decode(ActivityOutcome.self, forKey: .outcome),
-                  refs: try container.decodeIfPresent([ActivityRef].self, forKey: .refs) ?? [])
+                  refs: try container.decodeIfPresent([ActivityRef].self, forKey: .refs) ?? [],
+                  resolvedAt: try container.decodeIfPresent(Date.self, forKey: .resolvedAt),
+                  // A resolution a later version wrote and this one cannot name still marks the
+                  // entry answered (through `resolvedAt`); it never fails the whole trail.
+                  resolution: (try? container.decodeIfPresent(ActivityResolution.self, forKey: .resolution)))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -269,6 +308,8 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
         try container.encode(origin, forKey: .origin)
         try container.encode(outcome, forKey: .outcome)
         try container.encode(refs, forKey: .refs)
+        try container.encodeIfPresent(resolvedAt, forKey: .resolvedAt)
+        try container.encodeIfPresent(resolution, forKey: .resolution)
     }
 
     static func clamp(_ text: String, to limit: Int) -> String {

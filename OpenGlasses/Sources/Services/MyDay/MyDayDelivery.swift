@@ -3,12 +3,26 @@ import Foundation
 enum MyDayDeliverySlot: String, Equatable, Sendable {
     case morning
     case evening
+    /// The Evening Check-in (Plan LE §4): what from today is still waiting on the wearer.
+    case checkIn
 
     var displayName: String {
         switch self {
         case .morning: "Morning"
         case .evening: "Evening"
+        case .checkIn: "Check-in"
         }
+    }
+}
+
+/// The check-in's default time (Plan LE decision 9): 21:00, or 17:00 — the end of a working day —
+/// with Field Assist on. Only a default: a time the wearer chose is kept whatever Field Assist does.
+enum MyDayCheckInDefaults {
+    static let everydayMinutes = 21 * 60
+    static let fieldAssistMinutes = 17 * 60
+
+    static func minutes(fieldAssistOn: Bool) -> Int {
+        fieldAssistOn ? fieldAssistMinutes : everydayMinutes
     }
 }
 
@@ -22,6 +36,17 @@ struct MyDayDeliverySettings: Equatable, Sendable {
     let quietHoursEnabled: Bool
     let quietStartMinutes: Int
     let quietEndMinutes: Int
+    /// The Evening Check-in (Plan LE §4). Off by default (decision 2).
+    var checkInEnabled = false
+    /// The time the wearer chose, or nil to follow the default (`MyDayCheckInDefaults`).
+    var checkInMinutes: Int? = nil
+    /// Field Assist is on (entitled and switched on): the default check-in time is 17:00.
+    var fieldAssistOn = false
+
+    /// The check-in's time: the wearer's own, else the default for the kind of day it is.
+    var resolvedCheckInMinutes: Int {
+        checkInMinutes ?? MyDayCheckInDefaults.minutes(fieldAssistOn: fieldAssistOn)
+    }
 
     static var current: Self {
         .init(
@@ -33,7 +58,10 @@ struct MyDayDeliverySettings: Equatable, Sendable {
             scheduledSpeechEnabled: Config.myDayScheduledSpeechEnabled,
             quietHoursEnabled: Config.myDayQuietHoursEnabled,
             quietStartMinutes: Config.myDayQuietStartMinutes,
-            quietEndMinutes: Config.myDayQuietEndMinutes
+            quietEndMinutes: Config.myDayQuietEndMinutes,
+            checkInEnabled: Config.myDayCheckInEnabled,
+            checkInMinutes: Config.myDayCheckInMinutes,
+            fieldAssistOn: Config.fieldAssistActive
         )
     }
 }
@@ -45,6 +73,9 @@ struct MyDayDeliveryContext: Equatable {
     let isBusy: Bool
     let sourceAccessReady: Bool
     let isProtectedDataAvailable: Bool
+    /// The phone's motion reading at delivery time (`MotionActivityProvider`), when there is one.
+    /// `automotive` holds the check-in's speech (Plan LE decision 10).
+    var motion: MotionSample.Kind? = nil
 }
 
 enum MyDayDeliveryDeferral: Equatable {
@@ -56,13 +87,19 @@ enum MyDayDeliveryDeferral: Equatable {
 enum MyDayDeliveryDecision: Equatable {
     case notDue
     case deferred(MyDayDeliveryDeferral)
-    case deliver(slot: MyDayDeliverySlot, dayKey: String, speak: Bool)
+    /// `speak == false` shows it on the phone without saying it. `alsoDelivers` is a second slot
+    /// delivered in the same breath and consumed with it: the evening briefing after the check-in,
+    /// when the two fall within `MyDayDeliveryPolicy.mergeMinutes` (Plan LE §4).
+    case deliver(slot: MyDayDeliverySlot, dayKey: String, speak: Bool, alsoDelivers: MyDayDeliverySlot? = nil)
 }
 
 enum MyDayDeliveryPolicy {
     /// A wearer who was briefly away or whose app resumed late should still get today's delivery,
     /// but a stale briefing hours later is worse than no automatic briefing.
     static let deliveryWindowMinutes = 120
+    /// The evening briefing and the check-in this close together are delivered as one: the
+    /// check-in's list first, then tomorrow (Plan LE §4, decision 1). At 30 they merge; at 31 not.
+    static let mergeMinutes = 30
 
     static func decide(
         now: Date,
@@ -70,24 +107,46 @@ enum MyDayDeliveryPolicy {
         settings: MyDayDeliverySettings,
         context: MyDayDeliveryContext,
         lastMorningDayKey: String,
-        lastEveningDayKey: String
+        lastEveningDayKey: String,
+        lastCheckInDayKey: String = ""
     ) -> MyDayDeliveryDecision {
         guard settings.myDayEnabled else { return .notDue }
         let dayKey = self.dayKey(for: now, calendar: calendar)
         let minute = minuteOfDay(for: now, calendar: calendar)
+        let eveningMinutes = bounded(settings.eveningMinutes)
+        let checkInMinutes = bounded(settings.resolvedCheckInMinutes)
 
         let candidates: [(MyDayDeliverySlot, Bool, Int, String)] = [
             (.morning, settings.morningEnabled, bounded(settings.morningMinutes), lastMorningDayKey),
-            (.evening, settings.eveningEnabled, bounded(settings.eveningMinutes), lastEveningDayKey),
+            (.evening, settings.eveningEnabled, eveningMinutes, lastEveningDayKey),
+            (.checkIn, settings.checkInEnabled, checkInMinutes, lastCheckInDayKey),
         ]
 
-        guard let slot = candidates.first(where: { _, enabled, scheduled, deliveredDay in
+        guard let due = candidates.first(where: { _, enabled, scheduled, deliveredDay in
             enabled
                 && deliveredDay != dayKey
                 && minute >= scheduled
                 && minute - scheduled <= deliveryWindowMinutes
         })?.0 else {
             return .notDue
+        }
+
+        // The evening briefing and the check-in, both still owed today and close together, go as
+        // one — whichever came due first — with the check-in leading. Each keeps its own day key,
+        // so neither is ever delivered twice; one already past its own window is not carried along.
+        let slot: MyDayDeliverySlot
+        let alsoDelivers: MyDayDeliverySlot?
+        if due != .morning,
+           settings.eveningEnabled, lastEveningDayKey != dayKey,
+           settings.checkInEnabled, lastCheckInDayKey != dayKey,
+           abs(eveningMinutes - checkInMinutes) <= mergeMinutes,
+           minute - eveningMinutes <= deliveryWindowMinutes,
+           minute - checkInMinutes <= deliveryWindowMinutes {
+            slot = .checkIn
+            alsoDelivers = .evening
+        } else {
+            slot = due
+            alsoDelivers = nil
         }
 
         guard context.isProtectedDataAvailable else { return .deferred(.protectedData) }
@@ -102,12 +161,16 @@ enum MyDayDeliveryPolicy {
         guard context.sourceAccessReady else { return .deferred(.sourceAccess) }
 
         let wearerPresent = context.presence == .active || context.presence == .present
+        // Plan LE decision 10: the check-in is not spoken while driving. It shows on the phone
+        // and is said when asked.
+        let driving = slot == .checkIn && context.motion == .automotive
         let speak = settings.scheduledSpeechEnabled
             && wearerPresent
             && context.power != .reserve
             && context.isOnline
             && !context.isBusy
-        return .deliver(slot: slot, dayKey: dayKey, speak: speak)
+            && !driving
+        return .deliver(slot: slot, dayKey: dayKey, speak: speak, alsoDelivers: alsoDelivers)
     }
 
     static func dayKey(for date: Date, calendar: Calendar) -> String {
@@ -199,14 +262,20 @@ final class MyDayScheduledDeliveryService: ObservableObject {
                 isProtectedDataAvailable: protectedDataAvailable()
             ),
             lastMorningDayKey: Config.myDayLastMorningDeliveryDay,
-            lastEveningDayKey: Config.myDayLastEveningDeliveryDay
+            lastEveningDayKey: Config.myDayLastEveningDeliveryDay,
+            lastCheckInDayKey: Config.myDayLastCheckInDeliveryDay
         )
-        guard case .deliver(let slot, let dayKey, let speak) = decision else { return }
+        guard case .deliver(let slot, let dayKey, let speak, _) = decision else { return }
+        // Plan LE P0 defines the check-in's slot; P1 gives it content (the open-loop collector)
+        // and delivers it here. Until then it is never delivered and its day key never consumed —
+        // it cannot be switched on, as it has no settings row yet.
+        guard slot != .checkIn else { return }
 
         let text = await myDayService.spokenBriefing(now: now, channel: .scheduled)
         switch slot {
         case .morning: Config.myDayLastMorningDeliveryDay = dayKey
         case .evening: Config.myDayLastEveningDeliveryDay = dayKey
+        case .checkIn: Config.myDayLastCheckInDeliveryDay = dayKey
         }
         onDelivery?(slot, text, speak, "my-day-\(slot.rawValue)-\(dayKey)")
     }

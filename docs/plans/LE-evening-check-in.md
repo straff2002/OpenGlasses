@@ -1,9 +1,16 @@
 # Plan LE — The Evening Check-in (what's still waiting on your reply, decision or approval)
 
-**Status:** 📝 Drafted 2026-11-11. Nothing built. All eight [decisions](#decisions-for-greig-taken-2026-11-12)
+**Status:** 🚧 P0 built 2026-11-14 (headless): `OpenLoop` and its fourteen sources (the five §10 job
+sources among them), `OpenLoopCollector`, `OpenLoopPhraser`, `OpenLoopDismissals`, held trail entries
+that resolve, and `.checkIn` as a third `MyDayDeliveryPolicy` slot (17:00 with Field Assist on, merged
+with the evening slot inside 30 minutes, not spoken while driving); every P0 exit test written. See
+[As built](#as-built). P1 (adapters, the recorder's resolution, delivery, settings, `activity waiting`,
+the My Day section) is next. Drafted 2026-11-11. All eight [decisions](#decisions-for-greig-taken-2026-11-12)
 taken as recommended on 2026-11-12. Whether the "check-in is ready" notification carries Plan
 [LM](LM-background-and-notification-foundation.md)'s buttons (drafted before LM existed) waits for
-LM's device pass.
+LM's device pass. **Amended 2026-11-14:** the owner asked whether it would help a Field Assist technician
+at the end of the day; it would, with the job's own loose ends as sources. [§10](#10--field-assist-the-end-of-the-shift)
+and decisions 9–11 add them, in the same phases.
 **Track:** Everyday assistant. Phone and spoken audio first; the Display and the watch follow.
 **Builds on:** Plan [DY](DY-my-day-everyday-briefing.md) (`MyDayDeliveryPolicy`, `MyDayScheduledDeliveryService`,
 quiet hours, `MyDaySpeechPolicy`), Plan [IW](IW-goals-and-activity-trail.md) (`ActivityStore`, `ActivityPhraser`,
@@ -136,6 +143,11 @@ Only things waiting on the **wearer**, plus one narrow exception.
 | Waiting on others (KI) | a task step waiting on someone for longer than the threshold (decision 5) | when KI lands |
 | Watcher finding (JO) | filed to the digest and never heard | when JO lands |
 | Ask again (LG) | a keep-asking reminder still not confirmed | when LG lands |
+| Job report (Field Assist, §10) | a staged report in the delivery queue that was never sent, or whose send failed | built |
+| Job close held (§10) | a job whose close is held, such as for the customer's sign-off | built |
+| Parts request (§10) | a parts request on today's work that was never sent | built |
+| Deferred task (§10) | a work task the technician deferred and did not finish | built |
+| Expert or escalation (§10) | a hand-off or escalation still waiting on its answer | built |
 
 Rules, applied in order:
 
@@ -143,8 +155,10 @@ Rules, applied in order:
 2. Drop anything that will be in tomorrow's morning briefing as a dated item for tomorrow (the evening
    check-in is about today; tomorrow is My Day's job).
 3. Merge duplicates: a reminder that is also a goal step's action counts once, as the goal step.
-4. Rank: approvals first (someone or something is blocked on them), then overdue items oldest first, then
-   due-today items by due time, then undated items by `since`. Ties by source order in the table.
+4. Rank: approvals first (someone or something is blocked on them), then the job's loose ends (§10: an
+   unsent report, a held close, an unsent parts request, a deferred task, an unanswered hand-off, in that
+   order), then overdue items oldest first, then due-today items by due time, then undated items by
+   `since`. Ties by source order in the table.
 
 ### 3 · Held approvals resolve (`ActivityResolution`)
 
@@ -206,6 +220,32 @@ Everything is read from stores on the phone. No network, no model, no new data k
 dismissed fingerprints (`OpenLoopDismissals`, in the style of `MyDayDismissals`). With Medical Compliance or
 local-only modes on, nothing changes, because nothing leaves the phone. The notification text names nothing.
 
+### 10 · Field Assist: the end of the shift
+
+For a technician the day's loose ends are the job's, and they cost money when they wait: a report the office
+never received is a job nobody invoiced, and a part nobody ordered is a second visit. Field Assist already
+keeps each of them on the phone; the check-in reads them as five more sources behind the same
+`OpenLoopSourceReading` protocol, with the same once-a-day rule, dismissals and four-item limit.
+
+- **Sources** (the rows marked §10 in the table in §2): the delivery queue's staged or failed job reports
+  (`DeliveryRequest`, `DeliveryQueue`), a held job close (`jobCloseHeld`, `customerSignOffRequired`), a
+  `PartsRequest` not `sent`, a `WorkTask` still `deferred`, and an expert hand-off or escalation with no
+  answer. Each names the job the way the job's record already names it (its reference or customer as the
+  technician entered it), so "the report for the Smith job isn't sent". P0 verifies each store's real
+  shape before the adapter is written in P1; a source the record cannot answer is left out and said so here.
+- **When.** With Field Assist on, the check-in's default time is **17:00** (decision 9), set in the same row.
+  A trigger on the last job's close is not in v1: the app cannot know a close is the day's last.
+- **Driving.** When the motion reading is `automotive` at the check-in time (`MotionActivityProvider`), the
+  check-in is not spoken: it shows on the phone (and the content-free notification if the app is not in
+  front), and is spoken only when asked (decision 10). The same rule holds for the everyday check-in.
+- **Words.** "Two things before you finish: the report for the Smith job isn't sent, and the filter for
+  Jones is still not ordered." The opener is "before you finish" with Field Assist on and "still waiting on
+  you" otherwise.
+- **Action.** Each row opens its own place (the report composer, the job, the parts request); nothing is
+  sent or closed by the check-in itself (§6's rule).
+- **Privacy.** Job titles and customer names stay on the phone and in speech, never in the notification,
+  which stays content-free. A Medical Local Only profile changes nothing, as nothing leaves the phone.
+
 ## Decisions for Greig (taken 2026-11-12)
 
 All eight taken as recommended.
@@ -224,6 +264,15 @@ All eight taken as recommended.
 8. **Templates only in v1.** A digest-style rewrite (`DigestLineBuilder`) can follow if the templates read
    badly on the device.
 
+Added 2026-11-14 with §10, taken as proposed when the owner asked for the Field Assist sources:
+
+9. **With Field Assist on, the default time is 17:00**, the end of a working day, changeable in the same row.
+   (Alternative: a trigger on the last job's close, which the app cannot tell apart from any other close.)
+10. **Not spoken while driving.** An `automotive` reading at the time shows it on the phone and waits to be
+    asked. (Alternative: speak it anyway, as the glasses are hands-free.)
+11. **The five job sources rank straight after approvals**, report first. (Alternative: rank them with the
+    rest by date.)
+
 ## Phases (one PR each)
 
 ### P0 — the pure core (headless)
@@ -233,16 +282,21 @@ All eight taken as recommended.
 - `ActivityEntry.resolvedAt`/`resolution`, decoding old entries unchanged; `ActivityPhraser` and
   `ActivityTool.next` read only unresolved held entries.
 - `MyDayDeliverySlot.checkIn` in `MyDayDeliveryPolicy`, with the merge rule.
+- §10: the five job sources in `OpenLoopSource` and the collector's ranking; the 17:00 default with Field
+  Assist on; the driving rule as a policy outcome (show, don't speak); the "before you finish" wording. Each
+  job store's shape checked, and the As built notes say which records answer which row.
 - **Exit tests:** a held entry approved later is not listed; a dismissed reminder stays out tonight and
   returns only when its due date changes; a reminder that is also a goal step's action counts once;
   tomorrow-dated items are left to the morning; the empty scheduled check-in returns nothing to say; four
   spoken, "the rest are on your phone"; quiet hours defer; the evening and check-in merge inside 30 minutes
-  and not at 31; the policy never delivers twice for one day key.
+  and not at 31; the policy never delivers twice for one day key; an unsent report ranks after an approval
+  and before an overdue reminder; with Field Assist on the default time is 17:00; an `automotive` reading
+  shows the list and speaks nothing.
 
 ### P1 — wired (headless)
 
 - Source adapters over `ActivityStore`, `EventKitDayStore`, `GoalStore`, `NotificationDigestService` and
-  `AgentNotificationQueue`.
+  `AgentNotificationQueue`, and the §10 job stores.
 - The recorder resolves held entries at the confirmation boundary; a Plan W hold writes a trail entry if it
   does not already.
 - `MyDayScheduledDeliveryService` delivers the third slot; settings rows (on/off, time) under My Day.
@@ -278,3 +332,121 @@ All eight taken as recommended.
 - Approving, sending or completing anything from the check-in without the item's own confirmation.
 - Inferring open loops from conversation ("you said you'd call the plumber"). That is Plan
   [GN](GN-agent-notebook.md)'s notebook, which can become a source when it lands.
+
+## As built
+
+### P0 — 2026-11-14 (headless)
+
+**Files.** New, under `OpenGlasses/Sources/Services/MyDay/CheckIn/`:
+
+- `OpenLoop.swift` — `OpenLoopSource` (the table's fourteen rows in table order, which is the last
+  tie-break; `jobOrder` for the five §10 rows; `hasProducer` false for KT/KI/JO/LG), `OpenLoopPlace`
+  (reuses the job day's `JobDayDestination` for the report composer, the job and the parts order),
+  `OpenLoopAction` (`approve`, `complete`, `stepDone`, `open`, `dismiss`), `OpenLoopJobName`
+  (`customer` / `reference`, as the record has it), `OpenLoop`, `OpenLoopReading` (`read` /
+  `unavailable`) and the `@MainActor` `OpenLoopSourceReading` protocol. A reader names the sources it
+  answers for, and an unreadable reader reports all of them.
+- `OpenLoopCollector.swift` — `OpenLoopCollection` (ranked loops plus the unreadable sources),
+  `collect(_:unavailable:dismissed:now:calendar:)`, `collect(readings:…)` and an async `gather(_:…)`
+  that reads every reader fresh.
+- `OpenLoopPhraser.swift` — `OpenLoopPhrase` (`text`, `spokenCount`, `offersFirst`) and the templates.
+- `OpenLoopDismissals.swift` — the per-day `loop id → fingerprint` record (`active`, `adding`,
+  `isDismissed`), using `MyDayDismissalPolicy.dayKey`.
+- `OpenLoopApprovals.swift` — the approval row as a pure mapping from trail entries: `.held`, unresolved,
+  from yesterday's start to now. P1's `ActivityStore` reader hands its entries here.
+
+Changed: `ActivityEntry.swift` (`ActivityResolution`, `resolvedAt`, `resolution`, `isAwaitingWearer`,
+`resolved(_:at:)`), `ActivityPhraser.swift` and `ActivityTool.swift` (`next`) read only
+`isAwaitingWearer`, `MyDayDelivery.swift` (the slot, `MyDayCheckInDefaults`, the settings and context
+fields, the merge and the driving rule) and `MyDayConfig.swift` (`myDayCheckInEnabled`, `myDayCheckInMinutes`,
+`myDayLastCheckInDeliveryDay`, cleared by `resetMyDayDeliveryHistory()`). Tests: `OpenLoopCollectorTests`,
+`OpenLoopPhraserTests`, `OpenLoopDismissalsTests`, `ActivityResolutionTests`, `MyDayCheckInDeliveryTests`.
+
+**Decided while building.**
+
+- **`OpenLoop` carries more than §1 sketched:** `subject` (the goal for a step, the person for KI,
+  the expert for a hand-off), `job` (`OpenLoopJobName`), `failed` (a send that failed ranks first in its
+  source and is said as "didn't send"), and `covers` (rule 3: a goal step lists the reminder loop its
+  action set). The default fingerprint is title, due time and the failed flag.
+- **Rule 3's pairs are found before rule 1 drops anything,** so clearing a goal step tonight keeps its
+  reminder out too instead of letting the reminder come back on its own. Literal rule order would
+  have brought it back.
+- **Rule 2** drops anything due at or after the start of tomorrow; undated loops stay.
+- **Rule 4's bands:** approvals (by `since`), the job's loose ends (report, held close, parts,
+  deferred task, hand-off; a failed report before a staged one), overdue (due before now, oldest due
+  first), due later today (by due time), undated (by `since`); then table order, then id.
+- **An unreadable source:** the scheduled check-in stays silent; asked for, an empty list says "I
+  couldn't check everything, and nothing I could check is waiting on you." rather than "Nothing is
+  waiting on you."
+- **Speech:** the count is a word and exact; at most four clauses, fewer when `MyDaySpeechPolicy`'s
+  ceiling needs it, then "The rest are on your phone."; "Want to deal with the first one now?" only
+  when the first loop is an approval. Two items are joined "a and b" (`SpokenPhrasing.joined`), so the
+  §10 example reads without the comma: "Two things before you finish: the report for the Smith job
+  isn't sent and the filter for Jones is still not ordered." Templates are `String(localized:)`; the
+  catalog sync of the new strings is owed (they were built with `SWIFT_EMIT_LOC_STRINGS=NO`).
+- **The delivery decision** keeps `.deliver(slot:dayKey:speak:)` and gains a defaulted
+  `alsoDelivers: MyDayDeliverySlot?`. When the evening slot and the check-in are both enabled, both
+  still owed today, within 30 minutes of each other (30 merges, 31 does not), and neither is past its
+  own 120-minute window, whichever comes due first delivers `.checkIn` with `alsoDelivers: .evening`
+  (the list first). Each keeps its own day key.
+- **Decision 9** is `MyDayDeliverySettings.checkInMinutes: Int?` (nil until the wearer picks a time)
+  plus `fieldAssistOn`, resolved by `MyDayCheckInDefaults.minutes(fieldAssistOn:)` inside the pure
+  policy; `.current` reads `Config.fieldAssistActive` (entitled and switched on), so a lapsed licence
+  goes back to 21:00. A chosen time is kept either way.
+- **Decision 10** is `MyDayDeliveryContext.motion: MotionSample.Kind?` (the existing pure kind from
+  `DriveEndDetector.swift`, which `MotionActivityProvider.sample(from:)` produces). `automotive` makes a
+  check-in delivery (merged or not) `speak: false`: it shows, and is spoken when asked. The morning and
+  evening briefings are unchanged. P1 must feed the reading in; nothing does yet.
+- **`MyDayScheduledDeliveryService` never delivers `.checkIn` in P0** and never consumes its day key:
+  it has no content until P1, and it cannot be switched on without a settings row. P1 removes the
+  guard and handles `alsoDelivers` (the evening's day key with it).
+- **No dismissal store yet.** A `UserDefaults` + JSON owner has to be registered with
+  `DataStoreRegistry` (its structured-preference guard), so the store comes with its P1 caller.
+- **Resolution on disk** is written only when set, so an unresolved entry still encodes in the old
+  shape; an unknown resolution string from a later version decodes as nil while `resolvedAt` still
+  marks the entry answered. `outcome` keeps `waitingOnYou`: it is what was true when written. The
+  activity summary says an answered entry as "…: you said yes." / "…: you said no." / "…: it lapsed."
+
+**Plan W check (§3).** A ceiling hold **does** write a `.held` trail entry. `NativeToolRouter`'s
+`.hold` branch calls `onActionHeld` (which feeds `HeldRecommendationStore`) and sets the gate to
+`.held`; `recordActivity` then writes one `ActivityFeed.toolCall` entry, kind `.held`, authorisation
+`held_for_you`, outcome `waiting_on_you`, titled "Your OK to use the … tool"
+(`ActivityFeederTests.testAHeldActionIsWaitingOnTheWearer` pins it). So an entry survives
+`drainSummary`. Two things P1 needs to know: the ceiling hold is the **only** writer of `.held` entries
+(the confirmation path records `ran` or `declined`, never `held`), and a held entry carries no
+`.operation` ref, only the job thread and goal refs, so the recorder cannot match a later approval to
+it by operation id. It has to match on the tool and the scope, or the hold has to carry an id.
+
+**§10 store shapes (checked 2026-11-14 at `8524978e8`).** All five rows can be answered; no row is
+left out. The job's name is `FieldSession.jobReference` (said "job 1005") or `FieldSession.site?.customer`
+(said "the Smith job"); the job day already carries both as `JobDaySession.jobReference` /
+`.customer`, and `JobDaySession.label` gives "Job 1005" / "No job number".
+
+| Row | Record that answers it | Title / job name it can give | Notes |
+|---|---|---|---|
+| Job report | `DeliveryQueue.entries` (`QueuedSend`, persisted): `state` `.staged`/`.immediate`/`.sending` (`isWaiting`) or `.failed` (with `failureReason`); `documentKind` `.report`/`.addendum`. For a report that never reached the queue: `JobDaySession.reportSent == false` on a finished session (`JobDayFeed`, the same test KT's `jobReportOwed` uses with `queuedReportSessionIDs`). | `QueuedSend.jobNumber` ("Job 1005", held so it survives the session); the customer only through `sessionId` → the session. Open place: `JobDayDestination.send(queuedId:)` or `.pastJob(sessionId:)`. | `DeliveryRequest` itself is the in-memory staged envelope, not a store; the queue is the record. The job day already splits these as `reportFailed` / `reportStaged` / `reportNotSent`. |
+| Job close held | **No persisted "held" flag.** `FieldSessionError.jobCloseHeld(question)` and `.customerSignOffRequired(reason)` are thrown by `GuidedJobFlow.closeJob` (`JobCloseSequence.decide`) and nothing records them. What a record can answer: a session still open (`endedAt == nil`) whose close inputs would hold — `openVerifications` non-empty, or `customerSignOffRequired` (`Config.organizationRequiresCustomerSignOff`) with `signOff == nil`; and a finished session without the required sign-off and with its report not sent (`JobDaySession.signedOff`, `reportSent`; KT's `jobSignOffOwed`). | The question text is not kept; the adapter names the reason from the inputs ("the customer's sign-off", the open check's task title). Open place: `.openJob` or `.pastJob(sessionId:)`. | Answerable by re-running the close inputs, not by reading a held state. A session closed as `Outcome.deferred` (a check still owed on the screen route) is a different thing and is not this row. |
+| Parts request | `FieldSession.partsRequests` (`PartsRequest`, persisted on the session): `status == .requested` (not `.sent`/`.answered`). Counted already as `JobDaySession.unsentPartsRequests`. | `part.partDescription` (else `part.number`), `quantity`; the job from the session. Open place: `JobDayDestination.partsOrder(sessionId:)`. | "On today's work": scope by the session's day, as `jobPartsOwed` does. |
+| Deferred task | `FieldSession.tasks` (`FieldSession.Task`): `status == .deferred` (not `isOpen`; `completedAt` nil). | `Task.title` (the technician's or the recommendation's words); the job from the session. Open place: `.pastJob(sessionId:)` / `.openJob`. | `Task.Status.deferred` is a task state; the session `Outcome.deferred` is separate. |
+| Expert or escalation | `FieldSession.escalations` with `resolvedAt == nil` (`resolveLastEscalation` sets it); and `FieldSession.expertHandovers` (`ExpertHandoverSent`, current per expert via `ExpertHandoverLedger.current`) with no `FieldSession.expertReplies` entry (`ExpertReplyReceived`) for the same `handoverId`. | `Escalation.expert?.name` or `ExpertHandoverSent.expert` (an `ExpertSnapshot`, never a rate); `Escalation.reason`. | `EscalationCoordinator.state` and `ExpertBridge` are live, in-memory state, not records. An `ExpertReplyReceived` is the expert's time reply, the nearest thing to "answered" the record keeps. |
+
+Every row is per session, so the P1 adapter reads `FieldSessionService`'s history and the delivery queue
+together, as `JobDayFeed` already does. KT's three job cards (`jobReportOwed`, `jobPartsOwed`,
+`jobSignOffOwed`) read the same facts: P1 should not list a KT job card and the §10 row for the same
+job twice.
+
+**What has gone stale in "What exists, and what doesn't".**
+
+- **Background delivery exists now.** Plan LM P1 built `BackgroundRefreshCoordinator`
+  (`Services/Background/`), the app's one `BGTaskScheduler` wake with participants and a run ledger;
+  JO's coordinator is that one. P2's notification can join it as a participant rather than building
+  anything.
+- **Notification actions exist now.** LM P2's `NotificationActionCatalog`
+  (`Services/Notifications/NotificationActions.swift`) registers `UNNotificationCategory`s
+  (`askUntilDone` and the Developer panel's button test) through `NotificationActionHub`.
+- **KT is built** (P0–P4, P5 device pass owed). Its draft row has a record: a card whose
+  `PreparedCardMemory.state` is `.handedOff(result: .cancelled or .unknown)` — the composer was opened
+  and the card did not close. KT's producer exists, so the draft source can get a reader in P1 or later;
+  `hasProducer` stays false until it does. KI, JO and LG are still unbuilt.
+- **"`ActivityRecorder` writes a `.held` entry"** is loose: the entry is built by `ActivityFeed.toolCall`
+  (in `ActivityRecorder.swift`) and written from `NativeToolRouter`, only for a Plan W ceiling hold.
