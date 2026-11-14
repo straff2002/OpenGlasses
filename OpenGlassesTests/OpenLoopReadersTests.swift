@@ -168,7 +168,7 @@ final class OpenLoopReadersTests: XCTestCase {
     func testDigestItemsCountWhenActionableUnseenAndNotTheirOwnRow() async {
         let items = [
             item("d1", .sync, priority: .high),                       // urgent: counts
-            item("d2", .agent, awaitingReply: true, thread: "a1"),    // actionable: counts, covers the result
+            item("d2", .agent, priority: .medium, awaitingReply: true, thread: "a1"), // actionable: counts, covers the result
             item("d3", .proactive, priority: .medium),                // informational: no
             item("d4", .sync, priority: .high, seen: 1),              // already seen: no
             item("d5", .calendar, priority: .high),                   // its own row: no
@@ -200,7 +200,7 @@ final class OpenLoopReadersTests: XCTestCase {
     }
 
     func testADigestAgentItemAndItsQueuedResultCountOnce() async {
-        let digest = loops(await DigestLoopReader(items: { [self.item("d2", .agent, awaitingReply: true, thread: "a1")] })
+        let digest = loops(await DigestLoopReader(items: { [self.item("d2", .agent, priority: .medium, awaitingReply: true, thread: "a1")] })
             .readOpenLoops(now: F.now, calendar: F.calendar))
         let queued = AgentNotificationQueue.QueuedNotification(
             id: "a1", message: "Update d2", source: "Agent Task", personaId: nil, personaName: nil,

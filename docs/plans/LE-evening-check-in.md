@@ -1,16 +1,19 @@
 # Plan LE — The Evening Check-in (what's still waiting on your reply, decision or approval)
 
-**Status:** 🚧 P0 built 2026-11-14 (headless): `OpenLoop` and its fourteen sources (the five §10 job
-sources among them), `OpenLoopCollector`, `OpenLoopPhraser`, `OpenLoopDismissals`, held trail entries
-that resolve, and `.checkIn` as a third `MyDayDeliveryPolicy` slot (17:00 with Field Assist on, merged
-with the evening slot inside 30 minutes, not spoken while driving); every P0 exit test written. See
-[As built](#as-built). P1 (adapters, the recorder's resolution, delivery, settings, `activity waiting`,
-the My Day section) is next. Drafted 2026-11-11. All eight [decisions](#decisions-for-greig-taken-2026-11-12)
-taken as recommended on 2026-11-12. Whether the "check-in is ready" notification carries Plan
-[LM](LM-background-and-notification-foundation.md)'s buttons (drafted before LM existed) waits for
-LM's device pass. **Amended 2026-11-14:** the owner asked whether it would help a Field Assist technician
-at the end of the day; it would, with the job's own loose ends as sources. [§10](#10--field-assist-the-end-of-the-shift)
-and decisions 9–11 add them, in the same phases.
+**Status:** 🚧 P0 and P1 built 2026-11-14 (headless). P0: `OpenLoop` and its fourteen sources (the five
+§10 job sources among them), `OpenLoopCollector`, `OpenLoopPhraser`, `OpenLoopDismissals`, held trail
+entries that resolve, and `.checkIn` as a third `MyDayDeliveryPolicy` slot. P1: a reader over every store
+that has a producer (the trail, Reminders, goals, the digest, the agent queue and the five job rows), held
+entries matched to their later answer by a hold key, the dismissal and said-today store, the check-in
+delivered at its time (merged with the evening, silent when empty, shown not spoken while driving), its
+settings rows, `activity waiting`, and My Day's **Waiting on you** section. See [As built](#as-built). P2
+(the content-free notification, the Display card, the watch line, the KH scenario) is next; the spoken
+"Want to deal with the first one now?" is held for it. Drafted 2026-11-11. All eight
+[decisions](#decisions-for-greig-taken-2026-11-12) taken as recommended on 2026-11-12. Whether the
+"check-in is ready" notification carries Plan [LM](LM-background-and-notification-foundation.md)'s buttons
+(drafted before LM existed) waits for LM's device pass. **Amended 2026-11-14:** the owner asked whether it
+would help a Field Assist technician at the end of the day; it would, with the job's own loose ends as
+sources. [§10](#10--field-assist-the-end-of-the-shift) and decisions 9–11 add them, in the same phases.
 **Track:** Everyday assistant. Phone and spoken audio first; the Display and the watch follow.
 **Builds on:** Plan [DY](DY-my-day-everyday-briefing.md) (`MyDayDeliveryPolicy`, `MyDayScheduledDeliveryService`,
 quiet hours, `MyDaySpeechPolicy`), Plan [IW](IW-goals-and-activity-trail.md) (`ActivityStore`, `ActivityPhraser`,
@@ -450,3 +453,135 @@ job twice.
   `hasProducer` stays false until it does. KI, JO and LG are still unbuilt.
 - **"`ActivityRecorder` writes a `.held` entry"** is loose: the entry is built by `ActivityFeed.toolCall`
   (in `ActivityRecorder.swift`) and written from `NativeToolRouter`, only for a Plan W ceiling hold.
+
+### P1 — 2026-11-14 (headless)
+
+**Files.** New, under `OpenGlasses/Sources/Services/MyDay/CheckIn/`:
+
+- `OpenLoopSources.swift` — the everyday rows as pure mappings: `OpenLoopReminders` (incomplete, due today
+  or overdue; a date-only reminder is due at the end of its day), `OpenLoopGoalSteps` (an active goal's
+  next step, due today or overdue, `covers` the reminder its `.reminder` action made, matched by the
+  reminder's text), `OpenLoopDigest` (`actionable` or higher, `seenCount == 0`, through
+  `DigestComposer.compose` so retired and stale items are gone; calendar, reminder and goal items have
+  their own rows, a location transition only mattered at the time; an agent item `covers` its queued
+  result) and `OpenLoopAgentResults` (queued, not delivered, not stale by its own priority).
+- `OpenLoopJobLoops.swift` — the five §10 rows, pure, over `OpenLoopJobFacts` (sessions with whether each
+  report went, the queue entries, the sign-off rule). Today's work is the open job plus jobs finished
+  today, cancelled ones excluded. **Report:** owed failures (`JobDayComposer.owedFailures`, said "didn't
+  send"), staged entries, and a job finished today with `reportSent == false` and nothing waiting or
+  failed in the queue. **Held close:** re-run from the close inputs — an open job with an open
+  verification ("the check '<task>'", without the `Verify:` prefix) or with the organisation's sign-off
+  missing, and a finished job with the sign-off missing whose report has not gone; one row a job.
+  **Parts:** `PartsOrder.waiting` (`status == .requested`), one row a request, by its description else its
+  number. **Deferred task:** `status == .deferred` and not completed. **Hand-off / escalation:** the
+  current generation of each hand-off with no `ExpertReplyReceived` for its id, and each escalation with
+  `resolvedAt == nil`; an escalation to an expert who also has a hand-off waiting is that hand-off's row.
+  The job is named `.customer` from `site.customer`, else `.reference` from `jobReference`, else nothing.
+- `OpenLoopReaders.swift` — `ApprovalLoopReader` (the trail; unavailable while the file is unopened),
+  `ReminderLoopReader` (My Day's own `RemindersDaySource`, so the same `EventKitDayStore` path; denied or
+  failed is unavailable, switched off in My Day's sources is an empty list), `GoalStepLoopReader`
+  (`GoalStore`; reads reminders only when a next step's action is a reminder), `DigestLoopReader`,
+  `AgentResultLoopReader` (`AgentNotificationQueue.pendingNotifications`, new) and `JobLoopReader`
+  (empty with Field Assist off; its production facts read `FieldSessionService`'s history and open job,
+  each of today's finished jobs' `reportWasSent`, and the send queue — what `JobDayFeed` reads, read when
+  the check-in asks). Every store is reached through a closure, so the tests use fakes.
+- `OpenLoopDismissalStore.swift` — two `OpenLoopDismissals` records in `UserDefaults` + JSON, the
+  dismissed-tonight one (`checkInDismissedLoops`) and the said-today one (`checkInSaidLoops`). Registered
+  in `DataStoreRegistry` as `checkInDismissals` (a preference, not subject-linked, `deleteAll()`), and the
+  ET data-lifecycle matrix regenerated. To make that true, `OpenLoop`'s default fingerprint is now a
+  one-way digest of title, due time and failed flag: the store holds loop ids and digests, never a title
+  or a name.
+- `EveningCheckInService.swift` — the readers (the registry makes the trail, reminders and goals readers;
+  AppState installs the digest, agent and job readers, `install` replacing any reader for the same
+  sources), `collect` (less tonight's dismissals: My Day and the asked answer), `scheduledText` (less
+  what was said today too; marks every delivered loop said) and `askedText` (marks the list said only
+  when asked at or after the check-in time). Every call reads every reader fresh.
+- `WaitingOnYouModel.swift` — the section's rules and rows (`WaitingOnYouSection.isVisible`,
+  `WaitingOnYouRow`, `WaitingOnYouAction`, `WaitingOnYouText`) and `WaitingOnYouScreenModel`, whose
+  handlers are AppState's services in the app and fakes in the tests.
+
+Also new: `App/EveningCheckInWiring.swift` (the readers over AppState's services, the delivery's content
+and motion reading, the row handlers, and `openJobDayDestination`, which the job day's own rows in
+`VoiceTab` now use too) and `App/Views/MyDayWaitingOnYouView.swift` (the thin section view). Changed:
+`ActivityEntry.swift` (`holdKey`, `ActivityHoldPolicy`, `isAwaitingWearer(at:)`,
+`effectiveResolution(at:)`), `ActivityRecorder.swift` (`ActivityHoldKey`, `resolveHold` on the recorder
+seam, `holdKey` on held entries), `ActivityStore.swift` (`resolveHold`, `resolve(entryID:as:at:)`,
+`isUnreadable`; `titleOnly` keeps the resolution and key), `ActivityPhraser.swift` (a lapsed hold is said
+as lapsed), `NativeToolRouter.swift` (the hold key, the answer at the boundary, the in-memory held calls
+and `replayHeld`), `OpenLoopApprovals.swift`, `OpenLoopCollector.swift` (`said`), `OpenLoopPhraser.swift`
+(`offerFirst`), `MyDayDelivery.swift` (delivery, `MyDayCheckInDefaults.shown`, `MyDayDeliveryMotion`),
+`MyDaySettingsViews.swift`, `MyDayView.swift`, `ActivityTool.swift`, `NativeToolRegistry.swift`,
+`MyDayService.swift` (`reminders`), `MotionActivityProvider.swift` (`latestSample`),
+`AgentNotificationQueue.swift` and `DataStoreRegistry.swift`. Tests: `HeldEntryResolutionTests`,
+`OpenLoopReadersTests`, `OpenLoopJobLoopsTests`, `OpenLoopDismissalStoreTests`, `EveningCheckInTests`.
+
+**How a held entry now finds its answer.** Matching by operation id is impossible: a held call is turned
+away, never dispatched, and when the wearer is back the model asks again under a fresh invocation id. What
+comes back is the same call, so the hold is filed under `ActivityHoldKey` — a digest of the dispatch seam,
+the tool, the definition digest and `CanonicalArgumentDigest` of the arguments (the fields an
+`ApprovalBinding` is bound to, less its rotating session id). `NativeToolRouter` computes it for every
+call it authorizes; the `.hold` branch writes it on the `.held` entry (`ActivityEntry.holdKey`, written only
+when set, so old entries and every other entry keep their shape). The answer is recorded where the ladder
+decides: a confirmation approved (or a plan grant spent) → `approved`, denied → `declined`, and the same
+call allowed to run by itself → `approved` (what it was waiting on has happened). In practice the last
+does not arise today: every tool the presence ceiling can hold is classed messaging or actuation by
+name, so the effect-class floor asks for a bound approval whenever it comes back. `ActivityStore.resolveHold`
+answers **every** waiting held entry under the key, so a scheduled task held every 15 minutes is one
+question, answered once; and `OpenLoopApprovals` lists only the newest hold of a key. A call with any other
+argument — another recipient, a reworded body — is another question and leaves the hold alone; matching on
+the tool alone was rejected because a later, unrelated message would silently clear the one held.
+**Expiry** has no writer moment, so it is derived: `ActivityHoldPolicy.lifetime` is 48 hours (the oldest
+hold §2 lists, from the start of yesterday, is at most two days old), past which `effectiveResolution(at:)`
+is `expired`, `isAwaitingWearer(at:)` is false and an answer can no longer reach it.
+
+**Approve from the row.** "Never approve directly" needs the call itself, and the trail never holds
+arguments. So the router keeps each held call (name and arguments) **in memory only**, by its key, for
+the hold's lifetime, capped at 10 like `HeldRecommendationStore`, and dropped once the call is answered.
+The row's **Review** runs `replayHeld(key:)`: the call goes back through the whole ladder as the wearer's
+own request inside `HeldCallReplay.asksFirst`, which turns an `.allow` into a `.confirm` — the call's own
+approval card and spoken prompt ask, and its answer resolves the entry as above. The flag only ever adds a
+question, and today it is belt and braces: the effect-class floor already asks for every holdable call. After a relaunch the call is gone, so the row offers **Decline** only (`resolve(entryID:as:)`,
+nothing runs); a declined row is answered, a dismissed one is not. Review and Open step out of the My Day
+sheet first and act once it has gone, because the approval card and the job's pages are drawn over the
+app's root.
+
+**"Want to deal with the first one now?"** Left out of the spoken text in P1 (`offerFirst: false` at every
+call site; the phraser and its P0 tests keep the offer). The scheduled check-in is spoken outside any
+conversation turn, so a "yes" would reach the model with no idea what it answers, and routing that yes to
+`replayHeld` means intercepting the next utterance — the conversation-turn plumbing the brief called risky.
+The row's Review is the P1 way to deal with the first one. **For P2:** a pending-offer record the next
+wake-word turn can consume (or an `activity` action the model calls), feeding `replayHeld`.
+
+**KT draft source: no reader.** `PreparedCardStore` keeps only each card's id and state — the card's
+words, recipient and kind of job live in the feed `MyDayService` composes, which is a cache filled at
+compose time, not a store. A reader would have to rebuild the card feed or read that cache, against the
+Risks rule, and KT's three job cards (`jobReportOwed`, `jobPartsOwed`, `jobSignOffOwed`) say the same job
+facts as the §10 rows, which would need de-duplicating by session. So `draft.hasProducer` stays false, no
+reader answers for it, and no KT card can double a §10 row (`OpenLoopReadersTests` pins it). KI, JO and LG
+stay without readers.
+
+**Decided while building.**
+
+- **Delivery.** `MyDayScheduledDeliveryService` delivers `.checkIn`: the check-in's text (`scheduledText`),
+  then, with `alsoDelivers: .evening`, the evening briefing's own text, as one delivery handed to
+  `onDelivery` as `.checkIn`. Both day keys are consumed whether or not either had words: an empty
+  check-in says nothing and is not said later in the window; an empty check-in merged with the evening
+  leaves the evening to speak alone. `motion` is fed from `MotionActivityProvider.latestSample` while it is
+  under 10 minutes old (`MyDayDeliveryMotion`); `automotive` makes it `speak: false`, which shows it the
+  way an unspoken briefing already shows (`lastResponse` and the delivery notification). That
+  notification's body for the check-in is the content-free "Your evening check-in is ready."
+- **Said today.** "Each item is said once a day" is the said-today record: the scheduled check-in leaves
+  out what was said, and "what's waiting on me?" asked at or after the check-in time marks what it said.
+  The asked answer and My Day always show everything still waiting.
+- **Settings.** "Evening check-in" (off by default) and "Check-in time" under My Day's Scheduled Delivery,
+  beside the evening row; the picker shows `MyDayCheckInDefaults.shown` (17:00 with Field Assist active,
+  else 21:00) and stores nothing until the wearer moves it. "Speak scheduled briefings" now also enables
+  with only the check-in on.
+- **The section shows only while the check-in is on** — all evening (from My Day's own 18:00 evening),
+  and after the check-in time whenever it has something in it. Off by default means no new section for
+  anyone who has not asked for the check-in. Rows: Review and Decline on an approval, Complete on a
+  reminder, Done on a goal step, Open on a job row (`openJobDayDestination`), and Mark as heard on a
+  digest update or an agent result (retired in its own store, as My Day's digest rows are); swipe to clear
+  writes the dismissal store only.
+- **The trail summary** says a hold past its lifetime as "it lapsed", not as waiting.
+

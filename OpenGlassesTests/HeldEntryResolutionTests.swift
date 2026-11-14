@@ -196,24 +196,11 @@ final class HeldEntryResolutionTests: XCTestCase {
         }
     }
 
-    func testTheSameCallRunningByItselfLaterResolvesTheHoldApproved() async throws {
-        let rig = rig(.local())
-        await hold(rig, args: ["to": "Mere", "body": "running late"])
-        presentWithAgentMode(rig)
-        // No coordinator: were the ladder to ask after all, the call fails closed rather than wait
-        // on an answer nobody gives.
-        rig.router.confirmationCoordinator = nil
-        let result = await rig.router.executeRoot(name: "send_message",
-                                                  args: ["to": "Mere", "body": "running late"])
-        XCTAssertEqual(result, .completed("done"))
-        XCTAssertEqual(rig.tool.runs, 1, "the ladder let it run without asking")
-        XCTAssertEqual(rig.store.entries.first { $0.kind == .held }?.resolution, .approved)
-    }
-
     func testAReplayAsksEvenWhereTheLadderWouldLetItRun() async throws {
-        // The same call the ladder would now let through by itself: put back from the check-in, it
-        // still asks, because the wearer's tap is a request to see it, not a yes.
-        let rig = rig(.local())
+        // Agent Mode on, the wearer present, no rules: the supervisor would let the call through.
+        // Put back from the check-in it still asks (today the effect-class floor asks too, for
+        // every call the ceiling can hold; `HeldCallReplay` keeps it so if that floor ever moves).
+        let rig = rig()
         await hold(rig, args: ["to": "Mere", "body": "running late"])
         let key = try XCTUnwrap(rig.store.entries.first?.holdKey)
         presentWithAgentMode(rig)
