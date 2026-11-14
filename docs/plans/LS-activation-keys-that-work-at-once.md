@@ -1,8 +1,10 @@
 # Plan LS — Activation Keys That Work at Once (sign up, hand over the key, start the pilot in the same visit)
 
-**Status:** 🔨 P0 built 2026-11-14 (headless; see [As built](#as-built)). All six [decisions](#decisions-for-greig)
-taken 2026-11-14 as recommended. Owed: the service's P1 in the private repository, the P2 device pass, and P3
-when decision 3's condition is met.
+**Status:** 🔨 P0 built and merged 2026-11-14 (PR 1051, build 681; headless; see [As built](#as-built)). P1 built
+and deployed 2026-11-14 in the private repository: the licence host answers `/a/` to the contract, and every key
+already on the public site answers there too. All six [decisions](#decisions-for-greig) taken 2026-11-14 as
+recommended. Owed: the P2 device pass; decision 1's step once build 681 or later is on the App Store and
+TestFlight; P3 when decision 3's condition is met.
 **Track:** Field Assist — fleet. Activation, the licence host, the public site.
 **Builds on:** Plan [CT](CT-org-configuration-profiles.md) 3a (the activation key and its sealed file), Plan
 [JS](JS-licence-sales-and-device-seats.md) (the vendor-run service, one key per customer for life, the licence

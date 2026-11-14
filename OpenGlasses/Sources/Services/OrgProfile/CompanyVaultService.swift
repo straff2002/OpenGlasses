@@ -6,6 +6,10 @@ enum CompanyVaultSyncReason: Equatable, Sendable {
     /// After every profile renewal attempt: launch, foreground and the daily check. Does nothing
     /// unless the profile's generation moved or something is still waiting.
     case routine
+    /// The profile was just applied (an activation key, a profile link or office commissioning):
+    /// fetch the vault list at once, so a phone bound in the same visit starts downloading without
+    /// waiting to be backgrounded and brought back.
+    case enrolled
     /// *Check for Updates*: fetch the vault list whatever its generation.
     case checkForUpdates
     /// The job that held a change closed.

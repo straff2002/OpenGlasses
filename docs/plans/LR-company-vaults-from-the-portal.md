@@ -1,8 +1,10 @@
 # Plan LR — Company Vaults from the Portal (upload once, every phone has it, updates arrive by themselves)
 
-**Status:** 🔨 P0, P1 and P2 built 2026-11-13 on `docs/lr-company-vaults` (not yet pushed), with the shared wire
-contract in `Tools/LicenceIssuance` and [Contracts/company-vaults.md](../../Contracts/company-vaults.md) — see
-[As built](#as-built). Owed: the service's first phase, the P3 device pass and the catalog sync. All five
+**Status:** 🔨 P0, P1 and P2 built and merged 2026-11-13 (PR 1039), with the shared wire contract in
+`Tools/LicenceIssuance` and [Contracts/company-vaults.md](../../Contracts/company-vaults.md) — see
+[As built](#as-built); the strings synced in PR 1048. The service's first phase is built and deployed (private
+repository); its go-live on the host is owed, then the P3 device pass. 2026-11-14: a newly bound phone starts
+the vaults the moment the profile is applied, not at its next foreground. All five
 [decisions](#decisions-for-greig) taken 2026-11-13: decision 1 (manuals may be uploaded, with size limits) while
 drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.
@@ -280,6 +282,21 @@ installed on this phone."; "%@ is missing from the vault on this phone."; and th
 (both builds): "…the app build, the profile id and the versions of your organisation's vaults on this phone;
 never a name, device model or location."
 
-**Owed:** the service's first phase (publishing the catalog, packs and sealed manuals); the P3 device pass; the
-catalog sync for the strings above.
+**Strings:** synced into the catalog in PR 1048.
+
+**2026-11-14 — the vaults start at enrolment.** `apply` records a renewal attempt, and enrolment ran only the
+profile's pack, so a phone bound with an activation key, a profile link or office commissioning got its
+company's vaults only at the routine pass of its next foreground or launch: a technician who stayed in the app
+after typing the key had nothing. `OrgProfileManager.completeEnrolment()` (the pack, then a
+`CompanyVaultSyncReason.enrolled` pass, which fetches the vault list whatever its generation) now follows both
+`apply` callers. `CompanyVaultServiceTests` enrols through it alone, with no renewal or foreground, as the app
+does.
+
+**When a new upload reaches a bound phone.** The profile carries the vault list's generation, and the phone
+renews the profile at most once a day, at launch or foreground; there is no background wake for it. So a vault
+or manual uploaded today reaches a phone at its first launch or foreground after its last renewal is a day old,
+or at once with *Check for Updates*. Whether that is soon enough is an open question for the device pass.
+
+**Owed:** the service's go-live on the host (the pack-catalog key, the minimum app build, the company
+administrators' access, disk); the P3 device pass.
 

@@ -399,9 +399,10 @@ final class OrgEnrolmentService: ObservableObject {
                 stage = .applied(review.organizationName)
                 modelDidChange()
             }
-            // Step 3 of the enrolment sequence: the pack, if the profile names one. It does not hold
-            // up the sheet — the profile's bounds are already in force.
-            Task { [manager] in await manager.completePendingPack() }
+            // Step 3 of the enrolment sequence: the pack, if the profile names one, then the
+            // company's vaults and manuals (Plan LR). It does not hold up the sheet — the profile's
+            // bounds are already in force, and the company secret was kept above.
+            Task { [manager] in await manager.completeEnrolment() }
         case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
         }
     }

@@ -318,8 +318,9 @@ final class OfficeCommissioningService: ObservableObject {
             stage = .failed(.notApplied(refusal.errorDescription ?? ""))
             return
         }
-        // The vault pack, if the profile names one, as for any enrolment. It does not hold this up.
-        Task { [manager] in await manager.completePendingPack() }
+        // The vault pack, if the profile names one, and the company's vaults, as for any
+        // enrolment. It does not hold this up.
+        Task { [manager] in await manager.completeEnrolment() }
 
         let pairing = OfficePairingService(
             manager: manager, transportID: seams.phoneTransportID,

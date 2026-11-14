@@ -182,7 +182,9 @@ final class CompanyVaultServiceTests: XCTestCase {
         let review = try m.review(document: String(decoding: profileResponse, as: UTF8.self), source: .link,
                                   sourceURL: profileURL).get()
         try m.apply(review).get()
-        await m.renewIfDue()
+        // What the app runs after an enrolment, and nothing else: no renewal, no foreground. The
+        // vaults used to arrive only with the next foreground's routine pass.
+        await m.completeEnrolment()
     }
 
     private func renew(_ m: OrgProfileManager) async {
