@@ -429,6 +429,6 @@ assertion in the pair-window test fixed and its two classes re-run, 58 tests, 0 
 ## Out of scope
 
 The new features found in the same review (spoken coaching while recording, wording-based safety reminders, a
-private conversation, a battery forecast, a QR safety check, photo-based machine matching, sharpest-frame choice,
+private conversation (now Plan [LU](LU-private-conversation.md)), a battery forecast, a QR safety check, photo-based machine matching, sharpest-frame choice,
 a text crop for vision, and others). They are noted for their own plans. The changes to how GX judges a photo are
 in GX's own amendment.
