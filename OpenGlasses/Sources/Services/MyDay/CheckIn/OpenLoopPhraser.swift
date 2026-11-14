@@ -71,22 +71,39 @@ enum OpenLoopPhraser {
     }
 
     /// "Three things are still waiting on you:" / "Two things before you finish:".
-    static func opening(count: Int, fieldAssist: Bool) -> String {
-        let number = SpokenPhrasing.capitalisedFirst(SpokenPhrasing.number(count))
+    ///
+    /// `language` is the language the template is read in (the app's own, by default). The count is
+    /// an English word only in English: `SpokenPhrasing` knows English words alone, and an English
+    /// "Three" inside a translated sentence would be read out as English. Every other language gets
+    /// its own numeral, which the voice reads in that language with the right gender.
+    static func opening(count: Int, fieldAssist: Bool,
+                        language: String = Bundle.main.preferredLocalizations.first ?? "en") -> String {
+        let number = spokenCount(count, language: language)
         switch (fieldAssist, count == 1) {
         case (false, true):
             return String(localized: "\(number) thing is still waiting on you:",
-                          comment: "Spoken: the evening check-in's opening for one item; the number is a word, e.g. One.")
+                          comment: "Spoken: the evening check-in's opening for one item; the number is One in English, a numeral in other languages.")
         case (false, false):
             return String(localized: "\(number) things are still waiting on you:",
-                          comment: "Spoken: the evening check-in's opening; the number is a word, e.g. Three.")
+                          comment: "Spoken: the evening check-in's opening; the number is a word in English (Three), a numeral in other languages.")
         case (true, true):
             return String(localized: "\(number) thing before you finish:",
-                          comment: "Spoken: the end-of-shift check-in's opening for one item; the number is a word.")
+                          comment: "Spoken: the end-of-shift check-in's opening for one item; the number is One in English, a numeral in other languages.")
         case (true, false):
             return String(localized: "\(number) things before you finish:",
-                          comment: "Spoken: the end-of-shift check-in's opening; the number is a word, e.g. Two.")
+                          comment: "Spoken: the end-of-shift check-in's opening; the number is a word in English (Two), a numeral in other languages.")
         }
+    }
+
+    /// The count as the opening says it: "Three" in English, else the language's own numeral.
+    static func spokenCount(_ count: Int, language: String) -> String {
+        if language == "en" || language.hasPrefix("en-") {
+            return SpokenPhrasing.capitalisedFirst(SpokenPhrasing.number(count))
+        }
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: language)
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSNumber(value: count)) ?? String(count)
     }
 
     /// One loop as a clause inside the list.
