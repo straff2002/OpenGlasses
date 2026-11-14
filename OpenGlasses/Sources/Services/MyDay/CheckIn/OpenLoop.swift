@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // MARK: - The Evening Check-in's open loops (Plan LE P0)
@@ -161,10 +162,14 @@ struct OpenLoop: Identifiable, Equatable, Hashable, Sendable {
     }
 
     /// The default fingerprint: the title, the due time and whether it failed — so a reminder
-    /// moved to another time, a renamed step or a send that has since failed is new news.
+    /// moved to another time, a renamed step or a send that has since failed is new news. A one-way
+    /// digest (P1): the dismissal record keeps loop ids and these, never a title, so the only thing
+    /// the check-in keeps beyond its sources names nobody.
     static func fingerprint(title: String, dueAt: Date?, failed: Bool) -> String {
         let due = dueAt.map { String(Int($0.timeIntervalSince1970)) } ?? "-"
-        return "\(title)|\(due)|\(failed ? "failed" : "-")"
+        let material = "\(title)|\(due)|\(failed ? "failed" : "-")"
+        return SHA256.hash(data: Data(material.utf8)).prefix(12)
+            .map { String(format: "%02x", $0) }.joined()
     }
 }
 

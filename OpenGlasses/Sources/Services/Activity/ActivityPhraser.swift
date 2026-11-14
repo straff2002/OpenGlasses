@@ -79,8 +79,9 @@ struct ActivityPhraser: Sendable {
     func summary(of allEntries: [ActivityEntry], window: ActivityWindow) -> String {
         let inWindow = entries(allEntries, in: window)
         // Plan LE §3: a held entry the wearer has since answered is no longer waiting on them.
-        let waiting = inWindow.filter(\.isAwaitingWearer)
-        let finished = inWindow.filter { !$0.isAwaitingWearer }
+        // P1: and one past its hold's lifetime has lapsed — said as such, not as waiting.
+        let waiting = inWindow.filter { $0.isAwaitingWearer(at: now) }
+        let finished = inWindow.filter { !$0.isAwaitingWearer(at: now) }
         let waitingLine = waitingSentence(waiting)
         let when = label(for: window)
 
@@ -157,7 +158,7 @@ struct ActivityPhraser: Sendable {
         case .uncertain: return entry.title + ", but I couldn't confirm it went through."
         case .done: return SpokenPhrasing.sentence(entry.title)
         case .waitingOnYou:
-            switch entry.resolution {
+            switch entry.effectiveResolution(at: now) {
             case .approved: return entry.title + ": you said yes."
             case .declined: return entry.title + ": you said no."
             case .expired: return entry.title + ": it lapsed."

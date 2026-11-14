@@ -10,19 +10,24 @@ import Foundation
 final class ActivityTool: NativeTool {
     let name = "activity"
     let description = """
-    What the assistant has done for the wearer, and what is coming up. Use it for "what have you \
-    done today?", "what did you do this morning?", "what have you done since I left?", and "what's \
-    next?". Actions: 'today', 'this_morning', 'since' (pass 'time': ISO 8601, or HH:mm for today), \
-    and 'next' (goal steps, scheduled tasks due within a day, and anything waiting on the wearer). \
-    It lists the assistant's own actions — things added, sent, held back or refused — never what \
-    was said or looked up. Read the answer back as given.
+    What the assistant has done for the wearer, what is coming up, and what is still waiting on \
+    them. Use it for "what have you done today?", "what did you do this morning?", "what have you \
+    done since I left?", "what's next?", and "what's waiting on me?", "what do I still need to do \
+    today?", "anything I haven't answered?". Actions: 'today', 'this_morning', 'since' (pass \
+    'time': ISO 8601, or HH:mm for today), 'next' (goal steps, scheduled tasks due within a day, \
+    and anything waiting on the wearer), and 'waiting' (everything from today still waiting on the \
+    wearer: held approvals, reminders due or overdue, goal steps, unheard updates and results, and \
+    with Field Assist a job's unsent report, held close, unsent parts, put-off tasks and unanswered \
+    hand-offs). It lists the assistant's own actions — things added, sent, held back or refused — \
+    never what was said or looked up. It approves, sends and completes nothing. Read the answer \
+    back as given.
     """
 
     var parametersSchema: [String: Any] {
         [
             "type": "object",
             "properties": [
-                "action": ["type": "string", "enum": ["today", "this_morning", "since", "next"]],
+                "action": ["type": "string", "enum": ["today", "this_morning", "since", "next", "waiting"]],
                 "time": ["type": "string",
                          "description": "since: when from — ISO 8601, or HH:mm meaning today."],
             ],
@@ -36,6 +41,8 @@ final class ActivityTool: NativeTool {
     var agentModeEnabled: () -> Bool = { Config.agentModeEnabled }
     var clock: () -> Date = Date.init
     var timeZone: () -> TimeZone = { TimeZone.current }
+    /// The Evening Check-in, for `waiting` (Plan LE P1). The registry wires it.
+    var checkIn: @MainActor () -> EveningCheckInService? = { nil }
 
     init(activity: @escaping @MainActor () -> ActivityStore = { ActivityStore.shared },
          goals: @escaping @MainActor () -> GoalStore = { GoalStore.shared }) {
@@ -67,8 +74,14 @@ final class ActivityTool: NativeTool {
             return phraser.whatsNext(goals: goals().goals.filter { $0.state == .active },
                                      scheduled: upcoming(now: now, calendar: phraser.calendar),
                                      entries: recentWaiting)
+        case "waiting", "waiting_on_me":
+            guard let checkIn = checkIn() else {
+                return String(localized: "I couldn't check what's waiting on you just now.",
+                              comment: "Spoken: the 'what's waiting on me?' answer could not be put together.")
+            }
+            return await checkIn.askedText(now: now)
         default:
-            return "Unknown action '\(action)'. Use: today, this_morning, since or next."
+            return "Unknown action '\(action)'. Use: today, this_morning, since, next or waiting."
         }
     }
 

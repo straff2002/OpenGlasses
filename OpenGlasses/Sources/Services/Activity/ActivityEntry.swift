@@ -231,11 +231,28 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
     /// How it was answered. `outcome` keeps what was true when the entry was written; this says
     /// what became of it.
     var resolution: ActivityResolution?
+    /// What a held entry was held *for* (Plan LE P1): `ActivityHoldKey` of the call's seam, tool,
+    /// definition and arguments — a digest, never the arguments. The same call reaching the
+    /// authorization boundary again carries the same key, which is how its answer finds this entry.
+    /// Nil on every other entry and on held entries written before it existed.
+    var holdKey: String?
 
     /// Still waiting on the wearer: waiting when written, and not answered since. The only test
     /// "is this waiting on you?" — a resolved held entry never is.
     var isAwaitingWearer: Bool {
         outcome == .waitingOnYou && resolution == nil && resolvedAt == nil
+    }
+
+    /// Waiting at `now`: unanswered, and not past its hold's own lifetime (`ActivityHoldPolicy`).
+    func isAwaitingWearer(at now: Date) -> Bool {
+        isAwaitingWearer && !ActivityHoldPolicy.hasLapsed(self, at: now)
+    }
+
+    /// The answer as it reads at `now`: the one written, else `expired` for a waiting entry past its
+    /// lifetime — derived, because nothing is there to write it at the moment it lapses.
+    func effectiveResolution(at now: Date) -> ActivityResolution? {
+        if let resolution { return resolution }
+        return isAwaitingWearer && ActivityHoldPolicy.hasLapsed(self, at: now) ? .expired : nil
     }
 
     /// The same entry, answered.
@@ -252,7 +269,7 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
          tool: String? = nil, goalID: UUID? = nil, stepID: UUID? = nil,
          authorisation: ActivityAuthorisation, origin: ActivityOrigin,
          outcome: ActivityOutcome, refs: [ActivityRef] = [],
-         resolvedAt: Date? = nil, resolution: ActivityResolution? = nil) {
+         resolvedAt: Date? = nil, resolution: ActivityResolution? = nil, holdKey: String? = nil) {
         self.id = id
         self.at = at
         self.kind = kind
@@ -267,11 +284,12 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
         self.refs = refs
         self.resolvedAt = resolvedAt
         self.resolution = resolution
+        self.holdKey = holdKey
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, at, kind, title, detail, tool, goalID, stepID, authorisation, origin, outcome, refs
-        case resolvedAt, resolution
+        case resolvedAt, resolution, holdKey
     }
 
     init(from decoder: Decoder) throws {
@@ -291,7 +309,8 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
                   resolvedAt: try container.decodeIfPresent(Date.self, forKey: .resolvedAt),
                   // A resolution a later version wrote and this one cannot name still marks the
                   // entry answered (through `resolvedAt`); it never fails the whole trail.
-                  resolution: (try? container.decodeIfPresent(ActivityResolution.self, forKey: .resolution)))
+                  resolution: (try? container.decodeIfPresent(ActivityResolution.self, forKey: .resolution)),
+                  holdKey: try container.decodeIfPresent(String.self, forKey: .holdKey))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -310,11 +329,27 @@ struct ActivityEntry: Codable, Equatable, Sendable, Identifiable {
         try container.encode(refs, forKey: .refs)
         try container.encodeIfPresent(resolvedAt, forKey: .resolvedAt)
         try container.encodeIfPresent(resolution, forKey: .resolution)
+        try container.encodeIfPresent(holdKey, forKey: .holdKey)
     }
 
     static func clamp(_ text: String, to limit: Int) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > limit else { return trimmed }
         return String(trimmed.prefix(limit - 1)).trimmingCharacters(in: .whitespaces) + "…"
+    }
+}
+
+// MARK: - Holds (Plan LE P1)
+
+/// How long a held call stays waiting. A hold is an action kept back while the wearer was away,
+/// and the check-in asks about holds from today or yesterday (Plan LE §2); the earliest of those
+/// is at most two days old, so a hold lives 48 hours and is `expired` after that
+/// (`ActivityEntry.effectiveResolution(at:)`). The router keeps a held call's arguments, in memory,
+/// for as long.
+enum ActivityHoldPolicy {
+    static let lifetime: TimeInterval = 48 * 60 * 60
+
+    static func hasLapsed(_ entry: ActivityEntry, at now: Date) -> Bool {
+        entry.kind == .held && now.timeIntervalSince(entry.at) >= lifetime
     }
 }

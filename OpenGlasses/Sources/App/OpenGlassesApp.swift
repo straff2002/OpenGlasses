@@ -1409,6 +1409,8 @@ class AppState: ObservableObject, AppStateProtocol {
     let notificationDigest = NotificationDigestService()
     /// My Day owns its own opt-in schedule; it does not depend on Agent Mode or an LLM.
     lazy var myDayDelivery = MyDayScheduledDeliveryService(myDayService: myDayService)
+    /// My Day's Waiting on you section (Plan LE P1), over the Evening Check-in.
+    lazy var waitingOnYou: WaitingOnYouScreenModel = makeWaitingOnYouModel()
     /// Turn-by-turn walking navigation (Plan CA).
     let walkingRoute = WalkingRouteService()
     /// Structured spatial answers — map cards — that tools publish for the watch and, later, the
@@ -4838,13 +4840,15 @@ class AppState: ObservableObject, AppStateProtocol {
         myDayDelivery.sourceAccessReady = { [weak self] in
             self?.myDaySourceAccessReady ?? false
         }
+        // Plan LE P1: the Evening Check-in's readers, content and motion reading.
+        wireEveningCheckIn()
         myDayDelivery.onDelivery = { [weak self] slot, text, shouldSpeak, identifier in
             guard let self else { return }
             self.lastResponse = text
 
             let content = UNMutableNotificationContent()
             content.title = "My Day"
-            content.body = "Your \(slot.rawValue) briefing is ready."
+            content.body = Self.myDayDeliveryNotificationBody(slot)
             content.sound = shouldSpeak ? nil : .default
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request)

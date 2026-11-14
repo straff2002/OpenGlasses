@@ -24,6 +24,22 @@ enum MyDayCheckInDefaults {
     static func minutes(fieldAssistOn: Bool) -> Int {
         fieldAssistOn ? fieldAssistMinutes : everydayMinutes
     }
+
+    /// What the settings row shows: the stored time, else the default (Plan LE P1).
+    static func shown(stored: Int?, fieldAssistOn: Bool) -> Int {
+        stored ?? minutes(fieldAssistOn: fieldAssistOn)
+    }
+}
+
+/// The motion reading a delivery decision may use: the latest sample, only while it is recent
+/// (Plan LE decision 10). A reading from an hour ago says nothing about now.
+enum MyDayDeliveryMotion {
+    static let freshness: TimeInterval = 10 * 60
+
+    static func kind(of sample: MotionSample?, now: Date) -> MotionSample.Kind? {
+        guard let sample, now.timeIntervalSince(sample.at) <= freshness else { return nil }
+        return sample.kind
+    }
 }
 
 struct MyDayDeliverySettings: Equatable, Sendable {
@@ -216,6 +232,11 @@ final class MyDayScheduledDeliveryService: ObservableObject {
     var isBusy: () -> Bool = { true }
     var sourceAccessReady: () -> Bool = { false }
     var protectedDataAvailable: () -> Bool = { false }
+    /// The phone's latest motion reading (`MotionActivityProvider`), when it is recent. `automotive`
+    /// holds the check-in's speech (Plan LE decision 10).
+    var motion: () -> MotionSample.Kind? = { nil }
+    /// The Evening Check-in's content (Plan LE P1). Nil — no check-in to deliver — until wired.
+    var checkIn: EveningCheckInService?
     var onDelivery: ((MyDayDeliverySlot, String, Bool, String) -> Void)?
 
     private let myDayService: MyDayService
@@ -259,25 +280,42 @@ final class MyDayScheduledDeliveryService: ObservableObject {
                 isOnline: isOnline(),
                 isBusy: isBusy(),
                 sourceAccessReady: sourceAccessReady(),
-                isProtectedDataAvailable: protectedDataAvailable()
+                isProtectedDataAvailable: protectedDataAvailable(),
+                motion: motion()
             ),
             lastMorningDayKey: Config.myDayLastMorningDeliveryDay,
             lastEveningDayKey: Config.myDayLastEveningDeliveryDay,
             lastCheckInDayKey: Config.myDayLastCheckInDeliveryDay
         )
-        guard case .deliver(let slot, let dayKey, let speak, _) = decision else { return }
-        // Plan LE P0 defines the check-in's slot; P1 gives it content (the open-loop collector)
-        // and delivers it here. Until then it is never delivered and its day key never consumed —
-        // it cannot be switched on, as it has no settings row yet.
-        guard slot != .checkIn else { return }
+        guard case .deliver(let slot, let dayKey, let speak, let alsoDelivers) = decision else { return }
 
-        let text = await myDayService.spokenBriefing(now: now, channel: .scheduled)
+        guard slot == .checkIn else {
+            let text = await myDayService.spokenBriefing(now: now, channel: .scheduled)
+            consume(slot, dayKey: dayKey)
+            onDelivery?(slot, text, speak, "my-day-\(slot.rawValue)-\(dayKey)")
+            return
+        }
+
+        // Plan LE P1: the check-in's list first, then — merged inside 30 minutes — the evening's
+        // look at tomorrow. Each slot's day key is consumed whether or not it had anything to say:
+        // an empty check-in is silent (decision 4), and silent means not later in the window either.
+        var parts: [String] = []
+        if let text = await checkIn?.scheduledText(now: now) { parts.append(text) }
+        consume(.checkIn, dayKey: dayKey)
+        if alsoDelivers == .evening {
+            parts.append(await myDayService.spokenBriefing(now: now, channel: .scheduled))
+            consume(.evening, dayKey: dayKey)
+        }
+        guard !parts.isEmpty else { return }
+        onDelivery?(.checkIn, parts.joined(separator: " "), speak, "my-day-\(slot.rawValue)-\(dayKey)")
+    }
+
+    private func consume(_ slot: MyDayDeliverySlot, dayKey: String) {
         switch slot {
         case .morning: Config.myDayLastMorningDeliveryDay = dayKey
         case .evening: Config.myDayLastEveningDeliveryDay = dayKey
         case .checkIn: Config.myDayLastCheckInDeliveryDay = dayKey
         }
-        onDelivery?(slot, text, speak, "my-day-\(slot.rawValue)-\(dayKey)")
     }
 
     deinit {

@@ -188,6 +188,10 @@ final class MyDayService: ObservableObject {
         return travelSource?.directionsURL(for: eventID)
     }
 
+    /// My Day's own reminders source, for the Evening Check-in's reminders row (Plan LE P1): one
+    /// EventKit path, not two.
+    var reminders: any RemindersDaySource { remindersSource }
+
     func setDigestSource(_ source: any DigestDaySource) {
         digestSource = source
     }

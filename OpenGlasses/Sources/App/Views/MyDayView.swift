@@ -13,6 +13,9 @@ struct MyDayView: View {
     @AppStorage("preparedCardGoogleLineDismissed") private var googleLineDismissed = false
     /// The card the wearer last cleared, for its Undo (§5.1).
     @State private var lastDismissed: PreparedCard?
+    @Environment(\.dismiss) private var dismissPage
+    /// A Waiting on you action taken once this page has gone (Plan LE P1).
+    @State private var leavingWith: WaitingOnYouAction?
 
     var body: some View {
         NavigationStack {
@@ -20,9 +23,14 @@ struct MyDayView: View {
                 content
             }
             .navigationTitle("My Day")
-            .refreshable { _ = await service.refresh() }
+            .refreshable {
+                _ = await service.refresh()
+                await appState.waitingOnYou.refresh()
+            }
             .task {
                 if case .idle = service.state { _ = await service.refresh() }
+                // Plan LE P1: the Evening Check-in's list, read fresh each time the page opens.
+                await appState.waitingOnYou.refresh()
             }
             .alert("My Day", isPresented: Binding(
                 get: { actionMessage != nil },
@@ -36,7 +44,18 @@ struct MyDayView: View {
         // Plan KT §7.1: this page is a sheet, so a card's composer is presented from here.
         .modifier(DraftComposerHost(appState: appState, onPage: true))
         .onAppear { appState.draftComposerOnPage = true }
-        .onDisappear { appState.draftComposerOnPage = false }
+        .onDisappear {
+            appState.draftComposerOnPage = false
+            if let action = leavingWith {
+                leavingWith = nil
+                let model = appState.waitingOnYou
+                Task { @MainActor in
+                    // After the sheet's own dismissal, so a composer or the job's page can present.
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    await model.perform(action)
+                }
+            }
+        }
         .onChange(of: service.todayFeed.cards.map(\.id), initial: true) { _, _ in
             let cards = service.todayFeed.cards
             guard !cards.isEmpty else { return }
@@ -143,6 +162,12 @@ struct MyDayView: View {
                 }
                 .padding(16)
             }
+        }
+
+        // Plan LE §8: what from today is still waiting on the wearer, with each row's own action.
+        MyDayWaitingOnYouSection(model: appState.waitingOnYou) { action in
+            leavingWith = action
+            dismissPage()
         }
 
         // The whole day, not the card's share of it. This screen is what "See all" opens, so

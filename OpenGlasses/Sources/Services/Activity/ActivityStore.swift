@@ -106,6 +106,38 @@ final class ActivityStore: ObservableObject {
         save()
     }
 
+    /// A held call came back to the wearer and was answered (Plan LE §3): every held entry still
+    /// waiting under `key`, inside its lifetime, takes the answer — the same call held twice (a
+    /// scheduled task retrying) is one question, answered once. Returns how many did. An answer
+    /// that matches no waiting entry changes nothing.
+    @discardableResult
+    func resolveHold(key: String, resolution: ActivityResolution, at date: Date) -> Int {
+        var answered = 0
+        for index in entries.indices
+        where entries[index].kind == .held && entries[index].holdKey == key
+            && entries[index].isAwaitingWearer(at: date) {
+            entries[index] = entries[index].resolved(resolution, at: date)
+            answered += 1
+        }
+        if answered > 0 { save() }
+        return answered
+    }
+
+    /// The wearer answered one held entry by itself — "Decline" on the check-in's row. Only a held
+    /// entry still waiting can be answered.
+    @discardableResult
+    func resolve(entryID: UUID, as resolution: ActivityResolution, at date: Date) -> Bool {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }),
+              entries[index].kind == .held, entries[index].isAwaitingWearer else { return false }
+        entries[index] = entries[index].resolved(resolution, at: date)
+        save()
+        return true
+    }
+
+    /// The file is there and could not be opened yet (protected data before the first unlock):
+    /// what the store holds is not the whole trail, so a reader must not take it for one.
+    var isUnreadable: Bool { fileUnopened }
+
     /// Everything — the trail's Clear button and the registry's "delete all".
     func deleteAll() {
         entries = []
@@ -151,7 +183,9 @@ final class ActivityStore: ObservableObject {
         return ActivityEntry(id: entry.id, at: entry.at, kind: entry.kind, title: entry.title,
                              detail: nil, tool: entry.tool, goalID: entry.goalID,
                              stepID: entry.stepID, authorisation: entry.authorisation,
-                             origin: entry.origin, outcome: entry.outcome, refs: entry.refs)
+                             origin: entry.origin, outcome: entry.outcome, refs: entry.refs,
+                             resolvedAt: entry.resolvedAt, resolution: entry.resolution,
+                             holdKey: entry.holdKey)
     }
 
     // MARK: - Storage

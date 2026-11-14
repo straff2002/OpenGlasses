@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // MARK: - The seam every feeder calls (Plan IW P1)
@@ -10,6 +11,14 @@ protocol ActivityRecording: AnyObject {
     func record(_ entry: ActivityEntry)
     /// The operation journal settled `operationID`.
     func settle(operationID: String, outcome: ActivityOutcome)
+    /// A call held for the wearer reached the authorization boundary again and was answered
+    /// (Plan LE §3): the newest held entry still waiting with this `holdKey` takes the answer.
+    func resolveHold(key: String, resolution: ActivityResolution, at date: Date)
+}
+
+extension ActivityRecording {
+    /// A recorder with no trail to answer leaves holds alone.
+    func resolveHold(key: String, resolution: ActivityResolution, at date: Date) {}
 }
 
 /// The production recorder: a thin pass-through to the store.
@@ -25,6 +34,28 @@ final class ActivityRecorder: ActivityRecording {
 
     func settle(operationID: String, outcome: ActivityOutcome) {
         store.settle(operationID: operationID, outcome: outcome)
+    }
+
+    func resolveHold(key: String, resolution: ActivityResolution, at date: Date) {
+        store.resolveHold(key: key, resolution: resolution, at: date)
+    }
+}
+
+/// What a held call was held *for*, as one opaque key (Plan LE P1): the dispatch seam, the tool,
+/// the definition and the canonical digest of the arguments — the same fields an approval is bound
+/// to (`ApprovalBinding`) minus the approval session, which rotates. A digest of digests: nothing
+/// of the arguments can be read back out of it, so it is safe on the trail.
+///
+/// **Why not the operation id.** A held call is turned away, never dispatched; when the wearer is
+/// back, the model asks again with a fresh invocation id, so the id the hold was written under is
+/// never seen a second time. The same call — same tool, same arguments — is what comes back, and
+/// that is what this key names.
+enum ActivityHoldKey {
+    static func make(seamIdentity: String, toolName: String, definitionDigest: String,
+                     argumentsDigest: String) -> String {
+        let material = [seamIdentity, toolName, definitionDigest, argumentsDigest].joined(separator: "|")
+        return SHA256.hash(data: Data(material.utf8)).prefix(16)
+            .map { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -98,7 +129,7 @@ enum ActivityFeed {
                          invocationOrigin: ToolInvocationOrigin,
                          scheduledTask: String?, plannedStep: PlannedStepContext?,
                          operationID: String, jobThreadID: String?,
-                         goalStep: GoalStepContext? = nil,
+                         goalStep: GoalStepContext? = nil, holdKey: String? = nil,
                          id: UUID = UUID(), at: Date) -> ActivityEntry? {
         let origin: ActivityOrigin
         if scheduledTask != nil {
@@ -146,7 +177,7 @@ enum ActivityFeed {
                                  title: "Your OK to use the \(readable) tool", tool: tool,
                                  goalID: goalID, stepID: stepID,
                                  authorisation: .heldForYou, origin: origin,
-                                 outcome: .waitingOnYou, refs: linkRefs)
+                                 outcome: .waitingOnYou, refs: linkRefs, holdKey: holdKey)
         }
     }
 

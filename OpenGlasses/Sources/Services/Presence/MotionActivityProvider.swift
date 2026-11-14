@@ -16,6 +16,9 @@ final class MotionActivityProvider: ObservableObject {
     /// Every activity update as a pure sample (Plan GH) — parking capture reads the transitions,
     /// where presence only needs the boolean.
     var onSample: ((MotionSample) -> Void)?
+    /// The latest reading, for a decision made at one moment — the Evening Check-in's driving rule
+    /// (Plan LE decision 10). Nil until the first update, and on the Simulator.
+    private(set) var latestSample: MotionSample?
 
     private let manager = CMMotionActivityManager()
     private var running = false
@@ -34,7 +37,10 @@ final class MotionActivityProvider: ObservableObject {
             let sample = activity.map(MotionActivityProvider.sample(from:))
             Task { @MainActor [weak self] in
                 self?.isActive = moving
-                if let sample { self?.onSample?(sample) }
+                if let sample {
+                    self?.latestSample = sample
+                    self?.onSample?(sample)
+                }
             }
         }
     }
@@ -45,6 +51,7 @@ final class MotionActivityProvider: ObservableObject {
         running = false
         manager.stopActivityUpdates()
         isActive = false
+        latestSample = nil
     }
 
     /// Recorded activity between two instants, oldest first (Plan GH). CoreMotion keeps about a
