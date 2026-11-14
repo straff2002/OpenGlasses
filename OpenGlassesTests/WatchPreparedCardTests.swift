@@ -60,7 +60,8 @@ final class WatchPreparedCardTests: XCTestCase {
     // MARK: - The payload: version, old decode, budget
 
     func testTheVersionIsBumpedAndAVersionOnePayloadStillReads() throws {
-        XCTAssertEqual(WatchTodayWire.version, 2)
+        // Plan LE P2 bumped it again, to 3 (the check-in's line); version 1 still reads.
+        XCTAssertEqual(WatchTodayWire.version, 3)
         // A phone not yet updated sends version 1, with no `cards` key at all.
         struct VersionOne: Encodable {
             let version = 1

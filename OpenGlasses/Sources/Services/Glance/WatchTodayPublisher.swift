@@ -44,6 +44,8 @@ final class WatchTodayPublisher {
         var sourceAccessReady: () -> Bool = { true }
         /// Plan KT §6.7: the day's prepared cards now, ranked.
         var cards: @MainActor () -> [PreparedCard] = { [] }
+        /// Plan LE §8: the evening check-in's line for `now`, given whether titles are withheld.
+        var waiting: @MainActor (_ now: Date, _ redacted: Bool) -> WatchTodayWaiting? = { _, _ in nil }
     }
 
     private let environment: Environment
@@ -108,12 +110,14 @@ final class WatchTodayPublisher {
         if !environment.enabled() {
             payload = .settingOff(at: now, calendar: calendar)
         } else if let held {
+            let medical = environment.medical()
             payload = WatchTodayBuilder.payload(
                 from: held,
-                .init(now: now, calendar: calendar, medical: environment.medical(),
+                .init(now: now, calendar: calendar, medical: medical,
                       temperatureUnit: environment.temperatureUnit(),
                       attribution: environment.attribution(),
-                      cards: environment.cards()))
+                      cards: environment.cards(),
+                      waiting: environment.waiting(now, medical.hipaaMode)))
         } else {
             return nil
         }

@@ -88,6 +88,10 @@ struct WatchTodayCalendarPage: View {
 
     @ViewBuilder
     private func content(_ today: WatchTodayPayload, now: Date) -> some View {
+        // Plan LE §8: the evening check-in's line, above the cards.
+        if let waiting = today.waiting {
+            WatchTodayWaitingRow(waiting: waiting)
+        }
         // Plan KT §6.7: the day's prepared cards, above the calendar.
         WatchPreparedCardList(cards: today.cards.filter { $0.isLive(at: now) }, connectivity: connectivity)
         if today.calendarStatus == .shown {
@@ -115,6 +119,31 @@ struct WatchTodayCalendarPage: View {
             WatchTodayReason(text: WatchTodayReasons.calendar(today.calendarStatus))
         }
         WatchTodayUpdated(generatedAt: today.generatedAt)
+    }
+}
+
+/// The evening check-in on the wrist: the count, and the first item unless Medical Compliance
+/// withholds it. The rest is on the phone's My Day.
+struct WatchTodayWaitingRow: View {
+    let waiting: WatchTodayWaiting
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "tray.full")
+                .foregroundStyle(AccentColors.aiCoral)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(waiting.heading)
+                    .font(.caption.bold())
+                if let first = waiting.first {
+                    Text(first)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

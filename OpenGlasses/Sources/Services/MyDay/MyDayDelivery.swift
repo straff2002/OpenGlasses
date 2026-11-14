@@ -238,6 +238,9 @@ final class MyDayScheduledDeliveryService: ObservableObject {
     /// The Evening Check-in's content (Plan LE P1). Nil — no check-in to deliver — until wired.
     var checkIn: EveningCheckInService?
     var onDelivery: ((MyDayDeliverySlot, String, Bool, String) -> Void)?
+    /// The check-in ran (Plan LE P2): its day key, whether it had anything to say, and whether it was
+    /// spoken. `CheckInNotificationScheduler.checkInRan` settles tonight's notification from it.
+    var onCheckInRan: ((_ dayKey: String, _ delivered: Bool, _ spoke: Bool) -> Void)?
 
     private let myDayService: MyDayService
     private let calendarProvider: () -> Calendar
@@ -300,14 +303,21 @@ final class MyDayScheduledDeliveryService: ObservableObject {
         // look at tomorrow. Each slot's day key is consumed whether or not it had anything to say:
         // an empty check-in is silent (decision 4), and silent means not later in the window either.
         var parts: [String] = []
-        if let text = await checkIn?.scheduledText(now: now) { parts.append(text) }
+        // P2: the offer only when the list is spoken and is the last thing said.
+        let checkInText = await checkIn?.scheduledText(now: now, mayOffer: speak && alsoDelivers == nil)
+        if let checkInText { parts.append(checkInText) }
         consume(.checkIn, dayKey: dayKey)
         if alsoDelivers == .evening {
             parts.append(await myDayService.spokenBriefing(now: now, channel: .scheduled))
             consume(.evening, dayKey: dayKey)
         }
+        // P2: the check-in's notification for tonight is settled here, said or silent (§5).
+        onCheckInRan?(dayKey, checkInText != nil, speak)
         guard !parts.isEmpty else { return }
-        onDelivery?(.checkIn, parts.joined(separator: " "), speak, "my-day-\(slot.rawValue)-\(dayKey)")
+        // An empty check-in merged with the evening leaves the evening's own words: it is delivered
+        // as the evening, so its notification names the evening, not the check-in.
+        let delivered: MyDayDeliverySlot = checkInText == nil ? .evening : .checkIn
+        onDelivery?(delivered, parts.joined(separator: " "), speak, "my-day-\(delivered.rawValue)-\(dayKey)")
     }
 
     private func consume(_ slot: MyDayDeliverySlot, dayKey: String) {
