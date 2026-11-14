@@ -51,6 +51,8 @@ def main():
         tests.mkdir(parents=True)
         for path in SOURCES:
             shutil.copyfile(ROOT / "OpenGlasses/Sources" / path, source / Path(path).name)
+        # The licence-core file the app compiles into its own target (VaultManifest.swift extends it).
+        shutil.copyfile(ROOT / "Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift", source / "VaultPackRules.swift")
         structure = (ROOT / "OpenGlasses/Sources/Services/Vault/ManualStructure.swift").read_text()
         marker = re.search(r'    static let diagramMarker = "[^"\n]*"', structure)
         assert marker, "portable chunker marker must match the production extractor"

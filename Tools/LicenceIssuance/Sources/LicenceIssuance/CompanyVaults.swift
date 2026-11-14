@@ -260,6 +260,16 @@ public enum CompanyVaultContract {
         return nil
     }
 
+    /// Why a vault's manifest `id` and `name` could not become a catalog row (`problem(with:)`), or
+    /// nil: for the service to say so when the vault is uploaded rather than when it is listed.
+    public static func manifestProblem(id: String, name: String) -> String? {
+        guard ProfileContract.isSafeIdentifier(id), ProfileContract.isSafeIdentifier(packIdPrefix + id) else {
+            return "manifest id \(id) must be 1–\(80 - packIdPrefix.count) of A–Z a–z 0–9 - _ ."
+        }
+        guard isPrintable(name, maximum: 200, spaces: true) else { return "manifest name is empty, or longer than 200 characters" }
+        return nil
+    }
+
     /// Why one manual row cannot be delivered, or nil.
     public static func problem(with manual: Manual) -> String? {
         guard ProfileContract.isSafeIdentifier(manual.vaultId) else { return "\(manual.vaultId) is not a safe vault id" }

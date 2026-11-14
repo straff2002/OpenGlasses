@@ -275,3 +275,12 @@ struct VaultDocument: Codable, Equatable {
     /// Whether this document is itself the manufacturer's PDF (rather than text extracted from one).
     var isPDF: Bool { file.lowercased().hasSuffix(".pdf") }
 }
+
+extension VaultPackRules.Manifest {
+    /// The parts of an installed or candidate vault's manifest the licence core's pack rules read.
+    init(_ manifest: VaultManifest) {
+        self.init(id: manifest.id, name: manifest.name, files: manifest.files, documentCount: manifest.documents.count,
+                  promptRules: manifest.promptRules, gatingIAP: manifest.gating.iap, hasSites: manifest.sites != nil,
+                  proceduresDir: manifest.proceduresDir)
+    }
+}
