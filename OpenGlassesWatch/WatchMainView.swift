@@ -472,9 +472,15 @@ struct WatchMainView: View {
                                 .lineLimit(2)
                         }
                     }
+                    .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
+                    .padding(.horizontal, 2)
                 }
+                // A row of two or three lines in the default capsule has corners as round as half
+                // its height, and the text's ends ran outside them. A rounded rectangle keeps the
+                // corners small whatever the row's height.
+                .buttonBorderShape(.roundedRectangle(radius: 14))
                 .disabled(!connectivity.isReachable || connectivity.isProcessing)
             }
         }

@@ -367,10 +367,12 @@ enum DockGridMetrics {
     static let micButtonSize: CGFloat = 64
     /// The buttons button and the cog beside the mic.
     static let secondaryButtonSize: CGFloat = 52
-    /// The mic and the buttons button inside the tab view's bottom accessory, whose height the
-    /// system sets: as large as fits that strip comfortably, and still past the 44 pt floor for
-    /// the buttons button through its tap target.
-    static let accessoryMicSize: CGFloat = 44
+    /// The mic's drawn circle inside the tab view's bottom accessory, whose height the system
+    /// sets. Smaller than the strip, so the activity ring drawn outside it (a turning arc while it
+    /// thinks, a pulse while it listens) stays inside the strip's pill instead of being cut off by
+    /// its edge. The tap target stays at the 44 pt floor around it.
+    static let accessoryMicSize: CGFloat = 34
+    /// The buttons button inside the accessory: past the 44 pt floor through its tap target.
     static let accessoryButtonSize: CGFloat = 44
     /// How far the dock's round buttons grow with Dynamic Type. Half again their size, and no more:
     /// four of them share one row, and uncapped at AX5 they would not fit across the screen.

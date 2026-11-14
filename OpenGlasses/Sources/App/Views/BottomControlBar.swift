@@ -865,11 +865,15 @@ private struct MicButton: View {
 
     @ScaledMetric(relativeTo: .title) private var scale: CGFloat = 1
     /// Grows with the text size, but not past half again its size: the mic shares one row with the
-    /// buttons beside it, and an AX5 mic would push them off the screen.
+    /// buttons beside it, and an AX5 mic would push them off the screen. On the accessory it does
+    /// not grow at all: the system sets the strip's height, and a larger circle only puts the
+    /// activity ring past the strip's edge.
     private var diameter: CGFloat {
-        let base = onSystemGlass ? DockGridMetrics.accessoryMicSize : DockGridMetrics.micButtonSize
-        return base * min(scale, DockGridMetrics.dockButtonMaxScale)
+        if onSystemGlass { return DockGridMetrics.accessoryMicSize }
+        return DockGridMetrics.micButtonSize * min(scale, DockGridMetrics.dockButtonMaxScale)
     }
+    /// The tap target: the circle, and never under the 44 pt floor.
+    private var target: CGFloat { max(diameter, OGMetrics.minTouchTarget) }
     @ScaledMetric(relativeTo: .caption2) private var badgeOffset: CGFloat = 16
 
     var body: some View {
@@ -894,13 +898,14 @@ private struct MicButton: View {
             }
             .frame(width: diameter, height: diameter)
             .modifier(MicSurface(color: control.color, onSystemGlass: onSystemGlass))
-            .contentShape(.circle)
             .background(
                 MicActivityRing(state: activity, color: control.color, diameter: diameter)
                     // A fresh ring per state, so one state's endless animation never leaks into
                     // the next.
                     .id(activity)
             )
+            .frame(width: target, height: target)
+            .contentShape(.circle)
         }
         .buttonStyle(.plain)
         // Exactly one button, the size of the circle, by its spoken name.
