@@ -1,6 +1,7 @@
 # Plan GX — Photo-Checked Procedure Steps
 
-**Status:** 📝 Drafted 2026-10-02 — nothing implemented.
+**Status:** 📝 Drafted 2026-10-02 — nothing implemented. Amended 2026-10-10 (reference photo) and
+2026-11-14 (how the model is asked, settle time, before/after rule, P3 scoring).
 **Track:** Field Assist (B2B). One of three gaps found when Field Assist was compared feature by
 feature against industrial remote-assistance products (with [GY](GY-procedure-from-narrated-recording.md)
 and [GZ](GZ-expert-annotations.md)).
@@ -313,3 +314,57 @@ like, and authors often have one. But `LLMService.analyzeFrameStructured` takes 
 size cap honoured), validator cases (missing file, wrong type, oversize, set on a non-condition
 kind), and a `StepCheckServiceTests` case that a reference-bearing check sends one composite image
 whose right half is the filtered still.
+
+## Amendment 2026-11-14: checks that tell before from after, settle time, and how the model is asked
+
+From a survey of adjacent procedure-checking work on 2026-11-14, made alongside Plan
+[LT](LT-ecosystem-review-fixes-2026-11.md). Status unchanged: 📝 drafted, nothing implemented. That work
+also measured continuous video checking on one real clip: it completed none of five steps, found the hand
+in none of 26 frames, and its advisory model called every step done. That supports this plan's choice of
+spot-check stills.
+
+**1. The `step_condition` question asks about the evidence, not the shot.** A model asked "does this photo
+confirm the check" tends to confirm that the place to look is in the photo, even when what it sees says
+otherwise. The schema returns `supports` / `refutes` / `inconclusive` about the statement, with
+`observed` (what it saw, in a few words). Only `supports` can become a pass; `inconclusive` is "couldn't
+tell". The instruction carries three more lines: judge only what this photo shows, and do not infer the
+statement from what would normally have happened before it; do not claim a measurement or threshold by
+eye; if the evidence is missing or hidden, answer inconclusive.
+
+**2. Hidden properties are warned on.** `ProcedureCheckValidator` warns (not an issue) when a `condition`
+names something a photo cannot show: tight, torqued, sealed, no leak, charged, tested, secure. The vault
+guide suggests a `reading` or a technician confirmation instead.
+
+**3. The check names the place.** A photo of the wrong port or the wrong gauge can give a plausible reading
+in range. `prompt` becomes required for `reading` and `condition` checks and must name the location
+("the gauge on the gas valve outlet"); the `step_condition` and `instrument_reading` instructions include
+it, and the model is asked whether the photo shows that location (`location_matches`: yes, no, unclear).
+`no` or `unclear` makes the verdict couldn't tell.
+
+**4. Settle time.** A check may carry `settle_s` ("run on low heat for 5 minutes, then read": `300`).
+`StepCheckEvaluator` compares the photo's capture time with the step's `procedureStep` start in the
+session log; an early photo is couldn't tell, and the spoken line says how long remains ("That's after one
+minute of five") and offers a timer through `TimerTool`. The outcome records the elapsed time, and the
+work order prints it. The validator checks that `settle_s` is a positive number under an hour.
+
+**5. A check must tell before from after (with GY).** When a check is drafted from a recording (Plan
+[GY](GY-procedure-from-narrated-recording.md)) or written by an author who supplies example photos, the
+validator runs it against a keyframe from just before the step and one from just after. It must not pass
+on the before frame and must pass on the after frame. A check that passes both is marked "doesn't tell
+before from after" and blocks the draft's approval. GY's drafting also must not invent separate
+identities for parts that look the same, and must not check "moved" on something that changes shape.
+
+**6. How P3 is scored.** Recordings are labelled blind, before any prediction is looked at. A development
+set and a test set are kept apart; the test set is frozen by hash and nothing is tuned on it; the footage
+a procedure was learned from is never scored. Each predicted outcome matches at most one labelled step
+(same step, same kind). Results are reported with Wilson intervals, and "couldn't tell" is counted apart
+from wrong. Test photos are real photos, not drawings with labels, which a model rightly refuses as
+evidence. P3 adds a wrong-port fixture for every `reading` check in the worked example.
+
+**Phase.** Items 1–4 fold into P0 (schema, validator, evaluator, phrasing) and P1 (the instructions). Item 5
+is P0's validator rule with a GY seam, live once GY ships. Item 6 replaces P3's acceptance with a scored
+run. **Tests:** `StepConditionAnswer` decoding for the three-way answer and `location_matches`;
+`ProcedureCheckValidatorTests` (hidden-property warning, missing location prompt, `settle_s` bounds,
+before/after rule with fixture frames); `StepCheckEvaluatorTests` (early photo is couldn't tell; a
+location `no` is couldn't tell; `refutes` is a fail, `inconclusive` is couldn't tell);
+`StepCheckPhrasingTests` (the remaining-time line).

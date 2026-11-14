@@ -99,6 +99,12 @@ pixel body size, and the script registers a `visibilitychange` listener (string 
 the pure renderer, as the existing injection-safety tests do). BP's platform section gets one
 sentence in the same PR.
 
+**Added 2026-11-14 (with Plan [LT](LT-ecosystem-review-fixes-2026-11.md), whose item 7 adds the launcher
+icon and manifest).** Two more lines for the same fix: a page restored from the browser's back-forward cache
+(`pageshow` with `persisted`) restarts the poll as a visible page does. If the mirror ever holds a live
+connection rather than polling, hidden means paused, not gone: the phone keeps the session for 10 minutes
+and does not count the page's slowed timers as a lost peer.
+
 ## 4 · Gateway hosts typed without a scheme
 
 **Defect.** `GatewayConfig.lanURL` builds `host:port` with no scheme
