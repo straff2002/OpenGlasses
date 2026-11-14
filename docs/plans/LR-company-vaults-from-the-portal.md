@@ -259,6 +259,8 @@ versions, like the build number already sent), both Privacy footers in `Settings
   gigabytes of PDFs takes time on the phone; the P3 pass should time it.
 - The pack must pass the phone's vault validator, so its `prompt_rules` must address fabrication and citation;
   the contract says so.
+- The validator's structural part (the manifest's rules, the listed files, a pack's gating, documents and sites) is
+  the licence core's `VaultPackRules`, the one core file the app compiles, so the service holds an upload to the same code.
 - Not headless-tested: the `VaultRegistry` lock for a company vault and the production departure wiring (they
   read the shared manager); covered by review and P3.
 
