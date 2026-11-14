@@ -65,6 +65,8 @@ final class CompanyVaultServiceTests: XCTestCase {
     private var served: [String: Data] = [:]
     private var downloads: [String] = []
     private var catalogFetches = 0
+    /// The vault list's host can't be reached (no signal, the host down).
+    private var catalogUnreachable = false
     private var activeJob: String?
     private var network = CompanyVaultPlan.Network.unmetered
     private var freeBytes: Int64 = 100 * 1_073_741_824
@@ -151,6 +153,7 @@ final class CompanyVaultServiceTests: XCTestCase {
         vs.fetchCatalog = { url in
             XCTAssertEqual(url.absoluteString, self.catalogURL)
             self.catalogFetches += 1
+            if self.catalogUnreachable { throw URLError(.notConnectedToInternet) }
             return self.catalogResponse
         }
         vs.download = { url, bytes, staging in
@@ -187,6 +190,12 @@ final class CompanyVaultServiceTests: XCTestCase {
         await m.completeEnrolment()
     }
 
+    /// The app coming forward within a day of its last renewal: the profile is not fetched again.
+    private func foreground(_ m: OrgProfileManager) async {
+        clock = clock.addingTimeInterval(60)
+        await m.renewIfDue()
+    }
+
     private func renew(_ m: OrgProfileManager) async {
         clock = clock.addingTimeInterval(2 * 86_400)
         await m.renewIfDue(force: true)
@@ -213,11 +222,66 @@ final class CompanyVaultServiceTests: XCTestCase {
         XCTAssertEqual(service.rows().map(\.name), ["Lennox"])
         XCTAssertNil(service.rows().first?.status)
 
-        // Nothing changed: the daily check costs the profile fetch and nothing else.
-        let fetches = catalogFetches
+        // Nothing changed: the list is read again, and nothing is downloaded or installed.
+        let fetches = catalogFetches, downloaded = downloads.count
         await renew(m)
-        XCTAssertEqual(catalogFetches, fetches)
+        XCTAssertEqual(catalogFetches, fetches + 1)
+        XCTAssertEqual(downloads.count, downloaded)
         XCTAssertEqual(phone.installs.count, 1)
+    }
+
+    // MARK: - Every foreground
+
+    func testAnUploadArrivesAtTheNextForegroundWithoutAProfileRenewal() async throws {
+        let v1 = pack("lennox", "1"), v2 = pack("lennox", "2")
+        try publish(generation: 1, vaults: [v1.row], manuals: [])
+        let m = manager()
+        try await enrol(m)
+
+        // The partner uploads version 2 and a manual. The phone still holds the profile that
+        // points at generation 1, and its renewal is not due for a day.
+        let wiring = try manual("Wiring.md", text: "Invented fixture wiring.")
+        try publish(generation: 2, vaults: [v2.row], manuals: [wiring], pointerGeneration: 1)
+        await foreground(m)
+        XCTAssertEqual(phone.vaults["lennox"]?.version, "2")
+        XCTAssertNotNil(phone.manuals["lennox"]?["Wiring.md"])
+        XCTAssertEqual(state?.highWater, 2)
+        XCTAssertNil(service.listProblem())
+
+        // The profile catching up later changes nothing.
+        try publish(generation: 2, vaults: [v2.row], manuals: [wiring])
+        await renew(m)
+        XCTAssertEqual(phone.installs, ["lennox@1", "lennox@2"])
+    }
+
+    func testAForegroundThatCannotReachTheListCarriesOnWithTheVerifiedOne() async throws {
+        let lennox = pack("lennox", "1")
+        let wiring = try manual("Wiring.md", text: "Invented wiring.")
+        try publish(generation: 1, vaults: [lennox.row], manuals: [wiring])
+        network = .metered
+        let m = manager()
+        try await enrol(m)
+        XCTAssertEqual(state?.waits["lennox"], .wifi(bytes: Int64(wiring.sizeBytes)))
+
+        // Back on Wi-Fi, but the list's host can't be reached: the manual still arrives from the
+        // list already verified, and nothing is named as wrong.
+        network = .unmetered
+        catalogUnreachable = true
+        await foreground(m)
+        XCTAssertNotNil(phone.manuals["lennox"]?["Wiring.md"])
+        XCTAssertNil(service.listProblem())
+    }
+
+    func testAForegroundThatCannotReachANewerListTheProfileNamesSaysSo() async throws {
+        try publish(generation: 1, vaults: [pack("lennox", "1").row], manuals: [])
+        let m = manager()
+        try await enrol(m)
+        try publish(generation: 2, vaults: [pack("lennox", "2").row], manuals: [])
+        catalogUnreachable = true
+        await renew(m)
+        XCTAssertEqual(phone.vaults["lennox"]?.version, "1")
+        XCTAssertEqual(service.listProblem(),
+                       "Couldn't reach your organisation's vault list. It tries again when the app opens.")
     }
 
     func testVersionTwoWaitsForTheOpenJobThenInstalls() async throws {

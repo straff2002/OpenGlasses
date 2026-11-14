@@ -3,8 +3,10 @@ import Foundation
 
 /// Why a company vault pass runs.
 enum CompanyVaultSyncReason: Equatable, Sendable {
-    /// After every profile renewal attempt: launch, foreground and the daily check. Does nothing
-    /// unless the profile's generation moved or something is still waiting.
+    /// After every profile renewal attempt: launch and every foreground. Re-reads the vault list
+    /// each time, so an upload reaches a bound phone the next time the app comes forward rather
+    /// than at its next daily profile renewal. A failed re-read keeps the list already verified,
+    /// unless the profile names a newer one.
     case routine
     /// The profile was just applied (an activation key, a profile link or office commissioning):
     /// fetch the vault list at once, so a phone bound in the same visit starts downloading without
@@ -148,8 +150,8 @@ final class CompanyVaultService: ObservableObject {
         let enrolmentId = record.enrolmentId
         var state = record.companyVaults ?? CompanyVaultState()
         let generation = pointer.generation ?? 0
-        let moved = generation > (state.highWater ?? 0)
-        guard moved || reason != .routine || state.hasPendingWork || state.catalog == nil else { return }
+        let verifiedBefore = state.highWater ?? 0
+        let moved = generation > verifiedBefore
         func save() { manager.saveCompanyVaults(state, enrolmentId: enrolmentId) }
 
         guard let url = pointer.catalogURL, generation >= 1 else {
@@ -163,16 +165,25 @@ final class CompanyVaultService: ObservableObject {
             return save()
         }
 
-        // Fetch when the generation moved, when asked to, or when nothing verified is kept.
+        // Read the list on launch, every foreground, an enrolment and Check for Updates; a job
+        // closing or Download now works from the list already verified unless the profile names a
+        // newer one or none is kept. The verifier takes a list newer than the profile's pointer, so
+        // an upload arrives without waiting for the daily profile renewal.
         var envelope = state.catalog
-        if moved || reason == .checkForUpdates || envelope == nil {
+        let reads = moved || envelope == nil || reason == .routine || reason == .enrolled || reason == .checkForUpdates
+        if reads {
             do {
                 envelope = try await seams.fetchCatalog(url)
                 state.lastCheckedAt = seams.now()
             } catch {
-                state.failures[CompanyVaultState.catalogFailureKey] =
-                    String(localized: "Couldn't reach your organisation's vault list. It tries again when the app opens.")
-                return save()
+                // A foreground's re-read that fails (no signal, the host down) is not news: the
+                // profile names nothing newer, so the verified list carries on, and any work it
+                // still owes continues. Only a missing or behind list is named.
+                if envelope == nil || moved || reason == .checkForUpdates {
+                    state.failures[CompanyVaultState.catalogFailureKey] =
+                        String(localized: "Couldn't reach your organisation's vault list. It tries again when the app opens.")
+                    return save()
+                }
             }
         }
         guard let envelope else { return }
@@ -190,7 +201,7 @@ final class CompanyVaultService: ObservableObject {
         state.catalog = envelope
         state.highWater = max(state.highWater ?? 0, catalog.generation)
         state.failures[CompanyVaultState.catalogFailureKey] = nil
-        if moved { state.removedNames = [] }
+        if moved || catalog.generation > verifiedBefore { state.removedNames = [] }
 
         let installer = seams.vaults()
         // What is recorded must still be on the phone: a vault deleted by hand is installed again.

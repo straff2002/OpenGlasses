@@ -23,8 +23,11 @@ The signed organisation profile gains one optional field (`ProfileContract.Compa
   profile without it is the bytes it always was. Never write the old `vaultPack` field for a
   company vault.
 
-The phone fetches the catalog only when `generation` is above the one it has verified, so the
-daily check costs one profile fetch. *Check for Updates* fetches it whatever the generation.
+The phone reads the catalog at launch, on every foreground, right after enrolment and on *Check for
+Updates*, whatever the generation, so an upload reaches it the next time the app comes forward rather than
+at its daily profile renewal. A catalog newer than the pointer is used (the rules below). When a read fails
+and the pointer names nothing newer than the catalog it has verified, it carries on with that one; a job
+closing and *Download now* work from the verified catalog unless the pointer has moved past it.
 
 ## 2. The catalog
 

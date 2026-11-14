@@ -4,7 +4,8 @@
 `Tools/LicenceIssuance` and [Contracts/company-vaults.md](../../Contracts/company-vaults.md) — see
 [As built](#as-built); the strings synced in PR 1048. The service's first phase is built and deployed (private
 repository); its go-live on the host is owed, then the P3 device pass. 2026-11-14: a newly bound phone starts
-the vaults the moment the profile is applied, not at its next foreground. All five
+the vaults the moment the profile is applied, and every foreground re-reads the vault list, so an upload
+arrives without waiting for the daily profile renewal. All five
 [decisions](#decisions-for-greig) taken 2026-11-13: decision 1 (manuals may be uploaded, with size limits) while
 drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.
@@ -86,8 +87,9 @@ The profile gains one optional field, a pointer and never content:
 "companyVaults": { "catalog": "https://…/c/<opaque>/vaults.json", "generation": 7, "minAppBuild": 680 }
 ```
 
-`generation` rises with every change the partner makes. The phone fetches the catalog only when the generation
-is above the one it has applied, so the daily check costs one profile fetch, as today.
+`generation` rises with every change the partner makes. As drafted, the phone fetched the catalog only when the
+generation was above the one it had applied, so the daily check cost one profile fetch. Since 2026-11-14 it reads
+the catalog on every foreground as well (see As built).
 
 The **company vault catalog** is signed by the vendor's pack-catalog key (the same verification as EG's, with a
 different document type) and is bound to one company. It authenticates `profileId` and `generation`, so one
@@ -292,10 +294,14 @@ after typing the key had nothing. `OrgProfileManager.completeEnrolment()` (the p
 `apply` callers. `CompanyVaultServiceTests` enrols through it alone, with no renewal or foreground, as the app
 does.
 
-**When a new upload reaches a bound phone.** The profile carries the vault list's generation, and the phone
-renews the profile at most once a day, at launch or foreground; there is no background wake for it. So a vault
-or manual uploaded today reaches a phone at its first launch or foreground after its last renewal is a day old,
-or at once with *Check for Updates*. Whether that is soon enough is an open question for the device pass.
+**2026-11-14 — an upload arrives at the next foreground (owner's decision).** The phone renews the profile
+at most once a day, so an upload used to wait for that renewal unless the technician tapped *Check for
+Updates*. The routine pass now reads the vault list at launch and on every foreground whatever the
+profile's generation; the verifier already took a list newer than the pointer. A failed re-read keeps the
+verified list and the work it still owes, and is named only when the profile points past it. There is still
+no background wake: a phone that is not opened takes the upload when it next is. `CompanyVaultServiceTests`
+covers an upload reaching the phone with the profile a generation behind, a re-read with no signal, and a
+re-read that fails when the profile names a newer list.
 
 **Owed:** the service's go-live on the host (the pack-catalog key, the minimum app build, the company
 administrators' access, disk); the P3 device pass.
