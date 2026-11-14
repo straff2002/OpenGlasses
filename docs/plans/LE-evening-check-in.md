@@ -649,7 +649,8 @@ and 2 still read), `WatchTodayBuilder.swift`, `WatchTodayPublisher.swift`, `Watc
   model takes a yes by calling `activity` `deal_with_first`, which takes the offer (gone whatever happens
   next) and runs `replayHeld`; the call's own confirmation asks (`HeldCallReplay.asksFirst`) and the tool
   returns that call's own outcome. No offer, an expired one, or a call no longer kept: it says so and runs
-  nothing. After a relaunch nothing is offered.
+  nothing. After a relaunch nothing is offered. Because the replay now runs inside another call,
+  `replayHeld` also clears `PlanApprovalScope.stepGrant`: no plan step it is nested under can pay for it.
 - **Where the yes can land.** Asked for ("what's waiting on me?") the check-in is a model turn, so it offers
   in every mode: the question is in the model's own reply. The scheduled one is spoken outside any turn, so
   it offers only in Direct mode, only when spoken, and only when it is the last thing said (not merged ahead

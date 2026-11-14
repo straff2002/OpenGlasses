@@ -563,8 +563,12 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// approved here. Nil when the call is no longer kept — after a relaunch, or past its lifetime.
     func replayHeld(key: String, now: Date = Date()) async -> ToolExecutionOutcome? {
         guard canReplayHeld(key: key, now: now), let held = heldCalls[key] else { return nil }
-        return await HeldCallReplay.$asksFirst.withValue(true) {
-            await self.executeRoot(name: held.name, args: held.arguments, origin: .user)
+        // Plan LE P2: a replay can run inside another call (`activity` `deal_with_first`). No plan
+        // step's grant it might be nested under can pay for it: the wearer answers it themselves.
+        return await PlanApprovalScope.$stepGrant.withValue(nil) {
+            await HeldCallReplay.$asksFirst.withValue(true) {
+                await self.executeRoot(name: held.name, args: held.arguments, origin: .user)
+            }
         }
     }
 
