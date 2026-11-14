@@ -150,6 +150,7 @@ enum SensitiveStore: String, CaseIterable {
     // Preferences and licence
     case preferences
     case scenarioProgress
+    case checkInDismissals
     case licence
     case licenceSeat
 
@@ -1342,6 +1343,21 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "ScenarioProgressStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/Scenarios/ScenarioProgress.swift"],
                           location: "UserDefaults key scenarioProgress")
+
+        case .checkInDismissals:
+            // The Evening Check-in's day-scoped records (Plan LE P1): the loops the wearer cleared
+            // from tonight's list and the loops already said today. Loop ids — a trail entry's, a
+            // reminder's, a queued send's, a job session's — and a one-way digest of each loop's
+            // content; no title and nobody's name, so a subject erasure has nothing to find. Both
+            // lapse at midnight. Backed up like other preferences.
+            return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false,
+                          retention: .policy("today's records only; a record from an earlier day is never read and is replaced by the next write"),
+                          deleteAll: .api("OpenLoopDismissalStore.deleteAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "OpenLoopDismissalStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/MyDay/CheckIn/OpenLoopDismissalStore.swift"],
+                          location: "UserDefaults keys checkInDismissedLoops, checkInSaidLoops")
 
         case .preferences:
             return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,

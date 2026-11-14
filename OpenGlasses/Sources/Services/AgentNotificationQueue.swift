@@ -35,6 +35,10 @@ class AgentNotificationQueue: ObservableObject {
     private var queue: [QueuedNotification] = []
     private let storageURL: URL
 
+    /// What is still queued and not delivered — the Evening Check-in's agent-result row reads it
+    /// (Plan LE P1).
+    var pendingNotifications: [QueuedNotification] { queue.filter { !$0.delivered } }
+
     weak var appState: AppState?
 
     /// Plan BZ: fires when a notification is queued (not delivered immediately), so the

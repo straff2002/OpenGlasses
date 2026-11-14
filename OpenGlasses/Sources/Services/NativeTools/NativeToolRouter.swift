@@ -93,6 +93,21 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// job rather than being copied out of its work record. Wired by AppState.
     var activityJobThread: () -> String? = { nil }
 
+    /// Calls the presence ceiling held (Plan W), by `ActivityHoldKey`, so the Evening Check-in's
+    /// row can put one back in front of the wearer through its own confirmation (Plan LE P1).
+    /// **In memory only**, like `HeldRecommendationStore`: the arguments are the wearer's words and
+    /// never reach the trail or the disk. Gone after a relaunch, after `ActivityHoldPolicy.lifetime`,
+    /// and once the same call has been answered.
+    private(set) var heldCalls: [String: HeldCall] = [:]
+    /// The most held calls kept at once (the held-recommendation store's own cap).
+    static let heldCallCap = 10
+
+    struct HeldCall {
+        let name: String
+        let arguments: [String: Any]
+        let heldAt: Date
+    }
+
     /// Names of tools routed since the last `takeTurnToolNames()` — lets the memory loop
     /// (Memory & Recall Phase 3) see which tools a turn used, to spot repeated multi-step
     /// requests worth saving as a skill.
@@ -240,6 +255,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
     private struct ActivityGateRecord {
         var gate: ActivityToolGate
         let effectClass: ToolEffectClass
+        /// What a held call was held for (Plan LE P1); nil for every other gate.
+        var holdKey: String? = nil
     }
 
     private func authorizeAndDispatch(_ call: ResolvedToolCall,
@@ -294,8 +311,18 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // Plan LT §2: after the screen, so it reads what would actually leave.
         let privateSpan = privateSpanAsk(call, profile: profile, outboundArgs: screenedArgs ?? args)
         if privateSpan != nil { PrivacyLog.toolGate(.privateSpanCopied, tool: name) }
-        let decision = authorizationDecision(call, profile: profile, safetyContext: safetyContext,
+        var decision = authorizationDecision(call, profile: profile, safetyContext: safetyContext,
                                              privateSpan: privateSpan)
+        // Plan LE P1: a held call put back in front of the wearer from the check-in always asks,
+        // even where the ladder would now let it run by itself. This only ever adds a question; it
+        // never lets through anything the ladder stopped.
+        if HeldCallReplay.asksFirst, case .allow = decision {
+            decision = .confirm(summary: PromptInjectionPolicy.actionSummary(toolName: name, args: args))
+        }
+        // What a hold is filed under, and what an answer to the same call finds it by.
+        let holdKey = ActivityHoldKey.make(seamIdentity: profile.seam.identity, toolName: name,
+                                           definitionDigest: profile.definitionDigest,
+                                           argumentsDigest: CanonicalArgumentDigest.digest(args))
 
         // What the trail records if the call goes on to dispatch (Plan IW P1).
         var dispatchGate = ActivityGateRecord(gate: .ran(approvalSummary: nil),
@@ -306,7 +333,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
 
         switch decision {
         case .allow:
-            break
+            // The same call held earlier ran now: what it was waiting on has happened.
+            answerHold(holdKey, .approved)
 
         // Every verdict below stopped the call before it ran, so they are all `rejected`: nothing
         // happened, and repeating the call reaches the same answer.
@@ -325,6 +353,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
             // The same moment `onActionHeld` feeds the held-recommendation store: one trail entry
             // per held action, written here where the tool is known.
             gate = stopped(.held)
+            gate?.holdKey = holdKey
+            keepHeldCall(holdKey, name: name, arguments: args)
             PrivacyLog.toolGate(.heldForReengagement, tool: name,
                                 detail: PrivacyToken(safetyContext.autonomy.rawValue))
             return .rejected(reason: message)
@@ -354,6 +384,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 if case .consumed = verdict {
                     PrivacyLog.toolGate(.planApprovalSpent, tool: name)
                     dispatchGate.gate = .ran(approvalSummary: summary)
+                    answerHold(holdKey, .approved)
                     break
                 }
                 if let refusal = verdict.refusal {
@@ -374,6 +405,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
             case .denied:
                 PrivacyLog.toolGate(.declinedByUser, tool: name)
                 gate = stopped(.declined)
+                answerHold(holdKey, .declined)
                 return .rejected(reason: ToolAuthorizationPolicy.declineMessage(name))
             case .approved(let nonce):
                 // Switched off while the wearer was being asked: the feature's own refusal, not a
@@ -394,6 +426,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
                     return .rejected(reason: ApprovalGrantStore.refusalMessage(refusal, tool: name))
                 }
                 dispatchGate.gate = .ran(approvalSummary: summary)
+                answerHold(holdKey, .approved)
             }
         }
 
@@ -496,8 +529,43 @@ final class NativeToolRouter: ToolExecutionAuthority {
             scheduledTask: ActivityScope.scheduledTask, plannedStep: plannedStep,
             operationID: call.context.invocationID, jobThreadID: activityJobThread(),
             goalStep: call.context.depth == 0 ? ActivityScope.goalStep : nil,
+            holdKey: gate.holdKey,
             at: Date()) else { return }
         activityRecorder.record(entry)
+    }
+
+    // MARK: - Held calls (Plan LE P1)
+
+    /// A call the wearer answered at the boundary: the trail entry it was held under, if any,
+    /// takes the answer, and the kept copy goes.
+    private func answerHold(_ key: String, _ resolution: ActivityResolution) {
+        heldCalls[key] = nil
+        activityRecorder?.resolveHold(key: key, resolution: resolution, at: Date())
+    }
+
+    private func keepHeldCall(_ key: String, name: String, arguments: [String: Any], at now: Date = Date()) {
+        heldCalls = heldCalls.filter { now.timeIntervalSince($0.value.heldAt) < ActivityHoldPolicy.lifetime }
+        heldCalls[key] = HeldCall(name: name, arguments: arguments, heldAt: now)
+        while heldCalls.count > Self.heldCallCap,
+              let oldest = heldCalls.min(by: { $0.value.heldAt < $1.value.heldAt })?.key {
+            heldCalls[oldest] = nil
+        }
+    }
+
+    /// Whether a held call can still be put back in front of the wearer.
+    func canReplayHeld(key: String, now: Date = Date()) -> Bool {
+        guard let held = heldCalls[key] else { return false }
+        return now.timeIntervalSince(held.heldAt) < ActivityHoldPolicy.lifetime
+    }
+
+    /// Put a held call back through the ladder, as the wearer's own request, asking first whatever
+    /// the ladder would now say (`HeldCallReplay`). The approval card is the call's own; nothing is
+    /// approved here. Nil when the call is no longer kept — after a relaunch, or past its lifetime.
+    func replayHeld(key: String, now: Date = Date()) async -> ToolExecutionOutcome? {
+        guard canReplayHeld(key: key, now: now), let held = heldCalls[key] else { return nil }
+        return await HeldCallReplay.$asksFirst.withValue(true) {
+            await self.executeRoot(name: held.name, args: held.arguments, origin: .user)
+        }
     }
 
     /// A journal state change, passed on to the trail entry for the same operation.
@@ -899,4 +967,11 @@ final class NativeToolRouter: ToolExecutionAuthority {
 
         return outcome
     }
+}
+
+/// Plan LE P1 — a held call put back in front of the wearer from the Evening Check-in asks first,
+/// whatever the ladder would now say about it. A task-local, like `ActivityScope`, so the provider
+/// wires and `NativeTool.execute(args:)` keep their shape. It only ever adds a confirmation.
+enum HeldCallReplay {
+    @TaskLocal static var asksFirst = false
 }

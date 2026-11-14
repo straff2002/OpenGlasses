@@ -81,6 +81,9 @@ struct MyDayDeliverySettingsView: View {
     @AppStorage("myDayMorningDeliveryMinutes") private var myDayMorningDeliveryMinutes = 8 * 60
     @AppStorage("myDayEveningDeliveryEnabled") private var myDayEveningDeliveryEnabled = false
     @AppStorage("myDayEveningDeliveryMinutes") private var myDayEveningDeliveryMinutes = 19 * 60
+    /// Plan LE: off by default (decision 2). Its time is stored only once the wearer picks one.
+    @AppStorage("myDayCheckInEnabled") private var myDayCheckInEnabled = false
+    @State private var myDayCheckInMinutes: Int? = Config.myDayCheckInMinutes
     @AppStorage("myDayScheduledSpeechEnabled") private var myDayScheduledSpeechEnabled = false
     @AppStorage("myDayQuietHoursEnabled") private var myDayQuietHoursEnabled = true
     @AppStorage("myDayQuietStartMinutes") private var myDayQuietStartMinutes = 22 * 60
@@ -108,8 +111,18 @@ struct MyDayDeliverySettingsView: View {
                     )
                 }
 
+                Toggle("Evening check-in", isOn: $myDayCheckInEnabled)
+                if myDayCheckInEnabled {
+                    DatePicker(
+                        "Check-in time",
+                        selection: timeBinding(checkInMinutesBinding),
+                        displayedComponents: .hourAndMinute
+                    )
+                }
+
                 Toggle("Speak scheduled briefings", isOn: $myDayScheduledSpeechEnabled)
-                    .disabled(!myDayMorningDeliveryEnabled && !myDayEveningDeliveryEnabled)
+                    .disabled(!myDayMorningDeliveryEnabled && !myDayEveningDeliveryEnabled
+                              && !myDayCheckInEnabled)
 
                 Toggle("Quiet hours", isOn: $myDayQuietHoursEnabled)
                 if myDayQuietHoursEnabled {
@@ -127,7 +140,7 @@ struct MyDayDeliverySettingsView: View {
             } header: {
                 Text("Scheduled Delivery")
             } footer: {
-                Text("Delivered while Avenkin is active. Open My Day once to resolve Calendar and Reminders access before scheduled delivery. Speech is private-by-default: it only plays while you are present, outside quiet hours, online, and out of power reserve.")
+                Text("The evening check-in says what from today is still waiting on you, and stays quiet when nothing is. Delivered while Avenkin is active. Open My Day once to resolve Calendar and Reminders access before scheduled delivery. Speech is private-by-default: it only plays while you are present, outside quiet hours, online, and out of power reserve.")
             }
 
             Section {
@@ -142,6 +155,21 @@ struct MyDayDeliverySettingsView: View {
         }
         .navigationTitle("Scheduled Delivery")
         .ogFormStyle()
+    }
+
+    /// The check-in's time as the picker shows it: the wearer's own, else 17:00 with Field Assist on
+    /// and 21:00 without (decision 9). Nothing is stored until the wearer moves it, so the default
+    /// keeps following Field Assist until then.
+    private var checkInMinutesBinding: Binding<Int> {
+        Binding(
+            get: {
+                MyDayCheckInDefaults.shown(stored: myDayCheckInMinutes, fieldAssistOn: Config.fieldAssistActive)
+            },
+            set: { minutes in
+                Config.myDayCheckInMinutes = minutes
+                myDayCheckInMinutes = Config.myDayCheckInMinutes
+            }
+        )
     }
 
     private func timeBinding(_ minutes: Binding<Int>) -> Binding<Date> {

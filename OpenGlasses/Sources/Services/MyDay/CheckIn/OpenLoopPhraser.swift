@@ -29,8 +29,11 @@ struct OpenLoopPhrase: Equatable, Sendable {
 enum OpenLoopPhraser {
     static let maximumSpoken = 4
 
+    /// `offerFirst` (P1) says whether the closing "Want to deal with the first one now?" may be
+    /// asked at all. P1 passes false everywhere it speaks: the yes has no turn to land in yet (see
+    /// the plan's As built), and a question whose answer goes nowhere is worse than none.
     static func phrase(_ collection: OpenLoopCollection, channel: OpenLoopChannel,
-                       fieldAssist: Bool) -> OpenLoopPhrase? {
+                       fieldAssist: Bool, offerFirst: Bool = true) -> OpenLoopPhrase? {
         let loops = collection.loops
         guard !loops.isEmpty else {
             guard channel == .asked else { return nil }
@@ -43,7 +46,7 @@ enum OpenLoopPhraser {
         }
 
         let opening = opening(count: loops.count, fieldAssist: fieldAssist)
-        let offersFirst = loops[0].source == .approval
+        let offersFirst = offerFirst && loops[0].source == .approval
         let offer = String(localized: "Want to deal with the first one now?",
                            comment: "Spoken: after the evening check-in's list, when the first item is an approval.")
         let rest = String(localized: "The rest are on your phone.",

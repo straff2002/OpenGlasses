@@ -62,6 +62,14 @@ final class FakeActivityRecorder: ActivityRecording {
         guard let index = entries.lastIndex(where: { $0.refs.contains(.operation(operationID)) }) else { return }
         entries[index].outcome = outcome
     }
+
+    /// Plan LE P1: answers every held entry still waiting under the key, as the store does.
+    func resolveHold(key: String, resolution: ActivityResolution, at date: Date) {
+        for index in entries.indices
+        where entries[index].kind == .held && entries[index].holdKey == key && entries[index].isAwaitingWearer(at: date) {
+            entries[index] = entries[index].resolved(resolution, at: date)
+        }
+    }
 }
 
 extension GoalActivityFixture {

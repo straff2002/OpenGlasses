@@ -7,6 +7,10 @@ final class NativeToolRegistry {
     private var fieldToolNames: Set<String> = []
     private var registeringFieldTools = false
     let myDayService: MyDayService
+    /// The Evening Check-in (Plan LE P1). The registry makes it with the readers over the stores it
+    /// can reach — the trail, the reminders My Day reads and the goals; AppState installs the
+    /// digest, agent-result and job readers over its own services.
+    let eveningCheckIn: EveningCheckInService
     /// Where `lookup_tools` finds the MCP client, whose offered tools it may also describe (Plan
     /// IU). Set by `NativeToolRouter.init`, which owns the client; nil leaves the lookup native-only.
     var mcpClientSource: (@MainActor () -> MCPClient?)?
@@ -42,6 +46,12 @@ final class NativeToolRegistry {
             travelSource: travelTimeSource
         )
         self.myDayService = myDayService
+        let eveningCheckIn = EveningCheckInService(readers: [
+            ApprovalLoopReader(store: { ActivityStore.shared }),
+            ReminderLoopReader(source: eventKitStore),
+            GoalStepLoopReader(store: { GoalStore.shared }, reminders: eventKitStore),
+        ])
+        self.eveningCheckIn = eveningCheckIn
 
         register(weatherTool)
         register(dateTimeTool)
@@ -104,7 +114,9 @@ final class NativeToolRegistry {
         // Plan IW P1: the wearer's goals, and "what have you done / what's next". Both work without
         // Agent Mode and without signal; only a goal step's scheduled check needs Agent Mode.
         register(GoalsTool())
-        register(ActivityTool())
+        let activityTool = ActivityTool()
+        activityTool.checkIn = { [weak eveningCheckIn] in eveningCheckIn }
+        register(activityTool)
         if let store = conversationStore {
             register(ConversationSummaryTool(conversationStore: store))
             register(SessionSearchTool(conversationStore: store))

@@ -31,8 +31,13 @@ struct OpenLoopCollection: Equatable, Sendable {
 ///    undated items by `since`. Ties by the source's place in the table, then by id.
 enum OpenLoopCollector {
 
+    /// `said` (P1) is the loops already said today, in the same id → fingerprint shape as the
+    /// dismissals: the scheduled check-in passes it so a loop said once today — by the check-in or
+    /// asked for after its time — is not said again unless it changed. It is filtered like a
+    /// dismissal, alongside it.
     static func collect(_ loops: [OpenLoop], unavailable: [OpenLoopSource] = [],
-                        dismissed: [String: String], now: Date, calendar: Calendar) -> OpenLoopCollection {
+                        dismissed: [String: String], said: [String: String] = [:],
+                        now: Date, calendar: Calendar) -> OpenLoopCollection {
         let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
             ?? now.addingTimeInterval(24 * 60 * 60)
 
@@ -45,7 +50,8 @@ enum OpenLoopCollector {
         // come back on its own.
         let covered = unique.reduce(into: Set<String>()) { $0.formUnion($1.covers) }
         let merged = unique
-            .filter { !OpenLoopDismissals.isDismissed($0, in: dismissed) }                // rule 1
+            .filter { !OpenLoopDismissals.isDismissed($0, in: dismissed)                    // rule 1
+                && !OpenLoopDismissals.isDismissed($0, in: said) }
             .filter { loop in loop.dueAt.map { $0 < startOfTomorrow } ?? true }           // rule 2
             .filter { !covered.contains($0.id) }                                           // rule 3
 
@@ -70,7 +76,8 @@ enum OpenLoopCollector {
     /// Readings from several readers, flattened: the loops of every reader that could be read, and
     /// every source of the ones that could not.
     static func collect(readings: [(sources: [OpenLoopSource], reading: OpenLoopReading)],
-                        dismissed: [String: String], now: Date, calendar: Calendar) -> OpenLoopCollection {
+                        dismissed: [String: String], said: [String: String] = [:],
+                        now: Date, calendar: Calendar) -> OpenLoopCollection {
         var loops: [OpenLoop] = []
         var unavailable: [OpenLoopSource] = []
         for (sources, reading) in readings {
@@ -79,18 +86,20 @@ enum OpenLoopCollector {
             case .unavailable: unavailable += sources
             }
         }
-        return collect(loops, unavailable: unavailable, dismissed: dismissed, now: now, calendar: calendar)
+        return collect(loops, unavailable: unavailable, dismissed: dismissed, said: said,
+                       now: now, calendar: calendar)
     }
 
     /// Read every reader fresh and collect what they found.
     @MainActor
     static func gather(_ readers: [OpenLoopSourceReading], dismissed: [String: String],
+                       said: [String: String] = [:],
                        now: Date, calendar: Calendar) async -> OpenLoopCollection {
         var readings: [(sources: [OpenLoopSource], reading: OpenLoopReading)] = []
         for reader in readers {
             readings.append((reader.sources, await reader.readOpenLoops(now: now, calendar: calendar)))
         }
-        return collect(readings: readings, dismissed: dismissed, now: now, calendar: calendar)
+        return collect(readings: readings, dismissed: dismissed, said: said, now: now, calendar: calendar)
     }
 
     // MARK: - Rule 4
