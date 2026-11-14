@@ -3,7 +3,9 @@
 **Status:** 📝 Drafted 2026-11-11. Nothing built. All eight [decisions](#decisions-for-greig-taken-2026-11-12)
 taken as recommended on 2026-11-12. Whether the "check-in is ready" notification carries Plan
 [LM](LM-background-and-notification-foundation.md)'s buttons (drafted before LM existed) waits for
-LM's device pass.
+LM's device pass. **Amended 2026-11-14:** the owner asked whether it would help a Field Assist technician
+at the end of the day; it would, with the job's own loose ends as sources. [§10](#10--field-assist-the-end-of-the-shift)
+and decisions 9–11 add them, in the same phases.
 **Track:** Everyday assistant. Phone and spoken audio first; the Display and the watch follow.
 **Builds on:** Plan [DY](DY-my-day-everyday-briefing.md) (`MyDayDeliveryPolicy`, `MyDayScheduledDeliveryService`,
 quiet hours, `MyDaySpeechPolicy`), Plan [IW](IW-goals-and-activity-trail.md) (`ActivityStore`, `ActivityPhraser`,
@@ -136,6 +138,11 @@ Only things waiting on the **wearer**, plus one narrow exception.
 | Waiting on others (KI) | a task step waiting on someone for longer than the threshold (decision 5) | when KI lands |
 | Watcher finding (JO) | filed to the digest and never heard | when JO lands |
 | Ask again (LG) | a keep-asking reminder still not confirmed | when LG lands |
+| Job report (Field Assist, §10) | a staged report in the delivery queue that was never sent, or whose send failed | built |
+| Job close held (§10) | a job whose close is held, such as for the customer's sign-off | built |
+| Parts request (§10) | a parts request on today's work that was never sent | built |
+| Deferred task (§10) | a work task the technician deferred and did not finish | built |
+| Expert or escalation (§10) | a hand-off or escalation still waiting on its answer | built |
 
 Rules, applied in order:
 
@@ -143,8 +150,10 @@ Rules, applied in order:
 2. Drop anything that will be in tomorrow's morning briefing as a dated item for tomorrow (the evening
    check-in is about today; tomorrow is My Day's job).
 3. Merge duplicates: a reminder that is also a goal step's action counts once, as the goal step.
-4. Rank: approvals first (someone or something is blocked on them), then overdue items oldest first, then
-   due-today items by due time, then undated items by `since`. Ties by source order in the table.
+4. Rank: approvals first (someone or something is blocked on them), then the job's loose ends (§10: an
+   unsent report, a held close, an unsent parts request, a deferred task, an unanswered hand-off, in that
+   order), then overdue items oldest first, then due-today items by due time, then undated items by
+   `since`. Ties by source order in the table.
 
 ### 3 · Held approvals resolve (`ActivityResolution`)
 
@@ -206,6 +215,32 @@ Everything is read from stores on the phone. No network, no model, no new data k
 dismissed fingerprints (`OpenLoopDismissals`, in the style of `MyDayDismissals`). With Medical Compliance or
 local-only modes on, nothing changes, because nothing leaves the phone. The notification text names nothing.
 
+### 10 · Field Assist: the end of the shift
+
+For a technician the day's loose ends are the job's, and they cost money when they wait: a report the office
+never received is a job nobody invoiced, and a part nobody ordered is a second visit. Field Assist already
+keeps each of them on the phone; the check-in reads them as five more sources behind the same
+`OpenLoopSourceReading` protocol, with the same once-a-day rule, dismissals and four-item limit.
+
+- **Sources** (the rows marked §10 in the table in §2): the delivery queue's staged or failed job reports
+  (`DeliveryRequest`, `DeliveryQueue`), a held job close (`jobCloseHeld`, `customerSignOffRequired`), a
+  `PartsRequest` not `sent`, a `WorkTask` still `deferred`, and an expert hand-off or escalation with no
+  answer. Each names the job the way the job's record already names it (its reference or customer as the
+  technician entered it), so "the report for the Smith job isn't sent". P0 verifies each store's real
+  shape before the adapter is written in P1; a source the record cannot answer is left out and said so here.
+- **When.** With Field Assist on, the check-in's default time is **17:00** (decision 9), set in the same row.
+  A trigger on the last job's close is not in v1: the app cannot know a close is the day's last.
+- **Driving.** When the motion reading is `automotive` at the check-in time (`MotionActivityProvider`), the
+  check-in is not spoken: it shows on the phone (and the content-free notification if the app is not in
+  front), and is spoken only when asked (decision 10). The same rule holds for the everyday check-in.
+- **Words.** "Two things before you finish: the report for the Smith job isn't sent, and the filter for
+  Jones is still not ordered." The opener is "before you finish" with Field Assist on and "still waiting on
+  you" otherwise.
+- **Action.** Each row opens its own place (the report composer, the job, the parts request); nothing is
+  sent or closed by the check-in itself (§6's rule).
+- **Privacy.** Job titles and customer names stay on the phone and in speech, never in the notification,
+  which stays content-free. A Medical Local Only profile changes nothing, as nothing leaves the phone.
+
 ## Decisions for Greig (taken 2026-11-12)
 
 All eight taken as recommended.
@@ -224,6 +259,15 @@ All eight taken as recommended.
 8. **Templates only in v1.** A digest-style rewrite (`DigestLineBuilder`) can follow if the templates read
    badly on the device.
 
+Added 2026-11-14 with §10, taken as proposed when the owner asked for the Field Assist sources:
+
+9. **With Field Assist on, the default time is 17:00**, the end of a working day, changeable in the same row.
+   (Alternative: a trigger on the last job's close, which the app cannot tell apart from any other close.)
+10. **Not spoken while driving.** An `automotive` reading at the time shows it on the phone and waits to be
+    asked. (Alternative: speak it anyway, as the glasses are hands-free.)
+11. **The five job sources rank straight after approvals**, report first. (Alternative: rank them with the
+    rest by date.)
+
 ## Phases (one PR each)
 
 ### P0 — the pure core (headless)
@@ -233,16 +277,21 @@ All eight taken as recommended.
 - `ActivityEntry.resolvedAt`/`resolution`, decoding old entries unchanged; `ActivityPhraser` and
   `ActivityTool.next` read only unresolved held entries.
 - `MyDayDeliverySlot.checkIn` in `MyDayDeliveryPolicy`, with the merge rule.
+- §10: the five job sources in `OpenLoopSource` and the collector's ranking; the 17:00 default with Field
+  Assist on; the driving rule as a policy outcome (show, don't speak); the "before you finish" wording. Each
+  job store's shape checked, and the As built notes say which records answer which row.
 - **Exit tests:** a held entry approved later is not listed; a dismissed reminder stays out tonight and
   returns only when its due date changes; a reminder that is also a goal step's action counts once;
   tomorrow-dated items are left to the morning; the empty scheduled check-in returns nothing to say; four
   spoken, "the rest are on your phone"; quiet hours defer; the evening and check-in merge inside 30 minutes
-  and not at 31; the policy never delivers twice for one day key.
+  and not at 31; the policy never delivers twice for one day key; an unsent report ranks after an approval
+  and before an overdue reminder; with Field Assist on the default time is 17:00; an `automotive` reading
+  shows the list and speaks nothing.
 
 ### P1 — wired (headless)
 
 - Source adapters over `ActivityStore`, `EventKitDayStore`, `GoalStore`, `NotificationDigestService` and
-  `AgentNotificationQueue`.
+  `AgentNotificationQueue`, and the §10 job stores.
 - The recorder resolves held entries at the confirmation boundary; a Plan W hold writes a trail entry if it
   does not already.
 - `MyDayScheduledDeliveryService` delivers the third slot; settings rows (on/off, time) under My Day.
