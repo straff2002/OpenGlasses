@@ -1,8 +1,11 @@
 # Plan LR — Company Vaults from the Portal (upload once, every phone has it, updates arrive by themselves)
 
-**Status:** 🔨 P0, P1 and P2 built 2026-11-13 on `docs/lr-company-vaults` (not yet pushed), with the shared wire
-contract in `Tools/LicenceIssuance` and [Contracts/company-vaults.md](../../Contracts/company-vaults.md) — see
-[As built](#as-built). Owed: the service's first phase, the P3 device pass and the catalog sync. All five
+**Status:** 🔨 P0, P1 and P2 built and merged 2026-11-13 (PR 1039), with the shared wire contract in
+`Tools/LicenceIssuance` and [Contracts/company-vaults.md](../../Contracts/company-vaults.md) — see
+[As built](#as-built); the strings synced in PR 1048. The service's first phase is built and deployed (private
+repository); its go-live on the host is owed, then the P3 device pass. 2026-11-14: a newly bound phone starts
+the vaults the moment the profile is applied, and every foreground re-reads the vault list, so an upload
+arrives without waiting for the daily profile renewal. All five
 [decisions](#decisions-for-greig) taken 2026-11-13: decision 1 (manuals may be uploaded, with size limits) while
 drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.
@@ -84,8 +87,9 @@ The profile gains one optional field, a pointer and never content:
 "companyVaults": { "catalog": "https://…/c/<opaque>/vaults.json", "generation": 7, "minAppBuild": 680 }
 ```
 
-`generation` rises with every change the partner makes. The phone fetches the catalog only when the generation
-is above the one it has applied, so the daily check costs one profile fetch, as today.
+`generation` rises with every change the partner makes. As drafted, the phone fetched the catalog only when the
+generation was above the one it had applied, so the daily check cost one profile fetch. Since 2026-11-14 it reads
+the catalog on every foreground as well (see As built).
 
 The **company vault catalog** is signed by the vendor's pack-catalog key (the same verification as EG's, with a
 different document type) and is bound to one company. It authenticates `profileId` and `generation`, so one
@@ -280,6 +284,25 @@ installed on this phone."; "%@ is missing from the vault on this phone."; and th
 (both builds): "…the app build, the profile id and the versions of your organisation's vaults on this phone;
 never a name, device model or location."
 
-**Owed:** the service's first phase (publishing the catalog, packs and sealed manuals); the P3 device pass; the
-catalog sync for the strings above.
+**Strings:** synced into the catalog in PR 1048.
+
+**2026-11-14 — the vaults start at enrolment.** `apply` records a renewal attempt, and enrolment ran only the
+profile's pack, so a phone bound with an activation key, a profile link or office commissioning got its
+company's vaults only at the routine pass of its next foreground or launch: a technician who stayed in the app
+after typing the key had nothing. `OrgProfileManager.completeEnrolment()` (the pack, then a
+`CompanyVaultSyncReason.enrolled` pass, which fetches the vault list whatever its generation) now follows both
+`apply` callers. `CompanyVaultServiceTests` enrols through it alone, with no renewal or foreground, as the app
+does.
+
+**2026-11-14 — an upload arrives at the next foreground (owner's decision).** The phone renews the profile
+at most once a day, so an upload used to wait for that renewal unless the technician tapped *Check for
+Updates*. The routine pass now reads the vault list at launch and on every foreground whatever the
+profile's generation; the verifier already took a list newer than the pointer. A failed re-read keeps the
+verified list and the work it still owes, and is named only when the profile points past it. There is still
+no background wake: a phone that is not opened takes the upload when it next is. `CompanyVaultServiceTests`
+covers an upload reaching the phone with the profile a generation behind, a re-read with no signal, and a
+re-read that fails when the profile names a newer list.
+
+**Owed:** the service's go-live on the host (the pack-catalog key, the minimum app build, the company
+administrators' access, disk); the P3 device pass.
 

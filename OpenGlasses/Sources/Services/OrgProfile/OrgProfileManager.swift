@@ -828,6 +828,15 @@ final class OrgProfileManager: ObservableObject {
         if let enrolment = seatEnrolment { await seams.seatCheckIn(enrolment, force) }
     }
 
+    /// What follows a successful `apply`, off the sheet: the profile's pack, if it names one, then
+    /// the company's vaults and manuals. `apply` records a renewal attempt, so the next foreground's
+    /// routine pass would not refetch the profile, and before this the vaults waited for the app to
+    /// be backgrounded and brought back.
+    func completeEnrolment() async {
+        await completePendingPack()
+        if isManaged { await seams.syncCompanyVaults(.enrolled) }
+    }
+
     /// *Check for Updates* under *Managed by ⟨org⟩*: renew the profile now, then fetch the company's
     /// vault list whatever its generation, and install what is due.
     func checkForUpdates() async {

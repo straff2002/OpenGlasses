@@ -56,8 +56,8 @@ public enum ProfileContract {
     }
     /// Plan LR — where the company's own vaults are listed: a pointer, never content. Mirrors
     /// `ConfigProfile.CompanyVaultsReference`. `generation` rises with every change the partner
-    /// makes, so a phone fetches the catalog only when it is above the one it has applied;
-    /// `minAppBuild` is the oldest build that can read it (older builds ignore the field).
+    /// makes; a phone also reads the catalog on every foreground, and never uses one older than
+    /// this; `minAppBuild` is the oldest build that can read it (older builds ignore the field).
     public struct CompanyVaults: Codable, Equatable {
         public let catalog: String; public let generation: Int; public let minAppBuild: Int?
         public init(catalog: String, generation: Int, minAppBuild: Int? = nil) {
