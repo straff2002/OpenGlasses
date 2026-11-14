@@ -1,7 +1,7 @@
 # Plan LU — Private Conversation (a conversation Avenkin keeps nothing of)
 
-**Status:** 📝 Drafted 2026-11-14, nothing implemented. Six [decisions](#decisions-for-greig) open, each
-with a recommendation.
+**Status:** 📝 Drafted 2026-11-14, nothing implemented. All six [decisions](#decisions-for-greig-taken) taken
+2026-11-14 as recommended.
 **Track:** Everyday assistant: privacy. Every way a conversation starts (wake word, Chat tab, watch
 dictation, photo turns, live modes), the conversation store and everything fed from it, memory writers,
 diagnostics, the watch, the Live Activity, the gateway bridges.
@@ -304,29 +304,31 @@ is found by a grep in P0 and changed the same way. `PrivacyLogTests` gains a che
 The app going to the background doesn't end it: the wearer may be using the glasses with the phone
 locked.
 
-## Decisions for Greig
+## Decisions for Greig (taken)
 
-1. **Does a private conversation read memory?** *Recommended:* yes. The memory block, people and job
+All six taken as recommended, 2026-11-14.
+
+1. **Does a private conversation read memory?** ✅ *Taken as recommended:* yes. The memory block, people and job
    notes stay in the prompt. Private means nothing new is kept, and reading what is already known
-   keeps the answers personal. *Alternative:* a clean slate with no memory in the prompt, which is
+   keeps the answers personal. Not taken: a clean slate with no memory in the prompt, which is
    closer to "incognito" but answers worse.
-2. **Tools the wearer asks for by name.** *Recommended:* they run, and what they make is kept where it
-   normally lives (a reminder in Reminders), because the wearer asked for it. *Alternative:* refuse
+2. **Tools the wearer asks for by name.** ✅ *Taken as recommended:* they run, and what they make is kept where it
+   normally lives (a reminder in Reminders), because the wearer asked for it. Not taken: refuse
    every `write` tool in a private conversation, which is simpler to explain but blocks "remind me at
    5".
-3. **Photos taken to answer a question.** *Recommended:* a photo turn ("what's this?") isn't saved to
-   Photos. An explicit "take a photo" is, because that is what the wearer asked for. *Alternative:*
+3. **Photos taken to answer a question.** ✅ *Taken as recommended:* a photo turn ("what's this?") isn't saved to
+   Photos. An explicit "take a photo" is, because that is what the wearer asked for. Not taken:
    save nothing to Photos while private, including an explicit photo.
-4. **Recognition.** *Recommended:* a private conversation's questions use on-device recognition where
+4. **Recognition.** ✅ *Taken as recommended:* a private conversation's questions use on-device recognition where
    the locale supports it, and server recognition with a one-time line in the explainer where it
-   doesn't. *Alternative:* leave recognition as it is, and say in the explainer that Apple's server
+   doesn't. Not taken: leave recognition as it is, and say in the explainer that Apple's server
    recognition is used.
-5. **Phrases in other languages.** *Recommended:* English phrases first; the other 18 languages get the
-   button and the watch from P1, and their phrases as each translation is reviewed. *Alternative:*
+5. **Phrases in other languages.** ✅ *Taken as recommended:* English phrases first; the other 18 languages get the
+   button and the watch from P1, and their phrases as each translation is reviewed. Not taken:
    ship all 19 languages' phrases at once, from machine translations.
-6. **Organisation control.** *Recommended:* a `SettingKey.privateConversationsAllowed` ceiling, allowed
+6. **Organisation control.** ✅ *Taken as recommended:* a `SettingKey.privateConversationsAllowed` ceiling, allowed
    by default, so an organisation can switch private conversations off. Jobs already refuse private
-   conversations whatever the setting. *Alternative:* no org key, because jobs are the only records an
+   conversations whatever the setting. Not taken: no org key, because jobs are the only records an
    organisation owns.
 
 ## Phases
