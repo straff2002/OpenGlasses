@@ -3,7 +3,9 @@ import Foundation
 import Network
 
 /// Plan BP — the flag-gated phone serving edge: `GET /` (the self-contained page, no data)
-/// and `GET /hud.json?t=<token>` (the current mirror frame). Reuses the Plan E listener
+/// and `GET /hud.json?t=<token>` (the current mirror frame). Plan LT §7 adds the launcher files,
+/// behind the same token: `GET /manifest.webmanifest?t=`, `GET /icon-192.png?t=` and
+/// `GET /icon-512.png?t=` (`WebHUDLauncher`). Reuses the Plan E listener
 /// pattern (`MCPGlassesServer`): NWListener, per-device Keychain bearer token, developer
 /// gates. Gated `agentModeEnabled && hudMirrorEnabled` (default off) and the compile-time
 /// ``LocalServiceExposurePolicy``. Release builds refuse this cleartext transport.
@@ -177,9 +179,11 @@ final class WebHUDMirrorServer: ObservableObject {
     }
 
     /// Pure request → response. The page itself carries no data and needs no token; the
-    /// data endpoint checks the hash-forwarded token. HIPAA refuses everything.
+    /// data endpoint and the launcher files check the hash-forwarded token. HIPAA refuses
+    /// everything. `icon` draws a launcher icon (a seam so a test can stay off UIKit's drawing).
     static func routeResponse(method: String, target: String, hipaa: Bool,
-                              expectedToken: String, payload: WebHUDPayload) -> Response {
+                              expectedToken: String, payload: WebHUDPayload,
+                              icon: ((WebHUDLauncher.IconSize) -> Data?)? = nil) -> Response {
         guard !hipaa else {
             return Response(status: "503 Service Unavailable", contentType: "text/plain",
                             body: Data("mirror disabled".utf8))
@@ -189,16 +193,30 @@ final class WebHUDMirrorServer: ObservableObject {
                             body: Data("read-only mirror".utf8))
         }
         let path = target.split(separator: "?", maxSplits: 1).first.map(String.init) ?? target
+        let unauthorized = Response(status: "401 Unauthorized", contentType: "text/plain",
+                                    body: Data("missing or invalid token".utf8))
+        let tokenValid = constantTimeEquals(queryToken(in: target) ?? "", expectedToken)
+        if path == WebHUDLauncher.manifestPath {
+            guard tokenValid else { return unauthorized }
+            return Response(status: "200 OK", contentType: WebHUDLauncher.manifestContentType,
+                            body: WebHUDLauncher.manifest(token: expectedToken))
+        }
+        if let size = WebHUDLauncher.IconSize.allCases.first(where: { $0.path == path }) {
+            guard tokenValid else { return unauthorized }
+            let drawn: Data?? = icon.map { $0(size) }
+            guard let png = drawn ?? WebHUDLauncher.iconPNG(size) else {
+                return Response(status: "500 Internal Server Error", contentType: "text/plain",
+                                body: Data("icon unavailable".utf8))
+            }
+            return Response(status: "200 OK", contentType: "image/png", body: png)
+        }
         switch path {
         case "/", "/index.html":
             let html = WebHUDRenderer.page(mode: .polling(intervalSeconds: 2))
             return Response(status: "200 OK", contentType: "text/html; charset=utf-8",
                             body: Data(html.utf8))
         case "/hud.json":
-            guard constantTimeEquals(queryToken(in: target) ?? "", expectedToken) else {
-                return Response(status: "401 Unauthorized", contentType: "text/plain",
-                                body: Data("missing or invalid token".utf8))
-            }
+            guard tokenValid else { return unauthorized }
             return Response(status: "200 OK", contentType: "application/json",
                             body: payload.jsonData())
         default:

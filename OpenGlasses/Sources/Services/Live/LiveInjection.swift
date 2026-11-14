@@ -36,17 +36,26 @@ enum LiveInjectionEnvelope {
         ]
     }
 
-    /// A full-quality still pushed into the model's view over the realtime video lane — the same
-    /// channel as the throttled stream, minus the throttle and the quality loss. No turn semantics:
-    /// generation is driven by whatever accompanies it (a tool response, or a `geminiText` with
-    /// `completeTurn: true`).
-    static func geminiImage(base64JPEG: String) -> [String: Any] {
+    /// The line a deliberate still carries, so the model knows the image is the photo it was asked
+    /// about and not one more streamed frame.
+    static let geminiStillInstruction = "This photo was just taken by the wearer's camera; answer about it."
+
+    /// A deliberate full-quality still (Plan LT §6): `look_closely`, a pinned frame. A user-role
+    /// `clientContent` turn carrying the image as `inlineData` and `geminiStillInstruction`, with
+    /// `turnComplete: false` — it extends context and generates nothing, so the wearer's words (or
+    /// the tool response that follows it) still lead. Before LT the still rode `realtimeInput.video`
+    /// beside the throttled stream, with nothing to tell it apart from a frame; streamed frames stay
+    /// there (`GeminiLiveService.sendVideoFrame`).
+    static func geminiStill(base64JPEG: String) -> [String: Any] {
         [
-            "realtimeInput": [
-                "video": [
-                    "mimeType": "image/jpeg",
-                    "data": base64JPEG,
-                ]
+            "clientContent": [
+                "turns": [
+                    ["role": "user", "parts": [
+                        ["inlineData": ["mimeType": "image/jpeg", "data": base64JPEG]],
+                        ["text": geminiStillInstruction],
+                    ]]
+                ],
+                "turnComplete": false,
             ]
         ]
     }
@@ -147,7 +156,9 @@ protocol LiveSessionInjecting: AnyObject {
     /// to whatever is being said now. The identity makes the replacement observable, so the capture
     /// can be refused instead.
     var liveSessionIdentity: Int { get }
-    /// Push a full-quality still into the model's view (no turn semantics — see envelope docs).
+    /// Push a full-quality still into the model's view. It generates nothing by itself: on Gemini
+    /// it is an append-only turn (`LiveInjectionEnvelope.geminiStill`), on Realtime an item with no
+    /// `response.create` — see the envelope docs.
     func injectSharpImage(jpegData: Data)
     /// Put text in front of the model. `completeTurn: true` = the model responds now, in its own
     /// voice, inside the session — the whole point of the lane.

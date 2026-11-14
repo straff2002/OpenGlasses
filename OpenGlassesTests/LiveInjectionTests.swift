@@ -23,13 +23,7 @@ final class LiveInjectionTests: XCTestCase {
         }
     }
 
-    func testGeminiImageRidesTheRealtimeVideoLane() throws {
-        let env = LiveInjectionEnvelope.geminiImage(base64JPEG: "QUJD")
-        let input = try XCTUnwrap(env["realtimeInput"] as? [String: Any])
-        let video = try XCTUnwrap(input["video"] as? [String: String])
-        XCTAssertEqual(video, ["mimeType": "image/jpeg", "data": "QUJD"])
-        XCTAssertNil(env["clientContent"], "an image injection must not carry turn semantics")
-    }
+    // The deliberate still's envelope (Plan LT §6) is pinned in `GeminiLiveStillEnvelopeTests`.
 
     func testRealtimeTextItemShape() throws {
         let env = LiveInjectionEnvelope.realtimeText("hi")

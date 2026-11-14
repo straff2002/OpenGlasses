@@ -18,7 +18,11 @@ final class MediaTriggerServiceTests: XCTestCase {
         /// Whether the (pretend) silent player is still playing. A fresh claim starts it.
         var playerPlaying = false
         var sessionShape = "playAndRecord-mixable"
-        var standbyClaimLive: Bool { playerPlaying }
+        /// Paused on purpose (`pauseStandby`): still a live claim, as the production claimer says.
+        var pausedByPolicy = false
+        var pauseCount = 0
+        var resumeCount = 0
+        var standbyClaimLive: Bool { playerPlaying || pausedByPolicy }
         func claim(mode: NowPlayingClaimMode, onCommand: @escaping (MediaRemoteCommand) -> Void) {
             claimCount += 1
             modes.append(mode)
@@ -29,6 +33,19 @@ final class MediaTriggerServiceTests: XCTestCase {
             releaseCount += 1
             onCommand = nil
             playerPlaying = false
+            pausedByPolicy = false
+        }
+        func pauseStandby() {
+            guard playerPlaying else { return }
+            pauseCount += 1
+            playerPlaying = false
+            pausedByPolicy = true
+        }
+        func resumeStandby() {
+            guard pausedByPolicy else { return }
+            resumeCount += 1
+            pausedByPolicy = false
+            playerPlaying = true
         }
     }
 
@@ -69,6 +86,7 @@ final class MediaTriggerServiceTests: XCTestCase {
         var conversation = false
         var sessionControl = true
         var now: TimeInterval = 0
+        var standbyMode: StandbyClaimPolicy.Mode = .keepPlaying
     }
 
     private var world = World()
@@ -96,6 +114,7 @@ final class MediaTriggerServiceTests: XCTestCase {
                 return calibration
             },
             clock: { [world] in world.now },
+            standbyMode: { [world] in world.standbyMode },
             debounceInterval: debounce,
             sleep: { [sleeper] _ in await sleeper.sleep() })
         service.realtimeSessionActive = { [world] in world.realtime }
@@ -359,6 +378,115 @@ final class MediaTriggerServiceTests: XCTestCase {
         world.now = 3.0
         XCTAssertNotNil(service.handleRemoteCommand(.nextTrack))    // outside it
         XCTAssertEqual(fired, 2)
+        service.stop()
+    }
+
+    // MARK: - The silent player on a pause (Plan LT §4)
+
+    func testKeepPlayingNeverPausesTheSilentPlayer() {
+        let service = makeService(debounce: 0)
+        service.start()
+        for (i, command) in [MediaRemoteCommand.pause, .togglePlayPause, .pause].enumerated() {
+            world.now = Double(i) * 5
+            XCTAssertEqual(service.handleRemoteCommand(command), .one)
+        }
+        XCTAssertEqual(claimer.pauseCount, 0)
+        XCTAssertEqual(sleeper.pending, 0, "no resume to time")
+        service.stop()
+    }
+
+    func testPauseThenResumePausesOnATapAndResumesAfterTheDelay() async {
+        world.standbyMode = .pauseThenResume
+        let service = makeService(debounce: 0)
+        service.start()
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one, "the pause is still a tap")
+        XCTAssertEqual(claimer.pauseCount, 1)
+        XCTAssertTrue(claimer.standbyClaimLive, "a paused claim is not a lapsed one")
+        service.evaluate()
+        XCTAssertEqual(claimer.claimCount, 1, "a deliberate pause is not taken afresh")
+        await settle { sleeper.pending == 1 }
+        sleeper.wakeAll()
+        await settle { claimer.resumeCount == 1 }
+        XCTAssertEqual(claimer.resumeCount, 1)
+        XCTAssertTrue(claimer.playerPlaying)
+        service.stop()
+    }
+
+    func testATapDuringThePauseIsATapAndResumesAtOnce() async {
+        world.standbyMode = .pauseThenResume
+        let service = makeService(debounce: 0)
+        var fired: [TempleGesture] = []
+        service.onGesture = { gesture, _ in fired.append(gesture) }
+        service.start()
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one)
+        world.now = 1.5
+        // Paused, the glasses send play for the next tap.
+        XCTAssertEqual(service.handleRemoteCommand(.play), .one)
+        XCTAssertEqual(claimer.resumeCount, 1)
+        world.now = 3.0
+        XCTAssertEqual(service.handleRemoteCommand(.nextTrack), .two, "playing again: no pause")
+        XCTAssertEqual(claimer.pauseCount, 1)
+        XCTAssertEqual(fired, [.one, .one, .two])
+        // The timer from the first pause finds nothing to resume.
+        await settle { sleeper.pending > 0 }
+        sleeper.wakeAll()
+        await settle()
+        XCTAssertEqual(claimer.resumeCount, 1)
+        service.stop()
+    }
+
+    func testAPlayInsideThePairWindowIsTheSameTap() {
+        world.standbyMode = .pauseThenResume
+        let service = makeService(debounce: 0)
+        var fired: [TempleGesture] = []
+        service.onGesture = { gesture, _ in fired.append(gesture) }
+        let sink = LineSink()
+        let tap = PrivacyLog.addTap { _, line in sink.record(line) }
+        defer { PrivacyLog.removeTap(tap) }
+        service.start()
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one)
+        world.now = 0.4   // past the decoder's coalescing, inside the pair window
+        XCTAssertNil(service.handleRemoteCommand(.play))
+        XCTAssertEqual(fired, [.one])
+        XCTAssertEqual(claimer.resumeCount, 1, "the pair still resumes the player")
+        XCTAssertTrue(sink.lines.contains { $0.contains("event=commandDropped") && $0.contains("state=pairedResume") },
+                      "\(sink.lines)")
+        XCTAssertTrue(sink.lines.contains { $0.contains("event=claimPaused") })
+        service.stop()
+    }
+
+    func testReleaseForgetsAPause() {
+        world.standbyMode = .pauseThenResume
+        let service = makeService(debounce: 0)
+        service.start()
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one)
+        world.otherAudio = true
+        service.evaluate()
+        XCTAssertFalse(service.isClaimed)
+        world.otherAudio = false
+        world.glasses = false
+        service.evaluate()
+        world.glasses = true
+        world.now = 10
+        service.evaluate()
+        XCTAssertEqual(service.claimedMode, .standby)
+        world.now = 10.2
+        // A fresh claim: this pause is the first, not the resume of the old one.
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one)
+        XCTAssertEqual(claimer.pauseCount, 2)
+        XCTAssertEqual(claimer.resumeCount, 0)
+        service.stop()
+    }
+
+    func testSessionControlNeverPauses() {
+        world.standbyMode = .pauseThenResume
+        let service = makeService(debounce: 0)
+        service.start()
+        world.owner = .geminiLive
+        service.evaluate()
+        XCTAssertEqual(service.claimedMode, .sessionControl)
+        XCTAssertEqual(service.handleRemoteCommand(.pause), .one)
+        XCTAssertEqual(claimer.pauseCount, 0, "no silent player in session control")
         service.stop()
     }
 

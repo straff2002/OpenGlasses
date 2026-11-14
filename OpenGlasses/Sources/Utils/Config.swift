@@ -416,6 +416,15 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "mediaTriggerEnabled")
     }
 
+    /// Plan LT §4: what the temple taps' silent standby player does on a pause command — keep
+    /// playing (the default until the device check settles it) or pause and resume. Developer panel.
+    static var standbyClaimMode: StandbyClaimPolicy.Mode {
+        UserDefaults.standard.string(forKey: standbyClaimModeKey)
+            .flatMap(StandbyClaimPolicy.Mode.init(rawValue:)) ?? .keepPlaying
+    }
+
+    static let standbyClaimModeKey = "standbyClaimMode"
+
     /// What one, two and three temple taps do (Plan GJ).
     static var templeGestureMap: TempleGestureMap {
         TempleGestureMapStore().load()
@@ -2601,6 +2610,15 @@ struct Config {
     static let geminiLiveAudioBitsPerSample: UInt32 = 16
     static let geminiLiveVideoFrameInterval: TimeInterval = 1.0
     static let geminiLiveVideoJPEGQuality: CGFloat = 0.5
+
+    /// Plan LT §6: Gemini Live's start-of-speech sensitivity, `high` unless the Developer panel
+    /// says otherwise. Read at each session's setup.
+    static var geminiLiveStartSensitivity: GeminiLiveStartSensitivity {
+        UserDefaults.standard.string(forKey: geminiLiveStartSensitivityKey)
+            .flatMap(GeminiLiveStartSensitivity.init(rawValue:)) ?? .high
+    }
+
+    static let geminiLiveStartSensitivityKey = "geminiLiveStartSensitivity"
 
     /// The oldest a navigation hazard callout's source frame may be when it is spoken, in seconds.
     /// The navigation loop ticks every 2.5 s, so 5 s lets a reply one tick late through and drops

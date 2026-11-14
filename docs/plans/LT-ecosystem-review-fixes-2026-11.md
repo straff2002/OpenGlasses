@@ -1,7 +1,8 @@
 # Plan LT — Fixes from the November 2026 Ecosystem Review (our own defects, found by looking at adjacent work)
 
-**Status:** 🚧 P0 in progress — items 1–3 built 2026-11-14 (headless; see [As built](#as-built)); items 4–7
-and the P1 device checks owed. All four [decisions](#decisions-for-greig) taken 2026-11-14 as recommended.
+**Status:** 🚧 P0 built 2026-11-14 (items 1–7, headless; see [As built](#as-built)); the P1 device checks owed,
+then a short follow-up PR settling the defaults of items 4 and 6. All four [decisions](#decisions-for-greig)
+taken 2026-11-14 as recommended.
 **Track:** Hardening. Privacy, the watch, temple taps, wake word, Gemini Live audio and vision, glasses
 lifecycle, the web mirror.
 **Builds on:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (`EgressScreen`), Plan [LN](LN-memory-manners.md) §3 (the turn's
@@ -304,10 +305,112 @@ handler, since `AppState` cannot be stood up headless). 38 new tests (7 + 3 + 4 
 iPhone 17 Pro simulator alongside the existing router, MCP, frame-roster, privacy-filter, tool-effect, privacy-log
 and watch classes (352 tests, 0 failures). Full suite and Release build not yet run.
 
-**Left:** items 4–7; the P1 device checks (a screen recording, a FaceTime share and AirPlay; a watch photo with
-the glasses off and with a capture failure); the catalog sync for the new strings. Candidates the guard does not
-reach yet: `qr_context` fetches a model-passed URL, and directions or geocoding tools that send a typed place to
-Apple are not on the network scrape.
+**Left after items 1–3:** the P1 device checks (a screen recording, a FaceTime share and AirPlay; a watch photo
+with the glasses off and with a capture failure); the catalog sync for the new strings. Candidates the guard does
+not reach yet: `qr_context` fetches a model-passed URL, and directions or geocoding tools that send a typed place
+to Apple are not on the network scrape.
+
+### P0, items 4–7 (2026-11-14)
+
+**Item 4 — temple taps after the first.**
+- `StandbyClaimPolicy` (`Services/Triggers/StandbyClaimPolicy.swift`), pure: `.keepPlaying` (the default, today's
+  behaviour) or `.pauseThenResume`. In the second, a `pause` or `togglePlayPause` while the silent player plays is
+  `.pause(resumeAfter: 3)`; the next command of any kind, or the delay, is `.resume`; a command during the pause is
+  still a tap, except a `play` within 0.6 s of the pause, which is the same tap (`countsAsTap: false`).
+- `MediaTriggerService` reads the mode (`Config.standbyClaimMode`, key `standbyClaimMode`) at each claim, shows every
+  command under a standby claim to the policy before the decoder (so a paused player resumes on the next command
+  whether or not it fires a tap), times the resume with the same injected `sleep` as the settle re-check, and forgets
+  a pause on release or a fresh claim. Session control never pauses (no player). The dropped half of a pair logs
+  `commandDropped` with `pairedResume`; pause and resume log `claimPaused` / `claimResumed` with the session shape.
+- `NowPlayingClaiming` gains `pauseStandby()` / `resumeStandby()`. `SilentNowPlayingClaimer` pauses the player and
+  publishes `MPNowPlayingInfoPropertyPlaybackRate: 0`, and its `standbyClaimLive` stays true while paused this way,
+  so the claim's health check does not read a deliberate pause as a lapsed claim and retake it. A pause during the
+  session's activation holds the pending start back; the resume plays it.
+- Developer panel → Temple Taps → "Pause after a tap" (glasses builds only); switching it retakes the claim.
+  The existing Temple Taps test mode announces every tap heard; a dropped command is in the support log, not spoken.
+- **Note:** the service's 1 s tap debounce (`TriggerGate`) still drops a second tap inside a second of the last one
+  that fired, in either mode, so the 0.6 s pair window only changes what the log says for a quick pair.
+- **P1 must check:** on a Gen 2 and a Gen 1, ten single and five double taps after launch and after the wake word has
+  reconfigured the session, in each mode, counting taps heard (test mode) against taps made. Also whether a rate of 0
+  makes the lock screen show a paused widget (harmless) and whether iOS gives Now Playing to another app during the
+  3 s pause.
+
+**Item 5 — wake-word alternatives only at the start.**
+- `WakeAlternativePosition` (`Services/Flow/WakeAlternativePosition.swift`), pure: `isStartBound` (an alternative —
+  tokens differ from its primary's — whose every token the lexicon knows), `utteranceStarts(tokenCount:segments:)`
+  (token 0, and the first token of a segment after a gap of at least 0.7 s; segments that do not tokenise to the
+  transcript's count are not trusted, so only 0), `allowedStarts` (each start, and the next token when the start is an
+  opener) and `openers(forLanguage:)` (hey, ok, okay, hi everywhere; a few greetings for de, fr, es, it, pt, nl).
+- `WakePhraseMatcher.Candidate` gains `startOnly`; `match` and a new `detailedMatch` honour it in all three passes
+  (exact whole-token, fuzzy windows begin only at allowed starts, unspaced-script tokens only from the token's
+  beginning). `WakeWordService` now calls `detailedMatch` instead of its own copy of the three passes, passes the
+  recogniser's `bestTranscription.segments`, and marks candidates with `WakeLexicon` (`UITextChecker` in the
+  recogniser's locale, cached per word; a locale with no dictionary makes nothing ordinary, so behaviour there is
+  unchanged). Transliterated candidates inherit the mark.
+- **Note:** only the alternative is bound. A primary's own fuzzy allowance can still reach an ordinary phrase
+  anywhere ("hey cloud" is two edits from "hey claude"), and an invented-word alternative can sit within fuzzy reach
+  of ordinary words ("aven kin" is one edit from "even kin"); both are as before. Persona alternatives such as "read
+  this" and "travel mode" are now start-only too.
+- **P1 must check:** partial results on the device — whether segment timestamps arrive before a result is final
+  (if not, the gap rule only helps on final results, and the first token is the only start for partials).
+
+**Item 6 — Gemini Live turn starts and deliberate stills.**
+- `GeminiLiveStartSensitivity` (`.high`, the default, or `.low`) is a `GeminiLiveSetup.body` parameter, read from
+  `Config.geminiLiveStartSensitivity` (key `geminiLiveStartSensitivity`) at each setup. Developer panel → Gemini Live
+  → "Less sensitive turn starts". End sensitivity, silence and padding are unchanged.
+- `LiveInjectionEnvelope.geminiStill(base64JPEG:)` replaces `geminiImage`: a user `clientContent` turn with the image
+  as `inlineData` then the line "This photo was just taken by the wearer's camera; answer about it.", and
+  `turnComplete: false`. `GeminiLiveService.sendHighResImage` (both `look_closely` and an injected pin) uses it; the
+  ~1 fps stream stays `realtimeInput.video`. OpenAI and the JSON adapters are untouched.
+- **Note:** the plan's "photo tool" and "dwell capture" do not reach Gemini Live through `sendHighResImage`: the only
+  callers are `look_closely` and the pinned frame. A Live `clientContent` message interrupts generation in progress,
+  so a pin injected while the model is speaking may now cut it off where the video lane did not.
+- **P1 must check:** the café and van A/B for start sensitivity; the twenty object questions old envelope against new
+  (the old one is in git history at ec97c4958); and that `look_closely`'s still, sent while its function call is
+  pending, is accepted before the tool response rather than refused or answered on its own.
+
+**Item 7 — small fixes.**
+- `PCMByteCarry` (`Services/Audio/PCMByteCarry.swift`), pure: holds the bytes past the last whole frame
+  (`bitsPerSample / 8 × channels`) and puts them in front of the next chunk. `RealtimeAudioEngine.playAudioOnQueue`
+  aligns every chunk first, even one it then drops, so the stream keeps its boundary; the carry is cleared in
+  `resetPlaybackProgress` (turn complete), `stopPlaybackOnQueue` (barge-in) and `stopCapture`, not on a graph rebuild
+  mid-reply.
+- `GlassesConnectionSnapshot.seenWornThisConnection`: set by a connected `liveWorn == true`, cleared whenever the phase
+  is not connected. `GlassesSleepPolicy.doffGraceApplies` gains `seenWornThisConnection` (required, so no caller can
+  forget it); `AppState.glassesWornChanged` passes it at the start and the end of the grace, and logs a first "off"
+  as `doffBeforeDon` instead of timing it.
+- `DeviceSessionFailureReason.sessionEndedByDevice` adds "If it ends just after it starts, open Meta AI and check for a
+  glasses update." **Deviation:** with the new sentence the old notice was 218 characters and the spoken-error gate
+  (`SpokenErrorPolicy.looksHuman`) refuses anything over 200, so the rest was shortened: "End any broadcast in Meta
+  AI, or close the glasses in their case for a minute." (194 in all).
+- `WebHUDLauncher` (`Services/Display/WebHUD/WebHUDLauncher.swift`): `/icon-192.png`, `/icon-512.png` (the
+  `AvenkinMark` asset drawn white inside the middle 60 % of a black square, scale 1, cached) and
+  `/manifest.webmanifest` (`application/manifest+json`: name, `display: standalone`, black theme and background, both
+  icons). All need `?t=`, like `hud.json`; HIPAA and non-GET refuse them as everything else. Because the token lives in
+  the page's hash, the `<head>` carries the `manifest`, `icon` and `apple-touch-icon` links with no `href`, and the
+  page script fills them in with the token; the manifest's icon URLs carry it too, and its `start_url` is `/#t=<token>`
+  so a launcher opens a page that can poll. Purpose `any`, not `monochrome`: that purpose reads only alpha and the
+  icon is opaque. ID item 3's lifecycle notes were already added with the docs PR.
+- **P1 must check:** "Add to Home Screen" on the Display web view and on an Android browser, with the icon showing,
+  and that rotating the token breaks the installed launcher (expected) rather than serving the old one.
+
+**Cleanups in the same commit:** the `watchPhotoTurn` comment sat under `startGuidance`'s; each is now on its own
+function. The watch's recording quick action replies `status` only (the watch sets its status and taps success,
+with no answer shown) and now says "Recording didn't start." as an `error` when a start did not take, which the
+watch shows in place of an answer.
+
+**Tests:** `StandbyClaimPolicyTests` (9), six `MediaTriggerServiceTests` additions (keep playing never pauses; pause,
+live while paused, resume after the delay; a tap during the pause; the pair window; release forgets a pause; session
+control never pauses), `WakeAlternativePositionTests` (the 36-sentence corpus wakes on none and did wake before the
+rule; the same alternatives at the start, after an opener and after a 0.7 s pause wake; fuzzy and unspaced passes
+keep the rule; the system lexicon on the runtime), `GeminiLiveStillEnvelopeTests` (envelope shape, the two paths
+read from source, the sensitivity default and setup), `RealtimeAudioCarryTests` (even only, odd-then-odd,
+odd-then-interrupt, stereo, and the engine's three clears read from source), three `GlassesSleepPolicyTests`
+additions, `DeviceSessionFailureNoticeTests`, `WebHUDMirrorServerTests` (token on each path, HIPAA and read-only, PNG
+of the right size, manifest content, the page head). `LiveInjectionTests` loses the old video-lane image test.
+54 new tests. On the iPhone 17 Pro simulator: the new and related classes (37 classes, 499 tests; one float-edge
+assertion in the pair-window test fixed and its two classes re-run, 58 tests, 0 failures), then the full unit suite
+(16,948 tests, 16 skipped, 0 failures) and a Release build for the simulator, both green. **P0 exit met.**
 
 ## Decisions for Greig
 

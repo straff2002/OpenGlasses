@@ -1868,6 +1868,12 @@ class WakeWordService: NSObject, ObservableObject {
         guard let result = result else { return }
         let transcript = result.bestTranscription.formattedString.lowercased()
         debugTranscript = transcript
+        // Plan LT §5: where the pauses fell, so an ordinary-word alternative can be held to the
+        // start of an utterance. Partial results often carry no timestamps; then only the first
+        // token counts as a start.
+        let segments = result.bestTranscription.segments.map {
+            WakeAlternativePosition.Segment(text: $0.substring, timestamp: $0.timestamp, duration: $0.duration)
+        }
 
         // During TTS playback: what this transcript is allowed to do is `BargeInPolicy`'s call
         // (Plan FE P3). The word-count test that used to live here is now a documented noise floor
@@ -1876,7 +1882,7 @@ class WakeWordService: NSObject, ObservableObject {
         if listenForStop && !stopFired {
             switch BargeInPolicy.decide(transcript: transcript,
                                         isStopPhrase: containsStopPhrase(transcript),
-                                        matchedWakePhrase: matchedWakePhrase(transcript),
+                                        matchedWakePhrase: matchedWakePhrase(transcript, segments: segments),
                                         generalBargeInEnabled: generalBargeInEnabled(),
                                         assistantSpeech: assistantSpeech()) {
             case .stop:
@@ -1912,7 +1918,7 @@ class WakeWordService: NSObject, ObservableObject {
         }
 
         // Normal wake word detection (not during TTS)
-        if let matched = matchedWakePhrase(transcript) {
+        if let matched = matchedWakePhrase(transcript, segments: segments) {
             if !wakeWordFired {
                 // Normal wake word detection (not during TTS)
                 tapState.noteWakeMatched()
@@ -1940,7 +1946,8 @@ class WakeWordService: NSObject, ObservableObject {
 
     /// Every phrase that may wake the app: each enabled persona's, its alternatives (reporting the
     /// persona's primary phrase), the global wake phrase — and, when the recogniser writes another
-    /// script, each of those as that recogniser would spell it (`WakePhraseScript`).
+    /// script, each of those as that recogniser would spell it (`WakePhraseScript`). An
+    /// alternative made of ordinary words in the recogniser's language is start-only (Plan LT §5).
     private var wakeCandidates: [WakePhraseMatcher.Candidate] {
         let configured = Config.enabledPersonas.flatMap { persona in
             [WakePhraseMatcher.Candidate(phrase: persona.wakePhrase)] +
@@ -1949,7 +1956,16 @@ class WakeWordService: NSObject, ObservableObject {
             }
         } + [WakePhraseMatcher.Candidate(phrase: wakePhrase)]
         + alternativePhrases.map { WakePhraseMatcher.Candidate(phrase: $0, primary: wakePhrase) }
-        return Self.withTransliterations(configured, scriptCode: recognizerScriptCode)
+        let locale = recognizerLocaleIdentifier
+        let marked = WakeAlternativePosition.marked(configured) { word in
+            WakeLexicon.isOrdinaryWord(word, localeIdentifier: locale)
+        }
+        return Self.withTransliterations(marked, scriptCode: recognizerScriptCode)
+    }
+
+    /// The running recogniser's locale ("en-US"), what the wake alternatives are judged against.
+    private var recognizerLocaleIdentifier: String {
+        speechRecognizer?.locale.identifier ?? SpeechLocaleResolver.current.identifier
     }
 
     /// `candidates` followed by their transliterations into `scriptCode`, each reporting the
@@ -1962,7 +1978,8 @@ class WakeWordService: NSObject, ObservableObject {
         let spelled = candidates.flatMap { candidate in
             WakePhraseScript.transliterations(of: candidate.phrase, scriptCode: scriptCode)
                 .filter { seen.insert($0).inserted }
-                .map { WakePhraseMatcher.Candidate(phrase: $0, primary: candidate.primary) }
+                .map { WakePhraseMatcher.Candidate(phrase: $0, primary: candidate.primary,
+                                                   startOnly: candidate.startOnly) }
         }
         return candidates + spelled
     }
@@ -1970,24 +1987,23 @@ class WakeWordService: NSObject, ObservableObject {
     /// Check all persona wake phrases and return the matched one, or nil.
     ///
     /// Whole-token matching first, then a length-scaled fuzzy pass — see `WakePhraseMatcher` for
-    /// why a single-word phrase gets no fuzzy allowance at all.
-    private func matchedWakePhrase(_ transcript: String) -> String? {
-        let candidates = wakeCandidates
+    /// why a single-word phrase gets no fuzzy allowance at all. A start-only alternative matches
+    /// only where an utterance starts in `segments` (`WakeAlternativePosition`).
+    private func matchedWakePhrase(_ transcript: String,
+                                   segments: [WakeAlternativePosition.Segment]) -> String? {
         let tokens = PhraseMatcher.tokenize(transcript)
         guard !tokens.isEmpty else { return nil }
-
-        for candidate in candidates where !candidate.phrase.isEmpty {
-            if PhraseMatcher.contains(candidate.phrase, in: tokens) { return candidate.primary }
+        let starts = WakeAlternativePosition.allowedStarts(
+            tokens: tokens,
+            utteranceStarts: WakeAlternativePosition.utteranceStarts(tokenCount: tokens.count,
+                                                                     segments: segments),
+            openers: WakeAlternativePosition.openers(forLanguage: recognizerLocaleIdentifier))
+        guard let match = WakePhraseMatcher.detailedMatch(tokens: tokens, candidates: wakeCandidates,
+                                                          allowedStarts: starts) else { return nil }
+        if match.kind != .exact {
+            PrivacyLog.wakeWord(.fuzzyDetected, distance: match.distance)
         }
-        if let fuzzy = WakePhraseMatcher.fuzzyMatch(tokens: tokens, candidates: candidates) {
-            PrivacyLog.wakeWord(.fuzzyDetected, distance: fuzzy.distance)
-            return fuzzy.primary
-        }
-        if let embedded = WakePhraseMatcher.embeddedMatch(tokens: tokens, candidates: candidates) {
-            PrivacyLog.wakeWord(.fuzzyDetected, distance: embedded.distance)
-            return embedded.primary
-        }
-        return nil
+        return match.primary
     }
 
     private func handleWakeWordDetected(matchedPhrase: String) {

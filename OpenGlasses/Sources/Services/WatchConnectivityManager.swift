@@ -173,7 +173,6 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         return context
     }
 
-    /// Plan GM P1a — **Go** on a wrist map card.
     /// Run one photo turn for the watch and word its reply (Plan LT §3). A second request while
     /// one runs, or while the app is busy with another turn, is answered busy at once.
     private func watchPhotoTurn(_ appState: AppState,
@@ -185,6 +184,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         return WatchPhotoReply.dictionary(for: await turn())
     }
 
+    /// Plan GM P1a — **Go** on a wrist map card.
     private func startGuidance(_ message: [String: Any], appState: AppState) async -> [String: Any] {
         let resolution = WatchStartGuidance.resolve(
             surfaceId: message[WatchStartGuidance.surfaceIdKey] as? String,
@@ -435,10 +435,17 @@ extension WatchConnectivityManager: WCSessionDelegate {
                             await appState.captureAndAnalyzePhoto(phoneCameraFallback: false)
                         })
                     case .toggleRecording:
+                        let wasRecording = appState.sessionRecorder.isRecording
                         await appState.executeQuickAction(action)
                         // Nothing was answered, so no answer is sent: `lastResponse` is an
-                        // earlier turn's.
-                        replyHandler(["status": self.statusString()])
+                        // earlier turn's. A start that did not take says so, rather than the
+                        // watch tapping success for a recording that is not running.
+                        if !wasRecording && !appState.sessionRecorder.isRecording {
+                            replyHandler(["error": String(localized: "Recording didn't start."),
+                                          "status": self.statusString()])
+                        } else {
+                            replyHandler(["status": self.statusString()])
+                        }
                     case .prompt:
                         replyHandler(await self.watchPhotoTurn(appState) {
                             await appState.capturePhotoAndSend(prompt: action.label,

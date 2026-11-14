@@ -10120,16 +10120,25 @@ class AppState: ObservableObject, AppStateProtocol {
                 cancelAutoSleepTimer()
             }
         case false?:
+            let seenWorn = glassesService.snapshot.seenWornThisConnection
             guard doffGraceTask == nil,
                   GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: idleHoldsGlassesMic,
-                                                      worn: false, inUse: isConnected) else { return }
+                                                      worn: false, inUse: isConnected,
+                                                      seenWornThisConnection: seenWorn) else {
+                // Plan LT §7: "off" before this connection read "on" is logged, nothing more.
+                if !seenWorn, idleHoldsGlassesMic, isConnected {
+                    PrivacyLog.device(.glasses, .doffBeforeDon)
+                }
+                return
+            }
             doffGraceTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(GlassesSleepPolicy.doffGraceSeconds * 1_000_000_000))
                 guard let self, !Task.isCancelled else { return }
                 self.doffGraceTask = nil
                 guard GlassesSleepPolicy.doffGraceApplies(
                     holdsGlassesMic: self.idleHoldsGlassesMic, worn: self.glassesService.isWorn,
-                    inUse: self.isConnected) else { return }
+                    inUse: self.isConnected,
+                    seenWornThisConnection: self.glassesService.snapshot.seenWornThisConnection) else { return }
                 self.addDebugEvent("Glasses taken off — standing down")
                 self.disconnectGlasses(reason: .automatic)
             }

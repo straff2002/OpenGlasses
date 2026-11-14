@@ -141,6 +141,10 @@ final class RealtimeAudioEngine {
     /// Buffers drained ahead of a rebuild, waiting for the new graph. Non-empty only across the
     /// asynchronous middle of `attemptAudioResetOnQueue`.
     private var carriedPlayback: [PendingPlaybackMirror.Entry] = []
+    /// The bytes of received audio past its last whole frame, put in front of the next chunk
+    /// (Plan LT §7). Confined to `audioLifecycleQueue`; cleared on a response boundary, a
+    /// barge-in stop and a capture stop.
+    private var pcmCarry: PCMByteCarry
     private var useIPhoneMode = false
     /// Whether the speaker override is on. Confined to `audioLifecycleQueue`.
     private var speakerOverrideOn = false
@@ -174,6 +178,7 @@ final class RealtimeAudioEngine {
 
     init(config: RealtimeAudioEngineConfig) {
         self.config = config
+        self.pcmCarry = PCMByteCarry(frameBytes: Int(config.bitsPerSample / 8 * config.channels))
         self.audioLifecycleQueue = DispatchQueue(label: config.lifecycleQueueLabel, qos: .userInitiated)
         self.sendQueue = DispatchQueue(label: config.accumulatorQueueLabel)
         audioLifecycleQueue.setSpecific(key: audioLifecycleQueueKey, value: ())
@@ -536,7 +541,10 @@ final class RealtimeAudioEngine {
         }
     }
 
-    private func playAudioOnQueue(data: Data) {
+    private func playAudioOnQueue(data chunk: Data) {
+        // Aligned first, whatever happens to this chunk: a chunk dropped below still moves the
+        // stream on by its length, and the carry keeps the next one on a sample boundary.
+        let data = pcmCarry.aligned(chunk)
         guard isCapturing, isPlayerNodeAttached, !data.isEmpty else { return }
 
         // An AVAudioSession deactivation (sleep, another owner's session cycle) can leave
@@ -568,7 +576,8 @@ final class RealtimeAudioEngine {
         scheduleBufferOnQueue(pcm: data, frames: frameCount, generation: generation)
     }
 
-    /// Frames of `config.outputSampleRate` PCM in a byte count of received audio.
+    /// Frames of `config.outputSampleRate` PCM in a byte count of received audio. Whole frames
+    /// only reach here: `pcmCarry` holds any remainder for the next chunk.
     private func frameCount(forByteCount bytes: Int) -> UInt32 {
         UInt32(bytes) / (config.bitsPerSample / 8 * config.channels)
     }
@@ -682,6 +691,8 @@ final class RealtimeAudioEngine {
         audioLifecycleQueue.async { [weak self] in
             guard let self else { return }
             self.playbackLedger.reset()
+            // A new response's audio starts on a sample boundary of its own.
+            self.pcmCarry.reset()
             // A response boundary retires the mirror with the ledger. Nothing is reported: the
             // tail may still be draining and is expected to be heard, it just belongs to the
             // window that closed.
@@ -697,6 +708,8 @@ final class RealtimeAudioEngine {
     }
 
     private func stopPlaybackOnQueue() {
+        // An interrupted reply's half sample must not lead the next one.
+        pcmCarry.reset()
         guard isPlayerNodeAttached else { return }
         // Reset before stop: the stop fires completion callbacks for every *discarded* buffer,
         // and the generation bump keeps them out of the played count.
@@ -714,6 +727,7 @@ final class RealtimeAudioEngine {
     /// Stop capture and tear down the engine graph (the engine container itself is kept).
     func stopCapture() {
         syncOnAudioLifecycleQueue {
+            pcmCarry.reset()
             tearDownEngineGraphOnQueue(flushPendingAudio: true)
         }
         removeObservers()
