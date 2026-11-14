@@ -114,6 +114,11 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// paging an expert (Plan KE P1). Seams so the gate is testable without a turn in flight.
     var technicianWords: @MainActor () -> String? = { TechnicianWords.current() }
     var previousReply: @MainActor () -> String? = { TechnicianWords.previousReply() }
+    /// The turn's tool ledger, for the private-span rule (Plan LT §2). Wired by AppState to the
+    /// Direct-mode turn's ledger; nil — no rule — for a router nothing has wired, and the rule is
+    /// only applied to a call the ledger shows in flight, so a call from a session that keeps no
+    /// ledger is never judged against an earlier turn.
+    var turnLedger: @MainActor () -> AttemptToolLedger? = { nil }
 
     init(registry: NativeToolRegistry, openClawBridge: OpenClawBridge? = nil) {
         self.registry = registry
@@ -279,9 +284,18 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 return .rejected(reason: "The arguments to '\(name)' contained sensitive data, so the call to \(server.label) was withheld for safety (\(reason)). Do not retry; tell the user it was blocked.")
             }
             screenedArgs = verdict.redactedArgs ?? args
+        } else if let refusal = nativeEgressRefusal(call, profile: profile) {
+            // Plan LT §2: a native tool that sends model-written text to a third party is screened
+            // the same way, with `.block`: a secret never goes into a search query.
+            PrivacyLog.toolGate(.egressWithheld, tool: name)
+            return refusal
         }
 
-        let decision = authorizationDecision(call, profile: profile, safetyContext: safetyContext)
+        // Plan LT §2: after the screen, so it reads what would actually leave.
+        let privateSpan = privateSpanAsk(call, profile: profile, outboundArgs: screenedArgs ?? args)
+        if privateSpan != nil { PrivacyLog.toolGate(.privateSpanCopied, tool: name) }
+        let decision = authorizationDecision(call, profile: profile, safetyContext: safetyContext,
+                                             privateSpan: privateSpan)
 
         // What the trail records if the call goes on to dispatch (Plan IW P1).
         var dispatchGate = ActivityGateRecord(gate: .ran(approvalSummary: nil),
@@ -329,7 +343,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
             // spent here, against the call as it stands now, exactly as an answer to the prompt
             // below would be; anything that no longer matches — changed arguments, a moved
             // definition, another plan's grant — spends nothing and the call asks on its own.
-            if let planned = PlanApprovalScope.stepGrant, call.context.depth == 0 {
+            // A copied private span was not on the plan the wearer approved, so it asks on its own.
+            if let planned = PlanApprovalScope.stepGrant, call.context.depth == 0, privateSpan == nil {
                 let atDispatch = dispatchProfile(for: call)
                 let spending = coordinator.approvalGrants.binding(
                     seam: atDispatch.seam, toolName: name,
@@ -494,7 +509,8 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// The policy ladder's verdict for a call on its resolved profile. One function, so the
     /// dispatch point and a plan's preflight (Plan LP) can never disagree about what asks.
     private func authorizationDecision(_ call: ResolvedToolCall, profile: DispatchProfile,
-                                       safetyContext: SafetyContext) -> ToolAuthorizationDecision {
+                                       safetyContext: SafetyContext,
+                                       privateSpan: PrivateSpanAsk? = nil) -> ToolAuthorizationDecision {
         ToolAuthorizationPolicy.evaluate(.init(
             call: call,
             agentModeEnabled: Config.agentModeEnabled,
@@ -502,7 +518,60 @@ final class NativeToolRouter: ToolExecutionAuthority {
             composedTargets: composedTargetPolicy,
             seam: profile.seam,
             effectClass: profile.effectClass,
-            turnReadWeb: TurnWebExposure.turnReadWeb))
+            turnReadWeb: TurnWebExposure.turnReadWeb,
+            privateSpan: privateSpan))
+    }
+
+    // MARK: - Native egress (Plan LT §2)
+
+    /// The refusal for a native call whose profiled arguments carry a secret or PII, or
+    /// nil. Screened with `.block` whatever any MCP server's policy is: a search query has no
+    /// legitimate use for an API key, and redacting one would send a query nobody wrote.
+    private func nativeEgressRefusal(_ call: ResolvedToolCall, profile: DispatchProfile) -> ToolExecutionOutcome? {
+        guard case .native = profile.seam, let egress = registry.tool(named: call.name)?.egressProfile else {
+            return nil
+        }
+        let outbound = egress.outboundArguments(from: call.arguments.rawValues)
+        guard let reason = EgressScreen.evaluate(outbound, policy: .block).blockReason else { return nil }
+        return .rejected(reason: Self.nativeEgressWithheldMessage(call.name, reason: reason))
+    }
+
+    /// The model-facing reason, the same shape as the MCP one.
+    static func nativeEgressWithheldMessage(_ name: String, reason: String) -> String {
+        "The text '\(name)' would have sent contained sensitive data, so it was not sent (\(reason)). Do not retry; tell the user it was blocked."
+    }
+
+    /// The private-span rule's ask for this call, or nil (`PrivateSpanCheck`). Applies to a native
+    /// tool with an egress profile, an MCP server's tool, a user-authored HTTP tool and the gateway
+    /// — every seam that sends model-written text off the device — and only to a call the turn's
+    /// ledger shows in flight.
+    private func privateSpanAsk(_ call: ResolvedToolCall, profile: DispatchProfile,
+                                outboundArgs: [String: Any]) -> PrivateSpanAsk? {
+        guard let ledger = turnLedger() else { return nil }
+        // A composed child runs inside its parent's ledger entry, under the parent's name.
+        guard ledger.hasCallInFlight(tool: call.context.depth == 0 ? call.name : nil) else { return nil }
+        let outbound: [String]
+        let destination: PrivateSpanCheck.Destination
+        switch profile.seam {
+        case .native:
+            guard let egress = registry.tool(named: call.name)?.egressProfile else { return nil }
+            outbound = egress.outboundText(from: outboundArgs)
+            destination = .native(askVerb: egress.askVerb)
+        case .mcpServer(let id):
+            outbound = NativeEgressProfile.strings(in: outboundArgs)
+            destination = .server(label: mcpClient?.server(id: id)?.label
+                                  ?? ActionDataSummary.serverLabel(fromQualifiedName: call.name)
+                                  ?? String(localized: "an external tool"))
+        case .gateway:
+            outbound = NativeEgressProfile.strings(in: outboundArgs)
+            destination = .gateway
+        case .custom:
+            outbound = NativeEgressProfile.strings(in: outboundArgs)
+            destination = .customTool(name: call.name)
+        }
+        guard let finding = PrivateSpanCheck.check(outbound: outbound,
+                                                   reads: ledger.privateSpanReads) else { return nil }
+        return PrivateSpanAsk(finding: finding, destination: destination)
     }
 
     // MARK: - Plan approval (Plan LP §1)
@@ -523,6 +592,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
            EgressScreen.evaluate(raw, policy: server.policy).blockReason != nil {
             return .noAsk   // withheld at dispatch whatever anyone says; nothing to ask about
         }
+        if nativeEgressRefusal(call, profile: profile) != nil { return .noAsk }   // Plan LT §2
         let safetyContext = safetyContextProvider?() ?? SafetyContext.live(now: Date(), location: nil)
         guard case .confirm(let summary) = authorizationDecision(call, profile: profile,
                                                                  safetyContext: safetyContext) else {

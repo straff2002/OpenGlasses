@@ -55,6 +55,11 @@ enum ToolAuthorizationPolicy {
         /// The turn has read web pages through the provider's own search (Plan KZ §5), which no
         /// envelope framed: a high-impact call needs a yes even with agent mode off.
         let turnReadWeb: Bool
+        /// Plan LT §2: the outbound arguments copy a span of the wearer's private data, on a turn
+        /// that also read outside content (`PrivateSpanCheck`), with the ask already worded. Only
+        /// ever strengthens the verdict: an `allow` becomes a bound confirmation, and an ask
+        /// already being made says where the copied part is from.
+        let privateSpan: PrivateSpanAsk?
 
         /// The default context has no rules enabled and reads no settings — the router always
         /// passes a live one, so this keeps a policy assertion free of global state. `seam` and
@@ -67,7 +72,8 @@ enum ToolAuthorizationPolicy {
              composedTargets: ComposedToolPolicy.Mode = .refuse,
              seam: ToolDispatchSeam = .native,
              effectClass: ToolEffectClass = .readOnly,
-             turnReadWeb: Bool = false) {
+             turnReadWeb: Bool = false,
+             privateSpan: PrivateSpanAsk? = nil) {
             self.call = call
             self.agentModeEnabled = agentModeEnabled
             self.safetyContext = safetyContext
@@ -75,6 +81,7 @@ enum ToolAuthorizationPolicy {
             self.seam = seam
             self.effectClass = effectClass
             self.turnReadWeb = turnReadWeb
+            self.privateSpan = privateSpan
         }
     }
 
@@ -82,13 +89,24 @@ enum ToolAuthorizationPolicy {
         // The effect-class floor can only ever *strengthen* the ladder's verdict, so it is applied
         // to the result rather than spliced into the middle: a refusal, a safety block and a
         // presence hold all still win, and only an `allow` can be raised to a confirmation.
-        let decision = ladder(input)
-        guard case .allow = decision,
-              input.effectClass.requiresBoundApproval(on: input.seam) else { return decision }
-        let summary = ToolEffectClassifier.approvalSummary(
-            tool: input.call.name, args: input.call.arguments.rawValues,
-            effectClass: input.effectClass, seam: input.seam)
-        return .confirm(summary: attributed(summary, call: input.call))
+        var decision = ladder(input)
+        if case .allow = decision, input.effectClass.requiresBoundApproval(on: input.seam) {
+            let summary = ToolEffectClassifier.approvalSummary(
+                tool: input.call.name, args: input.call.arguments.rawValues,
+                effectClass: input.effectClass, seam: input.seam)
+            decision = .confirm(summary: attributed(summary, call: input.call))
+        }
+        // Plan LT §2: the private-span rule, last, and like the floor above it only strengthens.
+        guard let span = input.privateSpan else { return decision }
+        switch decision {
+        case .allow:
+            return .confirm(summary: attributed(span.summary, call: input.call))
+        case .confirm(let summary):
+            let ended = summary.last.map { ".?!".contains($0) } ?? false
+            return .confirm(summary: summary + (ended ? " " : ". ") + span.note)
+        case .refuse, .block, .hold:
+            return decision
+        }
     }
 
     private static func ladder(_ input: Input) -> ToolAuthorizationDecision {
@@ -186,5 +204,19 @@ enum ToolAuthorizationPolicy {
     /// copy no longer names the glasses (presence stopped reading their link as the person).
     static func holdMessage(_ name: String) -> String {
         "'\(name)' wasn't run because you've been away; I've held it to raise when you're back. Do not retry automatically."
+    }
+}
+
+/// The private-span rule's finding, worded for the ask (Plan LT §2).
+struct PrivateSpanAsk: Equatable {
+    /// The whole ask, when nothing else was going to ask: what would be sent, where, and where the
+    /// copied part is from.
+    let summary: String
+    /// The sentence added to an ask that was being made anyway.
+    let note: String
+
+    init(finding: PrivateSpanCheck.Finding, destination: PrivateSpanCheck.Destination) {
+        summary = PrivateSpanCheck.approvalSummary(for: finding, destination: destination)
+        note = PrivateSpanCheck.note(for: finding.source)
     }
 }

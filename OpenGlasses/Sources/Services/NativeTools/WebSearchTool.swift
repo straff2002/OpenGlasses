@@ -7,6 +7,8 @@ import Foundation
 /// then DuckDuckGo Instant Answer as a last resort.
 struct WebSearchTool: NativeTool {
     let name = "web_search"
+    /// Plan LT §2: the query is model-written and goes to a third-party search service.
+    var egressProfile: NativeEgressProfile? { .webSearch }
     let description = "Search the web for current information: news, sport, weather, prices, opening hours, anything local and anything that changes. Don't search for common knowledge, small talk, maths or translation. Put the time a question is about in recency, never a date in the query, and read \"this week\" or \"last night\" against today's date. Returns a brief summary, then links for the phone that are never read out, then one source: name it in words (\"according to Stuff\"), never as a link. For current events, verify the exact event, date and local time against the sources. If results conflict or do not verify the requested fact, say you could not verify it. When the user corrects an answer, re-check the evidence rather than repeating it as confirmed."
     let parametersSchema: [String: Any] = [
         "type": "object",

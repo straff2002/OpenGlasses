@@ -3,6 +3,8 @@ import Foundation
 /// Fetches top news headlines from Google News RSS. No API key needed.
 struct NewsTool: NativeTool {
     let name = "get_news"
+    /// Plan LT §2: the topic is model-written and goes to the news search.
+    var egressProfile: NativeEgressProfile? { .news }
     let description = "Get the latest news headlines. Optionally filter by topic."
     let parametersSchema: [String: Any] = [
         "type": "object",

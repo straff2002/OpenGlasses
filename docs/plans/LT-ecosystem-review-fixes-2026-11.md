@@ -1,7 +1,7 @@
 # Plan LT — Fixes from the November 2026 Ecosystem Review (our own defects, found by looking at adjacent work)
 
-**Status:** 📝 Drafted 2026-11-14 — nothing implemented. All four [decisions](#decisions-for-greig) taken
-2026-11-14 as recommended.
+**Status:** 🚧 P0 in progress — items 1–3 built 2026-11-14 (headless; see [As built](#as-built)); items 4–7
+and the P1 device checks owed. All four [decisions](#decisions-for-greig) taken 2026-11-14 as recommended.
 **Track:** Hardening. Privacy, the watch, temple taps, wake word, Gemini Live audio and vision, glasses
 lifecycle, the web mirror.
 **Builds on:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (`EgressScreen`), Plan [LN](LN-memory-manners.md) §3 (the turn's
@@ -212,6 +212,102 @@ One PR for P0, as the house rhythm prefers; the device checks follow.
 - **P1 — device checks.** The screen-capture switch with a screen recording, a FaceTime share and AirPlay; item 4's
   tap counts; item 6's two A/B runs; a watch photo with the glasses off and with a capture failure. Each result
   goes in As built, and items 4 and 6 settle their defaults in a short follow-up PR.
+
+## As built
+
+### P0, items 1–3 (2026-11-14)
+
+**Item 1 — the preview while the screen is captured.**
+- `ScreenCaptureState` (`Services/Vision/ScreenCaptureState.swift`): one `@MainActor` observable, `shared`,
+  publishing `isCaptured`. It reads `sceneCaptureState` from the foreground window scene's traits, watches the
+  trait on that scene's key window (`registerForTraitChanges([UITraitSceneCaptureState.self])`; a window inherits
+  the scene's traits, and a window is certain to be trait-observable), re-picks the scene on scene activation and
+  foreground, and listens for `UIScreen.capturedDidChangeNotification`. An `.unspecified` reading falls back to
+  that scene's screen's `isCaptured`, read through a small protocol so the deprecated flag compiles without a
+  warning. The plan's `UIScreen.main` fallback became the scene's own screen (`UIScreen.main` is deprecated).
+- `PreviewCapturePolicy` (`Services/Vision/PreviewCapturePolicy.swift`), pure:
+  `decide(blurOn:isCaptured:scope:hasFilteredSource:) → .raw | .filtered | .blank` and
+  `resolve(_:filteredFrameAge:)`, which turns `.filtered` into `.blank` unless the relay's latest frame is at most
+  `filteredFrameWait` (0.5 s) old. The plan's `(blurOn, isCaptured, scope)` gained `hasFilteredSource`, because
+  the two preview surfaces differ: the glasses frames pass the relay, the phone viewfinder's never do.
+- `LivePreviewView` applies it to both surfaces. The glasses preview draws `outboundFrames.publisher`'s frames
+  (kept only while the decision is `.filtered`, cleared when capture stops) inside a 0.25 s `TimelineView`, so a
+  relay that stops producing blanks the picture within 0.5 s; before the first filtered frame it is blank. The
+  phone viewfinder is not drawn at all while captured with the blur on (no filtered source), and its "not
+  blurred" caption goes with it. The blank shows "Preview hidden while the screen is recorded or shared."; the
+  filtered picture's accessibility label says faces are blurred. A held-picture state with no frame yet keeps
+  its existing placeholders (they show no pixels).
+- Roster: `OutboundFrameConsumer.switchesWhenCaptured` (`.toRelayFrames` for `.livePreview`, `.toBlank` for
+  `.phoneViewfinder`, nil elsewhere) and `capturedScreenPolicyHost` (`LivePreviewView`). Mechanism stays
+  `.exemptByScope`, scope stays `.onDevicePreview`, `leavesTheDevice` stays false; the scope's and both cases'
+  documentation say why.
+- Privacy copy: the glasses variant of the Blur Bystander Faces explanation (`BystanderBlurSwitch`) gains "While
+  the screen is recorded, shared or mirrored, the camera preview shows only blurred frames; a screenshot, or
+  another device filming the phone, isn't covered." The same edit drops that string's stale sentence about faces
+  enrolled for recognition (face recognition was removed 2026-11-13). The key changed, so it needs the next
+  catalog sync and its translations.
+
+**Item 2 — native tools that send text out.**
+- `NativeEgressProfile` (`Services/Security/NativeEgressProfile.swift`): argument keys that leave, the
+  `NetworkRoute` (nil for MapKit, Apple's own request), and the verb the ask opens with. Declared through a new
+  `NativeTool.egressProfile` requirement (default nil) by `WebSearchTool` (`query`, `.webSearch`),
+  `LocationSearchTool` (`query`, Apple Maps) and `NewsTool` (`topic`, `.newsHeadlines`). `translate` has none.
+- `NativeToolRouter` screens a profiled native call's outbound arguments with `EgressScreen.evaluate(…, .block)`
+  before authorization, beside the MCP screen; a hit is refused with a "do not retry" reason naming the pattern
+  (never the value) and `PrivacyLog` `egressWithheld`, and a plan's preflight treats it as nothing to ask.
+  Unprofiled arguments of the same call are not screened. **Note:** `SecretPatterns` has no card-number
+  pattern today, so "card numbers" in Design §2 is not yet true; and because it does match e-mail addresses and
+  NZ IRD-shaped numbers, `.block` refuses a search containing one.
+- `PrivateSpanCheck` (`Services/Security/PrivateSpanCheck.swift`), pure. `readExternalUntrusted` is
+  `PromptInjectionPolicy.isUntrustedOutput` over completed calls, minus our own stores (`memory_search`, `brain`,
+  `my_memory`, `notes_vault`, `health_vault`, `document_knowledge`, `remember_scene`, `session_search`); a call
+  still running has read nothing. The private mark is a table, `privateOutputTools`, rather than a property on
+  each tool: health vault, Apple Health (`health_summary`, `health_check`), notes (`notes_vault`, `list_notes`,
+  `contextual_note`, `project_note`), memory (`memory_search`, `my_memory`, `brain`, `session_search`,
+  `remember_scene`), `document_knowledge`, `lookup_contact`, `calendar`, `reminder` and `field_session` (the
+  job's customer details), native only. No tool reads messages back, so messages are not on it. A copy is five
+  consecutive folded words, or a 24-character window inside a run with no whitespace; the outbound text is
+  hashed, each private output is walked once and looked up, nothing of it is kept.
+- The ledger (`AttemptToolLedger`) gains `privateSpanReads`, `readExternalUntrusted`, `readPrivateOutput` and
+  `hasCallInFlight(tool:)`. The router reads it through a new `turnLedger` seam (AppState wires the Direct-mode
+  turn's ledger) and applies the rule only to a call the ledger shows in flight — so live sessions, which keep no
+  ledger, are not judged against an earlier turn's reads (and are not covered).
+- The answer rides `ToolAuthorizationPolicy.Input.privateSpan` (`PrivateSpanAsk`), applied last and only
+  strengthening: an `allow` becomes a bound `.confirm` whose summary is what would be sent, where, and where the
+  copied part is from ("Search the web for “…”. It includes something from your health notes."); an ask already
+  being made gets that last sentence appended. It covers native profiled tools, MCP calls (after `EgressScreen`,
+  on the screened arguments), user-authored HTTP tools and the gateway. A plan step's grant is not spent on a call
+  the rule caught: it asks on its own. `PrivacyLog` gains `privateSpanCopied` (tool name only).
+
+**Item 3 — the watch's photo commands.**
+- `PhotoTurnResult` (`Services/WatchPhotoReply.swift`) is returned, `@discardableResult`, by
+  `capturePhotoAndSend(prompt:phoneCameraFallback:)` and `captureAndAnalyzePhoto(glassesOnly:phoneCameraFallback:)`.
+  It has one case more than the plan: `.phoneCameraOpened`, for the existing no-glasses path that presents the
+  phone camera (never a watch request's result). `phoneCameraFallback: false` also stops the capture's own phone
+  fallback.
+- `WatchPhotoReply.dictionary(for:)`: `response` only for `.answered`, else `status: failed` and `error` with a
+  short line ("Glasses not connected.", "Couldn't take the photo.", …). `WatchPhotoGate` answers a second request
+  `.busy` at once, and also when the app is mid-turn (`isProcessing`, the same check dictation makes).
+- `WatchConnectivityManager`: `photo`, `describe`, the photo and prompt quick actions and the custom-prompt
+  default all go through one `watchPhotoTurn` with `phoneCameraFallback: false`; the recording quick action no
+  longer sends the last answer as its reply.
+- Watch: `WatchConnectivityService` already turns `error` into the command's error. `WatchMainView` drew the
+  error under the previous answer, so a quick action that comes back with an error now hides that answer until
+  the next action.
+
+**Tests:** `PreviewCapturePolicyTests`, `OutboundFrameConsumerTests` (three capture-rule tests),
+`NativeEgressProfileGuardTests` (the scrape covers `URLSession`, `BoundedHTTPClient` and `MKLocalSearch(`; five
+justified exemptions: QR context, Home Assistant, aircraft overhead, gateway skills, currency),
+`NativeToolRouterEgressTests` (the gateway half is covered at the policy and phrasing level, not through a live
+bridge), `PrivateSpanCheckTests`, `WatchPhotoReplyTests` (pure mapping and gate, plus a source read of the
+handler, since `AppState` cannot be stood up headless). 38 new tests (7 + 3 + 4 + 9 + 10 + 5), all passing on the
+iPhone 17 Pro simulator alongside the existing router, MCP, frame-roster, privacy-filter, tool-effect, privacy-log
+and watch classes (352 tests, 0 failures). Full suite and Release build not yet run.
+
+**Left:** items 4–7; the P1 device checks (a screen recording, a FaceTime share and AirPlay; a watch photo with
+the glasses off and with a capture failure); the catalog sync for the new strings. Candidates the guard does not
+reach yet: `qr_context` fetches a model-passed URL, and directions or geocoding tools that send a typed place to
+Apple are not on the network scrape.
 
 ## Decisions for Greig
 

@@ -13,6 +13,9 @@ class WatchConnectivityManager: NSObject, ObservableObject {
 
     private var session: WCSession?
 
+    /// Plan LT §3: one watch photo request at a time; a second gets `.busy` at once.
+    private var photoGate = WatchPhotoGate()
+
     /// Whether a watch with Avenkin installed is paired — the Apple Watch settings row shows only
     /// then.
     @Published private(set) var isWatchAppInstalled = false
@@ -171,6 +174,17 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     }
 
     /// Plan GM P1a — **Go** on a wrist map card.
+    /// Run one photo turn for the watch and word its reply (Plan LT §3). A second request while
+    /// one runs, or while the app is busy with another turn, is answered busy at once.
+    private func watchPhotoTurn(_ appState: AppState,
+                                _ turn: () async -> PhotoTurnResult) async -> [String: Any] {
+        guard photoGate.begin(appBusy: appState.isProcessing) else {
+            return WatchPhotoReply.dictionary(for: .busy)
+        }
+        defer { photoGate.end() }
+        return WatchPhotoReply.dictionary(for: await turn())
+    }
+
     private func startGuidance(_ message: [String: Any], appState: AppState) async -> [String: Any] {
         let resolution = WatchStartGuidance.resolve(
             surfaceId: message[WatchStartGuidance.surfaceIdKey] as? String,
@@ -342,19 +356,18 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     replyHandler(["error": "Persona not found"])
                 }
 
+            // Plan LT §3: a photo command replies with its own result — the answer it made, or
+            // an error line — never `lastResponse`, and opens no phone camera from the wrist.
             case "photo":
-                await appState.captureAndAnalyzePhoto()
-                replyHandler([
-                    "status": "completed",
-                    "response": appState.lastResponse
-                ])
+                replyHandler(await self.watchPhotoTurn(appState) {
+                    await appState.captureAndAnalyzePhoto(phoneCameraFallback: false)
+                })
 
             case "describe":
-                await appState.capturePhotoAndSend(prompt: "Describe what you see in detail.")
-                replyHandler([
-                    "status": "completed",
-                    "response": appState.lastResponse
-                ])
+                replyHandler(await self.watchPhotoTurn(appState) {
+                    await appState.capturePhotoAndSend(prompt: "Describe what you see in detail.",
+                                                       phoneCameraFallback: false)
+                })
 
             case "capturePhoto":
                 // Silent glasses photo — no LLM, no TTS. Saved to Documents/Photos/ with a
@@ -418,18 +431,25 @@ extension WatchConnectivityManager: WCSessionDelegate {
                    let action = Config.quickActions.first(where: { $0.id == actionId }) {
                     switch action.type {
                     case .photo, .photoThenPrompt:
-                        await appState.captureAndAnalyzePhoto()
-                    case .prompt:
-                        await appState.capturePhotoAndSend(prompt: action.label)
+                        replyHandler(await self.watchPhotoTurn(appState) {
+                            await appState.captureAndAnalyzePhoto(phoneCameraFallback: false)
+                        })
                     case .toggleRecording:
                         await appState.executeQuickAction(action)
+                        // Nothing was answered, so no answer is sent: `lastResponse` is an
+                        // earlier turn's.
+                        replyHandler(["status": self.statusString()])
+                    case .prompt:
+                        replyHandler(await self.watchPhotoTurn(appState) {
+                            await appState.capturePhotoAndSend(prompt: action.label,
+                                                               phoneCameraFallback: false)
+                        })
                     default:
-                        await appState.capturePhotoAndSend(prompt: action.label)
+                        replyHandler(await self.watchPhotoTurn(appState) {
+                            await appState.capturePhotoAndSend(prompt: action.label,
+                                                               phoneCameraFallback: false)
+                        })
                     }
-                    replyHandler([
-                        "status": "completed",
-                        "response": appState.lastResponse
-                    ])
                 } else {
                     replyHandler(["error": "Quick action not found"])
                 }
@@ -474,11 +494,9 @@ extension WatchConnectivityManager: WCSessionDelegate {
             default:
                 // Treat as a custom prompt
                 if let prompt = message["prompt"] as? String {
-                    await appState.capturePhotoAndSend(prompt: prompt)
-                    replyHandler([
-                        "status": "completed",
-                        "response": appState.lastResponse
-                    ])
+                    replyHandler(await self.watchPhotoTurn(appState) {
+                        await appState.capturePhotoAndSend(prompt: prompt, phoneCameraFallback: false)
+                    })
                 } else {
                     replyHandler(["error": "Unknown command: \(command)"])
                 }

@@ -224,6 +224,27 @@ struct AttemptToolLedger: Equatable {
         ran.contains { PromptInjectionPolicy.isUntrustedOutput(toolName: $0.tool, isKnownNativeTool: $0.isNative) }
     }
 
+    /// Plan LT §2: the calls as the private-span rule reads them — the tool, whether it is ours,
+    /// and its captured result. The results are the ledger's own strings, not copies.
+    var privateSpanReads: [PrivateSpanCheck.Read] {
+        ran.map { PrivateSpanCheck.Read(tool: $0.tool, isNative: $0.isNative, result: $0.result) }
+    }
+
+    /// Plan LT §2: an untrusted tool whose content came from outside the wearer ran this turn —
+    /// `readUntrustedOutput` without our own stores, so a memory lookup alone never counts.
+    var readExternalUntrusted: Bool { PrivateSpanCheck.readExternalUntrusted(privateSpanReads) }
+
+    /// Plan LT §2: a tool marked private (`PrivateSpanCheck.privateOutputTools`) returned something
+    /// this turn.
+    var readPrivateOutput: Bool { !PrivateSpanCheck.privateOutputs(privateSpanReads).isEmpty }
+
+    /// Plan LT §2: whether a call to `tool` is in flight in this ledger — entered at dispatch and
+    /// not yet finished. The private-span rule is applied only to a call the ledger knows, so a
+    /// tool call from a session that keeps no ledger is never judged against an earlier turn.
+    func hasCallInFlight(tool: String?) -> Bool {
+        calls.contains { $0.ran && $0.outcome == .running && (tool == nil || $0.tool == tool) }
+    }
+
     var toolsRan: HopAfterTools.ToolsRan {
         let ran = self.ran
         if ran.isEmpty { return .none }

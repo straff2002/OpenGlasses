@@ -72,6 +72,10 @@ enum PrivacyFilterScope: String, CaseIterable {
     /// The live camera preview drawn on the phone's own screen. Never filtered: the pixels reach a
     /// display the wearer is already holding and go nowhere else, and blurring the preview would
     /// misrepresent what the glasses are actually sending to the consumers that *are* filtered.
+    ///
+    /// Plan LT §1: while the screen itself is leaving the device — recorded, shared or mirrored —
+    /// with the blur on, the preview draws the blur relay's frames or nothing
+    /// (`PreviewCapturePolicy`), so "goes nowhere else" stays true.
     case onDevicePreview
     /// On-device Vision/CoreML taps that consume pixels and emit only text or geometry — sign
     /// language decoding, reading-companion page detection, dwell saliency, navigation cues. Never

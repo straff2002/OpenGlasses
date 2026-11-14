@@ -246,6 +246,9 @@ enum PrivacyLog {
         case expertNotRequested
         /// A plan step ran on the grant the wearer's one yes to the plan issued for it (Plan LP).
         case planApprovalSpent
+        /// An outbound call copied a span of the wearer's private data on a turn that read outside
+        /// content, so the wearer is asked first (Plan LT §2). The span itself is never logged.
+        case privateSpanCopied
     }
 
     @discardableResult
