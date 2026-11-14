@@ -2054,6 +2054,8 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         jobSendNotificationRouter?.openPreparedCard = { [weak self] id in self?.openPreparedCard(id) }
         jobSendNotificationRouter?.openStagedCard = { [weak self] id in self?.openStagedCard(id) }
+        // Plan LE §5: a tap on the check-in's notification opens My Day and runs it if still owed.
+        jobSendNotificationRouter?.openCheckIn = { [weak self] dayKey in self?.openCheckInFromNotification(dayKey: dayKey) }
         UNUserNotificationCenter.current().delegate = jobSendNotificationRouter
         // Plan LM P2: the app's notification buttons, registered once, beside the one delegate that
         // routes their presses.
@@ -4846,12 +4848,18 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return }
             self.lastResponse = text
 
-            let content = UNMutableNotificationContent()
-            content.title = "My Day"
-            content.body = Self.myDayDeliveryNotificationBody(slot)
-            content.sound = shouldSpeak ? nil : .default
-            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-            UNUserNotificationCenter.current().add(request)
+            // Plan LE P2: the check-in's notification belongs to `checkInNotifications`
+            // (`onCheckInRan`), so the same evening never has two.
+            if slot != .checkIn {
+                let content = UNMutableNotificationContent()
+                content.title = "My Day"
+                content.body = Self.myDayDeliveryNotificationBody(slot)
+                content.sound = shouldSpeak ? nil : .default
+                let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+                UNUserNotificationCenter.current().add(request)
+            } else {
+                self.showCheckInOnLens(spoke: shouldSpeak)
+            }
 
             if shouldSpeak {
                 Task { await self.speechService.speak(text, source: .alert, mirrorToHUD: false) }
@@ -5791,6 +5799,10 @@ class AppState: ObservableObject, AppStateProtocol {
         fieldAssistOn: { UserDefaults.standard.bool(forKey: "fieldAssistEnabled") && Config.fieldAssistUnlocked })
     /// Posts a card's one notification when it becomes immediate (Plan KT §5.3).
     let preparedCardNotifier = PreparedCardNotifier()
+    /// The Evening Check-in's notifications: one per evening, content-free (Plan LE §5, P2).
+    lazy var checkInNotifications = CheckInNotificationScheduler(center: SystemCheckInNotificationCenter())
+    /// What the check-in's wiring watches (Plan LE P2).
+    var checkInSubscriptions: Set<AnyCancellable> = []
     /// Held so the notification centre's delegate is not deallocated the moment it is set.
     var jobSendNotificationRouter: JobSendNotificationRouter?
     /// The job report in the share sheet, for a channel that has no composer of its own.

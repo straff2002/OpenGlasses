@@ -14,7 +14,8 @@ enum WatchTodayWire {
     ///
     /// 2 (Plan KT P4): adds `cards`, the day's prepared cards. A payload of version 1 (from a phone
     /// not yet updated) still reads, with no cards.
-    static let version = 2
+    /// 3 (Plan LE P2): adds `waiting`, the evening check-in's line. Versions 1 and 2 read without it.
+    static let version = 3
     /// Every version this build reads.
     static let readableVersions: ClosedRange<Int> = 1...version
 }
@@ -115,13 +116,16 @@ struct WatchTodayPayload: Codable, Equatable, Sendable {
     /// The day's prepared cards (Plan KT §6.7), at most `WatchPreparedCard.maxCards`, ranked.
     /// Drawn above the calendar. Empty in a version 1 payload.
     var cards: [WatchPreparedCard] = []
+    /// The evening check-in's line (Plan LE §8): the count and the first item, while the check-in
+    /// has something in it in the evening. Nil otherwise, and in a version 1 or 2 payload.
+    var waiting: WatchTodayWaiting?
 
     static let maxEvents = 6
 
     init(version: Int = WatchTodayWire.version, day: WatchTodayDay, generatedAt: Date,
          calendarStatus: WatchTodaySectionStatus, events: [WatchTodayEvent], moreEvents: Int, redacted: Bool,
          weatherStatus: WatchTodaySectionStatus, weather: WatchTodayWeather?, attribution: WatchTodayAttribution?,
-         cards: [WatchPreparedCard] = []) {
+         cards: [WatchPreparedCard] = [], waiting: WatchTodayWaiting? = nil) {
         self.version = version
         self.day = day
         self.generatedAt = generatedAt
@@ -133,11 +137,12 @@ struct WatchTodayPayload: Codable, Equatable, Sendable {
         self.weather = weather
         self.attribution = attribution
         self.cards = cards
+        self.waiting = waiting
     }
 
     enum CodingKeys: String, CodingKey {
         case version, day, generatedAt, calendarStatus, events, moreEvents, redacted, weatherStatus, weather,
-             attribution, cards
+             attribution, cards, waiting
     }
 
     init(from decoder: Decoder) throws {
@@ -154,6 +159,8 @@ struct WatchTodayPayload: Codable, Equatable, Sendable {
         attribution = try container.decodeIfPresent(WatchTodayAttribution.self, forKey: .attribution)
         // Version 1 has no cards.
         cards = try container.decodeIfPresent([WatchPreparedCard].self, forKey: .cards) ?? []
+        // Versions 1 and 2 have no check-in line.
+        waiting = try container.decodeIfPresent(WatchTodayWaiting.self, forKey: .waiting)
     }
 
     /// What the phone sends while "Today on Your Watch" is off, so the watch can say so rather
@@ -165,6 +172,18 @@ struct WatchTodayPayload: Codable, Equatable, Sendable {
     }
 
     var isSettingOff: Bool { calendarStatus == .settingOff && weatherStatus == .settingOff }
+}
+
+// MARK: - The evening check-in (Plan LE §8)
+
+/// The check-in's line on the wrist, worded on the phone. `first` is nil under Medical Compliance:
+/// the wrist then shows the count alone.
+struct WatchTodayWaiting: Codable, Equatable, Sendable {
+    let count: Int
+    /// "3 waiting on you" / "2 before you finish", in the phone's language.
+    let heading: String
+    /// The first item, as My Day's row names it.
+    let first: String?
 }
 
 // MARK: - Prepared cards (Plan KT §6.7)

@@ -15,6 +15,8 @@ enum WatchTodayBuilder {
         var conditionText: (WeatherCondition) -> String = { $0.description }
         /// Plan KT §6.7: the feed's prepared cards, ranked (`MyDayService.todayFeed.cards`).
         var cards: [PreparedCard] = []
+        /// Plan LE §8: the evening check-in's line, already decided (`WatchTodayWaitingBuilder`).
+        var waiting: WatchTodayWaiting? = nil
     }
 
     static let titleLimit = 60
@@ -69,7 +71,8 @@ enum WatchTodayBuilder {
                                  attribution: weather == nil ? nil : inputs.attribution,
                                  // The same Medical Compliance reading as the titles above.
                                  cards: WatchPreparedCardBuilder.cards(from: inputs.cards, now: inputs.now,
-                                                                       withholding: redacted))
+                                                                       withholding: redacted),
+                                 waiting: inputs.waiting)
     }
 
     static func calendarStatus(_ gathered: MyDayGathered) -> WatchTodaySectionStatus {

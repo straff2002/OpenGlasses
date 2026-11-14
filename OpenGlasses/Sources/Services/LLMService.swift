@@ -372,6 +372,9 @@ class LLMService: ObservableObject {
     /// No artificial turn limit — history persists for the full conversation session.
     /// Context window is managed by token-aware compaction, not a fixed turn count.
     private var conversationHistory: [[String: Any]] = []
+    /// Plan LE P2: a short, content-free note for the wearer's next turn — something the app said
+    /// outside any turn that the wearer may now be answering. Nil when there is none.
+    var turnNote: (@MainActor () -> String?)?
 
     /// Maximum estimated tokens before compacting the context window.
     /// When exceeded, older messages are summarized and compressed rather than dropped blindly.
@@ -1446,6 +1449,15 @@ class LLMService: ObservableObject {
                 volatileTail = tail + "\n\n" + carriedBlock
             } else {
                 fullPrompt += "\n\n" + carriedBlock
+            }
+        }
+        // Plan LE P2: a spoken offer the wearer may be answering (the evening check-in's "Want to
+        // deal with the first one now?"), as a content-free note. Only on the wearer's own turns.
+        if !TurnRecorder.isOffTurnWork, let note = turnNote?() {
+            if let tail = volatileTail {
+                volatileTail = tail + "\n\n" + note
+            } else {
+                fullPrompt += "\n\n" + note
             }
         }
 

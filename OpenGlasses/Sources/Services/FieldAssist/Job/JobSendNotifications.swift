@@ -87,6 +87,9 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
     var openPreparedCard: ((PreparedCardID) -> Void)?
     /// Where a tap on a card staged from the Display lands: its composer (Plan KT §6.4).
     var openStagedCard: ((PreparedCardID) -> Void)?
+    /// Where a tap on the evening check-in's notification lands (Plan LE §5): My Day, and the
+    /// check-in run if it is still owed tonight. The day key is the evening it was scheduled for.
+    var openCheckIn: ((_ dayKey: String) -> Void)?
     /// Where a button press goes (Plan LM P2) — the hub by default; injected for tests.
     private let routeAction: @MainActor (NotificationActionPress) -> Void
 
@@ -104,7 +107,9 @@ final class JobSendNotificationRouter: NSObject, UNUserNotificationCenterDelegat
         case .press(let press):
             routeAction(press)
         case .tap:
-            if let card = PreparedCardNotificationPolicy.cardID(from: userInfo),
+            if let dayKey = CheckInNotificationPolicy.dayKey(from: userInfo), let openCheckIn {
+                openCheckIn(dayKey)
+            } else if let card = PreparedCardNotificationPolicy.cardID(from: userInfo),
                PreparedCardStagingPolicy.isStaged(userInfo), let openStagedCard {
                 openStagedCard(card)
             } else if let card = PreparedCardNotificationPolicy.cardID(from: userInfo) {

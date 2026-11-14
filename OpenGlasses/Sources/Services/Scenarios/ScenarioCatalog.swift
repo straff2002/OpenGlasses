@@ -261,6 +261,14 @@ enum ScenarioCatalog {
                      icon: "arrow.forward.circle", kind: .prompt,
                      prompt: String(localized: "What's next?"),
                      needs: [.tool("activity")], topics: [.goals]),
+            // Plan LE decision 2: the check-in, offered from things to try. A tap hears today's list
+            // now; My Day's settings can say it each evening.
+            Scenario(id: "still-waiting", intent: .everyday,
+                     title: String(localized: "Hear what's still waiting on you", comment: "Things to try: the evening check-in scenario's title."),
+                     situation: String(localized: "The day's loose ends: answers, reminders and steps still open. My Day can say them each evening.", comment: "Things to try: the evening check-in scenario's one line."),
+                     icon: "tray.full", kind: .prompt,
+                     prompt: String(localized: "What's still waiting on me today?", comment: "Things to try: the evening check-in scenario's request, said as the wearer."),
+                     needs: [.tool("activity")], topics: [.goals, .errands]),
             Scenario(id: "what-done", intent: .everyday,
                      title: String(localized: "What it did for you"),
                      situation: String(localized: "Hear what it has added or sent today."),
@@ -522,6 +530,13 @@ enum ScenarioCatalog {
                      icon: "gauge.with.dots.needle.33percent", kind: .prompt,
                      prompt: String(localized: "Record a reading on this job. Ask me what it is and the value, then read it back."),
                      needs: [.tool("reading"), .fieldAssist, .fieldJobOpen], topics: [.work]),
+            // Plan LE §10: the end of the shift — the job's own loose ends.
+            Scenario(id: "field-before-you-finish", intent: .field,
+                     title: String(localized: "Before you finish for the day", comment: "Things to try: the end-of-shift check-in scenario's title."),
+                     situation: String(localized: "Hear what's still open: reports not sent, parts not ordered, hand-offs not answered.", comment: "Things to try: the end-of-shift check-in scenario's one line."),
+                     icon: "checklist.checked", kind: .prompt,
+                     prompt: String(localized: "What's still waiting on me before I finish today?", comment: "Things to try: the end-of-shift check-in scenario's request, said as the wearer."),
+                     needs: [.tool("activity"), .fieldAssist], topics: [.work]),
             Scenario(id: "field-van-stock", intent: .field,
                      title: String(localized: "What's running low on the van"),
                      situation: String(localized: "Check your stock before you leave the shop."),

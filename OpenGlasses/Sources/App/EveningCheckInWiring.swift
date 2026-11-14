@@ -1,4 +1,6 @@
+import Combine
 import Foundation
+import UIKit
 
 /// The Evening Check-in's wiring (Plan LE P1): the readers over AppState's own services, the
 /// scheduled delivery's content and motion reading, and what a Waiting on you row's button reaches.
@@ -25,6 +27,67 @@ extension AppState {
         myDayDelivery.motion = { [weak self] in
             MyDayDeliveryMotion.kind(of: self?.motionProvider.latestSample, now: Date())
         }
+        wireCheckInSurfaces()
+    }
+
+    // MARK: - P2: the notification, the offer, the lens and the wrist
+
+    private func wireCheckInSurfaces() {
+        let checkIn = eveningCheckIn
+
+        // §6: "Want to deal with the first one now?" — offered only for a call the router still
+        // keeps, taken by `activity` `deal_with_first`, and put back through its own confirmation.
+        checkIn.holdKey = { entryID in Self.holdKey(of: entryID) }
+        checkIn.canReplay = { [weak self] key in self?.nativeToolRouter.canReplayHeld(key: key) ?? false }
+        checkIn.replay = { [weak self] key in
+            guard let self else { return nil }
+            return await self.nativeToolRouter.replayHeld(key: key)?.text
+        }
+        // The scheduled check-in is spoken outside any turn; only a Direct-mode turn carries the
+        // note that lets the model take the yes. A live session never hears the scheduled one.
+        checkIn.offersAfterScheduled = { Config.appMode == .direct }
+        llmService.turnNote = { [weak checkIn] in checkIn?.offerTurnNote() }
+
+        // §5: tonight's notification, settled whenever the check-in runs with the app alive.
+        let notifications = checkInNotifications
+        myDayDelivery.onCheckInRan = { dayKey, delivered, spoke in
+            Task { @MainActor in await notifications.checkInRan(dayKey: dayKey, delivered: delivered, spoke: spoke) }
+        }
+        notifications.start()
+        BackgroundRefreshCoordinator.shared.add(notifications.backgroundParticipant())
+
+        // §5: "the first foreground within the delivery window runs the check-in" — the delivery
+        // timer looks once a minute; on foreground it looks at once. The policy decides, as ever.
+        checkInSubscriptions.removeAll()
+        NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor in await self?.myDayDelivery.evaluate() }
+            }
+            .store(in: &checkInSubscriptions)
+    }
+
+    /// §5: the wearer tapped the check-in's notification. My Day opens on the Waiting on you section,
+    /// and the delivery policy runs: inside the window, and outside quiet hours, the check-in is said
+    /// if tonight's has not been; otherwise the list is on the page.
+    func openCheckInFromNotification(dayKey: String) {
+        requestedTab = .voice
+        myDayPageRequested = true
+        Task { @MainActor [weak self] in await self?.myDayDelivery.evaluate() }
+    }
+
+    /// §8: the scheduled check-in, spoken, also goes on the lens as one card through the answer
+    /// card's pager — never over a turn collecting its own answer.
+    func showCheckInOnLens(spoke: Bool) {
+        guard CheckInLensCard.shows(spoke: spoke, turnOpen: hudAnswerCard.isTurnOpen),
+              let delivered = eveningCheckIn.lastDelivered,
+              let text = CheckInLensCard.text(delivered, fieldAssist: Config.fieldAssistActive) else { return }
+        hudAnswerCard.absorb(text, streamed: false)
+    }
+
+    /// §8: the check-in's line for the watch's Today value, from the last read of the list.
+    func checkInWatchLine(now: Date, redacted: Bool) -> WatchTodayWaiting? {
+        WatchTodayWaitingBuilder.line(eveningCheckIn.latest, readAt: eveningCheckIn.latestAt, now: now,
+                                      calendar: .autoupdatingCurrent, settings: .current, redacted: redacted)
     }
 
     /// The Waiting on you section's buttons, each to the item's own place or confirmation.
@@ -68,7 +131,7 @@ extension AppState {
         return WaitingOnYouScreenModel(checkIn: eveningCheckIn, handlers: handlers)
     }
 
-    private static func holdKey(of entryID: UUID) -> String? {
+    static func holdKey(of entryID: UUID) -> String? {
         ActivityStore.shared.entries.first { $0.id == entryID }?.holdKey
     }
 
@@ -90,12 +153,12 @@ extension AppState {
     }
 
     /// The notification a scheduled delivery leaves on the phone. Content-free: it names the slot,
-    /// never what is in it.
+    /// never what is in it. The check-in's own is posted by `CheckInNotificationScheduler` (P2), with
+    /// the same words.
     static func myDayDeliveryNotificationBody(_ slot: MyDayDeliverySlot) -> String {
         switch slot {
         case .checkIn:
-            return String(localized: "Your evening check-in is ready.",
-                          comment: "Notification: the evening check-in was delivered; names nothing in it.")
+            return CheckInNotificationPolicy.body
         case .morning, .evening:
             return "Your \(slot.rawValue) briefing is ready."
         }

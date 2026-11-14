@@ -18,16 +18,19 @@ final class ActivityTool: NativeTool {
     and anything waiting on the wearer), and 'waiting' (everything from today still waiting on the \
     wearer: held approvals, reminders due or overdue, goal steps, unheard updates and results, and \
     with Field Assist a job's unsent report, held close, unsent parts, put-off tasks and unanswered \
-    hand-offs). It lists the assistant's own actions — things added, sent, held back or refused — \
-    never what was said or looked up. It approves, sends and completes nothing. Read the answer \
-    back as given.
+    hand-offs), and 'deal_with_first' (only when the wearer says yes right after being asked "Want \
+    to deal with the first one now?" at the end of the check-in: it puts that held action back in \
+    front of them through its own confirmation, and does nothing if no such offer is waiting). It \
+    lists the assistant's own actions — things added, sent, held back or refused — never what was \
+    said or looked up. It approves, sends and completes nothing by itself. Read the answer back as \
+    given.
     """
 
     var parametersSchema: [String: Any] {
         [
             "type": "object",
             "properties": [
-                "action": ["type": "string", "enum": ["today", "this_morning", "since", "next", "waiting"]],
+                "action": ["type": "string", "enum": ["today", "this_morning", "since", "next", "waiting", "deal_with_first"]],
                 "time": ["type": "string",
                          "description": "since: when from — ISO 8601, or HH:mm meaning today."],
             ],
@@ -80,8 +83,13 @@ final class ActivityTool: NativeTool {
                               comment: "Spoken: the 'what's waiting on me?' answer could not be put together.")
             }
             return await checkIn.askedText(now: now)
+        case "deal_with_first":
+            // Plan LE P2: takes the check-in's pending offer, once; the held call's own confirmation
+            // asks. With no live offer it does nothing.
+            guard let checkIn = checkIn() else { return CheckInOfferPolicy.nothingOffered }
+            return await checkIn.dealWithFirst(now: now)
         default:
-            return "Unknown action '\(action)'. Use: today, this_morning, since, next or waiting."
+            return "Unknown action '\(action)'. Use: today, this_morning, since, next, waiting or deal_with_first."
         }
     }
 

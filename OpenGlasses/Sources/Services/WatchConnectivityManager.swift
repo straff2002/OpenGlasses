@@ -30,6 +30,8 @@ class WatchConnectivityManager: NSObject, ObservableObject {
 
     /// The state the wrist shows, watched so the watch hears about a change it did not cause.
     private var stateObservers: Set<AnyCancellable> = []
+    /// The evening check-in's list, watched for the wrist's line (Plan LE §8).
+    private var checkInObserver: AnyCancellable?
 
     /// The watch protocol's fixed command vocabulary.
     ///
@@ -65,7 +67,9 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             environment: .init(
                 watchAppInstalled: { session.isPaired && session.isWatchAppInstalled },
                 sourceAccessReady: { [weak self] in self?.appState?.myDaySourceAccessReady ?? false },
-                cards: { [weak self] in self?.appState?.myDayService.todayFeed.cards ?? [] }),
+                cards: { [weak self] in self?.appState?.myDayService.todayFeed.cards ?? [] },
+                // Plan LE §8: the evening check-in's line.
+                waiting: { [weak self] now, redacted in self?.appState?.checkInWatchLine(now: now, redacted: redacted) }),
             refresh: { [weak self] in _ = await self?.appState?.myDayService.refresh(channel: nil) },
             onChange: { [weak self] in self?.sendStatusUpdate() })
         todayPublisher = today
@@ -76,6 +80,10 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         if let bus = appState?.glanceSurfaces { publisher.observe(bus) }
         surfacePublisher = publisher
         if let myDay = appState?.myDayService { today.start(observing: myDay) }
+        // Plan LE §8: a new read of the check-in's list may change the wrist's line.
+        checkInObserver = appState?.eveningCheckIn.$latest
+            .receive(on: DispatchQueue.main)
+            .sink { [weak today] _ in today?.valueMayHaveChanged() }
         PrivacyLog.device(.watch, .sessionActivated)
         observeState()
     }
