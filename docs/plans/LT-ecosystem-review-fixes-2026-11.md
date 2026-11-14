@@ -1,6 +1,7 @@
 # Plan LT — Fixes from the November 2026 Ecosystem Review (our own defects, found by looking at adjacent work)
 
-**Status:** 📝 Drafted 2026-11-14 — nothing implemented.
+**Status:** 📝 Drafted 2026-11-14 — nothing implemented. All four [decisions](#decisions-for-greig) taken
+2026-11-14 as recommended.
 **Track:** Hardening. Privacy, the watch, temple taps, wake word, Gemini Live audio and vision, glasses
 lifecycle, the web mirror.
 **Builds on:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (`EgressScreen`), Plan [LN](LN-memory-manners.md) §3 (the turn's
@@ -201,7 +202,8 @@ One PR for P0, as the house rhythm prefers; the device checks follow.
 - **P0 — everything headless.** Items 1, 2, 3, 5 and 7 in full; items 4 and 6 as their policies, the settings and
   the Developer switch, with today's behaviour as the default. Tests:
   `PreviewCapturePolicyTests`, `OutboundFrameConsumerTests` (capture rule), `NativeEgressProfileGuardTests`,
-  `NativeToolRouterEgressTests` (a secret in a search query is withheld; no profile, no screen bypass),
+  `NativeToolRouterEgressTests` (a secret in a search query is withheld; no profile, no screen bypass; the
+  private-span rule also applies to MCP and gateway calls, after `EgressScreen`),
   `PrivateSpanCheckTests` (five-word and 24-character spans; memory-only turns never prompt; no external read,
   no prompt), `WatchPhotoReplyTests` (each `PhotoTurnResult` maps to its reply; no stale response; no phone camera
   from the watch; busy), `StandbyClaimPolicyTests`, `WakeAlternativePositionTests` with the 36-sentence corpus,
@@ -213,15 +215,15 @@ One PR for P0, as the house rhythm prefers; the device checks follow.
 
 ## Decisions for Greig
 
-1. **What the preview does when the screen is captured with the blur on.** *Recommended:* show the filtered
+1. **What the preview does when the screen is captured with the blur on.** *Taken 2026-11-14 as recommended:* show the filtered
    frames (blank only if none arrive in 500 ms). *Alternative:* always blank while captured, simpler and certain,
    but it makes a deliberate demo or a support screen share useless.
-2. **The private-span rule's answer.** *Recommended:* ask the wearer, with what would be sent. *Alternative:* block
+2. **The private-span rule's answer.** *Taken 2026-11-14 as recommended:* ask the wearer, with what would be sent. *Alternative:* block
    outright. Asking keeps "search for the dose in my notes" possible on purpose; blocking is stricter but would
    refuse some honest requests with no way through.
-3. **Whether the rule also covers MCP and the gateway.** *Recommended:* yes, the same check after `EgressScreen`,
-   since the same leak is possible there. *Alternative:* native tools only in P0, MCP later.
-4. **Watch requests with no glasses.** *Recommended:* reply "Glasses not connected" and do nothing. *Alternative:*
+3. **Whether the rule also covers MCP and the gateway.** *Taken 2026-11-14 as recommended:* yes, the same check
+   after `EgressScreen`, since the same leak is possible there, in P0. *Alternative:* native tools only in P0, MCP later.
+4. **Watch requests with no glasses.** *Taken 2026-11-14 as recommended:* reply "Glasses not connected" and do nothing. *Alternative:*
    take the photo with the phone's back camera without a viewfinder. That is useful only when the phone is
    propped up facing the work, and surprising otherwise.
 
