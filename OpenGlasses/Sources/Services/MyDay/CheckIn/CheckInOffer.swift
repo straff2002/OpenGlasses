@@ -40,14 +40,18 @@ struct CheckInOffer: Equatable, Sendable {
 
 enum CheckInOfferPolicy {
 
-    /// The offer to make after `collection` is said, or nil: the first loop is an approval, its trail
-    /// entry carries a hold key, and the router can still put that call back.
-    static func offer(for collection: OpenLoopCollection, now: Date,
-                      holdKey: (UUID) -> String?, canReplay: (String) -> Bool) -> CheckInOffer? {
+    /// The trail entry behind the list's first loop, when that loop is a held approval.
+    static func firstApproval(_ collection: OpenLoopCollection) -> UUID? {
         guard let first = collection.loops.first, first.source == .approval,
-              case .approve(let entryID) = first.action,
-              let key = holdKey(entryID), canReplay(key) else { return nil }
-        return CheckInOffer(holdKey: key, entryID: entryID, madeAt: now)
+              case .approve(let entryID) = first.action else { return nil }
+        return entryID
+    }
+
+    /// The offer to make after the list is said, or nil: the first loop is an approval (`entryID`),
+    /// its trail entry carries a hold key, and the router can still put that call back.
+    static func offer(entryID: UUID?, holdKey: String?, replayable: Bool, now: Date) -> CheckInOffer? {
+        guard let entryID, let holdKey, replayable else { return nil }
+        return CheckInOffer(holdKey: holdKey, entryID: entryID, madeAt: now)
     }
 
     /// What a `deal_with_first` finds.

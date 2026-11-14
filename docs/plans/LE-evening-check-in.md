@@ -1,19 +1,21 @@
 # Plan LE — The Evening Check-in (what's still waiting on your reply, decision or approval)
 
-**Status:** 🚧 P0 and P1 built 2026-11-14 (headless). P0: `OpenLoop` and its fourteen sources (the five
-§10 job sources among them), `OpenLoopCollector`, `OpenLoopPhraser`, `OpenLoopDismissals`, held trail
-entries that resolve, and `.checkIn` as a third `MyDayDeliveryPolicy` slot. P1: a reader over every store
-that has a producer (the trail, Reminders, goals, the digest, the agent queue and the five job rows), held
-entries matched to their later answer by a hold key, the dismissal and said-today store, the check-in
-delivered at its time (merged with the evening, silent when empty, shown not spoken while driving), its
-settings rows, `activity waiting`, and My Day's **Waiting on you** section. See [As built](#as-built). P2
-(the content-free notification, the Display card, the watch line, the KH scenario) is next; the spoken
-"Want to deal with the first one now?" is held for it. Drafted 2026-11-11. All eight
-[decisions](#decisions-for-greig-taken-2026-11-12) taken as recommended on 2026-11-12. Whether the
+**Status:** 🚧 P0, P1 and P2 built (headless; P0/P1 2026-11-14, P2 2026-11-15); P3, the device pass, is owed.
+P0: `OpenLoop` and its fourteen sources (the five §10 job sources among them), `OpenLoopCollector`,
+`OpenLoopPhraser`, `OpenLoopDismissals`, held trail entries that resolve, and `.checkIn` as a third
+`MyDayDeliveryPolicy` slot. P1: a reader over every store that has a producer, held entries matched to their
+later answer by a hold key, the dismissal and said-today store, the check-in delivered at its time, its
+settings rows, `activity waiting`, and My Day's **Waiting on you** section. P2: the content-free
+notification (one per evening for a week ahead, removed when the check-in ran with the app alive, a tap
+opens My Day and runs it), "Want to deal with the first one now?" (a pending offer taken by `activity`
+`deal_with_first`, which replays the held call through its own confirmation), the card on the Display, the
+line on the watch's Today and two things-to-try scenarios. See [As built](#as-built). Drafted 2026-11-11.
+All eight [decisions](#decisions-for-greig-taken-2026-11-12) taken as recommended on 2026-11-12. Whether the
 "check-in is ready" notification carries Plan [LM](LM-background-and-notification-foundation.md)'s buttons
-(drafted before LM existed) waits for LM's device pass. **Amended 2026-11-14:** the owner asked whether it
-would help a Field Assist technician at the end of the day; it would, with the job's own loose ends as
-sources. [§10](#10--field-assist-the-end-of-the-shift) and decisions 9–11 add them, in the same phases.
+(drafted before LM existed) waits for LM's device pass; P2 posts it without a category. **Amended
+2026-11-14:** the owner asked whether it would help a Field Assist technician at the end of the day; it
+would, with the job's own loose ends as sources. [§10](#10--field-assist-the-end-of-the-shift) and
+decisions 9–11 add them, in the same phases.
 **Track:** Everyday assistant. Phone and spoken audio first; the Display and the watch follow.
 **Builds on:** Plan [DY](DY-my-day-everyday-briefing.md) (`MyDayDeliveryPolicy`, `MyDayScheduledDeliveryService`,
 quiet hours, `MyDaySpeechPolicy`), Plan [IW](IW-goals-and-activity-trail.md) (`ActivityStore`, `ActivityPhraser`,
@@ -585,3 +587,96 @@ stay without readers.
   writes the dismissal store only.
 - **The trail summary** says a hold past its lifetime as "it lapsed", not as waiting.
 
+### P2 — 2026-11-15 (headless)
+
+**Files.** New, under `OpenGlasses/Sources/Services/MyDay/CheckIn/`:
+
+- `CheckInNotification.swift` — `CheckInNotificationPolicy` (pure: `wanted`, `reconcile`, `afterRun`, the
+  identifiers and the fixed words), the `CheckInNotificationCentering` seam with
+  `SystemCheckInNotificationCenter` over `UNUserNotificationCenter`, and `CheckInNotificationScheduler`
+  (reconciles on start, foreground and settings change; `checkInRan`; a participant in the shared
+  background wake).
+- `CheckInOffer.swift` — `CheckInOffer` (hold key, entry, `madeAt`, a five-minute `lifetime`) and
+  `CheckInOfferPolicy` (`offer`, `take`, the content-free `turnNote`, the two spoken refusals).
+- `CheckInSurfaces.swift` — `CheckInLensCard` (the Display card's text and when it shows) and
+  `WatchTodayWaitingBuilder` (the wrist's line).
+
+Changed: `EveningCheckInService.swift` (`latestAt`, `lastDelivered`, `pendingOffer`, the offer's seams,
+`scheduledText(now:mayOffer:)`, the asked answer offers, `dealWithFirst`, `offerTurnNote`),
+`MyDayDelivery.swift` (`onCheckInRan`; the offer only when spoken and not merged; an empty check-in merged
+with the evening is delivered as `.evening`), `ActivityTool.swift` (`deal_with_first`), `LLMService.swift`
+(`turnNote`, appended like the carried tool block, never on off-turn work), `JobSendNotifications.swift`
+(`openCheckIn` on a tap), `Shared/WatchToday.swift` (`WatchTodayWaiting`, payload version 3, versions 1
+and 2 still read), `WatchTodayBuilder.swift`, `WatchTodayPublisher.swift`, `WatchConnectivityManager.swift`
+(the line, and a push when the list is read again), `OpenGlassesWatch/WatchTodayViews.swift`
+(`WatchTodayWaitingRow` above the cards), `ScenarioCatalog.swift`, `EveningCheckInWiring.swift` and
+`OpenGlassesApp.swift`. Tests: `CheckInSurfacesTests.swift` (`CheckInNotificationPolicyTests`,
+`CheckInNotificationSchedulerTests`, `CheckInOfferTests`, `CheckInLensCardTests`, `WatchTodayWaitingTests`,
+`CheckInScenarioTests`); `WatchPreparedCardTests` pins version 3.
+
+**Decided while building.**
+
+- **One notification an evening, not one repeating request.** §5 said "one repeating local notification",
+  but a repeating request cannot lose a single evening (removing it removes them all, and a calendar
+  trigger cannot start tomorrow). So the scheduler keeps a rolling week of single requests, one per
+  evening, named `my-day.check-in.<day key>.<minutes>`. Tonight's is left out once its time has gone or
+  tonight's check-in has run; a changed time, switch or Field Assist default is a different set of
+  identifiers, so `reconcile` removes the old and adds the new; only the check-in's own identifiers are
+  ever touched. It fires two minutes after the check-in's time (`delayMinutes`) so a live process, whose
+  timer looks once a minute, delivers first and takes it away before it shows. None is scheduled inside
+  quiet hours: the check-in itself would only defer there. `userInfo` holds the day key and nothing else.
+- **Ownership.** `CheckInNotificationScheduler` owns every check-in notification. The delivery's own
+  notification (`onDelivery` in `AppState`) keeps the morning and evening and no longer posts for the
+  check-in. After a run with the app alive (`onCheckInRan`): spoken, or with nothing to say, tonight's goes,
+  pending and delivered; shown and not spoken (driving, glasses off), one is posted now **under tonight's
+  identifier**, replacing the scheduled one in place, never beside it. The body is P1's localized "Your
+  evening check-in is ready."; the title reuses the cards' "My Day".
+- **Permission.** Asked only when a reconcile has something to add and the app is in front — in practice,
+  right after the wearer turns the check-in on. Never asked after a run, never from the background.
+- **Opening it.** A tap opens My Day (where Waiting on you is) and runs the delivery policy at once; inside
+  the window and outside quiet hours that is the check-in, said once (the day key is the same one the timer
+  consumes). Outside them, the list is on the page and nothing is said: the wearer opened the phone, not
+  asked for speech. The first foreground runs the policy at once too (`willEnterForeground`), rather than
+  waiting for the timer. **The wake word is not a separate trigger:** a process alive to hear it already
+  has the timer running, and starting a delivery inside a wake-word turn would talk over it.
+- **Background wake: joined, to top the week up.** The participant (`check-in-notifications`) wants a wake a
+  day after the last reconcile, only while the check-in is on, and reconciles; it says nothing and reads
+  nothing from the list. Without it a week without opening the app would let the evenings lapse. It does
+  not try to run the check-in itself: a background wake may not speak.
+- **The offer: an `activity` action, not an intercepted "yes".** When the first item is an approval whose
+  call the router still keeps (`canReplayHeld`), the text ends with "Want to deal with the first one now?"
+  and the service keeps a `CheckInOffer` — in memory, single use, keyed to the hold key, five minutes. The
+  model takes a yes by calling `activity` `deal_with_first`, which takes the offer (gone whatever happens
+  next) and runs `replayHeld`; the call's own confirmation asks (`HeldCallReplay.asksFirst`) and the tool
+  returns that call's own outcome. No offer, an expired one, or a call no longer kept: it says so and runs
+  nothing. After a relaunch nothing is offered.
+- **Where the yes can land.** Asked for ("what's waiting on me?") the check-in is a model turn, so it offers
+  in every mode: the question is in the model's own reply. The scheduled one is spoken outside any turn, so
+  it offers only in Direct mode, only when spoken, and only when it is the last thing said (not merged ahead
+  of the evening); while the offer is live each Direct-mode turn carries `CheckInOfferPolicy.turnNote`, a
+  fixed note that says an offer was made and how to take it — never the item, the tool or a name. A live
+  session never hears the scheduled check-in, so there it does not ask.
+- **The Display card** goes through `HUDAnswerCard.absorb` as a whole answer outside a turn, so it has the
+  answer card's pager, page turn, Close and 60-second lifetime and needs no new Display API: the heading
+  ("3 waiting on you" / "2 before you finish"), then one item a line in My Day's row titles, at most six,
+  then "N more on your phone". On the Meta Display (three lines a page with the footer) the first page is the
+  heading and the first item. Only after a spoken delivery (so never while driving, decision 10) and never
+  while a turn is collecting its own answer. The asked answer needs nothing: the model's reply already
+  becomes the answer card.
+- **The watch line** follows My Day's section rule (`WaitingOnYouSection.isVisible`): the check-in on, the
+  list not empty, in the evening or after the check-in's time, and only from a read made today. It mirrors
+  `EveningCheckInService.latest` (the last read), so the wrist can be as old as the last delivery, ask or My
+  Day visit; a new read pushes. Under any Medical Compliance mode it is the count alone, as an appointment
+  is its time alone. The phone words the heading.
+- **Scenarios.** `still-waiting` (everyday: "Hear what's still waiting on you", asks "What's still waiting on
+  me today?", its line points to My Day for each evening) and `field-before-you-finish` (needs Field Assist).
+  A scenario is a turn the wearer could have said, so it hears the list now rather than switching the
+  setting on.
+- **No new store.** The offer is in memory and the notifications live in the notification centre, so
+  `DataStoreRegistry` and the ET matrix are unchanged.
+
+**Left for P3 (device).** That the notification fires with the app killed and a tap reads the list; that a
+live process removes tonight's before it shows; the yes after a scheduled check-in reaching
+`deal_with_first` on a cloud model (on a core-exposure turn the model has to look `activity` up first, as it
+is not in the core set); the card's first page on the Display; the line on the watch. The catalog sync of
+P2's new strings is owed (built with `SWIFT_EMIT_LOC_STRINGS=NO`).

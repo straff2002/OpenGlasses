@@ -29,9 +29,10 @@ struct OpenLoopPhrase: Equatable, Sendable {
 enum OpenLoopPhraser {
     static let maximumSpoken = 4
 
-    /// `offerFirst` (P1) says whether the closing "Want to deal with the first one now?" may be
-    /// asked at all. P1 passes false everywhere it speaks: the yes has no turn to land in yet (see
-    /// the plan's As built), and a question whose answer goes nowhere is worse than none.
+    /// `offerFirst` says whether the closing "Want to deal with the first one now?" may be asked at
+    /// all. The check-in passes true only when a yes can land (P2: `CheckInOfferPolicy` — the held
+    /// call is still kept, and the answer reaches the model that calls `deal_with_first`): a
+    /// question whose answer goes nowhere is worse than none.
     static func phrase(_ collection: OpenLoopCollection, channel: OpenLoopChannel,
                        fieldAssist: Bool, offerFirst: Bool = true) -> OpenLoopPhrase? {
         let loops = collection.loops

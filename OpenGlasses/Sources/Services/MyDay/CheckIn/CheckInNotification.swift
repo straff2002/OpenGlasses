@@ -217,11 +217,15 @@ final class CheckInNotificationScheduler {
     var lastCheckInDayKey: @MainActor () -> String = { Config.myDayLastCheckInDeliveryDay }
     var calendar: @MainActor () -> Calendar = { .autoupdatingCurrent }
     var now: @MainActor () -> Date = Date.init
-    /// Whether a missing permission may be asked for now (the app is in front).
+    /// Whether a missing permission may be asked for now (the app is in front). Asked only on the
+    /// reconcile that follows the wearer switching the check-in on.
     var mayAsk: @MainActor () -> Bool = { UIApplication.shared.applicationState == .active }
 
     private let center: CheckInNotificationCentering
     private(set) var lastReconciledAt: Date?
+    /// Whether the check-in was on at the last reconcile in this process: the permission is asked
+    /// for only when it has just been switched on, never because some other setting moved.
+    private var wasOn: Bool?
     private var observers: [NSObjectProtocol] = []
     private var pendingReconcile: Task<Void, Never>?
 
@@ -260,17 +264,23 @@ final class CheckInNotificationScheduler {
     func reconcile() async -> Bool {
         let now = self.now()
         lastReconciledAt = now
-        let wanted = CheckInNotificationPolicy.wanted(now: now, calendar: calendar(), settings: settings(),
+        let current = settings()
+        let isOn = current.myDayEnabled && current.checkInEnabled
+        let justTurnedOn = wasOn == false && isOn
+        wasOn = isOn
+        let wanted = CheckInNotificationPolicy.wanted(now: now, calendar: calendar(), settings: current,
                                                       lastCheckInDayKey: lastCheckInDayKey())
         let pending = await center.pendingIdentifiers()
-        var (add, remove) = CheckInNotificationPolicy.reconcile(wanted: wanted, pending: pending)
+        let plan = CheckInNotificationPolicy.reconcile(wanted: wanted, pending: pending)
+        var add = plan.add
+        let remove = plan.remove
         if wanted.isEmpty {
             // Off: delivered ones go too, so a switched-off check-in leaves nothing on the phone.
             let delivered = await center.deliveredIdentifiers().filter(CheckInNotificationPolicy.isCheckIn(identifier:))
             center.remove(pending: remove, delivered: delivered)
             return !remove.isEmpty || !delivered.isEmpty
         }
-        if !add.isEmpty, !(await center.mayNotify(askIfNeeded: mayAsk())) { add = [] }
+        if !add.isEmpty, !(await center.mayNotify(askIfNeeded: justTurnedOn && mayAsk())) { add = [] }
         center.remove(pending: remove, delivered: [])
         for request in add { await center.add(request, immediately: false) }
         return !add.isEmpty || !remove.isEmpty

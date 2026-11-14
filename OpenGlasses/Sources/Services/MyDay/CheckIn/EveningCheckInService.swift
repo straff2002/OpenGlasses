@@ -130,7 +130,10 @@ final class EveningCheckInService: ObservableObject {
     // MARK: The offer (P2)
 
     private func offer(for collection: OpenLoopCollection, now: Date) -> CheckInOffer? {
-        CheckInOfferPolicy.offer(for: collection, now: now, holdKey: holdKey, canReplay: canReplay)
+        let entryID = CheckInOfferPolicy.firstApproval(collection)
+        let key = entryID.flatMap { holdKey($0) }
+        return CheckInOfferPolicy.offer(entryID: entryID, holdKey: key,
+                                        replayable: key.map { canReplay($0) } ?? false, now: now)
     }
 
     /// The wearer said yes to "Want to deal with the first one now?" (`activity` `deal_with_first`).
