@@ -142,6 +142,9 @@ targets:
       # so iOS opens the app and runs it here; it hands the press over as a pending request.
       - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
       - path: GlassesActivityWidget/PendingAskRequest.swift
+      # The one licence-core file the app compiles (Plan LR): the vault pack rules the licence
+      # service also holds a company vault to. Foundation only; it verifies no key or signature.
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift
     configFiles:
       Debug: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig
       Release: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig

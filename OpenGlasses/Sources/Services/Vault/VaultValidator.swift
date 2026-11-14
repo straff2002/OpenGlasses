@@ -20,7 +20,7 @@ enum VaultValidator {
     }
 
     /// Minimum grounding rules every vault must keep, regardless of what the uploaded manifest says.
-    static let requiredRuleThemes = ["fabricate", "cite"]
+    static let requiredRuleThemes = VaultPackRules.requiredRuleThemes
 
     /// Core-tier size above which the validator warns. The core is loaded whole into every turn's
     /// system prompt; content past this point belongs in the reference tier (`documents`).
@@ -40,30 +40,16 @@ enum VaultValidator {
             return Result(manifest: nil, issues: ["manifest.json does not decode to a valid vault manifest"])
         }
 
-        if manifest.id.trimmingCharacters(in: .whitespaces).isEmpty { issues.append("manifest id is empty") }
-        if manifest.files.isEmpty && manifest.documents.isEmpty {
-            issues.append("manifest lists no files and no documents")
-        }
-        if manifest.promptRules.isEmpty && !manualOnly {
-            issues.append("manifest must include prompt_rules (grounding discipline)")
-        } else if !manualOnly {
-            let joined = manifest.promptRules.joined(separator: " ").lowercased()
-            for theme in requiredRuleThemes where !joined.contains(theme) {
-                issues.append("prompt_rules should address '\(theme)' (anti-fabrication / source citation)")
-            }
-        }
+        // The manifest's own rules and the listed files are the licence core's (`VaultPackRules`),
+        // which the licence service also holds an uploaded company vault to before it signs it.
+        issues.append(contentsOf: VaultPackRules.manifestIssues(VaultPackRules.Manifest(manifest), manualOnly: manualOnly))
 
         // Files present and non-empty.
         var coreCharacters = 0
         for file in manifest.files {
-            let url = directory.appendingPathComponent(file)
-            guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
-                issues.append("listed file missing: \(file)"); continue
-            }
-            if contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                issues.append("listed file is empty: \(file)")
-            }
-            coreCharacters += contents.count
+            let contents = try? String(contentsOf: directory.appendingPathComponent(file), encoding: .utf8)
+            if let issue = VaultPackRules.listedFileIssue(file, contents: contents) { issues.append(issue) }
+            coreCharacters += contents?.count ?? 0
         }
         if coreCharacters > coreBudgetCharacters {
             warnings.append("core files total \(coreCharacters) characters (budget \(coreBudgetCharacters)); the core is loaded into every turn — move manuals and long references to 'documents' so they are retrieved instead")
@@ -134,7 +120,7 @@ enum VaultValidator {
             for url in jsons {
                 guard let pdata = try? Data(contentsOf: url),
                       let procedure = try? JSONDecoder().decode(Procedure.self, from: pdata) else {
-                    issues.append("procedure does not decode: \(url.lastPathComponent)"); continue
+                    issues.append(VaultPackRules.procedureDoesNotDecode(url.lastPathComponent)); continue
                 }
                 if let first = fileById[procedure.id] {
                     issues.append("procedure id \(procedure.id) is declared by both \(first) and \(url.lastPathComponent)")

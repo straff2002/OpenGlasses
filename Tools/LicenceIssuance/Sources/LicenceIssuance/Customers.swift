@@ -508,8 +508,10 @@ extension SalesBook {
 
     /// The customer's profile input with its current code — the same input `make-org-profile make` takes.
     /// `credentials` are boxes from `sealCredential`, by name; empty means the profile carries none.
+    /// `companyVaults` is the pointer to the company's vault catalog (Plan LR); nil means the profile carries none.
     public func profileInput(customerId: String, code: String, preset: ProfilePreset, grant: PartnerGrant,
-                             credentials: [String: String] = [:]) throws -> ProfileContract.Input {
+                             credentials: [String: String] = [:],
+                             companyVaults: ProfileContract.CompanyVaults? = nil) throws -> ProfileContract.Input {
         guard let c = ledger.customers[customerId] else { throw CustomerRefusal.unknownCustomer }
         try checkPreset(preset, for: c)
         guard ledger.currentIssuance(for: customerId)?.licenseDigest == IssuanceWire.digest(Data(code.utf8)) else {
@@ -523,14 +525,20 @@ extension SalesBook {
             catch let invalid as ProfileContract.Invalid { throw PresetRefusal.invalidPreset(invalid.message) }
             input.credentials = credentials
         }
+        if let companyVaults {
+            do { try ProfileContract.checkCompanyVaults(companyVaults) }
+            catch let invalid as ProfileContract.Invalid { throw PresetRefusal.invalidPreset(invalid.message) }
+            input.companyVaults = companyVaults
+        }
         return input
     }
 
     /// The signed profile to publish at the customer's address. Pass a whole-second `issued`, as the manual tool does.
     public func profileDocument(customerId: String, code: String, preset: ProfilePreset, grant: PartnerGrant,
-                                credentials: [String: String] = [:],
+                                credentials: [String: String] = [:], companyVaults: ProfileContract.CompanyVaults? = nil,
                                 keyID: String, issued: Date, signer: ByteSigner) throws -> String {
-        let input = try profileInput(customerId: customerId, code: code, preset: preset, grant: grant, credentials: credentials)
+        let input = try profileInput(customerId: customerId, code: code, preset: preset, grant: grant, credentials: credentials,
+                                     companyVaults: companyVaults)
         guard !keyID.isEmpty else { throw IssuanceWire.WireError.invalidProfile }
         let document = ProfileContract.document(input, keyId: keyID, issued: issued, adminPasscode: ledger.customers[customerId]?.adminPasscode)
         return try IssuanceWire.profile(document, signer: signer)

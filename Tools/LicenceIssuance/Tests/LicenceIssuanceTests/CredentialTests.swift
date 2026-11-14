@@ -102,6 +102,31 @@ extension CustomerTests {
         for secret in [fixtureKey, box, s.companySecret.base64EncodedString()] { XCTAssertFalse(json.contains(secret)) }
     }
 
+    func testTheProfileCarriesTheCompanyVaultsPointerOnlyWhenGivenOne() throws {
+        var book = try SalesBook(); _ = try signUp(&book)
+        let full = try XCTUnwrap(pay(&book))
+        func build(_ pointer: ProfileContract.CompanyVaults?) throws -> String {
+            try book.profileDocument(customerId: "c1", code: full.code, preset: preset, grant: grant, companyVaults: pointer,
+                                     keyID: "fixture", issued: date(2), signer: profileKey.signature(for:))
+        }
+        let pointer = ProfileContract.CompanyVaults(catalog: "https://licence.example.test/c/opaque/vaults.json", generation: 3, minAppBuild: 680)
+        XCTAssertEqual(try profile(build(pointer)).companyVaults, pointer)
+        XCTAssertEqual(try book.profileInput(customerId: "c1", code: full.code, preset: preset, grant: grant, companyVaults: pointer).companyVaults, pointer)
+        // Without one the profile is the same payload as before, byte for byte (the signature is randomised).
+        func payloadBytes(_ document: String) -> Substring { document.split(separator: ".")[0] }
+        XCTAssertEqual(payloadBytes(try build(nil)),
+                       payloadBytes(try book.profileDocument(customerId: "c1", code: full.code, preset: preset, grant: grant,
+                                                             keyID: "fixture", issued: date(2), signer: profileKey.signature(for:))))
+        XCTAssertNil(try payload(ofProfile: build(nil))["companyVaults"])
+        // The pointer is held to the profile contract's rule, refused as an invalid preset is.
+        for bad in [ProfileContract.CompanyVaults(catalog: "http://licence.example.test/c/opaque/vaults.json", generation: 3),
+                    ProfileContract.CompanyVaults(catalog: "https://licence.example.test/c/opaque/vaults.json", generation: 0)] {
+            XCTAssertThrowsError(try build(bad)) {
+                guard case PresetRefusal.invalidPreset = $0 else { return XCTFail("\($0)") }
+            }
+        }
+    }
+
     func testProfileCredentialsAreChecked() throws {
         var book = try SalesBook(); _ = try signUp(&book)
         let full = try XCTUnwrap(pay(&book))
