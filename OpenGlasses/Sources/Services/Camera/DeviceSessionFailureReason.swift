@@ -42,7 +42,9 @@ enum DeviceSessionFailureReason: String, Equatable {
         case .developerAppUnavailable:
             return "The glasses camera component isn't available. Update Meta AI, then apply Developer Mode settings to the glasses and try again."
         case .sessionEndedByDevice:
-            return "The glasses ended the camera session. End any broadcast in Meta AI. If it keeps happening, put the glasses in their case, close it for a minute, then try again."
+            // Plan LT §7: a session the glasses end as soon as it starts is also how an out-of-date
+            // glasses install shows. Kept within the spoken-error gate's 200 characters.
+            return "The glasses ended the camera session. End any broadcast in Meta AI, or close the glasses in their case for a minute. If it ends just after it starts, open Meta AI and check for a glasses update."
         }
         #endif
     }

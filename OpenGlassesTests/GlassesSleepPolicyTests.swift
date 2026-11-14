@@ -27,7 +27,7 @@ final class GlassesSleepPolicyTests: XCTestCase {
                     sleepWhenQuietWhileWorn: option))
             }
             XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: false,
-                                                               worn: worn, inUse: true),
+                                                               worn: worn, inUse: true, seenWornThisConnection: true),
                            "nothing held open: taking them off does not stand down")
         }
     }
@@ -49,7 +49,7 @@ final class GlassesSleepPolicyTests: XCTestCase {
         let holds = GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: true,
                                                        idleListensOnGlasses: plan.holdsGlassesMic)
         XCTAssertFalse(holds)
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: holds, worn: false, inUse: true))
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: holds, worn: false, inUse: true, seenWornThisConnection: true))
         XCTAssertFalse(GlassesSleepPolicy.shouldArmSilenceSleep(
             holdsGlassesMic: holds, autoSleepMinutes: 5, worn: nil, sleepWhenQuietWhileWorn: true))
         XCTAssertTrue(GlassesUse().voiceInputAvailable, "voice input stays open")
@@ -62,7 +62,7 @@ final class GlassesSleepPolicyTests: XCTestCase {
         let holds = GlassesSleepPolicy.holdsGlassesMic(alwaysOnListening: true,
                                                        idleListensOnGlasses: plan.holdsGlassesMic)
         XCTAssertTrue(holds)
-        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: holds, worn: false, inUse: true))
+        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: holds, worn: false, inUse: true, seenWornThisConnection: true))
     }
 
     /// The wearer's own Disconnect still closes voice input whatever the idle mic.
@@ -79,18 +79,18 @@ final class GlassesSleepPolicyTests: XCTestCase {
     // MARK: - Taken off
 
     func testTakenOffWithTheLinkUpStartsTheGrace() {
-        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: false, inUse: true))
+        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: false, inUse: true, seenWornThisConnection: true))
         XCTAssertEqual(GlassesSleepPolicy.doffGraceSeconds, 30)
     }
 
     func testPutBackOnWithinTheGraceCancelsIt() {
         // The grace is re-checked at its end; worn again means it does not fire.
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: true, inUse: true))
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: nil, inUse: true))
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: true, inUse: true, seenWornThisConnection: true))
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: nil, inUse: true, seenWornThisConnection: true))
     }
 
     func testNoGraceForGlassesNotInUse() {
-        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: false, inUse: false),
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: on, worn: false, inUse: false, seenWornThisConnection: true),
                        "already stood down, or the link is gone: nothing to time")
     }
 
@@ -212,6 +212,49 @@ final class GlassesSleepPolicyTests: XCTestCase {
         XCTAssertNil(s.liveWorn, "the device does not say")
         s.apply(.deviceState(id: "a", GlassesDeviceState(link: .disconnected, worn: true)))
         XCTAssertNil(s.liveWorn, "away is not worn by anything the app can see")
+    }
+
+    // MARK: - Off before on (Plan LT §7)
+
+    /// Glasses that read "off" before this connection ever read them "on" were not taken off: a
+    /// pair connecting from the case, or one whose first report is doffed.
+    func testOffBeforeAnyOnStartsNoGrace() {
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: true, worn: false, inUse: true,
+                                                           seenWornThisConnection: false))
+        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: true, worn: false, inUse: true,
+                                                          seenWornThisConnection: true))
+    }
+
+    func testTheSnapshotRemembersWornForThisConnectionOnly() {
+        var s = GlassesConnectionSnapshot(registration: .registered)
+        s.apply(.devices(["a"]))
+        XCTAssertFalse(s.seenWornThisConnection)
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, worn: false)))
+        XCTAssertFalse(s.seenWornThisConnection, "a first reading of off")
+        XCTAssertFalse(GlassesSleepPolicy.doffGraceApplies(
+            holdsGlassesMic: true, worn: s.liveWorn, inUse: true,
+            seenWornThisConnection: s.seenWornThisConnection), "so no grace")
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, worn: true)))
+        XCTAssertTrue(s.seenWornThisConnection)
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, worn: nil)))
+        XCTAssertTrue(s.seenWornThisConnection, "the device going quiet does not forget it")
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, worn: false)))
+        XCTAssertTrue(GlassesSleepPolicy.doffGraceApplies(
+            holdsGlassesMic: true, worn: s.liveWorn, inUse: true,
+            seenWornThisConnection: s.seenWornThisConnection), "taken off after being on")
+        // The link drops: the next connection starts again.
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .disconnected, worn: false)))
+        XCTAssertFalse(s.seenWornThisConnection)
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, worn: false)))
+        XCTAssertFalse(s.seenWornThisConnection)
+    }
+
+    func testASecondDeviceListedDoesNotLendItsReading() {
+        var s = GlassesConnectionSnapshot(registration: .registered)
+        s.apply(.devices(["a", "b"]))
+        s.apply(.deviceState(id: "b", GlassesDeviceState(link: .disconnected, worn: true)))
+        s.apply(.deviceState(id: "a", GlassesDeviceState(link: .connected, worn: false)))
+        XCTAssertFalse(s.seenWornThisConnection, "only the connected pair's reading counts")
     }
 
     // MARK: - Glasses audio hand-off

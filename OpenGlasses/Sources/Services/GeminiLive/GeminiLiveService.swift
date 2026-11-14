@@ -650,6 +650,10 @@ class GeminiLiveService: ObservableObject {
 
     /// Push a full-quality still into the model's view, bypassing the throttled stream path and its
     /// resize/quality-0.5 encode. Pre-encoded JPEG so the sharp bytes go out exactly as captured.
+    ///
+    /// Plan LT §6: a deliberate still goes as a `clientContent` turn (the image plus one
+    /// instruction line, `turnComplete: false`), not on the realtime video lane the streamed frames
+    /// use, so the model reads it as the photo it was asked about rather than one more frame.
     func sendHighResImage(jpegData: Data) {
         guard connectionState == .ready, let task = webSocketTask else {
             PrivacyLog.realtimeSendSkipped(.gemini, kind: .image, reason: .notReady,
@@ -658,7 +662,7 @@ class GeminiLiveService: ObservableObject {
         }
         let transport = delegate
         sendQueue.async {
-            let json = LiveInjectionEnvelope.geminiImage(base64JPEG: jpegData.base64EncodedString())
+            let json = LiveInjectionEnvelope.geminiStill(base64JPEG: jpegData.base64EncodedString())
             PrivacyLog.realtimeMedia(.gemini, kind: .sharpFrame, kilobytes: jpegData.count / 1024)
             transport.send(json, via: task)
         }
@@ -714,7 +718,8 @@ class GeminiLiveService: ObservableObject {
             responseModalities: responseModalities,
             systemInstruction: systemInstruction,
             tools: toolsArray,
-            sessionResumption: GeminiSessionResumption.setupValue(handle: resumptionHandle))
+            sessionResumption: GeminiSessionResumption.setupValue(handle: resumptionHandle),
+            startSensitivity: Config.geminiLiveStartSensitivity)
         // Only a voice session has model audio to transcribe.
         if responseModalities.contains("AUDIO") {
             setupBody["outputAudioTranscription"] = [:] as [String: Any]

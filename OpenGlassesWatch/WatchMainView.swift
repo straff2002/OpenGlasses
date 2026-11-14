@@ -3,6 +3,9 @@ import SwiftUI
 struct WatchMainView: View {
     @ObservedObject var connectivity: WatchConnectivityService
     @State private var errorMessage: String?
+    /// A quick action that came back with an error made no answer, so the last answer is not shown
+    /// beside its error as if it were this one's (Plan LT §3). Cleared by the next action.
+    @State private var answerSupersededByError = false
     @State private var feedbackTrigger: Int = 0
     @State private var errorFeedbackTrigger: Int = 0
     /// A dictated question is with the phone and has not been answered yet.
@@ -133,7 +136,8 @@ struct WatchMainView: View {
                         }
 
                         // Response
-                        if !connectivity.lastResponse.isEmpty {
+                        if !connectivity.lastResponse.isEmpty,
+                           !(answerSupersededByError && errorMessage != nil) {
                             responseSection
                                 .id(Self.responseAnchor)
                         }
@@ -349,9 +353,11 @@ struct WatchMainView: View {
             ForEach(connectivity.quickActions) { action in
                 Button {
                     errorMessage = nil
+                    answerSupersededByError = false
                     connectivity.sendCommand("quickAction", extra: ["action_id": action.id]) { error in
                         if let error {
                             errorMessage = error
+                            answerSupersededByError = true
                             errorFeedbackTrigger += 1
                         } else {
                             feedbackTrigger += 1

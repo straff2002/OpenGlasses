@@ -24,6 +24,13 @@ protocol NowPlayingClaiming: AnyObject {
     /// The shared audio session's shape as a log token (`playAndRecord-mixable`): what iOS weighs
     /// when it picks the Now Playing app, so the support log can say what the claim was up against.
     var sessionShape: String { get }
+    /// Plan LT §4 (`StandbyClaimPolicy.pauseThenResume`): pause the standby claim's silent player
+    /// and publish a Now Playing rate of 0, as a player that obeyed a pause would. The claim still
+    /// counts as live (`standbyClaimLive`) while paused this way. A no-op with no standby claim.
+    func pauseStandby()
+    /// Undo `pauseStandby()`: restart the silent player and publish a rate of 1. A no-op unless
+    /// paused.
+    func resumeStandby()
 }
 
 /// What asked for a look at the claim, as written to the support log.
@@ -88,6 +95,10 @@ final class MediaTriggerService {
     private let calibration: () -> TempleCalibration
     private let claimer: NowPlayingClaiming
     private let clock: () -> TimeInterval
+    private let standbyMode: () -> StandbyClaimPolicy.Mode
+    /// What the standby claim's silent player does on a pause (Plan LT §4); retaken with each claim.
+    private var standbyPolicy = StandbyClaimPolicy(mode: .keepPlaying)
+    private var standbyResume: Task<Void, Never>?
     private var gate: TriggerGate
     private var decoder: TempleGestureDecoder
 
@@ -114,13 +125,16 @@ final class MediaTriggerService {
     ///   - reclaimCooldown: a standby claim found dead within this long of being taken is not
     ///     taken again yet, so a player that will not stay up is not restarted on every
     ///     notification.
-    ///   - sleep: the delay behind the settle re-check (a test drives it).
+    ///   - standbyMode: what the silent player does on a pause command (Plan LT §4), read at
+    ///     each claim.
+    ///   - sleep: the delay behind the settle re-check and the standby resume (a test drives it).
     init(claimer: NowPlayingClaiming? = nil,
          isEnabled: @escaping () -> Bool = { Config.mediaTriggerEnabled },
          isOtherAudioPlaying: @escaping () -> Bool = { AVAudioSession.sharedInstance().isOtherAudioPlaying },
          leaseOwner: @escaping () -> AudioSessionOwner? = { AudioSessionCoordinator.shared.currentOwner },
          calibration: @escaping () -> TempleCalibration = { TempleCalibration.current },
          clock: @escaping () -> TimeInterval = { Date().timeIntervalSinceReferenceDate },
+         standbyMode: @escaping () -> StandbyClaimPolicy.Mode = { Config.standbyClaimMode },
          debounceInterval: TimeInterval = 1.0,
          settleDelay: TimeInterval = 2.0,
          reclaimCooldown: TimeInterval = 2.0,
@@ -133,6 +147,7 @@ final class MediaTriggerService {
         self.leaseOwner = leaseOwner
         self.calibration = calibration
         self.clock = clock
+        self.standbyMode = standbyMode
         self.gate = TriggerGate(debounceInterval: debounceInterval, minimumConfidence: 1.0)
         self.decoder = TempleGestureDecoder(calibration: calibration())
         self.settleDelay = settleDelay
@@ -207,11 +222,19 @@ final class MediaTriggerService {
     /// to a tap (not coalesced into the previous one, known to the calibration table) and the
     /// debounce passes. Returns the gesture that fired, if any. A command that fires nothing is
     /// logged with why, so "the tap did nothing" can be told apart from "no tap arrived".
+    ///
+    /// Under a standby claim every command is shown to `StandbyClaimPolicy` first, so a paused
+    /// silent player resumes on the next command whether or not that command fires a tap.
     @discardableResult
     func handleRemoteCommand(_ command: MediaRemoteCommand) -> TempleGesture? {
         guard isClaimed else { return drop(command, "notClaimed") }
         guard isEnabled() else { return drop(command, "disabled") }
         let now = clock()
+        if claimedMode == .standby {
+            let decision = standbyPolicy.handle(command, at: now)
+            applyStandby(decision.action)
+            if !decision.countsAsTap { return drop(command, "pairedResume") }
+        }
         guard let gesture = decoder.decode(command, at: now) else {
             return drop(command, decoder.calibration.gesture(for: command) == nil ? "unmapped" : "coalesced")
         }
@@ -292,6 +315,7 @@ final class MediaTriggerService {
     private func takeClaim(_ mode: NowPlayingClaimMode) {
         claimedMode = mode
         lastClaimAt = clock()
+        resetStandbyPolicy()
         claimer.claim(mode: mode) { [weak self] command in
             self?.handleRemoteCommand(command)
         }
@@ -304,8 +328,41 @@ final class MediaTriggerService {
     private func releaseClaim(reason: String) {
         guard isClaimed else { return }
         claimedMode = nil
+        resetStandbyPolicy()
         claimer.release()
         PrivacyLog.device(.nowPlaying, .released, state: PrivacyToken(reason))
+    }
+
+    /// A fresh policy in the mode read now; any pause in flight is forgotten with the old claim.
+    private func resetStandbyPolicy() {
+        standbyResume?.cancel()
+        standbyResume = nil
+        standbyPolicy = StandbyClaimPolicy(mode: standbyMode())
+    }
+
+    /// Apply what `StandbyClaimPolicy` decided to the claimer, and time the resume of a pause.
+    private func applyStandby(_ action: StandbyClaimPolicy.Action) {
+        switch action {
+        case .none:
+            return
+        case .pause(let delay):
+            claimer.pauseStandby()
+            PrivacyLog.device(.nowPlaying, .claimPaused, detail: PrivacyToken(claimer.sessionShape))
+            standbyResume?.cancel()
+            let sleep = self.sleep
+            standbyResume = Task { [weak self] in
+                await sleep(delay)
+                guard !Task.isCancelled, let self else { return }
+                self.standbyResume = nil
+                guard self.claimedMode == .standby else { return }
+                self.applyStandby(self.standbyPolicy.resumeDelayElapsed())
+            }
+        case .resume:
+            standbyResume?.cancel()
+            standbyResume = nil
+            claimer.resumeStandby()
+            PrivacyLog.device(.nowPlaying, .claimResumed, detail: PrivacyToken(claimer.sessionShape))
+        }
     }
 
     private func recheckNow(_ cause: ClaimRecheckCause) {
@@ -360,10 +417,31 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
     private var playPending = false
     private var commandTargets: [(MPRemoteCommand, Any)] = []
     private var coexistToken: UUID?
+    /// Paused on purpose by `pauseStandby()` (Plan LT §4): not playing, and still a live claim.
+    private var pausedByPolicy = false
 
     var standbyClaimLive: Bool {
         guard let player else { return false }
-        return playPending || player.isPlaying
+        return playPending || pausedByPolicy || player.isPlaying
+    }
+
+    func pauseStandby() {
+        guard let player, !pausedByPolicy else { return }
+        pausedByPolicy = true
+        player.pause()
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = [MPNowPlayingInfoPropertyPlaybackRate: 0.0]
+    }
+
+    func resumeStandby() {
+        guard let player, pausedByPolicy else { return }
+        pausedByPolicy = false
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = Self.claimInfo
+        // Still waiting on the session's activation: the pending start plays it.
+        guard !playPending else { return }
+        if !player.play() {
+            PrivacyLog.device(.nowPlaying, .startFailed, state: PrivacyToken("silentLoopResume"),
+                              detail: PrivacyToken(sessionShape))
+        }
     }
 
     var sessionShape: String {
@@ -425,6 +503,8 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
                 await AudioSessionCoordinator.shared.ensureActiveOffMain()
                 guard let self, self.player === silent else { return }
                 self.playPending = false
+                // Paused by the policy while activation was in flight: the resume plays it.
+                guard !self.pausedByPolicy else { return }
                 if !silent.play() {
                     PrivacyLog.device(.nowPlaying, .startFailed, state: PrivacyToken("silentLoop"),
                                       detail: PrivacyToken(self.sessionShape))
@@ -440,6 +520,7 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
         player?.stop()
         player = nil
         playPending = false
+        pausedByPolicy = false
         for (command, target) in commandTargets { command.removeTarget(target) }
         commandTargets = []
         let infoCenter = MPNowPlayingInfoCenter.default()
@@ -482,6 +563,8 @@ final class SilentNowPlayingClaimer: NowPlayingClaiming {
     var sessionShape: String { "phone-only" }
     func claim(mode: NowPlayingClaimMode, onCommand: @escaping (MediaRemoteCommand) -> Void) {}
     func release() {}
+    func pauseStandby() {}
+    func resumeStandby() {}
     nonisolated static func isOwnInfo(_ info: [String: Any]) -> Bool { false }
 }
 #endif

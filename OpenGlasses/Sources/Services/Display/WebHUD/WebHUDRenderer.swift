@@ -60,6 +60,10 @@ enum WebHUDRenderer {
         <meta charset="utf-8">
         <meta name="viewport" content="width=600, initial-scale=1">
         <meta name="mrbd-web-app-capable" content="yes">
+        <meta name="theme-color" content="#000000">
+        <link rel="manifest" id="launcher-manifest">
+        <link rel="icon" type="image/png" sizes="192x192" id="launcher-icon">
+        <link rel="apple-touch-icon" id="launcher-touch-icon">
         <title>Avenkin HUD</title>
         <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -203,9 +207,19 @@ enum WebHUDRenderer {
           } catch (_) { /* transient — keep the last frame */ }
         }
 
+        // Plan LT §7: the launcher files sit behind the same token as hud.json, so their links
+        // are filled in here, from the hash, rather than written into the page.
+        function linkLauncher() {
+          const t = "?t=" + encodeURIComponent(token());
+          document.getElementById("launcher-manifest").href = "manifest.webmanifest" + t;
+          document.getElementById("launcher-icon").href = "icon-192.png" + t;
+          document.getElementById("launcher-touch-icon").href = "icon-512.png" + t;
+        }
+
         if (INLINE_PAYLOAD !== null) {
           render(INLINE_PAYLOAD);
         } else {
+          linkLauncher();
           poll();
           setInterval(poll, POLL_SECONDS * 1000);
         }

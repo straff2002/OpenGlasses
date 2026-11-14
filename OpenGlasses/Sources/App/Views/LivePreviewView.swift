@@ -34,6 +34,12 @@ struct LivePreviewView: View {
     @State private var blurOn = false
     @State private var confirmingBlurOff = false
 
+    /// Plan LT §1: a screen recording, share or mirror, and the blur relay's latest frame for the
+    /// preview to draw in place of raw pixels while one runs with the blur on.
+    @ObservedObject private var screenCapture = ScreenCaptureState.shared
+    @State private var filteredFrame: UIImage?
+    @State private var filteredFrameAt: Date?
+
     /// The camera permission as last read: it can change while the app is away in Settings.
     @State private var phoneAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var phoneCapture = PhoneCaptureStatus.stopped
@@ -54,7 +60,15 @@ struct LivePreviewView: View {
             OGTheme.media.ignoresSafeArea()
 
             if case .phone(let position) = picture {
-                phoneViewfinder(position)
+                // Plan LT §1: the viewfinder's frames never pass the blur, so it has nothing to
+                // show a captured screen and goes blank.
+                if phoneCaptureDisplay == .raw {
+                    phoneViewfinder(position)
+                } else {
+                    capturedScreenNotice
+                }
+            } else if currentFrame != nil, glassesCaptureDisplay != .raw {
+                capturedGlassesPicture
             } else if let frame = currentFrame {
                 Image(uiImage: frame)
                     .resizable()
@@ -185,7 +199,7 @@ struct LivePreviewView: View {
                 if medicalCompliance && !isBroadcasting {
                     mediaCaption(LivePreviewPicture.streamingOffCaption)
                         .padding(.bottom, 12)
-                } else if case .phone = picture, phoneViewfinderPhase == .live {
+                } else if case .phone = picture, phoneViewfinderPhase == .live, phoneCaptureDisplay == .raw {
                     mediaCaption(LivePreviewPicture.phoneCaption(
                         isBroadcasting: isBroadcasting,
                         blurOn: blurOn))
@@ -310,6 +324,19 @@ struct LivePreviewView: View {
             }
         }
         .onReceive(appState.privacyFilter.$isEnabled) { blurOn = $0 }
+        // Plan LT §1: the relay's frames are kept only while the preview is drawing them.
+        .onReceive(appState.outboundFrames.publisher) { frame in
+            guard glassesCaptureDisplay == .filtered else {
+                if filteredFrame != nil { filteredFrame = nil; filteredFrameAt = nil }
+                return
+            }
+            filteredFrame = frame
+            filteredFrameAt = Date()
+        }
+        .onChange(of: screenCapture.isCaptured) { _, captured in
+            // A capture that starts again starts from blank, not from a frame of the last one.
+            if !captured { filteredFrame = nil; filteredFrameAt = nil }
+        }
         .onReceive(appState.broadcastService.notices) { goLiveNotice = .streamChanged($0) }
         .bystanderBlurOffConfirmation(isPresented: $confirmingBlurOff, appState: appState)
         .onReceive(phoneCamera.statusPublisher.receive(on: DispatchQueue.main)) { phoneCapture = $0 }
@@ -386,6 +413,54 @@ struct LivePreviewView: View {
     }
 
     private var isBroadcasting: Bool { broadcastService.isBroadcasting }
+
+    // MARK: - A captured screen (Plan LT §1)
+
+    /// The glasses preview (`OutboundFrameConsumer.livePreview`): its frames also pass the blur
+    /// relay, so a captured screen draws those. Reads the filter itself rather than `blurOn`, which
+    /// arrives a render late.
+    private var glassesCaptureDisplay: PreviewCapturePolicy.Display {
+        PreviewCapturePolicy.decide(blurOn: appState.privacyFilter.isEnabled,
+                                    isCaptured: screenCapture.isCaptured,
+                                    scope: .onDevicePreview, hasFilteredSource: true)
+    }
+
+    /// The phone camera's viewfinder (`OutboundFrameConsumer.phoneViewfinder`): no filtered source.
+    private var phoneCaptureDisplay: PreviewCapturePolicy.Display {
+        PreviewCapturePolicy.decide(blurOn: appState.privacyFilter.isEnabled,
+                                    isCaptured: screenCapture.isCaptured,
+                                    scope: .onDevicePreview, hasFilteredSource: false)
+    }
+
+    /// The relay's latest frame while it is fresh, else the notice — never the raw picture.
+    private var capturedGlassesPicture: some View {
+        TimelineView(.periodic(from: .now, by: 0.25)) { context in
+            let age = filteredFrameAt.map { context.date.timeIntervalSince($0) }
+            if PreviewCapturePolicy.resolve(glassesCaptureDisplay, filteredFrameAge: age) == .filtered,
+               let filteredFrame {
+                Image(uiImage: filteredFrame)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .accessibilityLabel(PreviewCapturePolicy.filteredLine)
+            } else {
+                capturedScreenNotice
+            }
+        }
+    }
+
+    private var capturedScreenNotice: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "eye.slash")
+                .font(.largeTitle)
+                .foregroundStyle(OGTheme.onMedia)
+                .accessibilityHidden(true)
+            Text(verbatim: PreviewCapturePolicy.hiddenLine)
+                .foregroundStyle(OGTheme.onMedia)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        .accessibilityElement(children: .combine)
+    }
     private var activeSource: BroadcastVideoSource { broadcastService.activeSource }
 
     private var picture: LivePreviewPicture {

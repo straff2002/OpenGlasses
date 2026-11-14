@@ -21,6 +21,10 @@ struct DeveloperPanelView: View {
     @AppStorage("recognizerComparisonEnabled") private var recognizerComparisonEnabled = false
     /// Instant Replay P0 — `Config.frameCadenceLoggingEnabled`, the same key and default (off).
     @AppStorage("frameCadenceLoggingEnabled") private var frameCadenceLoggingEnabled = false
+    /// Plan LT §4 — `Config.standbyClaimMode`, the same key and default (keep playing).
+    @AppStorage(Config.standbyClaimModeKey) private var standbyClaimMode = StandbyClaimPolicy.Mode.keepPlaying.rawValue
+    /// Plan LT §6 — `Config.geminiLiveStartSensitivity`, the same key and default (high).
+    @AppStorage(Config.geminiLiveStartSensitivityKey) private var geminiStartSensitivity = GeminiLiveStartSensitivity.high.rawValue
 
     init(appState: AppState) {
         self.appState = appState
@@ -49,6 +53,22 @@ struct DeveloperPanelView: View {
                     .onChange(of: wakeSpeechGateEnabled) { _, _ in
                         appState.restartWakeWordIfDirect()
                     }
+            }
+
+            if GlassesSupportPolicy.isSupported {
+                OGSection(
+                    header: "Temple Taps",
+                    footer: "An experiment for glasses that hear only the first tap: after a tap, the silent player that keeps the taps coming pauses, then resumes after three seconds or at the next tap. Off keeps it playing, as before. Test mode in Temple Taps says every tap heard."
+                ) {
+                    OGRow("Pause after a tap", isOn: pauseAfterTap, icon: "hand.tap")
+                }
+            }
+
+            OGSection(
+                header: "Gemini Live",
+                footer: "How readily Gemini Live decides you have started talking. Less sensitive may start fewer turns on background noise, and may miss a quiet start. Applies from the next session."
+            ) {
+                OGRow("Less sensitive turn starts", isOn: lowStartSensitivity, icon: "waveform")
             }
 
             OGSection(
@@ -188,6 +208,22 @@ struct DeveloperPanelView: View {
             }
         }
         .navigationTitle("Developer")
+    }
+
+    private var pauseAfterTap: Binding<Bool> {
+        Binding(
+            get: { standbyClaimMode == StandbyClaimPolicy.Mode.pauseThenResume.rawValue },
+            set: { on in
+                standbyClaimMode = (on ? StandbyClaimPolicy.Mode.pauseThenResume : .keepPlaying).rawValue
+                // The mode is read at each claim, so retake it now.
+                appState.mediaTrigger.refresh()
+            })
+    }
+
+    private var lowStartSensitivity: Binding<Bool> {
+        Binding(
+            get: { geminiStartSensitivity == GeminiLiveStartSensitivity.low.rawValue },
+            set: { geminiStartSensitivity = ($0 ? GeminiLiveStartSensitivity.low : .high).rawValue })
     }
 }
 

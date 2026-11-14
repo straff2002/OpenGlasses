@@ -123,6 +123,11 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
     /// reading and never shown: it is how the moment of a link loss can still ask whether the
     /// glasses had been taken off (`GlassesLinkCuePolicy`), when `liveWorn` is by then nil.
     private(set) var lastLiveWorn: Bool?
+    /// Whether this connection has read the glasses as worn at least once (Plan LT §7). Cleared
+    /// when the link leaves `.connected`. A first reading of "off" on a fresh connection — glasses
+    /// that report doffed before they have reported anything else — is then not taken as the
+    /// wearer taking them off (`GlassesSleepPolicy.doffGraceApplies`).
+    private(set) var seenWornThisConnection = false
 
     enum Event: Equatable, Sendable {
         case registration(GlassesRegistration)
@@ -157,7 +162,12 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
         }
         // Follows the live reading while the link is up (including back to "does not say"), and
         // stops following the moment it is not.
-        if phase == .connected { lastLiveWorn = liveWorn }
+        if phase == .connected {
+            lastLiveWorn = liveWorn
+            if liveWorn == true { seenWornThisConnection = true }
+        } else {
+            seenWornThisConnection = false
+        }
     }
 
     func state(of id: String) -> GlassesDeviceState {
@@ -304,7 +314,8 @@ struct GlassesUse: Equatable, Sendable {
 ///    listening on the iPhone (the default) → nothing sleeps: no silence countdown, no doff
 ///    stand-down. The app stays connected and talking is instant.
 /// 1. **Taken off** (doffed) with the link up → stand down automatically after
-///    `doffGraceSeconds`; put back on within the grace, nothing happens.
+///    `doffGraceSeconds`; put back on within the grace, nothing happens. Only once this
+///    connection has read them worn (Plan LT §7): an "off" before any "on" is not a taking-off.
 /// 2. **Put back on** after an automatic stand-down → resume at once, no tap (`GlassesUse.donned()`).
 ///    The wearer's own Disconnect is never undone this way.
 /// 3. **Worn** → never sleeps for silence, unless the wearer turned on "Sleep when quiet, even
@@ -330,8 +341,11 @@ enum GlassesSleepPolicy {
     }
 
     /// Whether glasses taken off should start (or, at its end, complete) the grace towards a stand-down.
-    static func doffGraceApplies(holdsGlassesMic: Bool, worn: Bool?, inUse: Bool) -> Bool {
-        holdsGlassesMic && worn == false && inUse
+    /// `seenWornThisConnection` is `GlassesConnectionSnapshot.seenWornThisConnection`: glasses that
+    /// read "off" before this connection ever read them "on" were not taken off.
+    static func doffGraceApplies(holdsGlassesMic: Bool, worn: Bool?, inUse: Bool,
+                                 seenWornThisConnection: Bool) -> Bool {
+        holdsGlassesMic && worn == false && inUse && seenWornThisConnection
     }
 
     /// Whether the silence rule covers these glasses: always unless they are worn, and while worn

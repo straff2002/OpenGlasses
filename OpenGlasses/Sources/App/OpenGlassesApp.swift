@@ -2888,6 +2888,8 @@ class AppState: ObservableObject, AppStateProtocol {
         nativeToolRouter.confirmationCoordinator = toolConfirmationCoordinator
         // Plan GV: with the glasses away a camera tool may wait on a phone photo; its budget grows.
         nativeToolRouter.glassesCameraConnected = { [weak self] in self?.isConnected ?? false }
+        // Plan LT §2: the private-span rule reads the Direct-mode turn's ledger.
+        nativeToolRouter.turnLedger = { [weak self] in self?.llmService.turnToolLedger }
         // Deterministic safety supervisor context (Plan S): snapshot clock + current location +
         // persisted rules per tool call so geofence/quiet-hours rules reflect the real situation.
         nativeToolRouter.safetyContextProvider = { [weak self] in
@@ -6392,15 +6394,23 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Capture a photo and send it to the LLM with a custom prompt.
-    func capturePhotoAndSend(prompt: String) async {
+    ///
+    /// - Parameter phoneCameraFallback: with no glasses, open the phone camera to aim and take the
+    ///   picture. False for a request from the watch (Plan LT §3): nobody is looking at the phone,
+    ///   so it does nothing and says the glasses aren't connected.
+    /// - Returns: how the turn ended (`PhotoTurnResult`), for a caller that has to report it — the
+    ///   watch. Other callers ignore it.
+    @discardableResult
+    func capturePhotoAndSend(prompt: String, phoneCameraFallback: Bool = true) async -> PhotoTurnResult {
         guard !currentMode.isRealtime || realtimeSupportsVision else {
             errorMessage = String(localized: "The selected model cannot see images. Choose a vision model.")
-            return
+            return .cannotSee
         }
         guard isConnected else {
+            guard phoneCameraFallback else { return .glassesNotConnected }
             // No glasses — fall back to the phone camera (live preview to aim + frame).
             presentPhoneCamera(prompt: prompt, userLog: "[Phone photo] \(prompt)")
-            return
+            return .phoneCameraOpened
         }
         isProcessing = true
         speechService.startThinkingSound()
@@ -6412,9 +6422,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // picture, or a picture taken that no model could answer about (a missing key, an
         // exhausted cascade). The second used to be reported as the first.
         var photoCaptured = false
+        var result: PhotoTurnResult
         do {
             let grabStartedAt = Date()
-            let photoData = try await cameraService.capturePhoto()
+            let photoData = try await cameraService.capturePhoto(allowPhoneFallback: phoneCameraFallback)
             TurnRecorder.addFrameGrabTime(since: grabStartedAt)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -6434,6 +6445,7 @@ class AppState: ObservableObject, AppStateProtocol {
             TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
             lastResponse = response
+            result = .answered(response)
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "user", content: "[Photo] \(prompt)")
                 conversationStore.appendMessage(role: "assistant", content: response)
@@ -6461,6 +6473,7 @@ class AppState: ObservableObject, AppStateProtocol {
             errorMessage = photoCaptured
                 ? String(localized: "Photo analysis failed: \(error.localizedDescription)")
                 : String(localized: "Photo failed: \(error.localizedDescription)")
+            result = photoCaptured ? .modelFailed : .captureFailed
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
             // A tap or a quick action has no screen in view on the glasses: say it, as the voice
@@ -6477,6 +6490,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudAnswerCard.dropStagedPicture()   // Plan LC §5: no later answer takes this frame
         TurnRecorder.endTurn()
+        return result
     }
 
     /// Toggle Assistive Mode (A3). Wires the shared service to this AppState's camera/LLM/TTS.
@@ -6705,14 +6719,19 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// - Parameter glassesOnly: a temple tap (Plan GJ) — the glasses camera or nothing: no
     ///   reconnect wait, no phone-camera screen, no phone-camera capture.
-    func captureAndAnalyzePhoto(glassesOnly: Bool = false) async {
+    /// - Parameter phoneCameraFallback: false for a request from the watch (Plan LT §3): no
+    ///   phone-camera screen and no phone-camera capture, though a link coming up is still waited on.
+    /// - Returns: how the turn ended, for the watch's reply; other callers ignore it.
+    @discardableResult
+    func captureAndAnalyzePhoto(glassesOnly: Bool = false,
+                                phoneCameraFallback: Bool = true) async -> PhotoTurnResult {
         guard !currentMode.isRealtime || realtimeSupportsVision else {
             errorMessage = String(localized: "The selected model cannot see images. Choose a vision model.")
-            return
+            return .cannotSee
         }
         if glassesOnly && !isConnected {
             errorMessage = String(localized: "The glasses camera isn't available.")
-            return
+            return .glassesNotConnected
         }
         if glassesPhase.isConnecting {
             // A link that is coming up is worth a short wait before surrendering to the phone
@@ -6725,9 +6744,11 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
         guard isConnected else {
+            // Plan LT §3: a watch request opens no phone camera nobody is looking at.
+            guard phoneCameraFallback else { return .glassesNotConnected }
             // Genuinely no glasses — fall back to the phone camera (explicit UI).
             presentPhoneCamera(prompt: "Describe what you see in this image.", userLog: "[Phone photo]")
-            return
+            return .phoneCameraOpened
         }
         isProcessing = true
         speechService.startThinkingSound()
@@ -6739,9 +6760,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // picture, or a picture taken that no model could answer about (a missing key, an
         // exhausted cascade). The second used to be reported as the first.
         var photoCaptured = false
+        var result: PhotoTurnResult
         do {
             let grabStartedAt = Date()
-            let photoData = try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly)
+            let photoData = try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly && phoneCameraFallback)
             TurnRecorder.addFrameGrabTime(since: grabStartedAt)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -6767,6 +6789,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 response = "From the phone camera — the glasses weren't available. " + response
             }
             lastResponse = response
+            result = .answered(response)
             if Config.conversationPersistenceEnabled {
                 conversationStore.appendMessage(role: "user", content: "[Photo taken manually]")
                 conversationStore.appendMessage(role: "assistant", content: response)
@@ -6794,6 +6817,7 @@ class AppState: ObservableObject, AppStateProtocol {
             errorMessage = photoCaptured
                 ? String(localized: "Photo analysis failed: \(error.localizedDescription)")
                 : String(localized: "Photo failed: \(error.localizedDescription)")
+            result = photoCaptured ? .modelFailed : .captureFailed
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.error)
             // A tap or a quick action has no screen in view on the glasses: say it, as the voice
@@ -6810,6 +6834,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudAnswerCard.dropStagedPicture()   // Plan LC §5: no later answer takes this frame
         TurnRecorder.endTurn()
+        return result
     }
 
     /// - Parameter allowingPhoneCamera: the live preview's phone viewfinder, which handed the camera
@@ -10095,16 +10120,25 @@ class AppState: ObservableObject, AppStateProtocol {
                 cancelAutoSleepTimer()
             }
         case false?:
+            let seenWorn = glassesService.snapshot.seenWornThisConnection
             guard doffGraceTask == nil,
                   GlassesSleepPolicy.doffGraceApplies(holdsGlassesMic: idleHoldsGlassesMic,
-                                                      worn: false, inUse: isConnected) else { return }
+                                                      worn: false, inUse: isConnected,
+                                                      seenWornThisConnection: seenWorn) else {
+                // Plan LT §7: "off" before this connection read "on" is logged, nothing more.
+                if !seenWorn, idleHoldsGlassesMic, isConnected {
+                    PrivacyLog.device(.glasses, .doffBeforeDon)
+                }
+                return
+            }
             doffGraceTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(GlassesSleepPolicy.doffGraceSeconds * 1_000_000_000))
                 guard let self, !Task.isCancelled else { return }
                 self.doffGraceTask = nil
                 guard GlassesSleepPolicy.doffGraceApplies(
                     holdsGlassesMic: self.idleHoldsGlassesMic, worn: self.glassesService.isWorn,
-                    inUse: self.isConnected) else { return }
+                    inUse: self.isConnected,
+                    seenWornThisConnection: self.glassesService.snapshot.seenWornThisConnection) else { return }
                 self.addDebugEvent("Glasses taken off — standing down")
                 self.disconnectGlasses(reason: .automatic)
             }

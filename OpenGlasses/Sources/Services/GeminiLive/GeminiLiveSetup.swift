@@ -1,5 +1,22 @@
 import Foundation
 
+/// How readily the server's voice-activity detection decides the wearer has started speaking
+/// (Plan LT §6). `high` was hard-coded before LT and stays the default; `low` is there so a device
+/// session can compare turns started by room noise against turns missed (P1). Read from
+/// `Config.geminiLiveStartSensitivity` at each setup.
+enum GeminiLiveStartSensitivity: String, CaseIterable, Equatable {
+    case high
+    case low
+
+    /// The setup field's enum value.
+    var wireValue: String {
+        switch self {
+        case .high: return "START_SENSITIVITY_HIGH"
+        case .low: return "START_SENSITIVITY_LOW"
+        }
+    }
+}
+
 /// The Live API `setup` message body.
 ///
 /// Extracted from `GeminiLiveService` so the payload's **shape** can be pinned by a test. Device-
@@ -20,7 +37,8 @@ enum GeminiLiveSetup {
                      responseModalities: [String],
                      systemInstruction: String,
                      tools: [[String: Any]],
-                     sessionResumption: [String: Any]) -> [String: Any] {
+                     sessionResumption: [String: Any],
+                     startSensitivity: GeminiLiveStartSensitivity = .high) -> [String: Any] {
         var generationConfig: [String: Any] = ["responseModalities": responseModalities]
         // Family-specific, and omitted when unknown — see `GeminiLiveThinkingConfig`. A guessed
         // field here closes the socket rather than being ignored.
@@ -36,7 +54,7 @@ enum GeminiLiveSetup {
             "realtimeInputConfig": [
                 "automaticActivityDetection": [
                     "disabled": false,
-                    "startOfSpeechSensitivity": "START_SENSITIVITY_HIGH",
+                    "startOfSpeechSensitivity": startSensitivity.wireValue,
                     "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
                     "silenceDurationMs": 500,
                     "prefixPaddingMs": 40

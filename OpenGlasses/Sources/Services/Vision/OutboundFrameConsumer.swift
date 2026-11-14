@@ -193,6 +193,11 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// Continuous scene narration on the on-device VLM.
     case sceneNarration
     /// The live camera preview on the phone's own screen.
+    ///
+    /// Plan LT §1: unfiltered only while the screen stays on the phone. While it is recorded,
+    /// shared or mirrored with the blur on, `PreviewCapturePolicy` has it draw the blur relay's
+    /// frames instead (`switchesWhenCaptured`), so `LivePreviewView` also reads
+    /// `outboundFrames.publisher` — the relay's output, never a second blur pass.
     case livePreview
     /// Plan KH: the phone camera's viewfinder in that preview. A preview layer on the stream's
     /// capture session, composited by the system, so no pixel reaches app code and none leaves the
@@ -200,6 +205,9 @@ enum OutboundFrameConsumer: String, CaseIterable {
     /// matter: its frames go to the encoder unfiltered, which is why every phone route is refused
     /// with the blur on (`rtmpBroadcast` above), and `OutboundFrameConsumerTests` holds those frames
     /// to the encoder alone.
+    ///
+    /// Plan LT §1: the layer has no filtered source, so while the screen is captured with the blur
+    /// on, `LivePreviewView` does not draw it at all.
     case phoneViewfinder
     /// Reading companion page detection — on-device OCR, emits text.
     case readingCompanion
@@ -475,4 +483,30 @@ enum OutboundFrameConsumer: String, CaseIterable {
     }
 
     static var owningTypes: Set<String> { Set(allCases.map(\.owningType)) }
+
+    // MARK: - A captured screen (Plan LT §1)
+
+    /// What an on-device preview switches to while the screen is recorded, shared or mirrored with
+    /// the blur on (`PreviewCapturePolicy`).
+    enum CapturedScreenSwitch: String {
+        /// Draws `OutboundFrameRelay`'s frames, blank when none is fresh.
+        case toRelayFrames
+        /// Has no filtered source, so draws nothing.
+        case toBlank
+    }
+
+    /// The switch for a preview surface; nil for every consumer that is not one. Every
+    /// `.onDevicePreview` consumer has one — `onDevicePreview` stays unfiltered and on the device
+    /// only because a captured screen no longer shows it raw.
+    var switchesWhenCaptured: CapturedScreenSwitch? {
+        switch self {
+        case .livePreview: return .toRelayFrames
+        case .phoneViewfinder: return .toBlank
+        default: return nil
+        }
+    }
+
+    /// The view that applies `PreviewCapturePolicy` for both preview surfaces: the phone viewfinder
+    /// is a layer hosted there and cannot decide for itself.
+    static let capturedScreenPolicyHost = "LivePreviewView"
 }

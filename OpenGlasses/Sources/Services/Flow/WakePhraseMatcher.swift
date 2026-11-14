@@ -47,11 +47,23 @@ enum WakePhraseMatcher {
     struct Candidate: Equatable {
         let phrase: String
         let primary: String
+        /// Plan LT §5: matches only where an utterance starts (`WakeAlternativePosition`) — an
+        /// alternative made of ordinary words. Everything else matches anywhere.
+        let startOnly: Bool
 
-        init(phrase: String, primary: String? = nil) {
+        init(phrase: String, primary: String? = nil, startOnly: Bool = false) {
             self.phrase = phrase
             self.primary = primary ?? phrase
+            self.startOnly = startOnly
         }
+    }
+
+    /// A match, with how it was made (for the support log).
+    struct Match: Equatable {
+        enum Kind: Equatable { case exact, fuzzy, embedded }
+        let primary: String
+        let kind: Kind
+        let distance: Int
     }
 
     /// Shortest phrase that may be fuzzy-matched at all, in letters.
@@ -79,17 +91,41 @@ enum WakePhraseMatcher {
     /// The primary phrase matched by `transcript`, or nil.
     ///
     /// Exact whole-token matches across every candidate first, so an alternative never loses to a
-    /// fuzzy match on a different persona's phrase.
-    static func match(transcript: String, candidates: [Candidate]) -> String? {
+    /// fuzzy match on a different persona's phrase. A `startOnly` candidate matches only where an
+    /// utterance starts — the first token, after a pause in `segments`, or after one of `openers`
+    /// at either (`WakeAlternativePosition`).
+    static func match(transcript: String, candidates: [Candidate],
+                      segments: [WakeAlternativePosition.Segment] = [],
+                      openers: Set<String> = WakeAlternativePosition.openers(forLanguage: nil)) -> String? {
         let tokens = PhraseMatcher.tokenize(transcript)
+        let starts = WakeAlternativePosition.allowedStarts(
+            tokens: tokens,
+            utteranceStarts: WakeAlternativePosition.utteranceStarts(tokenCount: tokens.count,
+                                                                     segments: segments),
+            openers: openers)
+        return detailedMatch(tokens: tokens, candidates: candidates, allowedStarts: starts)?.primary
+    }
+
+    /// The matching itself, on tokens already split, with the token indices a `startOnly`
+    /// candidate may begin at.
+    static func detailedMatch(tokens: [String], candidates: [Candidate],
+                              allowedStarts: Set<Int>) -> Match? {
         guard !tokens.isEmpty else { return nil }
-
         for candidate in candidates where !candidate.phrase.isEmpty {
-            if PhraseMatcher.contains(candidate.phrase, in: tokens) { return candidate.primary }
+            let ranges = PhraseMatcher.ranges(of: candidate.phrase, in: tokens)
+            let placed = candidate.startOnly
+                ? ranges.contains { allowedStarts.contains($0.lowerBound) }
+                : !ranges.isEmpty
+            if placed { return Match(primary: candidate.primary, kind: .exact, distance: 0) }
         }
-
-        if let fuzzy = fuzzyMatch(tokens: tokens, candidates: candidates) { return fuzzy.primary }
-        return embeddedMatch(tokens: tokens, candidates: candidates)?.primary
+        if let fuzzy = fuzzyMatch(tokens: tokens, candidates: candidates, allowedStarts: allowedStarts) {
+            return Match(primary: fuzzy.primary, kind: .fuzzy, distance: fuzzy.distance)
+        }
+        if let embedded = embeddedMatch(tokens: tokens, candidates: candidates,
+                                        allowedStarts: allowedStarts) {
+            return Match(primary: embedded.primary, kind: .embedded, distance: embedded.distance)
+        }
+        return nil
     }
 
     /// Shortest phrase, in characters, that may be looked for inside a longer token. Two Han
@@ -100,19 +136,29 @@ enum WakePhraseMatcher {
     /// without Latin letters (see the type comment). The phrase is compared with its spaces
     /// removed, which is how an unspaced recogniser writes it; the allowance is the ordinary
     /// `fuzzyThreshold` for its length.
-    static func embeddedMatch(tokens: [String], candidates: [Candidate]) -> (primary: String, distance: Int)? {
+    ///
+    /// A `startOnly` candidate is looked for only at the beginning of a token at an allowed start
+    /// (an unspaced token is a sentence, so its beginning is the utterance's).
+    static func embeddedMatch(tokens: [String], candidates: [Candidate],
+                              allowedStarts: Set<Int> = [0]) -> (primary: String, distance: Int)? {
         for candidate in candidates {
             let needle = PhraseMatcher.tokenize(candidate.phrase).joined()
             guard needle.count >= shortestEmbeddedPhrase, !WakePhraseScript.hasLatinLetters(needle) else { continue }
             let needleUnits = fuzzyUnits(needle)
             let threshold = fuzzyThreshold(forPhraseLength: needleUnits.count)
-            for token in tokens where token.count > needle.count && !WakePhraseScript.hasLatinLetters(token) {
-                if token.contains(needle) { return (candidate.primary, 0) }
+            for (index, token) in tokens.enumerated()
+            where token.count > needle.count && !WakePhraseScript.hasLatinLetters(token) {
+                if candidate.startOnly {
+                    guard allowedStarts.contains(index) else { continue }
+                    if token.hasPrefix(needle) { return (candidate.primary, 0) }
+                } else if token.contains(needle) {
+                    return (candidate.primary, 0)
+                }
                 guard threshold > 0 else { continue }
                 let units = fuzzyUnits(token)
                 let sizes = max(1, needleUnits.count - threshold)...(needleUnits.count + threshold)
                 for size in sizes where size <= units.count {
-                    for start in 0...(units.count - size) {
+                    for start in 0...(candidate.startOnly ? 0 : units.count - size) {
                         let distance = editDistance(Array(units[start..<(start + size)]), needleUnits)
                         if distance <= threshold { return (candidate.primary, distance) }
                     }
@@ -128,8 +174,10 @@ enum WakePhraseMatcher {
         Array(text.decomposedStringWithCanonicalMapping.unicodeScalars)
     }
 
-    /// The fuzzy half, separated so callers that want to log the distance can reach it.
-    static func fuzzyMatch(tokens: [String], candidates: [Candidate]) -> (primary: String, distance: Int)? {
+    /// The fuzzy half, separated so callers that want to log the distance can reach it. A
+    /// `startOnly` candidate's windows begin only at `allowedStarts`.
+    static func fuzzyMatch(tokens: [String], candidates: [Candidate],
+                           allowedStarts: Set<Int> = [0]) -> (primary: String, distance: Int)? {
         for candidate in candidates {
             let phraseTokens = PhraseMatcher.tokenize(candidate.phrase)
             let windowSize = phraseTokens.count
@@ -137,7 +185,8 @@ enum WakePhraseMatcher {
             let threshold = fuzzyThreshold(forPhraseLength: fuzzyUnits(phrase).count)
             guard threshold > 0, windowSize > 0, tokens.count >= windowSize else { continue }
 
-            for start in 0...(tokens.count - windowSize) {
+            for start in 0...(tokens.count - windowSize)
+            where !candidate.startOnly || allowedStarts.contains(start) {
                 let window = tokens[start..<(start + windowSize)].joined(separator: " ")
                 let distance = levenshteinDistance(window, phrase)
                 if distance <= threshold && distance > 0 {

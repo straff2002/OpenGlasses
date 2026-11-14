@@ -246,6 +246,9 @@ enum PrivacyLog {
         case expertNotRequested
         /// A plan step ran on the grant the wearer's one yes to the plan issued for it (Plan LP).
         case planApprovalSpent
+        /// An outbound call copied a span of the wearer's private data on a turn that read outside
+        /// content, so the wearer is asked first (Plan LT §2). The span itself is never logged.
+        case privateSpanCopied
     }
 
     @discardableResult
@@ -2152,8 +2155,16 @@ enum PrivacyLog {
         /// (`detail`, e.g. `playAndRecord-mixable`). `commandDropped` is a media command that
         /// arrived and fired nothing; `state` is why (`notClaimed`, `disabled`, `coalesced`,
         /// `unmapped`, `debounced`) and `command` the command's name. `released` carries the
-        /// condition that won in `state`.
+        /// condition that won in `state`. `pairedResume` in `commandDropped` is the `play` half of a
+        /// pause-then-play pair under `StandbyClaimPolicy.pauseThenResume` (Plan LT §4).
         case claimLapsed, claimChecked, commandDropped
+        /// Plan LT §4. Under `StandbyClaimPolicy.pauseThenResume`, the standby claim's silent player
+        /// paused on a tap (`claimPaused`) and resumed after the delay or on the next command
+        /// (`claimResumed`), with the shared session's shape in `detail`.
+        case claimPaused, claimResumed
+        /// Plan LT §7. The glasses read as taken off before this connection had read them worn,
+        /// so the doff grace was not started.
+        case doffBeforeDon
         /// Plan GM. A glance surface (a map card) the watch push refused: `reason` is the codec's
         /// case (`overBudget`, `encodingFailed`) and `count` the encoded bytes. Nothing about the
         /// card itself — no place name, no coordinate.

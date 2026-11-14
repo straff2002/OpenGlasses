@@ -502,4 +502,72 @@ final class OutboundFrameConsumerTests: XCTestCase {
         XCTAssertTrue(parkingHits.contains { $0.text.contains("filteredOrUnavailable(") })
         XCTAssertFalse(parkingHits.contains { $0.text.contains("latestFrame") })
     }
+
+    // MARK: - A captured screen (Plan LT §1)
+
+    /// `onDevicePreview` is unfiltered because its pixels stay on the phone's screen. Every
+    /// consumer under it has to say what it draws when the screen itself is leaving the device,
+    /// and no other consumer claims a switch it has no reason for.
+    func testEveryOnDevicePreviewConsumerSwitchesWhenTheScreenIsCaptured() {
+        for consumer in OutboundFrameConsumer.allCases {
+            if consumer.scope == .onDevicePreview {
+                XCTAssertNotNil(consumer.switchesWhenCaptured,
+                                "\(consumer.rawValue) shows raw pixels on a captured screen")
+            } else {
+                XCTAssertNil(consumer.switchesWhenCaptured, consumer.rawValue)
+            }
+        }
+        XCTAssertEqual(OutboundFrameConsumer.livePreview.switchesWhenCaptured, .toRelayFrames)
+        XCTAssertEqual(OutboundFrameConsumer.phoneViewfinder.switchesWhenCaptured, .toBlank)
+        // The scope's promises stay as they were: still unfiltered, still never off the device.
+        XCTAssertEqual(PrivacyFilterScope.onDevicePreview.isFiltered, false)
+        XCTAssertEqual(PrivacyFilterScope.onDevicePreview.leavesTheDevice, false)
+    }
+
+    /// The view that hosts both previews reads the policy for each — the glasses preview with the
+    /// relay as its filtered source, the viewfinder with none — and takes the filtered frames from
+    /// the relay, not from a blur of its own.
+    func testThePreviewHostReadsTheCapturePolicyForBothSurfaces() throws {
+        let host = OutboundFrameConsumer.capturedScreenPolicyHost
+        let path = Self.sourcesRoot.appendingPathComponent("App/Views/\(host).swift")
+        let code = try String(contentsOf: path, encoding: .utf8)
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.hasPrefix("//") && !$0.hasPrefix("///") }
+            .joined(separator: "\n")
+        XCTAssertEqual(code.components(separatedBy: "PreviewCapturePolicy.decide(").count - 1, 2,
+                       "one decision per preview surface")
+        XCTAssertTrue(code.contains("hasFilteredSource: true"))
+        XCTAssertTrue(code.contains("hasFilteredSource: false"))
+        XCTAssertTrue(code.contains("PreviewCapturePolicy.resolve("),
+                      "a filtered decision is resolved against the frame's age, so a stale frame blanks")
+        let hostHits = try allHits().filter { $0.type == host }
+        XCTAssertTrue(hostHits.contains { $0.text.contains("outboundFrames.publisher") },
+                      "the captured preview draws the relay's frames")
+        XCTAssertFalse(hostHits.contains { $0.text.contains(".filtered(") },
+                       "no second blur pass in the preview")
+        for consumer in OutboundFrameConsumer.allCases where consumer.switchesWhenCaptured != nil {
+            XCTAssertTrue([host, "PhoneViewfinder"].contains(consumer.owningType), consumer.rawValue)
+        }
+    }
+
+    /// The viewfinder cannot blank itself — it is a layer — so it must only ever be drawn by the
+    /// host that applies the policy.
+    func testThePhoneViewfinderIsDrawnOnlyByThePolicyHost() throws {
+        guard let enumerator = FileManager.default.enumerator(at: Self.sourcesRoot,
+                                                              includingPropertiesForKeys: nil) else {
+            return XCTFail("Could not enumerate sources")
+        }
+        var drawers: [String] = []
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let code = try String(contentsOf: url, encoding: .utf8)
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.hasPrefix("//") }
+            if code.contains(where: { $0.contains("PhoneViewfinder(session:") }) {
+                drawers.append(url.deletingPathExtension().lastPathComponent)
+            }
+        }
+        XCTAssertEqual(drawers, [OutboundFrameConsumer.capturedScreenPolicyHost])
+    }
 }

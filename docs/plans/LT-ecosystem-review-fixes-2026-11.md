@@ -1,7 +1,8 @@
 # Plan LT — Fixes from the November 2026 Ecosystem Review (our own defects, found by looking at adjacent work)
 
-**Status:** 📝 Drafted 2026-11-14 — nothing implemented. All four [decisions](#decisions-for-greig) taken
-2026-11-14 as recommended.
+**Status:** 🚧 P0 built 2026-11-14 (items 1–7, headless; see [As built](#as-built)); the P1 device checks owed,
+then a short follow-up PR settling the defaults of items 4 and 6. All four [decisions](#decisions-for-greig)
+taken 2026-11-14 as recommended.
 **Track:** Hardening. Privacy, the watch, temple taps, wake word, Gemini Live audio and vision, glasses
 lifecycle, the web mirror.
 **Builds on:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (`EgressScreen`), Plan [LN](LN-memory-manners.md) §3 (the turn's
@@ -212,6 +213,204 @@ One PR for P0, as the house rhythm prefers; the device checks follow.
 - **P1 — device checks.** The screen-capture switch with a screen recording, a FaceTime share and AirPlay; item 4's
   tap counts; item 6's two A/B runs; a watch photo with the glasses off and with a capture failure. Each result
   goes in As built, and items 4 and 6 settle their defaults in a short follow-up PR.
+
+## As built
+
+### P0, items 1–3 (2026-11-14)
+
+**Item 1 — the preview while the screen is captured.**
+- `ScreenCaptureState` (`Services/Vision/ScreenCaptureState.swift`): one `@MainActor` observable, `shared`,
+  publishing `isCaptured`. It reads `sceneCaptureState` from the foreground window scene's traits, watches the
+  trait on that scene's key window (`registerForTraitChanges([UITraitSceneCaptureState.self])`; a window inherits
+  the scene's traits, and a window is certain to be trait-observable), re-picks the scene on scene activation and
+  foreground, and listens for `UIScreen.capturedDidChangeNotification`. An `.unspecified` reading falls back to
+  that scene's screen's `isCaptured`, read through a small protocol so the deprecated flag compiles without a
+  warning. The plan's `UIScreen.main` fallback became the scene's own screen (`UIScreen.main` is deprecated).
+- `PreviewCapturePolicy` (`Services/Vision/PreviewCapturePolicy.swift`), pure:
+  `decide(blurOn:isCaptured:scope:hasFilteredSource:) → .raw | .filtered | .blank` and
+  `resolve(_:filteredFrameAge:)`, which turns `.filtered` into `.blank` unless the relay's latest frame is at most
+  `filteredFrameWait` (0.5 s) old. The plan's `(blurOn, isCaptured, scope)` gained `hasFilteredSource`, because
+  the two preview surfaces differ: the glasses frames pass the relay, the phone viewfinder's never do.
+- `LivePreviewView` applies it to both surfaces. The glasses preview draws `outboundFrames.publisher`'s frames
+  (kept only while the decision is `.filtered`, cleared when capture stops) inside a 0.25 s `TimelineView`, so a
+  relay that stops producing blanks the picture within 0.5 s; before the first filtered frame it is blank. The
+  phone viewfinder is not drawn at all while captured with the blur on (no filtered source), and its "not
+  blurred" caption goes with it. The blank shows "Preview hidden while the screen is recorded or shared."; the
+  filtered picture's accessibility label says faces are blurred. A held-picture state with no frame yet keeps
+  its existing placeholders (they show no pixels).
+- Roster: `OutboundFrameConsumer.switchesWhenCaptured` (`.toRelayFrames` for `.livePreview`, `.toBlank` for
+  `.phoneViewfinder`, nil elsewhere) and `capturedScreenPolicyHost` (`LivePreviewView`). Mechanism stays
+  `.exemptByScope`, scope stays `.onDevicePreview`, `leavesTheDevice` stays false; the scope's and both cases'
+  documentation say why.
+- Privacy copy: the glasses variant of the Blur Bystander Faces explanation (`BystanderBlurSwitch`) gains "While
+  the screen is recorded, shared or mirrored, the camera preview shows only blurred frames; a screenshot, or
+  another device filming the phone, isn't covered." The same edit drops that string's stale sentence about faces
+  enrolled for recognition (face recognition was removed 2026-11-13). The key changed, so it needs the next
+  catalog sync and its translations.
+
+**Item 2 — native tools that send text out.**
+- `NativeEgressProfile` (`Services/Security/NativeEgressProfile.swift`): argument keys that leave, the
+  `NetworkRoute` (nil for MapKit, Apple's own request), and the verb the ask opens with. Declared through a new
+  `NativeTool.egressProfile` requirement (default nil) by `WebSearchTool` (`query`, `.webSearch`),
+  `LocationSearchTool` (`query`, Apple Maps) and `NewsTool` (`topic`, `.newsHeadlines`). `translate` has none.
+- `NativeToolRouter` screens a profiled native call's outbound arguments with `EgressScreen.evaluate(…, .block)`
+  before authorization, beside the MCP screen; a hit is refused with a "do not retry" reason naming the pattern
+  (never the value) and `PrivacyLog` `egressWithheld`, and a plan's preflight treats it as nothing to ask.
+  Unprofiled arguments of the same call are not screened. **Note:** `SecretPatterns` has no card-number
+  pattern today, so "card numbers" in Design §2 is not yet true; and because it does match e-mail addresses and
+  NZ IRD-shaped numbers, `.block` refuses a search containing one.
+- `PrivateSpanCheck` (`Services/Security/PrivateSpanCheck.swift`), pure. `readExternalUntrusted` is
+  `PromptInjectionPolicy.isUntrustedOutput` over completed calls, minus our own stores (`memory_search`, `brain`,
+  `my_memory`, `notes_vault`, `health_vault`, `document_knowledge`, `remember_scene`, `session_search`); a call
+  still running has read nothing. The private mark is a table, `privateOutputTools`, rather than a property on
+  each tool: health vault, Apple Health (`health_summary`, `health_check`), notes (`notes_vault`, `list_notes`,
+  `contextual_note`, `project_note`), memory (`memory_search`, `my_memory`, `brain`, `session_search`,
+  `remember_scene`), `document_knowledge`, `lookup_contact`, `calendar`, `reminder` and `field_session` (the
+  job's customer details), native only. No tool reads messages back, so messages are not on it. A copy is five
+  consecutive folded words, or a 24-character window inside a run with no whitespace; the outbound text is
+  hashed, each private output is walked once and looked up, nothing of it is kept.
+- The ledger (`AttemptToolLedger`) gains `privateSpanReads`, `readExternalUntrusted`, `readPrivateOutput` and
+  `hasCallInFlight(tool:)`. The router reads it through a new `turnLedger` seam (AppState wires the Direct-mode
+  turn's ledger) and applies the rule only to a call the ledger shows in flight — so live sessions, which keep no
+  ledger, are not judged against an earlier turn's reads (and are not covered).
+- The answer rides `ToolAuthorizationPolicy.Input.privateSpan` (`PrivateSpanAsk`), applied last and only
+  strengthening: an `allow` becomes a bound `.confirm` whose summary is what would be sent, where, and where the
+  copied part is from ("Search the web for “…”. It includes something from your health notes."); an ask already
+  being made gets that last sentence appended. It covers native profiled tools, MCP calls (after `EgressScreen`,
+  on the screened arguments), user-authored HTTP tools and the gateway. A plan step's grant is not spent on a call
+  the rule caught: it asks on its own. `PrivacyLog` gains `privateSpanCopied` (tool name only).
+
+**Item 3 — the watch's photo commands.**
+- `PhotoTurnResult` (`Services/WatchPhotoReply.swift`) is returned, `@discardableResult`, by
+  `capturePhotoAndSend(prompt:phoneCameraFallback:)` and `captureAndAnalyzePhoto(glassesOnly:phoneCameraFallback:)`.
+  It has one case more than the plan: `.phoneCameraOpened`, for the existing no-glasses path that presents the
+  phone camera (never a watch request's result). `phoneCameraFallback: false` also stops the capture's own phone
+  fallback.
+- `WatchPhotoReply.dictionary(for:)`: `response` only for `.answered`, else `status: failed` and `error` with a
+  short line ("Glasses not connected.", "Couldn't take the photo.", …). `WatchPhotoGate` answers a second request
+  `.busy` at once, and also when the app is mid-turn (`isProcessing`, the same check dictation makes).
+- `WatchConnectivityManager`: `photo`, `describe`, the photo and prompt quick actions and the custom-prompt
+  default all go through one `watchPhotoTurn` with `phoneCameraFallback: false`; the recording quick action no
+  longer sends the last answer as its reply.
+- Watch: `WatchConnectivityService` already turns `error` into the command's error. `WatchMainView` drew the
+  error under the previous answer, so a quick action that comes back with an error now hides that answer until
+  the next action.
+
+**Tests:** `PreviewCapturePolicyTests`, `OutboundFrameConsumerTests` (three capture-rule tests),
+`NativeEgressProfileGuardTests` (the scrape covers `URLSession`, `BoundedHTTPClient` and `MKLocalSearch(`; five
+justified exemptions: QR context, Home Assistant, aircraft overhead, gateway skills, currency),
+`NativeToolRouterEgressTests` (the gateway half is covered at the policy and phrasing level, not through a live
+bridge), `PrivateSpanCheckTests`, `WatchPhotoReplyTests` (pure mapping and gate, plus a source read of the
+handler, since `AppState` cannot be stood up headless). 38 new tests (7 + 3 + 4 + 9 + 10 + 5), all passing on the
+iPhone 17 Pro simulator alongside the existing router, MCP, frame-roster, privacy-filter, tool-effect, privacy-log
+and watch classes (352 tests, 0 failures). Full suite and Release build not yet run.
+
+**Left after items 1–3:** the P1 device checks (a screen recording, a FaceTime share and AirPlay; a watch photo
+with the glasses off and with a capture failure); the catalog sync for the new strings. Candidates the guard does
+not reach yet: `qr_context` fetches a model-passed URL, and directions or geocoding tools that send a typed place
+to Apple are not on the network scrape.
+
+### P0, items 4–7 (2026-11-14)
+
+**Item 4 — temple taps after the first.**
+- `StandbyClaimPolicy` (`Services/Triggers/StandbyClaimPolicy.swift`), pure: `.keepPlaying` (the default, today's
+  behaviour) or `.pauseThenResume`. In the second, a `pause` or `togglePlayPause` while the silent player plays is
+  `.pause(resumeAfter: 3)`; the next command of any kind, or the delay, is `.resume`; a command during the pause is
+  still a tap, except a `play` within 0.6 s of the pause, which is the same tap (`countsAsTap: false`).
+- `MediaTriggerService` reads the mode (`Config.standbyClaimMode`, key `standbyClaimMode`) at each claim, shows every
+  command under a standby claim to the policy before the decoder (so a paused player resumes on the next command
+  whether or not it fires a tap), times the resume with the same injected `sleep` as the settle re-check, and forgets
+  a pause on release or a fresh claim. Session control never pauses (no player). The dropped half of a pair logs
+  `commandDropped` with `pairedResume`; pause and resume log `claimPaused` / `claimResumed` with the session shape.
+- `NowPlayingClaiming` gains `pauseStandby()` / `resumeStandby()`. `SilentNowPlayingClaimer` pauses the player and
+  publishes `MPNowPlayingInfoPropertyPlaybackRate: 0`, and its `standbyClaimLive` stays true while paused this way,
+  so the claim's health check does not read a deliberate pause as a lapsed claim and retake it. A pause during the
+  session's activation holds the pending start back; the resume plays it.
+- Developer panel → Temple Taps → "Pause after a tap" (glasses builds only); switching it retakes the claim.
+  The existing Temple Taps test mode announces every tap heard; a dropped command is in the support log, not spoken.
+- **Note:** the service's 1 s tap debounce (`TriggerGate`) still drops a second tap inside a second of the last one
+  that fired, in either mode, so the 0.6 s pair window only changes what the log says for a quick pair.
+- **P1 must check:** on a Gen 2 and a Gen 1, ten single and five double taps after launch and after the wake word has
+  reconfigured the session, in each mode, counting taps heard (test mode) against taps made. Also whether a rate of 0
+  makes the lock screen show a paused widget (harmless) and whether iOS gives Now Playing to another app during the
+  3 s pause.
+
+**Item 5 — wake-word alternatives only at the start.**
+- `WakeAlternativePosition` (`Services/Flow/WakeAlternativePosition.swift`), pure: `isStartBound` (an alternative —
+  tokens differ from its primary's — whose every token the lexicon knows), `utteranceStarts(tokenCount:segments:)`
+  (token 0, and the first token of a segment after a gap of at least 0.7 s; segments that do not tokenise to the
+  transcript's count are not trusted, so only 0), `allowedStarts` (each start, and the next token when the start is an
+  opener) and `openers(forLanguage:)` (hey, ok, okay, hi everywhere; a few greetings for de, fr, es, it, pt, nl).
+- `WakePhraseMatcher.Candidate` gains `startOnly`; `match` and a new `detailedMatch` honour it in all three passes
+  (exact whole-token, fuzzy windows begin only at allowed starts, unspaced-script tokens only from the token's
+  beginning). `WakeWordService` now calls `detailedMatch` instead of its own copy of the three passes, passes the
+  recogniser's `bestTranscription.segments`, and marks candidates with `WakeLexicon` (`UITextChecker` in the
+  recogniser's locale, cached per word; a locale with no dictionary makes nothing ordinary, so behaviour there is
+  unchanged). Transliterated candidates inherit the mark.
+- **Note:** only the alternative is bound. A primary's own fuzzy allowance can still reach an ordinary phrase
+  anywhere ("hey cloud" is two edits from "hey claude"), and an invented-word alternative can sit within fuzzy reach
+  of ordinary words ("aven kin" is one edit from "even kin"); both are as before. Persona alternatives such as "read
+  this" and "travel mode" are now start-only too.
+- **P1 must check:** partial results on the device — whether segment timestamps arrive before a result is final
+  (if not, the gap rule only helps on final results, and the first token is the only start for partials).
+
+**Item 6 — Gemini Live turn starts and deliberate stills.**
+- `GeminiLiveStartSensitivity` (`.high`, the default, or `.low`) is a `GeminiLiveSetup.body` parameter, read from
+  `Config.geminiLiveStartSensitivity` (key `geminiLiveStartSensitivity`) at each setup. Developer panel → Gemini Live
+  → "Less sensitive turn starts". End sensitivity, silence and padding are unchanged.
+- `LiveInjectionEnvelope.geminiStill(base64JPEG:)` replaces `geminiImage`: a user `clientContent` turn with the image
+  as `inlineData` then the line "This photo was just taken by the wearer's camera; answer about it.", and
+  `turnComplete: false`. `GeminiLiveService.sendHighResImage` (both `look_closely` and an injected pin) uses it; the
+  ~1 fps stream stays `realtimeInput.video`. OpenAI and the JSON adapters are untouched.
+- **Note:** the plan's "photo tool" and "dwell capture" do not reach Gemini Live through `sendHighResImage`: the only
+  callers are `look_closely` and the pinned frame. A Live `clientContent` message interrupts generation in progress,
+  so a pin injected while the model is speaking may now cut it off where the video lane did not.
+- **P1 must check:** the café and van A/B for start sensitivity; the twenty object questions old envelope against new
+  (the old one is in git history at ec97c4958); and that `look_closely`'s still, sent while its function call is
+  pending, is accepted before the tool response rather than refused or answered on its own.
+
+**Item 7 — small fixes.**
+- `PCMByteCarry` (`Services/Audio/PCMByteCarry.swift`), pure: holds the bytes past the last whole frame
+  (`bitsPerSample / 8 × channels`) and puts them in front of the next chunk. `RealtimeAudioEngine.playAudioOnQueue`
+  aligns every chunk first, even one it then drops, so the stream keeps its boundary; the carry is cleared in
+  `resetPlaybackProgress` (turn complete), `stopPlaybackOnQueue` (barge-in) and `stopCapture`, not on a graph rebuild
+  mid-reply.
+- `GlassesConnectionSnapshot.seenWornThisConnection`: set by a connected `liveWorn == true`, cleared whenever the phase
+  is not connected. `GlassesSleepPolicy.doffGraceApplies` gains `seenWornThisConnection` (required, so no caller can
+  forget it); `AppState.glassesWornChanged` passes it at the start and the end of the grace, and logs a first "off"
+  as `doffBeforeDon` instead of timing it.
+- `DeviceSessionFailureReason.sessionEndedByDevice` adds "If it ends just after it starts, open Meta AI and check for a
+  glasses update." **Deviation:** with the new sentence the old notice was 218 characters and the spoken-error gate
+  (`SpokenErrorPolicy.looksHuman`) refuses anything over 200, so the rest was shortened: "End any broadcast in Meta
+  AI, or close the glasses in their case for a minute." (194 in all).
+- `WebHUDLauncher` (`Services/Display/WebHUD/WebHUDLauncher.swift`): `/icon-192.png`, `/icon-512.png` (the
+  `AvenkinMark` asset drawn white inside the middle 60 % of a black square, scale 1, cached) and
+  `/manifest.webmanifest` (`application/manifest+json`: name, `display: standalone`, black theme and background, both
+  icons). All need `?t=`, like `hud.json`; HIPAA and non-GET refuse them as everything else. Because the token lives in
+  the page's hash, the `<head>` carries the `manifest`, `icon` and `apple-touch-icon` links with no `href`, and the
+  page script fills them in with the token; the manifest's icon URLs carry it too, and its `start_url` is `/#t=<token>`
+  so a launcher opens a page that can poll. Purpose `any`, not `monochrome`: that purpose reads only alpha and the
+  icon is opaque. ID item 3's lifecycle notes were already added with the docs PR.
+- **P1 must check:** "Add to Home Screen" on the Display web view and on an Android browser, with the icon showing,
+  and that rotating the token breaks the installed launcher (expected) rather than serving the old one.
+
+**Cleanups in the same commit:** the `watchPhotoTurn` comment sat under `startGuidance`'s; each is now on its own
+function. The watch's recording quick action replies `status` only (the watch sets its status and taps success,
+with no answer shown) and now says "Recording didn't start." as an `error` when a start did not take, which the
+watch shows in place of an answer.
+
+**Tests:** `StandbyClaimPolicyTests` (9), six `MediaTriggerServiceTests` additions (keep playing never pauses; pause,
+live while paused, resume after the delay; a tap during the pause; the pair window; release forgets a pause; session
+control never pauses), `WakeAlternativePositionTests` (the 36-sentence corpus wakes on none and did wake before the
+rule; the same alternatives at the start, after an opener and after a 0.7 s pause wake; fuzzy and unspaced passes
+keep the rule; the system lexicon on the runtime), `GeminiLiveStillEnvelopeTests` (envelope shape, the two paths
+read from source, the sensitivity default and setup), `RealtimeAudioCarryTests` (even only, odd-then-odd,
+odd-then-interrupt, stereo, and the engine's three clears read from source), three `GlassesSleepPolicyTests`
+additions, `DeviceSessionFailureNoticeTests`, `WebHUDMirrorServerTests` (token on each path, HIPAA and read-only, PNG
+of the right size, manifest content, the page head). `LiveInjectionTests` loses the old video-lane image test.
+54 new tests. On the iPhone 17 Pro simulator: the new and related classes (37 classes, 499 tests; one float-edge
+assertion in the pair-window test fixed and its two classes re-run, 58 tests, 0 failures), then the full unit suite
+(16,948 tests, 16 skipped, 0 failures) and a Release build for the simulator, both green. **P0 exit met.**
 
 ## Decisions for Greig
 

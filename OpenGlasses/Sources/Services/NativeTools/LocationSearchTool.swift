@@ -12,6 +12,8 @@ import MapKit
 /// its straight-line distance and direction — and publishes a `place` card instead.
 final class LocationSearchTool: NativeTool, @unchecked Sendable {
     let name = "find_nearby"
+    /// Plan LT §2: the query is model-written and goes to Apple Maps.
+    var egressProfile: NativeEgressProfile? { .findNearby }
     let description = """
         Find nearby places like restaurants, cafes, gas stations, pharmacies, ATMs, etc. Uses the user's current location; \
         results come closest first, with their distances. Set nearest to true for "how far is <place>?" or "which way is <place>?": it answers with the closest match's \
