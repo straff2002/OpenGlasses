@@ -148,14 +148,16 @@ final class VaultRegistry {
 
     /// User-installed (Plan H) manifests, loaded from the import registry. Cached; call
     /// `reloadUserManifests()` after an import/uninstall.
-    private var userManifests: [VaultManifest] = VaultImporter.installedManifests()
+    /// Plan LV: a published vault's company layer is laid over it here (`VaultCompanyLayer.layered`),
+    /// so every reader sees the merged file list and rules.
+    private var userManifests: [VaultManifest] = VaultImporter.installedManifests().map(VaultCompanyLayer.layered)
 
     /// All manifests known to the registry, regardless of unlock state (built-in + user-installed).
     var allManifests: [VaultManifest] { Self.builtInManifests + userManifests.filter { !$0.isPersonalLibrary } }
 
     /// Re-read user-installed manifests after an import or uninstall.
     func reloadUserManifests() {
-        userManifests = VaultImporter.installedManifests()
+        userManifests = VaultImporter.installedManifests().map(VaultCompanyLayer.layered)
         storeCache.removeAll()
     }
 

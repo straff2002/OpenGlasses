@@ -10,6 +10,19 @@ struct CompanyVaultState: Codable, Equatable, Sendable {
         var name: String
         var version: String
         var updatedAt: Date
+        // Plan LV — optional, absent from a state written before them, which reads as before.
+        /// The partner whose vault this is, as installed: "from ⟨name⟩".
+        var publisherName: String? = nil
+        /// The partner's own version number of what is installed: "version ⟨n⟩".
+        var publisherVersion: Int? = nil
+        /// A company layer: the vault id it adds files to.
+        var extends: String? = nil
+    }
+
+    /// Plan LV: a published vault its partner took off this phone, for the notice that names them.
+    struct RemovedPublished: Codable, Equatable, Sendable {
+        var name: String
+        var publisher: String
     }
 
     /// Why a vault is not yet as the catalog lists it, for its row.
@@ -44,6 +57,8 @@ struct CompanyVaultState: Codable, Equatable, Sendable {
     var downloading: [String: [String]] = [:]
     /// Vaults the company removed from this phone, by name, for the notice.
     var removedNames: [String] = []
+    /// Published vaults their partner removed from this phone (Plan LV), for the notice.
+    var removedPublished: [RemovedPublished] = []
     var lastCheckedAt: Date?
 
     static let catalogFailureKey = ""
@@ -63,12 +78,13 @@ struct CompanyVaultState: Codable, Equatable, Sendable {
         waits = (try? c.decodeIfPresent([String: Wait].self, forKey: .waits)) ?? [:]
         downloading = (try? c.decodeIfPresent([String: [String]].self, forKey: .downloading)) ?? [:]
         removedNames = (try? c.decodeIfPresent([String].self, forKey: .removedNames)) ?? []
+        removedPublished = (try? c.decodeIfPresent([RemovedPublished].self, forKey: .removedPublished)) ?? []
         lastCheckedAt = try? c.decodeIfPresent(Date.self, forKey: .lastCheckedAt)
     }
 
     /// What the plan reads: the vaults and manuals installed, as recorded.
     var installed: CompanyVaultPlan.Installed {
-        .init(vaults: vaults.mapValues { .init(packId: $0.packId, version: $0.version) }, manuals: manuals)
+        .init(vaults: vaults.mapValues { .init(packId: $0.packId, version: $0.version, extends: $0.extends) }, manuals: manuals)
     }
 
     /// Whether a pass has anything left to try without a new generation.
@@ -95,6 +111,8 @@ enum CompanyVaultPlan {
     struct InstalledVault: Equatable, Sendable {
         let packId: String
         let version: String
+        /// Plan LV: a company layer's base vault id; nil for every other vault.
+        var extends: String? = nil
     }
 
     struct Installed: Equatable, Sendable {
@@ -176,28 +194,54 @@ enum CompanyVaultPlan {
         var steps: [Step] = []
         var free = conditions.freeBytes
         let listed = Set(catalog.vaults.map(\.vaultId))
+        // Plan LV: a company layer changes with its base. A job on the base uses the layer too.
+        func inUse(_ vaultId: String, extends base: String?) -> Bool {
+            conditions.job.uses(vaultId) || base.map(conditions.job.uses) == true
+        }
 
-        // A vault the company removed leaves after the job that is using it.
-        for vaultId in installed.vaults.keys.sorted() where !listed.contains(vaultId) {
-            // A row the phone refused is not a removal: its vault stays as it is.
-            guard catalog.problems[vaultId] == nil else { continue }
-            steps.append(conditions.job.uses(vaultId)
+        // A vault the company removed leaves after the job that is using it. Layers first, so a
+        // layer never outlives the vault it adds to.
+        let gone = installed.vaults.keys.filter { !listed.contains($0) }
+            .sorted { (installed.vaults[$0]?.extends != nil ? 0 : 1, $0) < (installed.vaults[$1]?.extends != nil ? 0 : 1, $1) }
+        for vaultId in gone {
+            let base = installed.vaults[vaultId]?.extends
+            // A row the phone refused is not a removal: its vault stays as it is. Except a layer
+            // whose base has left: the layer goes with it (Plan LV).
+            let baseLeft = base.map { !listed.contains($0) } ?? false
+            guard catalog.problems[vaultId] == nil || baseLeft else { continue }
+            steps.append(inUse(vaultId, extends: base)
                          ? .waitForJob(vaultId: vaultId, version: nil, removal: true) : .remove(vaultId: vaultId))
         }
 
-        // Vaults first: small, and on any network.
+        // Vaults first: small, and on any network. A company layer after the vault it extends,
+        // and only once that vault is ready (Plan LV).
+        let ordered = catalog.vaults.filter { !$0.isCompanyLayer } + catalog.vaults.filter(\.isCompanyLayer)
         var ready: [String] = []
-        for vault in catalog.vaults {
+        var baseChanged = Set<String>()
+        for vault in ordered {
             if let minimum = vault.minAppBuild, conditions.currentBuild < minimum {
                 steps.append(.needsNewerApp(vaultId: vault.vaultId, minBuild: minimum))
+                continue
+            }
+            if let base = vault.extends, !ready.contains(base) {
+                // The vault it extends is not here yet, or waits: the layer waits with it, and says
+                // so when what holds it is the open job.
+                let current = installed.vaults[vault.vaultId]
+                let pending = current == nil || (!vault.isFrozen && (current?.version != vault.version || current?.packId != vault.id))
+                if pending, inUse(vault.vaultId, extends: base) {
+                    steps.append(.waitForJob(vaultId: vault.vaultId, version: vault.version, removal: false))
+                }
                 continue
             }
             let size = Int64(vault.sizeBytes)
             if let current = installed.vaults[vault.vaultId] {
                 // Plan LV: a frozen vault's publisher has ended. The phone keeps the version it has
-                // and compares none; its manuals, the company's own, still follow below.
-                if !vault.isFrozen, current.version != vault.version || current.packId != vault.id {
-                    guard !conditions.job.uses(vault.vaultId) else {
+                // and compares none; its manuals, the company's own, still follow below. A layer is
+                // laid again over a base that changed, so it is checked against the new base.
+                let changed = current.version != vault.version || current.packId != vault.id
+                    || vault.extends.map(baseChanged.contains) == true
+                if !vault.isFrozen, changed {
+                    guard !inUse(vault.vaultId, extends: vault.extends) else {
                         steps.append(.waitForJob(vaultId: vault.vaultId, version: vault.version, removal: false))
                         continue
                     }
@@ -207,15 +251,22 @@ enum CompanyVaultPlan {
                     }
                     free -= size
                     steps.append(.update(vault, from: current.version))
+                    baseChanged.insert(vault.vaultId)
                 }
             } else {
-                // A new vault may arrive during a job: nothing the job uses changes.
+                // A new vault may arrive during a job: nothing the job uses changes. A new layer
+                // changes the vault the job is on, so it waits.
+                if vault.isCompanyLayer, inUse(vault.vaultId, extends: vault.extends) {
+                    steps.append(.waitForJob(vaultId: vault.vaultId, version: vault.version, removal: false))
+                    continue
+                }
                 guard free >= needed(for: size) else {
                     steps.append(.notEnoughSpace(vaultId: vault.vaultId, shortfall: needed(for: size) - free))
                     continue
                 }
                 free -= size
                 steps.append(.install(vault))
+                baseChanged.insert(vault.vaultId)
             }
             ready.append(vault.vaultId)
         }
@@ -270,11 +321,64 @@ struct CompanyVaultRow: Equatable, Identifiable, Sendable {
     let offersDownloadNow: Bool
     let isProblem: Bool
 
+    // Plan LV — published vaults. Nil on every other vault's row, which reads as before.
+
+    /// "from ⟨partner⟩ · version ⟨n⟩": whose vault this is, and the partner's own version.
+    var byline: String? = nil
+    /// "No longer updated by ⟨partner⟩ · version ⟨n⟩ kept", for a vault whose partner has ended.
+    var frozenNote: String? = nil
+    /// A company layer: "Adds to ⟨vault⟩".
+    var layerNote: String? = nil
+    /// The manuals the vault was written against, against the ones this phone holds.
+    var checklist: ManualChecklist? = nil
+
     var id: String { vaultId }
 
+    /// What a published vault's row says about its expected manuals, and the list it opens.
+    struct ManualChecklist: Equatable, Sendable {
+        /// "9 of 12 manuals · 2 a different revision · 1 missing".
+        let summary: String
+        let entries: [Entry]
+        /// Whether any expected manual is missing or held at another revision.
+        let hasDifferences: Bool
+
+        struct Entry: Equatable, Identifiable, Sendable {
+            let id: String
+            /// The manual's title, with its edition when the vault names one.
+            let title: String
+            /// "Held", "A different revision", "Missing".
+            let status: String
+            let state: ExpectedManualMatch.Status
+        }
+
+        static func make(_ summary: ExpectedManualMatch.Summary) -> ManualChecklist? {
+            guard summary.expectedCount > 0 else { return nil }
+            var parts = [String(localized: "\(summary.heldCount) of \(summary.expectedCount) manuals")]
+            if summary.differentRevisionCount > 0 {
+                parts.append(String(localized: "\(summary.differentRevisionCount) a different revision"))
+            }
+            if summary.missingCount > 0 { parts.append(String(localized: "\(summary.missingCount) missing")) }
+            let entries = summary.entries.map { entry -> Entry in
+                let title = entry.expected.edition.map { String(localized: "\(entry.expected.title) (\($0))") }
+                    ?? entry.expected.title
+                let status: String
+                switch entry.status {
+                case .matched: status = String(localized: "Held")
+                case .differentRevision: status = String(localized: "A different revision")
+                case .missing: status = String(localized: "Missing")
+                }
+                return Entry(id: entry.expected.key, title: title, status: status, state: entry.status)
+            }
+            return ManualChecklist(summary: parts.joined(separator: " · "), entries: entries,
+                                   hasDifferences: summary.differentRevisionCount + summary.missingCount > 0)
+        }
+    }
+
     /// The rows for a state and the catalog it was planned from, in the catalog's order, then any
-    /// vault still installed that the catalog no longer lists.
-    static func rows(state: CompanyVaultState, catalog: CompanyVaultCatalog.Verified?) -> [CompanyVaultRow] {
+    /// vault still installed that the catalog no longer lists. `documents` are the manuals each
+    /// installed vault holds, for a published vault's checklist.
+    static func rows(state: CompanyVaultState, catalog: CompanyVaultCatalog.Verified?,
+                     documents: (String) -> [VaultDocument] = { _ in [] }) -> [CompanyVaultRow] {
         var order = catalog?.vaults.map(\.vaultId) ?? []
         for id in state.vaults.keys.sorted() where !order.contains(id) { order.append(id) }
         for id in state.waits.keys.sorted() where !order.contains(id) { order.append(id) }
@@ -285,11 +389,31 @@ struct CompanyVaultRow: Equatable, Identifiable, Sendable {
             let installed = state.vaults[id]
             let listed = catalog?.vault(id)
             let name = installed?.name ?? listed?.name ?? id
-            return CompanyVaultRow(vaultId: id, name: name, version: installed?.version, updatedAt: installed?.updatedAt,
-                                   status: status(name: name, failure: state.failures[id], wait: state.waits[id],
-                                                  downloading: state.downloading[id] ?? [], installed: installed != nil),
-                                   offersDownloadNow: { if case .wifi? = state.waits[id] { return true }; return false }(),
-                                   isProblem: state.failures[id] != nil || { if case .space? = state.waits[id] { return true }; return false }())
+            var row = CompanyVaultRow(vaultId: id, name: name, version: installed?.version, updatedAt: installed?.updatedAt,
+                                      status: status(name: name, failure: state.failures[id], wait: state.waits[id],
+                                                     downloading: state.downloading[id] ?? [], installed: installed != nil),
+                                      offersDownloadNow: { if case .wifi? = state.waits[id] { return true }; return false }(),
+                                      isProblem: state.failures[id] != nil || { if case .space? = state.waits[id] { return true }; return false }())
+            // The partner as installed, else as listed: the version people talk about is the one
+            // on this phone.
+            let partner = installed?.publisherName ?? listed?.publisher?.name
+            let partnerVersion = installed?.publisherVersion ?? (installed == nil ? listed?.publisher?.version : nil)
+            if let partner {
+                row.byline = partnerVersion.map { String(localized: "from \(partner) · version \($0)") }
+                    ?? String(localized: "from \(partner)")
+                if listed?.isFrozen == true, installed != nil {
+                    row.frozenNote = partnerVersion.map { String(localized: "No longer updated by \(partner) · version \($0) kept") }
+                        ?? String(localized: "No longer updated by \(partner)")
+                }
+            }
+            if let base = listed?.extends ?? installed?.extends {
+                let baseName = state.vaults[base]?.name ?? catalog?.vault(base)?.name ?? base
+                row.layerNote = String(localized: "Adds to \(baseName)")
+            }
+            if installed != nil, let expects = listed?.expects, !expects.isEmpty {
+                row.checklist = ManualChecklist.make(ExpectedManualMatch.match(expects: expects, documents: documents(id)))
+            }
+            return row
         }
     }
 

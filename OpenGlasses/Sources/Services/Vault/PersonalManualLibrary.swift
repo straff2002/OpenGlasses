@@ -470,7 +470,9 @@ final class PersonalManualLibrary: ObservableObject {
                     let readingSource = prepared.converted ? stem + ".reading.pdf" : nil
                     if let readingSource { try fm.copyItem(at: prepared.readingPDF, to: staging.appendingPathComponent(readingSource)) }
                     let cleanTitle = String(title.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
-                    let added = VaultDocument(file: file, title: cleanTitle.isEmpty ? "My manual" : cleanTitle, source: readingSource, personalCapture: photographed, personalReadingCopy: prepared.converted ? true : nil)
+                    // Plan LV: where it came from — the technician's own, photographed or uploaded.
+                    let added = VaultDocument(file: file, title: cleanTitle.isEmpty ? "My manual" : cleanTitle, source: readingSource, personalCapture: photographed, personalReadingCopy: prepared.converted ? true : nil,
+                                              origin: photographed ? .capture : .technician)
                     let manifest = VaultManifest(id: "my-manuals", name: "My Manuals", version: "1.0.0", files: [],
                         documents: (old?.documents ?? []) + [added], gating: .init(iap: "my_manuals"))
                     try JSONEncoder().encode(manifest).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
