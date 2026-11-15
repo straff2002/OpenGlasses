@@ -45,15 +45,15 @@ enum RegistrationFlow {
     /// User-facing connection status — tells the user what to *do*, never an internal state number.
     static func status(stateRaw: Int, appName: String = RegistrationFlow.appName) -> String {
         isRegistered(stateRaw: stateRaw)
-            ? "Waiting for device…"
-            : "Approve \(appName) in the Meta AI app to continue…"
+            ? String(localized: "Waiting for device…")
+            : String(localized: "Approve \(appName) in the Meta AI app to continue…")
     }
 
     /// Status once the approval deadline passes without registration. Sized for the status
     /// capsule, and worded for both causes the deadline cannot tell apart: the wearer is still
     /// tapping through Meta AI, or Meta refused them.
     static func approvalTimedOutStatus(appName: String = RegistrationFlow.appName) -> String {
-        "Meta AI hasn't approved \(appName) yet — glasses access is invite-only."
+        String(localized: "Meta AI hasn't approved \(appName) yet — glasses access is invite-only.")
     }
 
     /// What to say *before* the hand-off to Meta AI, where a wearer Meta has not let in sees only
@@ -61,9 +61,7 @@ enum RegistrationFlow {
     /// Three testers reported exactly that on 2026-10-08. The after-the-fact copy
     /// (`notApprovedMessage`) still applies; this one spares them the round trip.
     static func beforeHandoffMessage(appName: String = RegistrationFlow.appName) -> String {
-        "Meta AI opens next to approve \(appName). Meta only completes this for testers invited to "
-            + "\(appName)'s beta, or with Developer Mode turned on in Meta AI (Settings › About › tap the "
-            + "version number five times). An \"Internal error\" in Meta AI means neither applies yet."
+        String(localized: "Meta AI opens next to approve \(appName). Meta only completes this for testers invited to \(appName)'s beta, or with Developer Mode turned on in Meta AI (Settings › About › tap the version number five times). An \"Internal error\" in Meta AI means neither applies yet.")
     }
 
     /// The full explanation for a wearer Meta did not let in.
@@ -73,8 +71,7 @@ enum RegistrationFlow {
     /// registration never completing — which, before this copy, showed them either nothing or
     /// advice about AppLink domains meant for people building the app themselves.
     static func notApprovedMessage(appName: String = RegistrationFlow.appName) -> String {
-        "Meta didn't approve \(appName) for your glasses. Glasses access is invite-only for now: "
-            + "ask to join the tester group, or turn on Developer Mode in the Meta AI app."
+        String(localized: "Meta didn't approve \(appName) for your glasses. Glasses access is invite-only for now: ask to join the tester group, or turn on Developer Mode in the Meta AI app.")
     }
 
     /// What to tell the wearer when Meta AI's callback reports a failure, or nil when the failure
@@ -109,20 +106,20 @@ enum RegistrationFlow {
         case .alreadyRegistered:
             // Unreachable from `connect()`, which handles this as success. Mapped anyway so a
             // future caller cannot turn it back into a scary string by accident.
-            return "Already registered — connecting…"
+            return String(localized: "Already registered — connecting…")
         case .metaAINotInstalled:
-            return "Install the Meta AI app and pair your glasses there first."
+            return String(localized: "Install the Meta AI app and pair your glasses there first.")
         case .networkUnavailable:
-            return "No network. Registration needs a connection — reconnect and try again."
+            return String(localized: "No network. Registration needs a connection — reconnect and try again.")
         // DAT 1.0 removed `.timeout` (not in its changelog). Our own `approvalDeadlineSeconds`
         // still bounds the wait, and whatever the SDK reports instead lands in `.unknown` or
         // `@unknown default`, whose copy already says what to do.
         case .configurationInvalid:
             return MWDATConfigCheck.message(for: .ok) ?? "This build's Meta SDK configuration is invalid."
         case .unknown:
-            return "Registration failed. Restart the glasses and try again."
+            return String(localized: "Registration failed. Restart the glasses and try again.")
         @unknown default:
-            return "Registration failed. Restart the glasses and try again."
+            return String(localized: "Registration failed. Restart the glasses and try again.")
         }
     }
     #endif
@@ -157,19 +154,19 @@ enum RegistrationFlow {
             if bundleID == publishedBundleID {
                 return notApprovedMessage(appName: appName)
             }
-            return "Glasses registration didn't complete. If you approved \(appName) in the Meta AI app and this persists, the approval link-back may not be reaching this app — on a custom build, verify the AppLink domain and associated-domains entitlement match your bundle ID."
+            return String(localized: "Glasses registration didn't complete. If you approved \(appName) in the Meta AI app and this persists, the approval link-back may not be reaching this app — on a custom build, verify the AppLink domain and associated-domains entitlement match your bundle ID.")
         case .permissionNeeded:
             return cameraAccessNeededMessage(reachability.permission, appName: appName)
         case .noDeviceSeen:
-            return "Camera access is allowed, but Meta AI hasn't shown \(appName) your glasses. Wake them, check that they're connected in the Meta AI app and that no other glasses app is using Developer Mode, then try again."
+            return String(localized: "Camera access is allowed, but Meta AI hasn't shown \(appName) your glasses. Wake them, check that they're connected in the Meta AI app and that no other glasses app is using Developer Mode, then try again.")
         case .linkDown:
-            return "Your glasses are out of reach. Check that they're switched on, out of their case and nearby."
+            return String(localized: "Your glasses are out of reach. Check that they're switched on, out of their case and nearby.")
         case .linkComingUp:
-            return "Your glasses are still connecting. Give them a moment."
+            return String(localized: "Your glasses are still connecting. Give them a moment.")
         case .connected:
             // Not a failure, and not reachable from `connectGlasses()`, which returns before this
             // once the link is up. Worded anyway so no caller can print an empty error.
-            return "Your glasses are connected."
+            return String(localized: "Your glasses are connected.")
         }
     }
 
@@ -179,13 +176,13 @@ enum RegistrationFlow {
                                           appName: String = RegistrationFlow.appName) -> String {
         switch permission {
         case .declined:
-            return "Camera access wasn't allowed in Meta AI, and your glasses can't connect to \(appName) without it. Try again in Settings › Devices & Privacy › Glasses and allow it there."
+            return String(localized: "Camera access wasn't allowed in Meta AI, and your glasses can't connect to \(appName) without it. Try again in Settings › Devices & Privacy › Glasses and allow it there.")
         case .phoneCameraDenied:
-            return "\(appName) isn't allowed to use the camera on this iPhone, which glasses camera access needs first. Turn Camera on for \(appName) in the iPhone's Settings app, then try again."
+            return String(localized: "\(appName) isn't allowed to use the camera on this iPhone, which glasses camera access needs first. Turn Camera on for \(appName) in the iPhone's Settings app, then try again.")
         case .failed(let summary):
-            return "\(appName) couldn't check camera access with Meta AI (\(GlassesCameraPermission.reason(summary))). Make sure the Meta AI app is installed and \(appName) is still approved in it, then try again in Settings › Devices & Privacy › Glasses."
+            return String(localized: "\(appName) couldn't check camera access with Meta AI (\(GlassesCameraPermission.reason(summary))). Make sure the Meta AI app is installed and \(appName) is still approved in it, then try again in Settings › Devices & Privacy › Glasses.")
         case .notChecked, .notGranted, .granted:
-            return "\(appName) is approved in Meta AI, but camera access isn't allowed there yet, and Meta AI shows \(appName) your glasses only once it is. Allow it in Settings › Devices & Privacy › Glasses."
+            return String(localized: "\(appName) is approved in Meta AI, but camera access isn't allowed there yet, and Meta AI shows \(appName) your glasses only once it is. Allow it in Settings › Devices & Privacy › Glasses.")
         }
     }
     #endif

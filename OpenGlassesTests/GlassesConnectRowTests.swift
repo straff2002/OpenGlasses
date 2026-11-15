@@ -182,5 +182,39 @@ final class GlassesConnectRowTests: XCTestCase {
             XCTAssertNil(text.rangeOfCharacter(from: .decimalDigits), text)
         }
     }
+
+    // MARK: - Progress above the footer
+
+    /// Build 681: a tester pressed Connect and saw only a spinner, then the same row, for a
+    /// connect that ran about 40 s and reported its failure on another screen.
+    func testAConnectInFlightShowsTheStepItIsOn() {
+        let approve = RegistrationFlow.status(stateRaw: 0, appName: "Avenkin")
+        XCTAssertEqual(GlassesConnectRow.progress(connecting: true, connectionStatus: approve, failure: nil),
+                       .step(approve))
+    }
+
+    func testAConnectInFlightHidesTheLastFailure() {
+        XCTAssertEqual(GlassesConnectRow.progress(connecting: true, connectionStatus: "Registering…",
+                                                  failure: "Meta didn't approve Avenkin"),
+                       .step("Registering…"), "a new attempt is not the old one's outcome")
+    }
+
+    func testTheRestingStatusIsNotAStep() {
+        XCTAssertNil(GlassesConnectRow.progress(connecting: true,
+                                                connectionStatus: GlassesConnectionService.restingStatus,
+                                                failure: nil))
+        XCTAssertNil(GlassesConnectRow.progress(connecting: true, connectionStatus: "  ", failure: nil))
+    }
+
+    func testAConnectThatGaveUpSaysWhy() {
+        let why = RegistrationFlow.notApprovedMessage(appName: "Avenkin")
+        XCTAssertEqual(GlassesConnectRow.progress(connecting: false, connectionStatus: "Registering…", failure: why),
+                       .gaveUp(why))
+    }
+
+    func testNothingToAddWhenIdleWithoutAFailure() {
+        XCTAssertNil(GlassesConnectRow.progress(connecting: false, connectionStatus: "Registering…", failure: nil))
+        XCTAssertNil(GlassesConnectRow.progress(connecting: false, connectionStatus: "Registering…", failure: ""))
+    }
 }
 #endif

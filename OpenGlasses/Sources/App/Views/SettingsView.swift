@@ -1020,6 +1020,24 @@ struct GlassesSettingsView: View {
         GlassesConnectRow(appState.glassesReachability)
     }
 
+    /// Why the last glasses connect gave up, while nothing has fixed it since. Only the error class
+    /// `connectGlasses()` sets: any other error belongs to whatever raised it.
+    private var glassesConnectFailure: String? {
+        appState.errorMessageIsGlassesConnection ? appState.errorMessage : nil
+    }
+
+    /// The row's connect, and where it ended said aloud: the row changes, or goes away, while a
+    /// VoiceOver user's focus is still on the button.
+    @MainActor
+    private func connectGlasses() async {
+        await appState.connectGlasses()
+        if let failure = glassesConnectFailure {
+            SessionAnnouncer.say(failure)
+        } else {
+            SessionAnnouncer.say(GlassesConnectRow.announcement(after: appState.glassesService.reachability))
+        }
+    }
+
     /// Check the Meta camera permission and ask for it once when it is not granted — as the
     /// wearer's own action, which launch never takes. Asking leaves for Meta AI, so where things
     /// stand afterwards is also said: the row changes while a VoiceOver user's focus is still on
@@ -1069,7 +1087,7 @@ struct GlassesSettingsView: View {
                         // Removed from Meta AI, or never added past onboarding: ask for
                         // registration, and then for camera access.
                         Button {
-                            Task { await appState.connectGlasses() }
+                            Task { await connectGlasses() }
                         } label: {
                             HStack {
                                 Label("Connect to Meta AI", systemImage: "link")
@@ -1103,7 +1121,10 @@ struct GlassesSettingsView: View {
                         }
                     }
                 } footer: {
-                    Text(row.footer)
+                    GlassesConnectFooter(glasses: appState.glassesService,
+                                         connecting: appState.isConnectingGlasses,
+                                         failure: glassesConnectFailure,
+                                         footer: row.footer)
                 }
             }
 
@@ -1309,3 +1330,35 @@ struct InfoToggle: View {
         }
     }
 }
+
+#if !AVENKIN_PHONE_ONLY
+/// The footer under the glasses connect row, with the connect's progress above it
+/// (`GlassesConnectRow.progress`): the step while it runs, and why it gave up once it has. Its own
+/// view so it can observe the glasses service, whose status line `AppState` does not republish.
+private struct GlassesConnectFooter: View {
+    @ObservedObject var glasses: GlassesConnectionService
+    let connecting: Bool
+    let failure: String?
+    let footer: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let progress = GlassesConnectRow.progress(connecting: connecting,
+                                                         connectionStatus: glasses.connectionStatus,
+                                                         failure: failure) {
+                Text(progress.text)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(progressColor(progress))
+            }
+            Text(footer)
+        }
+    }
+
+    private func progressColor(_ progress: GlassesConnectRow.Progress) -> Color {
+        switch progress {
+        case .step: return .primary
+        case .gaveUp: return OGTheme.warnLabel
+        }
+    }
+}
+#endif

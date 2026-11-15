@@ -62,7 +62,7 @@ enum SessionCardGlassesHeadline {
                          connectionStatus: String) -> String? {
         guard GlassesSupportPolicy.isSupported, connectAttemptInFlight, !link.isConnected else { return nil }
         if link.isConnecting { return "Connecting…" }
-        return connectionStatus == "Not connected" ? "Glasses Not Connected" : connectionStatus
+        return connectionStatus == GlassesConnectionService.restingStatus ? "Glasses Not Connected" : connectionStatus
     }
 }
 

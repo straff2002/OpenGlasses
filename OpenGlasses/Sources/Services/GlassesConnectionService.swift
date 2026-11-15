@@ -20,7 +20,10 @@ class GlassesConnectionService: ObservableObject {
     @Published private(set) var phase: GlassesConnectionPhase = .noGlassesAdded
     /// `phase == .connected`. Derived — there is no other writer.
     @Published private(set) var isConnected: Bool = false
-    @Published var connectionStatus: String = "Not connected"
+    @Published var connectionStatus: String = GlassesConnectionService.restingStatus
+    /// `connectionStatus` before anything has happened. Readers compare against it, so it is
+    /// one constant rather than the same literal in several places.
+    nonisolated static let restingStatus = "Not connected"
     @Published private(set) var deviceName: String?
     /// The active device's battery, only while the link is up (`liveBatteryLevel`): a pair in its
     /// case shows no battery rather than a stale one.
@@ -285,12 +288,12 @@ class GlassesConnectionService: ObservableObject {
         // Configure here rather than assuming a caller did. This is the path that used to kill the
         // app outright: an unconfigured `Wearables.shared` is a fatalError, not a throw.
         guard WearablesBootstrap.ensureConfigured() else {
-            connectionStatus = "Meta SDK unavailable — \(WearablesBootstrap.failureReason ?? "not configured")"
+            connectionStatus = String(localized: "Meta SDK unavailable — \(WearablesBootstrap.failureReason ?? String(localized: "not configured"))")
             return
         }
         // The listener may never have been armed (SDK unconfigured at init); arm it now.
         startObserving()
-        connectionStatus = "Registering..."
+        connectionStatus = String(localized: "Registering…")
         let stateBefore = Wearables.shared.registrationState
         PrivacyLog.device(.glasses, .registrationStarted,
                           state: PrivacyToken(String(stateBefore.rawValue)))
