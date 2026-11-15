@@ -2033,6 +2033,11 @@ final class FieldSessionService: ObservableObject {
         if let note = CompanyVaultDownloads.promptNote(vaultId: store.manifest.id) {
             context = (context.map { $0 + "\n\n" } ?? "") + note
         }
+        // Plan LV: a published vault's answers say whose files they drew on, and say when a cited
+        // page is in a manual held at another revision or one the phone doesn't hold.
+        if let note = CompanyVaultService.shared.answerNote(for: store) {
+            context = (context.map { $0 + "\n\n" } ?? "") + note
+        }
         if let runner {
             let procedureContext = runner.promptContext()
             if !procedureContext.isEmpty {
