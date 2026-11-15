@@ -250,6 +250,21 @@ variables the test skips.
 The Lennox calibration's production-path column (each question asked as a turn is, four passages
 through the shipped gate) prints with the rest of `RetrievalGateCalibrationTests`.
 
+## Keeping it compiling
+
+`run.sh` compiles a hand-kept list of app sources, not the app target, so a new type in a listed
+file can break it while the app builds. `Scripts/check-eval-harnesses.sh` compiles every harness
+under `Scripts/` without running it (CI's `eval-harnesses` job runs it on every pull request); the
+fix is usually the file that declares the missing name, added to the list.
+
+`SearchModelRuntime.swift`, the app's downloaded copy of the search-trained model, isn't in the
+list: it imports the `Tokenizers` package, which a plain `swiftc` can't link. `Stubs.swift` gives
+`Embedder.swift` the names it mentions, with that model never ready. The runner doesn't go through
+`Embedder.fieldAssist`, so nothing it measures changes: the sentence model (the default), the
+contextual model (`RETRIEVAL_EVAL_EMBEDDER=contextual`) and the search-trained model
+(`RETRIEVAL_EVAL_EMBEDDER=eg2[:dim]`, loaded by `SearchModel.swift` with the reference tokenizer)
+all still run.
+
 ## What never goes in the repository
 
 Manuals, code books, extracted text, answer keys written from licensed material, index folders and

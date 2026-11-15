@@ -13,15 +13,20 @@ case "$build" in
 esac
 mkdir -p "$build"
 
-swiftc -O -parse-as-library -target "$(uname -m)-apple-macos26.0" -o "$build/chains-validate" \
+# A compile-only check skips optimisation: what it checks is the file list, and -O is minutes slower.
+opt=-O; if [ "${EVAL_COMPILE_ONLY:-}" = 1 ]; then opt=-Onone; fi
+swiftc "$opt" -parse-as-library -target "$(uname -m)-apple-macos26.0" -o "$build/chains-validate" \
   "$here/main.swift" "$here/Stubs.swift" \
   "$root/OpenGlassesTests/ChainsValidate/ChainsValidateCore.swift" \
-  "$src/Vault/ChainDefinition.swift" "$src/Vault/TableLookup.swift" "$src/Vault/TableReference.swift" \
+  "$src/Vault/ChainDefinition.swift" "$src/Vault/TableLookup.swift" "$src/Vault/TableReference.swift" "$src/Vault/SpokenNumber.swift" \
   "$src/Vault/TableExtractor.swift" "$src/Vault/TableChecks.swift" "$src/Vault/PDFTableReader.swift" \
   "$src/Vault/RecognisedTable.swift" "$src/Vault/CellCertainty.swift" "$src/Vault/PictureRegion.swift" \
   "$src/Vault/PictureTableReading.swift" "$src/Vault/VisionTableReader.swift" "$src/Vault/LexicalSupport.swift" \
   "$src/Vault/TermRule.swift" "$src/Vault/AWGSize.swift" "$src/Vault/TableDirectory.swift" \
   "$src/Vault/CaptionWords.swift" "$src/Vault/CodeTokenizer.swift" "$src/Vault/TermRuleStopwords.swift" "$src/Vault/DocumentLanguageProfile.swift" \
   "$src/NativeTools/ArithmeticExpression.swift" "$src/NativeTools/UnitConversionTool.swift"
+
+# Scripts/check-eval-harnesses.sh builds every harness this way, to catch a stale file list.
+if [ "${EVAL_COMPILE_ONLY:-}" = 1 ]; then exit 0; fi
 
 exec "$build/chains-validate" "$@"
