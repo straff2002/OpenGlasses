@@ -3,7 +3,8 @@
 #
 #   RETRIEVAL_EVAL_VAULT=/path/to/vault RETRIEVAL_EVAL_ANSWER_KEY=/path/to/answers.jsonl \
 #     [RETRIEVAL_EVAL_WORKDIR=/path/outside/the/repo] [RETRIEVAL_EVAL_EMBEDDER=contextual|eg2[:dim]] \
-#     [RETRIEVAL_EVAL_LABEL=name] [RETRIEVAL_EVAL_RECOGNISE=off|grid|words] Scripts/retrieval-eval/run.sh
+#     [RETRIEVAL_EVAL_LABEL=name] [RETRIEVAL_EVAL_RECOGNISE=off|grid|words] \
+#     [RETRIEVAL_EVAL_BASELINE=/path/to/an/earlier/outcomes-….jsonl] Scripts/retrieval-eval/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
@@ -14,6 +15,7 @@ mkdir -p "$build"
 swiftc -O -parse-as-library -D RETRIEVAL_EVAL -target "$(uname -m)-apple-macos26.0" -o "$build/retrieval-eval" \
   "$here/main.swift" "$here/Stubs.swift" "$here/Tuning.swift" \
   "$root/OpenGlassesTests/RetrievalEval/RetrievalEvalCore.swift" \
+  "$root/OpenGlassesTests/RetrievalEval/EvalIntervals.swift" "$root/OpenGlassesTests/RetrievalEval/EvalOutcomes.swift" \
   "$src/RAG/DocumentStore.swift" "$src/RAG/DocumentReconstructor.swift" "$src/RAG/DocumentChunker.swift" \
   "$src/RAG/Embedder.swift" "$src/RAG/EmbeddingBackend.swift" "$src/RAG/CoreMLEmbeddingBackend.swift" "$here/SearchModel.swift" "$src/RAG/EmbeddingVersion.swift" \
   "$src/RAG/PassageLocation.swift" "$src/RAG/EmbeddingScript.swift" \

@@ -22,6 +22,32 @@ struct TableLookupEvalRunner {
             exit(1)
         }
 
+        // TABLE_LOOKUP_EVAL_OUTCOMES=<file>: one outcome per question, by its place and a hash,
+        // written outside every git working tree for a later run to pair with.
+        // TABLE_LOOKUP_EVAL_BASELINE=<an earlier run's outcomes file>: pair with it and print the
+        // paired difference. Both checked before any PDF is read.
+        let outcomesFile: URL? = environment["TABLE_LOOKUP_EVAL_OUTCOMES"].map { path in
+            let file = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
+            var isFolder: ObjCBool = false
+            let folder = file.deletingLastPathComponent()
+            guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
+                print("[CELLS] TABLE_LOOKUP_EVAL_OUTCOMES: its folder does not exist")
+                exit(2)
+            }
+            guard !EvalOutcomes.isInsideGitWorkingTree(folder) else {
+                print("[CELLS] TABLE_LOOKUP_EVAL_OUTCOMES must name a file outside every git working tree")
+                exit(2)
+            }
+            return file
+        }
+        let baseline: [EvalOutcome]? = environment["TABLE_LOOKUP_EVAL_BASELINE"].map { path in
+            guard let read = try? EvalOutcomes.read(from: URL(fileURLWithPath: (path as NSString).expandingTildeInPath)) else {
+                print("[CELLS] TABLE_LOOKUP_EVAL_BASELINE could not be read as an outcomes file")
+                exit(2)
+            }
+            return read
+        }
+
         // The documents: every one the manifest lists that is a PDF or whose original is, with its
         // title; with no manifest, every PDF in the folder.
         var documents: [(url: URL, name: String)] = []
@@ -104,10 +130,29 @@ struct TableLookupEvalRunner {
         }
 
         let parsed = TableLookupEval.parseCounting(key)
-        var report = TableLookupEval.score(parsed.questions, unreadable: parsed.unreadable.values.reduce(0, +), sources: sources)
+        let scored = TableLookupEval.scoreWithOutcomes(parsed.questions, unreadable: parsed.unreadable.values.reduce(0, +),
+                                                       sources: sources)
+        var report = scored.report
         report.unreadableBy = Dictionary(uniqueKeysWithValues: parsed.unreadable.map { ($0.key.rawValue, $0.value) })
         for line in TableLookupEval.render(report, label: label, checked: environment["TABLE_LOOKUP_EVAL_KEY_CHECKED"] == "1") {
             print(line)
+        }
+        for line in TableLookupEval.renderIntervals(scored.outcomes) {
+            print(line)
+        }
+        if let outcomesFile {
+            do {
+                try EvalOutcomes.write(scored.outcomes, to: outcomesFile)
+                print("[CELLS]   outcomes: \(scored.outcomes.count) questions written")
+            } catch {
+                print("[CELLS]   outcomes: could not be written")
+            }
+        }
+        if let baseline {
+            let pairing = EvalOutcomes.pair(baseline: baseline, current: scored.outcomes)
+            for line in EvalOutcomes.comparisonLines(prefix: "[CELLS]  ", pairing: pairing, metrics: TableLookupEval.metrics) {
+                print(line)
+            }
         }
         for line in TableLookupEval.renderPictures(TableLookupEval.scorePictures(parsed.questions, sources: sources), label: label) {
             print(line)

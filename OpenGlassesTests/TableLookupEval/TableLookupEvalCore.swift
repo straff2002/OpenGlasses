@@ -124,8 +124,32 @@ enum TableLookupEval {
     /// Each question looked up in `sources` — the books whose name holds the question's edition,
     /// when one does, else all of them.
     static func score(_ questions: [Question], unreadable: Int = 0, sources: [TableLookup.Source]) -> Report {
+        scoreWithOutcomes(questions, unreadable: unreadable, sources: sources).report
+    }
+
+    /// The metrics a question's outcome carries, with the names the lines print. A question has the
+    /// one its `expect` asks for: `cell` (the cell matched), `between` (the two rows matched) or
+    /// `ask` (the lookup asked).
+    static let metrics: [(name: String, key: String)] = [("cells", "cell"), ("between rows", "between"), ("asks", "ask")]
+
+    /// `score`, with one outcome per question (1 matched, 0 not, under its `expect`'s metric), by
+    /// the question's place and a hash of its fields, never the fields themselves.
+    static func scoreWithOutcomes(_ questions: [Question], unreadable: Int = 0,
+                                  sources: [TableLookup.Source]) -> (report: Report, outcomes: [EvalOutcome]) {
         var report = Report(questions: questions.count, unreadable: unreadable)
-        for question in questions {
+        var outcomes: [EvalOutcome] = []
+        for (index, question) in questions.enumerated() {
+            let before = (report.cellsMatched, report.betweenMatched, report.askMatched)
+            defer {
+                let metric: (String, Bool)
+                switch question.expect {
+                case .cell: metric = ("cell", report.cellsMatched > before.0)
+                case .between: metric = ("between", report.betweenMatched > before.1)
+                case .ask: metric = ("ask", report.askMatched > before.2)
+                }
+                outcomes.append(EvalOutcome(q: index + 1, h: EvalOutcomes.hash(identity(of: question)),
+                                            metrics: [metric.0: metric.1 ? 1 : 0]))
+            }
             let pool = question.edition.map { edition in
                 sources.filter { $0.documentName.localizedCaseInsensitiveContains(edition) }
             }.flatMap { $0.isEmpty ? nil : $0 } ?? sources
@@ -176,7 +200,28 @@ enum TableLookupEval {
                 break
             }
         }
-        return report
+        return (report, outcomes)
+    }
+
+    /// What makes a question the same question in another run: its fields, joined. Hashed, never
+    /// printed or written.
+    static func identity(of question: Question) -> String {
+        let expect: String
+        switch question.expect {
+        case .cell(let cell): expect = "cell\u{1F}" + cell
+        case .between(let below, let above): expect = "between\u{1F}" + below + "\u{1F}" + above
+        case .ask(let candidates): expect = "ask\u{1F}" + candidates.joined(separator: "\u{1F}")
+        }
+        return [question.table, question.row, question.column ?? "", question.edition ?? "", expect].joined(separator: "\u{1E}")
+    }
+
+    /// The 95% bootstrap intervals of the matched shares over the questions of each kind: a line
+    /// of rates only, printed apart from `render` so the counts there stay as they were.
+    static func renderIntervals(_ outcomes: [EvalOutcome]) -> [String] {
+        let line = EvalIntervals.intervalLine(prefix: "[CELLS]  ", metrics: metrics.map { metric in
+            (metric.name, outcomes.compactMap { $0.metrics[metric.key] })
+        })
+        return line.map { [$0] } ?? []
     }
 
     private static func count(_ expect: Expect, in report: inout Report) {

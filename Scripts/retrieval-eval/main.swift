@@ -36,6 +36,17 @@ struct RetrievalEvalMain {
             }
         }()
 
+        // RETRIEVAL_EVAL_BASELINE=<an earlier run's outcomes file>: pair this run's questions with
+        // that run's by hash and print each metric's paired difference. Read before anything is
+        // indexed, so a wrong path fails at once.
+        let baseline: [EvalOutcome]? = env["RETRIEVAL_EVAL_BASELINE"].map { path in
+            do {
+                return try EvalOutcomes.read(from: URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+            } catch {
+                fail("can't read RETRIEVAL_EVAL_BASELINE as an outcomes file")
+            }
+        }
+
         // Plan IV P5: estimate how often one guided retry (the book's index, or the nearest
         // headings) would find what a missed question was after.
         RetrievalEval.retry = env["RETRIEVAL_EVAL_RETRY"].flatMap(RetrievalEval.Retry.init(rawValue:))
@@ -191,6 +202,28 @@ struct RetrievalEvalMain {
             + " table_rows=\(RetrievalEval.tableRows.rawValue)"
         for line in report.lines(label: label, embedder: embedder.modelId) {
             print(line)
+        }
+        // One outcome per scored question into the work folder (never a repository), named for
+        // the run's time so every run keeps its own: the baseline a later run is paired with.
+        if EvalOutcomes.isInsideGitWorkingTree(work) {
+            print("[EVAL]   outcomes: not written, the work folder is inside a git working tree")
+        } else {
+            let stamp = DateFormatter()
+            stamp.locale = Locale(identifier: "en_US_POSIX")
+            stamp.dateFormat = "yyyyMMdd-HHmmss"
+            let name = "outcomes-\(stamp.string(from: Date())).jsonl"
+            do {
+                try EvalOutcomes.write(report.outcomes, to: work.appendingPathComponent(name))
+                print("[EVAL]   outcomes: \(report.outcomes.count) questions in the work folder as \(name)")
+            } catch {
+                print("[EVAL]   outcomes: could not be written to the work folder")
+            }
+        }
+        if let baseline {
+            let pairing = EvalOutcomes.pair(baseline: baseline, current: report.outcomes)
+            for line in EvalOutcomes.comparisonLines(prefix: "[EVAL]  ", pairing: pairing, metrics: RetrievalEval.Report.metrics) {
+                print(line)
+            }
         }
         // RETRIEVAL_EVAL_DETAIL=1: each question by its line number in the key, with the pages it
         // expects and the pages of the four passages it got — numbers only, for a local look at
