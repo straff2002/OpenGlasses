@@ -96,7 +96,12 @@ final class VaultPackCatalogService: ObservableObject {
     /// `keeping` is the manuals the installed vault already holds (`VaultDocumentCarry.current`),
     /// laid in beside the new core files so an update never takes them away (Plan LR). A pack
     /// itself still ships no documents: that is checked on the pack before anything is added.
-    func install(_ entry: VaultPackCatalogEntry, keeping: [VaultDocumentCarry.Kept] = []) async {
+    ///
+    /// `checksArchive` false is a company vault's sealed core (Plan LV): `fetch` hands over the
+    /// pack already opened, and the entry's `sha256` describes the sealed file the company vault
+    /// pass has checked, not this. The pack signature is checked as for every pack.
+    func install(_ entry: VaultPackCatalogEntry, keeping: [VaultDocumentCarry.Kept] = [],
+                 checksArchive: Bool = true) async {
         guard let url = URL(string: entry.downloadURL) else {
             installStates[entry.id] = .failed("bad download URL")
             return
@@ -109,7 +114,7 @@ final class VaultPackCatalogService: ObservableObject {
             installStates[entry.id] = .failed("download failed: \(error.localizedDescription)")
             return
         }
-        guard VaultPackArchive.sha256Hex(zipData) == entry.sha256.lowercased() else {
+        guard !checksArchive || VaultPackArchive.sha256Hex(zipData) == entry.sha256.lowercased() else {
             installStates[entry.id] = .failed("download doesn't match the catalog's checksum")
             return
         }

@@ -116,6 +116,56 @@ final class VaultDocumentCarryTests: XCTestCase {
         XCTAssertEqual(VaultImporter.installedPack(for: vaultId)?.version, "1.1.0")
     }
 
+    /// Plan LV: each manual keeps where it came from and its revision across a change to the core
+    /// files and across a re-lay of the manual set.
+    func testRevisionAndOriginSurviveAnUpdateAndARelay() async throws {
+        try await installFixturePack()
+        let staged = try stagedFixtureManual()
+        try await LiveCompanyVaultInstaller.shared.applyManuals(vaultId: vaultId, adding: [staged], removing: [])
+        let own = temp.appendingPathComponent("own.md")
+        try Data("# Own notes\n\nPage 1\n\nInvented notes of the technician's own.".utf8).write(to: own)
+        _ = try VaultDocumentCarry.relay(vaultId: vaultId, removing: [], adding: [
+            .init(document: VaultDocument(file: "Own notes.md", title: "Own notes", revision: VaultPackArchive.sha256Hex(try Data(contentsOf: own)),
+                                          origin: .technician), files: ["Own notes.md": own])])
+        func check(_ moment: String) throws {
+            let documents = try XCTUnwrap(VaultImporter.installedManifest(id: vaultId)?.documents)
+            let company = try XCTUnwrap(documents.first { $0.file == "RTU Wiring.md" }, moment)
+            XCTAssertEqual(company.origin, .company, moment)
+            XCTAssertEqual(company.revision, staged.manual.revision, moment)
+            XCTAssertEqual(company.kind, "company_manual", moment)
+            XCTAssertEqual(documents.first { $0.file == "Own notes.md" }?.origin, .technician, moment)
+            XCTAssertNotNil(documents.first { $0.file == "Own notes.md" }?.revision, moment)
+            XCTAssertEqual(VaultDocumentCarry.current(vaultId: vaultId).map(\.document), documents, moment)
+        }
+        try check("after the manuals were laid in")
+
+        // A new version of the core files carries both manuals with their fields.
+        let key = Curve25519.Signing.PrivateKey()
+        let manifestJSON = #"{"documents":[],"files":["safety.md"],"gating":{"iap":"com.openglasses.vault.fixture_rtu"},"id":"fixture_rtu","name":"Fixture Rooftop Units","prompt_rules":["Never fabricate a value.","Cite the source file for every claim."],"version":"1.2.0"}"#
+        let files: [String: Data] = ["manifest.json": Data(manifestJSON.utf8), "safety.md": Data("# Safety\n\nInvented.".utf8)]
+        let packData = try JSONEncoder().encode(VaultPackManifest(id: "com.openglasses.vault.fixture_rtu", vaultId: vaultId,
+                                                                  version: "1.2.0", name: "Fixture Rooftop Units"))
+        let signature = try VaultPackSignature.sign(packManifestData: packData, files: files,
+                                                    privateKeyBase64: key.rawRepresentation.base64EncodedString())
+        var entries = files
+        entries[VaultPackManifest.filename] = packData
+        let zip = VaultPackTests.makeZip(entries)
+        let vault = CompanyVaultCatalog.Vault(id: "com.openglasses.vault.fixture_rtu", vaultId: vaultId, version: "1.2.0",
+                                              name: "Fixture Rooftop Units", summary: nil, author: nil, minAppBuild: nil,
+                                              sizeBytes: zip.count, downloadURL: "https://licence.example.test/v.zip",
+                                              sha256: VaultPackArchive.sha256Hex(zip), packSignature: signature)
+        let failure = await LiveCompanyVaultInstaller.shared.install(vault, fetch: { _ in zip },
+                                                                     publicKeyBase64: key.publicKey.rawRepresentation.base64EncodedString(),
+                                                                     currentBuild: 680)
+        XCTAssertNil(failure)
+        XCTAssertEqual(VaultImporter.installedPack(for: vaultId)?.version, "1.2.0")
+        try check("after an update to the core files")
+
+        // Removing another manual re-lays the rest unchanged.
+        try await LiveCompanyVaultInstaller.shared.applyManuals(vaultId: vaultId, adding: [], removing: ["Nothing.md"])
+        try check("after a re-lay")
+    }
+
     func testAManualTheTechnicianAddedIsKeptBesideTheCompanys() async throws {
         try await installFixturePack()
         // The technician's own manual, already in the vault.

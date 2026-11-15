@@ -105,6 +105,11 @@ enum UITestSupport {
         /// platform composer would be, with Send and Cancel, so the hand-off and the composer's
         /// result can be driven. Nothing is sent by it, as nothing is sent by the real one.
         case standInComposer = "-OGUITestStandInComposer"
+        /// Plan LV: a published vault's row as it stands under *Managed by ⟨org⟩* — the partner, the
+        /// partner's version and the manual checklist — shown on a sheet of its own. A profile is
+        /// signed by a key this build cannot hold, so no enrolment is faked: the rows are made by
+        /// the shipping `CompanyVaultRow.rows` from fixture state and drawn by the shipping view.
+        case publishedVaultRows = "-OGUITestPublishedVaultRows"
     }
 
     /// Whether a vault-link review is being staged for a screenshot.

@@ -10,8 +10,33 @@ import Foundation
 /// Reads transparently merge the two — overlay files take precedence, falling back to the baseline.
 /// Writes go to the overlay only; the baseline is never mutated, so an admin can re-push a new
 /// baseline version without clobbering overlay edits.
+///
+/// Plan LV: a published vault may carry a **company layer** between the two
+/// (`Documents/Vaults/_baselines/{id}.company/`), read in the order publisher baseline → company
+/// layer → technician overlay, as `VaultLayerMerge` resolves it. A vault without one reads exactly
+/// as before.
 final class VaultStore {
     let manifest: VaultManifest
+
+    /// Plan LV: a company layer and how the merge resolved its files.
+    struct CompanyLayer {
+        let root: URL
+        let merged: VaultLayerMerge.Merged
+
+        init(root: URL, merged: VaultLayerMerge.Merged) {
+            self.root = root
+            self.merged = merged
+            companyKeys = Set(merged.companyFiles.map(VaultPackRules.layerFileKey))
+        }
+
+        fileprivate let companyKeys: Set<String>
+
+        func adds(_ filename: String) -> Bool { companyKeys.contains(VaultPackRules.layerFileKey(filename)) }
+    }
+
+    /// The company layer read between the baseline and the overlay, or nil (every vault but a
+    /// published vault a company has added to).
+    let companyLayer: CompanyLayer?
 
     /// Read-only baseline root — the app bundle (`<Bundle>/Vaults/{id}/`) for built-in vaults, or
     /// an imported baseline (`Documents/Vaults/_baselines/{id}/`) for admin-pushed vaults. Nil if
@@ -20,11 +45,31 @@ final class VaultStore {
     /// Root in the user Documents directory (e.g. `Documents/Vaults/refrigeration/`).
     let overlayRoot: URL
 
-    init(manifest: VaultManifest, bundleRoot: URL?, overlayRoot: URL) {
+    init(manifest: VaultManifest, bundleRoot: URL?, overlayRoot: URL, companyLayer: CompanyLayer? = nil) {
         self.manifest = manifest
         self.bundleRoot = bundleRoot
         self.overlayRoot = overlayRoot
+        self.companyLayer = companyLayer
         ensureOverlayExists()
+    }
+
+    /// The read-only root a file comes from beneath the overlay: the company layer for a file it
+    /// added, else the baseline.
+    private func baseRoot(for filename: String) -> URL? {
+        if let companyLayer, companyLayer.adds(filename) { return companyLayer.root }
+        return bundleRoot
+    }
+
+    /// Plan LV: which layer `filename` is read from — the technician's overlay when it holds the
+    /// file, else the company layer for a file it added, else the publisher's baseline.
+    func layer(of filename: String) -> VaultLayerMerge.Layer {
+        if FileManager.default.fileExists(atPath: overlayRoot.appendingPathComponent(filename).path) { return .technician }
+        return baseLayer(of: filename)
+    }
+
+    /// Whose file `filename` is beneath any edit of the technician's: the company's or the publisher's.
+    func baseLayer(of filename: String) -> VaultLayerMerge.Layer {
+        companyLayer?.adds(filename) == true ? .company : .publisher
     }
 
     /// Read a file by name (e.g. "error_codes.md"). User-overlay version wins over bundled.
@@ -34,8 +79,8 @@ final class VaultStore {
         if let contents = try? String(contentsOf: overlayURL, encoding: .utf8) {
             return contents
         }
-        if let bundleRoot {
-            let bundleURL = bundleRoot.appendingPathComponent(filename)
+        if let root = baseRoot(for: filename) {
+            let bundleURL = root.appendingPathComponent(filename)
             if let contents = try? String(contentsOf: bundleURL, encoding: .utf8) {
                 return contents
             }
@@ -72,8 +117,8 @@ final class VaultStore {
         if fm.fileExists(atPath: overlayURL.path) {
             return try String(contentsOf: overlayURL, encoding: .utf8)
         }
-        if let bundleRoot {
-            let bundleURL = bundleRoot.appendingPathComponent(filename)
+        if let root = baseRoot(for: filename) {
+            let bundleURL = root.appendingPathComponent(filename)
             if fm.fileExists(atPath: bundleURL.path) {
                 return try String(contentsOf: bundleURL, encoding: .utf8)
             }
@@ -150,6 +195,18 @@ final class VaultStore {
             ?? (fm.fileExists(atPath: importedBaseline.path) ? importedBaseline : nil)
         let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
         let overlay = docs.appendingPathComponent("Vaults/\(manifest.id)", isDirectory: true)
-        return VaultStore(manifest: manifest, bundleRoot: baselineRoot, overlayRoot: overlay)
+        return VaultStore(manifest: manifest, bundleRoot: baselineRoot, overlayRoot: overlay,
+                          companyLayer: bundleResource == nil ? installedCompanyLayer(for: manifest.id) : nil)
+    }
+
+    /// Plan LV: the company layer installed over the imported vault `id`, merged against the
+    /// publisher's manifest as installed. Nil when there is none or it no longer fits.
+    static func installedCompanyLayer(for id: String) -> CompanyLayer? {
+        guard let layer = VaultCompanyLayer.installed(baseId: id),
+              let publisher = VaultImporter.installedManifest(id: id),
+              case .success = VaultLayerMerge.manifest(publisher: publisher, company: layer.manifest),
+              case .success(let merged) = VaultLayerMerge.merge(publisher: .init(publisher), company: .init(layer.manifest))
+        else { return nil }
+        return CompanyLayer(root: VaultCompanyLayer.directory(baseId: id), merged: merged)
     }
 }

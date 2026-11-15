@@ -350,6 +350,15 @@ struct OpenGlassesApp: App {
                             .environmentObject(appState)
                     }
 
+                #if DEBUG
+                // Plan LV: a published vault's managed row, drawn over the app, for the UI test that
+                // photographs it.
+                if UITestSupport.isSet(.publishedVaultRows) {
+                    UITestPublishedVaultRows()
+                        .zIndex(10)
+                }
+                #endif
+
                 // A job file opened from Mail, Files or Messages (Plan FO P3c). Nothing is added
                 // from the file itself — this raises the review, and its one button is the write.
                 Color.clear

@@ -48,6 +48,8 @@ enum LaunchState: String {
     case seedPreparedCard = "-OGUITestSeedPreparedCard"
     /// A plain stand-in where the platform composer would be, which a simulator cannot show.
     case standInComposer = "-OGUITestStandInComposer"
+    /// A published vault's managed row — partner, version, manual checklist — on a sheet (Plan LV).
+    case publishedVaultRows = "-OGUITestPublishedVaultRows"
 }
 
 // MARK: - Deferrals
