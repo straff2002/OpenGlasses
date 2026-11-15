@@ -419,8 +419,20 @@ class CameraService: ObservableObject, FilteredStillProviding {
             }
             lastCaptureSource = .phone
         }
-        captureLibrarySink(data)
+        // Plan LU decision 3: a photo taken to answer a question in a private conversation is not
+        // filed in Photos; one the wearer asked to take is.
+        if Self.filesCaptureToLibrary(explicitPhoto: CaptureLibraryScope.explicitPhoto,
+                                      skipsPhotoTurn: PrivateConversationGate.skips(.photoTurnToLibrary)) {
+            captureLibrarySink(data)
+        }
         return data
+    }
+
+    /// Whether a capture goes to the Photos album. Pure (Plan LU decision 3): always, except a photo
+    /// turn's capture while a private conversation is open. An explicit "take a photo" — the
+    /// capture paths that run inside `CaptureLibraryScope.$explicitPhoto` — is always filed.
+    nonisolated static func filesCaptureToLibrary(explicitPhoto: Bool, skipsPhotoTurn: Bool) -> Bool {
+        explicitPhoto || !skipsPhotoTurn
     }
 
     /// Where `capturePhoto()` files each capture: the Photos album. Replaceable for tests only — a
@@ -788,4 +800,11 @@ enum CameraError: LocalizedError {
         case .unsupported(let message): return message
         }
     }
+}
+
+/// Plan LU decision 3: the capture in flight is the wearer's own "take a photo", which is filed in
+/// Photos even in a private conversation. Every other capture — a photo taken to answer a question,
+/// a tool's still — is a photo turn's, and a private conversation keeps it out of Photos.
+enum CaptureLibraryScope {
+    @TaskLocal static var explicitPhoto = false
 }

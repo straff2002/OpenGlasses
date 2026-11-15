@@ -1128,6 +1128,7 @@ extension SettingKey {
         case .instantReplayEnabled: return String(localized: "Instant Replay is off")
         case .preparedCardCustomerTexts: return String(localized: "My Day cards don't offer to text customers")
         case .conversationDigestsEnabled: return String(localized: "Notes of finished conversations are off")
+        case .privateConversationsAllowed: return String(localized: "Private conversations are off")
         default: return rawValue
         }
     }

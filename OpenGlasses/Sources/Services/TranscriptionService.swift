@@ -288,7 +288,10 @@ class TranscriptionService: ObservableObject {
     private func chooseEngine() {
         let gate = cloudDictationGate
         let preference = gate.preference()
-        let hipaa = gate.hipaa()
+        // Plan LU decision 4: a private conversation's question never goes to a cloud vendor. The
+        // selector already keeps cloud engines out of compliance mode; the same exclusion serves.
+        let privateTurn = !PrivateRecognitionPolicy.allowsCloudVendor(isPrivate: PrivateConversationGate.isActive)
+        let hipaa = gate.hipaa() || privateTurn
         let online = onlineProvider()
         let availability = ASREngineSelector.Availability(
             appleSpeechReady: speechRecognizer?.isAvailable ?? false,
@@ -305,7 +308,8 @@ class TranscriptionService: ObservableObject {
         // A chosen cloud engine that did not take the turn says why, as a token — never silently.
         if let cloud = preference.cloudEngine, activeEngine != cloud {
             let reason: String
-            if hipaa { reason = "hipaa" }
+            if privateTurn { reason = "privateConversation" }
+            else if hipaa { reason = "hipaa" }
             else if !availability.isReady(cloud) { reason = "notConfigured" }
             else { reason = "offline" }
             PrivacyLog.speech(.dictation, .cloudFallback, detail: PrivacyToken(reason))
@@ -471,6 +475,11 @@ class TranscriptionService: ObservableObject {
             throw TranscriptionError.setupFailed("Could not create recognition request")
         }
         recognitionRequest.shouldReportPartialResults = true
+        // Plan LU decision 4: a private conversation's question stays on the phone where the
+        // locale can; where it can't, Apple's server recognition is used, as for every question.
+        recognitionRequest.requiresOnDeviceRecognition = PrivateRecognitionPolicy.requiresOnDevice(
+            isPrivate: PrivateConversationGate.skips(.serverSpeechRecognition),
+            localeSupportsOnDevice: speechRecognizer?.supportsOnDeviceRecognition ?? false)
         // Plan JM P0: tell the recogniser which words are likely. The count is logged, never a word.
         let vocabulary = vocabularyProvider()
         if !vocabulary.isEmpty {

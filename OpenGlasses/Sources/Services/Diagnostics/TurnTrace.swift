@@ -117,6 +117,17 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         toolSeconds = timeline.toolIterations > 0 ? timeline.toolSeconds : nil
     }
 
+    /// The trace with every field that can carry the conversation's words dropped: a search's
+    /// query and result, the manual passages it read, and the thread it was filed in. Timings,
+    /// counts, the backend and the tool names stay (Plan LU §3).
+    func withoutText() -> TurnTrace {
+        var copy = self
+        copy.threadId = nil
+        copy.manualPassages = []
+        copy.toolCalls = toolCalls.map { TurnTimeline.ToolNote(name: $0.name, outcome: $0.outcome) }
+        return copy
+    }
+
     /// A local model is tagged with its file path; the file name is what identifies it, and the
     /// rest of the path is the phone's own layout. A service's model id keeps its slash: Groq and
     /// OpenRouter name models `vendor/model`, and a report that showed `qwen3.8-27b` for Groq's
@@ -174,9 +185,12 @@ final class TurnTraceStore {
         append(TurnTrace(timeline, sealedAt: clock()))
     }
 
+    /// Keep a trace. A private conversation's turn keeps its timings and shape but none of its text
+    /// (Plan LU §3): no search query or result, no manual passage, no thread.
     func append(_ trace: TurnTrace) {
+        let kept = PrivateConversationGate.skips(.turnTraceText) ? trace.withoutText() : trace
         var traces = load()
-        traces.append(trace)
+        traces.append(kept)
         traces = Self.retained(traces, now: clock(), capacity: Self.capacity)
         cache = traces
         save(traces)

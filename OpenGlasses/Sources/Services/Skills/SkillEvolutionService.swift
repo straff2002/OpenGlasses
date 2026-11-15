@@ -57,6 +57,8 @@ final class SkillEvolutionService: ObservableObject {
     /// there was no prior answer, or Agent Mode is off.
     @discardableResult
     func noteUserTurn(message: String, priorPrompt: String, priorResponse: String) async -> SkillDraft? {
+        // Plan LU §3: a private turn is not a correction to learn from.
+        guard !PrivateConversationGate.skips(.skillEvolutionNoteUserTurn) else { return nil }
         guard Config.agentModeEnabled,
               !priorResponse.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               UserCorrectionDetector.detect(message) != nil else { return nil }

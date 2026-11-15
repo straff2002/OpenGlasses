@@ -123,6 +123,14 @@ class WatchConnectivityManager: NSObject, ObservableObject {
         session.sendMessage(QuietDoneWatchMessage.payload, replyHandler: nil, errorHandler: nil)
     }
 
+    /// The idle summary's reply line: the last 200 characters' worth of the reply, or the fixed
+    /// line in its place while a private conversation is open (Plan LU §3). A reply to a request
+    /// made on the watch is not this: it goes back to the watch whole (`watchRequestReply`). Pure.
+    nonisolated static func lastResponsePayload(_ lastResponse: String, placeholder: String?) -> String {
+        if let placeholder { return placeholder }
+        return String(lastResponse.prefix(200))
+    }
+
     /// The recent conversations the watch lists: the last five, title and one line each. The line
     /// is the conversation's note headline when it has one, else the word-prefix summary (Plan LQ
     /// §6). Never a message body.
@@ -162,7 +170,10 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "isListening": appState.isListening,
             "isRecording": appState.transcriptionService.isRecording,
             "isVideoRecording": appState.videoRecorder.isRecording,
-            "lastResponse": String(appState.lastResponse.prefix(200)),
+            "lastResponse": Self.lastResponsePayload(
+                appState.lastResponse, placeholder: PrivateConversationGate.placeholder(for: .watchLastResponse)),
+            // Plan LU §7: the watch shows the Private badge while one is open (P1b draws it).
+            "isPrivate": PrivateConversationGate.isActive,
             "deviceName": appState.glassesService.deviceName ?? "",
             "batteryLevel": appState.glassesService.batteryLevel ?? 0,
             "personas": Config.enabledPersonas.prefix(3).map { ["id": $0.id, "name": $0.name] },
@@ -503,7 +514,9 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 replyHandler([
                     "status": self.statusString(),
                     "isConnected": appState.isConnected,
-                    "lastResponse": String(appState.lastResponse.prefix(200))
+                    "lastResponse": Self.lastResponsePayload(
+                        appState.lastResponse,
+                        placeholder: PrivateConversationGate.placeholder(for: .watchLastResponse))
                 ])
 
             default:

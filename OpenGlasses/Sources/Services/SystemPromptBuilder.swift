@@ -96,6 +96,11 @@ enum SystemPromptBuilder {
 
     /// What every vision block says about the camera: in the user's words, what they are looking
     /// at, so "In the image I can see…" does not leak into a spoken reply.
+    /// Plan LU §4: the one line a private conversation's turn adds to the Direct-mode prompt. The
+    /// code skips memory tags and refuses memory-like tools whatever the model does; this only saves
+    /// it wasting them.
+    static let privateConversationLine = "This conversation is private. Don't use memory tags. Nothing from it is kept."
+
     static let visionWordingLine = "Talk about what the user is looking at, never \"the image\" or \"the photo\"."
 
     /// When a cluttered view leaves the subject unclear: one specific guess, not an inventory.

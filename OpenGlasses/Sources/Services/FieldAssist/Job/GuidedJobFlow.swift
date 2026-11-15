@@ -39,6 +39,10 @@ final class GuidedJobFlow: ObservableObject {
         var threadMode: () -> String = { AppMode.direct.rawValue }
         var personaId: () -> String? = { nil }
         var persistenceEnabled: () -> Bool = { Config.conversationPersistenceEnabled }
+        /// Something that ends a private conversation happened here (Plan LU §8): a new
+        /// conversation, another one opened, a job started. `AppState.notePrivateEvent` in the app;
+        /// told before the thread moves, so the conversation the move acts on is the stored one.
+        var privateEvent: (PrivateEndEvent) -> Void = { _ in }
         /// The clock the idle gap is measured on. A seam so the 30-minute rule is testable
         /// without waiting for it.
         var now: () -> Date = { Date() }
@@ -119,6 +123,8 @@ final class GuidedJobFlow: ObservableObject {
                   jobReference: String? = nil) throws -> FieldSession {
         let session = try sessions.startSession(vaultId: vaultId, assetId: assetId, mode: mode,
                                                 jobReference: jobReference)
+        // Plan LU §8: a job's record has to be complete, so a private conversation ends with it.
+        seams.privateEvent(.jobStarted)
         apply(JobThreadPolicy.resolve(.jobStarted, inputs()), reason: .jobStarted)
         applyThreadTitle()
         return session
@@ -401,6 +407,8 @@ final class GuidedJobFlow: ObservableObject {
     /// - Returns: the question to put to the technician, or nil when the request went through.
     @discardableResult
     func requestNewChat(confirmed: Bool = false) -> JobThreadQuestion? {
+        // Plan LU §8: a new conversation ends a private one, which then cannot be reopened.
+        seams.privateEvent(.startFresh)
         if !confirmed, let question = raiseLeaveJobThreadQuestion() { return question }
         if confirmed { confirmLeaveJobThread() }
         startFresh()
@@ -411,6 +419,9 @@ final class GuidedJobFlow: ObservableObject {
     /// never a question; leaving it for another one is.
     @discardableResult
     func requestResume(threadId: String, confirmed: Bool = false) -> JobThreadQuestion? {
+        // Plan LU §8: opening another stored conversation ends a private one. Reopening the one
+        // open before it — the page a typed private turn is sent from — does not.
+        if threadId != store.activeThreadId { seams.privateEvent(.otherConversationOpened) }
         if !confirmed, let question = raiseLeaveJobThreadQuestion(switchingTo: threadId) { return question }
         if confirmed { confirmLeaveJobThread() }
         resume(threadId)

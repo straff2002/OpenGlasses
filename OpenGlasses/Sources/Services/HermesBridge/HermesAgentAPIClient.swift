@@ -98,6 +98,13 @@ final class HermesAgentAPIClient {
         let key = current.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw HermesAgentAPIError.missingKey }
 
+        // Plan LU §5: a private conversation's turn is not stored on the server and chains to
+        // nothing — neither the conversation before it nor its own earlier turns, which were not
+        // stored — and the chain the next ordinary turn continues is left exactly as it was.
+        if PrivateConversationGate.skips(.hermesResponseStore) {
+            return try await send(text, imageJPEG: imageJPEG, base: base, key: key, previous: nil,
+                                  store: false)
+        }
         let chained = conversationID
         do {
             return try await send(text, imageJPEG: imageJPEG, base: base, key: key, previous: chained)
@@ -132,9 +139,10 @@ final class HermesAgentAPIClient {
     }
 
     private func send(_ text: String, imageJPEG: Data?, base: URL, key: String,
-                      previous: String?) async throws -> String {
+                      previous: String?, store: Bool = true) async throws -> String {
         let request = HermesAgentAPI.responsesRequest(base: base, apiKey: key, input: text,
-                                                      imageJPEG: imageJPEG, previousResponseID: previous)
+                                                      imageJPEG: imageJPEG, previousResponseID: previous,
+                                                      store: store)
         guard let url = request.url else { throw HermesAgentAPIError.invalidAddress }
         _ = try EndpointPolicy.requireOpenable(url: url, for: .hermesAgentAPI, build: build)
 
@@ -143,7 +151,8 @@ final class HermesAgentAPIClient {
             throw error
         }
         let reply = try HermesAgentAPI.parseReply(data, redacting: key)
-        conversationID = reply.id
+        // An unstored reply's id names nothing the server kept, so it is never chained to.
+        if store { conversationID = reply.id }
         onDebugEvent?("Hermes API: answered\(previous == nil ? "" : " (chained)")\(imageJPEG == nil ? "" : " with a picture")")
         return reply.text
     }
