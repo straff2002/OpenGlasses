@@ -16,6 +16,7 @@ struct ChatThreadView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.appAccent) private var accent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
 
     @State private var opening: ChatThreadOpening
     @State private var speakReplies = false
@@ -38,8 +39,24 @@ struct ChatThreadView: View {
         _opening = State(initialValue: ChatThreadOpening(activation: activation))
     }
 
+    /// Plan LU P1b: the page the Chat list opens for a private conversation it started. It has no
+    /// stored thread, and it closes when the private conversation ends.
+    static let privateRoute = "private-conversation"
+
     private var store: ConversationStore { appState.conversationStore }
     private var thread: ConversationThread? { store.threads.first { $0.id == threadId } }
+    private var isPrivateRoute: Bool { threadId == Self.privateRoute }
+
+    /// Plan LU P1b: this page is the private conversation now. The Chat list's private page always
+    /// is while one is open; a stored thread's page is when it is the active thread the wearer was
+    /// in as the private conversation started (from this page's menu, by voice or on the watch).
+    /// A page opened to read (Memory) never is. While it is, the page draws the private transcript
+    /// and the badge, and what is typed on it goes to the private conversation — never into the
+    /// stored thread, which comes back unchanged at the end.
+    private var showsPrivate: Bool {
+        guard appState.privateConversation.isActive else { return false }
+        return isPrivateRoute || (activation == .onAppear && store.activeThreadId == threadId)
+    }
     private var isThinking: Bool { appState.isProcessing && store.activeThreadId == threadId }
 
     /// The live, partially-streamed reply for this thread (on-device provider), if any.
@@ -54,7 +71,7 @@ struct ChatThreadView: View {
             messageList
 
             if let attachNotice { noticeBanner(attachNotice) }
-            if !Config.conversationPersistenceEnabled { persistenceBanner }
+            if !Config.conversationPersistenceEnabled && !showsPrivate { persistenceBanner }
 
             Divider()
             ManualSelectionButton(store: store, threadID: threadId)
@@ -66,11 +83,13 @@ struct ChatThreadView: View {
                 send(text, image)
             }
         }
-        .navigationTitle(thread?.title ?? String(localized: "Chat"))
+        .navigationTitle(showsPrivate ? PrivateConversationPolicy.placeholderText
+                                      : (thread?.title ?? String(localized: "Chat")))
         .navigationBarTitleDisplayMode(.inline)
         // Plan BQ P3: let Siri resolve "this" to the open thread (titles/summary only —
         // same shape the Spotlight index donates; hipaaMode disables inside the modifier).
-        .siriOnscreenContent(thread.map { thread in
+        // Plan LU: nothing while the page is a private conversation.
+        .siriOnscreenContent((showsPrivate ? nil : thread).map { thread in
             GlassesContentEntity(record: IndexableRecord(
                 contentType: .conversation,
                 itemId: thread.id,
@@ -83,6 +102,10 @@ struct ChatThreadView: View {
         .toolbar { toolbarContent }
         .onAppear(perform: resumeIfNeeded)
         .onDisappear(perform: pruneIfEmpty)
+        // The Chat list's private page has nothing to show once the conversation it was for ends.
+        .onChange(of: appState.privateConversation.isActive) { _, isActive in
+            if !isActive && isPrivateRoute { dismiss() }
+        }
         .sheet(isPresented: $showModelPicker, onDismiss: reloadHistory) {
             ModelPickerSheet(appState: appState)
         }
@@ -116,7 +139,9 @@ struct ChatThreadView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    if let thread, !thread.messages.isEmpty {
+                    if showsPrivate {
+                        PrivateConversationMessages()
+                    } else if let thread, !thread.messages.isEmpty {
                         ForEach(thread.messages) { message in
                             MessageBubble(
                                 message: message,
@@ -127,14 +152,16 @@ struct ChatThreadView: View {
                     } else {
                         emptyPrompt
                     }
-                    if let streamingText {
+                    if showsPrivate {
+                        // The private messages draw their own in-flight indicator.
+                    } else if let streamingText {
                         StreamingBubble(text: streamingText)
                     } else if isThinking {
                         TypingIndicator()
                     }
                     // A weather answer in this thread came from WeatherKit, and Apple requires its
                     // credit wherever that data is displayed.
-                    if weatherThreads.contains(threadId) {
+                    if !showsPrivate, weatherThreads.contains(threadId) {
                         WeatherAttributionView()
                             .padding(.top, 4)
                     }
@@ -143,6 +170,8 @@ struct ChatThreadView: View {
                 .padding()
             }
             .onChange(of: thread?.messages.count) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: appState.privateConversation.transcript.count) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: showsPrivate) { _, _ in scrollToBottom(proxy, animated: false) }
             .onChange(of: isThinking) { _, _ in scrollToBottom(proxy) }
             .onChange(of: streamingText) { _, _ in scrollToBottom(proxy) }
             .onAppear { scrollToBottom(proxy, animated: false) }
@@ -189,13 +218,23 @@ struct ChatThreadView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // Plan LU P1b: the lock and Private in the title's place, its tap offering End.
+        if showsPrivate {
+            ToolbarItem(placement: .principal) {
+                PrivateConversationBadge()
+            }
+        }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Toggle(isOn: $speakReplies) { Label("Speak replies", systemImage: "speaker.wave.2") }
                 Button { showModelPicker = true } label: { Label("Switch model", systemImage: "cpu") }
                 Button { showPersonaPicker = true } label: { Label("Switch persona", systemImage: "person.2") }
-                if let thread, !thread.messages.isEmpty {
+                // A private conversation has no transcript to share (Plan LU §3).
+                if !showsPrivate, let thread, !thread.messages.isEmpty {
                     ShareLink(item: Self.threadAsText(thread)) { Label("Share transcript", systemImage: "square.and.arrow.up") }
+                }
+                if !appState.privateConversation.isActive {
+                    PrivateConversationStartButton()
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -211,6 +250,8 @@ struct ChatThreadView: View {
     }
 
     private func resumeIfNeeded() {
+        // The Chat list's private page belongs to no stored thread, so there is nothing to resume.
+        guard !isPrivateRoute else { return }
         opening.appeared(activate: activateThread)
     }
 
@@ -220,24 +261,41 @@ struct ChatThreadView: View {
     ///
     /// While a job owns another conversation this raises the question rather than switching: simply
     /// opening a thread to read it must not quietly move the job's turns into it (Plan FO P1).
+    ///
+    /// Plan LU §8: making a stored thread the live one — opening it from the list, or typing,
+    /// regenerating or editing on a page that isn't the private one — is opening another
+    /// conversation, so a private one open now ends first. Never called on the private page.
     private func activateThread() {
+        guard !isPrivateRoute else { return }
+        appState.notePrivateEvent(.otherConversationOpened)
         if let question = appState.activateConversationThread(threadId) {
             pendingLeaveJob = question
         }
     }
 
     private func send(_ text: String, _ image: Data?) {
-        activateThread()
+        // Plan LU P1b: on the private page what is typed goes to the private conversation, and the
+        // stored thread is neither activated nor titled from it. Typed on any other page while one
+        // is open, it ends it first: that page's thread is the one being talked in.
+        let privateTurn = showsPrivate
+        // The Chat list's private page, once its conversation has ended, has no thread to send to.
+        if isPrivateRoute && !privateTurn { return }
+        if !privateTurn { activateThread() }
         Task {
             await appState.sendTextMessage(text, imageData: image, speakResponse: speakReplies)
-            store.applyAutoTitleIfNeeded(threadId)
+            if !privateTurn { store.applyAutoTitleIfNeeded(threadId) }
         }
     }
 
-    /// Reload this thread's history into the LLM context — used after switching model/persona
-    /// (which may clear the LLM's in-memory history) so the conversation keeps its context.
+    /// Reload the conversation into the LLM context — used after switching model/persona (which may
+    /// clear the LLM's in-memory history) so the conversation keeps its context. While a private
+    /// conversation is open the model's context is its transcript, never the stored thread's.
     private func reloadHistory() {
-        appState.llmService.loadConversationHistory(store.replayMessages(for: threadId))
+        if appState.privateConversation.isActive {
+            appState.llmService.loadConversationHistory(appState.privateConversation.transcript.replayMessages())
+        } else {
+            appState.llmService.loadConversationHistory(store.replayMessages(for: threadId))
+        }
     }
 
     /// Re-run the last reply: drop the last user+assistant pair and resend the user's text.

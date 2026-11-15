@@ -65,7 +65,41 @@ extension AppState {
         // none crosses into the private one, and none of the private one's is replayed after it.
         connectivityHandoff.conversationReset()
         schedulePrivateIdleCheck()
+        privateConversationDidStart()
         return nil
+    }
+
+    /// The header's and the Chat list's **Start a private conversation** (Plan LU P1b). A refusal
+    /// is shown the way the app's other short notices are; a start says nothing out loud, since
+    /// the wearer is looking at the phone and the page now says Private.
+    @discardableResult
+    func startPrivateFromButton() -> PrivateStartRefusal? {
+        let refusal = beginPrivate(entry: .button)
+        if let refusal {
+            NoticeCenter.shared.post(refusal.reason, severity: .warning, source: .app)
+        }
+        return refusal
+    }
+
+    /// The watch's Private and End (Plan LU P1b): the reply the watch is sent back.
+    func handleWatchPrivateRequest(_ action: WatchPrivateWire.Action) -> [String: Any] {
+        switch action {
+        case .start:
+            let refusal = beginPrivate(entry: .watch)
+            return WatchPrivateWire.reply(isPrivate: privateConversation.isActive, refusal: refusal?.reason)
+        case .end:
+            notePrivateEvent(.endOnWatch)
+            return WatchPrivateWire.reply(isPrivate: privateConversation.isActive, refusal: nil)
+        }
+    }
+
+    /// What follows every start, on the surfaces that show it: *Private* on the lens for three
+    /// seconds (Display glasses only; the HUD's own gate drops it elsewhere), and the Live
+    /// Activity's placeholder at once rather than at the next turn. The watch hears through its
+    /// observer of `privateConversation`.
+    private func privateConversationDidStart() {
+        glassesDisplay.flash(PrivateConversationLines.badge, duration: PrivateConversationLines.lensSeconds)
+        updateLiveActivity()
     }
 
     // MARK: - Ending (Plan LU §8)
@@ -103,6 +137,7 @@ extension AppState {
         // once the placeholder stops covering it.
         lastResponse = ""
         currentTranscription = ""
+        updateLiveActivity()
     }
 
     /// The quiet gap, by timer: 30 minutes without a private turn ends it, said to nobody. The

@@ -25,6 +25,9 @@ struct ConversationPageHeader: View {
 
     private var title: String { ConversationContinuity.headerTitle(for: store) }
     private var hasThreads: Bool { !store.threads.isEmpty }
+    /// Plan LU P1b: a private conversation is open, so the header names it rather than the stored
+    /// conversation that stays active underneath.
+    private var isPrivate: Bool { appState.privateConversation.isActive }
 
     var body: some View {
         Group {
@@ -66,8 +69,22 @@ struct ConversationPageHeader: View {
         }
     }
 
-    /// Which conversation this is; a tap opens the switcher.
+    /// Which conversation this is; a tap opens the switcher. While private, the Private badge,
+    /// whose tap offers End.
+    @ViewBuilder
     private var titleButton: some View {
+        if isPrivate {
+            HStack(spacing: 0) {
+                PrivateConversationBadge(minHeight: target)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: target, alignment: .leading)
+        } else {
+            storedTitleButton
+        }
+    }
+
+    private var storedTitleButton: some View {
         Button {
             showingSwitcher = true
         } label: {
@@ -102,7 +119,7 @@ struct ConversationPageHeader: View {
         // Only while nothing is active — after New conversation, a deletion, or a launch whose
         // saved session had gone stale. Without it the last conversation is unreachable in one
         // gesture.
-        if let resumable = ConversationContinuity.resumableThread(in: store) {
+        if !isPrivate, let resumable = ConversationContinuity.resumableThread(in: store) {
             Button {
                 resume(resumable.id)
             } label: {
@@ -118,19 +135,36 @@ struct ConversationPageHeader: View {
             .accessibilityHint("Picks the last conversation back up, with everything already said in context.")
         }
 
-        Button {
-            newConversation()
+        // A tap starts a new conversation, as it always has; held, it offers the other way to
+        // start one, a private conversation (Plan LU P1b). VoiceOver reaches it as a named action.
+        Menu {
+            Button {
+                newConversation()
+            } label: {
+                Label("New conversation", systemImage: "square.and.pencil")
+            }
+            if !isPrivate {
+                PrivateConversationStartButton()
+            }
         } label: {
             Image(systemName: "square.and.pencil")
                 .font(.title3.weight(.semibold))
                 .frame(width: target, height: target)
                 .contentShape(Rectangle())
+        } primaryAction: {
+            newConversation()
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
         .foregroundStyle(accent)
         .disabled(store.isLocked)
         .accessibilityLabel("New conversation")
         .accessibilityHint("Ends this one. What you say next starts a fresh conversation.")
+        .accessibilityIdentifier("conversationHeaderNewConversation")
+        .accessibilityAction(named: Text(PrivateConversationLines.startMenuItem)) {
+            guard !isPrivate else { return }
+            appState.startPrivateFromButton()
+        }
     }
 
     /// End the current thread cleanly and clear the model's context, so the next thing said

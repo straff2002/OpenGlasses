@@ -45,7 +45,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "toggleListen", "toggleRecord", "toggleVideo", "capturePhoto", "photo", "describe",
             "ask", "persona", "connect", "disconnect", "sleep", "status",
             "quickAction", "resumeThread", WatchDictation.command, WatchStartGuidance.command,
-            WatchPreparedCardWire.command,
+            WatchPreparedCardWire.command, WatchPrivateWire.command,
         ]
         return known.contains(raw) ? PrivacyToken(raw) : nil
     }
@@ -97,8 +97,11 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     private func observeState() {
         guard let appState else { return }
         stateObservers.removeAll()
-        Publishers.Merge(appState.$isListening.removeDuplicates().dropFirst(),
-                         appState.$isConnected.removeDuplicates().dropFirst())
+        // Plan LU P1b: and when a private conversation starts or ends, so the wrist's badge and
+        // its idle summary follow the phone however it was started or ended.
+        Publishers.Merge3(appState.$isListening.removeDuplicates().dropFirst(),
+                          appState.$isConnected.removeDuplicates().dropFirst(),
+                          appState.privateConversation.$state.map(\.isActive).removeDuplicates().dropFirst())
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.sendStatusUpdate() }
             .store(in: &stateObservers)
@@ -172,8 +175,8 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "isVideoRecording": appState.videoRecorder.isRecording,
             "lastResponse": Self.lastResponsePayload(
                 appState.lastResponse, placeholder: PrivateConversationGate.placeholder(for: .watchLastResponse)),
-            // Plan LU §7: the watch shows the Private badge while one is open (P1b draws it).
-            "isPrivate": PrivateConversationGate.isActive,
+            // Plan LU §7: the watch shows the Private badge while one is open.
+            WatchPrivateWire.contextKey: PrivateConversationGate.isActive,
             "deviceName": appState.glassesService.deviceName ?? "",
             "batteryLevel": appState.glassesService.batteryLevel ?? 0,
             "personas": Config.enabledPersonas.prefix(3).map { ["id": $0.id, "name": $0.name] },
@@ -500,6 +503,14 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
             case WatchStartGuidance.command:
                 replyHandler(await self.startGuidance(message, appState: appState))
+
+            // Plan LU P1b: the wrist's Private button and its End.
+            case WatchPrivateWire.command:
+                if let action = WatchPrivateWire.action(from: message) {
+                    replyHandler(appState.handleWatchPrivateRequest(action))
+                } else {
+                    replyHandler(["error": "Unknown private conversation request"])
+                }
 
             case WatchPreparedCardWire.command:
                 // Plan KT §6.7: a press on a wrist card. `stage` is the Display's Send on phone.

@@ -50,10 +50,27 @@ struct ChatListView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await startNewChat() } } label: {
+                    // A tap starts a new chat, as ever; held, it also offers a private conversation
+                    // (Plan LU P1b), which opens a page of its own — there is no thread to list.
+                    Menu {
+                        Button { Task { await startNewChat() } } label: {
+                            Label("New chat", systemImage: "square.and.pencil")
+                        }
+                        if !appState.privateConversation.isActive {
+                            PrivateConversationStartButton(onStarted: openPrivatePage)
+                        }
+                    } label: {
                         Image(systemName: "square.and.pencil")
+                    } primaryAction: {
+                        Task { await startNewChat() }
                     }
                     .accessibilityLabel("New chat")
+                    .accessibilityIdentifier("chatListNewChat")
+                    .accessibilityAction(named: Text(PrivateConversationLines.startMenuItem)) {
+                        guard !appState.privateConversation.isActive,
+                              appState.startPrivateFromButton() == nil else { return }
+                        openPrivatePage()
+                    }
                     .disabled(store.isLocked)
                 }
             }
@@ -156,6 +173,12 @@ struct ChatListView: View {
             return
         }
         await performNewChat()
+    }
+
+    /// The private conversation's page: its badge, its transcript and a composer whose turns go to
+    /// it. It closes when the private conversation ends (`ChatThreadView.privateRoute`).
+    private func openPrivatePage() {
+        if path.last != ChatThreadView.privateRoute { path.append(ChatThreadView.privateRoute) }
     }
 
     private func performNewChat() async {

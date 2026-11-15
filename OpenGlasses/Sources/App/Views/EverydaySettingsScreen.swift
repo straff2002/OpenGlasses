@@ -75,6 +75,12 @@ struct EverydaySettingsScreen: View {
                     groupSection(state)
                 }
             }
+
+            // Plan LU §7: what a private conversation keeps, and the Allow switch an organisation
+            // can lock. Not on the one-group page Devices & Privacy opens.
+            if only == nil {
+                PrivateConversationsSettingsSection()
+            }
         }
         .navigationTitle(title)
         .ogFormStyle()

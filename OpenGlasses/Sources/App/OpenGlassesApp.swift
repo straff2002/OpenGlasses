@@ -1317,6 +1317,10 @@ class AppState: ObservableObject, AppStateProtocol {
     let privateConversation = PrivateConversationController()
     /// Plan LU §8: the open private conversation's quiet-gap timer.
     var privateIdleTimer: Task<Void, Never>?
+    /// Plan LU P1b: `privateConversation`'s changes, relayed as this object's, so every view that
+    /// reads `appState` redraws as a private conversation starts, takes a turn and ends — the badge,
+    /// the transcript, the menus — without each having to observe the controller itself.
+    private var privateConversationRelay: AnyCancellable?
     /// Plan LA: the last quiet turn's reply, for "what was that?" in the 30 seconds after it.
     var quietReplay = QuietReplayWindow()
     /// In-flight assistant reply for the Chat tab, streamed token-by-token where the provider
@@ -3385,6 +3389,8 @@ class AppState: ObservableObject, AppStateProtocol {
                                                queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.endPrivateForAppQuit() }
         }
+        privateConversationRelay = privateConversation.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
         // Plan CT PR 2b: a lease that lapses during a job locks when that job closes, so the lease
         // is re-evaluated as jobs start and end; and it renews once at launch.
         OrgProfileManager.shared.observeJobs()

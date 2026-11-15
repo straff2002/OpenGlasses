@@ -240,6 +240,9 @@ enum ConversationContinuity {
         case liveTurn
         /// Genuinely nothing said. The only state the empty copy belongs in.
         case empty
+        /// A private conversation is open (Plan LU P1b): its in-memory transcript, never the stored
+        /// conversation that stays active underneath it, which comes back unchanged at the end.
+        case privateConversation
     }
 
     /// - Parameters:
@@ -250,10 +253,14 @@ enum ConversationContinuity {
         activeThreadMessageCount: Int,
         isRealtimeSession: Bool,
         hasLiveUserText: Bool,
-        hasLiveAssistantText: Bool
+        hasLiveAssistantText: Bool,
+        isPrivate: Bool = false
     ) -> PageContent {
         let hasLiveText = hasLiveUserText || hasLiveAssistantText
         if isRealtimeSession { return hasLiveText ? .liveTurn : .empty }
+        // Before the stored thread: a private turn is never drawn as part of it, and the stored
+        // thread is never drawn as if it were the private conversation.
+        if isPrivate { return .privateConversation }
         if let activeThreadId, activeThreadMessageCount > 0 {
             return .history(threadId: activeThreadId)
         }
@@ -265,13 +272,15 @@ enum ConversationContinuity {
 
     /// The same decision from the live objects, so the page and its tests ask one question.
     static func pageContent(store: ConversationStore, isRealtimeSession: Bool,
-                            liveUserText: String, liveAssistantText: String) -> PageContent {
+                            liveUserText: String, liveAssistantText: String,
+                            isPrivate: Bool = false) -> PageContent {
         pageContent(
             activeThreadId: store.activeThreadId,
             activeThreadMessageCount: activeThread(in: store)?.messages.count ?? 0,
             isRealtimeSession: isRealtimeSession,
             hasLiveUserText: !liveUserText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            hasLiveAssistantText: !liveAssistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            hasLiveAssistantText: !liveAssistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isPrivate: isPrivate
         )
     }
 
