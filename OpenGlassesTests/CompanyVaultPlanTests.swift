@@ -206,4 +206,40 @@ final class CompanyVaultPlanTests: XCTestCase {
         XCTAssertTrue(state.vaults.isEmpty)
         XCTAssertEqual(state.highWater, 7, "the high-water mark outlives an erasure: an older list stays refused")
     }
+
+    // MARK: - Plan LV: a frozen vault
+
+    func frozen(_ vault: CompanyVaultCatalog.Vault) -> CompanyVaultCatalog.Vault {
+        var copy = vault
+        copy.frozen = true
+        return copy
+    }
+
+    func testAFrozenVaultIsNeverUpdated() {
+        let offered = frozen(vault("fixture-split", version: "5"))
+        XCTAssertEqual(Plan.steps(installed: installed([("fixture-split", "4")]), catalog: catalog([offered]), conditions: conditions()), [],
+                       "a frozen entry offered a new version keeps the one it has")
+        // Not even when its pack id moved.
+        let moved = Plan.Installed(vaults: ["fixture-split": .init(packId: "com.openglasses.vault.elsewhere", version: "4")])
+        XCTAssertEqual(Plan.steps(installed: moved, catalog: catalog([offered]), conditions: conditions()), [])
+        // The same entry unfrozen updates as before.
+        XCTAssertEqual(Plan.steps(installed: installed([("fixture-split", "4")]), catalog: catalog([vault("fixture-split", version: "5")]),
+                                  conditions: conditions()),
+                       [.update(vault("fixture-split", version: "5"), from: "4")])
+    }
+
+    func testAFrozenVaultStillInstallsOnAPhoneThatHasNoneAndItsManualsFollow() {
+        let offered = frozen(vault("fixture-split"))
+        let wiring = manual("Wiring.pdf", in: "fixture-split")
+        XCTAssertEqual(Plan.steps(installed: .init(), catalog: catalog([offered], [wiring]), conditions: conditions()),
+                       [.install(offered), .addManual(wiring)])
+        XCTAssertEqual(Plan.steps(installed: installed([("fixture-split", "3")]), catalog: catalog([offered], [wiring]), conditions: conditions()),
+                       [.addManual(wiring)], "the company's own manuals still arrive on a frozen vault")
+    }
+
+    func testAFrozenVaultTheCompanyRemovesStillLeaves() {
+        XCTAssertEqual(Plan.steps(installed: installed([("fixture-split", "4"), ("fixture-retired", "1")]), catalog: catalog([frozen(vault("fixture-split"))]),
+                                  conditions: conditions()),
+                       [.remove(vaultId: "fixture-retired")])
+    }
 }

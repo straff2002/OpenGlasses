@@ -1,8 +1,14 @@
 # Plan LV — Published Vaults (one partner's vault, many companies, each with its own manuals)
 
-**Status:** 📝 Drafted 2026-11-15, nothing implemented. Three [decisions](#decisions-for-greig) taken by the
-owner while it was discussed (the partner invoices their own customers; a company may extend a published vault;
-a publisher who leaves leaves the last version frozen); three open.
+**Status:** 🚧 P0 built 2026-11-15 (headless): the contract's new optional fields (`publisher`, `sealedCore`,
+`expects`, `frozen`, `extends`) and the sealed core (`CoreSeal`, domain `openglasses.company-core.v1`, sharing one
+chunked construction with the manual seal, whose bytes are unchanged) in the core package, with
+`company-vaults-v2` fixtures; on the phone `VaultLayerMerge`, `ExpectedManualMatch`, `CitationEditionCheck`, a
+frozen entry never updated, and `VaultDocument.revision`/`.origin`. The catalog version stays 1 (the fields are
+additive); the service raises `minAppBuild` to the first LV build. P1 (wiring) follows the service's S1 deploy;
+P2 device pass owed. All six [decisions](#decisions-for-greig) taken: 1–3 by the owner while discussing, 4–6 as
+recommended (2026-11-15). Manual matching treats one-sided evidence as no difference: an edition or revision known on only one side is
+not a difference.
 **Track:** Field Assist — fleet and publishing. Company vaults, the vault store, manuals, answers.
 **Builds on:**
 - Plan [LR](LR-company-vaults-from-the-portal.md): `CompanyVaultCatalog`, the pure `CompanyVaultPlan`, the
@@ -173,7 +179,7 @@ new data leaves the phone: the fleet view's installed versions (LR P2, disclosed
 2. **A company may extend a published vault.** ✅ As a company layer, kept across the partner's updates.
 3. **A publisher who leaves.** ✅ Every subscribed company keeps the last version, frozen.
 
-**Open:**
+**Taken as recommended, 2026-11-15:**
 
 4. **May the company layer replace one of the partner's files?** *Recommended:* not at first. Add files and
    prompt rules only, so a partner's update can never collide with a company's change. Replacing comes when a

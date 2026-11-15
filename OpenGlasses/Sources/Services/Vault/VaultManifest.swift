@@ -226,10 +226,31 @@ struct VaultDocument: Codable, Equatable {
     /// edition answers by default and an older one only when asked for — see `DocumentEditions`.
     /// Optional: two documents whose titles differ only by a year are recognised without it.
     let edition: String?
+    /// Plan LV: SHA-256 (lowercase hex) of the document's plaintext, written when it is laid in. A
+    /// company manual takes it from its catalog row. What a published vault's expected manuals are
+    /// compared against (`ExpectedManualMatch`). Nil, and absent from the JSON, on every document
+    /// laid in without one, so such a manifest encodes exactly as it did.
+    let revision: String?
+    /// Plan LV: where the document came from. Nil, and absent from the JSON, when not recorded (every
+    /// document laid in before the field existed). A value this build does not know reads as nil.
+    let origin: Origin?
+
+    /// Where a document in a vault came from.
+    enum Origin: String, Codable, Equatable, Sendable {
+        /// The company's copy, delivered on its catalog.
+        case company
+        /// Added by the technician on this phone.
+        case technician
+        /// A photographed manual (a capture).
+        case capture
+    }
 
     init(file: String, title: String, kind: String? = nil,
          source: String? = nil, sourceUrl: String? = nil, capturedManual: CapturedManualReview? = nil,
-         edition: String? = nil, personalCapture: Bool? = nil, personalReadingCopy: Bool? = nil) {
+         edition: String? = nil, personalCapture: Bool? = nil, personalReadingCopy: Bool? = nil,
+         revision: String? = nil, origin: Origin? = nil) {
+        self.revision = revision
+        self.origin = origin
         self.personalCapture = personalCapture
         self.personalReadingCopy = personalReadingCopy
         self.file = file
@@ -242,7 +263,7 @@ struct VaultDocument: Codable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case file, title, kind, source, edition, personalCapture, personalReadingCopy
+        case file, title, kind, source, edition, personalCapture, personalReadingCopy, revision, origin
         case sourceUrl = "source_url"
         case capturedManual = "captured_manual"
     }
@@ -255,6 +276,9 @@ struct VaultDocument: Codable, Equatable {
         kind = try c.decodeIfPresent(String.self,forKey:.kind);source = try c.decodeIfPresent(String.self,forKey:.source)
         sourceUrl = try c.decodeIfPresent(String.self,forKey:.sourceUrl)
         edition = try c.decodeIfPresent(String.self, forKey: .edition)
+        // Informational: a malformed or unknown value is ignored, never a refused manifest.
+        revision = (try? c.decodeIfPresent(String.self, forKey: .revision)) ?? nil
+        origin = (try? c.decodeIfPresent(Origin.self, forKey: .origin)) ?? nil
         capturedManual = c.contains(.capturedManual) ? try c.decode(CapturedManualReview.self,forKey:.capturedManual) : nil
         if let review = capturedManual, !review.valid {
             throw DecodingError.dataCorruptedError(forKey:.capturedManual,in:c,debugDescription:"Invalid photographed-manual review metadata")

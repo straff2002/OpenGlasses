@@ -194,7 +194,9 @@ enum CompanyVaultPlan {
             }
             let size = Int64(vault.sizeBytes)
             if let current = installed.vaults[vault.vaultId] {
-                if current.version != vault.version || current.packId != vault.id {
+                // Plan LV: a frozen vault's publisher has ended. The phone keeps the version it has
+                // and compares none; its manuals, the company's own, still follow below.
+                if !vault.isFrozen, current.version != vault.version || current.packId != vault.id {
                     guard !conditions.job.uses(vault.vaultId) else {
                         steps.append(.waitForJob(vaultId: vault.vaultId, version: vault.version, removal: false))
                         continue
