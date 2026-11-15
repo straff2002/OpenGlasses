@@ -148,7 +148,7 @@ enum PromptInjectionPolicy {
         case "home_assistant":
             return "Send a Home Assistant command: \(str("text") ?? compactArgs(args))"
         case "run_shortcut":
-            return "Run the Shortcut “\(str("name") ?? "?")”"
+            return shortcutSummary(args)
         case "medical_export":
             return "Export / share clinical data (\(str("action") ?? "export"))"
         case "execute":
@@ -160,6 +160,23 @@ enum PromptInjectionPolicy {
         default:
             return "Run \(toolName): \(compactArgs(args))"
         }
+    }
+
+    /// "Run the Shortcut “Log Water”", naming the Shortcut the way `SiriShortcutsTool` reads it
+    /// (`shortcut_name`). The summary is the approval card, the spoken ask, the held line and what
+    /// the model is told about a hold, so a Shortcut it cannot name is one nobody can pick out.
+    /// `name` is read too, for a call worded the way this summary used to expect.
+    static func shortcutSummary(_ args: [String: Any]) -> String {
+        func str(_ key: String) -> String? {
+            guard let v = args[key] as? String else { return nil }
+            let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard let name = str("shortcut_name") ?? str("name") else {
+            return "Run a Shortcut (no Shortcut name was given)"
+        }
+        let input = str("input").map { " with the input “\(preview($0, max: 60))”" } ?? ""
+        return "Run the Shortcut “\(name)”\(input)"
     }
 
     private static func preview(_ s: String, max: Int = 140) -> String {

@@ -30,9 +30,17 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
     /// grows for the turns that carry it.
     var endedQuietly: Bool?
 
+    /// Actions this reply's turn asked for that did not run and wait on the wearer — held while
+    /// they were away, or never asked about — in the summary the wearer sees ("Run the Shortcut
+    /// “Log Water”"). Shown under the reply, and replayed to the model with it
+    /// (`HeldActionNote`), because the model keeps none of a turn's tool calls once it ends.
+    /// Optional and nil for every ordinary reply, so threads saved before it decode unchanged.
+    let heldActions: [String]?
+
     init(role: String, content: String, imageAttached: Bool = false, answeredOnDevice: Bool = false,
          toolNames: [String] = [], webSources: [WebSource] = [],
-         searchSuggestions: SearchSuggestions? = nil, endedQuietly: Bool = false) {
+         searchSuggestions: SearchSuggestions? = nil, endedQuietly: Bool = false,
+         heldActions: [String] = []) {
         self.id = UUID().uuidString
         self.role = role
         self.content = content
@@ -43,7 +51,11 @@ struct ConversationMessage: Codable, Identifiable, Sendable {
         self.webSources = webSources.isEmpty ? nil : webSources
         self.searchSuggestions = searchSuggestions
         self.endedQuietly = endedQuietly ? true : nil
+        self.heldActions = heldActions.isEmpty ? nil : heldActions
     }
+
+    /// What this reply's turn held for the wearer; empty when nothing was.
+    var held: [String] { heldActions ?? [] }
 
     /// The reply's sources; empty when it has none.
     var sources: [WebSource] { webSources ?? [] }
@@ -345,6 +357,7 @@ class ConversationStore: ObservableObject {
                        webSources: [WebSource] = [],
                        searchSuggestions: SearchSuggestions? = nil,
                        endedQuietly: Bool = false,
+                       heldActions: [String] = [],
                        toThread threadId: String? = nil) -> String? {
         let target = threadId ?? activeThreadId
         guard let idx = threads.firstIndex(where: { $0.id == target }) else { return nil }
@@ -352,7 +365,8 @@ class ConversationStore: ObservableObject {
                                       answeredOnDevice: answeredOnDevice, toolNames: toolNames,
                                       webSources: webSources,
                                       searchSuggestions: searchSuggestions,
-                                      endedQuietly: endedQuietly)
+                                      endedQuietly: endedQuietly,
+                                      heldActions: heldActions)
         threads[idx].messages.append(msg)
         threads[idx].updatedAt = msg.timestamp
         if role == "assistant" {
@@ -518,7 +532,10 @@ class ConversationStore: ObservableObject {
         if (thread.timeline ?? []).isEmpty, let summary = thread.compressedSummary, !summary.isEmpty {
             result.append((role: "user", content: "[Prior conversation context]\n\(summary)"))
         }
-        result.append(contentsOf: thread.messages.map { (role: $0.role, content: $0.content) })
+        // A reply that held something says so to the model, which otherwise sees only the words.
+        result.append(contentsOf: thread.messages.map {
+            (role: $0.role, content: HeldActionNote.replayed($0.content, held: $0.held))
+        })
         return result
     }
 

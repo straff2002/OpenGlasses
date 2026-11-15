@@ -236,6 +236,8 @@ enum PrivacyLog {
         case operationJournalUnavailable
         /// The wearer withdrew consent for the asking source, so nothing was even asked.
         case consentWithdrawn
+        /// Another approval was already on screen, so this one was not asked about.
+        case approvalBusy
         /// An approval existed but was not bound to this call — replayed, expired, or given for
         /// different arguments, a different tool or a different server. The refusal class itself
         /// goes to the authorization ring; this is the dispatch-side counterpart.

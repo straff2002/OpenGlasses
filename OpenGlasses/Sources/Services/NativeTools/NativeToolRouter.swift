@@ -120,6 +120,33 @@ final class NativeToolRouter: ToolExecutionAuthority {
         return names
     }
 
+    /// Actions this turn asked for that did not run and are waiting on the wearer — held while
+    /// they were away, or never asked about because another approval was on screen — in the
+    /// summary the wearer sees ("Run the Shortcut “Log Water”"). The turn's saved reply carries
+    /// them, so the thread shows what was held and the model, which keeps none of a turn's tool
+    /// calls once it ends, can still say which Shortcut it was.
+    private(set) var turnUnrunActions: [String] = []
+    static let turnUnrunActionCap = 10
+
+    /// Return and clear what this turn held.
+    func takeTurnUnrunActions() -> [String] {
+        let held = turnUnrunActions
+        turnUnrunActions = []
+        return held
+    }
+
+    /// Only the model's own calls in a conversation turn: a scheduled run's hold, Siri's or a
+    /// skill pack's belongs to no reply, and would otherwise turn up under the next one.
+    private func noteUnrun(_ summary: String, for call: ResolvedToolCall) {
+        guard call.context.origin == .model, !LLMService.OffConversationScope.isActive else { return }
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !turnUnrunActions.contains(trimmed) else { return }
+        turnUnrunActions.append(trimmed)
+        if turnUnrunActions.count > Self.turnUnrunActionCap {
+            turnUnrunActions.removeFirst(turnUnrunActions.count - Self.turnUnrunActionCap)
+        }
+    }
+
     /// The Field Assist trades in force, for the trade gate. A seam so a test states them.
     var activeTrades: @MainActor () -> [FieldTrade] = { FieldTradeGate.currentActiveTrades }
     /// Whether the job open right now is sealed to its vault (`VaultOnlyPolicy`, Plan KE). A seam so
@@ -350,6 +377,7 @@ final class NativeToolRouter: ToolExecutionAuthority {
 
         case .hold(let summary, let message):
             onActionHeld?(summary)
+            noteUnrun(summary, for: call)
             // The same moment `onActionHeld` feeds the held-recommendation store: one trail entry
             // per held action, written here where the tool is known.
             gate = stopped(.held)
@@ -402,6 +430,14 @@ final class NativeToolRouter: ToolExecutionAuthority {
             case .consentWithdrawn:
                 gate = stopped(.refused(code: ActivityFeed.RefusalCode.consentWithdrawn))
                 return .rejected(reason: RemoteActionConsentGate.withdrawnMessage(tool: name))
+            case .busy:
+                // Another card was up, so this one was never shown. It used to come back as a
+                // decline, and the model told the wearer they had said no to something they
+                // never saw; now it is named, as a hold is.
+                PrivacyLog.toolGate(.approvalBusy, tool: name)
+                gate = stopped(.refused(code: ActivityFeed.RefusalCode.noConfirmation))
+                noteUnrun(summary, for: call)
+                return .rejected(reason: ToolAuthorizationPolicy.busyConfirmationMessage(name, held: summary))
             case .denied:
                 PrivacyLog.toolGate(.declinedByUser, tool: name)
                 gate = stopped(.declined)

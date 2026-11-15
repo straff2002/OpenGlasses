@@ -7263,7 +7263,10 @@ class AppState: ObservableObject, AppStateProtocol {
         presenceMonitor.onReEngage = { [weak self] in
             guard let self, let line = self.heldRecommendations.drainSummary() else { return }
             Task { @MainActor in await self.speechService.speak(line, source: .alert) }
-            self.glassesDisplay.showNotification(title: "Held while away", body: line, icon: .info)
+            self.glassesDisplay.showNotification(
+                title: String(localized: "Held while away",
+                              comment: "Glasses display heading: actions held while the user was away, shown when they come back."),
+                body: line, icon: .info)
         }
 
         // The periodic loops that read the throttle decision each tick. Assistive Mode (A3) is an
@@ -8912,6 +8915,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // See the photo turn: the generation this answer belongs to.
         let turnGeneration = conversationReset.currentGeneration
+        // Holds left by a turn that never reached its reply (or a live session) are not this one's.
+        _ = nativeToolRouter.takeTurnUnrunActions()
         // Plan HZ P1: with the switch on, the reply is spoken a sentence at a time as it is written.
         // Nil — today's path, unchanged — when it is off.
         let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId,
@@ -9083,6 +9088,10 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
 
                     let usedToolNames = nativeToolRouter.takeTurnToolNames()
+                    // What the turn held and did not run goes with the reply: on screen under it,
+                    // and to the model with its words, so "which Shortcut?" has an answer later.
+                    let heldActions = nativeToolRouter.takeTurnUnrunActions()
+                    llmService.noteHeldActions(heldActions)
 
                     // Plan LA §2: the judge runs once, on the final reply, before any of it is said.
                     // A brain that keeps no ledger (the Hermes agent runs its own tools) left the
@@ -9103,6 +9112,7 @@ class AppState: ObservableObject, AppStateProtocol {
                                                         webSources: attachments.sources,
                                                         searchSuggestions: attachments.suggestions,
                                                         endedQuietly: quietEnding.verdict?.isQuiet == true,
+                                                        heldActions: heldActions,
                                                         toThread: turnThreadId)
                     }
 
@@ -9320,6 +9330,8 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // See the photo turn: the generation this answer belongs to.
         let turnGeneration = conversationReset.currentGeneration
+        // Holds left by a turn that never reached its reply (or a live session) are not this one's.
+        _ = nativeToolRouter.takeTurnUnrunActions()
         // Plan HZ P1: spoken a sentence at a time when the switch is on and the reply is spoken here.
         let replyStream = speakResponse
             ? makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId) : nil
@@ -9390,6 +9402,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
 
                     let usedToolNames = nativeToolRouter.takeTurnToolNames()
+                    // What the turn held and did not run goes with the reply (see the spoken path).
+                    let heldActions = nativeToolRouter.takeTurnUnrunActions()
+                    llmService.noteHeldActions(heldActions)
                     if Config.conversationPersistenceEnabled {
                         // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
                         let attachments = llmService.takeReplyWebAttachments()
@@ -9398,6 +9413,7 @@ class AppState: ObservableObject, AppStateProtocol {
                                                         toolNames: usedToolNames,
                                                         webSources: attachments.sources,
                                                         searchSuggestions: attachments.suggestions,
+                                                        heldActions: heldActions,
                                                         toThread: turnThreadId)
                     }
 
