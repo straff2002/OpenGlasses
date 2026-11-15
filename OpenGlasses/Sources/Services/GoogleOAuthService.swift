@@ -50,25 +50,25 @@ final class GoogleOAuthService: NSObject, ObservableObject {
     func signIn() async -> Bool {
         let clientID = Config.googleOAuthClientID
         guard let scheme = GoogleOAuth.callbackScheme(clientID: clientID) else {
-            lastError = "Enter your GCP iOS OAuth client ID first (ends in .apps.googleusercontent.com)."
+            lastError = String(localized: "Enter your GCP iOS OAuth client ID first (ends in .apps.googleusercontent.com).")
             return false
         }
         let verifier = PKCE.makeVerifier()
         let state = PKCE.makeVerifier()
         guard let url = GoogleOAuth.authorizeURL(clientID: clientID, verifier: verifier, state: state) else {
-            lastError = "Couldn't build the Google sign-in URL."
+            lastError = String(localized: "Couldn't build the Google sign-in URL.")
             return false
         }
         do {
             let callback = try await runBrowserSession(url: url, callbackScheme: scheme)
             guard let parsed = GoogleOAuth.parseCallback(url: callback),
                   parsed.state == nil || parsed.state == state else {
-                lastError = "Google sign-in returned an invalid response."
+                lastError = String(localized: "Google sign-in returned an invalid response.")
                 return false
             }
             guard let request = GoogleOAuth.tokenExchangeRequest(
                 clientID: clientID, code: parsed.code, verifier: verifier) else {
-                lastError = "Couldn't build the token request."
+                lastError = String(localized: "Couldn't build the token request.")
                 return false
             }
             let response = try await performTokenRequest(request)
@@ -79,7 +79,7 @@ final class GoogleOAuthService: NSObject, ObservableObject {
             lastError = nil   // user closed the sheet — not an error worth surfacing
             return false
         } catch {
-            lastError = "Sign-in failed: \(error.localizedDescription)"
+            lastError = String(localized: "Sign-in failed: \(error.localizedDescription)")
             return false
         }
     }

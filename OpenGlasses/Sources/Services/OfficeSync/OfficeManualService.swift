@@ -504,21 +504,21 @@ final class OfficeManualService: ObservableObject {
     /// The words for one assigned manual. A manual is "ready" only once it is installed; nothing
     /// here says delivered for a finished transfer.
     static func status(_ row: Row) -> OfficeFieldConnectionPolicy.Status {
-        let name = "Manual \(row.vaultID) \(row.vaultVersion)"
+        let name = String(localized: "Manual \(row.vaultID) \(row.vaultVersion)")
         switch row.state {
         case .waitingForOffice:
-            return .init(title: name, detail: "Waiting for the office to send it.", systemImage: "clock")
+            return .init(title: name, detail: String(localized: "Waiting for the office to send it."), systemImage: "clock")
         case .waitingForWiFi:
-            return .init(title: name, detail: "Waiting for Wi-Fi.", systemImage: "wifi.exclamationmark")
+            return .init(title: name, detail: String(localized: "Waiting for Wi-Fi."), systemImage: "wifi.exclamationmark")
         case .downloading:
-            return .init(title: name, detail: "Still downloading.", systemImage: "arrow.down.circle")
+            return .init(title: name, detail: String(localized: "Still downloading."), systemImage: "arrow.down.circle")
         case .notEnoughSpace:
-            return .init(title: name, detail: "Not enough space on this phone. Free some space and it will download.",
+            return .init(title: name, detail: String(localized: "Not enough space on this phone. Free some space and it will download."),
                          systemImage: "externaldrive.badge.exclamationmark")
         case .installed:
-            return .init(title: name, detail: "Ready.", systemImage: "checkmark.circle")
+            return .init(title: name, detail: String(localized: "Ready."), systemImage: "checkmark.circle")
         case .notInstalled(let reason):
-            return .init(title: name, detail: reason.isEmpty ? "Not installed." : reason,
+            return .init(title: name, detail: reason.isEmpty ? String(localized: "Not installed.") : reason,
                          systemImage: "exclamationmark.triangle")
         }
     }

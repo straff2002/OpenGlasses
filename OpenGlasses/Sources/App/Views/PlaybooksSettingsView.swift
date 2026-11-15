@@ -234,7 +234,7 @@ struct PlaybookEditorView: View {
                                     .foregroundStyle(.secondary)
                                     .frame(width: 22)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(step.title.isEmpty ? "Untitled Step" : step.title)
+                                    Text(step.title.isEmpty ? String(localized: "Untitled Step") : step.title)
                                         .foregroundStyle(step.title.isEmpty ? .secondary : .primary)
                                     Text(step.type.displayName)
                                         .font(.caption)
@@ -621,7 +621,7 @@ struct StepEditorSheet: View {
                 if allSteps.count > 1 { Divider() }
                 ForEach(Array(allSteps.enumerated()), id: \.offset) { idx, s in
                     if idx != stepIndex {
-                        Button("Step \(idx + 1): \(s.title.isEmpty ? "Untitled" : s.title)") {
+                        Button("Step \(idx + 1): \(s.title.isEmpty ? String(localized: "Untitled") : s.title)") {
                             selection.wrappedValue = idx
                         }
                     }

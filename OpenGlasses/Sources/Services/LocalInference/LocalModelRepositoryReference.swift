@@ -98,29 +98,29 @@ enum LocalModelImportRejection: Error, Equatable, Sendable {
     var localizedMessage: String {
         switch self {
         case .empty:
-            return "Enter a model repository, for example owner/repository."
+            return String(localized: "Enter a model repository, for example owner/repository.")
         case .notAURL:
-            return "That isn't a repository name or a web address."
+            return String(localized: "That isn't a repository name or a web address.")
         case .missingScheme:
-            return "Paste the full address, starting with https://."
+            return String(localized: "Paste the full address, starting with https://.")
         case .disallowedScheme:
-            return "Only https:// addresses can be imported."
+            return String(localized: "Only https:// addresses can be imported.")
         case .embeddedCredentials:
-            return "Addresses with a username or password can't be imported."
+            return String(localized: "Addresses with a username or password can't be imported.")
         case .queryNotAllowed:
-            return "Remove everything after the ? — a repository address needs no query."
+            return String(localized: "Remove everything after the ? — a repository address needs no query.")
         case .fragmentNotAllowed:
-            return "Remove everything after the # — a repository address needs no fragment."
+            return String(localized: "Remove everything after the # — a repository address needs no fragment.")
         case .disallowedHost:
-            return "Models can only be imported from a supported public model host."
+            return String(localized: "Models can only be imported from a supported public model host.")
         case .privateOrReservedHost:
-            return "That address points at a private or reserved network."
+            return String(localized: "That address points at a private or reserved network.")
         case .pathOutsideRepositoryForm:
-            return "Use the repository address itself, without a file or branch path."
+            return String(localized: "Use the repository address itself, without a file or branch path.")
         case .malformedOwner:
-            return "That owner name isn't valid."
+            return String(localized: "That owner name isn't valid.")
         case .malformedRepository:
-            return "That repository name isn't valid."
+            return String(localized: "That repository name isn't valid.")
         }
     }
 }

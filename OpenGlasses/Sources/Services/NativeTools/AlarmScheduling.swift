@@ -175,7 +175,7 @@ struct NotificationAlarmScheduler: AlarmScheduler {
     func schedule(_ plan: AlarmPlan) async throws -> String {
         let content = UNMutableNotificationContent()
         content.title = plan.label
-        content.body = "Alarm: \(plan.label)"
+        content.body = String(localized: "Alarm: \(plan.label)")
         content.sound = .defaultCritical
         content.interruptionLevel = .timeSensitive
         let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: plan.date)

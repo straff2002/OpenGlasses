@@ -815,7 +815,7 @@ class OpenClawBridge: ObservableObject {
                 PrivacyLog.gatewayFailed(.request, .remote(code: code))
 
                 if message.contains("missing scope") {
-                    lastToolCallStatus = .failed(toolName, "Token needs write permissions")
+                    lastToolCallStatus = .failed(toolName, String(localized: "Token needs write permissions"))
                     return .failure("Gateway token needs operator.write scope. Update the token permissions in OpenClaw settings.")
                 }
                 lastToolCallStatus = .failed(toolName, message)
@@ -845,11 +845,11 @@ class OpenClawBridge: ObservableObject {
                 return .success(text.isEmpty ? "OK" : text)
             case .aborted:
                 PrivacyLog.gatewayOperation(request.method, outcome: .rejected)
-                lastToolCallStatus = .failed(toolName, "Run aborted")
+                lastToolCallStatus = .failed(toolName, String(localized: "Run aborted"))
                 return .failure("The gateway stopped the task before it finished.")
             case .failed(let message):
                 PrivacyLog.gatewayOperation(request.method, outcome: .failed)
-                lastToolCallStatus = .failed(toolName, message ?? "Run failed")
+                lastToolCallStatus = .failed(toolName, message ?? String(localized: "Run failed"))
                 return .failure("Gateway error: \(message ?? "the task failed")")
             case .timedOut:
                 // Parked, not dropped: the run is still tracked and its answer will be announced

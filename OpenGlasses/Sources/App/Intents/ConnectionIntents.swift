@@ -26,11 +26,11 @@ struct ConnectGlassesIntent: AppIntent {
         await appState.connectAndListen()
 
         if appState.isConnected {
-            return .result(value: "Connected and listening")
+            return .result(value: String(localized: "Connected and listening"))
         } else if GlassesSupportPolicy.isSupported {
-            return .result(value: "Listening on your phone — glasses aren't connected")
+            return .result(value: String(localized: "Listening on your phone — glasses aren't connected"))
         } else {
-            return .result(value: "Listening on your phone")
+            return .result(value: String(localized: "Listening on your phone"))
         }
     }
 
@@ -62,9 +62,9 @@ struct DisconnectGlassesIntent: AppIntent {
         }
         if appState.isConnected {
             appState.disconnectGlasses()
-            return .result(value: "Glasses disconnected")
+            return .result(value: String(localized: "Glasses disconnected"))
         } else {
-            return .result(value: "Glasses are already disconnected")
+            return .result(value: String(localized: "Glasses are already disconnected"))
         }
     }
 
@@ -97,13 +97,13 @@ struct ToggleGlassesIntent: AppIntent {
 
         if appState.isConnected {
             appState.disconnectGlasses()
-            return .result(value: "Glasses disconnected")
+            return .result(value: String(localized: "Glasses disconnected"))
         } else {
             await appState.connectAndListen()
-            if appState.isConnected { return .result(value: "Connected and listening") }
+            if appState.isConnected { return .result(value: String(localized: "Connected and listening")) }
             return .result(value: GlassesSupportPolicy.isSupported
-                           ? "Listening on your phone — glasses aren't connected"
-                           : "Listening on your phone")
+                           ? String(localized: "Listening on your phone — glasses aren't connected")
+                           : String(localized: "Listening on your phone"))
         }
     }
 

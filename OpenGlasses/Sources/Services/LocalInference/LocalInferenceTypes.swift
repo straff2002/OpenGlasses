@@ -543,21 +543,19 @@ enum LocalInferenceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .noBackend(let runtime):
-            return "No on-device runtime is available for \(runtime.rawValue) models."
+            return String(localized: "No on-device runtime is available for \(runtime.rawValue) models.")
         case .transitionInProgress:
-            return "The on-device model is still loading or unloading. Try again in a moment."
+            return String(localized: "The on-device model is still loading or unloading. Try again in a moment.")
         case .notLoaded:
-            return "No local model is loaded. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models."
+            return String(localized: "No local model is loaded. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models.")
         case .wrongModelResident(let expected, let resident):
-            return "The on-device model \(resident.rawValue) is loaded, but this request needs "
-                + "\(expected.rawValue)."
+            return String(localized: "The on-device model \(resident.rawValue) is loaded, but this request needs \(expected.rawValue).")
         case .backgrounded:
-            return "On-device models can't run while the app is in the background. Switch to a "
-                + "cloud model for background tasks."
+            return String(localized: "On-device models can't run while the app is in the background. Switch to a cloud model for background tasks.")
         case .visionNotAvailable:
-            return "This on-device model can't look at images."
+            return String(localized: "This on-device model can't look at images.")
         case .installationInvalid(let id):
-            return "The installed files for \(id.rawValue) are incomplete. Download the model again."
+            return String(localized: "The installed files for \(id.rawValue) are incomplete. Download the model again.")
         }
     }
 }

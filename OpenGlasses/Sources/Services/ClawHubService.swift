@@ -396,9 +396,9 @@ enum ClawHubError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .rateLimited: return "Rate limited — try again in a moment"
-        case .httpError(let code): return "Server error (\(code))"
-        case .notFound: return "Skill not found"
+        case .rateLimited: return String(localized: "Rate limited — try again in a moment")
+        case .httpError(let code): return String(localized: "Server error (\(code))")
+        case .notFound: return String(localized: "Skill not found")
         }
     }
 }

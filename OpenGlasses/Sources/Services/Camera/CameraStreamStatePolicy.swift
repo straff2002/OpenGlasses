@@ -45,17 +45,17 @@ enum CameraStreamStatePolicy {
 
     /// Shown when a wanted stream pauses. Names the likeliest cause first — since DAT 0.9 a doff
     /// pauses the camera, and "put them back on" is the whole fix in the common case.
-    static let pausedNotice = "Camera paused — put the glasses on, or check they aren't folded."
+    static let pausedNotice = String(localized: "Camera paused — put the glasses on, or check they aren't folded.")
 
     /// Shown when a wanted stream stops. Says a retry is already under way, because it is: the
     /// wearer's job here is to make the retry able to succeed, not to press anything.
-    static let stoppedNotice = "Camera dropped — reconnecting. Check the glasses are on and unfolded."
+    static let stoppedNotice = String(localized: "Camera dropped — reconnecting. Check the glasses are on and unfolded.")
 
     /// Secondary line for a preview that is still waiting on its first frame. A *healthy* cold
     /// start takes up to `StreamRecoveryPolicy.observedColdStart`, so a spinner alone is honest
     /// but useless: field reports of "black screen" are overwhelmingly folded hinges or glasses
     /// off the face, both of which turn the camera off, and neither of which the old copy named.
-    static let coldStartHint = "Put the glasses on and open the hinges — the first frame can take up to 20 seconds."
+    static let coldStartHint = String(localized: "Put the glasses on and open the hinges — the first frame can take up to 20 seconds.")
 
     /// How long to let the plain spinner stand before adding the hint. Short enough to help a
     /// stuck start, long enough that a quick connect never flashes advice the wearer didn't need.

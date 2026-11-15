@@ -525,7 +525,7 @@ class VideoRecordingService: ObservableObject {
                 }
             }
             if writer.status == .failed {
-                writerFailure = writer.error?.localizedDescription ?? "the recording could not be finished"
+                writerFailure = writer.error?.localizedDescription ?? String(localized: "the recording could not be finished")
                 // `writerFailure` is the writer's own description, kept for the wearer-facing
                 // save note; the log gets the bounded summary.
                 Self.logWriterFailure(writer.error, stage: "finish")
@@ -565,7 +565,7 @@ class VideoRecordingService: ObservableObject {
         // A broken encode is worth saying out loud even when the bytes were filed: a playable
         // prefix and an unplayable file look identical from the outside.
         if let writerFailure {
-            let note = "Something went wrong while finishing the recording — \(writerFailure)."
+            let note = String(localized: "Something went wrong while finishing the recording — \(writerFailure).")
             lastSaveNote = [note, lastSaveNote].compactMap { $0 }.joined(separator: " ")
             onDebugEvent?("Recording writer failed: \(writerFailure)")
         }

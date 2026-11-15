@@ -38,13 +38,13 @@ enum DeviceSessionFailureReason: String, Equatable {
         #else
         switch self {
         case .deviceUnavailable:
-            return "The glasses couldn't start the camera. In Meta AI, check Developer Mode and apply its settings to the glasses. Then try again."
+            return String(localized: "The glasses couldn't start the camera. In Meta AI, check Developer Mode and apply its settings to the glasses. Then try again.")
         case .developerAppUnavailable:
-            return "The glasses camera component isn't available. Update Meta AI, then apply Developer Mode settings to the glasses and try again."
+            return String(localized: "The glasses camera component isn't available. Update Meta AI, then apply Developer Mode settings to the glasses and try again.")
         case .sessionEndedByDevice:
             // Plan LT §7: a session the glasses end as soon as it starts is also how an out-of-date
             // glasses install shows. Kept within the spoken-error gate's 200 characters.
-            return "The glasses ended the camera session. End any broadcast in Meta AI, or close the glasses in their case for a minute. If it ends just after it starts, open Meta AI and check for a glasses update."
+            return String(localized: "The glasses ended the camera session. End any broadcast in Meta AI, or close the glasses in their case for a minute. If it ends just after it starts, open Meta AI and check for a glasses update.")
         }
         #endif
     }

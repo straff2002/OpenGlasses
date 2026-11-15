@@ -228,7 +228,7 @@ final class SkillPackSideloadService: ObservableObject {
         let expiresAt: Date
 
         var consentMessage: String {
-            "Source: \(origin)\n\nThis source is untrusted. Download up to 8 MiB for inspection? Nothing will be installed yet."
+            String(localized: "Source: \(origin)\n\nThis source is untrusted. Download up to 8 MiB for inspection? Nothing will be installed yet.")
         }
     }
 
@@ -255,17 +255,17 @@ final class SkillPackSideloadService: ObservableObject {
         var confirmationMessage: String {
             var lines = ["\(name) v\(version)"]
             if !summary.isEmpty { lines.append(summary) }
-            lines.append("Source: \(origin)")
-            lines.append("Archive SHA-256: \(archiveSHA256)")
-            lines.append("Actions (\(actionCount)): \(actionNames.isEmpty ? "none" : actionNames.joined(separator: ", "))")
-            lines.append("Capabilities: \(capabilities.isEmpty ? "none" : capabilities.joined(separator: ", "))")
-            lines.append("Settings: \(settingKeys.isEmpty ? "none" : settingKeys.joined(separator: ", "))")
-            lines.append(signed ? "Signature verified for this review."
-                                : "UNSIGNED — developer-mode install.")
+            lines.append(String(localized: "Source: \(origin)"))
+            lines.append(String(localized: "Archive SHA-256: \(archiveSHA256)"))
+            lines.append(String(localized: "Actions (\(actionCount)): \(actionNames.isEmpty ? String(localized: "none") : actionNames.joined(separator: ", "))"))
+            lines.append(String(localized: "Capabilities: \(capabilities.isEmpty ? String(localized: "none") : capabilities.joined(separator: ", "))"))
+            lines.append(String(localized: "Settings: \(settingKeys.isEmpty ? String(localized: "none") : settingKeys.joined(separator: ", "))"))
+            lines.append(signed ? String(localized: "Signature verified for this review.")
+                                : String(localized: "UNSIGNED — developer-mode install."))
             let visibleWarnings = warnings.filter { !$0.isEmpty && !$0.hasPrefix("UNSIGNED") }
-            if !visibleWarnings.isEmpty { lines.append("Warnings: \(visibleWarnings.joined(separator: "; "))") }
+            if !visibleWarnings.isEmpty { lines.append(String(localized: "Warnings: \(visibleWarnings.joined(separator: "; "))")) }
             if decodeSummary != "clean", !visibleWarnings.contains(where: { $0.contains(decodeSummary) }) {
-                lines.append("Partial: \(decodeSummary)")
+                lines.append(String(localized: "Partial: \(decodeSummary)"))
             }
             return lines.joined(separator: "\n")
         }
@@ -367,12 +367,12 @@ final class SkillPackSideloadService: ObservableObject {
     func approveDownload(_ offer: DownloadOffer) async {
         guard let pendingDownload, pendingDownload.id == offer.id,
               pendingDownload.request == offer.request else {
-            prompt = .error("That download approval is no longer valid.")
+            prompt = .error(String(localized: "That download approval is no longer valid."))
             return
         }
         self.pendingDownload = nil
         guard now() <= offer.expiresAt else {
-            prompt = .error("That download approval expired. Open the link again to review it.")
+            prompt = .error(String(localized: "That download approval expired. Open the link again to review it."))
             return
         }
 
@@ -388,7 +388,7 @@ final class SkillPackSideloadService: ObservableObject {
             guard activeDownloadID == downloadID else { return }
             activeDownload = nil
             activeDownloadID = nil
-            prompt = .error("Couldn't fetch the pack: \(error.localizedDescription)")
+            prompt = .error(String(localized: "Couldn't fetch the pack: \(error.localizedDescription)"))
             return
         }
         guard activeDownloadID == downloadID else {
@@ -403,14 +403,14 @@ final class SkillPackSideloadService: ObservableObject {
             zipData = try stagingStore.load(staged)
         } catch {
             cleanUpStagedArchive()
-            prompt = .error("The downloaded pack is no longer available for inspection.")
+            prompt = .error(String(localized: "The downloaded pack is no longer available for inspection."))
             return
         }
         // Manifest first: nothing else in the archive is inflated until this pack's own manifest
         // has decoded and passed admission, so a refused pack never expands attacker-chosen bytes.
         guard case .success(let vetted) = SkillPackArchive.extractManifest(zipData: zipData) else {
             cleanUpStagedArchive()
-            prompt = .error("That link isn't a readable skill pack archive.")
+            prompt = .error(String(localized: "That link isn't a readable skill pack archive."))
             return
         }
         let manifestData = vetted.manifestData
@@ -422,17 +422,17 @@ final class SkillPackSideloadService: ObservableObject {
             report = decodeReport
         case .unreadable:
             cleanUpStagedArchive()
-            prompt = .error("The pack's manifest is unreadable.")
+            prompt = .error(String(localized: "The pack's manifest is unreadable."))
             return
         case .rejected(let reasons):
             cleanUpStagedArchive()
-            prompt = .error("Install review refused: \(reasons.joined(separator: "; "))")
+            prompt = .error(String(localized: "Install review refused: \(reasons.joined(separator: "; "))"))
             return
         }
         guard case .success(let files) =
                 SkillPackArchive.materializeFiles(for: vetted, declaredBy: manifest) else {
             cleanUpStagedArchive()
-            prompt = .error("That link isn't a readable skill pack archive.")
+            prompt = .error(String(localized: "That link isn't a readable skill pack archive."))
             return
         }
         let reviewWarnings: [String]
@@ -446,7 +446,7 @@ final class SkillPackSideloadService: ObservableObject {
             reviewWarnings = warnings
         case .rejected(let reasons):
             cleanUpStagedArchive()
-            prompt = .error("Install review refused: \(reasons.joined(separator: "; "))")
+            prompt = .error(String(localized: "Install review refused: \(reasons.joined(separator: "; "))"))
             return
         }
         let pending = PendingInstall(
@@ -471,7 +471,7 @@ final class SkillPackSideloadService: ObservableObject {
     /// The user tapped Install on the confirmation.
     func confirm(_ pending: PendingInstall) {
         guard pendingInstallID == pending.id else {
-            prompt = .error("That install approval is no longer valid.")
+            prompt = .error(String(localized: "That install approval is no longer valid."))
             return
         }
         pendingInstallID = nil
@@ -486,14 +486,14 @@ final class SkillPackSideloadService: ObservableObject {
                   case .success(let files) =
                     SkillPackArchive.materializeFiles(for: vetted, declaredBy: manifest) else {
                 cleanUpStagedArchive()
-                prompt = .error("Install refused because the reviewed archive changed.")
+                prompt = .error(String(localized: "Install refused because the reviewed archive changed."))
                 return
             }
             reviewedManifest = vetted.manifestData
             reviewedFiles = files
         } catch {
             cleanUpStagedArchive()
-            prompt = .error("Install refused because the reviewed archive is unavailable.")
+            prompt = .error(String(localized: "Install refused because the reviewed archive is unavailable."))
             return
         }
 
@@ -511,7 +511,7 @@ final class SkillPackSideloadService: ObservableObject {
                 : "\(pending.name) installed — \(warnings.joined(separator: "; "))")
         case .rejected(let reasons):
             cleanUpStagedArchive()
-            prompt = .error("Install refused: \(reasons.joined(separator: "; "))")
+            prompt = .error(String(localized: "Install refused: \(reasons.joined(separator: "; "))"))
         }
     }
 
@@ -549,18 +549,18 @@ final class SkillPackSideloadService: ObservableObject {
     private static func capabilityDetails(for manifest: SkillPackManifest) -> [String] {
         var details = Set<String>()
         for requirement in manifest.hardware {
-            details.insert("\(requirement.type.rawValue) hardware (\(requirement.level.rawValue))")
+            details.insert(String(localized: "\(requirement.type.rawValue) hardware (\(requirement.level.rawValue))"))
         }
         for action in manifest.actions {
             switch action.binding {
             case .prompt:
-                details.insert("model prompt generation")
+                details.insert(String(localized: "model prompt generation"))
             case .tool(let target, _):
-                details.insert("native tool: \(target)")
+                details.insert(String(localized: "native tool: \(target)"))
             case .procedure(let id):
-                details.insert("procedure: \(id)")
+                details.insert(String(localized: "procedure: \(id)"))
             case .gateway:
-                details.insert("remote agent delegation")
+                details.insert(String(localized: "remote agent delegation"))
             }
         }
         return details.sorted()

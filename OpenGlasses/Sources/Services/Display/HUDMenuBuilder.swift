@@ -13,8 +13,8 @@ enum HUDMenuBuilder {
     /// Root menu: one button per available branch, plus a Close.
     static func root(branches: [HUDItem], onClose: @escaping () -> Void) -> HUDScreen {
         var items = branches
-        items.append(HUDItem(id: "close", label: "Close", style: .outline, action: onClose))
-        return HUDScreen(title: "Menu", items: items)
+        items.append(HUDItem(id: "close", label: String(localized: "Close"), style: .outline, action: onClose))
+        return HUDScreen(title: String(localized: "Menu"), items: items)
     }
 
     /// Quick Actions: one button per action; selecting runs it. Back returns to root.
@@ -28,7 +28,7 @@ enum HUDMenuBuilder {
                 onRun(action)
             }
         }
-        return listScreen(title: "Quick Actions", leaves: leaves, page: page,
+        return listScreen(title: String(localized: "Quick Actions"), leaves: leaves, page: page,
                           onMore: onMore, trailing: backItem(onBack))
     }
 
@@ -44,7 +44,7 @@ enum HUDMenuBuilder {
                 onStart(playbook.id)
             }
         }
-        return listScreen(title: "Workflows", leaves: leaves, page: page,
+        return listScreen(title: String(localized: "Workflows"), leaves: leaves, page: page,
                           onMore: onMore, trailing: backItem(onBack))
     }
 
@@ -60,7 +60,7 @@ enum HUDMenuBuilder {
                 onStart(procedure.id)
             }
         }
-        return listScreen(title: "SOPs", leaves: leaves, page: page,
+        return listScreen(title: String(localized: "SOPs"), leaves: leaves, page: page,
                           onMore: onMore, trailing: backItem(onBack))
     }
 
@@ -78,7 +78,7 @@ enum HUDMenuBuilder {
                 onSelect(persona)
             }
         }
-        return listScreen(title: "Mode / Persona", leaves: leaves, page: page,
+        return listScreen(title: String(localized: "Mode / Persona"), leaves: leaves, page: page,
                           onMore: onMore, trailing: backItem(onBack))
     }
 
@@ -99,7 +99,7 @@ enum HUDMenuBuilder {
             items.append(contentsOf: leaves[start..<end])
             if end < leaves.count, let onMore {
                 let next = page + 1
-                items.append(HUDItem(id: "more:\(next)", label: "More…", style: .secondary) {
+                items.append(HUDItem(id: "more:\(next)", label: String(localized: "More…"), style: .secondary) {
                     onMore(next)
                 })
             }
@@ -109,7 +109,7 @@ enum HUDMenuBuilder {
     }
 
     private static func backItem(_ onBack: @escaping () -> Void) -> HUDItem {
-        HUDItem(id: "back", label: "Back", style: .outline, action: onBack)
+        HUDItem(id: "back", label: String(localized: "Back"), style: .outline, action: onBack)
     }
 
     /// Best-effort HUD icon for a quick-action type (HUDIcon is a small semantic set).

@@ -95,11 +95,11 @@ struct PomodoroTool: NativeTool {
 
         let content = UNMutableNotificationContent()
         if isBreak {
-            content.title = "Break Over!"
-            content.body = "Time to get back to work. You've completed \(sessionsCompleted) session\(sessionsCompleted == 1 ? "" : "s") so far."
+            content.title = String(localized: "Break Over!")
+            content.body = String(localized: "Time to get back to work. You've completed \(sessionsCompleted) session\(sessionsCompleted == 1 ? "" : "s") so far.")
         } else {
-            content.title = "Focus Session Complete!"
-            content.body = task != nil ? "Great work on \(task!)! Time for a break." : "Great work! Time for a break."
+            content.title = String(localized: "Focus Session Complete!")
+            content.body = task != nil ? String(localized: "Great work on \(task!)! Time for a break.") : String(localized: "Great work! Time for a break.")
         }
         content.sound = .default
 

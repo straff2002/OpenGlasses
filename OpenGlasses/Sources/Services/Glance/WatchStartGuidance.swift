@@ -31,9 +31,9 @@ enum WatchStartGuidance {
         case openPhone
     }
 
-    static let goneMessage = "That card has gone. Ask again to see it here."
-    static let nowhereMessage = "There's nowhere to go on that card."
-    static let openPhoneMessage = "Open Avenkin on your iPhone to start."
+    static let goneMessage = String(localized: "That card has gone. Ask again to see it here.")
+    static let nowhereMessage = String(localized: "There's nowhere to go on that card.")
+    static let openPhoneMessage = String(localized: "Open Avenkin on your iPhone to start.")
 
     /// The target for a `startGuidance` message, given the live card (nil when there is none).
     static func resolve(surfaceId: String?, placeId: String?, live surface: GlanceSurface?) -> Resolution {
@@ -58,7 +58,7 @@ enum WatchStartGuidance {
             if (error as? NavigationError) == .noLocation, !appIsActive { return .openPhone }
             return .refused(error.localizedDescription)
         }
-        return .started(spoken ?? "Starting walking directions.")
+        return .started(spoken ?? String(localized: "Starting walking directions."))
     }
 
     /// The reply as the watch's `sendCommand` reads it: `response` for success, `error` otherwise.

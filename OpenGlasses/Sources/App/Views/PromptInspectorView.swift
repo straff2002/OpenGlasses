@@ -163,7 +163,7 @@ struct PromptInspectorView: View {
         var secs: [PromptSection] = []
 
         secs.append(PromptSection(
-            name: "System Prompt",
+            name: String(localized: "System Prompt"),
             icon: "text.bubble.fill",
             content: basePrompt,
             isPresent: true
@@ -175,56 +175,56 @@ struct PromptInspectorView: View {
         // off" by someone whose prompt simply already covered it.
         let visionAutoInjected = !basePrompt.lowercased().contains("vision") && !basePrompt.lowercased().contains("camera")
         secs.append(PromptSection(
-            name: "Vision & Camera",
+            name: String(localized: "Vision & Camera"),
             icon: "eye.fill",
             content: visionAutoInjected
-                ? "Auto-injected: tells the AI it can see images from the camera, handle OCR, translation, and object identification."
-                : "Included in your system prompt. A camera frame is attached when a question needs one and a camera is available.",
+                ? String(localized: "Auto-injected: tells the AI it can see images from the camera, handle OCR, translation, and object identification.")
+                : String(localized: "Included in your system prompt. A camera frame is attached when a question needs one and a camera is available."),
             isPresent: true
         ))
 
         secs.append(PromptSection(
-            name: "Native Tools (\(toolNames.count))",
+            name: String(localized: "Native Tools (\(toolNames.count))"),
             icon: "wrench.and.screwdriver.fill",
             content: toolNames.isEmpty
-                ? "No tools registered."
+                ? String(localized: "No tools registered.")
                 : toolNames.joined(separator: ", "),
             isPresent: !toolNames.isEmpty
         ))
 
         secs.append(PromptSection(
-            name: "OpenClaw Gateway",
+            name: String(localized: "OpenClaw Gateway"),
             icon: "network",
             content: hasOpenClaw
-                ? "Adds the 'execute' tool for external integrations — messaging, web search, smart home, and more via your Mac."
-                : "Not configured. Set up OpenClaw in Settings → Connections → Gateways.",
+                ? String(localized: "Adds the 'execute' tool for external integrations — messaging, web search, smart home, and more via your Mac.")
+                : String(localized: "Not configured. Set up OpenClaw in Settings → Connections → Gateways."),
             isPresent: hasOpenClaw
         ))
 
         secs.append(PromptSection(
-            name: "Tool Usage Rules",
+            name: String(localized: "Tool Usage Rules"),
             icon: "list.bullet.rectangle.fill",
-            content: "Contact name resolution, multi-step tool chains, calendar proactive alerts, acknowledgment-before-action rules.",
+            content: String(localized: "Contact name resolution, multi-step tool chains, calendar proactive alerts, acknowledgment-before-action rules."),
             isPresent: !toolNames.isEmpty || hasOpenClaw
         ))
 
         let memoryEnabled = Config.userMemoryEnabled
         let hasMemories = memoryContext != nil && !(memoryContext?.isEmpty ?? true)
         secs.append(PromptSection(
-            name: "User Memory",
+            name: String(localized: "User Memory"),
             icon: "brain.head.profile.fill",
             content: hasMemories
                 ? memoryContext!
                 : memoryEnabled
-                    ? "Enabled — no memories stored yet. Tell the AI facts about yourself and it will remember them."
-                    : "Disabled. Turn on User Memory in Settings → Everyday.",
+                    ? String(localized: "Enabled — no memories stored yet. Tell the AI facts about yourself and it will remember them.")
+                    : String(localized: "Disabled. Turn on User Memory in Settings → Everyday."),
             isPresent: memoryEnabled
         ))
 
         secs.append(PromptSection(
-            name: "Location",
+            name: String(localized: "Location"),
             icon: "location.fill",
-            content: locationContext ?? "Location unavailable. Grant location permission in iOS Settings.",
+            content: locationContext ?? String(localized: "Location unavailable. Grant location permission in iOS Settings."),
             isPresent: locationContext != nil
         ))
 

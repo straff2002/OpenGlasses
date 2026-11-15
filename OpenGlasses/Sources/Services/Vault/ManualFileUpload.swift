@@ -7,7 +7,7 @@ import UIKit
 /// text reading copy; citations explicitly name that copy rather than inventing Word pagination.
 enum ManualFileUpload {
     static let extensions: Set<String> = ["pdf", "doc", "docx", "md", "markdown"]
-    static let conversionNotice = "Word and Markdown manuals get a text reading copy for page citations. Original layout and images are not preserved in that copy; use PDF for diagrams. Your original file is also saved on this phone."
+    static let conversionNotice = String(localized: "Word and Markdown manuals get a text reading copy for page citations. Original layout and images are not preserved in that copy; use PDF for diagrams. Your original file is also saved on this phone.")
     static let maximumWordBytes = 100 * 1_048_576
     static let maximumTextBytes = 20 * 1_048_576
 
@@ -26,13 +26,13 @@ enum ManualFileUpload {
     static func prepare(_ url: URL, maximumPages: Int = 10_000) throws -> Prepared {
         try Task.checkCancellation()
         let ext = url.pathExtension.lowercased()
-        guard extensions.contains(ext) else { throw failure("Choose a PDF, DOC, DOCX or Markdown manual.") }
+        guard extensions.contains(ext) else { throw failure(String(localized: "Choose a PDF, DOC, DOCX or Markdown manual.")) }
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let fm = FileManager.default
         let bytes = Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
-        guard bytes > 0 else { throw failure("This manual is empty.") }
-        if ext != "pdf", bytes > maximumWordBytes { throw failure("This Word or Markdown file is too large to convert on the phone. Export it as PDF and upload that copy.") }
+        guard bytes > 0 else { throw failure(String(localized: "This manual is empty.")) }
+        if ext != "pdf", bytes > maximumWordBytes { throw failure(String(localized: "This Word or Markdown file is too large to convert on the phone. Export it as PDF and upload that copy.")) }
         let id = UUID()
         let directory = fm.temporaryDirectory.appendingPathComponent("ManualUpload-\(id.uuidString)")
         try fm.createDirectory(at: directory, withIntermediateDirectories: true,
@@ -64,21 +64,21 @@ enum ManualFileUpload {
         case "md", "markdown":
             guard bytes.count <= maximumTextBytes,
                   let value = String(data: bytes, encoding: .utf8) ?? String(data: bytes, encoding: .utf16) else {
-                throw failure("This Markdown manual could not be read. Save it as UTF-8 or PDF and try again.")
+                throw failure(String(localized: "This Markdown manual could not be read. Save it as UTF-8 or PDF and try again."))
             }
             result = value
         case "docx":
             guard let zip = ZipArchiveReader(data: bytes),
                   let xml = zip.entryData(named: "word/document.xml", maximumUncompressedSize: maximumTextBytes) else {
-                throw failure("This DOCX manual is unreadable or password protected. Export it as PDF and try again.")
+                throw failure(String(localized: "This DOCX manual is unreadable or password protected. Export it as PDF and try again."))
             }
             result = try WordXML.text(xml)
         case "doc": result = try LegacyWordText.read(bytes)
-        default: throw failure("Choose a PDF, DOC, DOCX or Markdown manual.")
+        default: throw failure(String(localized: "Choose a PDF, DOC, DOCX or Markdown manual."))
         }
         let clean = result.replacingOccurrences(of: "\u{0C}", with: "\n\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { throw failure("No readable text was found in this manual. Upload a PDF to recognise scanned pages or diagrams.") }
+        guard !clean.isEmpty else { throw failure(String(localized: "No readable text was found in this manual. Upload a PDF to recognise scanned pages or diagrams.")) }
         return clean
     }
 
@@ -96,11 +96,11 @@ enum ManualFileUpload {
             while offset < attributed.length {
                 if Task.isCancelled { problem = CancellationError(); break }
                 guard pages < max(1, maximumPages) else {
-                    problem = failure("This reading copy exceeds the plan's page limit. Upload a shorter manual or a PDF instead."); break
+                    problem = failure(String(localized: "This reading copy exceeds the plan's page limit. Upload a shorter manual or a PDF instead.")); break
                 }
                 let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: offset, length: 0), path, nil)
                 let range = CTFrameGetVisibleStringRange(frame)
-                guard range.length > 0 else { problem = failure("This manual could not be paginated."); break }
+                guard range.length > 0 else { problem = failure(String(localized: "This manual could not be paginated.")); break }
                 context.beginPage()
                 let cg = context.cgContext
                 cg.saveGState()
@@ -126,14 +126,14 @@ private final class WordXML: NSObject, XMLParserDelegate {
     static func text(_ data: Data) throws -> String {
         guard let xml = String(data: data, encoding: .utf8),
               !xml.localizedCaseInsensitiveContains("<!DOCTYPE"), !xml.localizedCaseInsensitiveContains("<!ENTITY") else {
-            throw ManualFileUpload.failure("This DOCX manual contains unsupported XML. Export it as PDF and try again.")
+            throw ManualFileUpload.failure(String(localized: "This DOCX manual contains unsupported XML. Export it as PDF and try again."))
         }
         let delegate = WordXML()
         let parser = XMLParser(data: data)
         parser.shouldProcessNamespaces = true
         parser.shouldResolveExternalEntities = false
         parser.delegate = delegate
-        guard parser.parse() else { throw ManualFileUpload.failure("This DOCX manual is damaged. Export it as PDF and try again.") }
+        guard parser.parse() else { throw ManualFileUpload.failure(String(localized: "This DOCX manual is damaged. Export it as PDF and try again.")) }
         return delegate.output
     }
     func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String]) {
@@ -162,7 +162,7 @@ private enum LegacyWordText {
         let word = try compound.stream("WordDocument")
         guard try word.u16(0) == 0xA5EC, try word.u16(2) >= 0xC1 else { throw bad() }
         let flags = try word.u16(10)
-        guard flags & 0x8100 == 0 else { throw ManualFileUpload.failure("This DOC manual is password protected. Export an unlocked PDF and try again.") }
+        guard flags & 0x8100 == 0 else { throw ManualFileUpload.failure(String(localized: "This DOC manual is password protected. Export an unlocked PDF and try again.")) }
         let table = try compound.stream(flags & 0x200 == 0 ? "0Table" : "1Table")
         let lw = 34 + Int(try word.u16(32)) * 2
         let cslw = Int(try word.u16(lw))
@@ -216,7 +216,7 @@ private enum LegacyWordText {
         }
         return result
     }
-    static func bad() -> ManualLibraryAdmission.Failure { ManualFileUpload.failure("This DOC manual is damaged or uses an unsupported Word format. Export it as PDF or DOCX and try again.") }
+    static func bad() -> ManualLibraryAdmission.Failure { ManualFileUpload.failure(String(localized: "This DOC manual is damaged or uses an unsupported Word format. Export it as PDF or DOCX and try again.")) }
 
     private struct Compound {
         let data: Data

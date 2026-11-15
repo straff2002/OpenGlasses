@@ -135,7 +135,7 @@ struct ToolsSettingsView: View {
 
             Section {
                 LabeledContent("Total tools", value: "\(allTools.count)")
-                LabeledContent("Enabled", value: "\(enabledCount) of \(allTools.count)")
+                LabeledContent("Enabled", value: String(localized: "\(enabledCount) of \(allTools.count)"))
             } header: {
                 Text("Overview")
             } footer: {
@@ -285,7 +285,7 @@ struct ToolsSettingsView: View {
             }
             Button("Cancel", role: .cancel) { permissionDeniedTool = nil }
         } message: {
-            Text("\(permissionDeniedTool ?? "Permission") was denied. You can grant it in iPhone Settings → Apps → Avenkin.")
+            Text("\(permissionDeniedTool ?? String(localized: "Permission")) was denied. You can grant it in iPhone Settings → Apps → Avenkin.")
         }
     }
 }

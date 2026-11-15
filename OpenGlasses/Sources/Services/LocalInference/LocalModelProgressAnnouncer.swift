@@ -59,15 +59,15 @@ struct LocalModelProgressAnnouncer: Equatable, Sendable {
         case .completed:
             guard !isFinished else { return nil }
             isFinished = true
-            return "\(modelName) downloaded and installed."
+            return String(localized: "\(modelName) downloaded and installed.")
         case .failed(let message):
             guard !isFinished else { return nil }
             isFinished = true
-            return "\(modelName) download stopped. \(message)"
+            return String(localized: "\(modelName) download stopped. \(message)")
         case .cancelled:
             guard !isFinished else { return nil }
             isFinished = true
-            return "\(modelName) download cancelled."
+            return String(localized: "\(modelName) download cancelled.")
         case .progress(let fraction):
             guard !isFinished else { return nil }
             let percent = Int((min(1, max(0, fraction)) * 100).rounded(.down))
@@ -81,7 +81,7 @@ struct LocalModelProgressAnnouncer: Equatable, Sendable {
             }
             lastAnnouncedPercent = percent
             lastAnnouncedAt = now
-            return "\(modelName), \(percent) percent downloaded."
+            return String(localized: "\(modelName), \(percent) percent downloaded.")
         }
     }
 
@@ -97,7 +97,6 @@ struct LocalModelProgressAnnouncer: Equatable, Sendable {
     /// explicitly, and it is the one sentence a person needs before they press Back: the transfer
     /// is a background `URLSession`, so it genuinely does continue.
     static func backgroundContinuationNotice(modelName: String) -> String {
-        "\(modelName) keeps downloading in the background. You can leave this screen; it will "
-            + "finish installing on its own, even if the app is closed."
+        String(localized: "\(modelName) keeps downloading in the background. You can leave this screen; it will finish installing on its own, even if the app is closed.")
     }
 }

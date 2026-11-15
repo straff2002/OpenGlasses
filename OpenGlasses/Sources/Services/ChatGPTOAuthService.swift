@@ -104,15 +104,15 @@ final class ChatGPTOAuthService: ObservableObject {
     @discardableResult
     func completeSignIn(pastedCode: String) async -> Bool {
         guard let verifier = pendingVerifier else {
-            lastError = "Sign-in wasn't started — tap Sign in with ChatGPT first."
+            lastError = String(localized: "Sign-in wasn't started — tap Sign in with ChatGPT first.")
             return false
         }
         guard let parsed = ChatGPTOAuth.parseAuthorizationInput(pastedCode) else {
-            lastError = "That doesn't look like an authorization code or callback URL."
+            lastError = String(localized: "That doesn't look like an authorization code or callback URL.")
             return false
         }
         if let state = parsed.state, let expected = pendingState, state != expected {
-            lastError = "Sign-in state mismatch — start again and use the newest browser tab."
+            lastError = String(localized: "Sign-in state mismatch — start again and use the newest browser tab.")
             return false
         }
         do {
@@ -124,7 +124,7 @@ final class ChatGPTOAuthService: ObservableObject {
             lastError = nil
             return true
         } catch {
-            lastError = "Sign-in failed: \(error.localizedDescription)"
+            lastError = String(localized: "Sign-in failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -247,15 +247,15 @@ final class ChatGPTOAuthService: ObservableObject {
             if status == 404 || status == 403 {
                 throw deviceError(
                     status,
-                    "Device-code sign-in isn't enabled. In ChatGPT, turn on Enable device code authorization under Settings → Security, then try again."
+                    String(localized: "Device-code sign-in isn't enabled. In ChatGPT, turn on Enable device code authorization under Settings → Security, then try again.")
                 )
             }
-            throw deviceError(status, "ChatGPT couldn't start device-code sign-in (HTTP \(status)).")
+            throw deviceError(status, String(localized: "ChatGPT couldn't start device-code sign-in (HTTP \(status))."))
         }
         do {
             return try JSONDecoder().decode(ChatGPTOAuth.DeviceAuthorization.self, from: data)
         } catch {
-            throw deviceError(status, "ChatGPT returned an unreadable device-code response.")
+            throw deviceError(status, String(localized: "ChatGPT returned an unreadable device-code response."))
         }
     }
 
@@ -292,11 +292,11 @@ final class ChatGPTOAuthService: ObservableObject {
                 case .slowDown:
                     interval = min(interval + 5, 30)
                 case .expired:
-                    throw deviceError(410, "That device code expired. Start device-code sign-in again.")
+                    throw deviceError(410, String(localized: "That device code expired. Start device-code sign-in again."))
                 case .denied:
-                    throw deviceError(403, "Device-code sign-in was declined or is no longer available.")
+                    throw deviceError(403, String(localized: "Device-code sign-in was declined or is no longer available."))
                 case .failure(let message):
-                    throw deviceError(status, "Device-code sign-in failed: \(message)")
+                    throw deviceError(status, String(localized: "Device-code sign-in failed: \(message)"))
                 }
             } catch is CancellationError {
                 return
@@ -313,7 +313,7 @@ final class ChatGPTOAuthService: ObservableObject {
         deviceAuthorization = nil
         isDeviceCodeSigningIn = false
         devicePollingTask = nil
-        lastError = "That device code timed out. Start device-code sign-in again."
+        lastError = String(localized: "That device code timed out. Start device-code sign-in again.")
     }
 
     private func deviceError(_ status: Int, _ message: String) -> NSError {

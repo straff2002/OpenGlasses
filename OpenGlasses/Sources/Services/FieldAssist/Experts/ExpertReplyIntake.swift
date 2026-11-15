@@ -54,11 +54,11 @@ enum ExpertReplyMatch {
         var message: String {
             switch self {
             case .unknownHandover:
-                return "That reply doesn't answer a handover this phone sent, so it wasn't loaded."
+                return String(localized: "That reply doesn't answer a handover this phone sent, so it wasn't loaded.")
             case .otherSender, .cardMismatch:
-                return "That reply isn't from the expert the handover went to, so it wasn't loaded."
+                return String(localized: "That reply isn't from the expert the handover went to, so it wasn't loaded.")
             case .generationNotSent:
-                return "That reply mentions an update this phone never sent, so it wasn't loaded."
+                return String(localized: "That reply mentions an update this phone never sent, so it wasn't loaded.")
             }
         }
     }
@@ -133,9 +133,9 @@ enum ExpertReplyMatch {
 
     /// What the technician is told when it is attached.
     static func confirmation(_ received: ExpertReplyReceived, jobReference: String?) -> String {
-        let job = jobReference.map { "job \($0)" } ?? "the job"
-        let minutes = received.minutes == 1 ? "1 minute" : "\(received.minutes) minutes"
-        return "\(received.expert.name)'s time on \(job) is on the job: \(minutes)."
+        let job = jobReference.map { String(localized: "job \($0)") } ?? String(localized: "the job")
+        let minutes = received.minutes == 1 ? String(localized: "1 minute") : String(localized: "\(received.minutes) minutes")
+        return String(localized: "\(received.expert.name)'s time on \(job) is on the job: \(minutes).")
     }
 }
 
@@ -160,7 +160,7 @@ final class ExpertReplyIntake {
         case .success(let match):
             let reference = held.first { $0.id == match.sessionId }?.jobReference
             guard sessions.recordExpertReply(match.received, sessionId: match.sessionId) else {
-                return "That reply is for a job this phone can no longer change, so it wasn't attached."
+                return String(localized: "That reply is for a job this phone can no longer change, so it wasn't attached.")
             }
             PrivacyLog.transfer(.fieldSessionExport, .imported, count: 1)
             return ExpertReplyMatch.confirmation(match.received, jobReference: reference)
@@ -286,13 +286,13 @@ enum ExpertCardImport {
     static func message(_ outcome: Outcome, name: String) -> String {
         switch outcome {
         case .added(.organisation):
-            return "\(name) is on your experts list. Set their kind, hours and any rate in Settings → Field Assist → Experts."
+            return String(localized: "\(name) is on your experts list. Set their kind, hours and any rate in Settings → Field Assist → Experts.")
         case .added(.personal):
-            return "\(name) is on your own experts list."
+            return String(localized: "\(name) is on your own experts list.")
         case .updated:
-            return "\(name)'s card details are updated on your experts list."
+            return String(localized: "\(name)'s card details are updated on your experts list.")
         case .refused(let why):
-            return "That card couldn't be added: \(why)."
+            return String(localized: "That card couldn't be added: \(why).")
         }
     }
 }

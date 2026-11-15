@@ -62,16 +62,16 @@ final class ReadinessWalkthroughRunner: ObservableObject {
     /// The line spoken when the whole sequence ends, and shown as the screen's summary.
     var summary: String {
         guard !results.isEmpty else {
-            return "The readiness check hasn't run yet."
+            return String(localized: "The readiness check hasn't run yet.")
         }
         if let failure = results.first(where: { $0.verdict.isFailed }) {
-            return "Check stopped at \(failure.step.title). \(failure.spokenStatus)"
+            return String(localized: "Check stopped at \(failure.step.title). \(failure.spokenStatus)")
         }
         let notes = results.filter { if case .passed(let note) = $0.verdict { return note != nil }; return false }
         if notes.isEmpty && !results.contains(where: { $0.verdict.isSkipped }) {
-            return "All five checks passed. The assistant is ready."
+            return String(localized: "All five checks passed. The assistant is ready.")
         }
-        return "The checks passed, with notes. This is an audio-only setup."
+        return String(localized: "The checks passed, with notes. This is an audio-only setup.")
     }
 
     // MARK: - Running

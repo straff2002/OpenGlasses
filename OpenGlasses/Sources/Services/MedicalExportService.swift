@@ -240,7 +240,7 @@ class MedicalExportService: ObservableObject {
             }
 
             if (200...299).contains(status) {
-                return "Connected successfully (HTTP \(status)). The FHIR server is reachable and responded to the capability statement request."
+                return String(localized: "Connected successfully (HTTP \(status)). The FHIR server is reachable and responded to the capability statement request.")
             }
             MedicalExportFailure.log(.connectionTest, status: status)
             return MedicalExportFailure(httpStatus: status).message
@@ -550,19 +550,19 @@ enum MedicalPlatform: String, CaseIterable, Identifiable {
     var description: String {
         switch self {
         case .fhir:
-            return "Universal healthcare API standard. Compatible with Epic, Cerner, MEDITECH, Allscripts, and most modern EMRs."
+            return String(localized: "Universal healthcare API standard. Compatible with Epic, Cerner, MEDITECH, Allscripts, and most modern EMRs.")
         case .epic:
-            return "Epic MyChart patient portal and EHR. Uses FHIR R4 with SMART on FHIR authentication."
+            return String(localized: "Epic MyChart patient portal and EHR. Uses FHIR R4 with SMART on FHIR authentication.")
         case .cerner:
-            return "Oracle Health (formerly Cerner). Uses FHIR R4 with Millennium platform integration."
+            return String(localized: "Oracle Health (formerly Cerner). Uses FHIR R4 with Millennium platform integration.")
         case .myHealthRecord:
-            return "Australian national health record system operated by the Australian Digital Health Agency."
+            return String(localized: "Australian national health record system operated by the Australian Digital Health Agency.")
         case .nzHealthConnect:
-            return "New Zealand Health Information Platform for sharing between primary and secondary care."
+            return String(localized: "New Zealand Health Information Platform for sharing between primary and secondary care.")
         case .nhsSpine:
-            return "NHS national IT infrastructure for healthcare messaging and record access."
+            return String(localized: "NHS national IT infrastructure for healthcare messaging and record access.")
         case .manual:
-            return "Share via AirDrop, email, Files app, or any other sharing method on your device."
+            return String(localized: "Share via AirDrop, email, Files app, or any other sharing method on your device.")
         }
     }
 

@@ -293,19 +293,19 @@ enum VaultArchiveReader {
     /// includes the URL, a path from the source site or anything else the link carried.
     static func describe(_ error: ArchiveError) -> String {
         switch error {
-        case .notAZip: return "That file isn't a readable vault archive."
-        case .missingHeader: return "The archive has no vault-archive.json header."
-        case .unreadableHeader: return "The archive's header is unreadable."
+        case .notAZip: return String(localized: "That file isn't a readable vault archive.")
+        case .missingHeader: return String(localized: "The archive has no vault-archive.json header.")
+        case .unreadableHeader: return String(localized: "The archive's header is unreadable.")
         case .unsupportedFormatVersion(let version):
-            return "This archive uses vault format \(version); this app build reads up to format \(VaultArchiveHeader.supportedFormatVersion). Update the app."
-        case .missingVaultManifest: return "The archive has no manifest.json."
-        case .tooManyEntries(let count): return "The archive holds \(count) files, more than a vault may contain."
-        case .entryTooLarge(let path): return "One file in the archive is too large to read: \(path)."
-        case .totalTooLarge: return "The archive is larger than this app will unpack."
-        case .unsafeEntryPath: return "The archive contains a file path that would write outside the vault — refusing it."
-        case .fileListMismatch(let path): return "The archive's contents don't match its header (\(path))."
-        case .sizeMismatch(let path): return "A file in the archive is not the size its header claims (\(path))."
-        case .checksumMismatch(let path): return "A file in the archive doesn't match its checksum (\(path))."
+            return String(localized: "This archive uses vault format \(version); this app build reads up to format \(VaultArchiveHeader.supportedFormatVersion). Update the app.")
+        case .missingVaultManifest: return String(localized: "The archive has no manifest.json.")
+        case .tooManyEntries(let count): return String(localized: "The archive holds \(count) files, more than a vault may contain.")
+        case .entryTooLarge(let path): return String(localized: "One file in the archive is too large to read: \(path).")
+        case .totalTooLarge: return String(localized: "The archive is larger than this app will unpack.")
+        case .unsafeEntryPath: return String(localized: "The archive contains a file path that would write outside the vault — refusing it.")
+        case .fileListMismatch(let path): return String(localized: "The archive's contents don't match its header (\(path)).")
+        case .sizeMismatch(let path): return String(localized: "A file in the archive is not the size its header claims (\(path)).")
+        case .checksumMismatch(let path): return String(localized: "A file in the archive doesn't match its checksum (\(path)).")
         }
     }
 }

@@ -552,11 +552,11 @@ final class DocumentStore: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .sqlite(let code, let extended):
-                return "The document index refused the delete (SQLite \(code)/\(extended))."
+                return String(localized: "The document index refused the delete (SQLite \(code)/\(extended)).")
             case .wrongNamespace(let expected, let actual):
-                return "That document belongs to \(actual), not \(expected)."
+                return String(localized: "That document belongs to \(actual), not \(expected).")
             case .rowsRemain(let documents, let chunks):
-                return "The delete left \(documents) document row(s) and \(chunks) chunk(s) behind."
+                return String(localized: "The delete left \(documents) document row(s) and \(chunks) chunk(s) behind.")
             }
         }
     }

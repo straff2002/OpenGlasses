@@ -308,7 +308,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any],
                              replyHandler: @escaping ([String: Any]) -> Void) {
         guard let command = message["command"] as? String else {
-            replyHandler(["error": "No command specified"])
+            replyHandler(["error": String(localized: "No command specified")])
             return
         }
 
@@ -316,7 +316,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
         Task { @MainActor in
             guard let appState = self.appState else {
-                replyHandler(["error": "App not ready"])
+                replyHandler(["error": String(localized: "App not ready")])
                 return
             }
 
@@ -335,7 +335,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 // the previous answer as if it were this one.
                 if let question = WatchDictation.question(from: message) {
                     if appState.isProcessing {
-                        replyHandler(["error": "Avenkin is still working on something."])
+                        replyHandler(["error": String(localized: "Avenkin is still working on something.")])
                     } else {
                         await appState.sendTextMessage(question,
                                                        speakResponse: WatchDictation.speaksAnswerNow())
@@ -345,7 +345,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         ])
                     }
                 } else {
-                    replyHandler(["error": "I didn't catch a question."])
+                    replyHandler(["error": String(localized: "I didn't catch a question.")])
                 }
 
             case "persona":
@@ -361,7 +361,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     await appState.handleWakeWordDetected()
                     replyHandler(["status": "listening", "persona": persona.name])
                 } else {
-                    replyHandler(["error": "Persona not found"])
+                    replyHandler(["error": String(localized: "Persona not found")])
                 }
 
             // Plan LT §3: a photo command replies with its own result — the answer it made, or
@@ -466,7 +466,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         })
                     }
                 } else {
-                    replyHandler(["error": "Quick action not found"])
+                    replyHandler(["error": String(localized: "Quick action not found")])
                 }
 
             case "resumeThread":
@@ -484,7 +484,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     await appState.handleWakeWordDetected()
                     replyHandler(["status": "resumed", "thread_id": threadId])
                 } else {
-                    replyHandler(["error": "No thread ID"])
+                    replyHandler(["error": String(localized: "No thread ID")])
                 }
 
             case WatchStartGuidance.command:
@@ -513,7 +513,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         await appState.capturePhotoAndSend(prompt: prompt, phoneCameraFallback: false)
                     })
                 } else {
-                    replyHandler(["error": "Unknown command: \(command)"])
+                    replyHandler(["error": String(localized: "Unknown command: \(command)")])
                 }
             }
 

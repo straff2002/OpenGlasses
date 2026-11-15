@@ -14,7 +14,7 @@ import Foundation
 enum GeminiLiveFailureCopy {
 
     /// Generic last resort. Named so a test can assert we did better than this.
-    static let genericFallback = "Failed to connect to Gemini"
+    static let genericFallback = String(localized: "Failed to connect to Gemini")
 
     /// Best available explanation, most specific first.
     ///

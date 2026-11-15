@@ -49,7 +49,7 @@ enum ConversationModeAvailability {
                     isAvailable: configuration.hasGeminiKey,
                     unavailableReason: configuration.hasGeminiKey
                         ? nil
-                        : "Add a Gemini model with an API key in Settings to use Gemini Live."
+                        : String(localized: "Add a Gemini model with an API key in Settings to use Gemini Live.")
                 )
             case .openaiRealtime:
                 return Option(
@@ -75,11 +75,9 @@ enum ConversationModeAvailability {
     /// different product on a different credential — one that no account sign-in can reach.
     static func realtimeUnavailableReason(hasChatGPTAccount: Bool) -> String {
         guard hasChatGPTAccount else {
-            return "Add an OpenAI model with \"realtime\" in its id to use OpenAI Realtime."
+            return String(localized: "Add an OpenAI model with \"realtime\" in its id to use OpenAI Realtime.")
         }
-        return "Live voice mode isn't part of a ChatGPT plan — it's a separate OpenAI product "
-            + "that only accepts an API key. Add an OpenAI model with \"realtime\" in its id in "
-            + "Settings to use it."
+        return String(localized: "Live voice mode isn't part of a ChatGPT plan — it's a separate OpenAI product that only accepts an API key. Add an OpenAI model with \"realtime\" in its id in Settings to use it.")
     }
 
     /// Live configuration, read at the point of display.

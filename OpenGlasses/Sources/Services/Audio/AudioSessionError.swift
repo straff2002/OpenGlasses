@@ -18,11 +18,11 @@ enum AudioSessionError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .microphonePermissionDenied:
-            return "Microphone access is required. Enable microphone permission for Avenkin in Settings."
+            return String(localized: "Microphone access is required. Enable microphone permission for Avenkin in Settings.")
         case .invalidFormat(let context):
-            return "Could not create the \(context) audio format."
+            return String(localized: "Could not create the \(context) audio format.")
         case .activationFailed(let detail):
-            return "Could not start the audio session: \(detail)"
+            return String(localized: "Could not start the audio session: \(detail)")
         }
     }
 }

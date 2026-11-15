@@ -26,10 +26,10 @@ enum VaultImporter {
 
         var errorDescription: String? {
             switch self {
-            case .invalid(let issues): return "Vault failed validation:\n• " + issues.joined(separator: "\n• ")
-            case .ioError(let message): return "Install failed: \(message)"
-            case .notEntitled: return "Importing manuals into a vault needs a Field Assist subscription, or a team licence from your organisation. A one-time unlock covers the bundled vaults only."
-            case .documentFailed(let message): return "Manual import failed: \(message)"
+            case .invalid(let issues): return String(localized: "Vault failed validation:\n• \(issues.joined(separator: "\n• "))")
+            case .ioError(let message): return String(localized: "Install failed: \(message)")
+            case .notEntitled: return String(localized: "Importing manuals into a vault needs a Field Assist subscription, or a team licence from your organisation. A one-time unlock covers the bundled vaults only.")
+            case .documentFailed(let message): return String(localized: "Manual import failed: \(message)")
             }
         }
     }
@@ -93,7 +93,7 @@ enum VaultImporter {
         let entitlement = FieldAssistEntitlement.shared
         if entitlement.has(.personalManuals) && !entitlement.has(.ownVaults) {
             guard origin != .folder else {
-                throw ImportError.documentFailed("Importing a folder or a manifest needs Field Assist. Upload a manual in My Manuals instead.")
+                throw ImportError.documentFailed(String(localized: "Importing a folder or a manifest needs Field Assist. Upload a manual in My Manuals instead."))
             }
         }
         if origin == .personalPDF || origin == .receivedSigned {
@@ -104,7 +104,7 @@ enum VaultImporter {
                   manifest.siteFiles.isEmpty, manifest.trades == nil,
                   !manifest.documents.isEmpty,
                   manifest.isPersonalLibrary else {
-                throw ImportError.documentFailed("My Manuals accepts document content only.")
+                throw ImportError.documentFailed(String(localized: "My Manuals accepts document content only."))
             }
             return try ManualLibraryAdmission.install(manifest: manifest, root: sourceDir, reservation: reservation) {
                 try installValidated(from: sourceDir, manualOnly: true)
@@ -125,7 +125,7 @@ enum VaultImporter {
         // that said they were not and the reader supplied them (Plan FS).
         let manifest = validated.markingDocumentsIncluded()
         if let existing = installedManifest(id: manifest.id), existing.isPersonalLibrary != manifest.isPersonalLibrary {
-            throw ImportError.documentFailed("This identifier belongs to the other manual service. Use a different identifier; its manuals were kept.")
+            throw ImportError.documentFailed(String(localized: "This identifier belongs to the other manual service. Use a different identifier; its manuals were kept."))
         }
 
         let fm = FileManager.default
@@ -210,7 +210,7 @@ enum VaultImporter {
                     if installedReplacement { try fm.removeItem(at: baseline) }
                     if !isFirstBaseline { try fm.moveItem(at: backup, to: baseline) }
                 } catch {
-                    throw ImportError.ioError("Installation failed and its previous files need recovery from \(backup.lastPathComponent): \(error.localizedDescription)")
+                    throw ImportError.ioError(String(localized: "Installation failed and its previous files need recovery from \(backup.lastPathComponent): \(error.localizedDescription)"))
                 }
                 throw installError
             }
@@ -300,7 +300,7 @@ enum VaultImporter {
         for document in manifest.documents {
             let url = root.appendingPathComponent(manifest.documentRelativePath(document))
             guard let data = try? Data(contentsOf: url) else {
-                throw ImportError.documentFailed("\(document.file) is missing from the installed vault")
+                throw ImportError.documentFailed(String(localized: "\(document.file) is missing from the installed vault"))
             }
             // The original is hashed, not read: it is the thing "unmodified since import" is
             // checked against later, and it never becomes chunks.
@@ -312,7 +312,7 @@ enum VaultImporter {
                 guard let receipt = receipt(for:manifest.id),receipt.verification == .signed,
                       receipt.capturedOrganizationID == review.organizationID,
                       let sourcePath = manifest.documentSourceRelativePath(document) else {
-                    throw ImportError.documentFailed("Photographed-manual approval requires its authenticated Office assignment and signed archive.")
+                    throw ImportError.documentFailed(String(localized: "Photographed-manual approval requires its authenticated Office assignment and signed archive."))
                 }
                 let pdfURL = root.appendingPathComponent(sourcePath)
                 binding = try await Task.detached(priority:.utility) {
@@ -323,7 +323,7 @@ enum VaultImporter {
                     return try document.capturedBinding(text:data,pdf:pdf)
                 }.value
                 guard receipt.capturedDocumentBindings?[document.file] == binding else {
-                    throw ImportError.documentFailed("Reviewed manual metadata or source files changed after authentication.")
+                    throw ImportError.documentFailed(String(localized: "Reviewed manual metadata or source files changed after authentication."))
                 }
             }
             desired.append(.init(file: document.file, title: document.capturedManual?.citationName(title:document.title) ?? document.title,
@@ -368,7 +368,7 @@ enum VaultImporter {
                     sourceType:recognisedSourceType,namespace:namespace,stillAllowed:allowed),
                     let ref = store.documents.first(where:{$0.id == id}),ref.chunkCount > 0 else {
                     ledger.entries = entries;try? ledger.save(to:ledgerDir)
-                    throw ImportError.documentFailed("Reviewed photographed manual did not reach Ready indexing.")
+                    throw ImportError.documentFailed(String(localized: "Reviewed photographed manual did not reach Ready indexing."))
                 }
                 entries.append(.init(file:want.file,title:want.title,documentId:ref.id,contentHash:want.contentHash,
                     chunkCount:ref.chunkCount,ocrPages:review.ocrPages,lowConfidencePages:review.lowConfidencePages,
@@ -428,7 +428,7 @@ enum VaultImporter {
             guard let ref else {
                 ledger.entries = entries
                 try? ledger.save(to: ledgerDir)
-                throw ImportError.documentFailed("\(want.file) produced no chunks")
+                throw ImportError.documentFailed(String(localized: "\(want.file) produced no chunks"))
             }
             // The recognised pages are kept (Plan JY P5a): they are the only copy of those pages'
             // text, and a later re-read of the manual's structure takes them from here rather than

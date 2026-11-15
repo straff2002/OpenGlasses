@@ -446,7 +446,7 @@ struct FieldAssistSettingsView: View {
 
                 if Config.expertStreamTransport == .meetingLink {
                     Section {
-                        webrtcField("Meeting URL", "https://zoom.us/j/… or Teams/Meet/Whereby", { Config.expertMeetingURL }, { Config.setExpertMeetingURL($0) })
+                        webrtcField("Meeting URL", String(localized: "https://zoom.us/j/… or Teams/Meet/Whereby"), { Config.expertMeetingURL }, { Config.setExpertMeetingURL($0) })
                     } header: {
                         Text("Meeting Link")
                     } footer: {
@@ -458,9 +458,9 @@ struct FieldAssistSettingsView: View {
                     Section {
                         webrtcField("Signaling URL", "wss://signal.example/ws", { Config.expertSignalingURL }, { Config.setExpertSignalingURL($0) })
                         webrtcField("STUN", "stun:…", { Config.expertStunURL }, { Config.setExpertStunURL($0) })
-                        webrtcField("TURN", "turn:… (optional)", { Config.expertTurnURL }, { Config.setExpertTurnURL($0) })
-                        webrtcField("TURN user", "username", { Config.expertTurnUsername }, { Config.setExpertTurnUsername($0) })
-                        webrtcField("TURN secret", "credential", { Config.expertTurnCredential }, { Config.setExpertTurnCredential($0) })
+                        webrtcField("TURN", String(localized: "turn:… (optional)"), { Config.expertTurnURL }, { Config.setExpertTurnURL($0) })
+                        webrtcField("TURN user", String(localized: "username"), { Config.expertTurnUsername }, { Config.setExpertTurnUsername($0) })
+                        webrtcField("TURN secret", String(localized: "credential"), { Config.expertTurnCredential }, { Config.setExpertTurnCredential($0) })
                     } header: {
                         Text("WebRTC Connection")
                     } footer: {
@@ -1291,7 +1291,7 @@ struct FieldAssistSettingsView: View {
         licenseEntrySection
 
         Section {
-            purchaseRow(store.fieldAssistMonthlyProduct, title: "Monthly", subtitle: "Cancel anytime", period: "/month")
+            purchaseRow(store.fieldAssistMonthlyProduct, title: String(localized: "Monthly"), subtitle: String(localized: "Cancel anytime"), period: String(localized: "/month"))
             if !store.hasCheckedEntitlements {
                 ProgressView("Checking purchases…")
             }

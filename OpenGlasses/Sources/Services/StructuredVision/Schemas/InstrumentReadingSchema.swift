@@ -6,7 +6,7 @@ import Foundation
 /// No vertical required; usable on its own via `vision_assess kind:"instrument_reading"`.
 struct InstrumentReadingSchema: AssessmentSchema {
     let kind = "instrument_reading"
-    let title = "Instrument Reading"
+    let title = String(localized: "Instrument Reading")
     var confidenceFloor: Double { 0.5 }
 
     var jsonSchema: [String: Any] {

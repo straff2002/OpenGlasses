@@ -134,13 +134,13 @@ final class RemoteCommandExecutor {
 
     private func captureSummary(for command: RemoteGlassesCommand) -> String {
         switch command {
-        case .capturePhoto: return "Remote agent wants to take a photo"
-        case .startAudioRecording: return "Remote agent wants to start an audio recording"
-        case .startVideo: return "Remote agent wants to start a video recording"
-        case .startTranslation: return "Remote agent wants to start live translation"
-        case .startTranscription: return "Remote agent wants to start transcription"
-        case .getTranscript: return "Remote agent wants to read the recent transcript"
-        default: return "Remote agent wants to use a sensor"
+        case .capturePhoto: return String(localized: "Remote agent wants to take a photo")
+        case .startAudioRecording: return String(localized: "Remote agent wants to start an audio recording")
+        case .startVideo: return String(localized: "Remote agent wants to start a video recording")
+        case .startTranslation: return String(localized: "Remote agent wants to start live translation")
+        case .startTranscription: return String(localized: "Remote agent wants to start transcription")
+        case .getTranscript: return String(localized: "Remote agent wants to read the recent transcript")
+        default: return String(localized: "Remote agent wants to use a sensor")
         }
     }
 

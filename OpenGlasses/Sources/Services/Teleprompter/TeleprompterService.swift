@@ -496,9 +496,9 @@ final class TeleprompterService: ObservableObject {
     }
 
     private func finish() {
-        let title = script?.title ?? "Script"
+        let title = script?.title ?? String(localized: "Script")
         stop()
-        glassesDisplay?.flash("✓ \(title) complete")
+        glassesDisplay?.flash(String(localized: "✓ \(title) complete"))
     }
 
     // MARK: - Cursor helpers

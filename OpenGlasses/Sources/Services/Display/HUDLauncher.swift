@@ -195,43 +195,43 @@ final class HUDLauncher {
 
         // Resume the active Plan X task card — only while one is running.
         if router.isPresentingTask {
-            branches.append(HUDItem(id: "branch:resume", label: "Resume task", icon: .navigation, style: .primary) { [weak self] in
+            branches.append(HUDItem(id: "branch:resume", label: String(localized: "Resume task"), icon: .navigation, style: .primary) { [weak self] in
                 self?.router.resumeTask()
             })
         }
         // Plan BZ: the digest glance — only when it would show something.
         if digestHasContent?() == true {
-            branches.append(HUDItem(id: "branch:digest", label: "What's new", icon: .info, style: .primary) { [weak self] in
+            branches.append(HUDItem(id: "branch:digest", label: String(localized: "What's new"), icon: .info, style: .primary) { [weak self] in
                 self?.openDigest?()
             })
         }
         if !Config.quickActions.isEmpty {
-            branches.append(HUDItem(id: "branch:quick", label: "Quick Actions", icon: .message, style: .secondary) { [weak self] in
+            branches.append(HUDItem(id: "branch:quick", label: String(localized: "Quick Actions"), icon: .message, style: .secondary) { [weak self] in
                 guard let self else { return }
                 self.router.push(self.quickActionsScreen())
             })
         }
         if !playbooks().isEmpty {
-            branches.append(HUDItem(id: "branch:workflows", label: "Workflows", icon: .reminder, style: .secondary) { [weak self] in
+            branches.append(HUDItem(id: "branch:workflows", label: String(localized: "Workflows"), icon: .reminder, style: .secondary) { [weak self] in
                 guard let self else { return }
                 self.router.push(self.workflowsScreen())
             })
         }
         // Plan CA: walk-again to a recent destination.
         if !(recentDestinations?() ?? []).isEmpty {
-            branches.append(HUDItem(id: "branch:navigate", label: "Navigate", icon: .navigation, style: .secondary) { [weak self] in
+            branches.append(HUDItem(id: "branch:navigate", label: String(localized: "Navigate"), icon: .navigation, style: .secondary) { [weak self] in
                 guard let self else { return }
                 self.router.push(self.navigateScreen())
             })
         }
         if isFieldAssistActive(), !procedures().isEmpty {
-            branches.append(HUDItem(id: "branch:sops", label: "SOPs", icon: .navigation, style: .secondary) { [weak self] in
+            branches.append(HUDItem(id: "branch:sops", label: String(localized: "SOPs"), icon: .navigation, style: .secondary) { [weak self] in
                 guard let self else { return }
                 self.router.push(self.proceduresScreen())
             })
         }
         if Config.enabledPersonas.count > 1 {
-            branches.append(HUDItem(id: "branch:modes", label: "Mode / Persona", style: .secondary) { [weak self] in
+            branches.append(HUDItem(id: "branch:modes", label: String(localized: "Mode / Persona"), style: .secondary) { [weak self] in
                 guard let self else { return }
                 self.router.push(self.personaScreen())
             })
@@ -321,10 +321,10 @@ final class HUDLauncher {
                 self?.router.dismiss()
             }
         }
-        items.append(HUDItem(id: "back", label: "Back", style: .outline) { [weak self] in
+        items.append(HUDItem(id: "back", label: String(localized: "Back"), style: .outline) { [weak self] in
             self?.router.pop()
         })
-        return HUDScreen(title: "Navigate", lines: [], items: items)
+        return HUDScreen(title: String(localized: "Navigate"), lines: [], items: items)
     }
 
     private func quickActionsScreen(page: Int = 0) -> HUDScreen {

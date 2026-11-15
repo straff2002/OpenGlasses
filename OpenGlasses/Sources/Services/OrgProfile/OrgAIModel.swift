@@ -45,20 +45,20 @@ struct OrgAIModel: Equatable, Sendable {
             return .failure(.unreadableValue)
         }
         guard let provider = LLMProvider(rawValue: raw) else {
-            return .failure(.invalidValue("\u{201C}\(raw)\u{201D} is not an AI provider this version of the app knows"))
+            return .failure(.invalidValue(String(localized: "\u{201C}\(raw)\u{201D} is not an AI provider this version of the app knows")))
         }
         var address: URL?
         if let text = spec.baseURL?.trimmingCharacters(in: .whitespaces), !text.isEmpty {
             guard provider == .custom || provider == .openrouter else {
-                return .failure(.invalidValue("only a custom or OpenRouter model may name its own address"))
+                return .failure(.invalidValue(String(localized: "only a custom or OpenRouter model may name its own address")))
             }
             guard let url = URL(string: text), url.scheme?.lowercased() == "https", url.host != nil,
                   url.user == nil, url.password == nil, url.fragment == nil else {
-                return .failure(.invalidValue("its address must be https, with no credentials"))
+                return .failure(.invalidValue(String(localized: "its address must be https, with no credentials")))
             }
             address = url
         } else if provider == .custom {
-            return .failure(.invalidValue("a custom model needs its address"))
+            return .failure(.invalidValue(String(localized: "a custom model needs its address")))
         }
         let name = spec.name?.trimmingCharacters(in: .whitespaces)
         return .success(OrgAIModel(provider: provider, model: model, baseURL: address,
@@ -70,10 +70,10 @@ struct OrgAIModel: Equatable, Sendable {
     /// so there is no model list to fetch.
     func keyProblem(_ key: String) -> String? {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "Enter the key." }
+        if trimmed.isEmpty { return String(localized: "Enter the key.") }
         switch provider {
-        case .anthropic where !trimmed.hasPrefix("sk-ant-"): return "Anthropic keys start with sk-ant-"
-        case .openai where !trimmed.hasPrefix("sk-"): return "OpenAI keys start with sk-"
+        case .anthropic where !trimmed.hasPrefix("sk-ant-"): return String(localized: "Anthropic keys start with sk-ant-")
+        case .openai where !trimmed.hasPrefix("sk-"): return String(localized: "OpenAI keys start with sk-")
         default: return nil
         }
     }

@@ -57,15 +57,15 @@ struct ExpertInvite: Codable, Equatable, Sendable {
 
     /// Why this invite can't be used, or nil.
     var problem: String? {
-        guard type == Self.typeIdentifier else { return "it isn't an expert invite" }
-        guard version == Self.version else { return "it was made by a newer version of the app" }
+        guard type == Self.typeIdentifier else { return String(localized: "it isn't an expert invite") }
+        guard version == Self.version else { return String(localized: "it was made by a newer version of the app") }
         guard inviteId.hasPrefix(Self.idPrefix), inviteId.count <= 64,
               inviteId.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" }) else {
-            return "its id isn't one this app writes"
+            return String(localized: "its id isn't one this app writes")
         }
-        guard !senderName.isEmpty else { return "it doesn't say who it's from" }
+        guard !senderName.isEmpty else { return String(localized: "it doesn't say who it's from") }
         guard expires > created, expires.timeIntervalSince(created) <= TimeInterval(Self.validDays + 1) * 86_400 else {
-            return "its dates aren't ones this app writes"
+            return String(localized: "its dates aren't ones this app writes")
         }
         return nil
     }

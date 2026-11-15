@@ -84,11 +84,11 @@ struct PassageMarks: Equatable {
         let missing = marks.count - located.count
         guard missing > 0 else { return nil }
         if located.isEmpty {
-            return marks.count == 1 ? "The passage couldn't be marked on this page."
-                : "The passages couldn't be marked on this page."
+            return marks.count == 1 ? String(localized: "The passage couldn't be marked on this page.")
+                : String(localized: "The passages couldn't be marked on this page.")
         }
-        return missing == 1 ? "One of the passages couldn't be marked on this page."
-            : "\(missing) of the passages couldn't be marked on this page."
+        return missing == 1 ? String(localized: "One of the passages couldn't be marked on this page.")
+            : String(localized: "\(missing) of the passages couldn't be marked on this page.")
     }
 
     /// What VoiceOver reads before the page: the marked words themselves, in order.
@@ -100,9 +100,9 @@ struct PassageMarks: Equatable {
                 .filter { NSMaxRange($0) <= ns.length }
                 .map { ns.substring(with: $0).replacingOccurrences(of: "\n", with: " ") }
                 .joined(separator: " ")
-            return showsNumbers ? "Passage \(mark.number): \(words)" : words
+            return showsNumbers ? String(localized: "Passage \(mark.number): \(words)") : words
         }
-        return "Highlighted: " + parts.joined(separator: " ")
+        return String(localized: "Highlighted: \(parts.joined(separator: " "))")
     }
 }
 

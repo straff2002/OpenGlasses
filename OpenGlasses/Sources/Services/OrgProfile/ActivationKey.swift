@@ -60,9 +60,9 @@ struct ActivationKey: Equatable, Sendable {
         var errorDescription: String? {
             switch self {
             case .length(let count):
-                return "An activation key is \(ActivationKey.length) characters — that one has \(count)."
+                return String(localized: "An activation key is \(ActivationKey.length) characters — that one has \(count).")
             case .mistyped:
-                return "Check the key — one character looks wrong."
+                return String(localized: "Check the key — one character looks wrong.")
             }
         }
     }
@@ -306,9 +306,9 @@ struct ActivationKeyResolver: Sendable {
         var errorDescription: String? {
             switch self {
             case .unknownKey, .unreadable:
-                return "That activation key isn't recognised. Check it with whoever gave it to you."
+                return String(localized: "That activation key isn't recognised. Check it with whoever gave it to you.")
             case .unreachable:
-                return "Couldn't look up the activation key. An activation key needs the internet once — connect and try again."
+                return String(localized: "Couldn't look up the activation key. An activation key needs the internet once — connect and try again.")
             }
         }
     }

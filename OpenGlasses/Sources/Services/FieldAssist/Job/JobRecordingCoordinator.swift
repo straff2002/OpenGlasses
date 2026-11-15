@@ -234,9 +234,9 @@ final class JobRecordingCoordinator: ObservableObject {
         }
     }
 
-    nonisolated static let preparingNote = "Preparing the recording."
-    nonisolated static let interruptedNote = "A recording of this job was interrupted. What had been recorded is saved."
-    nonisolated static let deletedNote = "The recording was deleted from this phone."
+    nonisolated static let preparingNote = String(localized: "Preparing the recording.")
+    nonisolated static let interruptedNote = String(localized: "A recording of this job was interrupted. What had been recorded is saved.")
+    nonisolated static let deletedNote = String(localized: "The recording was deleted from this phone.")
 
     /// Every recording on this phone that is neither running now nor sealed, by job, with why it
     /// is not with the office yet. One whose journal cannot be read is still a recording.
@@ -303,19 +303,19 @@ final class JobRecordingCoordinator: ObservableObject {
         var explanation: String {
             switch self {
             case .notOffered:
-                return "This phone isn't paired with an office, so there is nowhere for a recording to go."
+                return String(localized: "This phone isn't paired with an office, so there is nowhere for a recording to go.")
             case .unavailable(let reason):
                 return reason.explanation
             case .consentRequired:
-                return "Read what recording a job means first."
+                return String(localized: "Read what recording a job means first.")
             case .alreadyRecording:
-                return "A recording is already running."
+                return String(localized: "A recording is already running.")
             case .cameraNotReady(let phrase):
-                return "\(phrase), so there's nothing to record. Check the glasses are on, then try again."
+                return String(localized: "\(phrase), so there's nothing to record. Check the glasses are on, then try again.")
             case .notEnoughStorage:
-                return "Not enough storage to record — free up some space and try again."
+                return String(localized: "Not enough storage to record — free up some space and try again.")
             case .couldNotStart:
-                return "The recording couldn't be started."
+                return String(localized: "The recording couldn't be started.")
             }
         }
     }
@@ -369,7 +369,7 @@ final class JobRecordingCoordinator: ObservableObject {
                 await seams.releaseStream()
                 return .failure(.cameraNotReady(phrase))
             case .claimFailed:
-                return .failure(.cameraNotReady("The glasses camera couldn't be started"))
+                return .failure(.cameraNotReady(String(localized: "The glasses camera couldn't be started")))
             }
         }
 
@@ -687,23 +687,23 @@ final class JobRecordingCoordinator: ObservableObject {
         switch reason {
         case .asked: lead = ""
         case .reachedLimit: lead = RetentionDecision.stoppedAtLimitNote + " "
-        case .jobClosed: lead = "The job closed, so the recording stopped. "
-        case .noLongerAllowed(let why): lead = "The recording stopped. " + why.explanation + " "
-        case .interrupted: lead = "The recording was interrupted. "
-        case .couldNotCarryOn: lead = "The recording couldn't carry on, so it stopped. "
+        case .jobClosed: lead = String(localized: "The job closed, so the recording stopped.") + " "
+        case .noLongerAllowed(let why): lead = String(localized: "The recording stopped.") + " " + why.explanation + " "
+        case .interrupted: lead = String(localized: "The recording was interrupted.") + " "
+        case .couldNotCarryOn: lead = String(localized: "The recording couldn't carry on, so it stopped.") + " "
         }
         switch outcome {
         case .sealed:
             // Pictures the blur could not process are left out, and the technician is told.
-            let left = droppedFrames > 0 ? " Some of the video couldn't have faces blurred and was left out." : ""
-            return lead + "The recording is ready to go to the office." + left
+            let left = droppedFrames > 0 ? " " + String(localized: "Some of the video couldn't have faces blurred and was left out.") : ""
+            return lead + String(localized: "The recording is ready to go to the office.") + left
         case .waitingToPrepare:
-            return lead + "The recording is saved on this phone, and will be prepared for the office later."
+            return lead + String(localized: "The recording is saved on this phone, and will be prepared for the office later.")
         case .waitingForBlur:
-            return lead + "The recording is saved on this phone. Faces have to be blurred before it goes to the office. "
+            return lead + String(localized: "The recording is saved on this phone. Faces have to be blurred before it goes to the office.") + " "
                 + BundleSyncState.WaitReason.openAppToPrepare.explanation
         case .nothingRecorded:
-            return lead + "Nothing was recorded, so there is nothing to send."
+            return lead + String(localized: "Nothing was recorded, so there is nothing to send.")
         case .deleted:
             return lead + deletedNote
         }

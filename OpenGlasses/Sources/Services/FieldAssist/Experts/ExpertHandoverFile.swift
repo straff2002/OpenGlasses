@@ -222,13 +222,13 @@ enum ExpertHandoverFile {
     static func describe(_ error: ReadError) -> String {
         switch error {
         case .notAZip, .unreadableManifest, .missingManifest, .notAHandover:
-            return "That file isn't a job handover this app can read."
+            return String(localized: "That file isn't a job handover this app can read.")
         case .unsupportedVersion:
-            return "That handover was made by a newer version of the app. Update the app to open it."
+            return String(localized: "That handover was made by a newer version of the app. Update the app to open it.")
         case .tooLarge, .tooManyPhotos:
-            return "That handover is larger than this app opens."
+            return String(localized: "That handover is larger than this app opens.")
         case .unsafeEntryPath, .unexpectedEntry, .missingPhoto:
-            return "That handover holds something it shouldn't, so it wasn't opened."
+            return String(localized: "That handover holds something it shouldn't, so it wasn't opened.")
         }
     }
 }

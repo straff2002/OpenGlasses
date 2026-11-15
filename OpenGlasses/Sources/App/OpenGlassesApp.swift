@@ -758,7 +758,9 @@ struct OpenGlassesApp: App {
                 // while we were away.
                 let imported = appState.teleprompterStore.importPendingShares()
                 if imported > 0 {
-                    appState.glassesDisplay.flash("Imported \(imported) teleprompter script\(imported == 1 ? "" : "s")")
+                    appState.glassesDisplay.flash(imported == 1
+                        ? String(localized: "Imported 1 teleprompter script")
+                        : String(localized: "Imported \(imported) teleprompter scripts"))
                 }
                 // Refresh the Siri Shortcuts catalog — the user may have added shortcuts
                 // while away — so the agent's run_shortcut menu stays current (Plan Z).
@@ -3230,7 +3232,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan-then-execute HUD trace (Plan S): show the plan header + per-step progress on the lens
         // while a multi-step agent task runs. The final summary is spoken via the normal TTS path.
         llmService.onAgentNarrate = { [weak self] line in
-            self?.glassesDisplay.showNotification(title: "Agent", body: line, icon: .info, duration: 4)
+            self?.glassesDisplay.showNotification(title: String(localized: "Agent"), body: line, icon: .info, duration: 4)
         }
         // Plan LP §2: a plan of two or more steps says what it is about to do, once, before the
         // first step runs. Direct mode only, like the plan loop itself.
@@ -3243,7 +3245,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         llmService.onAgentStep = { [weak self] index, total, step in
             let body = step.rationale.isEmpty ? step.tool : step.rationale
-            self?.glassesDisplay.showNotification(title: "Step \(index) of \(total)", body: body, icon: .navigation, duration: 4)
+            self?.glassesDisplay.showNotification(title: String(localized: "Step \(index) of \(total)"), body: body, icon: .navigation, duration: 4)
         }
 
         // Structured capture flows (Plan U): persist finished records to the offline queue (Plan T)
@@ -3265,7 +3267,9 @@ class AppState: ObservableObject, AppStateProtocol {
             if online {
                 let n = self.offlineQueue.pendingCount
                 if let line = HandoffAnnouncer.syncLine(queuedItems: n) {
-                    self.glassesDisplay.flash("Back online — syncing \(n) item\(n == 1 ? "" : "s")")
+                    self.glassesDisplay.flash(n == 1
+                        ? String(localized: "Back online — syncing 1 item")
+                        : String(localized: "Back online — syncing \(n) items"))
                     self.connectivityHandoff.noteSyncLineSpoken()
                     Task { await self.speechService.speak(line, source: .statusNotice) }
                 }
@@ -3531,7 +3535,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // and mirrors a richer notification card to the in-lens HUD.
         proactiveAlerts.onAlert = { [weak self] message, urgency in
             guard let self else { return }
-            self.glassesDisplay.showNotification(title: "Reminder", body: message, icon: .calendar)
+            self.glassesDisplay.showNotification(title: String(localized: "Reminder"), body: message, icon: .calendar)
             Task {
                 await self.speechService.speak(message, source: .alert, urgency: urgency, mirrorToHUD: false)
             }
@@ -3848,7 +3852,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if let geofenceTool = nativeToolRegistry.tool(named: "geofence") as? GeofenceTool {
             geofenceTool.onAlert = { [weak self] message, urgency in
                 guard let self else { return }
-                self.glassesDisplay.showNotification(title: "Location", body: message, icon: .location)
+                self.glassesDisplay.showNotification(title: String(localized: "Location"), body: message, icon: .location)
                 // Plan BZ: geofence transitions feed the digest (near-dup dedup absorbs bounces).
                 self.notificationDigest.ingest(source: .geofence, title: message,
                                                priority: urgency == .high ? .high : .medium)
@@ -4413,13 +4417,13 @@ class AppState: ObservableObject, AppStateProtocol {
         case .deferToQueue:
             heldUtterance = (text: text, heldAt: Date())
             speechService.playTone(frequency: 660, duration: 0.06)
-            glassesDisplay.flash("⏳ Got it — one sec")
+            glassesDisplay.flash(String(localized: "⏳ Got it — one sec"))
             PrivacyLog.app(.utteranceHeld, characters: text.count)
 
         case .rejectWithCue(let reason):
             guard reason != .emptyUtterance else { return }
             speechService.playTone(frequency: 330, duration: 0.12)
-            glassesDisplay.flash("⚠️ Didn't catch that — say it again")
+            glassesDisplay.flash(String(localized: "⚠️ Didn't catch that — say it again"))
             PrivacyLog.app(.utteranceRejected, detail: PrivacyToken.caseName(of: reason),
                            characters: text.count)
         }
@@ -4852,7 +4856,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // (`onCheckInRan`), so the same evening never has two.
             if slot != .checkIn {
                 let content = UNMutableNotificationContent()
-                content.title = "My Day"
+                content.title = String(localized: "My Day")
                 content.body = Self.myDayDeliveryNotificationBody(slot)
                 content.sound = shouldSpeak ? nil : .default
                 let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
@@ -5643,7 +5647,7 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.stopThinkingSound()
         isListening = false
         inConversation = false
-        lastResponse = "Cancelled"
+        lastResponse = String(localized: "Cancelled")
         activePersona = nil
         updateLiveActivity()
         Task { await returnToWakeWord() }
@@ -6580,7 +6584,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // camera consumer in the app — it runs for as long as the wearer is walking — and is
         // therefore the one most likely to be underneath somebody else's stop.
         narration.claimCamera = { [weak self] in
-            guard let self else { return "The app isn't ready yet." }
+            guard let self else { return String(localized: "The app isn't ready yet.") }
             do {
                 try await self.cameraService.claimStream(for: .sceneNarration)
                 return nil
@@ -6952,7 +6956,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Plan FF P0/PR2: the wearer asked for this photo, and it exists. The haptic and the
             // banner below are both sighted-or-handheld feedback.
             noteRequestedCaptureSucceeded()
-            lastResponse = "Photo saved to camera roll"
+            lastResponse = String(localized: "Photo saved to camera roll")
         } catch {
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -7909,7 +7913,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("goodbye"))
                 self.speechService.stopSpeaking()
                 self.inConversation = false
-                self.lastResponse = "Goodbye!"
+                self.lastResponse = String(localized: "Goodbye!")
                 await self.speechService.speak("Goodbye!", source: .acknowledgement)
                 await self.returnToWakeWord()
                 return true
@@ -8006,10 +8010,10 @@ class AppState: ObservableObject, AppStateProtocol {
                                 gap: self.llmService.credentialGap(behind: error),
                                 perMinute: self.llmService.perMinuteNotice(behind: error))
                             if photoCaptured {
-                                self.lastResponse = "Photo analysis failed: \(error.localizedDescription)"
+                                self.lastResponse = String(localized: "Photo analysis failed: \(error.localizedDescription)")
                             } else {
                                 PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
-                                self.lastResponse = "Photo failed: \(error.localizedDescription)"
+                                self.lastResponse = String(localized: "Photo failed: \(error.localizedDescription)")
                             }
                             if let line { await self.speechService.speak(line, source: .errorLine) }
                         },
@@ -8076,7 +8080,7 @@ class AppState: ObservableObject, AppStateProtocol {
         injectPinnedFrame()
         framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        glassesDisplay.flash("📌 Pinned")
+        glassesDisplay.flash(String(localized: "📌 Pinned"))
         PrivacyLog.camera(.glasses, .framePinned,
                           width: Int(frame.size.width), height: Int(frame.size.height))
         return true
@@ -8092,7 +8096,7 @@ class AppState: ObservableObject, AppStateProtocol {
         openAIRealtimeSession.resetFrameGateAfterPin()
         if trigger == .explicitUnpin {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            glassesDisplay.flash("Pin released")
+            glassesDisplay.flash(String(localized: "Pin released"))
         }
         PrivacyLog.camera(.glasses, .framePinReleased,
                           detail: PrivacyToken.caseName(of: trigger))
@@ -8337,7 +8341,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let items = choices.enumerated().map { index, choice in
             HUDItem(id: "choice-\(index)", label: choice.label, action: {})
         }
-        glassesDisplay.present(screen: HUDScreen(title: "Choose", items: items)) { [weak self] id in
+        glassesDisplay.present(screen: HUDScreen(title: String(localized: "Choose"), items: items)) { [weak self] id in
             guard let self,
                   let index = Int(id.dropFirst("choice-".count)),
                   choices.indices.contains(index) else { return }
@@ -9792,7 +9796,7 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             displayShow: { [weak self] text, icon in
                 guard let self, self.glassesDisplay.deviceSupportsDisplay() else { return false }
-                self.glassesDisplay.showNotification(title: "Agent", body: text, icon: Self.remoteHUDIcon(for: icon))
+                self.glassesDisplay.showNotification(title: String(localized: "Agent"), body: text, icon: Self.remoteHUDIcon(for: icon))
                 return true
             },
             displayClear: { [weak self] in

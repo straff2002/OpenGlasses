@@ -102,17 +102,17 @@ enum CameraDependentFeature: String, CaseIterable, Sendable {
     /// User-facing name, used in the reason copy.
     var displayName: String {
         switch self {
-        case .photoCapture: return "Photo Capture"
-        case .livePreview: return "Live Preview"
-        case .signLanguage: return "Sign Language"
-        case .readingCompanion: return "Reading Companion"
-        case .sceneNarration: return "Scene Narration"
-        case .framePinning: return "Frame Pinning"
-        case .videoRecording: return "Video Recording"
-        case .broadcast: return "Broadcast"
-        case .expertStream: return "Expert Stream"
-        case .offlineLiveSession: return "Offline Live Session"
-        case .ambientCameraCaptions: return "Ambient Captions (camera)"
+        case .photoCapture: return String(localized: "Photo Capture")
+        case .livePreview: return String(localized: "Live Preview")
+        case .signLanguage: return String(localized: "Sign Language")
+        case .readingCompanion: return String(localized: "Reading Companion")
+        case .sceneNarration: return String(localized: "Scene Narration")
+        case .framePinning: return String(localized: "Frame Pinning")
+        case .videoRecording: return String(localized: "Video Recording")
+        case .broadcast: return String(localized: "Broadcast")
+        case .expertStream: return String(localized: "Expert Stream")
+        case .offlineLiveSession: return String(localized: "Offline Live Session")
+        case .ambientCameraCaptions: return String(localized: "Ambient Captions (camera)")
         }
     }
 }
@@ -161,11 +161,10 @@ enum CameraFeatureGate {
         if feature.requiresLiveFrames {
             guard capabilities.liveFrames else {
                 #if AVENKIN_PHONE_ONLY
-                return .unavailable("\(feature.displayName) needs a live camera feed, which this version doesn't have.")
+                return .unavailable(String(localized: "\(feature.displayName) needs a live camera feed, which this version doesn't have."))
                 #else
                 return .unavailable(
-                    "\(feature.displayName) needs a live camera feed from the glasses, and the "
-                    + "connected glasses don't provide one."
+                    String(localized: "\(feature.displayName) needs a live camera feed from the glasses, and the connected glasses don't provide one.")
                 )
                 #endif
             }
@@ -178,21 +177,19 @@ enum CameraFeatureGate {
                 return .available
             case .seconds:
                 return .degraded(
-                    "Captures from these glasses take several seconds — they're fetched from the "
-                    + "glasses rather than streamed."
+                    String(localized: "Captures from these glasses take several seconds — they're fetched from the glasses rather than streamed.")
                 )
             }
         }
 
         guard phoneFallbackAvailable else {
-            return .unavailable("No camera is available.")
+            return .unavailable(String(localized: "No camera is available."))
         }
         #if AVENKIN_PHONE_ONLY
-        return .degraded("The iPhone camera is used — point the phone at what you want captured.")
+        return .degraded(String(localized: "The iPhone camera is used — point the phone at what you want captured."))
         #else
         return .degraded(
-            "The connected glasses can't capture photos, so the iPhone camera is used instead — "
-            + "point the phone at what you want captured."
+            String(localized: "The connected glasses can't capture photos, so the iPhone camera is used instead — point the phone at what you want captured.")
         )
         #endif
     }

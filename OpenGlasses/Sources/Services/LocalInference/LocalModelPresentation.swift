@@ -212,14 +212,14 @@ enum LocalModelPresentation {
         var facts: [(String, String)] = []
         let downloadBytes = descriptor.files.reduce(Int64(0)) { $0 + max(0, $1.byteCount) }
         if downloadBytes > 0 {
-            facts.append(("Download", formatBytes(downloadBytes)))
+            facts.append((String(localized: "Download"), formatBytes(downloadBytes)))
         }
         if let onDiskBytes, onDiskBytes > 0 {
-            facts.append(("On disk", formatBytes(onDiskBytes)))
+            facts.append((String(localized: "On disk"), formatBytes(onDiskBytes)))
         }
         let working = estimatedResidentBytes(descriptor)
         if working > 0 {
-            facts.append(("Working memory", "about \(formatBytes(working))"))
+            facts.append((String(localized: "Working memory"), String(localized: "about \(formatBytes(working))")))
         }
         return facts
     }
@@ -260,24 +260,24 @@ enum LocalModelPresentation {
 
     static func present(_ report: LocalModelFitReport) -> FitPresentation {
         var facts: [FitPresentation.Fact] = [
-            .init(id: "runtime", label: "Runtime", value: runtimeBadge(report.runtime).text),
+            .init(id: "runtime", label: String(localized: "Runtime"), value: runtimeBadge(report.runtime).text),
         ]
         if let quantization = report.quantization, !quantization.isEmpty {
-            facts.append(.init(id: "quantization", label: "Quantization", value: quantization))
+            facts.append(.init(id: "quantization", label: String(localized: "Quantization"), value: quantization))
         }
-        facts.append(.init(id: "download", label: "Download",
+        facts.append(.init(id: "download", label: String(localized: "Download"),
                            value: formatBytes(report.downloadBytes)))
-        facts.append(.init(id: "storage", label: "Free storage",
-                           value: report.availableStorageBytes.map(formatBytes) ?? "Couldn't be read"))
-        facts.append(.init(id: "memory", label: "Working memory",
-                           value: "about \(formatBytes(report.estimatedResidentBytes))"))
-        facts.append(.init(id: "verdict", label: "Fit on this iPhone",
+        facts.append(.init(id: "storage", label: String(localized: "Free storage"),
+                           value: report.availableStorageBytes.map(formatBytes) ?? String(localized: "Couldn't be read")))
+        facts.append(.init(id: "memory", label: String(localized: "Working memory"),
+                           value: String(localized: "about \(formatBytes(report.estimatedResidentBytes))")))
+        facts.append(.init(id: "verdict", label: String(localized: "Fit on this iPhone"),
                            value: verdictText(report.loadVerdict)))
-        facts.append(.init(id: "licence", label: "Licence", value: report.license.displayName))
+        facts.append(.init(id: "licence", label: String(localized: "Licence"), value: report.license.displayName))
 
         return FitPresentation(
             canProceed: report.canInstall,
-            refusalSummary: report.canInstall ? nil : "This model can't be downloaded.",
+            refusalSummary: report.canInstall ? nil : String(localized: "This model can't be downloaded."),
             blockerMessages: report.blockers.map(\.localizedMessage),
             warningMessages: report.warnings.map(\.localizedMessage),
             facts: facts)
@@ -289,13 +289,13 @@ enum LocalModelPresentation {
     static func verdictText(_ admission: LocalModelBudget.Admission) -> String {
         switch admission {
         case .allow:
-            return "Fits"
+            return String(localized: "Fits")
         case .allowConstrained(.tightHeadroom):
-            return "Fits, with little to spare"
+            return String(localized: "Fits, with little to spare")
         case .allowConstrained(.contextClamped(let tokens)):
-            return "Fits, conversation limited to about \(tokens) tokens"
+            return String(localized: "Fits, conversation limited to about \(tokens) tokens")
         case .refuse(.insufficientHeadroom):
-            return "Probably won't fit right now"
+            return String(localized: "Probably won't fit right now")
         }
     }
 }

@@ -7,7 +7,7 @@ enum TranslationProviderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Translation is not configured (needs the opt-in, a Gemini API key, and HIPAA mode off)."
+            return String(localized: "Translation is not configured (needs the opt-in, a Gemini API key, and HIPAA mode off).")
         }
     }
 }

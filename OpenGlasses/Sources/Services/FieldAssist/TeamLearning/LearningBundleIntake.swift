@@ -130,17 +130,15 @@ final class LearningBundleIntake: ObservableObject {
         var message: String {
             switch self {
             case .hipaa:
-                return "Team learnings are unavailable while HIPAA mode is on: the file was not opened."
+                return String(localized: "Team learnings are unavailable while HIPAA mode is on: the file was not opened.")
             case .notEntitled(let reason): return reason
             case .notAReviewerDevice:
-                return "These are findings for a reviewer, and this phone isn't a reviewer device. Send the file to "
-                    + "whoever reviews your team's learnings."
+                return String(localized: "These are findings for a reviewer, and this phone isn't a reviewer device. Send the file to whoever reviews your team's learnings.")
             case .bundle(let refusal): return refusal.message
-            case .nothingStaged: return "There's no team-learning file waiting to be accepted."
+            case .nothingStaged: return String(localized: "There's no team-learning file waiting to be accepted.")
             case .unknownItems(let ids):
-                return "Nothing was applied: \(ids.map { String($0.prefix(6)) }.joined(separator: ", ")) "
-                    + "isn't in the waiting file."
-            case .unreadable: return "The team-learning file couldn't be read."
+                return String(localized: "Nothing was applied: \(ids.map { String($0.prefix(6)) }.joined(separator: ", ")) isn't in the waiting file.")
+            case .unreadable: return String(localized: "The team-learning file couldn't be read.")
             }
         }
     }
@@ -322,7 +320,7 @@ final class LearningBundleIntake: ObservableObject {
         case .notIncluded: return FieldAssistPaywallCopy.teamLearningsBundleNotIncluded
         case .denied(.expired(_)): return FieldAssistPaywallCopy.teamLearningsBundleLapsed
         case .denied(.unverifiableLicense): return FieldAssistPaywallCopy.unverifiable
-        case .denied(.seatUnavailable(let hold)): return "Not exchanged: " + hold.message
+        case .denied(.seatUnavailable(let hold)): return String(localized: "Not exchanged: \(hold.message)")
         case .denied(.noEvidence): return FieldAssistPaywallCopy.teamLearningsBundleLocked
         }
     }
@@ -362,10 +360,17 @@ final class LearningBundleIntake: ObservableObject {
         case .failure(let refusal): lastMessage = refusal.message
         case .success(.imported(let report, _)):
             let count = report.candidatesAdded.count + report.candidatesReplaced.count
-            lastMessage = "\(count) team learning\(count == 1 ? "" : "s") added for review."
+            lastMessage = count == 1
+                ? String(localized: "\(count) team learning added for review.")
+                : String(localized: "\(count) team learnings added for review.")
         case .success(.staged(let pending)):
-            lastMessage = "A team-learning file is waiting: \(pending.entries.count) entr\(pending.entries.count == 1 ? "y" : "ies"), "
-                + "\(pending.retractions.count) retraction\(pending.retractions.count == 1 ? "" : "s"). Nothing is used until you accept it."
+            let entries = pending.entries.count == 1
+                ? String(localized: "\(pending.entries.count) entry")
+                : String(localized: "\(pending.entries.count) entries")
+            let retractions = pending.retractions.count == 1
+                ? String(localized: "\(pending.retractions.count) retraction")
+                : String(localized: "\(pending.retractions.count) retractions")
+            lastMessage = String(localized: "A team-learning file is waiting: \(entries), \(retractions). Nothing is used until you accept it.")
         }
         return result
     }

@@ -243,7 +243,7 @@ struct JobListView: View {
 
     static func dayLabel(_ day: Date, jobCount: Int) -> String {
         let date = day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year())
-        return jobCount == 1 ? "\(date) · 1 job" : "\(date) · \(jobCount) jobs"
+        return jobCount == 1 ? String(localized: "\(date) · 1 job") : String(localized: "\(date) · \(jobCount) jobs")
     }
 
     // MARK: - A row

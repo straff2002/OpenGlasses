@@ -71,12 +71,12 @@ enum ToolCallStatus: Equatable {
     var displayText: String {
         switch self {
         case .idle: return ""
-        case .executing(let name): return "Running: \(name)..."
-        case .completed(let name): return "Done: \(name)"
-        case .failed(let name, let err): return "Failed: \(name) — \(err)"
-        case .outcomeUnknown(let name): return "\(name): status unknown — checking"
-        case .cancelled(let name): return "Cancelled: \(name)"
-        case .yielded: return "Waiting for you..."
+        case .executing(let name): return String(localized: "Running: \(name)...")
+        case .completed(let name): return String(localized: "Done: \(name)")
+        case .failed(let name, let err): return String(localized: "Failed: \(name) — \(err)")
+        case .outcomeUnknown(let name): return String(localized: "\(name): status unknown — checking")
+        case .cancelled(let name): return String(localized: "Cancelled: \(name)")
+        case .yielded: return String(localized: "Waiting for you...")
         }
     }
 

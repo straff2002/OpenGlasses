@@ -129,21 +129,21 @@ enum SessionAnnouncementPolicy {
 
         switch transition {
         case .liveSession(let mode, let active):
-            return SessionAnnouncement(message: active ? "\(mode) session started"
-                                                       : "\(mode) session ended",
+            return SessionAnnouncement(message: active ? String(localized: "\(mode) session started")
+                                                       : String(localized: "\(mode) session ended"),
                                        interrupts: false)
         case .reconnecting(let mode):
-            return SessionAnnouncement(message: "\(mode) reconnecting", interrupts: false)
+            return SessionAnnouncement(message: String(localized: "\(mode) reconnecting"), interrupts: false)
         case .thinking(let active):
-            return active ? SessionAnnouncement(message: "Thinking", interrupts: false) : nil
+            return active ? SessionAnnouncement(message: String(localized: "Thinking"), interrupts: false) : nil
         case .cameraStreaming(let active):
-            return SessionAnnouncement(message: active ? "Camera started" : "Camera stopped",
+            return SessionAnnouncement(message: active ? String(localized: "Camera started") : String(localized: "Camera stopped"),
                                        interrupts: false)
         case .micMuted(let muted):
-            return SessionAnnouncement(message: muted ? "Microphone muted" : "Microphone on",
+            return SessionAnnouncement(message: muted ? String(localized: "Microphone muted") : String(localized: "Microphone on"),
                                        interrupts: false)
         case .error(let reason):
-            let spoken = SpokenErrorPolicy.looksHuman(reason) ? reason : "Something went wrong"
+            let spoken = SpokenErrorPolicy.looksHuman(reason) ? reason : String(localized: "Something went wrong")
             return SessionAnnouncement(message: spoken, interrupts: true)
         // Only the way down gets here today (see `hasOwnAudioCue`). The way up is worded beside
         // it so that taking the connect tone away is one edit, not a silence.

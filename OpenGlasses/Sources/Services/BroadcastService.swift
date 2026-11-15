@@ -417,7 +417,7 @@ class BroadcastService: ObservableObject {
             markLive()
         case .publishBadName:
             // The stream name is already publishing elsewhere — a retry loop would fight it.
-            fail(reason: "That stream key is already in use.")
+            fail(reason: String(localized: "That stream key is already in use."))
         case .connectClosed, .connectFailed, .failed, .publishIdle:
             // `unpublishSuccess` is deliberately absent: it is the acknowledgement of *our own*
             // unpublish, so treating it as a loss would start a reconnect at every teardown.
@@ -455,7 +455,7 @@ class BroadcastService: ObservableObject {
 
         switch reconnectPolicy.connectionLost(now: Date()) {
         case .giveUp:
-            fail(reason: "Lost connection to the streaming server.")
+            fail(reason: String(localized: "Lost connection to the streaming server."))
         case .retry(let attempt, let delay):
             machine.apply(.retry(attempt: attempt))
             publishHealth()
@@ -486,7 +486,7 @@ class BroadcastService: ObservableObject {
             teardownConnectionObjects()
             switch reconnectPolicy.connectionLost(now: Date()) {
             case .giveUp:
-                fail(reason: "Couldn't reconnect to the streaming server.")
+                fail(reason: String(localized: "Couldn't reconnect to the streaming server."))
             case .retry(let attempt, let delay):
                 machine.apply(.retry(attempt: attempt))
                 publishHealth()

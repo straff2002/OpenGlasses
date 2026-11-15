@@ -17,7 +17,7 @@ final class FingerspellingInferenceEngine {
         var errorDescription: String? {
             switch self {
             case .unexpectedOutput(let detail):
-                return "Fingerspelling model returned unexpected output (\(detail))"
+                return String(localized: "Fingerspelling model returned unexpected output (\(detail))")
             }
         }
     }

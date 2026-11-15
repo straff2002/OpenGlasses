@@ -34,7 +34,7 @@ final class ProcedureHUDTaskSource: HUDTaskSource {
 
     private var step: Procedure.Step? { host.activeProcedureStep }
 
-    var title: String { host.activeProcedureTitle ?? "Procedure" }
+    var title: String { host.activeProcedureTitle ?? String(localized: "Procedure") }
 
     var current: HUDStep? {
         guard let step else { return nil }

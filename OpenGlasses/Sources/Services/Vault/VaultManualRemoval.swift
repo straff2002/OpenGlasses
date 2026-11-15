@@ -47,17 +47,17 @@ enum VaultManualRemoval {
         var errorDescription: String? {
             switch self {
             case .notInstalled(let id):
-                return "No installed vault with id \(id)."
+                return String(localized: "No installed vault with id \(id).")
             case .protectedPack(let name):
-                return "“\(name)” is a signed pack. Manuals can only be removed from vaults you imported yourself."
+                return String(localized: "“\(name)” is a signed pack. Manuals can only be removed from vaults you imported yourself.")
             case .unknownDocument(let file, _):
-                return "This vault lists no manual called \(file)."
+                return String(localized: "This vault lists no manual called \(file).")
             case .invalidPath(let file):
-                return "\(file) is not a path inside this vault."
+                return String(localized: "\(file) is not a path inside this vault.")
             case .repairRequired(let message):
-                return "This vault's manual index needs repairing before a manual can be removed: \(message)"
+                return String(localized: "This vault's manual index needs repairing before a manual can be removed: \(message)")
             case .cleanupFailed(let message):
-                return "Removing the manual did not finish: \(message). The manual stays unavailable; try again."
+                return String(localized: "Removing the manual did not finish: \(message). The manual stays unavailable; try again.")
             }
         }
 
@@ -367,7 +367,7 @@ enum VaultManualRemoval {
         do {
             ledger = try VaultDocumentLedger.loadStrict(from: overlay)
         } catch {
-            throw RemovalError.repairRequired("the ledger at \(VaultDocumentLedger.filename) cannot be read")
+            throw RemovalError.repairRequired(String(localized: "the ledger at \(VaultDocumentLedger.filename) cannot be read"))
         }
         if let entry = ledger?.entries.first(where: { $0.file == file }) { return entry.documentId }
 
@@ -379,8 +379,7 @@ enum VaultManualRemoval {
         let unaccounted = indexed.subtracting(accounted)
         guard unaccounted.isEmpty else {
             throw RemovalError.repairRequired(
-                "\(unaccounted.count) indexed document(s) in this vault are not listed in the ledger, "
-                    + "so which one this manual is cannot be established. Re-index the vault first")
+                String(localized: "\(unaccounted.count) indexed document(s) in this vault are not listed in the ledger, so which one this manual is cannot be established. Re-index the vault first"))
         }
         return nil
     }

@@ -171,12 +171,12 @@ enum ReportTranscriptPolicy {
         /// One line naming who the report is for, and why the app thinks so.
         var audienceLine: String {
             switch source {
-            case .endpoint: return "Your organisation's office system — internal."
-            case .configuredAddresses: return "Your office — every address is set up for job reports."
-            case .markedByTechnician: return "Your office — you said so below."
-            case .unknownAddress: return "A customer — at least one address isn't set up as your office."
-            case .noRecipient: return "Nobody is chosen yet, so it's treated as going to a customer."
-            case .shareSheet: return "You choose where in the share sheet, so it's treated as going to a customer."
+            case .endpoint: return String(localized: "Your organisation's office system — internal.")
+            case .configuredAddresses: return String(localized: "Your office — every address is set up for job reports.")
+            case .markedByTechnician: return String(localized: "Your office — you said so below.")
+            case .unknownAddress: return String(localized: "A customer — at least one address isn't set up as your office.")
+            case .noRecipient: return String(localized: "Nobody is chosen yet, so it's treated as going to a customer.")
+            case .shareSheet: return String(localized: "You choose where in the share sheet, so it's treated as going to a customer.")
             }
         }
 
@@ -184,18 +184,18 @@ enum ReportTranscriptPolicy {
         /// is the office's by configuration, or carries no file at all.
         var officeOptInFooter: String? {
             if officeOptInWithdrawn {
-                return "Your organisation sends transcripts only to the office addresses it set up."
+                return String(localized: "Your organisation sends transcripts only to the office addresses it set up.")
             }
             guard offersOfficeOptIn else { return nil }
-            return "A report to a customer carries no transcript. Turn this on only if it's going to your own office."
+            return String(localized: "A report to a customer carries no transcript. Turn this on only if it's going to your own office.")
         }
 
         /// What the two report files carry, in one sentence. Nil when the channel carries no file.
         var dataFileLine: String? {
             guard transcriptPDF.isShown else { return nil }
             return jsonIncludesTranscript
-                ? "The work order never includes what was said. The data file (JSON) does, for your office."
-                : "Neither the work order nor the data file includes what was said."
+                ? String(localized: "The work order never includes what was said. The data file (JSON) does, for your office.")
+                : String(localized: "Neither the work order nor the data file includes what was said.")
         }
 
         /// What the audit line records: who it was for, and which files carried the transcript.
@@ -209,17 +209,17 @@ enum ReportTranscriptPolicy {
 
     // MARK: - Copy
 
-    static let availableNote = "A separate PDF of who said what and when — the phone's speech-to-text, not checked by anyone. For your office, never the customer."
-    static let attachedNote = "The transcript PDF goes with this report. Anyone you add in the composer receives it too."
-    static let alwaysReason = "Your organisation attaches the transcript to every report to the office."
-    static let neverReason = "Your organisation keeps transcripts out of job reports."
-    static let customerReason = "Only for reports to your office. This one is for a customer, so no transcript goes with it."
+    static let availableNote = String(localized: "A separate PDF of who said what and when — the phone's speech-to-text, not checked by anyone. For your office, never the customer.")
+    static let attachedNote = String(localized: "The transcript PDF goes with this report. Anyone you add in the composer receives it too.")
+    static let alwaysReason = String(localized: "Your organisation attaches the transcript to every report to the office.")
+    static let neverReason = String(localized: "Your organisation keeps transcripts out of job reports.")
+    static let customerReason = String(localized: "Only for reports to your office. This one is for a customer, so no transcript goes with it.")
 
     static func noFilesReason(_ channel: DeliveryChannel) -> String {
         switch channel {
-        case .endpoint: return "The office system takes the job record, not files."
-        case .messages: return "This phone can't attach a file to a message, so only the summary goes."
-        default: return "\(channel.label) can't carry a file, so only the summary goes."
+        case .endpoint: return String(localized: "The office system takes the job record, not files.")
+        case .messages: return String(localized: "This phone can't attach a file to a message, so only the summary goes.")
+        default: return String(localized: "\(channel.label) can't carry a file, so only the summary goes.")
         }
     }
 
@@ -343,11 +343,11 @@ extension ReportTranscriptPolicy {
         var includesTranscript: Bool { toggle.isOn }
     }
 
-    static let expertNeverReason = "Your organisation keeps the conversation out of handovers to experts."
-    static let expertIncludeReason = "Your organisation sends the conversation to the experts on its list."
-    static let expertOrganisationNote = "On by default for the experts on your organisation's list."
-    static let expertPersonalNote = "Off unless you turn it on: this expert isn't on your organisation's list."
-    static let expertAskNote = "Your organisation asks you to choose each time."
+    static let expertNeverReason = String(localized: "Your organisation keeps the conversation out of handovers to experts.")
+    static let expertIncludeReason = String(localized: "Your organisation sends the conversation to the experts on its list.")
+    static let expertOrganisationNote = String(localized: "On by default for the experts on your organisation's list.")
+    static let expertPersonalNote = String(localized: "Off unless you turn it on: this expert isn't on your organisation's list.")
+    static let expertAskNote = String(localized: "Your organisation asks you to choose each time.")
 
     /// The decision for one handover to one expert (decision 3). Pure.
     ///

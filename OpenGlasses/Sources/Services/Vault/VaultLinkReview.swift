@@ -53,24 +53,24 @@ struct VaultLinkReview: Equatable {
     /// The sentence every review carries, signed or not: a vault is not a document the reader
     /// reads, it is content that steers what the assistant says.
     static let groundingSentence =
-        "This vault's reference files will guide the assistant's answers while it is selected."
+        String(localized: "This vault's reference files will guide the assistant's answers while it is selected.")
 
     /// The highlighted block an unverified archive shows. Four short sentences, in the order they
     /// have to be read: what is missing, what that means, what the consequence is, and what to do.
     static let unverifiedWarning = [
-        "This vault isn't signed by a listed publisher.",
-        "The app can't tell who built it, or whether it was altered on the way here.",
-        "Its reference files will steer the assistant's answers.",
-        "Only continue if you know and trust the source.",
+        String(localized: "This vault isn't signed by a listed publisher."),
+        String(localized: "The app can't tell who built it, or whether it was altered on the way here."),
+        String(localized: "Its reference files will steer the assistant's answers."),
+        String(localized: "Only continue if you know and trust the source."),
     ]
 
     /// The second, explicit acknowledgement an unverified install needs before the button enables.
-    static let acknowledgementPrompt = "I know where this vault came from and I accept the risk."
+    static let acknowledgementPrompt = String(localized: "I know where this vault came from and I accept the risk.")
 
     /// "Signed by Acme Manuals" — only ever from a verified signature.
     var signedLine: String? {
         guard case .signed(_, let name) = verification else { return nil }
-        return "Signed by \(name)"
+        return String(localized: "Signed by \(name)")
     }
 
     /// The warning block, or nil when the archive is signed.
@@ -110,14 +110,14 @@ struct VaultLinkReview: Equatable {
     /// What the button says: an update names the version it replaces, so "install" never quietly
     /// means "overwrite".
     var installButtonTitle: String {
-        guard let installedVersion else { return personalMode ? "Add manuals" : "Install vault" }
-        return "Update from v\(installedVersion)"
+        guard let installedVersion else { return personalMode ? String(localized: "Add manuals") : String(localized: "Install vault") }
+        return String(localized: "Update from v\(installedVersion)")
     }
 
     /// The line that explains an update, when this vault id is already here.
     var updateNote: String? {
         guard installedVersion != nil else { return nil }
-        return "A vault with this id is already installed. Installing replaces its files; your own edits to the core files are kept."
+        return String(localized: "A vault with this id is already installed. Installing replaces its files; your own edits to the core files are kept.")
     }
 
     var sizeText: String {
@@ -128,15 +128,17 @@ struct VaultLinkReview: Equatable {
     /// a technician on a job is very often on a phone plan.
     var cellularWarning: String? {
         guard isOnCellular, totalBytes >= cellularWarningBytes else { return nil }
-        return "You're on cellular data and this vault is \(sizeText). It will download over your mobile connection."
+        return String(localized: "You're on cellular data and this vault is \(sizeText). It will download over your mobile connection.")
     }
 
     /// What the manuals line says. A vault received by link exists so that nobody has to run text
     /// extraction on a phone, so what it carries is worth stating plainly.
     var manualsSummary: String {
-        guard !manuals.isEmpty else { return "No manuals — core files and procedures only." }
-        let count = "\(manuals.count) manual\(manuals.count == 1 ? "" : "s"), already read for search"
-        return includesOriginalPDFs ? count + ", with the manufacturers' PDFs" : count
+        guard !manuals.isEmpty else { return String(localized: "No manuals — core files and procedures only.") }
+        let count = manuals.count == 1
+            ? String(localized: "1 manual, already read for search")
+            : String(localized: "\(manuals.count) manuals, already read for search")
+        return includesOriginalPDFs ? String(localized: "\(count), with the manufacturers' PDFs") : count
     }
 
     /// The line the audit log records for the review itself, in the terms a reviewer reads. The

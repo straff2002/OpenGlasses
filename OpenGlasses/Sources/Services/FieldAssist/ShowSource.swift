@@ -512,12 +512,12 @@ final class ShowSourceCenter: ObservableObject {
     /// "AS/NZS 3000, page 112, §3.9.4.2 — tap to open". The citation is the vault's own label; no
     /// passage text goes on the lock screen.
     static func noticeText(for citation: Citation) -> String {
-        "\(citation.label) — tap to open"
+        String(localized: "\(citation.label) — tap to open")
     }
 
     private static func postNotification(_ body: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Manual page ready"
+        content.title = String(localized: "Manual page ready")
         content.body = body
         content.sound = .default
         let request = UNNotificationRequest(identifier: "show-source-page", content: content, trigger: nil)

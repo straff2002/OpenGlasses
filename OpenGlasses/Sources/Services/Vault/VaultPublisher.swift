@@ -148,13 +148,13 @@ enum VaultArchiveVerifier {
     static func describe(_ refusal: VaultArchiveVerification.Refusal) -> String {
         switch refusal {
         case .signatureInvalid:
-            return "This archive is signed by a listed publisher, but the signature doesn't check out. It has been altered since it was signed — it can't be installed."
+            return String(localized: "This archive is signed by a listed publisher, but the signature doesn't check out. It has been altered since it was signed — it can't be installed.")
         case .contentsAltered(let detail):
-            return "This archive's contents don't match what its header says they are (\(detail)). It has been altered — it can't be installed."
+            return String(localized: "This archive's contents don't match what its header says they are (\(detail)). It has been altered — it can't be installed.")
         case .revokedPublisher(let name):
-            return "\(name) is no longer a listed publisher. Vaults signed with that key can't be installed."
+            return String(localized: "\(name) is no longer a listed publisher. Vaults signed with that key can't be installed.")
         case .headerDoesNotMatchVault(let detail):
-            return "This archive doesn't describe itself consistently (\(detail)). It can't be installed."
+            return String(localized: "This archive doesn't describe itself consistently (\(detail)). It can't be installed.")
         }
     }
 }

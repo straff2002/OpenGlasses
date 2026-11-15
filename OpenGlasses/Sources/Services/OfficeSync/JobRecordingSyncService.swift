@@ -383,44 +383,44 @@ final class JobRecordingSyncService: ObservableObject {
         case .recording, .preparing:
             return JobRecordingCoordinator.preparingNote
         case .sealed:
-            return "\(JobDayRecording.waitingTitle). \(size)."
+            return String(localized: "\(JobDayRecording.waitingTitle). \(size).")
         case .waiting(.notEligible(.blurRequired)):
             // Not waiting for anything: it cannot be blurred now, and is not sent as it is.
-            return "This recording is held on this phone. \(SyncEligibility.Reason.blurRequired.explanation)"
+            return String(localized: "This recording is held on this phone. \(SyncEligibility.Reason.blurRequired.explanation)")
         case .waiting(let reason):
-            return "\(JobDayRecording.waitingTitle). \(reason.explanation)"
+            return String(localized: "\(JobDayRecording.waitingTitle). \(reason.explanation)")
         case .transferring(let sent, let total):
-            return "\(JobDayRecording.sendingTitle): \(progressWords(sentBytes: sent, totalBytes: total))"
+            return String(localized: "\(JobDayRecording.sendingTitle): \(progressWords(sentBytes: sent, totalBytes: total))")
         case .delivered:
-            return "\(JobDayRecording.sentTitle). \(awaitingConfirmation)"
+            return String(localized: "\(JobDayRecording.sentTitle). \(awaitingConfirmation)")
         case .acknowledged, .trimmed:
             if let outcome = row.outcome, outcome.status == OfficeRecordingReceipt.Status.published.rawValue {
-                return "Recording received by the office. A procedure was published from it."
+                return String(localized: "Recording received by the office. A procedure was published from it.")
             }
-            return "Recording received by the office."
+            return String(localized: "Recording received by the office.")
         case .failed(let reason):
-            return "The office didn't accept the recording (\(refusalWords(reason))). It is still on this phone."
+            return String(localized: "The office didn't accept the recording (\(refusalWords(reason))). It is still on this phone.")
         case .expired:
-            return "The office hasn't confirmed this recording in a long time. It is still on this phone."
+            return String(localized: "The office hasn't confirmed this recording in a long time. It is still on this phone.")
         }
     }
 
     /// Said of a recording every file of which has been served: sent, and not yet the office's.
-    nonisolated static let awaitingConfirmation = "Waiting for the office to confirm it."
+    nonisolated static let awaitingConfirmation = String(localized: "Waiting for the office to confirm it.")
 
     /// "25% of 1.2 GB." — how much of a recording the office has taken so far.
     nonisolated static func progressWords(sentBytes: Int64, totalBytes: Int64) -> String {
         let percent = totalBytes > 0 ? Int((Double(sentBytes) / Double(totalBytes) * 100).rounded(.down)) : 0
-        return "\(percent)% of \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))."
+        return String(localized: "\(percent)% of \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)).")
     }
 
     nonisolated static func refusalWords(_ reason: BundleSyncState.RefusalReason) -> String {
         switch reason {
-        case .signature: return "it couldn't check this phone's signature"
-        case .binding: return "this phone's pairing with the office has changed"
-        case .digest: return "what arrived wasn't what was sent"
-        case .tooLarge: return "it is too large"
-        case .policy: return "your organisation's rules don't allow it"
+        case .signature: return String(localized: "it couldn't check this phone's signature")
+        case .binding: return String(localized: "this phone's pairing with the office has changed")
+        case .digest: return String(localized: "what arrived wasn't what was sent")
+        case .tooLarge: return String(localized: "it is too large")
+        case .policy: return String(localized: "your organisation's rules don't allow it")
         }
     }
 }

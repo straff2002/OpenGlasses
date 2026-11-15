@@ -61,7 +61,7 @@ enum OrgProfileEndPolicy {
         guard now >= expiry else { return .inForce }
 
         let name = input.organizationName
-        let ended = "\(name)'s profile ended on \(expiry.formatted(date: .abbreviated, time: .omitted))."
+        let ended = String(localized: "\(name)'s profile ended on \(expiry.formatted(date: .abbreviated, time: .omitted)).")
         let recordsOwed = input.owedReports > 0 || input.owedSessions > 0
         let removable = input.source.isLocallyRemovable
 
@@ -69,13 +69,13 @@ enum OrgProfileEndPolicy {
         let pageText: String
         if removable {
             let owed = recordsOwed
-                ? " Send \(name) its records first: Remove Profile offers that before anything is removed."
+                ? String(localized: " Send \(name) its records first: Remove Profile offers that before anything is removed.")
                 : ""
-            settingsText = "\(ended) To remove it, go to Settings › Organisation › \(name) and choose Remove Profile under Leave \(name).\(owed)"
-            pageText = "\(ended) To remove it, choose Remove Profile under Leave \(name) at the bottom of this page.\(owed)"
+            settingsText = String(localized: "\(ended) To remove it, go to Settings › Organisation › \(name) and choose Remove Profile under Leave \(name).\(owed)")
+            pageText = String(localized: "\(ended) To remove it, choose Remove Profile under Leave \(name) at the bottom of this page.\(owed)")
         } else {
             // An MDM put it there and would put it back: no Leave instruction.
-            let mdm = "\(ended) Your organisation's device management removes it from this phone."
+            let mdm = String(localized: "\(ended) Your organisation's device management removes it from this phone.")
             settingsText = mdm
             pageText = mdm
         }
@@ -83,9 +83,9 @@ enum OrgProfileEndPolicy {
                              recordsOwed: recordsOwed,
                              removableHere: removable,
                              settingsText: settingsText,
-                             settingsHint: "Opens \(name)'s page.",
+                             settingsHint: String(localized: "Opens \(name)'s page."),
                              pageText: pageText,
-                             pageHint: "Shows Leave \(name) at the bottom of this page.",
+                             pageHint: String(localized: "Shows Leave \(name) at the bottom of this page."),
                              systemImage: "calendar"))
     }
 }

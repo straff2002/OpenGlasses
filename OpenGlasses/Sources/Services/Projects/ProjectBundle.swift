@@ -34,7 +34,7 @@ enum ProjectBundleCodec {
         var errorDescription: String? {
             switch self {
             case .unsupportedVersion(let v):
-                return "This project bundle (v\(v)) was made by a newer version of Avenkin."
+                return String(localized: "This project bundle (v\(v)) was made by a newer version of Avenkin.")
             }
         }
     }

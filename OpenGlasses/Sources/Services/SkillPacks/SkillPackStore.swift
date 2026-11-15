@@ -168,7 +168,7 @@ final class SkillPackStore: ObservableObject {
             for (path, data) in files {
                 // Payload paths are relative and must stay inside the pack directory.
                 guard !path.hasPrefix("/"), !path.contains("..") else {
-                    return .rejected(reasons: ["payload path '\(path)' escapes the pack directory"])
+                    return .rejected(reasons: [String(localized: "payload path '\(path)' escapes the pack directory")])
                 }
                 let dest = versionDir.appendingPathComponent(path)
                 try FileManager.default.createDirectory(
@@ -176,7 +176,7 @@ final class SkillPackStore: ObservableObject {
                 try data.write(to: dest)
             }
         } catch {
-            return .rejected(reasons: ["couldn't write pack files: \(error.localizedDescription)"])
+            return .rejected(reasons: [String(localized: "couldn't write pack files: \(error.localizedDescription)")])
         }
 
         let row = InstalledPack(
@@ -212,7 +212,7 @@ final class SkillPackStore: ObservableObject {
         developerMode: Bool
     ) -> PackageValidation {
         guard savingAllowed else {
-            return .rejected(reasons: ["pack state is unreadable (device locked?) — try again after unlock"])
+            return .rejected(reasons: [String(localized: "pack state is unreadable (device locked?) — try again after unlock")])
         }
 
         var warnings: [String] = []
@@ -224,19 +224,19 @@ final class SkillPackStore: ObservableObject {
                 payloadFiles: files,
                 publicKeyBase64: publicKeyBase64
             ) else {
-                return .rejected(reasons: ["signature verification failed"])
+                return .rejected(reasons: [String(localized: "signature verification failed")])
             }
             signatureVerified = true
         } else if developerMode {
             warnings.append("UNSIGNED — developer-mode install")
             signatureVerified = false
         } else {
-            return .rejected(reasons: ["pack is unsigned (developer mode required for unsigned installs)"])
+            return .rejected(reasons: [String(localized: "pack is unsigned (developer mode required for unsigned installs)")])
         }
 
         let (decoded, report) = SkillPackManifest.lossyDecode(manifestData)
         guard let manifest = decoded else {
-            return .rejected(reasons: ["manifest unreadable — id/version/name missing or not JSON"])
+            return .rejected(reasons: [String(localized: "manifest unreadable — id/version/name missing or not JSON")])
         }
 
         switch SkillPackValidator.validate(

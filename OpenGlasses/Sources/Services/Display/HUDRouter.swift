@@ -79,7 +79,7 @@ final class HUDRouter: ObservableObject {
                 clearTaskState()
             } else {
                 stopTask()
-                display.flash("✓ \(title) complete")
+                display.flash(String(localized: "✓ \(title) complete"))
             }
             return
         }
@@ -576,7 +576,7 @@ final class HUDRouter: ObservableObject {
         var lines: [HUDLine] = []
 
         if let total = current.total {
-            lines.append(HUDLine("Step \(current.index + 1) of \(total)", emphasis: .meta))
+            lines.append(HUDLine(String(localized: "Step \(current.index + 1) of \(total)"), emphasis: .meta))
         }
         if let instruction = current.instruction, !instruction.isEmpty {
             lines.append(HUDLine(instruction, emphasis: .secondary))
@@ -585,7 +585,7 @@ final class HUDRouter: ObservableObject {
             lines.append(HUDLine(safety, icon: .hazard, emphasis: .secondary))
         }
         if let next {
-            lines.append(HUDLine("Next: \(next.title)", emphasis: .meta))
+            lines.append(HUDLine(String(localized: "Next: \(next.title)"), emphasis: .meta))
         }
 
         // A decision step renders one button per branch (+ Back); a linear step
@@ -594,10 +594,10 @@ final class HUDRouter: ObservableObject {
         var items: [HUDItem]
         if choices.isEmpty {
             items = [
-                HUDItem(id: "done", label: "Done", icon: .success, style: .primary) {
+                HUDItem(id: "done", label: String(localized: "Done"), icon: .success, style: .primary) {
                     Task { await source.complete() }
                 },
-                HUDItem(id: "skip", label: "Skip", style: .secondary) {
+                HUDItem(id: "skip", label: String(localized: "Skip"), style: .secondary) {
                     Task { await source.skip() }
                 },
             ]
@@ -613,7 +613,7 @@ final class HUDRouter: ObservableObject {
                                  label: String(localized: "Watch", comment: "Glasses: plays a Field Assist step's clip."),
                                  icon: .video, style: .secondary) { onWatch(video) })
         }
-        items.append(HUDItem(id: "back", label: "Back", style: .outline) {
+        items.append(HUDItem(id: "back", label: String(localized: "Back"), style: .outline) {
             Task { await source.back() }
         })
 

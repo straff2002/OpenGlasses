@@ -352,7 +352,7 @@ struct SupportReportSheet: View {
     private func statusLabel(_ status: Status) -> some View {
         switch status {
         case .sharedInstead:
-            OGStatusLabel("This phone has no Mail account set up, so the file opened in the share sheet. Send it to \(appState.supportReportRecipient ?? "your support address").",
+            OGStatusLabel("This phone has no Mail account set up, so the file opened in the share sheet. Send it to \(appState.supportReportRecipient ?? String(localized: "your support address")).",
                           kind: .warn, systemImage: "envelope.badge")
         case .finished(.sent):
             OGStatusLabel("Report sent. Thank you.", kind: .ok)

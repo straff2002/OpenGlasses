@@ -305,29 +305,28 @@ extension LearningBundle {
 
         /// For whoever opened the file. Nothing from the bundle was applied when they read it.
         var message: String {
-            let lead = "This team-learning file was not opened, and nothing in it was used: "
             switch self {
             case .tooLarge(let bytes):
-                return lead + "it is \(bytes.formatted()) bytes, over the \(LearningBundle.maximumBytes.formatted())-byte limit."
-            case .truncated: return lead + "it ends part-way through — it may not have finished downloading."
-            case .malformed: return lead + "it isn't a readable team-learning file."
-            case .duplicateKey(let key): return lead + "it names \u{201C}\(key)\u{201D} twice in one place."
-            case .nonIntegerNumber: return lead + "it holds a number that isn't a whole number in range."
-            case .unknownVersion: return lead + "it was made by a version of the app this one doesn't understand."
-            case .unknownKind: return lead + "it isn't a team-learning file."
-            case .unknownKey(let path): return lead + "it carries \u{201C}\(path)\u{201D}, which a team-learning file doesn't have."
-            case .missingKey(let path): return lead + "\u{201C}\(path)\u{201D} is missing."
+                return String(localized: "This team-learning file was not opened, and nothing in it was used: it is \(bytes.formatted()) bytes, over the \(LearningBundle.maximumBytes.formatted())-byte limit.")
+            case .truncated: return String(localized: "This team-learning file was not opened, and nothing in it was used: it ends part-way through — it may not have finished downloading.")
+            case .malformed: return String(localized: "This team-learning file was not opened, and nothing in it was used: it isn't a readable team-learning file.")
+            case .duplicateKey(let key): return String(localized: "This team-learning file was not opened, and nothing in it was used: it names \u{201C}\(key)\u{201D} twice in one place.")
+            case .nonIntegerNumber: return String(localized: "This team-learning file was not opened, and nothing in it was used: it holds a number that isn't a whole number in range.")
+            case .unknownVersion: return String(localized: "This team-learning file was not opened, and nothing in it was used: it was made by a version of the app this one doesn't understand.")
+            case .unknownKind: return String(localized: "This team-learning file was not opened, and nothing in it was used: it isn't a team-learning file.")
+            case .unknownKey(let path): return String(localized: "This team-learning file was not opened, and nothing in it was used: it carries \u{201C}\(path)\u{201D}, which a team-learning file doesn't have.")
+            case .missingKey(let path): return String(localized: "This team-learning file was not opened, and nothing in it was used: \u{201C}\(path)\u{201D} is missing.")
             case .wrongType(let path), .outOfRange(let path), .invalidIdentifier(let path):
-                return lead + "\u{201C}\(path)\u{201D} isn't valid."
-            case .controlCharacter(let path): return lead + "\u{201C}\(path)\u{201D} contains a control character."
+                return String(localized: "This team-learning file was not opened, and nothing in it was used: \u{201C}\(path)\u{201D} isn't valid.")
+            case .controlCharacter(let path): return String(localized: "This team-learning file was not opened, and nothing in it was used: \u{201C}\(path)\u{201D} contains a control character.")
             case .tooLong(let path, let count, let limit):
-                return lead + "\u{201C}\(path)\u{201D} is \(count.formatted()) characters; the limit is \(limit.formatted())."
-            case .empty(let path): return lead + "\u{201C}\(path)\u{201D} is empty."
+                return String(localized: "This team-learning file was not opened, and nothing in it was used: \u{201C}\(path)\u{201D} is \(count.formatted()) characters; the limit is \(limit.formatted()).")
+            case .empty(let path): return String(localized: "This team-learning file was not opened, and nothing in it was used: \u{201C}\(path)\u{201D} is empty.")
             case .directionMismatch:
-                return lead + "it mixes findings for review with decisions, which one file never does."
-            case .duplicateItem(let id): return lead + "it lists \(id.prefix(6)) twice."
+                return String(localized: "This team-learning file was not opened, and nothing in it was used: it mixes findings for review with decisions, which one file never does.")
+            case .duplicateItem(let id): return String(localized: "This team-learning file was not opened, and nothing in it was used: it lists \(String(id.prefix(6))) twice.")
             case .reordered:
-                return lead + "it is older than one from the same organisation already applied on this phone."
+                return String(localized: "This team-learning file was not opened, and nothing in it was used: it is older than one from the same organisation already applied on this phone.")
             }
         }
     }

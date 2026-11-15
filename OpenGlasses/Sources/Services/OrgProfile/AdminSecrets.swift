@@ -129,7 +129,7 @@ enum AdminSecrets {
             return .failure(.unreadableValue)
         }
         guard iterationRange.contains(iterations) else {
-            return .failure(.invalidValue("its iteration count is outside \(iterationRange.lowerBound)–\(iterationRange.upperBound)"))
+            return .failure(.invalidValue(String(localized: "its iteration count is outside \(iterationRange.lowerBound)–\(iterationRange.upperBound)")))
         }
         return .success(.init(salt: salt, iterations: iterations, hash: hash))
     }
@@ -138,7 +138,7 @@ enum AdminSecrets {
     static func resolveCard(_ text: String) -> Result<Data, ProfileApplier.Drop.Reason> {
         let hex = text.lowercased()
         guard hex.count == 64, hex.allSatisfy({ $0.isHexDigit }) else {
-            return .failure(.invalidValue("it is not a card digest"))
+            return .failure(.invalidValue(String(localized: "it is not a card digest")))
         }
         var bytes: [UInt8] = []
         var index = hex.startIndex

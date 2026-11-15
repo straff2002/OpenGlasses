@@ -52,16 +52,16 @@ enum HomeActionIcons {
     static let defaultSymbol = "star"
 
     static let curated: [(symbol: String, name: String)] = [
-        ("star", "Star"), ("eye", "Describe"), ("camera", "Camera"),
-        ("calendar", "Calendar"), ("checklist", "Checklist"), ("lightbulb", "Light On"),
-        ("lightbulb.slash", "Light Off"), ("house", "Home"), ("lock", "Lock"),
-        ("lock.open", "Unlock"), ("thermometer", "Climate"), ("fan", "Fan"),
-        ("music.note", "Music"), ("phone", "Phone"), ("message", "Message"),
-        ("envelope", "Email"), ("globe", "Web"), ("map", "Map"),
-        ("location", "Location"), ("bell", "Alert"), ("alarm", "Alarm"),
-        ("timer", "Timer"), ("brain", "AI"), ("wand.and.stars", "Magic"),
-        ("fork.knife", "Food"), ("cart", "Shopping"), ("car", "Drive"),
-        ("airplane", "Travel"), ("figure.walk", "Walk"), ("text.viewfinder", "Read"),
+        ("star", String(localized: "Star")), ("eye", String(localized: "Describe")), ("camera", String(localized: "Camera")),
+        ("calendar", String(localized: "Calendar")), ("checklist", String(localized: "Checklist")), ("lightbulb", String(localized: "Light On")),
+        ("lightbulb.slash", String(localized: "Light Off")), ("house", String(localized: "Home")), ("lock", String(localized: "Lock")),
+        ("lock.open", String(localized: "Unlock")), ("thermometer", String(localized: "Climate")), ("fan", String(localized: "Fan")),
+        ("music.note", String(localized: "Music")), ("phone", String(localized: "Phone")), ("message", String(localized: "Message")),
+        ("envelope", String(localized: "Email")), ("globe", String(localized: "Web")), ("map", String(localized: "Map")),
+        ("location", String(localized: "Location")), ("bell", String(localized: "Alert")), ("alarm", String(localized: "Alarm")),
+        ("timer", String(localized: "Timer")), ("brain", String(localized: "AI")), ("wand.and.stars", String(localized: "Magic")),
+        ("fork.knife", String(localized: "Food")), ("cart", String(localized: "Shopping")), ("car", String(localized: "Drive")),
+        ("airplane", String(localized: "Travel")), ("figure.walk", String(localized: "Walk")), ("text.viewfinder", String(localized: "Read")),
     ]
 
     static func contains(_ symbol: String) -> Bool {

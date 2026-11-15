@@ -920,8 +920,7 @@ private struct BroadcastHealthBar: View {
         // the ground is arbitrary video, so only a solid fill is measurable.
         .background(Capsule().fill(OGTheme.media))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Broadcast \(health.stateLabel), \(health.bitrateLabel), "
-                            + "\(health.frameRateLabel), \(health.droppedFrameCount) frames dropped")
+        .accessibilityLabel("Broadcast \(health.stateLabel), \(health.bitrateLabel), \(health.frameRateLabel), \(health.droppedFrameCount) frames dropped")
     }
 }
 

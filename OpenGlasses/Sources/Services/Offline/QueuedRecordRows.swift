@@ -59,23 +59,23 @@ enum QueuedRecordRows {
         case .capturedManual:
             guard let m = try? CapturedManualContract.read(op.payload) else {return unreadable(op)}
             return QueuedRecordRow(id:op.id,kind:op.kind,state:op.state,sessionId:m.sessionID,
-                jobReference:m.jobReference,title:"Photographed manual — \(m.pageCount) pages",
-                detail:"Original job \(m.jobReference); waiting for signed Office acceptance",attempts:op.attempts,record:nil)
+                jobReference:m.jobReference,title:String(localized: "Photographed manual — \(m.pageCount) pages"),
+                detail:String(localized: "Original job \(m.jobReference); waiting for signed Office acceptance"),attempts:op.attempts,record:nil)
         case .workRecord:
             guard let record = try? decoder().decode(WorkRecord.self, from: op.payload) else {
                 return unreadable(op)
             }
             let job = record.jobReference.flatMap { $0.isEmpty ? nil : $0 }
             let done = record.tasks(status: .done).count
-            var pieces = ["\(done) task\(done == 1 ? "" : "s") done"]
+            var pieces = [String(localized: "\(done) task\(done == 1 ? "" : "s") done")]
             if !record.partsRequests.isEmpty {
-                pieces.append("\(record.partsRequests.count) part\(record.partsRequests.count == 1 ? "" : "s") requested")
+                pieces.append(String(localized: "\(record.partsRequests.count) part\(record.partsRequests.count == 1 ? "" : "s") requested"))
             }
             pieces.append(record.billingSummary)
             return QueuedRecordRow(
                 id: op.id, kind: op.kind, state: op.state, sessionId: op.sessionId,
                 jobReference: job,
-                title: job.map { "Job \($0) — work record" } ?? "Work record — \(record.vaultName)",
+                title: job.map { String(localized: "Job \($0) — work record") } ?? String(localized: "Work record — \(record.vaultName)"),
                 detail: pieces.joined(separator: " · "),
                 attempts: op.attempts, record: record)
 
@@ -86,7 +86,7 @@ enum QueuedRecordRows {
             return QueuedRecordRow(
                 id: op.id, kind: op.kind, state: op.state, sessionId: op.sessionId,
                 jobReference: nil,
-                title: "Parts request — \(request.quantity) × \(request.part.number)",
+                title: String(localized: "Parts request — \(request.quantity) × \(request.part.number)"),
                 detail: request.summary,
                 attempts: op.attempts, record: nil)
 
@@ -101,8 +101,8 @@ enum QueuedRecordRows {
     private static func unreadable(_ op: QueuedOp) -> QueuedRecordRow {
         QueuedRecordRow(
             id: op.id, kind: op.kind, state: op.state, sessionId: op.sessionId, jobReference: nil,
-            title: op.kind == .workRecord ? "Work record" : "Parts request",
-            detail: "Queued \(op.createdAt.formatted(date: .abbreviated, time: .shortened)) — the stored copy could not be read.",
+            title: op.kind == .workRecord ? String(localized: "Work record") : String(localized: "Parts request"),
+            detail: String(localized: "Queued \(op.createdAt.formatted(date: .abbreviated, time: .shortened)) — the stored copy could not be read."),
             attempts: op.attempts, record: nil)
     }
 }

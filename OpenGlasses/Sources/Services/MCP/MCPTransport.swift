@@ -14,8 +14,8 @@ enum MCPTransportKind: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .http: return "HTTP (Streamable)"
-        case .sse:  return "SSE (Server-Sent Events)"
+        case .http: return String(localized: "HTTP (Streamable)")
+        case .sse:  return String(localized: "SSE (Server-Sent Events)")
         }
     }
 
@@ -66,11 +66,11 @@ enum MCPTransportError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .badURL:
-            return "The server URL is not valid."
+            return String(localized: "The server URL is not valid.")
         case .notYetSupported(let kind):
-            return "\(kind.label) transport is not wired for live calls yet."
+            return String(localized: "\(kind.label) transport is not wired for live calls yet.")
         case .http(let status, let body):
-            return "Server returned HTTP \(status): \(body)"
+            return String(localized: "Server returned HTTP \(status): \(body)")
         }
     }
 }

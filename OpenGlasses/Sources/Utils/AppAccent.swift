@@ -27,19 +27,19 @@ enum AppAccent {
     static let aiCoral: Color = AccentColors.aiCoral
 
     static let presets: [Preset] = [
-        Preset(id: "brand",   name: "Brand",   color: brandColor),
+        Preset(id: "brand",   name: String(localized: "Brand"),   color: brandColor),
         // The id is the stored value from when the default was violet; the preset is the
         // brand orange now, so its display name says so.
-        Preset(id: "violet",  name: "Orange",  color: AppAccent.aiCoral),
-        Preset(id: "blue",    name: "Blue",    color: Color(red: 0.25, green: 0.5, blue: 1.0)),
-        Preset(id: "teal",    name: "Teal",    color: Color(red: 0.2, green: 0.7, blue: 0.7)),
-        Preset(id: "green",   name: "Green",   color: Color(red: 0.3, green: 0.75, blue: 0.4)),
+        Preset(id: "violet",  name: String(localized: "Orange"),  color: AppAccent.aiCoral),
+        Preset(id: "blue",    name: String(localized: "Blue"),    color: Color(red: 0.25, green: 0.5, blue: 1.0)),
+        Preset(id: "teal",    name: String(localized: "Teal"),    color: Color(red: 0.2, green: 0.7, blue: 0.7)),
+        Preset(id: "green",   name: String(localized: "Green"),   color: Color(red: 0.3, green: 0.75, blue: 0.4)),
         // Labelled Amber, not Orange, now that the default preset is the brand orange: two
         // swatches called Orange side by side is a choice nobody can make. Id unchanged.
-        Preset(id: "orange",  name: "Amber",   color: Color(red: 1.0, green: 0.6, blue: 0.2)),
-        Preset(id: "pink",    name: "Pink",    color: Color(red: 0.95, green: 0.35, blue: 0.55)),
-        Preset(id: "red",     name: "Red",     color: Color(red: 0.9, green: 0.25, blue: 0.3)),
-        Preset(id: "white",   name: "White",   color: .white),
+        Preset(id: "orange",  name: String(localized: "Amber"),   color: Color(red: 1.0, green: 0.6, blue: 0.2)),
+        Preset(id: "pink",    name: String(localized: "Pink"),    color: Color(red: 0.95, green: 0.35, blue: 0.55)),
+        Preset(id: "red",     name: String(localized: "Red"),     color: Color(red: 0.9, green: 0.25, blue: 0.3)),
+        Preset(id: "white",   name: String(localized: "White"),   color: .white),
     ]
 
     /// A custom accent as its stored spelling, `#RRGGBB` — the one form an organisation's

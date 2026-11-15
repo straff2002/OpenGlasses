@@ -8,11 +8,11 @@ enum CloudProcessingScope: String, CaseIterable, Identifiable, Hashable, Sendabl
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .conversation: return "Conversation processing"
-        case .speechOutput: return "Spoken replies"
-        case .speechRecognition: return "Speech transcription"
-        case .liveSession: return "Live voice and camera"
-        case .webSearch: return "Web search"
+        case .conversation: return String(localized: "Conversation processing")
+        case .speechOutput: return String(localized: "Spoken replies")
+        case .speechRecognition: return String(localized: "Speech transcription")
+        case .liveSession: return String(localized: "Live voice and camera")
+        case .webSearch: return String(localized: "Web search")
         }
     }
     var dataClass: ConsentDataClass {
@@ -27,15 +27,15 @@ enum CloudProcessingScope: String, CaseIterable, Identifiable, Hashable, Sendabl
     var disclosure: String {
         switch self {
         case .conversation:
-            return "Your questions, recent conversation, selected manual passages and photos, and tool results needed for your request will be sent to this service. Tool results can include contacts, calendar entries, location and health information you separately allow."
+            return String(localized: "Your questions, recent conversation, selected manual passages and photos, and tool results needed for your request will be sent to this service. Tool results can include contacts, calendar entries, location and health information you separately allow.")
         case .speechOutput:
-            return "The text of replies will be sent to this service to create speech. Replies can contain personal information from your conversation, documents and tool results."
+            return String(localized: "The text of replies will be sent to this service to create speech. Replies can contain personal information from your conversation, documents and tool results.")
         case .speechRecognition:
-            return "Microphone audio will be sent to this service for transcription. Audio may include nearby voices as well as your own."
+            return String(localized: "Microphone audio will be sent to this service for transcription. Audio may include nearby voices as well as your own.")
         case .liveSession:
-            return "Microphone audio, conversation context and tool results will be sent during a live session. Camera frames will also be sent if you enable the camera. These can contain personal information and nearby people."
+            return String(localized: "Microphone audio, conversation context and tool results will be sent during a live session. Camera frames will also be sent if you enable the camera. These can contain personal information and nearby people.")
         case .webSearch:
-            return "Search terms will be sent to this service to find information or generate a search answer. Terms can include names, locations and other details from your request."
+            return String(localized: "Search terms will be sent to this service to find information or generate a search answer. Terms can include names, locations and other details from your request.")
         }
     }
 }
@@ -72,10 +72,10 @@ enum CloudProcessingRefusal: Error, LocalizedError {
     case invalidDestination, permissionRequired, withdrawn, unavailable
     var errorDescription: String? {
         switch self {
-        case .invalidDestination: return "The service address isn't valid."
-        case .permissionRequired: return "Avenkin needs your permission to use this service. You can allow it in Devices & Privacy > Cloud AI Sharing."
-        case .withdrawn: return "Sharing permission for this service is off. You can review it in Devices & Privacy > Cloud AI Sharing."
-        case .unavailable: return "Sharing permissions are unavailable. No content was sent."
+        case .invalidDestination: return String(localized: "The service address isn't valid.")
+        case .permissionRequired: return String(localized: "Avenkin needs your permission to use this service. You can allow it in Devices & Privacy > Cloud AI Sharing.")
+        case .withdrawn: return String(localized: "Sharing permission for this service is off. You can review it in Devices & Privacy > Cloud AI Sharing.")
+        case .unavailable: return String(localized: "Sharing permissions are unavailable. No content was sent.")
         }
     }
 }
@@ -243,7 +243,7 @@ final class CloudProcessingConsent: ObservableObject {
         pending = waiting.first?.prompt
         if !store.storageAvailable {
             leases.forEach { $0.value?.invalidate() }
-            storageNotice = "Sharing permissions couldn't be saved. Content sharing is blocked. Check permissions after restarting the app."
+            storageNotice = String(localized: "Sharing permissions couldn't be saved. Content sharing is blocked. Check permissions after restarting the app.")
             cancelPending()
         }
         for reply in next.replies.values {
@@ -349,7 +349,7 @@ final class CloudProcessingConsent: ObservableObject {
             if let lease = box.value, !store.storageAvailable || !outcome(lease.terms).allowsProcessing { lease.invalidate() }
         }
         if !store.storageAvailable {
-            storageNotice = "Sharing stopped for this session, but the withdrawal couldn't be saved. Check permissions after restarting the app."
+            storageNotice = String(localized: "Sharing stopped for this session, but the withdrawal couldn't be saved. Check permissions after restarting the app.")
             cancelPending()
         }
         leases.removeAll { $0.value == nil }

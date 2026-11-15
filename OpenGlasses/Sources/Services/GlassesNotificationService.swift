@@ -25,7 +25,7 @@ final class GlassesNotificationService: ObservableObject {
 
     func showConnected(deviceName: String) {
         show(GlassesNotification(
-            title: "Connected",
+            title: String(localized: "Connected"),
             message: deviceName,
             icon: "eyeglasses",
             style: .success
@@ -34,8 +34,8 @@ final class GlassesNotificationService: ObservableObject {
 
     func showDisconnected() {
         show(GlassesNotification(
-            title: "Disconnected",
-            message: "Glasses connection lost",
+            title: String(localized: "Disconnected"),
+            message: String(localized: "Glasses connection lost"),
             icon: "eyeglasses",
             style: .warning
         ))
@@ -52,8 +52,8 @@ final class GlassesNotificationService: ObservableObject {
 
     func showContextLoaded(source: String) {
         show(GlassesNotification(
-            title: "Context Loaded",
-            message: "From \(source)",
+            title: String(localized: "Context Loaded"),
+            message: String(localized: "From \(source)"),
             icon: "doc.text.fill",
             style: .success
         ))
@@ -61,7 +61,7 @@ final class GlassesNotificationService: ObservableObject {
 
     func showSceneObservation(_ observation: String) {
         show(GlassesNotification(
-            title: "Scene",
+            title: String(localized: "Scene"),
             message: String(observation.prefix(80)),
             icon: "eye.fill",
             style: .info
@@ -70,7 +70,7 @@ final class GlassesNotificationService: ObservableObject {
 
     func showError(_ message: String) {
         show(GlassesNotification(
-            title: "Error",
+            title: String(localized: "Error"),
             message: message,
             icon: "exclamationmark.triangle",
             style: .error
@@ -79,8 +79,8 @@ final class GlassesNotificationService: ObservableObject {
 
     func showBatteryLow(level: Int) {
         show(GlassesNotification(
-            title: "Low Battery",
-            message: "Glasses at \(level)%",
+            title: String(localized: "Low Battery"),
+            message: String(localized: "Glasses at \(level)%"),
             icon: "battery.25percent",
             style: .warning
         ))
@@ -88,7 +88,7 @@ final class GlassesNotificationService: ObservableObject {
 
     func showGolfScore(hole: Int, score: String) {
         show(GlassesNotification(
-            title: "Hole \(hole)",
+            title: String(localized: "Hole \(hole)"),
             message: score,
             icon: "figure.golf",
             style: .success

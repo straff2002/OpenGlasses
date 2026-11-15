@@ -48,11 +48,10 @@ final class JobPhotoEvidenceService {
         var problem: String? {
             switch self {
             case .attached: return nil
-            case .noOpenJob: return "There's no job open, so there's nowhere to put that picture."
-            case .unreadable: return "That file couldn't be read as a picture."
+            case .noOpenJob: return String(localized: "There's no job open, so there's nowhere to put that picture.")
+            case .unreadable: return String(localized: "That file couldn't be read as a picture.")
             case .filterUnavailable:
-                return "Face blur is on and couldn't be applied to that picture, so it wasn't added. "
-                    + "Try again with the app in the foreground and the phone unlocked."
+                return String(localized: "Face blur is on and couldn't be applied to that picture, so it wasn't added. Try again with the app in the foreground and the phone unlocked.")
             }
         }
     }

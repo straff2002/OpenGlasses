@@ -209,18 +209,18 @@ final class OfficeJobAttachmentStore: ObservableObject {
         let size = ByteCountFormatter.string(fromByteCount: attachment.bytes, countStyle: .file)
         switch state {
         case .ready:
-            return .init(title: attachment.name, detail: "Ready. \(size).", systemImage: "doc")
+            return .init(title: attachment.name, detail: String(localized: "Ready. \(size)."), systemImage: "doc")
         case .downloading:
-            return .init(title: attachment.name, detail: "Still downloading. \(size).", systemImage: "arrow.down.circle")
+            return .init(title: attachment.name, detail: String(localized: "Still downloading. \(size)."), systemImage: "arrow.down.circle")
         case .waitingForWiFi:
-            return .init(title: attachment.name, detail: "Waiting for Wi-Fi. \(size).", systemImage: "wifi.exclamationmark")
+            return .init(title: attachment.name, detail: String(localized: "Waiting for Wi-Fi. \(size)."), systemImage: "wifi.exclamationmark")
         case .waitingForOffice:
-            return .init(title: attachment.name, detail: "Waiting for the office to send it. \(size).", systemImage: "clock")
+            return .init(title: attachment.name, detail: String(localized: "Waiting for the office to send it. \(size)."), systemImage: "clock")
         case .notEnoughSpace:
-            return .init(title: attachment.name, detail: "Not enough space on this phone. \(size).",
+            return .init(title: attachment.name, detail: String(localized: "Not enough space on this phone. \(size)."),
                          systemImage: "externaldrive.badge.exclamationmark")
         case .tooLarge:
-            return .init(title: attachment.name, detail: "Too large to keep on this phone. \(size).",
+            return .init(title: attachment.name, detail: String(localized: "Too large to keep on this phone. \(size)."),
                          systemImage: "exclamationmark.triangle")
         }
     }
@@ -229,11 +229,11 @@ final class OfficeJobAttachmentStore: ObservableObject {
     static func status(set setID: String, standing: OfficeManualService.SetStanding?) -> OfficeFieldConnectionPolicy.Status {
         switch standing {
         case .ready?:
-            return .init(title: "Manual \(setID)", detail: "Ready.", systemImage: "checkmark.circle")
+            return .init(title: String(localized: "Manual \(setID)"), detail: String(localized: "Ready."), systemImage: "checkmark.circle")
         case .onItsWay?:
-            return .init(title: "Manual \(setID)", detail: "On its way from the office.", systemImage: "arrow.down.circle")
+            return .init(title: String(localized: "Manual \(setID)"), detail: String(localized: "On its way from the office."), systemImage: "arrow.down.circle")
         case .notYetAvailable?, nil:
-            return .init(title: "Manual \(setID)", detail: "Not yet available.", systemImage: "clock")
+            return .init(title: String(localized: "Manual \(setID)"), detail: String(localized: "Not yet available."), systemImage: "clock")
         }
     }
 }

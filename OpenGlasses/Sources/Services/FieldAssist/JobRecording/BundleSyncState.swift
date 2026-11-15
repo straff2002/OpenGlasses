@@ -30,7 +30,7 @@ struct BundleSyncState: Equatable, Sendable {
         /// The reason as a sentence for the technician.
         var explanation: String {
             switch self {
-            case .openAppToPrepare: return "Open Avenkin to prepare the recording."
+            case .openAppToPrepare: return String(localized: "Open Avenkin to prepare the recording.")
             case let .notEligible(reason): return reason.explanation
             }
         }

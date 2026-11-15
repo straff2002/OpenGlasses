@@ -12,9 +12,9 @@ struct DeepgramBatchService {
 
         var errorDescription: String? {
             switch self {
-            case .notConfigured: return "Deepgram diarization is not configured."
+            case .notConfigured: return String(localized: "Deepgram diarization is not configured.")
             case .http(let code, let body): return "Deepgram batch HTTP \(code): \(body)"
-            case .badResponse: return "Deepgram returned an unreadable response."
+            case .badResponse: return String(localized: "Deepgram returned an unreadable response.")
             }
         }
     }

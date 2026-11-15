@@ -275,7 +275,7 @@ struct MCPServerEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isEditing ? "Edit \(existing?.label ?? "Server")"
+            .navigationTitle(isEditing ? "Edit \(existing?.label ?? String(localized: "Server"))"
                                        : (label.isEmpty ? "Add MCP Server" : "Add \(label)"))
             .navigationBarTitleDisplayMode(.inline)
             .ogFormStyle()

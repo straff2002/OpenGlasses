@@ -121,7 +121,7 @@ struct JobTabModel {
         /// a disabled button with no reason beside it is a dead end.
         var startBlockedReason: String? {
             vaultUnlocked ? nil
-                : "\(vaultName) is locked. Unlock it under Settings → Field Assist before starting a job."
+                : String(localized: "\(vaultName) is locked. Unlock it under Settings → Field Assist before starting a job.")
         }
     }
 
@@ -163,18 +163,18 @@ struct JobTabModel {
         /// one to a line. Nil when the job is at no documented site.
         var siteSystem: SiteSystemContract.Page? = nil
 
-        var pauseButtonTitle: String { isPaused ? "Resume job" : "Pause job" }
+        var pauseButtonTitle: String { isPaused ? String(localized: "Resume job") : String(localized: "Pause job") }
 
         /// What pausing means, said plainly: this is the billing clock, not the microphone.
         var pauseFootnote: String {
             if isPaused, let appClosedNote { return appClosedNote }
             return isPaused
-                ? "Paused — time on the job has stopped counting."
-                : "Time on the job is counting."
+                ? String(localized: "Paused — time on the job has stopped counting.")
+                : String(localized: "Time on the job is counting.")
         }
 
         var unitLine: String {
-            currentUnit ?? "No machine recorded yet"
+            currentUnit ?? String(localized: "No machine recorded yet")
         }
     }
 
@@ -200,54 +200,54 @@ struct JobTabModel {
         static func make(_ state: JobIntakeState) -> IntakeCopy {
             switch state {
             case .recorded(let reference):
-                return IntakeCopy(headline: "Job \(reference)",
+                return IntakeCopy(headline: String(localized: "Job \(reference)"),
                                   detail: nil,
                                   isOutstanding: false,
                                   offersDecline: false,
-                                  fieldPrompt: "Change the job number",
-                                  spoken: "Job number \(reference). Tap to change it.")
+                                  fieldPrompt: String(localized: "Change the job number"),
+                                  spoken: String(localized: "Job number \(reference). Tap to change it."))
             case .declined:
-                return IntakeCopy(headline: "No job number",
-                                  detail: "Recorded as \u{201C}no job number\u{201D}. The report still goes out.",
+                return IntakeCopy(headline: String(localized: "No job number"),
+                                  detail: String(localized: "Recorded as \u{201C}no job number\u{201D}. The report still goes out."),
                                   isOutstanding: false,
                                   offersDecline: false,
-                                  fieldPrompt: "Change the job number",
-                                  spoken: "No job number. It was recorded as not having one, and the report still goes out.")
+                                  fieldPrompt: String(localized: "Change the job number"),
+                                  spoken: String(localized: "No job number. It was recorded as not having one, and the report still goes out."))
             case .notRequired:
-                return IntakeCopy(headline: "No job number",
-                                  detail: "This job was never asked for one. You can type it in.",
+                return IntakeCopy(headline: String(localized: "No job number"),
+                                  detail: String(localized: "This job was never asked for one. You can type it in."),
                                   isOutstanding: false,
                                   offersDecline: false,
-                                  fieldPrompt: "Change the job number",
-                                  spoken: "No job number. This job was never asked for one; you can type it in.")
+                                  fieldPrompt: String(localized: "Change the job number"),
+                                  spoken: String(localized: "No job number. This job was never asked for one; you can type it in."))
             case .needsReference:
-                return IntakeCopy(headline: "Job number not recorded",
-                                  detail: "Type it in, or wait — it will be asked for out loud.",
+                return IntakeCopy(headline: String(localized: "Job number not recorded"),
+                                  detail: String(localized: "Type it in, or wait — it will be asked for out loud."),
                                   isOutstanding: true,
                                   offersDecline: true,
-                                  fieldPrompt: "Type the job number",
-                                  spoken: "Job number not recorded. Type it in, or wait to be asked out loud.")
+                                  fieldPrompt: String(localized: "Type the job number"),
+                                  spoken: String(localized: "Job number not recorded. Type it in, or wait to be asked out loud."))
             case .asked:
-                return IntakeCopy(headline: "Job number — asked, waiting",
-                                  detail: "Say it, or type it here.",
+                return IntakeCopy(headline: String(localized: "Job number — asked, waiting"),
+                                  detail: String(localized: "Say it, or type it here."),
                                   isOutstanding: true,
                                   offersDecline: true,
-                                  fieldPrompt: "Type the job number",
-                                  spoken: "Job number asked for, waiting for an answer. Say it, or type it here.")
+                                  fieldPrompt: String(localized: "Type the job number"),
+                                  spoken: String(localized: "Job number asked for, waiting for an answer. Say it, or type it here."))
             case .confirming(let candidate, _):
-                return IntakeCopy(headline: "Heard \u{201C}\(candidate)\u{201D}",
-                                  detail: "Say yes to confirm, or type the right one.",
+                return IntakeCopy(headline: String(localized: "Heard \u{201C}\(candidate)\u{201D}"),
+                                  detail: String(localized: "Say yes to confirm, or type the right one."),
                                   isOutstanding: true,
                                   offersDecline: true,
-                                  fieldPrompt: "Type the job number",
-                                  spoken: "Heard job number \(candidate). Say yes to confirm, or type the right one.")
+                                  fieldPrompt: String(localized: "Type the job number"),
+                                  spoken: String(localized: "Heard job number \(candidate). Say yes to confirm, or type the right one."))
             case .outstanding:
-                return IntakeCopy(headline: "Job number still outstanding",
-                                  detail: "It wasn't heard clearly. Type it here — you won't be asked again.",
+                return IntakeCopy(headline: String(localized: "Job number still outstanding"),
+                                  detail: String(localized: "It wasn't heard clearly. Type it here — you won't be asked again."),
                                   isOutstanding: true,
                                   offersDecline: true,
-                                  fieldPrompt: "Type the job number",
-                                  spoken: "Job number still outstanding. It wasn't heard clearly; type it here.")
+                                  fieldPrompt: String(localized: "Type the job number"),
+                                  spoken: String(localized: "Job number still outstanding. It wasn't heard clearly; type it here."))
             }
         }
     }
@@ -275,12 +275,12 @@ struct JobTabModel {
         static func unitChange(_ question: JobUnitChangeQuestion) -> QuestionCard {
             QuestionCard(
                 id: "unit-change." + question.candidate.heading,
-                title: "Different unit?",
+                title: String(localized: "Different unit?"),
                 message: question.spoken,
                 actions: [
-                    Action(id: "same", title: "Same job — another unit", answer: .sameJob),
-                    Action(id: "finished", title: "That job's finished", answer: .jobFinished),
-                    Action(id: "unsure", title: "Not sure", answer: .unsure)
+                    Action(id: "same", title: String(localized: "Same job — another unit"), answer: .sameJob),
+                    Action(id: "finished", title: String(localized: "That job's finished"), answer: .jobFinished),
+                    Action(id: "unsure", title: String(localized: "Not sure"), answer: .unsure)
                 ])
         }
     }
@@ -288,8 +288,8 @@ struct JobTabModel {
     /// The other question: leaving the job's conversation. Two answers, both the technician's.
     struct ThreadQuestionCard: Equatable {
         let message: String
-        let keepTitle = "Keep it in the job"
-        let leaveTitle = "Start a separate chat"
+        let keepTitle = String(localized: "Keep it in the job")
+        let leaveTitle = String(localized: "Start a separate chat")
 
         init(_ question: JobThreadQuestion) { message = question.spoken }
     }
@@ -412,9 +412,9 @@ struct JobTabModel {
             isPaused: session.pausedAt != nil,
             outcomeLabel: session.outcome.displayName,
             startedAt: session.startedAt,
-            startedLine: "Started \(session.startedAt.formatted(date: .omitted, time: .shortened))",
+            startedLine: String(localized: "Started \(session.startedAt.formatted(date: .omitted, time: .shortened))"),
             elapsedLine: Self.elapsed(record: record, session: session),
-            elapsedSpoken: "Time on the job, \(Self.elapsed(record: record, session: session))",
+            elapsedSpoken: String(localized: "Time on the job, \(Self.elapsed(record: record, session: session))"),
             currentUnit: Self.currentUnitLabel(of: session),
             visitedUnits: units,
             hasConversation: flow.boundThreadId != nil,
@@ -434,19 +434,21 @@ struct JobTabModel {
     /// number as if it were the total. Nil when nothing was recorded.
     nonisolated static func usageLine(_ summary: JobUsageSummary?) -> String? {
         guard let summary, !summary.isEmpty else { return nil }
-        let requests = "\(summary.requests) request\(summary.requests == 1 ? "" : "s")"
+        let requests = summary.requests == 1
+            ? String(localized: "\(summary.requests) request")
+            : String(localized: "\(summary.requests) requests")
         if summary.unpricedRequests >= summary.requests || summary.estimatedUSD == nil {
-            return "Model usage: \(requests), not priced"
+            return String(localized: "Model usage: \(requests), not priced")
         }
         if summary.unpricedRequests > 0 {
-            return "Model usage: \(requests) (\(summary.unpricedRequests) unpriced)"
+            return String(localized: "Model usage: \(requests) (\(summary.unpricedRequests) unpriced)")
         }
-        return "Model usage: \(dollars(summary.estimatedUSD ?? 0)) · \(requests)"
+        return String(localized: "Model usage: \(dollars(summary.estimatedUSD ?? 0)) · \(requests)")
     }
 
     /// "$0.42"; "under $0.01" for a figure that would otherwise round to nothing.
     nonisolated static func dollars(_ amount: Double) -> String {
-        if amount > 0 && amount < 0.005 { return "under $0.01" }
+        if amount > 0 && amount < 0.005 { return String(localized: "under $0.01") }
         return String(format: "$%.2f", amount)
     }
 
@@ -629,7 +631,7 @@ struct JobTabModel {
     private static func heading(for session: FieldSession) -> SignOffHeading {
         let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
         return SignOffHeading(
-            jobNumber: reference.map { "Job \($0)" } ?? noJobNumber,
+            jobNumber: reference.map { String(localized: "Job \($0)") } ?? noJobNumber,
             dateLine: session.startedAt.formatted(date: .abbreviated, time: .shortened))
     }
 
@@ -857,7 +859,7 @@ struct JobTabModel {
         let equipment = session.equipment?.stated
         return PastJobRow(
             id: session.id,
-            jobNumber: reference.map { "Job \($0)" } ?? Self.noJobNumber,
+            jobNumber: reference.map { String(localized: "Job \($0)") } ?? Self.noJobNumber,
             hasJobNumber: reference != nil,
             vaultName: vaultName,
             dateLine: session.startedAt.formatted(date: .abbreviated, time: .shortened),
@@ -884,7 +886,7 @@ struct JobTabModel {
         let reference = session.jobReference.flatMap { $0.isEmpty ? nil : $0 }
         return PastJob(
             sessionId: session.id,
-            jobNumber: reference.map { "Job \($0)" } ?? Self.noJobNumber,
+            jobNumber: reference.map { String(localized: "Job \($0)") } ?? Self.noJobNumber,
             hasJobNumber: reference != nil,
             vaultName: vaultName,
             dateLine: session.startedAt.formatted(date: .abbreviated, time: .shortened),

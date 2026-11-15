@@ -128,28 +128,28 @@ struct CameraReadiness: Equatable {
     /// Short label for a control that toggles the camera.
     var controlLabel: String {
         switch phase {
-        case .stopped: return "Camera"
-        case .connecting: return "Starting…"
-        case .awaitingFirstFrame: return "Waiting…"
-        case .ready: return "Streaming"
-        case .paused: return "Paused"
-        case .framesUnavailable: return "No frames"
-        case .decodingStalled: return "No picture"
-        case .stopping: return "Stopping…"
+        case .stopped: return String(localized: "Camera")
+        case .connecting: return String(localized: "Starting…")
+        case .awaitingFirstFrame: return String(localized: "Waiting…")
+        case .ready: return String(localized: "Streaming")
+        case .paused: return String(localized: "Paused")
+        case .framesUnavailable: return String(localized: "No frames")
+        case .decodingStalled: return String(localized: "No picture")
+        case .stopping: return String(localized: "Stopping…")
         }
     }
 
     /// One sentence for a status line, and for VoiceOver to read.
     var statusPhrase: String {
         switch phase {
-        case .stopped: return "Camera off"
-        case .connecting: return "Camera connecting"
-        case .awaitingFirstFrame: return "Camera waiting for the first frame"
-        case .ready: return "Camera streaming"
-        case .paused: return "Camera paused"
-        case .framesUnavailable: return "Camera sending no frames"
-        case .decodingStalled: return "Camera picture stalled"
-        case .stopping: return "Camera stopping"
+        case .stopped: return String(localized: "Camera off")
+        case .connecting: return String(localized: "Camera connecting")
+        case .awaitingFirstFrame: return String(localized: "Camera waiting for the first frame")
+        case .ready: return String(localized: "Camera streaming")
+        case .paused: return String(localized: "Camera paused")
+        case .framesUnavailable: return String(localized: "Camera sending no frames")
+        case .decodingStalled: return String(localized: "Camera picture stalled")
+        case .stopping: return String(localized: "Camera stopping")
         }
     }
 
@@ -157,17 +157,17 @@ struct CameraReadiness: Equatable {
     var controlHint: String? {
         switch phase {
         #if AVENKIN_PHONE_ONLY
-        case .stopped: return "Double-tap to stream the camera to the model."
+        case .stopped: return String(localized: "Double-tap to stream the camera to the model.")
         #else
-        case .stopped: return "Double-tap to stream the glasses camera to the model."
+        case .stopped: return String(localized: "Double-tap to stream the glasses camera to the model.")
         #endif
-        case .connecting: return "Starting the camera. This takes a moment."
-        case .awaitingFirstFrame: return "The camera is on and the first picture has not arrived yet."
-        case .ready: return "The camera is streaming."
-        case .paused: return "The camera is paused. Put the glasses on, or check they aren't folded."
-        case .framesUnavailable: return "The camera is on and no pictures are arriving."
-        case .decodingStalled: return "Pictures are arriving but none can be shown yet."
-        case .stopping: return "Stopping the camera."
+        case .connecting: return String(localized: "Starting the camera. This takes a moment.")
+        case .awaitingFirstFrame: return String(localized: "The camera is on and the first picture has not arrived yet.")
+        case .ready: return String(localized: "The camera is streaming.")
+        case .paused: return String(localized: "The camera is paused. Put the glasses on, or check they aren't folded.")
+        case .framesUnavailable: return String(localized: "The camera is on and no pictures are arriving.")
+        case .decodingStalled: return String(localized: "Pictures are arriving but none can be shown yet.")
+        case .stopping: return String(localized: "Stopping the camera.")
         }
     }
 
@@ -177,17 +177,17 @@ struct CameraReadiness: Equatable {
         guard isShowingHeldPicture else { return nil }
         switch phase {
         case .paused:
-            return "Paused — this is the last picture received, not a live view."
+            return String(localized: "Paused — this is the last picture received, not a live view.")
         case .framesUnavailable:
-            return "No new pictures — this is the last one received, not a live view."
+            return String(localized: "No new pictures — this is the last one received, not a live view.")
         case .decodingStalled:
-            return "Picture stalled — this is the last one received, not a live view."
+            return String(localized: "Picture stalled — this is the last one received, not a live view.")
         case .connecting, .awaitingFirstFrame:
-            return "Reconnecting — this is the last picture received, not a live view."
+            return String(localized: "Reconnecting — this is the last picture received, not a live view.")
         case .stopped, .stopping:
-            return "Camera stopped — this is the last picture received, not a live view."
+            return String(localized: "Camera stopped — this is the last picture received, not a live view.")
         case .ready:
-            return "This is the last picture received, not a live view."
+            return String(localized: "This is the last picture received, not a live view.")
         }
     }
 
@@ -196,7 +196,7 @@ struct CameraReadiness: Equatable {
     /// untruth the marker exists to prevent, delivered to the user least able to check it.
     var previewAccessibilityLabel: String {
         if let marker = heldPictureMarker { return marker }
-        return "Live camera feed from glasses"
+        return String(localized: "Live camera feed from glasses")
     }
 
     /// The camera chip on a live-session status card, or `nil` when there is nothing to report —
@@ -227,11 +227,11 @@ struct CameraReadiness: Equatable {
     /// A word small enough to sit inside a chip.
     private var shortPhaseWord: String {
         switch phase {
-        case .connecting: return "starting"
-        case .awaitingFirstFrame: return "waiting"
-        case .paused: return "paused"
-        case .framesUnavailable: return "no frames"
-        case .decodingStalled: return "stalled"
+        case .connecting: return String(localized: "starting")
+        case .awaitingFirstFrame: return String(localized: "waiting")
+        case .paused: return String(localized: "paused")
+        case .framesUnavailable: return String(localized: "no frames")
+        case .decodingStalled: return String(localized: "stalled")
         case .ready, .stopped, .stopping: return ""
         }
     }

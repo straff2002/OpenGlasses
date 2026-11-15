@@ -86,9 +86,9 @@ enum MetaTelemetryBlock {
 
         var summary: String {
             switch self {
-            case .off: return "Off"
-            case .blocked: return "Blocked"
-            case .on: return "On"
+            case .off: return String(localized: "Off")
+            case .blocked: return String(localized: "Blocked")
+            case .on: return String(localized: "On")
             }
         }
     }
