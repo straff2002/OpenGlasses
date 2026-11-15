@@ -31,7 +31,7 @@ final class PublishedVaultRowUITests: AccessibilityAuditCase {
         awaitScreen(element(containing: "Wiring diagram (2024)", in: app), named: "The checklist's list of manuals")
         XCTAssertTrue(element(containing: "Wiring diagram (2024)", in: app).label.contains("Missing"))
         XCTAssertTrue(element(containing: "Service manual (Rev B)", in: app).label.contains("A different revision"))
-        XCTAssertTrue(element(containing: "Installation manual (Rev C)", in: app).label.contains("Held"))
+        XCTAssertTrue(element(containing: "Installation manual (Rev C)", in: app).label.contains("On this phone"))
 
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "lv-published-vault-checklist"

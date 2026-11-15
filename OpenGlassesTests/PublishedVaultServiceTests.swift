@@ -269,7 +269,7 @@ final class PublishedVaultServiceTests: XCTestCase {
         let checklist = try XCTUnwrap(baseRow.checklist)
         XCTAssertEqual(checklist.summary, "2 of 3 manuals · 1 a different revision · 1 missing")
         XCTAssertEqual(checklist.entries.map(\.title), ["Installation manual (Rev C)", "Service manual (Rev B)", "Wiring diagram (2024)"])
-        XCTAssertEqual(checklist.entries.map(\.status), ["Held", "A different revision", "Missing"])
+        XCTAssertEqual(checklist.entries.map(\.status), ["On this phone", "A different revision", "Missing"])
         XCTAssertTrue(checklist.hasDifferences)
         XCTAssertEqual(service.rows().map(\.vaultId), [base, layer])
         XCTAssertEqual(row(layer)?.layerNote, "Adds to Fixture Split Systems")
