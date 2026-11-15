@@ -278,14 +278,18 @@ final class RetrievalGateCalibrationTests: XCTestCase {
         // the two can differ by a question or two. Every round of retrieval work reads both
         // (Plan IV P0), and on a Mac `Scripts/retrieval-eval` prints the same lines for the
         // device's embedding model.
-        print("[GATE] production path | variant | recall@4 | hit@1 | insufficiency recall | in-scope refused")
+        // The last column is recall@4's 95% bootstrap interval over the questions: with this few, a
+        // variant inside another's interval has not been shown to differ (printed, never asserted).
+        print("[GATE] production path | variant | recall@4 | hit@1 | insufficiency recall | in-scope refused | recall@4 95%")
         for (name, policy) in Self.variants {
             let report = RetrievalEval.run(Self.answerKey,
                                            gated: retriever(over: store, policy: policy), open: open, store: store,
                                            classifyMisses: false)
+            let interval = EvalIntervals.bootstrapInterval(values: report.outcomes.compactMap { $0.metrics["hit4"] })
             print("[GATE] production path | \(name) | \(fmt(Float(report.hit4) / Float(report.scored))) | "
                   + "\(fmt(Float(report.hit1) / Float(report.scored))) | "
-                  + "\(fmt(Float(report.refused) / Float(report.outOfScope))) | \(report.inScopeRefused)")
+                  + "\(fmt(Float(report.refused) / Float(report.outOfScope))) | \(report.inScopeRefused) | "
+                  + (interval.map { "[\(fmt(Float($0.lower))), \(fmt(Float($0.upper)))]" } ?? "-"))
         }
         let production = RetrievalEval.run(Self.answerKey, gated: retriever(over: store, policy: shipped),
                                            open: open, store: store)
