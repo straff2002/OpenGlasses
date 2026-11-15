@@ -5,8 +5,16 @@
 chunked construction with the manual seal, whose bytes are unchanged) in the core package, with
 `company-vaults-v2` fixtures; on the phone `VaultLayerMerge`, `ExpectedManualMatch`, `CitationEditionCheck`, a
 frozen entry never updated, and `VaultDocument.revision`/`.origin`. The catalog version stays 1 (the fields are
-additive); the service raises `minAppBuild` to the first LV build. P1 (wiring) follows the service's S1 deploy;
-P2 device pass owed. All six [decisions](#decisions-for-greig) taken: 1–3 by the owner while discussing, 4–6 as
+additive); the service raises `minAppBuild` to the first LV build. **P1 built 2026-11-16 (headless + one UI test):**
+the company vault pass opens a sealed core (length, `sha256`, company secret) before the installer, which skips the
+archive checksum for it and still checks the pack signature; a company layer installs as `_baselines/{id}.company`,
+validated as a layer and refused whole when it would replace a publisher file; the plan orders a layer after its
+base, lays it again over a base that changed and removes it with its base; the registry and `VaultStore` read
+publisher → company → technician; company manuals carry `revision` and `origin: company` (My Manuals uploads
+`technician`, photographed ones `capture`); the rows say "from ⟨partner⟩ · version ⟨n⟩", the manual checklist
+(opening a list naming each), frozen and "⟨vault⟩ was removed by ⟨partner⟩"; an answer's prompt carries the
+source line and `CitationEditionCheck`'s notes for pages the vault's index cites, beside the downloading note.
+P2 device pass owed; catalog sync of the new strings owed. All six [decisions](#decisions-for-greig) taken: 1–3 by the owner while discussing, 4–6 as
 recommended (2026-11-15). Manual matching treats one-sided evidence as no difference: an edition or revision known on only one side is
 not a difference.
 **Track:** Field Assist — fleet and publishing. Company vaults, the vault store, manuals, answers.
