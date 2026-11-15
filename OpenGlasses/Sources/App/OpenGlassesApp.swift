@@ -8641,7 +8641,9 @@ class AppState: ObservableObject, AppStateProtocol {
         errorMessage = nil
         speechService.playEndListeningTone()
         PrivacyLog.speech(.dictation, .transcriptDelivered, characters: text.count)
-        addDebugEvent("Transcription: \(String(text.prefix(80)))")
+        // Plan LU §6: the length only, for every conversation. The debug log has no switch, is
+        // shown in the Developer panel and goes in the support report, so it never keeps the words.
+        addDebugEvent("Transcription: \(text.count) characters")
 
         // Pre-LLM voice-command chain (Plan BG P2): teleprompter, HUD task card, HUD launcher
         // selection/open, and the intent-ignore filter each get first crack at the transcript. The

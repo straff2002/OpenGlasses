@@ -1001,6 +1001,144 @@ final class PrivacyLogTests: XCTestCase {
         XCTAssertEqual(offenders, [], offenders.joined(separator: "\n"))
     }
 
+    // MARK: - The debug event log (Plan LU §6)
+    //
+    // `addDebugEvent` writes `Documents/debug-events.log`, which has no switch, isn't excluded from
+    // backup, is shown in the Developer panel and goes in the support report's log tail.
+    // `DataStoreRegistry` calls it not linked to a person, so it may carry a count or a length of
+    // what was said, never the words: no argument interpolates spoken, transcript, query, response
+    // or reply text, for any conversation.
+
+    /// Identifier words that name spoken or reply text. Matched against camel-case and snake-case
+    /// words, so `lastResponse` and `reply_text` count and `context` does not.
+    private static let spokenContentWords: Set<String> = [
+        "text", "texts", "transcript", "transcripts", "transcription", "query", "queries",
+        "response", "responses", "reply", "replies",
+    ]
+
+    func testNoDebugEventInterpolatesSpokenOrReplyText() throws {
+        var offenders: [String] = []
+        for path in try allSourceFiles() {
+            for expression in Self.debugEventInterpolations(in: try sourceText(path))
+            where Self.carriesSpokenContent(expression) {
+                offenders.append("\(path): addDebugEvent interpolates \\(\(expression))")
+            }
+        }
+        XCTAssertEqual(offenders, [],
+                       "The debug log keeps counts and lengths, never what was said or answered "
+                           + "(write \\(text.count) characters):\n" + offenders.joined(separator: "\n"))
+    }
+
+    /// The scanner itself: it catches the line this rule replaced, and allows counts.
+    func testTheDebugEventScanCatchesContentAndAllowsCounts() {
+        let leaking = #"addDebugEvent("Transcription: \(String(text.prefix(80)))")"#
+        XCTAssertEqual(Self.debugEventInterpolations(in: leaking), ["String(text.prefix(80))"])
+        XCTAssertTrue(Self.carriesSpokenContent("String(text.prefix(80))"))
+        XCTAssertTrue(Self.carriesSpokenContent("transcript"))
+        XCTAssertTrue(Self.carriesSpokenContent("self.lastResponse"))
+        XCTAssertTrue(Self.carriesSpokenContent("reply_text.prefix(20)"))
+        XCTAssertTrue(Self.carriesSpokenContent("query ?? \"none\""))
+
+        XCTAssertFalse(Self.carriesSpokenContent("text.count"))
+        XCTAssertFalse(Self.carriesSpokenContent("transcript.utf8.count"))
+        XCTAssertFalse(Self.carriesSpokenContent("query.isEmpty"))
+        XCTAssertFalse(Self.carriesSpokenContent("context.rawValue"))
+        XCTAssertFalse(Self.carriesSpokenContent("cause ?? \"no text\""))
+
+        let multiLine = """
+            addDebugEvent(
+                "Heard \\(reply) after \\(Int(elapsed)) s (\\(cause.map { "\\($0)" } ?? "none"))")
+            """
+        XCTAssertEqual(Self.debugEventInterpolations(in: multiLine),
+                       ["reply", "Int(elapsed)", "cause.map { \"\\($0)\" } ?? \"none\"", "$0"])
+        let counted = #"addDebugEvent("Transcription: \(text.count) characters")"#
+        XCTAssertFalse(Self.debugEventInterpolations(in: counted).contains(where: Self.carriesSpokenContent))
+    }
+
+    /// Every interpolated expression in the arguments of `addDebugEvent(` calls, nested ones
+    /// included. String-aware, so a literal parenthesis in the message doesn't end the call early.
+    static func debugEventInterpolations(in source: String) -> [String] {
+        let characters = Array(source)
+        let needle = Array("addDebugEvent(")
+        var expressions: [String] = []
+        var index = 0
+        while index + needle.count <= characters.count {
+            guard Array(characters[index..<(index + needle.count)]) == needle else {
+                index += 1
+                continue
+            }
+            var cursor = index + needle.count
+            scanCode(characters, &cursor, into: &expressions)
+            index = cursor
+        }
+        return expressions
+    }
+
+    /// Code up to and including the `)` that closes it.
+    private static func scanCode(_ characters: [Character], _ cursor: inout Int, into expressions: inout [String]) {
+        var depth = 0
+        while cursor < characters.count {
+            let character = characters[cursor]
+            if character == "\"" {
+                cursor += 1
+                scanString(characters, &cursor, into: &expressions)
+                continue
+            }
+            if character == "(" { depth += 1 }
+            if character == ")" {
+                if depth == 0 {
+                    cursor += 1
+                    return
+                }
+                depth -= 1
+            }
+            cursor += 1
+        }
+    }
+
+    /// A string literal's body up to and including its closing quote, collecting interpolations.
+    private static func scanString(_ characters: [Character], _ cursor: inout Int, into expressions: inout [String]) {
+        while cursor < characters.count {
+            let character = characters[cursor]
+            if character == "\\", cursor + 1 < characters.count {
+                if characters[cursor + 1] == "(" {
+                    let start = cursor + 2
+                    cursor = start
+                    var nested: [String] = []
+                    scanCode(characters, &cursor, into: &nested)
+                    expressions.append(String(characters[start..<max(start, cursor - 1)]))
+                    expressions.append(contentsOf: nested)
+                    continue
+                }
+                cursor += 2
+                continue
+            }
+            cursor += 1
+            if character == "\"" || character == "\n" { return }
+        }
+    }
+
+    /// Whether an interpolated expression names spoken or reply text other than by its count or
+    /// emptiness.
+    static func carriesSpokenContent(_ expression: String) -> Bool {
+        var code = expression.replacingOccurrences(of: #""(?:[^"\\]|\\.)*""#, with: "\"\"",
+                                                   options: .regularExpression)
+        code = code.replacingOccurrences(of: #"[A-Za-z_][A-Za-z0-9_.]*\.(count|isEmpty)\b"#, with: "",
+                                         options: .regularExpression)
+        guard let identifier = try? NSRegularExpression(pattern: "[A-Za-z_][A-Za-z0-9_]*") else { return true }
+        let identifiers = identifier.matches(in: code, range: NSRange(code.startIndex..., in: code))
+            .compactMap { Range($0.range, in: code).map { String(code[$0]) } }
+        for name in identifiers {
+            let spaced = name.replacingOccurrences(of: "([a-z0-9])([A-Z])", with: "$1 $2",
+                                                   options: .regularExpression)
+            let words = spaced.lowercased()
+                .split(whereSeparator: { $0 == " " || $0 == "_" })
+                .map(String.init)
+            if words.contains(where: spokenContentWords.contains) { return true }
+        }
+        return false
+    }
+
     /// Every allowlist entry is a privacy review flag, so every one must say why it exists.
     func testEveryAllowlistEntryCarriesAReason() throws {
         for entry in try allowlist() {
