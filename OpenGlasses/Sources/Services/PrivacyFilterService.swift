@@ -197,7 +197,12 @@ class PrivacyFilterService: ObservableObject, StillImageFiltering {
 
     /// Shared render context — `nonisolated` so the off-main `blurFaces` reuses this one Metal
     /// pipeline instead of building a fresh CIContext per frame (a classic per-frame GPU cost).
-    private nonisolated let ciContext = CIContext()
+    ///
+    /// Built on first use, not at init: this service is made in `AppState.init`, and an eager
+    /// context runs Metal during a background launch (see `PhoneVideoSource.ciContext`). A
+    /// `static let` is initialised once, lazily and thread-safely, from whichever thread asks.
+    private nonisolated static let sharedCIContext = CIContext()
+    private nonisolated var ciContext: CIContext { Self.sharedCIContext }
 
     /// Whether processing is currently possible, and why not when it isn't. Suspension used to be
     /// a lone Bool set by the background-resource path; W04.1 widened it to the full lifecycle
