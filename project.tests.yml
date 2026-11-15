@@ -36,6 +36,10 @@ targets:
       - path: Contracts/fixtures/company-vaults-v1
         type: folder
         buildPhase: resources
+      # Plan LV: the published-vault fields, the sealed core and the company layer.
+      - path: Contracts/fixtures/company-vaults-v2
+        type: folder
+        buildPhase: resources
       # Shared FX1 public assignment/archive fixtures (no production keys or content).
       - path: Contracts/fixtures/manual-assignment-v1.json
         buildPhase: resources
