@@ -71,7 +71,13 @@ final class PhoneVideoSource: NSObject, @unchecked Sendable {
 
     /// One reusable context; intermediate caching disabled — per-frame CIContext churn
     /// exhausts IOSurfaces on iOS.
-    private let ciContext = CIContext(options: [.cacheIntermediates: false])
+    ///
+    /// Lazy, built on the first streamed frame: a `CIContext` builds a Metal pipeline, and this
+    /// object is made in `AppState.init`, so an eager one ran Metal during a background launch
+    /// (Bluetooth restore, prewarm). Build 681 on iOS 27.3 beta aborted inside
+    /// `-[_MTLDevice recordBinaryArchiveUsage:]` there. Only touched from `sessionQueue`, the
+    /// sample-buffer delegate queue, so a plain `lazy var` is safe.
+    private lazy var ciContext = CIContext(options: [.cacheIntermediates: false])
 
     /// Sent from the session's queue. Replays the current value to a new subscriber.
     let statusPublisher = CurrentValueSubject<PhoneCaptureStatus, Never>(.stopped)

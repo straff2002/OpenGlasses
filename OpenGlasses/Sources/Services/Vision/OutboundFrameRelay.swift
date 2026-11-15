@@ -61,7 +61,9 @@ final class OutboundFrameRelay: ObservableObject {
 
     /// One Metal-backed context for the process. Building a `CIContext` per frame is a classic
     /// per-frame GPU cost; the sibling in `PrivacyFilterService` exists for the same reason.
-    private nonisolated let ciContext = CIContext()
+    /// Built on first use for the same reason as that sibling: no Metal during launch.
+    private nonisolated static let sharedCIContext = CIContext()
+    private nonisolated var ciContext: CIContext { Self.sharedCIContext }
 
     /// Serial: the blur must not run concurrently with itself, and ordering must hold.
     private nonisolated let queue = DispatchQueue(label: "outbound.frame.blur", qos: .userInitiated)
