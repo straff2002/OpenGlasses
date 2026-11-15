@@ -22,6 +22,10 @@ unless `TABLE_LOOKUP_EVAL_KEY_CHECKED=1`: set it only once someone who knows the
 every expected cell. PDFKit writes diagnostics of its own to standard error; add `2>/dev/null` to
 keep a saved report to the report.
 
+The source list in `run.sh` is kept by hand; `Scripts/check-eval-harnesses.sh` (CI's
+`eval-harnesses` job) compiles it without running it and fails when a listed file needs one that
+isn't listed.
+
 ## Tables printed as pictures (Plan JN P1)
 
 `TABLE_LOOKUP_EVAL_RECOGNISE` reads the tables a PDF prints as pictures too, as an import on the

@@ -12,7 +12,9 @@ src="$root/OpenGlasses/Sources/Services"
 build="${RETRIEVAL_EVAL_BUILD_DIR:-${TMPDIR:-/tmp}/retrieval-eval-build}"
 mkdir -p "$build"
 
-swiftc -O -parse-as-library -D RETRIEVAL_EVAL -target "$(uname -m)-apple-macos26.0" -o "$build/retrieval-eval" \
+# A compile-only check skips optimisation: what it checks is the file list, and -O is minutes slower.
+opt=-O; if [ "${EVAL_COMPILE_ONLY:-}" = 1 ]; then opt=-Onone; fi
+swiftc "$opt" -parse-as-library -D RETRIEVAL_EVAL -target "$(uname -m)-apple-macos26.0" -o "$build/retrieval-eval" \
   "$here/main.swift" "$here/Stubs.swift" "$here/Tuning.swift" \
   "$root/OpenGlassesTests/RetrievalEval/RetrievalEvalCore.swift" \
   "$root/OpenGlassesTests/RetrievalEval/EvalIntervals.swift" "$root/OpenGlassesTests/RetrievalEval/EvalOutcomes.swift" \
@@ -21,11 +23,14 @@ swiftc -O -parse-as-library -D RETRIEVAL_EVAL -target "$(uname -m)-apple-macos26
   "$src/RAG/PassageLocation.swift" "$src/RAG/EmbeddingScript.swift" \
   "$src/Vault/VaultRetriever.swift" "$src/Vault/ClauseReference.swift" "$src/Vault/CodeTokenizer.swift" \
   "$src/Vault/LexicalSupport.swift" "$src/Vault/TermRule.swift" "$src/Vault/TermRuleStopwords.swift" \
-  "$src/Vault/DocumentLanguageProfile.swift" "$src/Vault/ChunkSizing.swift" "$src/Vault/PageReference.swift" "$src/Vault/DocumentEditions.swift" "$src/Vault/BackOfBookIndex.swift" "$src/Vault/ManualPassageLimit.swift" \
+  "$src/Vault/DocumentLanguageProfile.swift" "$src/Vault/ChunkSizing.swift" "$src/Vault/PageReference.swift" "$src/Vault/SpokenNumber.swift" "$src/Vault/DocumentEditions.swift" "$src/Vault/BackOfBookIndex.swift" "$src/Vault/ManualPassageLimit.swift" \
   "$src/Vault/TableExtractor.swift" "$src/Vault/CaptionWords.swift" "$src/Vault/TableChecks.swift" "$src/Vault/TableRowPassage.swift" "$src/Vault/TableReference.swift" \
   "$src/Vault/PDFTableReader.swift" \
   "$src/Vault/RecognisedTable.swift" "$src/Vault/CellCertainty.swift" "$src/Vault/PictureRegion.swift" \
   "$src/Vault/PictureTableReading.swift" "$src/Vault/VisionTableReader.swift"
+
+# Scripts/check-eval-harnesses.sh builds every harness this way, to catch a stale file list.
+if [ "${EVAL_COMPILE_ONLY:-}" = 1 ]; then exit 0; fi
 
 export RETRIEVAL_EVAL_EXTRACTOR="${RETRIEVAL_EVAL_EXTRACTOR:-$root/Scripts/extract-manual-text.swift}"
 exec "$build/retrieval-eval"
