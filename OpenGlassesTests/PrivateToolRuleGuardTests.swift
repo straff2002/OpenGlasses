@@ -233,7 +233,7 @@ final class PrivateToolRuleGuardTests: XCTestCase {
             }
         }
 
-        let sources = try allSourceFiles().map { try sourceText($0) }
+        let declarations = try typeDeclarations()
         let neverWrite = ToolEffectClassifier.messagingTools
             .union(ToolEffectClassifier.sensitiveDisclosureTools)
             .union(ToolEffectClassifier.financialTools)
@@ -241,7 +241,7 @@ final class PrivateToolRuleGuardTests: XCTestCase {
         var names: [String] = []
         var unresolved: [String] = []
         for type in writingTypes {
-            guard let name = toolName(ofType: type, in: sources) else {
+            guard let name = declarations[type].flatMap(toolName(after:)) else {
                 unresolved.append(type)
                 continue
             }
@@ -253,15 +253,30 @@ final class PrivateToolRuleGuardTests: XCTestCase {
 
     /// The `name` a tool type declares: the first `let name = "…"` (or `var name: String { "…" }`)
     /// after the type's declaration.
-    private func toolName(ofType type: String, in sources: [String]) -> String? {
-        let declaration = #"(struct|class)\s+"# + type + #"\b"#
-        for source in sources {
-            guard let start = source.range(of: declaration, options: .regularExpression) else { continue }
-            let rest = String(source[start.upperBound...])
-            return firstCapture(#"(?:let|var)\s+name(?:\s*:\s*String)?\s*(?:=|\{)\s*"([a-z_]+)""#, in: rest)
-        }
-        return nil
+    private func toolName(after declaration: Substring) -> String? {
+        firstCapture(#"(?:let|var)\s+name(?:\s*:\s*String)?\s*(?:=|\{)\s*"([a-z_]+)""#, in: String(declaration))
     }
+
+    /// Every `struct`/`class` declared under `OpenGlasses/Sources`, mapped to the source text from its
+    /// declaration on. Built once: one pass per file rather than one per type.
+    private func typeDeclarations() throws -> [String: Substring] {
+        if let cached = Self.cachedDeclarations { return cached }
+        guard let regex = try? NSRegularExpression(pattern: #"\b(?:struct|class)\s+([A-Za-z0-9_]+)"#) else { return [:] }
+        var declarations: [String: Substring] = [:]
+        for path in try allSourceFiles() {
+            let source = try sourceText(path)
+            for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+                guard let nameRange = Range(match.range(at: 1), in: source),
+                      let whole = Range(match.range, in: source) else { continue }
+                let type = String(source[nameRange])
+                if declarations[type] == nil { declarations[type] = source[whole.upperBound...] }
+            }
+        }
+        Self.cachedDeclarations = declarations
+        return declarations
+    }
+
+    private static var cachedDeclarations: [String: Substring]?
 
     // MARK: - Source helpers
 
