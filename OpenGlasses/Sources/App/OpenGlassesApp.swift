@@ -758,7 +758,9 @@ struct OpenGlassesApp: App {
                 // while we were away.
                 let imported = appState.teleprompterStore.importPendingShares()
                 if imported > 0 {
-                    appState.glassesDisplay.flash("Imported \(imported) teleprompter script\(imported == 1 ? "" : "s")")
+                    appState.glassesDisplay.flash(imported == 1
+                        ? String(localized: "Imported 1 teleprompter script")
+                        : String(localized: "Imported \(imported) teleprompter scripts"))
                 }
                 // Refresh the Siri Shortcuts catalog — the user may have added shortcuts
                 // while away — so the agent's run_shortcut menu stays current (Plan Z).
@@ -1009,7 +1011,11 @@ class AppState: ObservableObject, AppStateProtocol {
     private func applyGlassesUse() {
         if glassesPhase != glassesUse.link { glassesPhase = glassesUse.link }
         if glassesStoodDown != glassesUse.stoodDown { glassesStoodDown = glassesUse.stoodDown }
+        let glassesWereInUse = isConnected
         if isConnected != glassesUse.inUse { isConnected = glassesUse.inUse }
+        // Plan LU §8: the glasses going (link down, Disconnect, taken off) end a private
+        // conversation, said to nobody.
+        if glassesWereInUse, !glassesUse.inUse { notePrivateEvent(.glassesDisconnected) }
         appliedGlassesUse = glassesUse
         widgetGlassesWriter.setNeedsWrite()
     }
@@ -1305,6 +1311,16 @@ class AppState: ObservableObject, AppStateProtocol {
     /// `TechnicianWords.currentTurn()`).
     private(set) var turnSerial = 0
     @Published var lastResponse: String = ""
+    /// Plan LU: the private conversation — a conversation Avenkin keeps nothing of. Its state and
+    /// in-memory transcript, observed by the phone and the watch. Started and ended only through
+    /// `beginPrivate(entry:)` / `endPrivate(reason:)` (`AppState+PrivateConversation.swift`).
+    let privateConversation = PrivateConversationController()
+    /// Plan LU §8: the open private conversation's quiet-gap timer.
+    var privateIdleTimer: Task<Void, Never>?
+    /// Plan LU P1b: `privateConversation`'s changes, relayed as this object's, so every view that
+    /// reads `appState` redraws as a private conversation starts, takes a turn and ends — the badge,
+    /// the transcript, the menus — without each having to observe the controller itself.
+    private var privateConversationRelay: AnyCancellable?
     /// Plan LA: the last quiet turn's reply, for "what was that?" in the 30 seconds after it.
     var quietReplay = QuietReplayWindow()
     /// In-flight assistant reply for the Chat tab, streamed token-by-token where the provider
@@ -2106,7 +2122,11 @@ class AppState: ObservableObject, AppStateProtocol {
             clearHistory: { [weak self] in self?.llmService.clearHistory() },
             threadMode: { [weak self] in self?.currentMode.rawValue ?? AppMode.direct.rawValue },
             personaId: { [weak self] in self?.activePersona?.id },
-            persistenceEnabled: { Config.conversationPersistenceEnabled },
+            // Plan LU §3: a private turn binds, starts and ends no thread.
+            persistenceEnabled: { [weak self] in
+                self?.persistsConversation ?? Config.conversationPersistenceEnabled
+            },
+            privateEvent: { [weak self] event in self?.notePrivateEvent(event) },
             // The debrief's summary is the one thing in the guided flow a model produces, and it
             // goes through the same structured-completion path Study Mode and the memory loop use.
             summarise: { [weak self] system, text, schema in
@@ -2276,10 +2296,13 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self else { return }
                 // A tool result still owed to the model goes out before anything is retired.
                 await ConversationTurnBoundary.wait { self.llmService.isTurnInFlight }
+                // Plan LU §8: a reset ends a private conversation first, so what it retires and
+                // starts afresh is the stored conversation. Said by the reset's own line.
+                self.notePrivateEvent(.conversationReset, announce: false)
             },
             clearLocalHistory: { [weak self] in self?.llmService.requestHistoryClear() },
             startSavedThread: { [weak self] in
-                guard let self, Config.conversationPersistenceEnabled else { return }
+                guard let self, self.persistsConversation else { return }
                 self.conversationStore.startThread(mode: self.currentMode.rawValue,
                                                    personaId: self.activePersona?.id)
             },
@@ -2290,7 +2313,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.lastResponse = line
                 // On the failure path the old thread records why nothing changed. On the success
                 // path the new thread is left empty — the wearer asked for a blank slate.
-                if Config.conversationPersistenceEnabled, !report.didRetireLocalContext {
+                if self.persistsConversation, !report.didRetireLocalContext {
                     self.conversationStore.appendMessage(role: "assistant", content: line)
                 }
                 await self.speechService.speak(line, source: .acknowledgement)
@@ -3230,7 +3253,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan-then-execute HUD trace (Plan S): show the plan header + per-step progress on the lens
         // while a multi-step agent task runs. The final summary is spoken via the normal TTS path.
         llmService.onAgentNarrate = { [weak self] line in
-            self?.glassesDisplay.showNotification(title: "Agent", body: line, icon: .info, duration: 4)
+            self?.glassesDisplay.showNotification(title: String(localized: "Agent"), body: line, icon: .info, duration: 4)
         }
         // Plan LP §2: a plan of two or more steps says what it is about to do, once, before the
         // first step runs. Direct mode only, like the plan loop itself.
@@ -3243,7 +3266,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         llmService.onAgentStep = { [weak self] index, total, step in
             let body = step.rationale.isEmpty ? step.tool : step.rationale
-            self?.glassesDisplay.showNotification(title: "Step \(index) of \(total)", body: body, icon: .navigation, duration: 4)
+            self?.glassesDisplay.showNotification(title: String(localized: "Step \(index) of \(total)"), body: body, icon: .navigation, duration: 4)
         }
 
         // Structured capture flows (Plan U): persist finished records to the offline queue (Plan T)
@@ -3265,7 +3288,9 @@ class AppState: ObservableObject, AppStateProtocol {
             if online {
                 let n = self.offlineQueue.pendingCount
                 if let line = HandoffAnnouncer.syncLine(queuedItems: n) {
-                    self.glassesDisplay.flash("Back online — syncing \(n) item\(n == 1 ? "" : "s")")
+                    self.glassesDisplay.flash(n == 1
+                        ? String(localized: "Back online — syncing 1 item")
+                        : String(localized: "Back online — syncing \(n) items"))
                     self.connectivityHandoff.noteSyncLineSpoken()
                     Task { await self.speechService.speak(line, source: .statusNotice) }
                 }
@@ -3357,6 +3382,15 @@ class AppState: ObservableObject, AppStateProtocol {
         NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.applyOrgPolicyChange() }
         }
+        // Plan LU §8: quitting ends a private conversation. Its words were only ever in memory;
+        // this is for the one content-free line it leaves. Delivered on the main queue, and run at
+        // once — a task scheduled now would not get to run.
+        NotificationCenter.default.addObserver(forName: UIApplication.willTerminateNotification, object: nil,
+                                               queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.endPrivateForAppQuit() }
+        }
+        privateConversationRelay = privateConversation.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
         // Plan CT PR 2b: a lease that lapses during a job locks when that job closes, so the lease
         // is re-evaluated as jobs start and end; and it renews once at launch.
         OrgProfileManager.shared.observeJobs()
@@ -3531,7 +3565,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // and mirrors a richer notification card to the in-lens HUD.
         proactiveAlerts.onAlert = { [weak self] message, urgency in
             guard let self else { return }
-            self.glassesDisplay.showNotification(title: "Reminder", body: message, icon: .calendar)
+            self.glassesDisplay.showNotification(title: String(localized: "Reminder"), body: message, icon: .calendar)
             Task {
                 await self.speechService.speak(message, source: .alert, urgency: urgency, mirrorToHUD: false)
             }
@@ -3848,7 +3882,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if let geofenceTool = nativeToolRegistry.tool(named: "geofence") as? GeofenceTool {
             geofenceTool.onAlert = { [weak self] message, urgency in
                 guard let self else { return }
-                self.glassesDisplay.showNotification(title: "Location", body: message, icon: .location)
+                self.glassesDisplay.showNotification(title: String(localized: "Location"), body: message, icon: .location)
                 // Plan BZ: geofence transitions feed the digest (near-dup dedup absorbs bounces).
                 self.notificationDigest.ingest(source: .geofence, title: message,
                                                priority: urgency == .high ? .high : .medium)
@@ -4413,13 +4447,13 @@ class AppState: ObservableObject, AppStateProtocol {
         case .deferToQueue:
             heldUtterance = (text: text, heldAt: Date())
             speechService.playTone(frequency: 660, duration: 0.06)
-            glassesDisplay.flash("⏳ Got it — one sec")
+            glassesDisplay.flash(String(localized: "⏳ Got it — one sec"))
             PrivacyLog.app(.utteranceHeld, characters: text.count)
 
         case .rejectWithCue(let reason):
             guard reason != .emptyUtterance else { return }
             speechService.playTone(frequency: 330, duration: 0.12)
-            glassesDisplay.flash("⚠️ Didn't catch that — say it again")
+            glassesDisplay.flash(String(localized: "⚠️ Didn't catch that — say it again"))
             PrivacyLog.app(.utteranceRejected, detail: PrivacyToken.caseName(of: reason),
                            characters: text.count)
         }
@@ -4852,7 +4886,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // (`onCheckInRan`), so the same evening never has two.
             if slot != .checkIn {
                 let content = UNMutableNotificationContent()
-                content.title = "My Day"
+                content.title = String(localized: "My Day")
                 content.body = Self.myDayDeliveryNotificationBody(slot)
                 content.sound = shouldSpeak ? nil : .default
                 let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
@@ -5643,7 +5677,7 @@ class AppState: ObservableObject, AppStateProtocol {
         speechService.stopThinkingSound()
         isListening = false
         inConversation = false
-        lastResponse = "Cancelled"
+        lastResponse = String(localized: "Cancelled")
         activePersona = nil
         updateLiveActivity()
         Task { await returnToWakeWord() }
@@ -5710,8 +5744,10 @@ class AppState: ObservableObject, AppStateProtocol {
         let reply = outcome.text
         lastResponse = reply
         llmService.recordExternalExchange(user: query, assistant: reply)
-        if Config.conversationPersistenceEnabled {
+        if persistsConversation {
             conversationStore.appendMessage(role: "assistant", content: reply, toThread: threadId)
+        } else {
+            notePrivateTurn(role: "assistant", content: reply)
         }
         await turnAnnouncement.waitUntilSpoken()
         guard spokenTurnGate.ownsRouting(admissionID) else { return }
@@ -6388,9 +6424,12 @@ class AppState: ObservableObject, AppStateProtocol {
             TurnRecorder.mark(.generationDone)
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
             lastResponse = response
-            if Config.conversationPersistenceEnabled {
+            if persistsConversation {
                 conversationStore.appendMessage(role: "user", content: userLog)
                 conversationStore.appendMessage(role: "assistant", content: response)
+            } else {
+                notePrivateTurn(role: "user", content: userLog)
+                notePrivateTurn(role: "assistant", content: response)
             }
             // A switch notice still playing finishes before the reply takes the speaker.
             await turnAnnouncement.waitUntilSpoken()
@@ -6462,9 +6501,12 @@ class AppState: ObservableObject, AppStateProtocol {
             let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: prompt, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
             lastResponse = response
             result = .answered(response)
-            if Config.conversationPersistenceEnabled {
+            if persistsConversation {
                 conversationStore.appendMessage(role: "user", content: "[Photo] \(prompt)")
                 conversationStore.appendMessage(role: "assistant", content: response)
+            } else {
+                notePrivateTurn(role: "user", content: "[Photo] \(prompt)")
+                notePrivateTurn(role: "assistant", content: response)
             }
 
             // A switch notice still playing finishes before the reply takes the speaker.
@@ -6580,7 +6622,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // camera consumer in the app — it runs for as long as the wearer is walking — and is
         // therefore the one most likely to be underneath somebody else's stop.
         narration.claimCamera = { [weak self] in
-            guard let self else { return "The app isn't ready yet." }
+            guard let self else { return String(localized: "The app isn't ready yet.") }
             do {
                 try await self.cameraService.claimStream(for: .sceneNarration)
                 return nil
@@ -6611,6 +6653,10 @@ class AppState: ObservableObject, AppStateProtocol {
     /// the live privacy filter, and anything running that the policy has now switched off.
     func applyOrgPolicyChange() {
         privacyFilter.isEnabled = Config.privacyFilterEnabled
+        // Plan LU §8: the organisation's pin arriving ends a private conversation already open.
+        if PolicyEnvelope.isLocked(.privateConversationsAllowed) {
+            notePrivateEvent(.organisationSwitchedOff)
+        }
         // A profile that pins the blur on during a phone stream is the same case as the switch.
         enforceBroadcastRules()
         if !Config.agentModeEnabled {
@@ -6806,9 +6852,12 @@ class AppState: ObservableObject, AppStateProtocol {
             }
             lastResponse = response
             result = .answered(response)
-            if Config.conversationPersistenceEnabled {
+            if persistsConversation {
                 conversationStore.appendMessage(role: "user", content: "[Photo taken manually]")
                 conversationStore.appendMessage(role: "assistant", content: response)
+            } else {
+                notePrivateTurn(role: "user", content: "[Photo taken manually]")
+                notePrivateTurn(role: "assistant", content: response)
             }
 
             // A switch notice still playing finishes before the reply takes the speaker.
@@ -6862,7 +6911,10 @@ class AppState: ObservableObject, AppStateProtocol {
             return
         }
         do {
-            let photoData = try await cameraService.capturePhoto()
+            // Plan LU decision 3: the wearer's own shot, filed in Photos even while private.
+            let photoData = try await CaptureLibraryScope.$explicitPhoto.withValue(true) {
+                try await cameraService.capturePhoto()
+            }
             // Restore audio for wake word if in direct mode (camera reconfigured audio for Bluetooth)
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -6898,7 +6950,10 @@ class AppState: ObservableObject, AppStateProtocol {
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
 
-            let photoData = try await cameraService.capturePhoto()
+            // Plan LU decision 3: an explicit photo, filed as the wearer asked even while private.
+            let photoData = try await CaptureLibraryScope.$explicitPhoto.withValue(true) {
+                try await cameraService.capturePhoto()
+            }
 
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -6942,7 +6997,10 @@ class AppState: ObservableObject, AppStateProtocol {
         do {
             // The data is discarded on purpose: `capturePhoto()` saves every capture to the
             // "Glasses" album itself, and this path only reports that it landed.
-            _ = try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly)
+            // Plan LU decision 3: "take a photo" is filed in Photos even in a private conversation.
+            _ = try await CaptureLibraryScope.$explicitPhoto.withValue(true) {
+                try await cameraService.capturePhoto(allowPhoneFallback: !glassesOnly)
+            }
             // Restore audio for wake word if in direct mode
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -6952,7 +7010,7 @@ class AppState: ObservableObject, AppStateProtocol {
             // Plan FF P0/PR2: the wearer asked for this photo, and it exists. The haptic and the
             // banner below are both sighted-or-handheld feedback.
             noteRequestedCaptureSucceeded()
-            lastResponse = "Photo saved to camera roll"
+            lastResponse = String(localized: "Photo saved to camera roll")
         } catch {
             if currentMode == .direct {
                 cameraService.restoreAudioForWakeWord()
@@ -7909,7 +7967,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("goodbye"))
                 self.speechService.stopSpeaking()
                 self.inConversation = false
-                self.lastResponse = "Goodbye!"
+                self.lastResponse = String(localized: "Goodbye!")
                 await self.speechService.speak("Goodbye!", source: .acknowledgement)
                 await self.returnToWakeWord()
                 return true
@@ -7973,9 +8031,11 @@ class AppState: ObservableObject, AppStateProtocol {
                                 return
                             }
                             self.lastResponse = response
-                            if Config.conversationPersistenceEnabled {
+                            if self.persistsConversation {
                                 self.conversationStore.appendMessage(role: "assistant", content: response,
                                                                      toThread: threadId)
+                            } else {
+                                self.notePrivateTurn(role: "assistant", content: response)
                             }
 
                             // If an audio or video recording is active, inject the description
@@ -8006,10 +8066,10 @@ class AppState: ObservableObject, AppStateProtocol {
                                 gap: self.llmService.credentialGap(behind: error),
                                 perMinute: self.llmService.perMinuteNotice(behind: error))
                             if photoCaptured {
-                                self.lastResponse = "Photo analysis failed: \(error.localizedDescription)"
+                                self.lastResponse = String(localized: "Photo analysis failed: \(error.localizedDescription)")
                             } else {
                                 PrivacyLog.camera(.glasses, .captureRejected, error: SafeErrorSummary(error))
-                                self.lastResponse = "Photo failed: \(error.localizedDescription)"
+                                self.lastResponse = String(localized: "Photo failed: \(error.localizedDescription)")
                             }
                             if let line { await self.speechService.speak(line, source: .errorLine) }
                         },
@@ -8076,7 +8136,7 @@ class AppState: ObservableObject, AppStateProtocol {
         injectPinnedFrame()
         framePinGate.notePinnedPushed(now: Date().timeIntervalSinceReferenceDate)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        glassesDisplay.flash("📌 Pinned")
+        glassesDisplay.flash(String(localized: "📌 Pinned"))
         PrivacyLog.camera(.glasses, .framePinned,
                           width: Int(frame.size.width), height: Int(frame.size.height))
         return true
@@ -8092,7 +8152,7 @@ class AppState: ObservableObject, AppStateProtocol {
         openAIRealtimeSession.resetFrameGateAfterPin()
         if trigger == .explicitUnpin {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            glassesDisplay.flash("Pin released")
+            glassesDisplay.flash(String(localized: "Pin released"))
         }
         PrivacyLog.camera(.glasses, .framePinReleased,
                           detail: PrivacyToken.caseName(of: trigger))
@@ -8337,7 +8397,7 @@ class AppState: ObservableObject, AppStateProtocol {
         let items = choices.enumerated().map { index, choice in
             HUDItem(id: "choice-\(index)", label: choice.label, action: {})
         }
-        glassesDisplay.present(screen: HUDScreen(title: "Choose", items: items)) { [weak self] id in
+        glassesDisplay.present(screen: HUDScreen(title: String(localized: "Choose"), items: items)) { [weak self] id in
             guard let self,
                   let index = Int(id.dropFirst("choice-".count)),
                   choices.indices.contains(index) else { return }
@@ -8471,9 +8531,11 @@ class AppState: ObservableObject, AppStateProtocol {
     /// line — in the tier-0 shape: record it (marked as answered on the phone), speak, resume.
     private func finishPhoneTurnWithoutModel(_ reply: String, threadId: String?, admissionID: UUID) async {
         lastResponse = reply
-        if Config.conversationPersistenceEnabled {
+        if persistsConversation {
             conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
                                             toThread: threadId)
+        } else {
+            notePrivateTurn(role: "assistant", content: reply)
         }
         // A conversation cue still playing finishes before the answer takes the speaker.
         await turnAnnouncement.waitUntilSpoken()
@@ -8491,9 +8553,13 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Persist a spoken question, opening a thread if none is active, and return the thread it went
-    /// into — the one its reply must be filed in. Nil with conversation history switched off.
+    /// into — the one its reply must be filed in. Nil with conversation history switched off, and in
+    /// a private conversation, whose question goes to its transcript instead (Plan LU §3).
     private func recordVoiceQuestion(_ text: String) -> (threadId: String?, messageId: String?) {
-        guard Config.conversationPersistenceEnabled else { return (nil, nil) }
+        guard persistsConversation else {
+            notePrivateTurn(role: "user", content: text)
+            return (nil, nil)
+        }
         if conversationStore.activeThreadId == nil {
             conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
         }
@@ -8514,7 +8580,8 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Plan KK P3: the active thread as the request builder's timeline block reads it, or nil
     /// with no thread (persistence off, nothing started) or the store locked.
     func timelineRequestThread() -> TimelineRequestBlock.Thread? {
-        guard !conversationStore.isLocked, let id = conversationStore.activeThreadId,
+        // Plan LU: a private turn's request carries no stored conversation's timeline.
+        guard !privateConversation.isActive, !conversationStore.isLocked, let id = conversationStore.activeThreadId,
               let thread = conversationStore.threads.first(where: { $0.id == id }) else { return nil }
         let messages = TimelineMessage.reduce(thread.messages)
         let newestQuestion = messages.last { $0.role == "user" }?.id
@@ -8604,17 +8671,91 @@ class AppState: ObservableObject, AppStateProtocol {
         Task { await speechService.speak(notice, source: .statusNotice) }
     }
 
+    /// Plan LU §2: what a turn's words asked of the private conversation.
+    enum PrivatePhraseOutcome: Equatable {
+        /// An ordinary turn: carry on with the words as they were.
+        case ordinary
+        /// The phrase was the whole turn (or a start was refused): it has been answered.
+        case handled
+        /// Carry on with this question instead — the first private question after a start, or an
+        /// ordinary one after an end.
+        case continueWith(String)
+    }
+
+    /// Plan LU §2 and §8: the start and end phrases, and the private conversation's quiet gap,
+    /// read before anything saves the turn. The lines are spoken on the voice path (a start's
+    /// alongside the answer, through `turnAnnouncement`) and, when `speak`, on the typed one.
+    func routePrivatePhrase(_ words: String, voice: Bool, speak: Bool) async -> PrivatePhraseOutcome {
+        // Said before an answer that follows, or alone when nothing does.
+        func say(_ line: String, alongside: Bool) async {
+            if !voice { lastResponse = line }
+            guard speak else { return }
+            if voice, alongside {
+                turnAnnouncement.announce(line, source: .acknowledgement)
+            } else {
+                await turnAnnouncement.waitUntilSpoken()
+                await speechService.speak(line, source: .acknowledgement)
+            }
+        }
+
+        // The quiet gap, checked at the turn that comes after it: the wearer is here to hear it.
+        var endedLine: String?
+        if privateConversation.isActive,
+           notePrivateEvent(.turnStarting(quietFor: privateConversation.quietFor), announce: false) != nil {
+            endedLine = PrivateConversationLines.ended
+        }
+
+        let wakePhrases = [Config.wakePhrase] + Config.allActiveWakePhrases
+        guard let match = PrivateStartPhrase.match(words, language: SpeechLocaleResolver.current.identifier,
+                                                   wakePhrases: wakePhrases) else {
+            if let endedLine { await say(endedLine, alongside: true) }
+            return .ordinary
+        }
+
+        switch match {
+        case .end(let remainder):
+            if privateConversation.isActive {
+                endPrivate(reason: .endPhrase)
+                endedLine = PrivateConversationLines.ended
+            }
+            // "End private" with nothing open is an ordinary turn.
+            guard let endedLine else { return .ordinary }
+            switch remainder {
+            case .question(let question):
+                await say(endedLine, alongside: true)
+                return .continueWith(question)
+            case .nothingFollowed:
+                await say(endedLine, alongside: false)
+                return .handled
+            }
+
+        case .start(let remainder):
+            if let refusal = beginPrivate(entry: .voicePhrase) {
+                await say(refusal.reason, alongside: false)
+                return .handled
+            }
+            switch remainder {
+            case .question(let question):
+                await say(PrivateConversationLines.startedWithQuestion, alongside: true)
+                return .continueWith(question)
+            case .nothingFollowed:
+                await say(PrivateConversationLines.startedAlone, alongside: false)
+                return .handled
+            }
+        }
+    }
+
     func handleTranscription(_ transcript: String) async {
         // The electrical trade's spoken sizes, written as printed (Plan KD P0), before anything
         // reads the words — the job question, the commands and the model alike.
-        let text = Config.fieldAssistEnabled
+        let heard = Config.fieldAssistEnabled
             ? DictationVocabulary.postProcess(transcript, trades: FieldTradeSetting.current.trades) : transcript
         // Shared consent surface, voice half (BN P1): while an approve/deny prompt is pending, a
         // short spoken yes/no answers THE PROMPT — never the model. Checked before the
         // isProcessing guard because the turn that raised the prompt is still in flight,
         // suspended on the coordinator.
-        if toolConfirmationCoordinator.pending != nil, toolConfirmationCoordinator.resolveByVoice(text) {
-            currentTranscription = text
+        if toolConfirmationCoordinator.pending != nil, toolConfirmationCoordinator.resolveByVoice(heard) {
+            currentTranscription = heard
             PrivacyLog.app(.consentAnsweredByVoice)
             return
         }
@@ -8631,13 +8772,36 @@ class AppState: ObservableObject, AppStateProtocol {
             }
         }
 
-        currentTranscription = text
-        turnUtterance = text
+        currentTranscription = heard
+        turnUtterance = heard
         isListening = false
         errorMessage = nil
         speechService.playEndListeningTone()
-        PrivacyLog.speech(.dictation, .transcriptDelivered, characters: text.count)
-        addDebugEvent("Transcription: \(String(text.prefix(80)))")
+        PrivacyLog.speech(.dictation, .transcriptDelivered, characters: heard.count)
+        // Plan LU §6: the length only, for every conversation. The debug log has no switch, is
+        // shown in the Developer panel and goes in the support report, so it never keeps the words.
+        addDebugEvent("Transcription: \(heard.count) characters")
+
+        // Plan LU §2: "off the record" and "end private", and the private conversation's quiet gap,
+        // before anything reads the words or saves them — so the turn that asks for privacy is
+        // never saved anywhere. A start with a question carries on as the first private turn.
+        let text: String
+        switch await routePrivatePhrase(heard, voice: true, speak: true) {
+        case .handled:
+            guard spokenTurnGate.ownsRouting(admissionID) else { return }
+            await resumeListeningOrReturnToWakeWord(ensureEngine: true)
+            return
+        case .continueWith(let question):
+            text = question
+            currentTranscription = question
+            turnUtterance = question
+        case .ordinary:
+            text = heard
+        }
+        guard spokenTurnGate.ownsRouting(admissionID) else { return }
+        // Whether this turn is saved, decided once, now: a private conversation that ends while the
+        // turn is still running (a disconnect) never lets its reply into the stored conversation.
+        let turnPersists = persistsConversation
 
         // Pre-LLM voice-command chain (Plan BG P2): teleprompter, HUD task card, HUD launcher
         // selection/open, and the intent-ignore filter each get first crack at the transcript. The
@@ -8779,10 +8943,12 @@ class AppState: ObservableObject, AppStateProtocol {
                 // refer back to the forecast just spoken.
                 llmService.recordExternalExchange(user: query, assistant: result)
 
-                if Config.conversationPersistenceEnabled {
+                if turnPersists {
                     conversationStore.appendMessage(role: "assistant", content: result,
                                                     toolNames: [directCall.toolName],
                                                     toThread: turnThreadId)
+                } else {
+                    notePrivateTurn(role: "assistant", content: result)
                 }
 
                 // The tool ran while the conversation cue played; the answer waits for it to end.
@@ -9102,8 +9268,11 @@ class AppState: ObservableObject, AppStateProtocol {
                         hasFollowUps: !llmService.replyFollowUps.isEmpty || quietEnding.sawFollowUps)
 
                     // Save to conversation store — in the thread the question went into, which in
-                    // push-to-talk is no longer guaranteed to be the active one by now.
-                    if Config.conversationPersistenceEnabled {
+                    // push-to-talk is no longer guaranteed to be the active one by now. A private
+                    // turn's reply goes to its transcript (Plan LU §3), decided when the turn began.
+                    if !turnPersists {
+                        notePrivateTurn(role: "assistant", content: response)
+                    } else {
                         // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
                         let attachments = llmService.takeReplyWebAttachments()
                         conversationStore.appendMessage(role: "assistant", content: response,
@@ -9223,8 +9392,18 @@ class AppState: ObservableObject, AppStateProtocol {
     func sendTextMessage(_ text: String, imageData: Data? = nil, speakResponse: Bool = true,
                          recordUserTurn: Bool = true) async {
         guard acceptsTypedTurn else { return }
-        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+        // Plan LU §2: a typed "off the record" starts a private conversation as a spoken one does,
+        // before anything is saved. A held question replayed on return is not typed now.
+        var routed = PrivatePhraseOutcome.ordinary
+        if recordUserTurn { routed = await routePrivatePhrase(typed, voice: false, speak: speakResponse) }
+        let query: String
+        switch routed {
+        case .handled: return
+        case .continueWith(let question): query = question
+        case .ordinary: query = typed
+        }
         noteTypeInstead(.typedTurn)   // Plan JM P1: a typed turn clears the "Type instead" chip
         // Plan W: a typed turn is the person being here, as a spoken one is. A held question
         // replayed on return is not a fresh interaction.
@@ -9247,7 +9426,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // an answer to it.
         if recordUserTurn, imageData == nil, let reply = guidedJobFlow.handleTypedAnswer(query) {
             PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("jobQuestionTyped"))
-            if Config.conversationPersistenceEnabled {
+            if persistsConversation {
                 if conversationStore.activeThreadId == nil {
                     conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
                 }
@@ -9259,9 +9438,12 @@ class AppState: ObservableObject, AppStateProtocol {
             return
         }
 
-        // Track in conversation store
+        // Track in conversation store — or, in a private conversation, in its transcript only.
         var turnQuestionId: String?
-        if Config.conversationPersistenceEnabled {
+        let turnPersists = persistsConversation
+        if !turnPersists {
+            if recordUserTurn { notePrivateTurn(role: "user", content: query) }
+        } else {
             if conversationStore.activeThreadId == nil {
                 conversationStore.startThread(mode: currentMode.rawValue, personaId: activePersona?.id)
             }
@@ -9282,16 +9464,18 @@ class AppState: ObservableObject, AppStateProtocol {
         let answeringMessageId = turnQuestionId
         // The thread this question went into; the reply is filed there even if the wearer moves to
         // another conversation while the model is thinking.
-        let turnThreadId = Config.conversationPersistenceEnabled ? conversationStore.activeThreadId : nil
+        let turnThreadId = turnPersists ? conversationStore.activeThreadId : nil
 
         // Plan GE: a typed turn without signal is served on the phone exactly as a spoken one is.
         var handoffPlan = connectivityHandoff.planTurn(query)
         if case .deterministic = handoffPlan {
             if let reply = await phoneReplyWithoutModel(handoffPlan, query: query) {
                 lastResponse = reply
-                if Config.conversationPersistenceEnabled {
+                if turnPersists {
                     conversationStore.appendMessage(role: "assistant", content: reply, answeredOnDevice: true,
                                                     toThread: turnThreadId)
+                } else {
+                    notePrivateTurn(role: "assistant", content: reply)
                 }
                 if speakResponse { await speechService.speak(reply, source: .phoneAnswer) }
                 return
@@ -9301,9 +9485,11 @@ class AppState: ObservableObject, AppStateProtocol {
         if case .hold = handoffPlan {
             let line = await phoneReplyWithoutModel(.hold, query: query) ?? HandoffAnnouncer.heldFirstLine
             lastResponse = line
-            if Config.conversationPersistenceEnabled {
+            if turnPersists {
                 conversationStore.appendMessage(role: "assistant", content: line, answeredOnDevice: true,
                                                 toThread: turnThreadId)
+            } else {
+                notePrivateTurn(role: "assistant", content: line)
             }
             if speakResponse { await speechService.speak(line, source: .phoneAnswer) }
             return
@@ -9324,8 +9510,9 @@ class AppState: ObservableObject, AppStateProtocol {
         _ = nativeToolRouter.takeTurnToolNames()  // a cancelled or failed prior turn's tools are not this turn's
         speechService.startThinkingSound()
 
-        // Live-stream the reply into the Chat thread (where the provider supports it).
-        let streamThreadId = conversationStore.activeThreadId
+        // Live-stream the reply into the Chat thread (where the provider supports it). A private
+        // reply never streams into the stored conversation's page.
+        let streamThreadId = turnPersists ? conversationStore.activeThreadId : nil
         if let streamThreadId { streamingTurn = StreamingTurn(threadId: streamThreadId, text: "") }
 
         // See the photo turn: the generation this answer belongs to.
@@ -9405,7 +9592,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     // What the turn held and did not run goes with the reply (see the spoken path).
                     let heldActions = nativeToolRouter.takeTurnUnrunActions()
                     llmService.noteHeldActions(heldActions)
-                    if Config.conversationPersistenceEnabled {
+                    if !turnPersists {
+                        notePrivateTurn(role: "assistant", content: response)
+                    } else {
                         // Plan KZ: the reply's web sources and Google's Search Suggestions go with it.
                         let attachments = llmService.takeReplyWebAttachments()
                         conversationStore.appendMessage(role: "assistant", content: response,
@@ -9427,7 +9616,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     // awaited: the reply is already accepted, and a memory pass is never
                     // something to wait for. It refuses itself when the conditions aren't met.
                     let enrichedTurn = CompletedTurn(userText: query, assistantText: response)
-                    let enrichedSession = conversationStore.activeThreadId
+                    let enrichedSession = turnThreadId
                     Task {
                         await MemoryLoopService.shared.enrich(turn: enrichedTurn,
                                                               sessionID: enrichedSession)
@@ -9673,7 +9862,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // Open question 1: a preamble said before a tool runs stays in the transcript as its own
         // line, so what was heard is what is shown.
         stream.onPreamble = { [weak self] line in
-            guard let self, Config.conversationPersistenceEnabled else { return }
+            guard let self else { return }
+            guard self.persistsConversation else {
+                self.notePrivateTurn(role: "assistant", content: line)
+                return
+            }
             self.conversationStore.appendMessage(role: "assistant", content: line, toThread: threadId)
         }
         return stream
@@ -9792,7 +9985,7 @@ class AppState: ObservableObject, AppStateProtocol {
             },
             displayShow: { [weak self] text, icon in
                 guard let self, self.glassesDisplay.deviceSupportsDisplay() else { return false }
-                self.glassesDisplay.showNotification(title: "Agent", body: text, icon: Self.remoteHUDIcon(for: icon))
+                self.glassesDisplay.showNotification(title: String(localized: "Agent"), body: text, icon: Self.remoteHUDIcon(for: icon))
                 return true
             },
             displayClear: { [weak self] in

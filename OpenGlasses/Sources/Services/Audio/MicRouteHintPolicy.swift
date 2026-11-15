@@ -23,7 +23,7 @@ struct MicRouteHintPolicy: Equatable, Sendable {
 
     /// The sentence the hint shows. Names the real place the switch lives: the Microphone picker
     /// on the Hardware & Privacy screen under Devices & Privacy.
-    static let message = "The phone's mic hears better in a loud room — choose iPhone Mic in Settings › Devices & Privacy › Hardware & Privacy."
+    static let message = String(localized: "The phone's mic hears better in a loud room — choose iPhone Mic in Settings › Devices & Privacy › Hardware & Privacy.")
 
     private(set) var hasHinted = false
 

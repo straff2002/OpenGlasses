@@ -219,7 +219,7 @@ class GeminiLiveService: ObservableObject {
             return false
         }
         guard request.url != nil else {
-            connectionState = .error("No Gemini API key configured")
+            connectionState = .error(String(localized: "No Gemini API key configured"))
             return false
         }
 
@@ -333,7 +333,7 @@ class GeminiLiveService: ObservableObject {
     /// shape — the reschedule is driven by `connect()` returning false, not by an event.
     private func handleConnectTimedOut() {
         if connectionState == .connecting || connectionState == .settingUp {
-            connectionState = .error("Connection timed out")
+            connectionState = .error(String(localized: "Connection timed out"))
         }
         resolveConnect(success: false)
     }
@@ -458,7 +458,7 @@ class GeminiLiveService: ObservableObject {
             connectionState = .ready
             return finishConnect(success: true)
         case .setupTimedOut:
-            connectionState = .error("Connection timed out")
+            connectionState = .error(String(localized: "Connection timed out"))
             return finishConnect(success: false)
         case .setupRejected(let reason):
             connectionState = .error(reason)
@@ -517,7 +517,7 @@ class GeminiLiveService: ObservableObject {
 
         guard let delay = reconnectPolicy.delay(forAttempt: reconnectAttempts + 1) else {
             PrivacyLog.realtimeReconnectExhausted(.gemini, attempts: maxReconnectAttempts)
-            connectionState = .error("Connection lost after \(maxReconnectAttempts) reconnect attempts")
+            connectionState = .error(String(localized: "Connection lost after \(maxReconnectAttempts) reconnect attempts"))
             reconnecting = false
             // Disarmed *before* the terminal cue: the wearer is about to be told nothing further is
             // coming, and that has to be true at the moment it is said (Plan FF P1/PR5).

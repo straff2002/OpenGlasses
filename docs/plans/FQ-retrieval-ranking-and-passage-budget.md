@@ -1,7 +1,10 @@
 # Plan FQ — Retrieval Ranking, Query Variants and the Passage Budget
 
 **Status:** 📝 Drafted 2026-09-21. Nothing in this plan is implemented. Phase 1 is a measuring
-stick and must land before Phases 2 and 3, which are judged against the baseline it records.
+stick and must land before Phases 2 and 3, which are judged against the baseline it records. **Amended 2026-11-15:** §4 adds three selection rules (a context fill for
+broad questions, a two-passage floor on trimming, the best passage per manual first), each only after
+the evidence gate has accepted, and P1 notes the paired bootstrap comparison every ranking change is
+now judged by.
 **Origin:** [Plan EJ](EJ-manual-retrieval-fidelity.md) fixed what the first real OEM manual pair
 exposed and left two things behind. The first is an instrument gap: the calibration harness scores
 `recall@4` and insufficiency recall, and neither can see *where in the four* a correct passage
@@ -270,6 +273,91 @@ row is more likely to be redundant (both are about the machine in the room); whe
 identified, both citations help the technician work out which manual applies. That is a more precise
 rule and a less predictable one, and predictability in what gets spoken is worth something.
 
+### 4 · Added 2026-11-15 — broad questions, a minimum of evidence, the best passage per manual
+
+*Added 2026-11-15. Nothing above is changed by it.* Read against `main` on 2026-11-15. Since §1–§3
+were written the ranking has gained tiers: a named table (Plan JJ), a clause (Plan IN), the code lead
+(`VaultRetriever.codeLeadPlaces`, Plan KO) and weighed words inside a group (Plan IV P7). So "inside
+each ranking group" in §3 now means inside each tier of the order `VaultRetriever` sorts by, and the
+line numbers in *Verified starting point* are stale; the symbols they name still stand.
+
+**How the gate decides, which all three items turn on.** `RetrievalEvidencePolicy` is a *per-passage*
+gate. `decide` keeps every ranked passage for which `isEvidence` holds (a verbatim code, or the
+similarity floor, with `fullMatchFloor` where a backend sets it, **and** the lexical criterion), takes
+`prefix(limit)` of them, and returns `.insufficient` when none holds. There is no second "selection
+threshold" after the gate: the gate's test is the selection. The relative `margin` exists and ships
+off (`.infinity`), because a margin can trim a tail and can never refuse.
+
+#### 4a · A relative floor for broad questions
+
+*"What is this manual for?"*, *"the key points of the installation section"*: nothing literally
+answers, one or two passages clear the gate, and the model is left with a thin context.
+
+**As first proposed, this conflicts with the gate.** Making the threshold `min(threshold, ratio × best
+score)`, never below a low floor, lowers the bar inside `isEvidence`. Passages the gate refuses today
+would become evidence, and a question the gate refuses outright today could become sufficient. That is
+what every change in this plan must not do (§2's rule: a variant can reach a passage, never justify
+one). It would also do little on the word-average backend, where similarity is flat (0.84–0.92), so
+`ratio × best` admits everything, and the lexical criterion, not the floor, is what refuses.
+
+**Recommended instead: a context fill after acceptance.**
+- It runs only when `decide` has returned `.sufficient` and the evidence holds fewer than `limit`
+  manual passages.
+- Its candidates are ranked passages the gate did not accept, from the manuals the accepted evidence
+  came from, whose similarity is at least `max(lowFloor, ratio × the best evidence similarity)` and
+  which share at least one content term with the question, so boilerplate can't fill the slots.
+- They are placed after the evidence and labelled to the model as nearby context, not the answer, the
+  way `Passage.teamLearningLabel` labels a team learning. They never make an outcome sufficient, and
+  `boundedOutcome`'s rule that a selection without a manual passage is demoted holds for them too.
+- The trigger is a pure predicate on the **turn**, not on scores: no code-like token, few content
+  terms, and an overview word (*purpose, overview, key points, summary, about, what is … for*). A
+  specific question that merely scored low never fires it.
+- `ratio` and `lowFloor` are variant columns in P1's harness and ship off until measured.
+
+A question the gate refuses stays refused. Lowering the gate's own floor for broad questions would be a
+gate change, measured first on insufficiency recall alongside Plan EJ's calibration; not recommended.
+
+#### 4b · Always keep a little evidence
+
+*"When selection leaves fewer than two passages, keep the best two."* Against today's code, `prefix(limit)`
+never leaves fewer than the evidence holds, so "fewer than two" means the gate accepted one, and adding a
+second would add a refused passage. The stages that can *remove* accepted passages are §3's MMR, 4c below
+and `boundedOutcome` (the character budget).
+
+**Recommended: a floor on removal, not an addition.** No selection stage after the gate may cut the
+accepted evidence below `min(2, evidence count)`: MMR and the per-manual pass stop trimming at two.
+`boundedOutcome` keeps its own rule (it drops whole passages only for the budget, and its notice says so).
+When the gate accepted a single passage, the second slot is 4a's context fill if a candidate qualifies,
+labelled as context, and otherwise stays empty. It is never a way past the gate.
+
+#### 4c · The best passage per manual first
+
+When several manuals are in scope (a mixed vault, or a personal library's selected manuals), the first
+slots of a tier go to the best evidence passage of each manual, in rank order, before MMR fills the rest.
+- **Only among evidence.** Every candidate has already cleared the gate, so the separate low floor
+  first proposed for this rule is not needed (recommended: drop it).
+- **Inside each tier, never across.** A named table, a clause and the code lead keep their places, so
+  a token hit in one manual is never displaced by another manual's best prose passage.
+- **With the cross-manual exemption.** §3 exempts cross-manual token hits from MMR, so the same row in
+  two manuals both survive. In the token tier the per-manual pass places each manual's best token hit
+  first, which is the pair the exemption already protects; in the prose tier it places each manual's
+  best prose passage first and MMR fills after. The two rules agree: each keeps one passage per manual
+  where each manual has one.
+- **With an identified machine** (`FieldSessionService.retrievalModelScope`, Plan EL), a manual's best
+  passage that carries the model-mismatch penalty (`Passage.modelPenalty`) gets no reserved slot, so
+  another model's manual can't crowd out the machine's own.
+- `ManualPassageLimit`'s rule (a mixed vault's limit set by the best passage's document) is unchanged.
+
+**Where these land.** With P3, after P1's baseline and P2's variants: 4b with MMR, then 4c, then 4a, each
+its own commit and its own variant column. Tests: `RetrievalContextFillTests` (a refused question stays
+refused; the fill runs only after `.sufficient`; filled passages are labelled and never make an outcome
+sufficient; the trigger ignores a specific question with low scores), `EvidenceFloorTests` (MMR and the
+per-manual pass never trim below two), `PerManualFirstTests` (tiers untouched; one passage per manual in
+the prose tier; the cross-manual token pair kept; a penalised manual gets no reserved slot). Acceptance as
+P3's, plus: insufficiency recall and the in-scope refusal rate unchanged to three decimals (none of the
+three can change a verdict), and on multi-manual questions in the answer key, more of the answering
+manuals cited, judged by the paired comparison below.
+
 ## Phases (one PR each)
 
 House style: deterministic core first, the live edge last. All three phases are headless.
@@ -283,6 +371,12 @@ House style: deterministic core first, the live edge last. All three phases are 
   nDCG: empty ranked list, all-relevant, relevant-at-tail, a list that elides misses must *not*
   silently score well — assert the shape contract), `RetrievalGateCalibrationTests` unchanged in its
   existing assertions.
+  *Added 2026-11-15:* the eval harnesses (`Scripts/retrieval-eval`, `Scripts/table-lookup-eval`) now
+  print bootstrap intervals and, given `RETRIEVAL_EVAL_BASELINE` (an earlier run's outcomes file), a
+  paired comparison of this run against that one with its interval (PR 1069, open at the time of
+  writing). Every ranking change in this plan (P2's variants, P3's MMR, §4's three rules) is compared
+  that way against the run before it. A change whose paired interval includes 0 has not been shown to
+  help and does not ship as a default.
 - **P2 — query variants (one PR).** §2. A pure `RetrievalQueryVariants` type beside
   `LexicalSupport` with the four rules and the cap; an ordered-content-terms helper; the
   low-recall predicate as its own pure function; the wiring inside `VaultRetriever.retrieve` between

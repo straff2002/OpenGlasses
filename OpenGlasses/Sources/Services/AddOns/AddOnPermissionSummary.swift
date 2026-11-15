@@ -27,7 +27,7 @@ enum AddOnPermissionSummary {
     }
 
     /// Shown on every sheet: what no add-on can ever reach — these aren't permissions the format has.
-    static let neverLine = "It can never reach your contacts, camera, health data, messages, calendar, photos or microphone."
+    static let neverLine = String(localized: "It can never reach your contacts, camera, health data, messages, calendar, photos or microphone.")
 
     static func lines(for permissions: RecipeAddOnManifest.Permissions) -> [Line] {
         var lines: [Line] = []
@@ -39,16 +39,16 @@ enum AddOnPermissionSummary {
             }
             var seen = Set<String>()
             let unique = domains.filter { seen.insert($0).inserted }
-            lines.append(.init(kind: .network, text: "Connect to: \(unique.joined(separator: ", "))"))
+            lines.append(.init(kind: .network, text: String(localized: "Connect to: \(unique.joined(separator: ", "))")))
         }
         if permissions.location {
-            lines.append(.init(kind: .location, text: "Use your approximate location (about 1 km) when you ask it something"))
+            lines.append(.init(kind: .location, text: String(localized: "Use your approximate location (about 1 km) when you ask it something")))
         }
         if permissions.memory {
-            lines.append(.init(kind: .memory, text: "Save things to your memory. It can't read what's already there."))
+            lines.append(.init(kind: .memory, text: String(localized: "Save things to your memory. It can't read what's already there.")))
         }
         if permissions.display {
-            lines.append(.init(kind: .display, text: "Show cards on your phone, watch and glasses display"))
+            lines.append(.init(kind: .display, text: String(localized: "Show cards on your phone, watch and glasses display")))
         }
         for capability in AddOnReservedCapability.allCases where permissions.reserved.contains(capability) {
             lines.append(.init(kind: .init(capability), text: capability.summaryText))

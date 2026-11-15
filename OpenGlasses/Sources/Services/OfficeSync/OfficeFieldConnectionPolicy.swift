@@ -163,44 +163,44 @@ enum OfficeFieldConnectionPolicy {
         case .unavailable:
             return nil
         case .connected(.direct):
-            return Status(title: "Connected to office — direct", detail: nil, systemImage: "checkmark.circle")
+            return Status(title: String(localized: "Connected to office — direct"), detail: nil, systemImage: "checkmark.circle")
         case .connected(.relay):
-            return Status(title: "Connected to office — via relay",
-                          detail: "Through a community relay. The connection is still encrypted end to end.",
+            return Status(title: String(localized: "Connected to office — via relay"),
+                          detail: String(localized: "Through a community relay. The connection is still encrypted end to end."),
                           systemImage: "checkmark.circle")
         case .waiting(.automatic):
-            return Status(title: "Waiting for the office",
-                          detail: "The office computer has to be on, with Avenkin Office open.",
+            return Status(title: String(localized: "Waiting for the office"),
+                          detail: String(localized: "The office computer has to be on, with Avenkin Office open."),
                           systemImage: "hourglass")
         case .waiting(.privateLan):
-            return Status(title: "Office network only — waiting",
-                          detail: "This organisation connects on the office network only.",
+            return Status(title: String(localized: "Office network only — waiting"),
+                          detail: String(localized: "This organisation connects on the office network only."),
                           systemImage: "hourglass")
         case .paused:
-            return Status(title: "Office connection paused", detail: nil, systemImage: "pause.circle")
+            return Status(title: String(localized: "Office connection paused"), detail: nil, systemImage: "pause.circle")
         case .stopped(.notPaired):
-            return Status(title: "Not paired with the office",
-                          detail: "Pair this phone at the office to connect.",
+            return Status(title: String(localized: "Not paired with the office"),
+                          detail: String(localized: "Pair this phone at the office to connect."),
                           systemImage: "link")
         case .stopped(.pairingExpired):
-            return Status(title: "Office pairing has expired",
-                          detail: "Pair this phone again at the office.",
+            return Status(title: String(localized: "Office pairing has expired"),
+                          detail: String(localized: "Pair this phone again at the office."),
                           systemImage: "exclamationmark.triangle")
         case .stopped(.managementLapsed):
-            return Status(title: "Your organisation's management period has lapsed",
-                          detail: "Pair this phone again at the office.",
+            return Status(title: String(localized: "Your organisation's management period has lapsed"),
+                          detail: String(localized: "Pair this phone again at the office."),
                           systemImage: "exclamationmark.triangle")
         case .stopped(.pairingReplaced):
-            return Status(title: "This office pairing was replaced",
-                          detail: "Pair this phone again at the office.",
+            return Status(title: String(localized: "This office pairing was replaced"),
+                          detail: String(localized: "Pair this phone again at the office."),
                           systemImage: "exclamationmark.triangle")
         case .stopped(.pairingInvalid):
-            return Status(title: "Office pairing no longer matches this phone",
-                          detail: "Pair this phone again at the office.",
+            return Status(title: String(localized: "Office pairing no longer matches this phone"),
+                          detail: String(localized: "Pair this phone again at the office."),
                           systemImage: "exclamationmark.triangle")
         case .stopped(.noOfficeAddress):
-            return Status(title: "Office network only — no office address",
-                          detail: "On the office's network, open Pair with Avenkin Office and use Test office connection.",
+            return Status(title: String(localized: "Office network only — no office address"),
+                          detail: String(localized: "On the office's network, open Pair with Avenkin Office and use Test office connection."),
                           systemImage: "wifi.exclamationmark")
         }
     }

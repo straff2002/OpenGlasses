@@ -13,10 +13,10 @@ enum KokoroError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notCompiledIn: return "Kokoro engine is not compiled into this build"
-        case .modelUnavailable: return "Kokoro model is not downloaded"
-        case .modelLoadFailed: return "Failed to load the Kokoro model"
-        case .inferenceFailed: return "Kokoro speech synthesis failed"
+        case .notCompiledIn: return String(localized: "Kokoro engine is not compiled into this build")
+        case .modelUnavailable: return String(localized: "Kokoro model is not downloaded")
+        case .modelLoadFailed: return String(localized: "Failed to load the Kokoro model")
+        case .inferenceFailed: return String(localized: "Kokoro speech synthesis failed")
         }
     }
 }

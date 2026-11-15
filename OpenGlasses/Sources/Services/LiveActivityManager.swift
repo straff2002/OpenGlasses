@@ -90,6 +90,13 @@ class LiveActivityManager {
         }
     }
 
+    /// The reply line the Live Activity shows: the start of the reply, or the fixed line in its
+    /// place while a private conversation is open (Plan LU §3). Pure.
+    nonisolated static func snippet(_ lastResponse: String, placeholder: String?) -> String {
+        if let placeholder { return placeholder }
+        return String(lastResponse.prefix(80))
+    }
+
     /// Update the Live Activity with current state.
     func update(
         isConnected: Bool,
@@ -103,7 +110,8 @@ class LiveActivityManager {
     ) {
         guard let activity = currentActivity else { return }
 
-        let snippet = String(lastResponse.prefix(80))
+        let snippet = Self.snippet(lastResponse,
+                                   placeholder: PrivateConversationGate.placeholder(for: .liveActivitySnippet))
         let personas = Config.enabledPersonas.prefix(3).map {
             GlassesActivityAttributes.ContentState.PersonaButton(id: $0.id, name: $0.name)
         }

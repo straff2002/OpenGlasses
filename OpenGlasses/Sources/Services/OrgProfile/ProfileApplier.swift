@@ -150,7 +150,7 @@ enum ProfileApplier {
                 result.adminPolicy = policy
             } else {
                 result.drops.append(Drop(key: "edition",
-                                         reason: .invalidValue("\u{201C}\(raw)\u{201D} is not an edition this version of the app knows")))
+                                         reason: .invalidValue(String(localized: "\u{201C}\(raw)\u{201D} is not an edition this version of the app knows"))))
             }
         } else {
             // A passcode or card opens what an edition hides; with no edition there is nothing to open.
@@ -158,7 +158,7 @@ enum ProfileApplier {
             for (key, present) in [("adminPasscode", layer.adminPasscode != nil), ("adminCard", layer.adminCard != nil),
                                    ("lockdown", layer.lockdown != nil)]
             where present {
-                result.drops.append(Drop(key: key, reason: .invalidValue("it only applies with an edition")))
+                result.drops.append(Drop(key: key, reason: .invalidValue(String(localized: "it only applies with an edition"))))
             }
         }
         if let spec = layer.aiModel {

@@ -112,7 +112,7 @@ enum ConversationContinuity {
     /// screen — that conversation has ended, and pretending otherwise is the confusion this
     /// header exists to remove.
     static func headerTitle(for store: ConversationStore) -> String {
-        activeThread(in: store)?.title ?? "New conversation"
+        activeThread(in: store)?.title ?? String(localized: "New conversation")
     }
 
     /// The thread a "carry on" offer would resume: the most recent one, and only while nothing is
@@ -170,8 +170,8 @@ enum ConversationContinuity {
 
         var confirmTitle: String {
             switch self {
-            case .one: return "Delete this conversation?"
-            case .all(let count): return "Delete all \(count) conversation\(count == 1 ? "" : "s")?"
+            case .one: return String(localized: "Delete this conversation?")
+            case .all(let count): return String(localized: "Delete all \(count) conversation\(count == 1 ? "" : "s")?")
             }
         }
 
@@ -181,20 +181,16 @@ enum ConversationContinuity {
         var confirmMessage: String {
             switch self {
             case .one(_, let title):
-                return "\"\(title)\" is deleted for good, here and in History — including its "
-                     + "encrypted copy. This isn't a hide. Your memories and brain are untouched."
+                return String(localized: "\"\(title)\" is deleted for good, here and in History — including its encrypted copy. This isn't a hide. Your memories and brain are untouched.")
             case .all(let count):
-                return "All \(count) conversation\(count == 1 ? "" : "s") — every message in "
-                     + "them — are deleted for good, here and in History, including their encrypted "
-                     + "copies. This isn't a hide and it cannot be undone. Your memories and "
-                     + "brain are untouched."
+                return String(localized: "All \(count) conversation\(count == 1 ? "" : "s") — every message in them — are deleted for good, here and in History, including their encrypted copies. This isn't a hide and it cannot be undone. Your memories and brain are untouched.")
             }
         }
 
         var confirmButton: String {
             switch self {
-            case .one: return "Delete"
-            case .all: return "Delete All"
+            case .one: return String(localized: "Delete")
+            case .all: return String(localized: "Delete All")
             }
         }
     }
@@ -244,6 +240,9 @@ enum ConversationContinuity {
         case liveTurn
         /// Genuinely nothing said. The only state the empty copy belongs in.
         case empty
+        /// A private conversation is open (Plan LU P1b): its in-memory transcript, never the stored
+        /// conversation that stays active underneath it, which comes back unchanged at the end.
+        case privateConversation
     }
 
     /// - Parameters:
@@ -254,10 +253,14 @@ enum ConversationContinuity {
         activeThreadMessageCount: Int,
         isRealtimeSession: Bool,
         hasLiveUserText: Bool,
-        hasLiveAssistantText: Bool
+        hasLiveAssistantText: Bool,
+        isPrivate: Bool = false
     ) -> PageContent {
         let hasLiveText = hasLiveUserText || hasLiveAssistantText
         if isRealtimeSession { return hasLiveText ? .liveTurn : .empty }
+        // Before the stored thread: a private turn is never drawn as part of it, and the stored
+        // thread is never drawn as if it were the private conversation.
+        if isPrivate { return .privateConversation }
         if let activeThreadId, activeThreadMessageCount > 0 {
             return .history(threadId: activeThreadId)
         }
@@ -269,13 +272,15 @@ enum ConversationContinuity {
 
     /// The same decision from the live objects, so the page and its tests ask one question.
     static func pageContent(store: ConversationStore, isRealtimeSession: Bool,
-                            liveUserText: String, liveAssistantText: String) -> PageContent {
+                            liveUserText: String, liveAssistantText: String,
+                            isPrivate: Bool = false) -> PageContent {
         pageContent(
             activeThreadId: store.activeThreadId,
             activeThreadMessageCount: activeThread(in: store)?.messages.count ?? 0,
             isRealtimeSession: isRealtimeSession,
             hasLiveUserText: !liveUserText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            hasLiveAssistantText: !liveAssistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            hasLiveAssistantText: !liveAssistantText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            isPrivate: isPrivate
         )
     }
 
@@ -288,7 +293,7 @@ enum ConversationContinuity {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         let when = formatter.localizedString(for: thread.updatedAt, relativeTo: now)
-        let active = thread.id == activeThreadId ? ", current conversation" : ""
+        let active = thread.id == activeThreadId ? String(localized: ", current conversation") : ""
         return "\(thread.title), \(when)\(active)"
     }
 }

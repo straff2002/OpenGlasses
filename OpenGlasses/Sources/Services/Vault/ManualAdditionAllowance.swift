@@ -159,26 +159,26 @@ enum ManualAdditionAllowance {
         switch decision {
         case .allowed: return nil
         case .unavailable:
-            return "Your manual history could not be checked. Unlock the phone and try again. You can still read and remove your manuals."
+            return String(localized: "Your manual history could not be checked. Unlock the phone and try again. You can still read and remove your manuals.")
         case .wouldExceed(let remaining, let next):
             let allowed = limits?.additions?.newPerWindow ?? 0
             let days = Int(((limits?.additions?.window ?? 0) / 86_400).rounded())
-            let returning = " Manuals you've had before can come back any time."
+            let returning = String(localized: " Manuals you've had before can come back any time.")
             guard let next else {
-                return "This set has more new manuals than can be added in \(days) days, so nothing was added." + returning
+                return String(localized: "This set has more new manuals than can be added in \(days) days, so nothing was added.") + returning
             }
             let lead = remaining == 0
-                ? "You've added \(allowed) new manuals in the last \(days) days."
-                : "This set has more new manuals than the \(remaining) you can add now, so nothing was added."
-            return lead + " Your next new manual can be added on \(dayMonth(next, locale: locale))." + returning
+                ? String(localized: "You've added \(allowed) new manuals in the last \(days) days.")
+                : String(localized: "This set has more new manuals than the \(remaining) you can add now, so nothing was added.")
+            return lead + String(localized: " Your next new manual can be added on \(dayMonth(next, locale: locale)).") + returning
         }
     }
 
     /// The upload sheet's line: only once the free fills are used and one or no addition is left.
     static func uploadNotice(_ status: Status?, locale: Locale = .current) -> String? {
         guard let status, status.freeRemaining == 0, status.remaining <= 1 else { return nil }
-        if status.remaining == 1 { return "1 new manual left for now. Manuals you've had before don't count." }
+        if status.remaining == 1 { return String(localized: "1 new manual left for now. Manuals you've had before don't count.") }
         guard let next = status.nextAvailable else { return nil }
-        return "No new manuals left until \(dayMonth(next, locale: locale)). Manuals you've had before can still come back."
+        return String(localized: "No new manuals left until \(dayMonth(next, locale: locale)). Manuals you've had before can still come back.")
     }
 }

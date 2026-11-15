@@ -58,17 +58,17 @@ enum JobRecordingAvailability {
         var explanation: String {
             switch self {
             case .medicalComplianceMode:
-                return "Jobs can't be recorded while Medical Compliance is on."
+                return String(localized: "Jobs can't be recorded while Medical Compliance is on.")
             case .officeRouteRefused:
-                return "Medical Local Only is on, so a recording could not be sent to the office. Jobs can't be recorded while it is on."
+                return String(localized: "Medical Local Only is on, so a recording could not be sent to the office. Jobs can't be recorded while it is on.")
             case .forbiddenByOrganization:
-                return "Your organisation doesn't allow jobs to be recorded."
+                return String(localized: "Your organisation doesn't allow jobs to be recorded.")
             case .blurRequiredButNotPossible:
-                return "Your organisation requires faces to be blurred before a recording goes to the office, and this version of the app can't do that yet. So this job can't be recorded."
+                return String(localized: "Your organisation requires faces to be blurred before a recording goes to the office, and this version of the app can't do that yet. So this job can't be recorded.")
             case .noOpenJob:
-                return "There's no job open to record."
+                return String(localized: "There's no job open to record.")
             case .alreadyRecorded:
-                return "This job already has a recording."
+                return String(localized: "This job already has a recording.")
             case .unsyncedLimitReached:
                 return RetentionDecision.unsyncedLimitNote
             }

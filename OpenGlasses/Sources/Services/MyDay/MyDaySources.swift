@@ -53,7 +53,7 @@ final class GoalStoreDaySource: GoalsDaySource {
     func loadGoalSteps() async -> MyDaySourceLoad<[MyDayGoalStep]> {
         let store = store()
         guard !store.isUnreadable else {
-            return .init(value: [], state: .unavailable(.goals, message: "Goals could not be opened."))
+            return .init(value: [], state: .unavailable(.goals, message: String(localized: "Goals could not be opened.")))
         }
         return .init(value: Self.nextSteps(store.goals), state: .available(.goals))
     }
@@ -88,7 +88,7 @@ extension EventKitDayStore: CalendarDaySource {
             guard try await requestCalendarAccess() else {
                 return .init(
                     value: [],
-                    state: .denied(.calendar, message: "Calendar access is off.")
+                    state: .denied(.calendar, message: String(localized: "Calendar access is off."))
                 )
             }
             let events = calendarEvents(from: start, to: end).map {
@@ -106,7 +106,7 @@ extension EventKitDayStore: CalendarDaySource {
         } catch {
             return .init(
                 value: [],
-                state: .unavailable(.calendar, message: "Calendar could not be loaded.")
+                state: .unavailable(.calendar, message: String(localized: "Calendar could not be loaded."))
             )
         }
     }
@@ -118,7 +118,7 @@ extension EventKitDayStore: RemindersDaySource {
             guard try await requestRemindersAccess() else {
                 return .init(
                     value: [],
-                    state: .denied(.reminders, message: "Reminders access is off.")
+                    state: .denied(.reminders, message: String(localized: "Reminders access is off."))
                 )
             }
             let reminders = await incompleteReminders().map {
@@ -135,7 +135,7 @@ extension EventKitDayStore: RemindersDaySource {
         } catch {
             return .init(
                 value: [],
-                state: .unavailable(.reminders, message: "Reminders could not be loaded.")
+                state: .unavailable(.reminders, message: String(localized: "Reminders could not be loaded."))
             )
         }
     }
@@ -168,7 +168,7 @@ final class NativeWeatherDaySource: WeatherDaySource {
         case .refused:
             return .init(
                 value: nil,
-                state: .unavailable(.weather, message: "Weather is off while Medical Local Only is on.")
+                state: .unavailable(.weather, message: String(localized: "Weather is off while Medical Local Only is on."))
             )
         case .failed(let failure):
             return .init(
@@ -181,11 +181,11 @@ final class NativeWeatherDaySource: WeatherDaySource {
     static func unavailableMessage(_ failure: WeatherFetchFailure) -> String {
         switch failure {
         case .noLocation, .placeNotFound:
-            return "Weather needs your location."
+            return String(localized: "Weather needs your location.")
         case .offline:
-            return "Weather needs a connection."
+            return String(localized: "Weather needs a connection.")
         case .serviceUnavailable:
-            return "Apple Weather is unavailable right now."
+            return String(localized: "Apple Weather is unavailable right now.")
         }
     }
 }

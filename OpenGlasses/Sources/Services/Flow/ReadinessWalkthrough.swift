@@ -51,14 +51,14 @@ enum ReadinessWalkthrough {
         var title: String {
             switch self {
             #if AVENKIN_PHONE_ONLY
-            case .registration: return "Setup"
+            case .registration: return String(localized: "Setup")
             #else
-            case .registration: return "Glasses"
+            case .registration: return String(localized: "Glasses")
             #endif
-            case .permissions: return "Permissions"
-            case .cameraEvidence: return "Camera picture"
-            case .spokenExchange: return "Microphone and voice"
-            case .readingRequest: return "Reading something"
+            case .permissions: return String(localized: "Permissions")
+            case .cameraEvidence: return String(localized: "Camera picture")
+            case .spokenExchange: return String(localized: "Microphone and voice")
+            case .readingRequest: return String(localized: "Reading something")
             }
         }
 
@@ -66,14 +66,14 @@ enum ReadinessWalkthrough {
         var purpose: String {
             switch self {
             #if AVENKIN_PHONE_ONLY
-            case .registration: return "Checks setup is finished."
+            case .registration: return String(localized: "Checks setup is finished.")
             #else
-            case .registration: return "Checks the glasses are paired and reachable."
+            case .registration: return String(localized: "Checks the glasses are paired and reachable.")
             #endif
-            case .permissions: return "Checks microphone, speech recognition and camera access."
-            case .cameraEvidence: return "Starts the camera and waits for a fresh picture."
-            case .spokenExchange: return "Checks the microphone is listening and you can hear a spoken line."
-            case .readingRequest: return "Takes one sharp photo and checks it is clear enough to read."
+            case .permissions: return String(localized: "Checks microphone, speech recognition and camera access.")
+            case .cameraEvidence: return String(localized: "Starts the camera and waits for a fresh picture.")
+            case .spokenExchange: return String(localized: "Checks the microphone is listening and you can hear a spoken line.")
+            case .readingRequest: return String(localized: "Takes one sharp photo and checks it is clear enough to read.")
             }
         }
     }
@@ -218,26 +218,26 @@ enum ReadinessWalkthrough {
         switch (reason, step) {
         case (.noGlasses, .registration):
             #if AVENKIN_PHONE_ONLY
-            return "This is an audio-only setup. The assistant can hear you and answer, but it can't see."
+            return String(localized: "This is an audio-only setup. The assistant can hear you and answer, but it can't see.")
             #else
-            return "No glasses are connected, so this is an audio-only setup. The assistant can hear you and answer, but it can't see."
+            return String(localized: "No glasses are connected, so this is an audio-only setup. The assistant can hear you and answer, but it can't see.")
             #endif
         case (.cameraPermissionOff, .registration):
-            return "The glasses are connected. Camera access is off, so this is an audio-only setup."
+            return String(localized: "The glasses are connected. Camera access is off, so this is an audio-only setup.")
         case (.noGlasses, _):
             #if AVENKIN_PHONE_ONLY
-            return "Audio-only setup: there is no live camera to check."
+            return String(localized: "Audio-only setup: there is no live camera to check.")
             #else
-            return "Audio-only setup: there are no glasses, so there is no camera to check."
+            return String(localized: "Audio-only setup: there are no glasses, so there is no camera to check.")
             #endif
         case (.cameraPermissionOff, _):
-            return "Audio-only setup: camera access is off, so there is no camera to check."
+            return String(localized: "Audio-only setup: camera access is off, so there is no camera to check.")
         }
     }
 
     /// Where a refused permission is actually granted. iOS asks once, so this is the only route.
     static let openSettingsInstruction =
-        "Open iPhone Settings, then Apps, then Avenkin, and turn the permission on there. iOS only asks once."
+        String(localized: "Open iPhone Settings, then Apps, then Avenkin, and turn the permission on there. iOS only asks once.")
 
     // MARK: - The table
 
@@ -260,9 +260,9 @@ enum ReadinessWalkthrough {
             return readingResult(reading)
         default:
             return Result(step: step,
-                          verdict: .failed(reason: "This check couldn't run."),
-                          spokenStatus: "\(step.title). This check couldn't run.",
-                          nextInstruction: "Close the check and start it again.",
+                          verdict: .failed(reason: String(localized: "This check couldn't run.")),
+                          spokenStatus: String(localized: "\(step.title). This check couldn't run."),
+                          nextInstruction: String(localized: "Close the check and start it again."),
                           retryAvailable: true)
         }
     }
@@ -286,21 +286,21 @@ enum ReadinessWalkthrough {
             let reason = BlindAssistantLaunchPolicy.SkipReason.setupNotFinished.summary
             return Result(step: .registration,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "\(Step.registration.title). \(reason)",
-                          nextInstruction: "Finish setup first, then run this check again.",
+                          spokenStatus: String(localized: "\(Step.registration.title). \(reason)"),
+                          nextInstruction: String(localized: "Finish setup first, then run this check again."),
                           retryAvailable: true)
         }
         guard inputs.glassesReady else {
             let note = audioOnlyNote(.noGlasses, at: .registration)
             return Result(step: .registration,
                           verdict: .passed(note: note),
-                          spokenStatus: "\(Step.registration.title). \(note)",
+                          spokenStatus: String(localized: "\(Step.registration.title). \(note)"),
                           nextInstruction: nil,
                           retryAvailable: true)
         }
         return Result(step: .registration,
                       verdict: .passed(note: nil),
-                      spokenStatus: "Glasses. Connected and reachable.",
+                      spokenStatus: String(localized: "Glasses. Connected and reachable."),
                       nextInstruction: nil,
                       retryAvailable: false)
     }
@@ -318,13 +318,13 @@ enum ReadinessWalkthrough {
             let note = audioOnlyNote(.cameraPermissionOff, at: .permissions)
             return Result(step: .permissions,
                           verdict: .passed(note: note),
-                          spokenStatus: "Permissions. Microphone and speech recognition are on. \(note)",
+                          spokenStatus: String(localized: "Permissions. Microphone and speech recognition are on. \(note)"),
                           nextInstruction: nil,
                           retryAvailable: true)
         }
         return Result(step: .permissions,
                       verdict: .passed(note: nil),
-                      spokenStatus: "Permissions. Microphone, speech recognition and camera are all on.",
+                      spokenStatus: String(localized: "Permissions. Microphone, speech recognition and camera are all on."),
                       nextInstruction: nil,
                       retryAvailable: false)
     }
@@ -332,7 +332,7 @@ enum ReadinessWalkthrough {
     private static func permissionFailure(_ reason: BlindAssistantLaunchPolicy.SkipReason) -> Result {
         Result(step: .permissions,
                verdict: .failed(reason: reason.summary),
-               spokenStatus: "Permissions. \(reason.summary)",
+               spokenStatus: String(localized: "Permissions. \(reason.summary)"),
                nextInstruction: openSettingsInstruction,
                retryAvailable: true)
     }
@@ -342,32 +342,31 @@ enum ReadinessWalkthrough {
             let note = audioOnlyNote(audioOnly, at: .cameraEvidence)
             return Result(step: .cameraEvidence,
                           verdict: .passed(note: note),
-                          spokenStatus: "Camera picture. \(note)",
+                          spokenStatus: String(localized: "Camera picture. \(note)"),
                           nextInstruction: nil,
                           retryAvailable: true)
         }
         guard camera.streamClaimed, let readiness = camera.readiness else {
             return Result(step: .cameraEvidence,
-                          verdict: .failed(reason: "The camera didn't start."),
-                          spokenStatus: "Camera picture. The camera didn't start.",
-                          nextInstruction: "Put the glasses on, check they aren't folded, and try again.",
+                          verdict: .failed(reason: String(localized: "The camera didn't start.")),
+                          spokenStatus: String(localized: "Camera picture. The camera didn't start."),
+                          nextInstruction: String(localized: "Put the glasses on, check they aren't folded, and try again."),
                           retryAvailable: true)
         }
         guard readiness.hasFreshVisualEvidence else {
             // The whole point of the step. A stream that is up, a socket that is open and an SDK
             // that reports connected all land here, because none of them is a picture.
-            let reason = "The glasses are connected, but no fresh picture arrived. "
-                + readiness.statusPhrase + "."
+            let reason = String(localized: "The glasses are connected, but no fresh picture arrived. \(readiness.statusPhrase).")
             return Result(step: .cameraEvidence,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Camera picture. \(reason)",
+                          spokenStatus: String(localized: "Camera picture. \(reason)"),
                           nextInstruction: readiness.controlHint
-                              ?? "Put the glasses on and try again.",
+                              ?? String(localized: "Put the glasses on and try again."),
                           retryAvailable: true)
         }
         return Result(step: .cameraEvidence,
                       verdict: .passed(note: nil),
-                      spokenStatus: "Camera picture. A fresh picture arrived from the glasses.",
+                      spokenStatus: String(localized: "Camera picture. A fresh picture arrived from the glasses."),
                       nextInstruction: nil,
                       retryAvailable: false)
     }
@@ -380,32 +379,32 @@ enum ReadinessWalkthrough {
             let reason = pausedCopy(pause)
             return Result(step: .spokenExchange,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Microphone and voice. \(reason)",
-                          nextInstruction: "Stop the other feature that's using the microphone, then try again.",
+                          spokenStatus: String(localized: "Microphone and voice. \(reason)"),
+                          nextInstruction: String(localized: "Stop the other feature that's using the microphone, then try again."),
                           retryAvailable: true)
         case .rebuild(let broken):
             let reason = brokenCopy(broken)
             return Result(step: .spokenExchange,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Microphone and voice. \(reason)",
-                          nextInstruction: "Try again — that restarts listening.",
+                          spokenStatus: String(localized: "Microphone and voice. \(reason)"),
+                          nextInstruction: String(localized: "Try again — that restarts listening."),
                           retryAvailable: true)
         case .refuse(let refusal):
             let reason = refusalCopy(refusal)
             return Result(step: .spokenExchange,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Microphone and voice. \(reason)",
+                          spokenStatus: String(localized: "Microphone and voice. \(reason)"),
                           nextInstruction: refusal == .noPermission
                               ? openSettingsInstruction
-                              : "Turn Silent Mode off, then try again.",
+                              : String(localized: "Turn Silent Mode off, then try again."),
                           retryAvailable: true)
         }
 
         guard let speech = exchange.speech else {
             return Result(step: .spokenExchange,
-                          verdict: .failed(reason: "The test line was never spoken."),
-                          spokenStatus: "Microphone and voice. The test line was never spoken.",
-                          nextInstruction: "Try again.",
+                          verdict: .failed(reason: String(localized: "The test line was never spoken.")),
+                          spokenStatus: String(localized: "Microphone and voice. The test line was never spoken."),
+                          nextInstruction: String(localized: "Try again."),
                           retryAvailable: true)
         }
 
@@ -413,29 +412,29 @@ enum ReadinessWalkthrough {
         case .completed:
             return Result(step: .spokenExchange,
                           verdict: .passed(note: nil),
-                          spokenStatus: "Microphone and voice. Listening is running, and you just heard a test line.",
+                          spokenStatus: String(localized: "Microphone and voice. Listening is running, and you just heard a test line."),
                           nextInstruction: nil,
                           retryAvailable: false)
         case .interrupted(let by):
             let reason = interruptedCopy(by)
             return Result(step: .spokenExchange,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Microphone and voice. \(reason)",
-                          nextInstruction: "Stay quiet for a moment and try again.",
+                          spokenStatus: String(localized: "Microphone and voice. \(reason)"),
+                          nextInstruction: String(localized: "Stay quiet for a moment and try again."),
                           retryAvailable: true)
         case .suppressed(let why):
             let reason = suppressedCopy(why)
             return Result(step: .spokenExchange,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Microphone and voice. \(reason)",
+                          spokenStatus: String(localized: "Microphone and voice. \(reason)"),
                           nextInstruction: suppressedInstruction(why),
                           retryAvailable: true)
         case .failed:
             // The reason string is an internal error summary; it is not read to the wearer.
             return Result(step: .spokenExchange,
-                          verdict: .failed(reason: "The test line couldn't be played."),
-                          spokenStatus: "Microphone and voice. The test line couldn't be played.",
-                          nextInstruction: "Check the volume and the audio route, then try again.",
+                          verdict: .failed(reason: String(localized: "The test line couldn't be played.")),
+                          spokenStatus: String(localized: "Microphone and voice. The test line couldn't be played."),
+                          nextInstruction: String(localized: "Check the volume and the audio route, then try again."),
                           retryAvailable: true)
         }
     }
@@ -445,7 +444,7 @@ enum ReadinessWalkthrough {
             let reason = audioOnlyNote(audioOnly, at: .readingRequest)
             return Result(step: .readingRequest,
                           verdict: .skipped(reason: reason),
-                          spokenStatus: "Reading something. Skipped. \(reason)",
+                          spokenStatus: String(localized: "Reading something. Skipped. \(reason)"),
                           nextInstruction: nil,
                           retryAvailable: false)
         }
@@ -453,23 +452,25 @@ enum ReadinessWalkthrough {
             let reason = ReadingCaptureOutcome.spokenUnavailable(unavailable)
             return Result(step: .readingRequest,
                           verdict: .failed(reason: reason),
-                          spokenStatus: "Reading something. \(reason)",
-                          nextInstruction: "Point the \(GlassesSupportPolicy.isSupported ? "glasses" : "camera") at something with writing on it and try again.",
+                          spokenStatus: String(localized: "Reading something. \(reason)"),
+                          nextInstruction: GlassesSupportPolicy.isSupported
+                              ? String(localized: "Point the glasses at something with writing on it and try again.")
+                              : String(localized: "Point the camera at something with writing on it and try again."),
                           retryAvailable: true)
         }
         guard let quality = reading.quality else {
             return Result(step: .readingRequest,
-                          verdict: .failed(reason: "No photo came back."),
-                          spokenStatus: "Reading something. No photo came back.",
-                          nextInstruction: "Try again.",
+                          verdict: .failed(reason: String(localized: "No photo came back.")),
+                          spokenStatus: String(localized: "Reading something. No photo came back."),
+                          nextInstruction: String(localized: "Try again."),
                           retryAvailable: true)
         }
         guard quality == .usable else {
             let reason = ReadingCaptureOutcome.spokenInstruction(for: quality,
                                                                  isReadingRequest: true)
             return Result(step: .readingRequest,
-                          verdict: .failed(reason: "The photo isn't clear enough to read from."),
-                          spokenStatus: "Reading something. The photo isn't clear enough to read from.",
+                          verdict: .failed(reason: String(localized: "The photo isn't clear enough to read from.")),
+                          spokenStatus: String(localized: "Reading something. The photo isn't clear enough to read from."),
                           nextInstruction: reason,
                           retryAvailable: true)
         }
@@ -477,16 +478,19 @@ enum ReadinessWalkthrough {
         case .camera:
             return Result(step: .readingRequest,
                           verdict: .passed(note: nil),
-                          spokenStatus: "Reading something. The photo is sharp enough to read fine print.",
+                          spokenStatus: String(localized: "Reading something. The photo is sharp enough to read fine print."),
                           nextInstruction: nil,
                           retryAvailable: false)
         case .fixture:
-            let note = "This device has no \(GlassesSupportPolicy.isSupported ? "glasses " : "")camera, so a stored test photo was measured instead. "
-                + "It shows the check itself works; it doesn't prove your camera does."
+            let note = GlassesSupportPolicy.isSupported
+                ? String(localized: "This device has no glasses camera, so a stored test photo was measured instead. It shows the check itself works; it doesn't prove your camera does.")
+                : String(localized: "This device has no camera, so a stored test photo was measured instead. It shows the check itself works; it doesn't prove your camera does.")
             return Result(step: .readingRequest,
                           verdict: .passed(note: note),
-                          spokenStatus: "Reading something. Passed on a stored test photo. \(note)",
-                          nextInstruction: "Run this check again on \(GlassesSupportPolicy.isSupported ? "the glasses" : "an iPhone") to test the real camera.",
+                          spokenStatus: String(localized: "Reading something. Passed on a stored test photo. \(note)"),
+                          nextInstruction: GlassesSupportPolicy.isSupported
+                              ? String(localized: "Run this check again on the glasses to test the real camera.")
+                              : String(localized: "Run this check again on an iPhone to test the real camera."),
                           retryAvailable: false)
         }
     }
@@ -499,31 +503,31 @@ enum ReadinessWalkthrough {
     private static func pausedCopy(_ pause: ListenerPauseReason) -> String {
         switch pause {
         case .sharedEngine:
-            return "Another feature is using the microphone right now."
+            return String(localized: "Another feature is using the microphone right now.")
         case .silence:
-            return "Listening is paused after a long quiet spell."
+            return String(localized: "Listening is paused after a long quiet spell.")
         case .speechGateClosed:
-            return "Listening, and waiting for someone to speak."
+            return String(localized: "Listening, and waiting for someone to speak.")
         }
     }
 
     private static func brokenCopy(_ broken: ListenerBreakReason) -> String {
         switch broken {
         case .engineStopped, .noRecognitionTask, .staleRecognitionTask:
-            return "The app thinks it's listening, but nothing is reaching the microphone."
+            return String(localized: "The app thinks it's listening, but nothing is reaching the microphone.")
         case .recognitionEnded:
-            return "The microphone is open, but speech recognition has stopped."
+            return String(localized: "The microphone is open, but speech recognition has stopped.")
         case .tapMissing:
-            return "The microphone is open and nothing is picking the sound up."
+            return String(localized: "The microphone is open and nothing is picking the sound up.")
         }
     }
 
     private static func refusalCopy(_ refusal: ListenerRefusal) -> String {
         switch refusal {
         case .silentMode:
-            return "Silent Mode is on, so the assistant isn't listening on its own."
+            return String(localized: "Silent Mode is on, so the assistant isn't listening on its own.")
         case .noIntent:
-            return "Listening is switched off."
+            return String(localized: "Listening is switched off.")
         case .noPermission:
             return BlindAssistantLaunchPolicy.SkipReason.microphonePermissionOff.summary
         }
@@ -532,40 +536,40 @@ enum ReadinessWalkthrough {
     private static func interruptedCopy(_ by: SpeechDeliveryOutcome.Interruption) -> String {
         switch by {
         case .bargeIn:
-            return "The test line was cut off because something was heard on the microphone."
+            return String(localized: "The test line was cut off because something was heard on the microphone.")
         case .stop:
-            return "The test line was stopped before it finished."
+            return String(localized: "The test line was stopped before it finished.")
         case .newUtterance:
-            return "Something else spoke over the test line."
+            return String(localized: "Something else spoke over the test line.")
         }
     }
 
     private static func suppressedCopy(_ why: SpeechDeliveryOutcome.SuppressionReason) -> String {
         switch why {
         case .muted:
-            return "Spoken output is muted, so the test line wasn't played."
+            return String(localized: "Spoken output is muted, so the test line wasn't played.")
         case .noRoute:
-            return "There's nowhere to play sound right now, so the test line wasn't played."
+            return String(localized: "There's nowhere to play sound right now, so the test line wasn't played.")
         case .silentMode:
-            return "Silent Mode is on, so the test line wasn't played."
+            return String(localized: "Silent Mode is on, so the test line wasn't played.")
         case .backgrounded:
-            return "The app wasn't in the foreground, so the test line wasn't played."
+            return String(localized: "The app wasn't in the foreground, so the test line wasn't played.")
         case .routeHeld:
-            return "The spoken interpreter is running, so the test line wasn't played."
+            return String(localized: "The spoken interpreter is running, so the test line wasn't played.")
         }
     }
 
     private static func suppressedInstruction(_ why: SpeechDeliveryOutcome.SuppressionReason) -> String {
         switch why {
-        case .muted: return "Turn spoken output back on, then try again."
+        case .muted: return String(localized: "Turn spoken output back on, then try again.")
         #if AVENKIN_PHONE_ONLY
-        case .noRoute: return "Check the audio output, then try again."
+        case .noRoute: return String(localized: "Check the audio output, then try again.")
         #else
-        case .noRoute: return "Put the glasses on, or check the audio output, then try again."
+        case .noRoute: return String(localized: "Put the glasses on, or check the audio output, then try again.")
         #endif
-        case .silentMode: return "Turn Silent Mode off, then try again."
-        case .backgrounded: return "Keep Avenkin open while the check runs, then try again."
-        case .routeHeld: return "Say 'stop translating', then try again."
+        case .silentMode: return String(localized: "Turn Silent Mode off, then try again.")
+        case .backgrounded: return String(localized: "Keep Avenkin open while the check runs, then try again.")
+        case .routeHeld: return String(localized: "Say 'stop translating', then try again.")
         }
     }
 

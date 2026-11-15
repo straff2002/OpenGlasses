@@ -353,7 +353,7 @@ struct ScheduledTaskDetailView: View {
                 .disabled(appState.isProcessing || running)
             }
         }
-        .navigationTitle(name.isEmpty ? "Task" : name)
+        .navigationTitle(name.isEmpty ? String(localized: "Task") : name)
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
         .toolbar {

@@ -41,24 +41,24 @@ enum SkillPackValidator {
         // Identity: reverse-DNS id and semver, both because they name filesystem locations and
         // upgrade ordering — garbage here corrupts the store layout, not just cosmetics.
         if !isReverseDNS(manifest.id) {
-            reasons.append("pack id '\(manifest.id)' is not reverse-DNS (e.g. com.example.pack)")
+            reasons.append(String(localized: "pack id '\(manifest.id)' is not reverse-DNS (e.g. com.example.pack)"))
         }
         if !isSemver(manifest.version) {
-            reasons.append("version '\(manifest.version)' is not semver (e.g. 1.2.0)")
+            reasons.append(String(localized: "version '\(manifest.version)' is not semver (e.g. 1.2.0)"))
         }
         if manifest.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            reasons.append("pack name is empty")
+            reasons.append(String(localized: "pack name is empty"))
         }
 
         if let minBuild = manifest.minAppBuild, minBuild > currentBuild {
-            reasons.append("requires app build \(minBuild); this is \(currentBuild)")
+            reasons.append(String(localized: "requires app build \(minBuild); this is \(currentBuild)"))
         }
 
         if manifest.actions.count > maxActions {
-            reasons.append("\(manifest.actions.count) actions exceeds the cap of \(maxActions)")
+            reasons.append(String(localized: "\(manifest.actions.count) actions exceeds the cap of \(maxActions)"))
         }
         if manifest.settings.count > maxSettings {
-            reasons.append("\(manifest.settings.count) settings exceeds the cap of \(maxSettings)")
+            reasons.append(String(localized: "\(manifest.settings.count) settings exceeds the cap of \(maxSettings)"))
         }
 
         var seenNames = Set<String>()
@@ -68,7 +68,7 @@ enum SkillPackValidator {
         }
 
         if !report.isClean {
-            warnings.append("partial load — \(report.summary)")
+            warnings.append(String(localized: "partial load — \(report.summary)"))
         }
 
         return reasons.isEmpty ? .accepted(warnings: warnings) : .rejected(reasons: reasons)
@@ -83,51 +83,51 @@ enum SkillPackValidator {
         let name = action.name
 
         if !isActionName(name) {
-            reasons.append("action '\(name)' is not a lowercase identifier (a-z, 0-9, _)")
+            reasons.append(String(localized: "action '\(name)' is not a lowercase identifier (a-z, 0-9, _)"))
         }
         if !seenNames.insert(name).inserted {
-            reasons.append("duplicate action name '\(name)'")
+            reasons.append(String(localized: "duplicate action name '\(name)'"))
         }
         // The registered name is namespaced so a pack can never *shadow* a native tool — this
         // check exists for the prompt, where a same-named action invites the model to confuse
         // the two.
         if nativeToolNames.contains(name) {
-            reasons.append("action '\(name)' shares a native tool's name")
+            reasons.append(String(localized: "action '\(name)' shares a native tool's name"))
         }
         if action.description.count > maxDescriptionLength {
-            reasons.append("action '\(name)' description exceeds \(maxDescriptionLength) chars")
+            reasons.append(String(localized: "action '\(name)' description exceeds \(maxDescriptionLength) chars"))
         }
 
         // Parameters must be a JSON-Schema *object* — that's the shape every declaration path
         // (native, MCP, Gemini translation) assumes.
         let schema = action.parametersSchema
         if !schema.isEmpty, (schema["type"] as? String) != "object" {
-            reasons.append("action '\(name)' parameters schema must have type 'object'")
+            reasons.append(String(localized: "action '\(name)' parameters schema must have type 'object'"))
         }
 
         switch action.binding {
         case .prompt(let template):
             if template.count > maxTemplateLength {
-                reasons.append("action '\(name)' template exceeds \(maxTemplateLength) chars")
+                reasons.append(String(localized: "action '\(name)' template exceeds \(maxTemplateLength) chars"))
             }
             if template.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                reasons.append("action '\(name)' has an empty prompt template")
+                reasons.append(String(localized: "action '\(name)' has an empty prompt template"))
             }
         case .tool(let target, _):
             // Bind only to real native tools, never to another pack's namespaced tool — pack
             // chaining is complexity with no v1 use case and a real audit cost.
             if !nativeToolNames.contains(target) {
-                reasons.append("action '\(name)' binds to unknown native tool '\(target)'")
+                reasons.append(String(localized: "action '\(name)' binds to unknown native tool '\(target)'"))
             }
             // A wrapper executes its target directly, so the router's confirmation gate never
             // sees the real name. Anything that gate would have caught is refused at the door.
             if ComposedToolPolicy.isRestrictedTarget(target) {
-                reasons.append("action '\(name)' \(ComposedToolPolicy.admissionReason(target: target))")
+                reasons.append(String(localized: "action '\(name)' \(ComposedToolPolicy.admissionReason(target: target))"))
             }
         case .procedure(let id):
-            if id.isEmpty { reasons.append("action '\(name)' has an empty procedure id") }
+            if id.isEmpty { reasons.append(String(localized: "action '\(name)' has an empty procedure id")) }
         case .gateway(let task):
-            if task.isEmpty { reasons.append("action '\(name)' has an empty gateway task") }
+            if task.isEmpty { reasons.append(String(localized: "action '\(name)' has an empty gateway task")) }
         }
 
         // Plan R poisoning screen over the pack-supplied description. For MCP tools a quarantine
@@ -148,7 +148,7 @@ enum SkillPackValidator {
         case .trusted:
             break
         case .blocked(let why), .quarantined(let why):
-            reasons.append("action '\(name)' failed the definition screen: \(why)")
+            reasons.append(String(localized: "action '\(name)' failed the definition screen: \(why)"))
         }
 
         return reasons

@@ -915,7 +915,7 @@ class ConversationStore: ObservableObject {
     /// Enable encryption: authenticate, then encrypt existing conversations.
     func enableEncryption() async -> Bool {
         do {
-            let authed = try await encryption.authenticate(reason: "Enable conversation encryption")
+            let authed = try await encryption.authenticate(reason: String(localized: "Enable conversation encryption"))
             guard authed else { return false }
 
             // Encrypt existing plaintext file
@@ -937,7 +937,7 @@ class ConversationStore: ObservableObject {
     /// Disable encryption: authenticate, decrypt file, remove key.
     func disableEncryption() async -> Bool {
         do {
-            let authed = try await encryption.authenticate(reason: "Disable conversation encryption")
+            let authed = try await encryption.authenticate(reason: String(localized: "Disable conversation encryption"))
             guard authed else { return false }
 
             // Decrypt file back to plaintext
@@ -963,7 +963,7 @@ class ConversationStore: ObservableObject {
     func unlock() async -> Bool {
         guard isLocked else { return true }
         do {
-            let authed = try await encryption.authenticate(reason: "Unlock your conversations")
+            let authed = try await encryption.authenticate(reason: String(localized: "Unlock your conversations"))
             guard authed else { return false }
             let data = try await encryption.decryptFile(at: storageURL)
             // The same repair every other load path makes: the chat list is a `List` keyed by id.

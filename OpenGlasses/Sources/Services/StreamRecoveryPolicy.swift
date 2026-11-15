@@ -73,7 +73,7 @@ enum StreamRecoveryPolicy {
     /// Said once when the ladder gives up. The earlier notice promised a reconnect; this one has
     /// to retract that promise, or the wearer keeps waiting on a camera that stopped trying.
     static let reconnectGaveUpNotice =
-        "Camera didn't come back. Check the glasses are on and charged, then start the camera again."
+        String(localized: "Camera didn't come back. Check the glasses are on and charged, then start the camera again.")
 
     /// Whether a frame-flow stall should trigger recovery at all, given the stream's
     /// current state. `.paused` is the temple-tap system hold: frames stopping is the
@@ -140,7 +140,7 @@ enum StallRecoveryBackoff {
 
     /// Said once when recovery gives up.
     static let gaveUpNotice =
-        "The glasses camera kept reconnecting without sending video, so it has stopped. Start the camera again to retry."
+        String(localized: "The glasses camera kept reconnecting without sending video, so it has stopped. Start the camera again to retry.")
 }
 
 /// Chooses the effective stream configuration for a capture session (pure).

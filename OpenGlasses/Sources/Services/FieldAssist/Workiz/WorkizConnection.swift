@@ -33,7 +33,7 @@ final class WorkizConnection: ObservableObject {
     init(storage: Storage = Storage(), licensed: @escaping () -> Bool = { Config.fieldAssistUnlocked }) {
         self.storage = storage; self.licensed = licensed
         do { if !storage.needsNewKey(), let data = try storage.read() { credential = try JSONDecoder().decode(WorkizCredential.self, from: data) } }
-        catch { problem = "Unlock this phone to read the Workiz connection." }
+        catch { problem = String(localized: "Unlock this phone to read the Workiz connection.") }
     }
     static func forApp() -> WorkizConnection {
         #if DEBUG
@@ -117,7 +117,7 @@ final class WorkizConnection: ObservableObject {
         storage.setNeedsNewKey(true)
         credential = nil; revision += 1
         do { try storage.erase(); problem = nil }
-        catch { problem = "Workiz is stopped. Unlock this phone to finish removing its key."; throw error }
+        catch { problem = String(localized: "Workiz is stopped. Unlock this phone to finish removing its key."); throw error }
     }
 }
 
@@ -260,9 +260,11 @@ final class WorkizController: ObservableObject {
                 let matches = users.filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }
                 if matches.count == 1, let match = matches.first { try connection.select(match) }
             }
-            connectionMessage = "Connected to Workiz. Jobs ✓ Users ✓ Report field ✓ — client notes \(connection.clientNotes ? "on" : "off"). Write access is checked on the first send."
+            connectionMessage = connection.clientNotes
+                ? String(localized: "Connected to Workiz. Jobs ✓ Users ✓ Report field ✓ — client notes on. Write access is checked on the first send.")
+                : String(localized: "Connected to Workiz. Jobs ✓ Users ✓ Report field ✓ — client notes off. Write access is checked on the first send.")
             await refresh(force: true)
-        } catch { connectionMessage = (error as? WorkizFailure)?.localizedDescription ?? "The Workiz connection could not be saved." }
+        } catch { connectionMessage = (error as? WorkizFailure)?.localizedDescription ?? String(localized: "The Workiz connection could not be saved.") }
     }
     func refresh(force: Bool = false, now: Date = Date()) async {
         enforceRoute()

@@ -49,20 +49,20 @@ enum JobQuestionHUDCue {
         guard let session, session.endedAt == nil, session.outcome != .cancelled else { return nil }
 
         if session.pendingUnitChange != nil {
-            let job = session.jobReference.map { "Job \($0)" } ?? "This job"
+            let job = session.jobReference.map { String(localized: "Job \($0)") } ?? String(localized: "This job")
             return Cue(kind: .unitChange(jobReference: session.jobReference),
-                       line: "Different unit — \(job) finished?",
+                       line: String(localized: "Different unit — \(job) finished?"),
                        duration: questionSeconds)
         }
 
         switch session.jobIntake {
         case .confirming(let candidate, _):
             return Cue(kind: .readBack(candidate),
-                       line: "Job \(candidate) — right?",
+                       line: String(localized: "Job \(candidate) — right?"),
                        duration: questionSeconds)
         case .asked, .outstanding:
             return Cue(kind: .jobNumberOutstanding,
-                       line: "Job number outstanding",
+                       line: String(localized: "Job number outstanding"),
                        duration: reminderSeconds)
         case .needsReference, .recorded, .declined, .notRequired:
             return nil

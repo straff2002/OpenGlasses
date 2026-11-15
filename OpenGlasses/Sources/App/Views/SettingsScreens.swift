@@ -1186,10 +1186,10 @@ struct LookFeelSettingsScreen: View {
     private var swatches: [AppAccent.Preset] {
         var custom: [AppAccent.Preset] = []
         if let name = AppAccent.organizationDefaultName {
-            custom.append(.init(id: name, name: "Organisation", color: AppAccent.color(for: name)))
+            custom.append(.init(id: name, name: String(localized: "Organisation"), color: AppAccent.color(for: name)))
         }
         if AppAccent.hexValue(accentColorName) != nil, !custom.contains(where: { $0.id == accentColorName }) {
-            custom.append(.init(id: accentColorName, name: "Custom", color: AppAccent.color(for: accentColorName)))
+            custom.append(.init(id: accentColorName, name: String(localized: "Custom"), color: AppAccent.color(for: accentColorName)))
         }
         return custom + AppAccent.presets
     }

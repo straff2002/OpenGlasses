@@ -125,6 +125,33 @@ class OpenClawBridge: ObservableObject {
     /// deliberate `resetSession()`). Exposed read-only for tests/diagnostics.
     var currentSessionKey: String { sessionKey }
 
+    /// Plan LU §5: the throwaway key a private conversation talks to the gateway under, while one is
+    /// open. Made for it at its start and dropped at its end — never rotated into — so the stable
+    /// key's context from earlier conversations stays as it was and the private turns never join it.
+    private(set) var privateSessionKey: String?
+
+    /// The key a request goes out under: the private conversation's while one is open, else the
+    /// stable one.
+    var effectiveSessionKey: String { privateSessionKey ?? sessionKey }
+
+    /// A private conversation started: requests go out under a key made for it.
+    func beginPrivateSession() {
+        guard privateSessionKey == nil else { return }
+        privateSessionKey = Self.privateSessionKey(id: UUID())
+        PrivacyLog.gatewayConnection(.sessionRotated, detail: PrivacyToken("private"))
+    }
+
+    /// The private conversation ended: its key is dropped, and requests go back to the stable key,
+    /// whose generation is untouched.
+    func endPrivateSession() {
+        privateSessionKey = nil
+    }
+
+    /// A key no other conversation shares and that is never stored. Pure.
+    nonisolated static func privateSessionKey(id: UUID) -> String {
+        "agent:main:glass:private:\(id.uuidString.lowercased())"
+    }
+
     /// Whether the connected gateway advertises `method`. Unknown catalog (not yet connected, or
     /// a pre-2.0 gateway) means "try it" — the gateway's own error is then the honest answer.
     func supports(_ method: String) -> Bool {
@@ -654,7 +681,7 @@ class OpenClawBridge: ObservableObject {
     private func queryAvailableTools() async {
         guard Config.agentModeEnabled else { return }
         let request = supports("tools.effective")
-            ? GatewayRequestCatalog.toolsEffective(sessionKey: sessionKey)
+            ? GatewayRequestCatalog.toolsEffective(sessionKey: effectiveSessionKey)
             : GatewayRequestCatalog.toolsCatalog()
         do {
             let response = try await send(request)
@@ -801,7 +828,7 @@ class OpenClawBridge: ObservableObject {
                 }
             }
             let request = GatewayRequestCatalog.sessionsSend(
-                key: sessionKey, message: task, agentId: "main", attachments: attachments,
+                key: effectiveSessionKey, message: task, agentId: "main", attachments: attachments,
                 idempotencyKey: UUID().uuidString)
             let response = try await sendRequest(method: request.method, params: request.params)
 
@@ -815,7 +842,7 @@ class OpenClawBridge: ObservableObject {
                 PrivacyLog.gatewayFailed(.request, .remote(code: code))
 
                 if message.contains("missing scope") {
-                    lastToolCallStatus = .failed(toolName, "Token needs write permissions")
+                    lastToolCallStatus = .failed(toolName, String(localized: "Token needs write permissions"))
                     return .failure("Gateway token needs operator.write scope. Update the token permissions in OpenClaw settings.")
                 }
                 lastToolCallStatus = .failed(toolName, message)
@@ -845,11 +872,11 @@ class OpenClawBridge: ObservableObject {
                 return .success(text.isEmpty ? "OK" : text)
             case .aborted:
                 PrivacyLog.gatewayOperation(request.method, outcome: .rejected)
-                lastToolCallStatus = .failed(toolName, "Run aborted")
+                lastToolCallStatus = .failed(toolName, String(localized: "Run aborted"))
                 return .failure("The gateway stopped the task before it finished.")
             case .failed(let message):
                 PrivacyLog.gatewayOperation(request.method, outcome: .failed)
-                lastToolCallStatus = .failed(toolName, message ?? "Run failed")
+                lastToolCallStatus = .failed(toolName, message ?? String(localized: "Run failed"))
                 return .failure("Gateway error: \(message ?? "the task failed")")
             case .timedOut:
                 // Parked, not dropped: the run is still tracked and its answer will be announced

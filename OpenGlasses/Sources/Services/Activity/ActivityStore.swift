@@ -82,8 +82,12 @@ final class ActivityStore: ObservableObject {
 
     /// Add one entry. An entry for an operation already on the trail (a redelivered call answered
     /// from the journal) settles the existing row instead of adding a second.
+    ///
+    /// While a private conversation is open the entry keeps its title only, as in compliance mode
+    /// (Plan LU §3): the detail can quote a message that was sent.
     func append(_ entry: ActivityEntry) {
-        let stored = hipaaMode() ? Self.titleOnly(entry) : entry
+        let titleOnly = hipaaMode() || PrivateConversationGate.keepsTitleOnly(.activityTrail)
+        let stored = titleOnly ? Self.titleOnly(entry) : entry
         var working = entries
         if let operation = stored.refs.first(where: \.isOperation),
            let index = working.lastIndex(where: { $0.refs.contains(operation) }) {

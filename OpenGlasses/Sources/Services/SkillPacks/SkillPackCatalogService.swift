@@ -61,7 +61,7 @@ final class SkillPackCatalogService: ObservableObject {
 
     func loadCatalog() async {
         guard let url = catalogURL() else {
-            catalogState = .failed("No catalog URL configured")
+            catalogState = .failed(String(localized: "No catalog URL configured"))
             return
         }
         catalogState = .loading
@@ -74,7 +74,7 @@ final class SkillPackCatalogService: ObservableObject {
                 catalogState = .failed(Self.describe(error))
             }
         } catch {
-            catalogState = .failed("Couldn't reach the catalog: \(error.localizedDescription)")
+            catalogState = .failed(String(localized: "Couldn't reach the catalog: \(error.localizedDescription)"))
         }
     }
 
@@ -83,7 +83,7 @@ final class SkillPackCatalogService: ObservableObject {
     /// last gate regardless).
     func install(_ entry: SkillPackCatalogEntry) async {
         guard let url = URL(string: entry.downloadURL) else {
-            installStates[entry.id] = .failed("bad download URL")
+            installStates[entry.id] = .failed(String(localized: "bad download URL"))
             return
         }
         installStates[entry.id] = .downloading
@@ -92,14 +92,14 @@ final class SkillPackCatalogService: ObservableObject {
         do {
             zipData = try await fetchArchive(url)
         } catch {
-            installStates[entry.id] = .failed("download failed: \(error.localizedDescription)")
+            installStates[entry.id] = .failed(String(localized: "download failed: \(error.localizedDescription)"))
             return
         }
 
         // The index promised these exact bytes; anything else is a swapped or truncated artifact.
         let digest = SkillPackArchive.sha256Hex(zipData)
         guard digest == entry.sha256.lowercased() else {
-            installStates[entry.id] = .failed("download doesn't match the catalog's checksum")
+            installStates[entry.id] = .failed(String(localized: "download doesn't match the catalog's checksum"))
             return
         }
 
@@ -111,7 +111,7 @@ final class SkillPackCatalogService: ObservableObject {
         switch SkillPackArchive.extractManifest(zipData: zipData) {
         case .failure(let error):
             installStates[entry.id] = .failed(
-                error == .missingManifest ? "pack has no skillpack.json" : "not a readable pack archive")
+                error == .missingManifest ? String(localized: "pack has no skillpack.json") : String(localized: "not a readable pack archive"))
             return
         case .success(let extracted):
             staged = extracted
@@ -122,7 +122,7 @@ final class SkillPackCatalogService: ObservableObject {
         case .admitted(let admitted, _):
             manifest = admitted
         case .unreadable:
-            installStates[entry.id] = .failed("pack manifest unreadable")
+            installStates[entry.id] = .failed(String(localized: "pack manifest unreadable"))
             return
         case .rejected(let reasons):
             installStates[entry.id] = .failed(reasons.joined(separator: "; "))
@@ -132,7 +132,7 @@ final class SkillPackCatalogService: ObservableObject {
         let files: [String: Data]
         switch SkillPackArchive.materializeFiles(for: staged, declaredBy: manifest) {
         case .failure:
-            installStates[entry.id] = .failed("not a readable pack archive")
+            installStates[entry.id] = .failed(String(localized: "not a readable pack archive"))
             return
         case .success(let materialized):
             files = materialized
@@ -154,10 +154,10 @@ final class SkillPackCatalogService: ObservableObject {
 
     private static func describe(_ error: SkillPackCatalog.CatalogError) -> String {
         switch error {
-        case .notAnEnvelope: return "catalog format not recognized"
-        case .badSignature: return "catalog signature invalid — refusing the index"
-        case .unreadableIndex: return "catalog index unreadable"
-        case .unsupportedVersion(let v): return "catalog version \(v) needs a newer app build"
+        case .notAnEnvelope: return String(localized: "catalog format not recognized")
+        case .badSignature: return String(localized: "catalog signature invalid — refusing the index")
+        case .unreadableIndex: return String(localized: "catalog index unreadable")
+        case .unsupportedVersion(let v): return String(localized: "catalog version \(v) needs a newer app build")
         }
     }
 }

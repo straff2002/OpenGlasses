@@ -149,11 +149,11 @@ enum LLMProvider: String, CaseIterable {
     var missingCredentialMessage: String {
         switch self {
         case .anthropic:
-            return "Anthropic API key not configured — add a key in Settings → Assistant → AI Models, sign in with Claude, or switch to on-device intelligence"
+            return String(localized: "Anthropic API key not configured — add a key in Settings → Assistant → AI Models, sign in with Claude, or switch to on-device intelligence")
         case .xai:
-            return "xAI API key not configured — add a key in Settings → Assistant → AI Models, sign in with xAI, or switch to on-device intelligence"
+            return String(localized: "xAI API key not configured — add a key in Settings → Assistant → AI Models, sign in with xAI, or switch to on-device intelligence")
         default:
-            return "\(displayName) API key not configured — add a key in Settings → Assistant → AI Models, or switch to on-device intelligence"
+            return String(localized: "\(displayName) API key not configured — add a key in Settings → Assistant → AI Models, or switch to on-device intelligence")
         }
     }
 
@@ -171,7 +171,7 @@ enum LLMProvider: String, CaseIterable {
 @MainActor
 class LLMService: ObservableObject {
     @Published var isProcessing: Bool = false
-    @Published var activeModelName: String = Config.activeModel?.name ?? "No Model"
+    @Published var activeModelName: String = Config.activeModel?.name ?? String(localized: "No Model")
     @Published var toolCallStatus: ToolCallStatus = .idle
 
     /// Last chain-of-thought reasoning from <think> tags (nil if none).
@@ -722,6 +722,11 @@ class LLMService: ObservableObject {
             ? SystemPromptBuilder.onDeviceSpokenManners(replyLanguage: replyLanguage)
             : SystemPromptBuilder.spokenManners(replyLanguage: replyLanguage))
         closeBlock("spoken manners")
+        // Plan LU §4: a private conversation's turn says so, once.
+        if PrivateConversationGate.isActive {
+            prompt += "\n\n" + SystemPromptBuilder.privateConversationLine
+            closeBlock("private conversation")
+        }
 
         if includeTools && shouldInclude(.tools) {
             var toolSection = """
@@ -1136,7 +1141,7 @@ class LLMService: ObservableObject {
         await yieldOffConversationRun()
         // Capture the choice before prompt preparation can suspend and the picker can change.
         guard let requestedModel = Config.activeModel else {
-            throw LLMError.missingAPIKey("No model configured — add one in Settings")
+            throw LLMError.missingAPIKey(String(localized: "No model configured — add one in Settings"))
         }
         let previousFieldSourceID = fieldConversationSourceID
         fieldConversationSourceID = previousFieldSourceID ?? UUID().uuidString
@@ -1197,7 +1202,7 @@ class LLMService: ObservableObject {
 
         var modelConfig = try medicalInferenceModel(requested: requestedModel)
         if imageData != nil, modelConfig.id != requestedModel.id {
-            throw LLMError.invalidConfiguration("Local-only privacy settings prevent sending this photo to the selected model. Select an available on-device vision model and try again.")
+            throw LLMError.invalidConfiguration(String(localized: "Local-only privacy settings prevent sending this photo to the selected model. Select an available on-device vision model and try again."))
         }
 
         // A Field Assist job turn on Apple's on-device model goes to a model that can hold the job
@@ -1240,7 +1245,7 @@ class LLMService: ObservableObject {
             return reply
         case .useCheaperModel(let cheaper, let notice):
             guard imageData == nil else {
-                throw LLMError.invalidConfiguration("The selected model's spending limit prevents this photo request. Review the limit or select another vision model and try again.")
+                throw LLMError.invalidConfiguration(String(localized: "The selected model's spending limit prevents this photo request. Review the limit or select another vision model and try again."))
             }
             modelConfig = try medicalInferenceModel(requested: cheaper)
             spendCapNotice = notice
@@ -1313,7 +1318,7 @@ class LLMService: ObservableObject {
             return message
         }
         if imageData != nil, !isOnDevice, !modelConfig.visionEnabled {
-            throw LLMError.invalidConfiguration("The selected model has image input disabled. Enable Vision in its settings or select a vision model and try again.")
+            throw LLMError.invalidConfiguration(String(localized: "The selected model has image input disabled. Enable Vision in its settings or select a vision model and try again."))
         }
 
         // Per-model: the lean prompt exists for tight providers (Groq's 8k cap) and would
@@ -2276,7 +2281,7 @@ class LLMService: ObservableObject {
         // It empties and restores the history, so a scheduled run must not be going under it.
         await yieldOffConversationRun()
         guard let requested = Config.activeModel else {
-            throw LLMError.missingAPIKey("No model configured")
+            throw LLMError.missingAPIKey(String(localized: "No model configured"))
         }
         let config = try medicalInferenceModel(requested: requested)
         let snapshot = conversationHistory
@@ -2394,7 +2399,55 @@ class LLMService: ObservableObject {
     var isTurnInFlight: Bool { turnDepth > 0 }
 
     private func beginTurnScope() { turnDepth += 1 }
-    private func endTurnScope() { turnDepth = max(0, turnDepth - 1) }
+    private func endTurnScope() {
+        turnDepth = max(0, turnDepth - 1)
+        // Plan LU: a private conversation that ended while a turn was running gives the stored
+        // conversation's context back now, after that turn has written its own exchange — into the
+        // private history, which goes with it.
+        if turnDepth == 0, pendingPrivateRestore {
+            pendingPrivateRestore = false
+            restoreHistoryAfterPrivate()
+        }
+    }
+
+    // MARK: - Private conversation (Plan LU §1)
+
+    /// The model's context for the stored conversation, put aside while a private one runs.
+    private var historyBeforePrivate: [[String: Any]]?
+    private var pendingPrivateRestore = false
+
+    /// A private conversation started: the model's context becomes its transcript, replayed as a
+    /// stored thread's would be (`replayMessages(for:)`), and the stored conversation's context is
+    /// put aside untouched, to come back when the private one ends.
+    func beginPrivateHistory(_ messages: [(role: String, content: String)]) {
+        cancelOffConversationRun()
+        if historyBeforePrivate == nil { historyBeforePrivate = conversationHistory }
+        pendingPrivateRestore = false
+        conversationHistory = messages.map { ["role": $0.role, "content": $0.content] }
+        toolExposureMemory.removeAll()   // Plan IU: what was looked up belongs to the conversation
+        PrivacyLog.model(.historyLoaded, count: conversationHistory.count, total: messages.count)
+    }
+
+    /// The private conversation ended: its turns leave the model's context, and the stored
+    /// conversation's comes back as it was. Deferred to the end of a turn still running.
+    func endPrivateHistory() {
+        guard historyBeforePrivate != nil else { return }
+        if isTurnInFlight {
+            pendingPrivateRestore = true
+        } else {
+            restoreHistoryAfterPrivate()
+        }
+    }
+
+    /// Whether the model's context is a private conversation's.
+    var holdsPrivateHistory: Bool { historyBeforePrivate != nil }
+
+    private func restoreHistoryAfterPrivate() {
+        cancelOffConversationRun()
+        conversationHistory = historyBeforePrivate ?? []
+        historyBeforePrivate = nil
+        toolExposureMemory.removeAll()
+    }
 
     /// Clear the conversation history — immediately when idle, or after the in-flight turn
     /// completes when the model itself requested it via the `new_topic` tool (a mid-loop wipe
@@ -2930,7 +2983,7 @@ class LLMService: ObservableObject {
 
     /// Refresh the published model name from Config
     func refreshActiveModel() {
-        activeModelName = Config.activeModel?.name ?? "No Model"
+        activeModelName = Config.activeModel?.name ?? String(localized: "No Model")
     }
 
     func invalidateOnDeviceSession() {
@@ -3712,7 +3765,7 @@ class LLMService: ObservableObject {
         let apiKey = await openAICompatibleCredential(config)
         if apiKey.isEmpty, provider == .xai, xaiAccount.isConnected {
             // Signed in, but no usable token is left: say what the sign-in said, not "add a key".
-            throw LLMError.missingAPIKey(xaiAccount.lastError ?? "xAI sign-in expired — please sign in again.")
+            throw LLMError.missingAPIKey(xaiAccount.lastError ?? String(localized: "xAI sign-in expired — please sign in again."))
         }
         let authorization = try Self.openAICompatibleAuthorization(provider: provider, apiKey: apiKey)
         // Plan FG P1a: a token the xAI sign-in supplied is refreshed once on a 401; every later
@@ -3795,7 +3848,7 @@ class LLMService: ObservableObject {
 
         let baseURL = Self.chatCompletionsURLString(baseURL: config.baseURL, provider: provider)
         guard let url = URL(string: baseURL) else {
-            throw LLMError.invalidConfiguration("Invalid base URL: \(baseURL)")
+            throw LLMError.invalidConfiguration(String(localized: "Invalid base URL: \(baseURL)"))
         }
 
         // Add user message to history
@@ -4213,7 +4266,7 @@ class LLMService: ObservableObject {
         let responsesBase = provider == .openai || !config.baseURL.isEmpty ? config.baseURL : provider.defaultBaseURL
         let endpoint = OpenAIRouteSelector.endpointURL(baseURL: responsesBase, endpoint: .responses)
         guard let url = URL(string: endpoint) else {
-            throw LLMError.invalidConfiguration("Invalid base URL: \(endpoint)")
+            throw LLMError.invalidConfiguration(String(localized: "Invalid base URL: \(endpoint)"))
         }
 
         // The user turn, exactly as the Chat Completions path appends it (image as `image_url`,
@@ -4416,8 +4469,8 @@ class LLMService: ObservableObject {
         let chatGPTAccount = self.chatGPTAccount
         guard let token = await chatGPTAccount.validAccessToken() else {
             throw LLMError.missingAPIKey(chatGPTAccount.isConnected
-                ? (chatGPTAccount.lastError ?? "ChatGPT sign-in expired — please sign in again.")
-                : "ChatGPT account not connected — sign in with ChatGPT in the model editor")
+                ? (chatGPTAccount.lastError ?? String(localized: "ChatGPT sign-in expired — please sign in again."))
+                : String(localized: "ChatGPT account not connected — sign in with ChatGPT in the model editor"))
         }
         // Plan FG P1a: the token a 401 refreshes once; every later round sends the new one.
         let account = SubscriptionAuthRetry.Credential(token)
@@ -4427,7 +4480,7 @@ class LLMService: ObservableObject {
         ChatGPTContextCatalog.refreshIfStale(accountID: accountID)
         let endpoint = config.baseURL.isEmpty ? ChatGPTOAuth.backendResponsesURL : config.baseURL
         guard let url = URL(string: endpoint) else {
-            throw LLMError.invalidConfiguration("Invalid ChatGPT backend URL: \(endpoint)")
+            throw LLMError.invalidConfiguration(String(localized: "Invalid ChatGPT backend URL: \(endpoint)"))
         }
 
         let protectedStart = conversationHistory.count
@@ -5127,13 +5180,13 @@ class LLMService: ObservableObject {
         case .geminiVertex:
             guard let endpoint = VertexAI.endpointURL(
                 projectID: Config.vertexProjectID, region: Config.vertexRegion, model: config.model) else {
-                throw LLMError.invalidConfiguration("Vertex AI needs a GCP project ID and region — set them in the model editor.")
+                throw LLMError.invalidConfiguration(String(localized: "Vertex AI needs a GCP project ID and region — set them in the model editor."))
             }
             let googleAccount = self.googleAccount
             guard let token = await googleAccount.validAccessToken() else {
                 throw LLMError.missingAPIKey(googleAccount.isConnected
-                    ? (googleAccount.lastError ?? "Google sign-in expired — please sign in again.")
-                    : "Google account not connected — sign in with Google in the model editor.")
+                    ? (googleAccount.lastError ?? String(localized: "Google sign-in expired — please sign in again."))
+                    : String(localized: "Google account not connected — sign in with Google in the model editor."))
             }
             request = URLRequest(url: endpoint)
             VertexAI.apply(accessToken: token, to: &request)
@@ -5143,7 +5196,7 @@ class LLMService: ObservableObject {
                 throw LLMError.missingAPIKey(LLMProvider.gemini.missingCredentialMessage)
             }
             guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(config.model):generateContent?key=\(config.apiKey)") else {
-                throw LLMError.invalidConfiguration("Invalid Gemini URL")
+                throw LLMError.invalidConfiguration(String(localized: "Invalid Gemini URL"))
             }
             request = URLRequest(url: url)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -5471,12 +5524,12 @@ class LLMService: ObservableObject {
                                    includeTools: Bool, carryHistory: Bool) async throws -> String {
         #if canImport(FoundationModels)
         guard #available(iOS 26.0, *) else {
-            throw LLMError.missingAPIKey("Apple Intelligence requires iOS 26+")
+            throw LLMError.missingAPIKey(String(localized: "Apple Intelligence requires iOS 26+"))
         }
         return try await sendAppleOnDeviceImpl(text, systemPrompt: systemPrompt,
                                                includeTools: includeTools, carryHistory: carryHistory)
         #else
-        throw LLMError.missingAPIKey("Apple Foundation Models requires iOS 26+")
+        throw LLMError.missingAPIKey(String(localized: "Apple Foundation Models requires iOS 26+"))
         #endif
     }
 
@@ -5503,16 +5556,16 @@ class LLMService: ObservableObject {
                 switch reason {
                 case .deviceNotEligible:
                     // The keyless first-run default can land here, so name the way out.
-                    throw LLMError.missingAPIKey("Device does not support Apple Intelligence — add an API key in Settings → Assistant → AI Models to use a cloud model")
+                    throw LLMError.missingAPIKey(String(localized: "Device does not support Apple Intelligence — add an API key in Settings → Assistant → AI Models to use a cloud model"))
                 case .appleIntelligenceNotEnabled:
-                    throw LLMError.missingAPIKey("Enable Apple Intelligence in iPhone Settings > Apple Intelligence & Siri")
+                    throw LLMError.missingAPIKey(String(localized: "Enable Apple Intelligence in iPhone Settings > Apple Intelligence & Siri"))
                 case .modelNotReady:
-                    throw LLMError.missingAPIKey("Apple Intelligence model is still downloading, try again later")
+                    throw LLMError.missingAPIKey(String(localized: "Apple Intelligence model is still downloading, try again later"))
                 @unknown default:
-                    throw LLMError.missingAPIKey("Apple Intelligence unavailable")
+                    throw LLMError.missingAPIKey(String(localized: "Apple Intelligence unavailable"))
                 }
             default:
-                throw LLMError.missingAPIKey("Apple Intelligence unavailable")
+                throw LLMError.missingAPIKey(String(localized: "Apple Intelligence unavailable"))
             }
         }
 
@@ -5611,7 +5664,7 @@ class LLMService: ObservableObject {
                 // An adapter never throws, so this is the framework's own tool plumbing.
                 PrivacyLog.model(.requestFailed, provider: PrivacyToken("appleOnDevice"),
                                  detail: PrivacyToken("toolCall"), error: SafeErrorSummary(error.underlyingError))
-                throw LLMError.invalidResponse("Apple Intelligence could not run a tool: \(error.underlyingError.localizedDescription)")
+                throw LLMError.invalidResponse(String(localized: "Apple Intelligence could not run a tool: \(error.underlyingError.localizedDescription)"))
             }
         }
     }
@@ -5699,15 +5752,15 @@ class LLMService: ObservableObject {
         case .exceededContextWindowSize:
             return .contextOverflow(provider: "Apple Intelligence", toolsRan: false)
         case .assetsUnavailable:
-            return .missingAPIKey("Apple Intelligence isn't available right now — try again in a moment, or add an API key in Settings → Assistant → AI Models")
+            return .missingAPIKey(String(localized: "Apple Intelligence isn't available right now — try again in a moment, or add an API key in Settings → Assistant → AI Models"))
         case .unsupportedLanguageOrLocale:
-            return .invalidConfiguration("Apple Intelligence doesn't support this language yet — choose a cloud model in Settings → Assistant → AI Models")
+            return .invalidConfiguration(String(localized: "Apple Intelligence doesn't support this language yet — choose a cloud model in Settings → Assistant → AI Models"))
         case .rateLimited, .concurrentRequests:
-            return .invalidResponse("Apple Intelligence is busy — try again in a moment")
+            return .invalidResponse(String(localized: "Apple Intelligence is busy — try again in a moment"))
         case .unsupportedGuide, .decodingFailure:
-            return .invalidResponse("Apple Intelligence returned something the app could not read")
+            return .invalidResponse(String(localized: "Apple Intelligence returned something the app could not read"))
         @unknown default:
-            return .invalidResponse("Apple Intelligence error: \(error.localizedDescription)")
+            return .invalidResponse(String(localized: "Apple Intelligence error: \(error.localizedDescription)"))
         }
     }
     #endif
@@ -5873,7 +5926,7 @@ class LLMService: ObservableObject {
         defer { endTurnScope() }
 
         guard let localService = localLLMService else {
-            throw LLMError.missingAPIKey("Local LLM service not initialized")
+            throw LLMError.missingAPIKey(String(localized: "Local LLM service not initialized"))
         }
 
         // Load the configured model (no auto-swap — user picks one model). With the DZ seam on,
@@ -6037,7 +6090,7 @@ class LLMService: ObservableObject {
             throw error
         } catch {
             PrivacyLog.localModel(.generationFailed, error: SafeErrorSummary(error))
-            throw LLMError.invalidResponse("Local model error: \(error.localizedDescription)")
+            throw LLMError.invalidResponse(String(localized: "Local model error: \(error.localizedDescription)"))
         }
 
         // One classification for the whole completion: a usable call, broken protocol, or prose —
@@ -6293,7 +6346,7 @@ class LLMService: ObservableObject {
         // ~100 native-tool descriptions (~8k tokens) that OOM-crash a 2B model on a phone.
         // `sendLocal` appends its own reduced ~12-tool block, so the model still has usable tools.
         guard let localService = localLLMService else {
-            throw LLMError.missingAPIKey("Local LLM service not initialized")
+            throw LLMError.missingAPIKey(String(localized: "Local LLM service not initialized"))
         }
         let leanPrompt = await Self.leanOnDevicePrompt(
             locationContext: locationContext, memoryContext: memoryContext, hasImage: false, turn: text,
@@ -6807,21 +6860,21 @@ enum LLMError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey(let msg): return msg
-        case .invalidResponse(let provider): return "Invalid response from \(provider)"
+        case .invalidResponse(let provider): return String(localized: "Invalid response from \(provider)")
         case .invalidConfiguration(let msg): return msg
         case .apiError(let provider, let code, let msg, _):
-            if let msg { return "\(provider) error \(code): \(msg)" }
-            return "\(provider) error: \(code)"
+            if let msg { return String(localized: "\(provider) error \(code): \(msg)") }
+            return String(localized: "\(provider) error: \(code)")
         case .streamInterrupted(let provider, let reason):
-            return "\(provider) stream interrupted: \(reason)"
+            return String(localized: "\(provider) stream interrupted: \(reason)")
         case .modelDeclined(let provider):
-            return "\(provider) declined to answer"
+            return String(localized: "\(provider) declined to answer")
         case .outputTruncated(let provider):
-            return "\(provider) ran out of room before it answered"
+            return String(localized: "\(provider) ran out of room before it answered")
         case .slowResponse(let provider):
-            return "\(provider) took too long to answer"
+            return String(localized: "\(provider) took too long to answer")
         case .contextOverflow(let provider, _):
-            return "\(provider) couldn't fit this request in its window — choose a cloud model in Settings → Assistant → AI Models for requests like this"
+            return String(localized: "\(provider) couldn't fit this request in its window — choose a cloud model in Settings → Assistant → AI Models for requests like this")
         }
     }
 }

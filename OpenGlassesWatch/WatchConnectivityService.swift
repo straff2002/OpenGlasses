@@ -41,6 +41,18 @@ class WatchConnectivityService: NSObject, ObservableObject {
     /// none; the Today pages then say to open the app on the iPhone. Whether it is still today is
     /// the views' call, against the watch's own clock (`WatchTodayFreshness`).
     @Published var today: WatchTodayPayload?
+    /// A private conversation is open on the phone (Plan LU): the wrist shows the Private badge and
+    /// End, and no reply in its idle summary.
+    @Published var isPrivate = false
+    /// While private, the reply to a request made on this watch, the one reply the wrist still shows.
+    /// Dropped when the private conversation ends.
+    @Published var privateReply: String?
+
+    /// The reply line to draw: `WatchPrivateWire.shownReply`.
+    var shownReply: String {
+        WatchPrivateWire.shownReply(lastResponse: lastResponse, isPrivate: isPrivate,
+                                    replyToWatchRequest: privateReply)
+    }
 
     // Debounce: false→true immediately, true→false after 2 s
     private var reachabilityDebounceTask: Task<Void, Never>?
@@ -183,7 +195,13 @@ class WatchConnectivityService: NSObject, ObservableObject {
                     self?.isVideoRecording = videoRecording
                 }
                 if let response = reply["response"] as? String {
-                    self?.lastResponse = response
+                    // While private, a reply to the wrist's own request is held apart from the
+                    // idle summary, and goes when the private conversation does (Plan LU).
+                    if self?.isPrivate == true {
+                        self?.privateReply = response
+                    } else {
+                        self?.lastResponse = response
+                    }
                     completion(nil)
                 } else if let error = reply["error"] as? String {
                     completion(error)
@@ -198,6 +216,39 @@ class WatchConnectivityService: NSObject, ObservableObject {
                 completion(error.localizedDescription)
             }
         })
+    }
+}
+
+// MARK: - Private conversation (Plan LU)
+
+extension WatchConnectivityService {
+    /// The Private button and End: the phone starts or ends a private conversation. `completion`
+    /// gets nil when it did, or the line saying why not.
+    func sendPrivateRequest(_ action: WatchPrivateWire.Action, completion: @escaping (String?) -> Void) {
+        guard WCSession.default.isReachable else {
+            completion(String(localized: "Open Avenkin on your iPhone, then try again."))
+            return
+        }
+        WCSession.default.sendMessage(WatchPrivateWire.message(action), replyHandler: { [weak self] reply in
+            DispatchQueue.main.async {
+                if let isPrivate = reply[WatchPrivateWire.contextKey] as? Bool {
+                    self?.applyPrivate(isPrivate, contextResponse: nil)
+                }
+                completion(reply[WatchPrivateWire.errorKey] as? String)
+            }
+        }, errorHandler: { error in
+            DispatchQueue.main.async { completion(error.localizedDescription) }
+        })
+    }
+
+    /// Take the phone's private state. Main queue only. On a change the held reply goes, and the
+    /// summary takes the phone's line as it is: at the end that is empty (the phone cleared it),
+    /// so no private reply stays on the wrist after the conversation it belonged to.
+    fileprivate func applyPrivate(_ newValue: Bool, contextResponse: String?) {
+        guard newValue != isPrivate else { return }
+        isPrivate = newValue
+        privateReply = nil
+        if !newValue { lastResponse = contextResponse ?? "" }
     }
 }
 
@@ -316,9 +367,15 @@ extension WatchConnectivityService: WCSessionDelegate {
         if let status = applicationContext["status"] as? String {
             self.status = status
         }
+        // Plan LU: a private conversation starting or ending on the phone. Its absence (a phone not
+        // yet updated) reads as not private.
+        let contextResponse = applicationContext["lastResponse"] as? String
+        applyPrivate(applicationContext[WatchPrivateWire.contextKey] as? Bool ?? false,
+                     contextResponse: contextResponse)
         // The status carries only the opening of the last answer. One already held in full, from a
-        // command's own reply, is not replaced by its first lines.
-        if let response = applicationContext["lastResponse"] as? String,
+        // command's own reply, is not replaced by its first lines. While private it carries a fixed
+        // line, never a reply, and the summary shows none.
+        if !isPrivate, let response = contextResponse,
            !(lastResponse.count > response.count && lastResponse.hasPrefix(response)) {
             self.lastResponse = response
         }

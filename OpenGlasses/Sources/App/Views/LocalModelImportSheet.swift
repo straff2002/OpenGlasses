@@ -69,8 +69,7 @@ struct LocalModelImportSheet: View {
                     .submitLabel(.search)
                     .onSubmit { Task { await controller.resolve() } }
                     .accessibilityLabel("Model repository")
-                    .accessibilityHint("Enter owner slash repository, or paste the repository's "
-                                           + "web address.")
+                    .accessibilityHint("Enter owner slash repository, or paste the repository's web address.")
                 if case .resolving = controller.stage {
                     ProgressView().controlSize(.small)
                 } else {
@@ -86,9 +85,7 @@ struct LocalModelImportSheet: View {
         } header: {
             Text("Repository")
         } footer: {
-            Text("Public repositories only, over https. The exact version is pinned before "
-                     + "anything is downloaded, and every file is checked against its published "
-                     + "checksum.")
+            Text("Public repositories only, over https. The exact version is pinned before anything is downloaded, and every file is checked against its published checksum.")
         }
     }
 
@@ -124,8 +121,7 @@ struct LocalModelImportSheet: View {
             Text("Choose a file")
         } footer: {
             Text(controller.offer?.requiresSelection == true
-                     ? "Several quantizations are published. Smaller files use less memory and "
-                         + "answer faster; larger ones answer better."
+                     ? "Several quantizations are published. Smaller files use less memory and answer faster; larger ones answer better."
                      : "The recommended quantization is selected. Tap another to change it.")
         }
     }
@@ -140,8 +136,7 @@ struct LocalModelImportSheet: View {
         } header: {
             Text("Vision files in this repository")
         } footer: {
-            Text("This repository also publishes vision projector files. This version of the app "
-                     + "runs on-device models as text only, so they aren't installed.")
+            Text("This repository also publishes vision projector files. This version of the app runs on-device models as text only, so they aren't installed.")
         }
     }
 
@@ -208,9 +203,7 @@ struct LocalModelImportSheet: View {
         } header: {
             Text("Before downloading")
         } footer: {
-            Text("Installing a model doesn't guarantee it will run: on-device models must use a "
-                     + "supported architecture and chat template, and that's only known once it "
-                     + "loads.")
+            Text("Installing a model doesn't guarantee it will run: on-device models must use a supported architecture and chat template, and that's only known once it loads.")
         }
     }
 }

@@ -64,9 +64,9 @@ struct ManagedLockdown: Equatable, Sendable {
             SettingsCategoryID.allCases.filter(ids.contains).map { SettingsCatalog.category($0).title }
                 .joined(separator: ", ")
         }
-        if !opened.isEmpty { lines.append("Left open: \(titles(opened))") }
-        if !locked.isEmpty { lines.append("Also locked: \(titles(locked))") }
-        if !closedTools.isEmpty { lines.append("Tools switched off: \(closedTools.sorted().joined(separator: ", "))") }
+        if !opened.isEmpty { lines.append(String(localized: "Left open: \(titles(opened))")) }
+        if !locked.isEmpty { lines.append(String(localized: "Also locked: \(titles(locked))")) }
+        if !closedTools.isEmpty { lines.append(String(localized: "Tools switched off: \(closedTools.sorted().joined(separator: ", "))")) }
         return lines
     }
 
@@ -85,7 +85,7 @@ struct ManagedLockdown: Equatable, Sendable {
                     ids.insert(id)
                 } else {
                     drops.append(.init(key: "lockdown.\(field)",
-                                       reason: .invalidValue("\u{201C}\(name)\u{201D} is not a settings category this version of the app knows")))
+                                       reason: .invalidValue(String(localized: "\u{201C}\(name)\u{201D} is not a settings category this version of the app knows"))))
                 }
             }
             return ids
@@ -94,11 +94,11 @@ struct ManagedLockdown: Equatable, Sendable {
         let locking = categories(spec.lock, field: "lock")
         for id in locking.intersection(pinnedOpen).sorted(by: { $0.rawValue < $1.rawValue }) {
             drops.append(.init(key: "lockdown.lock",
-                               reason: .invalidValue("\u{201C}\(id.rawValue)\u{201D} is never locked by an organisation")))
+                               reason: .invalidValue(String(localized: "\u{201C}\(id.rawValue)\u{201D} is never locked by an organisation"))))
         }
         for id in opening.intersection(locking).sorted(by: { $0.rawValue < $1.rawValue }) {
             drops.append(.init(key: "lockdown.lock",
-                               reason: .invalidValue("\u{201C}\(id.rawValue)\u{201D} is both opened and locked; it stays open")))
+                               reason: .invalidValue(String(localized: "\u{201C}\(id.rawValue)\u{201D} is both opened and locked; it stays open"))))
         }
         var tools: Set<String> = []
         for name in spec.closedTools ?? [] {
@@ -106,7 +106,7 @@ struct ManagedLockdown: Equatable, Sendable {
                 tools.insert(name)
             } else {
                 drops.append(.init(key: "lockdown.closedTools",
-                                   reason: .invalidValue("\u{201C}\(name)\u{201D} is not a tool name")))
+                                   reason: .invalidValue(String(localized: "\u{201C}\(name)\u{201D} is not a tool name"))))
             }
         }
         return (ManagedLockdown(opening: opening, locking: locking, closedTools: tools), drops)

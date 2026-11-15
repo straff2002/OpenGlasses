@@ -192,23 +192,24 @@ final class AssistingService: ObservableObject {
     }
 
     static func message(for outcome: AssistingHandoverStore.OpenOutcome, handover: ExpertHandover) -> String {
-        let from = handover.organisation.name.isEmpty ? "" : " from \(handover.organisation.name)"
         switch outcome {
         case .added:
-            return "Job handover\(from) opened. Tap Take this job to start your clock."
+            return handover.organisation.name.isEmpty
+                ? String(localized: "Job handover opened. Tap Take this job to start your clock.")
+                : String(localized: "Job handover from \(handover.organisation.name) opened. Tap Take this job to start your clock.")
         case .replaced(let changes):
             let what = changes.lines.isEmpty ? "" : " " + changes.lines.joined(separator: " ")
-            return "Update \(handover.generation) replaced the earlier one.\(what)"
+            return String(localized: "Update \(handover.generation) replaced the earlier one.") + what
         case .alreadyHeld:
-            return "You already have update \(handover.generation) of this handover."
+            return String(localized: "You already have update \(handover.generation) of this handover.")
         case .olderThanHeld(let held):
-            return "That's an older update than the one you have (update \(held)), so yours was kept as it was."
+            return String(localized: "That's an older update than the one you have (update \(held)), so yours was kept as it was.")
         case .conflicting:
-            return "That file says it updates a handover you hold, but it comes from someone else, so it wasn't opened."
+            return String(localized: "That file says it updates a handover you hold, but it comes from someone else, so it wasn't opened.")
         case .full:
-            return "This phone is holding as many handovers as it keeps. Delete some you're done with, then open it again."
+            return String(localized: "This phone is holding as many handovers as it keeps. Delete some you're done with, then open it again.")
         case .couldNotSave:
-            return "The handover couldn't be saved on this phone. Try opening it again."
+            return String(localized: "The handover couldn't be saved on this phone. Try opening it again.")
         }
     }
 
@@ -284,11 +285,11 @@ final class AssistingService: ObservableObject {
     /// The expert tapped Send reply: write the file into protected staging for the share sheet.
     /// Still nothing has left — the share sheet's own Send is the tap that sends.
     func stageReply(for id: String, note: String?) -> Result<StagedReply, Refusal> {
-        guard let result = reply(for: id, note: note) else { return .failure(Refusal("That handover is no longer on this phone.")) }
+        guard let result = reply(for: id, note: note) else { return .failure(Refusal(String(localized: "That handover is no longer on this phone."))) }
         let reply: ExpertTimeReply
         switch result {
-        case .failure(.notTaken): return .failure(Refusal("Tap Take this job first; the reply carries your time."))
-        case .failure(.notDone): return .failure(Refusal("Tap Done first; the reply carries your time to the minute you finished."))
+        case .failure(.notTaken): return .failure(Refusal(String(localized: "Tap Take this job first; the reply carries your time.")))
+        case .failure(.notDone): return .failure(Refusal(String(localized: "Tap Done first; the reply carries your time to the minute you finished.")))
         case .success(let built): reply = built
         }
         do {
@@ -300,7 +301,7 @@ final class AssistingService: ObservableObject {
             return .success(StagedReply(reply: reply, lease: lease))
         } catch {
             PrivacyLog.transfer(.assistingReply, .fileFailed, error: SafeErrorSummary(error))
-            return .failure(Refusal("The reply couldn't be written on this phone. Try again."))
+            return .failure(Refusal(String(localized: "The reply couldn't be written on this phone. Try again.")))
         }
     }
 
@@ -329,7 +330,7 @@ final class AssistingService: ObservableObject {
                      calendar: Calendar = .current) -> Result<StagedLedger, Refusal> {
         let ledger = ledger.ledger
         let rows = ledger.rows(organisation: key, month: month, calendar: calendar)
-        guard !rows.isEmpty else { return .failure(Refusal("There's no time for that organisation in that month.")) }
+        guard !rows.isEmpty else { return .failure(Refusal(String(localized: "There's no time for that organisation in that month."))) }
         let document = ledger.document(organisation: key, month: month, calendar: calendar, preparedAt: now())
         let ext = pdf ? "pdf" : "csv"
         do {
@@ -340,7 +341,7 @@ final class AssistingService: ObservableObject {
             return .success(StagedLedger(lease: lease, rows: rows.count))
         } catch {
             PrivacyLog.transfer(.assistingReply, .fileFailed, error: SafeErrorSummary(error))
-            return .failure(Refusal("The ledger couldn't be written on this phone. Try again."))
+            return .failure(Refusal(String(localized: "The ledger couldn't be written on this phone. Try again.")))
         }
     }
 
@@ -415,7 +416,7 @@ final class AssistingService: ObservableObject {
     /// The expert tapped Send Coaching Steps: write the file into protected staging for the share
     /// sheet. Nothing has left yet — the share sheet's own Send is the tap that sends.
     func stageCoaching(for id: String) -> Result<StagedCoaching, Refusal> {
-        guard let result = coachingReply(for: id) else { return .failure(Refusal("That handover is no longer on this phone.")) }
+        guard let result = coachingReply(for: id) else { return .failure(Refusal(String(localized: "That handover is no longer on this phone."))) }
         let reply: ExpertCoachingReply
         switch result {
         case .failure(let refusal): return .failure(Refusal(refusal.message))
@@ -430,7 +431,7 @@ final class AssistingService: ObservableObject {
             return .success(StagedCoaching(reply: reply, lease: lease))
         } catch {
             PrivacyLog.transfer(.assistingReply, .fileFailed, error: SafeErrorSummary(error))
-            return .failure(Refusal("The coaching steps couldn't be written on this phone. Try again."))
+            return .failure(Refusal(String(localized: "The coaching steps couldn't be written on this phone. Try again.")))
         }
     }
 

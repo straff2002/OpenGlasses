@@ -135,17 +135,17 @@ enum SignInFlowState: Equatable {
         case .presenting(let listening):
             // Only the paste route is worth a line here. When the redirect can be caught, the
             // sheet handles itself and the announcement would land on top of the page's own.
-            return listening ? nil : "Sign-in page open. You'll paste the code back here when it's done."
+            return listening ? nil : String(localized: "Sign-in page open. You'll paste the code back here when it's done.")
         case .captured:
             return nil
         case .exchanging:
-            return "Finishing sign-in"
+            return String(localized: "Finishing sign-in")
         case .connected:
-            return "Account connected"
+            return String(localized: "Account connected")
         case .failed(let reason):
-            return reason.isEmpty ? "Sign-in failed" : reason
+            return reason.isEmpty ? String(localized: "Sign-in failed") : reason
         case .cancelled:
-            return "Sign-in closed without finishing. Paste the code to continue."
+            return String(localized: "Sign-in closed without finishing. Paste the code to continue.")
         }
     }
 

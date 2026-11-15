@@ -41,9 +41,9 @@ enum JobWatchPayload {
     static func payload(for session: FieldSession?) -> Payload? {
         guard let session, session.endedAt == nil, session.outcome != .cancelled else { return nil }
         return Payload(
-            jobNumber: clip(session.jobReference.flatMap { $0.isEmpty ? nil : "Job \($0)" }
+            jobNumber: clip(session.jobReference.flatMap { $0.isEmpty ? nil : String(localized: "Job \($0)") }
                             ?? JobTabModel.noJobNumber),
-            state: session.pausedAt == nil ? "Running" : "Paused",
+            state: session.pausedAt == nil ? String(localized: "Running") : String(localized: "Paused"),
             unit: clip(session.equipment?.stated ?? ""),
             nextAction: clip(nextAction(for: session)))
     }
@@ -54,14 +54,14 @@ enum JobWatchPayload {
     /// the one holding a re-scope. A task in hand is not a question, so it is reported last and
     /// only when there is no question at all.
     static func nextAction(for session: FieldSession) -> String {
-        if session.pendingUnitChange != nil { return "Answer: same job, or finished?" }
+        if session.pendingUnitChange != nil { return String(localized: "Answer: same job, or finished?") }
         switch session.jobIntake {
-        case .confirming(let candidate, _): return "Confirm job \(candidate)"
-        case .asked, .needsReference: return "Job number needed"
-        case .outstanding: return "Job number can be typed in"
+        case .confirming(let candidate, _): return String(localized: "Confirm job \(candidate)")
+        case .asked, .needsReference: return String(localized: "Job number needed")
+        case .outstanding: return String(localized: "Job number can be typed in")
         case .recorded, .declined, .notRequired: break
         }
-        if let task = session.activeTask { return "On: \(task.title)" }
+        if let task = session.activeTask { return String(localized: "On: \(task.title)") }
         return ""
     }
 

@@ -80,33 +80,31 @@ enum SyncEligibility {
         var explanation: String {
             switch self {
             case .medicalMode:
-                return "Recordings are not sent while a medical privacy mode is on."
+                return String(localized: "Recordings are not sent while a medical privacy mode is on.")
             case .blurRequired:
-                return "Your organisation requires faces to be blurred before a recording is sent. "
-                    + "This one was made ready for the office without that, and can't be blurred now. "
-                    + "It stays on this phone and isn't sent. You can delete it."
+                return String(localized: "Your organisation requires faces to be blurred before a recording is sent. This one was made ready for the office without that, and can't be blurred now. It stays on this phone and isn't sent. You can delete it.")
             case .profileNotCurrent:
-                return "This phone's organisation settings are out of date, so the recording can't be sent yet."
+                return String(localized: "This phone's organisation settings are out of date, so the recording can't be sent yet.")
             case .leaseNotCurrent:
-                return "This phone's licence needs renewing before the recording can be sent."
+                return String(localized: "This phone's licence needs renewing before the recording can be sent.")
             case .bindingNotCurrent:
-                return "This phone isn't currently paired with your office, so the recording can't be sent."
+                return String(localized: "This phone isn't currently paired with your office, so the recording can't be sent.")
             case .noNetwork:
-                return "Waiting for Wi-Fi."
+                return String(localized: "Waiting for Wi-Fi.")
             case .waitingForWiFi:
-                return "Waiting for Wi-Fi. Recordings aren't sent over mobile data unless you allow it."
+                return String(localized: "Waiting for Wi-Fi. Recordings aren't sent over mobile data unless you allow it.")
             case .cellularForbiddenByOrganization:
-                return "Waiting for Wi-Fi. Your organisation doesn't allow recordings to be sent over mobile data."
+                return String(localized: "Waiting for Wi-Fi. Your organisation doesn't allow recordings to be sent over mobile data.")
             case .waitingForPower:
-                return "Waiting for power. Plug the phone in to send the recording."
+                return String(localized: "Waiting for power. Plug the phone in to send the recording.")
             case .savingPower:
-                return "The phone is saving power. Plug it in to send the recording."
+                return String(localized: "The phone is saving power. Plug it in to send the recording.")
             case .officeNotReachable:
-                return "The office can't be reached from here. The recording will be sent when it can."
+                return String(localized: "The office can't be reached from here. The recording will be sent when it can.")
             case .smallerItemsFirst:
-                return "Job reports are being sent first."
+                return String(localized: "Job reports are being sent first.")
             case .videoNeedsDirectRoute:
-                return "The video is waiting for a direct connection to the office. Video is never sent through a relay."
+                return String(localized: "The video is waiting for a direct connection to the office. Video is never sent through a relay.")
             }
         }
     }

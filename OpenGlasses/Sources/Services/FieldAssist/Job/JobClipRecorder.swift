@@ -53,7 +53,7 @@ final class JobClipRecorder: ObservableObject {
 
     /// "0:12 of 0:30" — what the record button shows while it runs.
     var countdownLabel: String {
-        Self.clock(elapsed) + " of " + Self.clock(capSeconds)
+        String(localized: "\(Self.clock(elapsed)) of \(Self.clock(capSeconds))")
     }
 
     /// `nonisolated` because the two nested value types below format their own spoken lines, and

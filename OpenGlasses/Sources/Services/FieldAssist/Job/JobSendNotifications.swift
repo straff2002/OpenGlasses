@@ -20,11 +20,11 @@ enum JobSendNotifications {
     /// What the notification says for a given number of staged reports.
     static func body(stagedCount: Int) -> String {
         stagedCount == 1
-            ? "One report is ready to send. One tap when you stop."
-            : "\(stagedCount) reports are ready to send. One tap each when you stop."
+            ? String(localized: "One report is ready to send. One tap when you stop.")
+            : String(localized: "\(stagedCount) reports are ready to send. One tap each when you stop.")
     }
 
-    static let title = "Ready to send"
+    static let title = String(localized: "Ready to send")
 
     /// Post it, asking for permission the first time and giving up quietly if refused.
     ///

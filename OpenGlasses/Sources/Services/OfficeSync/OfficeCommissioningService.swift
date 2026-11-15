@@ -357,7 +357,7 @@ final class OfficeCommissioningService: ObservableObject {
     func submitModelKey(_ key: String) -> String? {
         guard case .modelKey(let model, let organization) = stage else { return nil }
         if model.access == .key, let problem = model.keyProblem(key) { return problem }
-        guard manager.completeModelSetup(apiKey: key) else { return "Couldn't save the key. Try again." }
+        guard manager.completeModelSetup(apiKey: key) else { return String(localized: "Couldn't save the key. Try again.") }
         seams.modelDidChange()
         stage = .paired(organization, officeConnected: officeConnected)
         return nil

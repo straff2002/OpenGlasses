@@ -25,12 +25,12 @@ enum CaptureFlowBuilder {
 
         var errorDescription: String? {
             switch self {
-            case .emptyId: return "Give the flow an id."
-            case .emptyTitle: return "Give the flow a title."
-            case .noSteps: return "Add at least one step."
-            case .invalidField(let f): return "Step field \"\(f)\" must be lowercase letters, numbers, or underscores."
-            case .duplicateField(let f): return "Duplicate step field \"\(f)\"."
-            case .enumWithoutOptions(let f): return "The choice step \"\(f)\" needs at least two options."
+            case .emptyId: return String(localized: "Give the flow an id.")
+            case .emptyTitle: return String(localized: "Give the flow a title.")
+            case .noSteps: return String(localized: "Add at least one step.")
+            case .invalidField(let f): return String(localized: "Step field \"\(f)\" must be lowercase letters, numbers, or underscores.")
+            case .duplicateField(let f): return String(localized: "Duplicate step field \"\(f)\".")
+            case .enumWithoutOptions(let f): return String(localized: "The choice step \"\(f)\" needs at least two options.")
             }
         }
     }

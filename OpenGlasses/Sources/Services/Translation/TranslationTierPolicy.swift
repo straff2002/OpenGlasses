@@ -18,15 +18,15 @@ enum TranslationTierPolicy {
         if hipaa {
             return onDeviceAvailable
                 ? .onDevice
-                : .unavailable(reason: "Cloud translation is disabled in HIPAA mode, and the on-device translator is not installed.")
+                : .unavailable(reason: String(localized: "Cloud translation is disabled in HIPAA mode, and the on-device translator is not installed."))
         }
         if offline {
             return onDeviceAvailable
                 ? .onDevice
-                : .unavailable(reason: "Offline, and the on-device translator is not installed.")
+                : .unavailable(reason: String(localized: "Offline, and the on-device translator is not installed."))
         }
         if cloudConfigured { return .cloud }
         if onDeviceAvailable { return .onDevice }
-        return .unavailable(reason: "Translation is not configured.")
+        return .unavailable(reason: String(localized: "Translation is not configured."))
     }
 }

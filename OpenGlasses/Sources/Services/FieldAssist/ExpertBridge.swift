@@ -87,10 +87,10 @@ struct StubExpertNotifier: ExpertNotifier {
 struct LocalNotificationExpertNotifier: ExpertNotifier {
     func notifyExpertPool(reason: String, assetId: String?, sessionId: String, roomURL: String?) async throws -> Bool {
         let content = UNMutableNotificationContent()
-        content.title = "Field Assist — expert requested"
+        content.title = String(localized: "Field Assist — expert requested")
         var body = reason
-        if let assetId { body += "\nAsset: \(assetId)" }
-        if let roomURL { body += "\nJoin: \(roomURL)" }
+        if let assetId { body += "\n" + String(localized: "Asset: \(assetId)") }
+        if let roomURL { body += "\n" + String(localized: "Join: \(roomURL)") }
         content.body = body
         content.sound = .default
         content.interruptionLevel = .timeSensitive

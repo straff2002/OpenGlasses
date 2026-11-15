@@ -138,14 +138,14 @@ struct OrgProfileReview: Identifiable, Equatable {
         guard let policy = result.adminPolicy else { return [] }
         var lines: [String]
         switch policy.edition {
-        case .fieldAssist: lines = ["Shows Field Assist, Job and Settings, with most settings locked"]
+        case .fieldAssist: lines = [String(localized: "Shows Field Assist, Job and Settings, with most settings locked")]
         }
         lines.append(contentsOf: policy.lockdown.reviewLines)
         switch policy.credentials.method {
-        case .card: lines.append("Administrator settings open with your organisation's admin card")
-        case .passcode: lines.append("Administrator settings open with your organisation's passcode")
-        case .cardOrPasscode: lines.append("Administrator settings open with the admin card or passcode")
-        case .notIssued: lines.append("No admin card or passcode, so administrator settings don't open on this phone")
+        case .card: lines.append(String(localized: "Administrator settings open with your organisation's admin card"))
+        case .passcode: lines.append(String(localized: "Administrator settings open with your organisation's passcode"))
+        case .cardOrPasscode: lines.append(String(localized: "Administrator settings open with the admin card or passcode"))
+        case .notIssued: lines.append(String(localized: "No admin card or passcode, so administrator settings don't open on this phone"))
         }
         return lines
     }
@@ -154,8 +154,8 @@ struct OrgProfileReview: Identifiable, Equatable {
     /// address. The key is not the profile's: it is entered on the next page.
     var aiModelLines: [String] {
         guard let model = result.aiModel else { return [] }
-        var lines = ["AI model: \(model.summary)"]
-        if let host = model.host { lines.append("Prompts go to \(host)") }
+        var lines = [String(localized: "AI model: \(model.summary)")]
+        if let host = model.host { lines.append(String(localized: "Prompts go to \(host)")) }
         return lines
     }
 
@@ -193,16 +193,16 @@ final class OrgProfileManager: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .verification(let failure): return failure.errorDescription
-            case .revocation: return "That link carries a revocation, not a profile. There is nothing to apply."
-            case .managedByAnother(let name): return "This phone is already managed by \(name). Remove that first, from Settings."
-            case .managedByDevice(let name): return "This phone is managed by \(name) through your organisation's device management, so it can only be moved to another organisation there."
-            case .moveChanged: return "The organisation managing this phone changed while you were reviewing the move. Enter the key again."
+            case .revocation: return String(localized: "That link carries a revocation, not a profile. There is nothing to apply.")
+            case .managedByAnother(let name): return String(localized: "This phone is already managed by \(name). Remove that first, from Settings.")
+            case .managedByDevice(let name): return String(localized: "This phone is managed by \(name) through your organisation's device management, so it can only be moved to another organisation there.")
+            case .moveChanged: return String(localized: "The organisation managing this phone changed while you were reviewing the move. Enter the key again.")
             case .differentOrganisation(let entered, let profile):
-                return "This licence is for \(entered), but the profile it points to is for \(profile). Ask your organisation for a new key."
+                return String(localized: "This licence is for \(entered), but the profile it points to is for \(profile). Ask your organisation for a new key.")
             case .licence(let message): return message
-            case .officePackage: return "The office licence and profile do not verify as one organisation. Ask your organisation for a new setup package."
-            case .notRemovable: return "Your organisation's device management applied this profile, so it can only be removed there."
-            case .enrolmentChanged: return "This phone's organisation setup changed while it was joining the office. Scan the office's code again."
+            case .officePackage: return String(localized: "The office licence and profile do not verify as one organisation. Ask your organisation for a new setup package.")
+            case .notRemovable: return String(localized: "Your organisation's device management applied this profile, so it can only be removed there.")
+            case .enrolmentChanged: return String(localized: "This phone's organisation setup changed while it was joining the office. Scan the office's code again.")
             }
         }
     }
@@ -351,7 +351,7 @@ final class OrgProfileManager: ObservableObject {
             }
         } catch {
             profile = nil
-            loadProblem = "The stored organisation profile no longer verifies, so none of its settings are in force. Ask your organisation for a new code."
+            loadProblem = String(localized: "The stored organisation profile no longer verifies, so none of its settings are in force. Ask your organisation for a new code.")
             seams.clearEnvelope()
         }
         evaluateLease()
@@ -1101,33 +1101,34 @@ extension SettingKey {
     /// One line for a ceiling, as the review sheet shows it.
     var ceilingDescription: String {
         switch self {
-        case .organizationFieldServiceRoute: return "Your office connects to Workiz for you"
-        case .organizationAllowsUnsignedVaults: return "Vaults from a link must be signed"
-        case .organizationRequiresSignedJobFiles: return "Job files must be signed by your organisation"
-        case .organizationRequiresCustomerSignOff: return "Every job asks for the customer's signature"
-        case .organizationForbidsCustomerTranscript: return "Transcripts go only to the office addresses it set up"
-        case .organizationForbidsJobRecording: return "Jobs can't be recorded"
-        case .organizationForbidsVanStock: return "Van stock is off"
-        case .organizationRequiresBlurBeforeOfficeSync: return "Faces must be blurred before a job recording goes to the office"
-        case .organizationForbidsRecordingSyncOnCellular: return "Job recordings are never sent over mobile data"
-        case .organizationRequiresTableChecks: return "A table read from a picture gives no value until it is checked"
-        case .privacyFilterEnabled: return "Bystander face blur is always on"
-        case .remoteInvokeObserveEnabled: return "Remote status requests are off"
-        case .remoteInvokeOutputEnabled: return "Remote speak-and-display requests are off"
-        case .remoteInvokeCaptureEnabled: return "Remote camera, recording and transcript requests are off"
+        case .organizationFieldServiceRoute: return String(localized: "Your office connects to Workiz for you")
+        case .organizationAllowsUnsignedVaults: return String(localized: "Vaults from a link must be signed")
+        case .organizationRequiresSignedJobFiles: return String(localized: "Job files must be signed by your organisation")
+        case .organizationRequiresCustomerSignOff: return String(localized: "Every job asks for the customer's signature")
+        case .organizationForbidsCustomerTranscript: return String(localized: "Transcripts go only to the office addresses it set up")
+        case .organizationForbidsJobRecording: return String(localized: "Jobs can't be recorded")
+        case .organizationForbidsVanStock: return String(localized: "Van stock is off")
+        case .organizationRequiresBlurBeforeOfficeSync: return String(localized: "Faces must be blurred before a job recording goes to the office")
+        case .organizationForbidsRecordingSyncOnCellular: return String(localized: "Job recordings are never sent over mobile data")
+        case .organizationRequiresTableChecks: return String(localized: "A table read from a picture gives no value until it is checked")
+        case .privacyFilterEnabled: return String(localized: "Bystander face blur is always on")
+        case .remoteInvokeObserveEnabled: return String(localized: "Remote status requests are off")
+        case .remoteInvokeOutputEnabled: return String(localized: "Remote speak-and-display requests are off")
+        case .remoteInvokeCaptureEnabled: return String(localized: "Remote camera, recording and transcript requests are off")
         #if AVENKIN_PHONE_ONLY
-        case .mcpServerEnabled: return "The MCP server is off"
+        case .mcpServerEnabled: return String(localized: "The MCP server is off")
         #else
-        case .mcpServerEnabled: return "The MCP glasses server is off"
+        case .mcpServerEnabled: return String(localized: "The MCP glasses server is off")
         #endif
-        case .agentModeEnabled: return "Agentic features are off"
-        case .aiConnectionCueEnabled: return "Voice startup always says it is connecting to Avenkin AI"
-        case .teamLearningReviewerDevice: return "This phone can't approve team learnings"
-        case .cloudDictationEnabled: return "Cloud dictation is off"
-        case .interpreterEnabled: return "The spoken interpreter is off"
-        case .instantReplayEnabled: return "Instant Replay is off"
-        case .preparedCardCustomerTexts: return "My Day cards don't offer to text customers"
-        case .conversationDigestsEnabled: return "Notes of finished conversations are off"
+        case .agentModeEnabled: return String(localized: "Agentic features are off")
+        case .aiConnectionCueEnabled: return String(localized: "Voice startup always says it is connecting to Avenkin AI")
+        case .teamLearningReviewerDevice: return String(localized: "This phone can't approve team learnings")
+        case .cloudDictationEnabled: return String(localized: "Cloud dictation is off")
+        case .interpreterEnabled: return String(localized: "The spoken interpreter is off")
+        case .instantReplayEnabled: return String(localized: "Instant Replay is off")
+        case .preparedCardCustomerTexts: return String(localized: "My Day cards don't offer to text customers")
+        case .conversationDigestsEnabled: return String(localized: "Notes of finished conversations are off")
+        case .privateConversationsAllowed: return String(localized: "Private conversations are off")
         default: return rawValue
         }
     }
@@ -1135,22 +1136,22 @@ extension SettingKey {
     /// One line for organisation details the profile supplies.
     var ownedDescription: String {
         switch self {
-        case .organizationDisplayName: return "Its name on the customer sign-off sheet"
-        case .organizationJobSigningKey: return "The key its job files are signed with"
-        case .organizationJobReportChannel: return "Where a spoken \"send it\" goes"
-        case .organizationReportRecipients: return "Who job reports are addressed to"
-        case .organizationReportTranscriptInternal: return "Whether reports to the office carry the transcript"
-        case .organizationAccentColor: return "The app's accent colour"
-        case .technicianFullName: return "Your full name on reports"
-        case .technicianID: return "Your technician ID on internal reports"
-        case .technicianDisplayName: return "Your name, as your team sees it"
-        case .organizationToolDefinitionsMode: return "When the assistant looks up tool definitions on demand"
-        case .organizationManualSearchModel: return "The model Field Assist searches your manuals with"
-        case .organizationExperts: return "The experts you can call for help on a job"
-        case .expertHandoverTranscript: return "Whether a job sent to an expert carries the conversation"
-        case .expertHandoverIncludesAddress: return "Whether a job sent to its own staff experts carries the site's address"
-        case .expertHandoverRetentionDays: return "How long an expert's app keeps a job sent to them"
-        case .customerReportShowsExpertTime: return "Whether the customer's report shows an expert's time and name"
+        case .organizationDisplayName: return String(localized: "Its name on the customer sign-off sheet")
+        case .organizationJobSigningKey: return String(localized: "The key its job files are signed with")
+        case .organizationJobReportChannel: return String(localized: "Where a spoken \"send it\" goes")
+        case .organizationReportRecipients: return String(localized: "Who job reports are addressed to")
+        case .organizationReportTranscriptInternal: return String(localized: "Whether reports to the office carry the transcript")
+        case .organizationAccentColor: return String(localized: "The app's accent colour")
+        case .technicianFullName: return String(localized: "Your full name on reports")
+        case .technicianID: return String(localized: "Your technician ID on internal reports")
+        case .technicianDisplayName: return String(localized: "Your name, as your team sees it")
+        case .organizationToolDefinitionsMode: return String(localized: "When the assistant looks up tool definitions on demand")
+        case .organizationManualSearchModel: return String(localized: "The model Field Assist searches your manuals with")
+        case .organizationExperts: return String(localized: "The experts you can call for help on a job")
+        case .expertHandoverTranscript: return String(localized: "Whether a job sent to an expert carries the conversation")
+        case .expertHandoverIncludesAddress: return String(localized: "Whether a job sent to its own staff experts carries the site's address")
+        case .expertHandoverRetentionDays: return String(localized: "How long an expert's app keeps a job sent to them")
+        case .customerReportShowsExpertTime: return String(localized: "Whether the customer's report shows an expert's time and name")
         default: return rawValue
         }
     }
@@ -1158,21 +1159,21 @@ extension SettingKey {
     /// One line for a starting value.
     func startingValueDescription(_ value: ProfileValue) -> String {
         switch (self, value) {
-        case (.fieldAssistEnabled, .bool(let on)): return on ? "Field Assist is turned on" : "Field Assist is turned off"
-        case (.fieldAssistDefaultVaultId, .string(let id)): return "Field Assist opens with the \(id) vault"
-        case (.supportReportEmail, .string(let address)): return "Support reports are emailed to \(address)"
-        case (.accentColorName, .string): return "The app starts in your organisation's accent colour"
+        case (.fieldAssistEnabled, .bool(let on)): return on ? String(localized: "Field Assist is turned on") : String(localized: "Field Assist is turned off")
+        case (.fieldAssistDefaultVaultId, .string(let id)): return String(localized: "Field Assist opens with the \(id) vault")
+        case (.supportReportEmail, .string(let address)): return String(localized: "Support reports are emailed to \(address)")
+        case (.accentColorName, .string): return String(localized: "The app starts in your organisation's accent colour")
         case (.refrigerationUnits, .string(let raw)):
-            return RefrigerationUnits(encoded: raw).map { "Refrigeration answers start in \($0.spokenList)" }
+            return RefrigerationUnits(encoded: raw).map { String(localized: "Refrigeration answers start in \($0.spokenList)") }
                 ?? rawValue
         case (.fieldAssistDefaultTrades, .strings(let raw)):
             let trades = FieldTrade.known(raw)
             return trades.isEmpty
-                ? "Field Assist starts with no trade tiles"
-                : "Field Assist starts with the " + trades.map(\.title).joined(separator: " and ") + " tiles"
+                ? String(localized: "Field Assist starts with no trade tiles")
+                : String(localized: "Field Assist starts with the \(trades.map(\.title).joined(separator: " and ")) tiles")
         case (.fieldAssistDefaultMode, .string(let mode)):
             return mode == FieldSession.Mode.humanAssisted.rawValue
-                ? "Field Assist starts in human-assisted mode" : "Field Assist starts in AI-only mode"
+                ? String(localized: "Field Assist starts in human-assisted mode") : String(localized: "Field Assist starts in AI-only mode")
         default: return rawValue
         }
     }
@@ -1181,14 +1182,14 @@ extension SettingKey {
 extension ProfileApplier.Drop.Reason {
     var explanation: String {
         switch self {
-        case .unknownKey: return "not a setting this version of the app lets a profile set"
-        case .retired: return "the feature it set is no longer in the app, so there is nothing to set"
-        case .unreadableValue: return "its value could not be read"
-        case .wrongType: return "its value is the wrong kind"
-        case .wrongDirection: return "a profile may only tighten this setting"
-        case .unknownDisposition: return "it says neither default nor ceiling"
+        case .unknownKey: return String(localized: "not a setting this version of the app lets a profile set")
+        case .retired: return String(localized: "the feature it set is no longer in the app, so there is nothing to set")
+        case .unreadableValue: return String(localized: "its value could not be read")
+        case .wrongType: return String(localized: "its value is the wrong kind")
+        case .wrongDirection: return String(localized: "a profile may only tighten this setting")
+        case .unknownDisposition: return String(localized: "it says neither default nor ceiling")
         case .dispositionNotAllowed(let disposition):
-            return disposition == .ceiling ? "this setting cannot be locked" : "this setting can only be locked"
+            return disposition == .ceiling ? String(localized: "this setting cannot be locked") : String(localized: "this setting can only be locked")
         case .invalidValue(let problem): return problem
         }
     }

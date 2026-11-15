@@ -66,7 +66,7 @@ enum ManualLibraryAdmission {
 
     static func pageCount(_ url: URL) throws -> Int {
         guard url.pathExtension.lowercased() == "pdf", let pdf = PDFDocument(url: url), !pdf.isLocked,
-              pdf.pageCount > 0 else { throw Failure.refused("This manual needs an unlocked, readable PDF with numbered pages.") }
+              pdf.pageCount > 0 else { throw Failure.refused(String(localized: "This manual needs an unlocked, readable PDF with numbered pages.")) }
         return pdf.pageCount
     }
 
@@ -131,7 +131,7 @@ enum ManualLibraryAdmission {
     static func validateCapture(_ token: UUID, pages: Int) throws {
         state.lock.lock(); defer { state.lock.unlock() }
         guard FieldAssistEntitlement.shared.has(.personalManuals), let item = state.reservations[token] else {
-            throw Failure.refused("The capture is no longer authorised.")
+            throw Failure.refused(String(localized: "The capture is no longer authorised."))
         }
         let held = try held(excluding: token)
         let actual = ManualQuota.Item(id: item.id, pages: pages)
@@ -150,7 +150,7 @@ enum ManualLibraryAdmission {
                            recordsAdditions: Bool = true, _ commit: () throws -> T) throws -> T {
         state.lock.lock(); defer { state.lock.unlock() }
         guard FieldAssistEntitlement.shared.has(.personalManuals) else { throw Failure.refused(MyManualsPaywallCopy.locked) }
-        if let reservation, state.reservations[reservation] == nil { throw Failure.refused("This manual capture was cancelled. Photograph it again.") }
+        if let reservation, state.reservations[reservation] == nil { throw Failure.refused(String(localized: "This manual capture was cancelled. Photograph it again.")) }
         let ledger = additions
         var spend: ManualAdditionHistoryStore.Pending?
         var undoWindow: TimeInterval = 0
@@ -184,24 +184,24 @@ enum ManualLibraryAdmission {
 enum MyManualsPaywallCopy {
     static let title = "My Manuals"
     static let locked = "My Manuals needs an active subscription. Your files stay on this phone, and you can still remove them."
-    static let summary = "Keep your manuals. Ask by voice, hear the page cited, and open the source on your phone."
+    static let summary = String(localized: "Keep your manuals. Ask by voice, hear the page cited, and open the source on your phone.")
     static var pageLimits: String {
         let entitlement = FieldAssistEntitlement.shared
         let limits = entitlement.manualLimits() ?? ManualLimits.personal
         return limitDetails(limits)
     }
     static func limitDetails(_ limits: ManualLimits?) -> String {
-        guard let limits else { return "Your subscription includes an unlimited manual library." }
-        var parts = ["Up to \(limits.manuals.formatted()) manuals in your library."]
-        if let pages = limits.pagesPerManual { parts.append("Up to \(pages.formatted()) pages per manual.") }
-        if let pages = limits.totalPages { parts.append("Up to \(pages.formatted()) pages across your library.") }
+        guard let limits else { return String(localized: "Your subscription includes an unlimited manual library.") }
+        var parts = [String(localized: "Up to \(limits.manuals.formatted()) manuals in your library.")]
+        if let pages = limits.pagesPerManual { parts.append(String(localized: "Up to \(pages.formatted()) pages per manual.")) }
+        if let pages = limits.totalPages { parts.append(String(localized: "Up to \(pages.formatted()) pages across your library.")) }
         if let additions = limits.additions {
             let days = Int((additions.window / 86_400).rounded())
-            parts.append("Up to \(additions.newPerWindow.formatted()) new manuals in any \(days.formatted()) days; your first \(additions.freeFirst.formatted()) manuals, and any manual you've had before, don't count.")
+            parts.append(String(localized: "Up to \(additions.newPerWindow.formatted()) new manuals in any \(days.formatted()) days; your first \(additions.freeFirst.formatted()) manuals, and any manual you've had before, don't count."))
         }
         return parts.joined(separator: " ")
     }
-    static let upgrade = "Field Assist is a separate service for jobs, trade references and professional tools."
-    static let disclosure = "Your manuals are indexed on this phone and excluded from library sharing and export. Selected passages and rendered page images may be sent to your chosen AI provider. Supported local models process content on this phone; available manual tools vary by model. A private record of which manuals you've added — fingerprints and dates, never the manual — syncs through your iCloud."
+    static let upgrade = String(localized: "Field Assist is a separate service for jobs, trade references and professional tools.")
+    static let disclosure = String(localized: "Your manuals are indexed on this phone and excluded from library sharing and export. Selected passages and rendered page images may be sent to your chosen AI provider. Supported local models process content on this phone; available manual tools vary by model. A private record of which manuals you've added — fingerprints and dates, never the manual — syncs through your iCloud.")
     static var all: [String] { [title, locked, summary, pageLimits, upgrade, disclosure] }
 }

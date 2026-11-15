@@ -26,10 +26,10 @@ final class HermesBridgeService: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .notConfigured: return "Hermes bridge host isn't configured"
-            case .notConnected: return "Hermes bridge isn't connected"
-            case .timedOut: return "Hermes bridge didn't answer in time"
-            case .closed: return "Hermes bridge connection closed"
+            case .notConfigured: return String(localized: "Hermes bridge host isn't configured")
+            case .notConnected: return String(localized: "Hermes bridge isn't connected")
+            case .timedOut: return String(localized: "Hermes bridge didn't answer in time")
+            case .closed: return String(localized: "Hermes bridge connection closed")
             }
         }
     }

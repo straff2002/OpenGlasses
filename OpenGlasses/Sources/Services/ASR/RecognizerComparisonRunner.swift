@@ -21,10 +21,10 @@ enum RecognizerComparisonError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .recognizerUnavailable: return "The recogniser isn't available right now."
-        case .notAllowed: return "This recogniser isn't allowed to run right now."
-        case .stoppedEarly: return "The recogniser stopped before it finished."
-        case .timedOut: return "The recogniser took too long to answer."
+        case .recognizerUnavailable: return String(localized: "The recogniser isn't available right now.")
+        case .notAllowed: return String(localized: "This recogniser isn't allowed to run right now.")
+        case .stoppedEarly: return String(localized: "The recogniser stopped before it finished.")
+        case .timedOut: return String(localized: "The recogniser took too long to answer.")
         }
     }
 }

@@ -9,16 +9,16 @@ enum UpcomingJobsModel {
         guard let provenance else { return nil }
         if provenance.connector == "workiz" { return "Workiz" }
         switch provenance.signature {
-        case .signed: return "Signed by \(provenance.signer ?? "your organisation")"
-        case .unsigned, .unverifiable: return "Job file — not signed"
+        case .signed: return String(localized: "Signed by \(provenance.signer ?? String(localized: "your organisation"))")
+        case .unsigned, .unverifiable: return String(localized: "Job file — not signed")
         }
     }
 
     /// Why Start is unavailable on a job ahead, or nil when it is available.
     static func startBlockedReason(jobOpen: Bool, vaultUnlocked: Bool, vaultName: String) -> String? {
-        if jobOpen { return "Finish the job that's open before starting this one." }
+        if jobOpen { return String(localized: "Finish the job that's open before starting this one.") }
         if !vaultUnlocked {
-            return "\(vaultName) is locked. Unlock it under Settings → Field Assist before starting a job."
+            return String(localized: "\(vaultName) is locked. Unlock it under Settings → Field Assist before starting a job.")
         }
         return nil
     }

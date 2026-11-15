@@ -179,7 +179,7 @@ struct DockLayoutEditorView: View {
             if let editable { editing = EditorTarget(action: editable) }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(slot.isHideable ? slot.editorLabel : "\(slot.editorLabel), control")
+        .accessibilityLabel(slot.isHideable ? slot.editorLabel : String(localized: "\(slot.editorLabel), control"))
         .accessibilityValue(reasonNotShown(slot) ?? "")
         // A swipe that does nothing is worse than no swipe at all, so the row says why
         // before the user tries it.

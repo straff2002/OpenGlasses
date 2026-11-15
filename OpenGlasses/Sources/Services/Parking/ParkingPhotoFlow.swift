@@ -89,10 +89,9 @@ final class ParkingPhotoFlow {
                      now: Date) -> String {
         switch outcome {
         case .unavailable(.filterUnavailable), .unavailable(.filterNotWired):
-            return "Face blur is on and couldn't be applied to that picture, so it wasn't kept. "
-                + "Try again with Avenkin open and the phone unlocked."
+            return String(localized: "Face blur is on and couldn't be applied to that picture, so it wasn't kept. Try again with Avenkin open and the phone unlocked.")
         case .unavailable, .unreadable:
-            return "That picture couldn't be read."
+            return String(localized: "That picture couldn't be read.")
         case .read(let reading, let jpeg):
             let spot: ParkingSpot?
             if store.active != nil {
@@ -104,14 +103,14 @@ final class ParkingPhotoFlow {
                 fresh.merge(reading.fields)
                 spot = store.saveManual(fresh, photo: jpeg, now: now)
             }
-            guard let spot else { return "That picture couldn't be kept." }
+            guard let spot else { return String(localized: "That picture couldn't be kept.") }
             guard !reading.isEmpty, let details = ParkingRecallPhraser.detailPhrase(spot) else {
-                return "Photo kept. I couldn't read a level or space from it."
+                return String(localized: "Photo kept. I couldn't read a level or space from it.")
             }
             let read = details.replacingOccurrences(of: "on ", with: "", options: .anchored)
             return reading.needsConfirmation
-                ? "Photo kept. I read \(read) — check that's right."
-                : "Photo kept — \(read)."
+                ? String(localized: "Photo kept. I read \(read) — check that's right.")
+                : String(localized: "Photo kept — \(read).")
         }
     }
 

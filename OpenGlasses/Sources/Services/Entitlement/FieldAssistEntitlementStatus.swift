@@ -25,9 +25,9 @@ struct FieldAssistEntitlementStatus: Equatable {
         /// period, so one that renews says so rather than "Expires".
         var expiryLabel: String {
             switch renews {
-            case true?: return "Renews"
-            case false?: return "Access ends"
-            case nil: return "Expires"
+            case true?: return String(localized: "Renews")
+            case false?: return String(localized: "Access ends")
+            case nil: return String(localized: "Expires")
             }
         }
 
@@ -35,10 +35,10 @@ struct FieldAssistEntitlementStatus: Equatable {
             switch source {
             case .storeProduct(let productID):
                 return StoreKitService.fieldAssistSubscriptionIds.union(StoreKitService.myManualsSubscriptionIds)
-                    .contains(productID) ? "App Store subscription" : "In-app purchase"
-            case .organizationLicense: return "Organisation licence"
+                    .contains(productID) ? String(localized: "App Store subscription") : String(localized: "In-app purchase")
+            case .organizationLicense: return String(localized: "Organisation licence")
             #if DEBUG
-            case .internalDeveloper: return "Internal build"
+            case .internalDeveloper: return String(localized: "Internal build")
             #endif
             }
         }
@@ -97,22 +97,22 @@ struct FieldAssistEntitlementStatus: Equatable {
 enum FieldAssistPaywallCopy {
     /// How the professional tier is named wherever it is sold or licensed (Plan FY P2): the tier's
     /// own name first, the product it runs in second.
-    static let poweredBy = "Field Assist, powered by Avenkin"
-    static let locked = "Field Assist is locked"
-    static let lockedDetail = "Unlock the solo tier with a subscription, or enter the licence code your organisation issued."
-    static let licenseHeader = "Organisation Licence"
-    static let licenseFooter = "Enter the activation key or licence code your organisation issued. Licence codes are signed and checked on the phone; an activation key needs the internet once, to look it up."
-    static let purchaseHeader = "Solo — In-App Purchase"
-    static let purchaseFooter = "Subscription on this Apple ID. It covers the bundled vaults, vaults of your own with your manuals indexed on this phone, guided procedures, domain calculators, session log, and expert escalation."
-    static let purchased = "Unlocked with a legacy purchase"
+    static let poweredBy = String(localized: "Field Assist, powered by Avenkin")
+    static let locked = String(localized: "Field Assist is locked")
+    static let lockedDetail = String(localized: "Unlock the solo tier with a subscription, or enter the licence code your organisation issued.")
+    static let licenseHeader = String(localized: "Organisation Licence")
+    static let licenseFooter = String(localized: "Enter the activation key or licence code your organisation issued. Licence codes are signed and checked on the phone; an activation key needs the internet once, to look it up.")
+    static let purchaseHeader = String(localized: "Solo — In-App Purchase")
+    static let purchaseFooter = String(localized: "Subscription on this Apple ID. It covers the bundled vaults, vaults of your own with your manuals indexed on this phone, guided procedures, domain calculators, session log, and expert escalation.")
+    static let purchased = String(localized: "Unlocked with a legacy purchase")
     /// For someone holding the retired one-time unlock, or a solo-tier code: honest about what it
     /// bought, and about what the subscription adds. It never says "upgrade", because nothing they
     /// were sold has been taken away.
-    static let bundledVaultsOnly = "Your purchase covers the bundled vaults. A subscription adds vaults of your own, with your manuals indexed on this phone; a team licence adds audited PDF export and organisation-issued configuration."
+    static let bundledVaultsOnly = String(localized: "Your purchase covers the bundled vaults. A subscription adds vaults of your own, with your manuals indexed on this phone; a team licence adds audited PDF export and organisation-issued configuration.")
     /// A lapsed subscription is not a locked app: the vaults already installed stay readable, and a
     /// manual can still be taken off the phone. Only new manuals stop.
-    static let ownVaultsLapsed = "Your manual access has lapsed. Files stay on this phone and you can still remove them; reading and importing manuals need an active subscription."
-    static let ownVaultsLocked = "Vaults of your own need Field Assist — a subscription, or the licence code your organisation issued."
+    static let ownVaultsLapsed = String(localized: "Your manual access has lapsed. Files stay on this phone and you can still remove them; reading and importing manuals need an active subscription.")
+    static let ownVaultsLocked = String(localized: "Vaults of your own need Field Assist — a subscription, or the licence code your organisation issued.")
     /// Team learnings (Plan FP), spoken by `team_learning` when it refuses. Licence entry, never
     /// purchase: they come with an organisation's team licence and nothing a consumer can buy.
     static let teamLearningsNotIncluded = "Nothing was filed: team learnings come with your organisation's team or enterprise licence, and the Field Assist access on this phone doesn't include them."
@@ -128,28 +128,28 @@ enum FieldAssistPaywallCopy {
     static let teamLearningsBundleNotIncluded = "Not exchanged: sharing team learnings comes with your organisation's team or enterprise licence, and the Field Assist access on this device doesn't include it."
     static let teamLearningsBundleLapsed = "Not exchanged: your Field Assist access has lapsed. Learnings already published stay in use, and a retraction can still be accepted; enter a renewal code from your administrator to share new ones."
     static let teamLearningsBundleLocked = "Not exchanged: sharing team learnings needs the team or enterprise licence code your organisation issued."
-    static let renewLicense = "This licence has expired. Enter a renewal code from your administrator."
+    static let renewLicense = String(localized: "This licence has expired. Enter a renewal code from your administrator.")
     static let unverifiable = "The stored licence code did not verify. Re-enter it, or ask your administrator for a new code."
     /// The way out of a stored code that stopped verifying or expired: without it the locked screen
     /// shows its error until a valid code is entered, even for someone who only wants to buy.
-    static let removeStoredCode = "Remove Stored Code"
-    static let subscriptionLapsed = "Your Field Assist subscription has lapsed. Manage it in your App Store subscriptions."
-    static let manageSubscription = "Manage Subscription"
-    static let seatsNote = "Seats are recorded for your records; this device does not enforce them."
+    static let removeStoredCode = String(localized: "Remove Stored Code")
+    static let subscriptionLapsed = String(localized: "Your Field Assist subscription has lapsed. Manage it in your App Store subscriptions.")
+    static let manageSubscription = String(localized: "Manage Subscription")
+    static let seatsNote = String(localized: "Seats are recorded for your records; this device does not enforce them.")
     /// A seat-checked licence (Plan JS P2): what the phone does, and what it sends to do it.
-    static let seatCheckedNote = "This licence counts the phones that use it. This phone holds one of its seats and checks in with Avenkin's licence service about once a day, sending only its enrolment id, a key made for this phone, the app build and the profile id. Offline, it keeps working for up to 44 days."
+    static let seatCheckedNote = String(localized: "This licence counts the phones that use it. This phone holds one of its seats and checks in with Avenkin's licence service about once a day, sending only its enrolment id, a key made for this phone, the app build and the profile id. Offline, it keeps working for up to 44 days.")
 
     static func expiring(_ warning: FieldAssistEntitlementStatus.Warning) -> String {
         switch warning {
         case .expiring(let days, _):
             switch days {
-            case 0: return "Expires today. Renew now to keep Field Assist available in the field."
-            case 1: return "Expires tomorrow. Renew now to keep Field Assist available in the field."
-            default: return "Expires in \(days) days. Renew before then to keep Field Assist available in the field."
+            case 0: return String(localized: "Expires today. Renew now to keep Field Assist available in the field.")
+            case 1: return String(localized: "Expires tomorrow. Renew now to keep Field Assist available in the field.")
+            default: return String(localized: "Expires in \(days) days. Renew before then to keep Field Assist available in the field.")
             }
         case .subscriptionEnding(let days, _):
-            let when = days == 0 ? "today" : days == 1 ? "tomorrow" : "in \(days) days"
-            return "Your subscription ends \(when) and won't renew. Turn renewal back on in your App Store subscriptions to keep access."
+            let when = days == 0 ? String(localized: "today") : days == 1 ? String(localized: "tomorrow") : String(localized: "in \(days) days")
+            return String(localized: "Your subscription ends \(when) and won't renew. Turn renewal back on in your App Store subscriptions to keep access.")
         }
     }
 

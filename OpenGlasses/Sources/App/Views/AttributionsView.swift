@@ -16,35 +16,35 @@ struct AttributionsView: View {
 
     private let models: [Attribution] = [
         Attribution(
-            name: "Fingerspelling recognition model",
-            role: "On-device ASL fingerspelling recognition (Plan CK). Trained on the Google ASL Fingerspelling corpus by Google and the Deaf Professional Arts Network.",
-            license: "Model Apache 2.0 · corpus CC BY 4.0"),
+            name: String(localized: "Fingerspelling recognition model"),
+            role: String(localized: "On-device ASL fingerspelling recognition (Plan CK). Trained on the Google ASL Fingerspelling corpus by Google and the Deaf Professional Arts Network."),
+            license: String(localized: "Model Apache 2.0 · corpus CC BY 4.0")),
         Attribution(
             name: "MediaPipe holistic landmarker",
-            role: "Hand, pose, and face landmark extraction feeding the fingerspelling recognizer (Google MediaPipe).",
+            role: String(localized: "Hand, pose, and face landmark extraction feeding the fingerspelling recognizer (Google MediaPipe)."),
             license: "Apache 2.0"),
         Attribution(
             name: "Kokoro TTS",
-            role: "On-device neural text-to-speech voice tier.",
+            role: String(localized: "On-device neural text-to-speech voice tier."),
             license: "Apache 2.0"),
         Attribution(
             name: "SenseVoice ASR",
-            role: "On-device speech recognition tier.",
+            role: String(localized: "On-device speech recognition tier."),
             license: "Apache 2.0"),
     ]
 
     private let libraries: [Attribution] = [
         Attribution(
             name: "MediaPipe Tasks",
-            role: "Vision task runtime for the landmark pipeline (Google).",
+            role: String(localized: "Vision task runtime for the landmark pipeline (Google)."),
             license: "Apache 2.0"),
         Attribution(
             name: "sherpa-onnx",
-            role: "On-device speech runtime behind the Kokoro and SenseVoice tiers (k2-fsa).",
+            role: String(localized: "On-device speech runtime behind the Kokoro and SenseVoice tiers (k2-fsa)."),
             license: "Apache 2.0"),
         Attribution(
             name: "ONNX Runtime",
-            role: "Inference engine backing sherpa-onnx (Microsoft).",
+            role: String(localized: "Inference engine backing sherpa-onnx (Microsoft)."),
             license: "MIT"),
     ]
 
@@ -53,7 +53,7 @@ struct AttributionsView: View {
     private let referenceData: [Attribution] = [
         Attribution(
             name: "CoolProp 8.0.0",
-            role: "Refrigerant saturation (pressure–temperature) tables, generated offline. Copyright (c) 2012-2018 Ian H. Bell and other CoolProp developers.",
+            role: String(localized: "Refrigerant saturation (pressure–temperature) tables, generated offline. Copyright (c) 2012-2018 Ian H. Bell and other CoolProp developers."),
             license: "MIT"),
     ]
 

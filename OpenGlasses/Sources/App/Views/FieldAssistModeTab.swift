@@ -47,7 +47,7 @@ struct FieldAssistModeTab: View {
     }
 
     private func label(for session: FieldSession) -> String {
-        session.jobReference.flatMap { $0.isEmpty ? nil : "Job \($0)" } ?? "the open job"
+        session.jobReference.flatMap { $0.isEmpty ? nil : String(localized: "Job \($0)") } ?? String(localized: "the open job")
     }
 
     private var openJob: FieldAssistScenarioStart.OpenJob? {
@@ -125,7 +125,7 @@ struct FieldAssistModeTab: View {
                 FieldAssistTabRow(
                     symbol: openSession == nil ? "play.circle.fill" : "briefcase.fill",
                     title: openSession.map {
-                        OpenJobWording.goToTitle(jobLabel: $0.jobReference.flatMap { $0.isEmpty ? nil : "Job \($0)" },
+                        OpenJobWording.goToTitle(jobLabel: $0.jobReference.flatMap { $0.isEmpty ? nil : String(localized: "Job \($0)") },
                                                  isPaused: $0.pausedAt != nil)
                     } ?? String(localized: "Start a job"),
                     subtitle: openSession.map {
@@ -172,7 +172,7 @@ struct FieldAssistModeTab: View {
                             .accessibilityHidden(true)
                     }
                 }
-                .accessibilityLabel("Vault for new jobs: \(current?.name ?? "none")")
+                .accessibilityLabel("Vault for new jobs: \(current?.name ?? String(localized: "none"))")
                 .accessibilityHint("Switches the vault new jobs start on.")
             }
 
@@ -420,7 +420,7 @@ struct FieldAssistModeTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Other modes. " + (appState.activePersona.map { "Using \($0.name)" } ?? ""))
+            .accessibilityLabel(String(localized: "Other modes.") + (appState.activePersona.map { " " + String(localized: "Using \($0.name)") } ?? ""))
             .accessibilityValue(otherModesExpanded ? "Expanded" : "Collapsed")
             .accessibilityHint(otherModesExpanded ? "Hides the other modes." : "Shows the other modes.")
             .accessibilityAddTraits(.isButton)

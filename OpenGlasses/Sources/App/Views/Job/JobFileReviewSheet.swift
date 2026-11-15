@@ -102,14 +102,14 @@ struct JobFileReviewSheet: View {
                 Button {
                     service.accept(.update)
                 } label: {
-                    Text("Update \(review.revises?.title ?? "that job")")
+                    Text("Update \(review.revises?.title ?? String(localized: "that job"))")
                         .frame(maxWidth: .infinity, minHeight: 32)
                 }
                 .buttonStyle(.ogProminent)
                 .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             } else if let question = review.duplicateQuestion {
                 Text(question).font(.callout)
-                Button("Update \(review.duplicate?.title ?? "that job")") { service.accept(.update) }
+                Button("Update \(review.duplicate?.title ?? String(localized: "that job"))") { service.accept(.update) }
                     .accessibilityHint("Replaces what's on this phone with what the file says.")
                 Button("Keep both") { service.accept(.keepBoth) }
                     .accessibilityHint("Adds this file as a second upcoming job with the same number.")

@@ -105,12 +105,15 @@ enum SettingsVisibilityPolicy {
     ///   The wearer is told it is off rather than left looking for a switch that is gone.
     /// - **Notes of finished conversations**, pinned off (Plan LQ §9): the switch shows as set by
     ///   the organisation, so the wearer knows why no notes are written.
+    /// - **Private conversations**, pinned off (Plan LU decision 6): the wearer is told why "off the
+    ///   record" starts nothing, rather than left looking for a switch that is gone.
     static let alwaysShown: Set<ManagedSetting> = [.key(.privacyFilterEnabled), .area(.requestRouting),
                                                    .key(.aiConnectionCueEnabled),
                                                    .key(.cloudDictationEnabled),
                                                    .key(.interpreterEnabled),
                                                    .key(.instantReplayEnabled),
-                                                   .key(.conversationDigestsEnabled)]
+                                                   .key(.conversationDigestsEnabled),
+                                                   .key(.privateConversationsAllowed)]
 
     /// Whether the organisation's policy stops whoever is looking from changing `setting`.
     static func isLocked(_ setting: ManagedSetting, in context: ManagedSettingsContext) -> Bool {
@@ -159,7 +162,7 @@ enum SettingsVisibilityPolicy {
             if presentation(.category(id), in: context) == .hidden {
                 lines.append(title)
             } else if presentation(.row(in: id), in: context) == .hidden {
-                lines.append("Parts of \(title)")
+                lines.append(String(localized: "Parts of \(title)"))
             }
         }
         for area in ManagedArea.allCases where presentation(.area(area), in: context) == .hidden {
@@ -189,10 +192,10 @@ private extension ManagedArea {
     /// How the organisation's page names this area when it is hidden.
     var hiddenDescription: String {
         switch self {
-        case .glasses: return "Glasses"
-        case .requestRouting: return "How Your Requests Are Processed"
-        case .fieldAssistSwitch: return "Turning Field Assist off"
-        case .ownerControls: return "Simple Mode and Lock Settings"
+        case .glasses: return String(localized: "Glasses")
+        case .requestRouting: return String(localized: "How Your Requests Are Processed")
+        case .fieldAssistSwitch: return String(localized: "Turning Field Assist off")
+        case .ownerControls: return String(localized: "Simple Mode and Lock Settings")
         }
     }
 }

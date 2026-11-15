@@ -22,6 +22,8 @@ Counts only, never a question, a passage or a document title:
 [EVAL] my code book embedder=nl-sentence.en scored=72 hit@1 11 (0.15) hit@4 30 (0.42)
 [EVAL]   misses 42: recall (not in the top 30) 14 (33%) · ranking (in the top 30) 20 (48%) · …
 [EVAL]   overlays: multi-rule or calculation 17 (11 missed) · answer in doubt 27 (14 missed)
+[EVAL]   95% intervals over 72 questions (bootstrap, 2000 resamples): hit@1 0.15 [0.07, 0.24] · hit@4 0.42 [0.31, 0.53] · MRR 0.25 [0.18, 0.33]
+[EVAL]   outcomes: 72 questions in the work folder as outcomes-20261115-101500.jsonl
 ```
 
 Hit@1 and hit@4 count the questions where the first passage, or any of the four the model is handed,
@@ -38,6 +40,45 @@ when it comes from an expected page. Misses are put in the first class that fits
 
 The overlays count questions flagged `multi` (several rules or a calculation, where a one-passage
 test is the wrong test) and `doubt` (the expected answer itself is uncertain).
+
+MRR is the mean reciprocal rank of the first passage that holds the answer. Ranks 1–4 are the four
+passages the model is handed, so a hit@1 question scores 1 and a hit@4 question at least 0.25. A
+question those four miss takes its rank from the 30 ungated candidates the miss classes read, never
+better than 5, and scores 0 when the answer is not in those 30.
+
+## Is a change real? Intervals and comparing two runs
+
+An answer key of 40–70 questions moves hit@k by 1.5–2.5 points per question, so a +0.02 change can
+be one question's luck. Every run therefore prints a **95% interval** for hit@1, hit@4 and MRR: the
+percentile bootstrap over questions (2,000 resamples of the scored questions, drawn with
+replacement, with a fixed seed so a run is reproducible). Read it as the range the rate would land
+in on another key of the same size, written from the same kind of questions. Two runs whose
+intervals overlap may or may not differ; the separate intervals can't settle it.
+
+The paired comparison can. Each run writes one line per scored question to its work folder,
+`outcomes-<date>-<time>.jsonl`: the question's place in the key, the first 16 hex digits of the
+SHA-256 of its text (never the text), its hit@1, hit@4 and reciprocal rank. To compare a change
+with what came before:
+
+1. Run A (before the change). Keep the outcomes file it names; copy it somewhere outside the
+   repository if you will delete the work folder.
+2. Make the change and run B with `RETRIEVAL_EVAL_BASELINE=/path/to/A's/outcomes-….jsonl`.
+
+B pairs its questions with A's by hash (so reordering or adding questions to the key is fine) and
+prints the difference B − A, with a paired bootstrap interval and a verdict:
+
+```
+[EVAL]   vs baseline: paired 70 of 72 (unmatched: 2 here, 0 in the baseline)
+[EVAL]   vs baseline, change 95% paired interval: hit@1 +0.03 [-0.03, +0.08] within noise · hit@4 +0.07 [+0.01, +0.13] better · MRR +0.04 [+0.00, +0.08] within noise
+```
+
+`better` and `worse` mean the interval excludes 0; `within noise` means it does not. When fewer
+than 80% of the questions are in both runs, the key changed too much and the runs are not compared.
+A question whose text was edited counts as a new question.
+
+**The rule of thumb: a change whose paired interval includes 0 has not been shown to help.** Say so
+in the plan or pull request, rather than reporting the point estimate as a gain. The intervals say
+nothing about questions the key doesn't hold, so a narrow key still measures only what it asks.
 
 ## The answer key
 
@@ -82,8 +123,11 @@ Scripts/retrieval-eval/run.sh
   work folder, and its tables read with the app's own `PDFTableReader` (a `.md` document gets the
   tables of the PDF its manifest entry names as `source`). To measure one edition of a book loaded on its own, write a
   manifest that lists only that edition.
-- `RETRIEVAL_EVAL_WORKDIR` holds the index between runs, so a long book is embedded once. Delete it
-  when you're done.
+- `RETRIEVAL_EVAL_WORKDIR` holds the index between runs, so a long book is embedded once, and each
+  run's outcomes file. Delete it when you're done. When it is inside a git working tree, the
+  outcomes file is not written.
+- `RETRIEVAL_EVAL_BASELINE` names an earlier run's outcomes file to compare this run with (see
+  "Is a change real?" above).
 - `RETRIEVAL_EVAL_EMBEDDER=contextual` measures the contextual model instead of the sentence model.
 - `RETRIEVAL_EVAL_GATE="<min shared terms>,<shared fraction>"` (or `floor`) measures a candidate
   evidence gate instead of the shipped one, to calibrate a gate against both sets. The output line
@@ -206,8 +250,23 @@ variables the test skips.
 The Lennox calibration's production-path column (each question asked as a turn is, four passages
 through the shipped gate) prints with the rest of `RetrievalGateCalibrationTests`.
 
+## Keeping it compiling
+
+`run.sh` compiles a hand-kept list of app sources, not the app target, so a new type in a listed
+file can break it while the app builds. `Scripts/check-eval-harnesses.sh` compiles every harness
+under `Scripts/` without running it (CI's `eval-harnesses` job runs it on every pull request); the
+fix is usually the file that declares the missing name, added to the list.
+
+`SearchModelRuntime.swift`, the app's downloaded copy of the search-trained model, isn't in the
+list: it imports the `Tokenizers` package, which a plain `swiftc` can't link. `Stubs.swift` gives
+`Embedder.swift` the names it mentions, with that model never ready. The runner doesn't go through
+`Embedder.fieldAssist`, so nothing it measures changes: the sentence model (the default), the
+contextual model (`RETRIEVAL_EVAL_EMBEDDER=contextual`) and the search-trained model
+(`RETRIEVAL_EVAL_EMBEDDER=eg2[:dim]`, loaded by `SearchModel.swift` with the reference tokenizer)
+all still run.
+
 ## What never goes in the repository
 
 Manuals, code books, extracted text, answer keys written from licensed material, index folders and
-per-question results. The runners print only counts so their output is safe to paste into a plan or
+per-question results (feature files and outcomes files). The runners print only counts so their output is safe to paste into a plan or
 a pull request.

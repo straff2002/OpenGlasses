@@ -75,7 +75,7 @@ struct JobCoachingSection: View {
     private func walk(_ received: ExpertCoachingReceived) {
         do {
             let step = try sessions.startProcedure(id: received.procedureId)
-            message = "Walking \(received.credit)'s steps. \(step.title): ask the assistant to read it."
+            message = String(localized: "Walking \(received.credit)'s steps. \(step.title): ask the assistant to read it.")
         } catch {
             message = error.localizedDescription
         }
@@ -83,7 +83,7 @@ struct JobCoachingSection: View {
 
     private func offer(_ received: ExpertCoachingReceived) {
         switch LearningCandidateService.shared.offerCoaching(coachingId: received.coachingId) {
-        case .success: message = "Offered for your office's review, credited to \(received.expert.name)."
+        case .success: message = String(localized: "Offered for your office's review, credited to \(received.expert.name).")
         case .failure(let refusal): message = refusal.spoken
         }
     }

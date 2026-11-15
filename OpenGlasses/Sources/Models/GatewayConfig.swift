@@ -16,7 +16,7 @@ enum GatewayProvider: String, Codable, CaseIterable, Identifiable {
         case .openclaw: return "OpenClaw"
         case .nanoclaw: return "NanoClaw"
         case .nemoclaw: return "NemoClaw"
-        case .custom: return "Custom"
+        case .custom: return String(localized: "Custom")
         }
     }
 

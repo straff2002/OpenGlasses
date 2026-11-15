@@ -70,22 +70,22 @@ struct CoachingStep: Codable, Equatable, Hashable, Identifiable, Sendable {
 
     /// Why this step cannot be sent, or nil.
     var problem: String? {
-        if instruction.isEmpty { return "a step has no instruction" }
+        if instruction.isEmpty { return String(localized: "a step has no instruction") }
         if instruction.count > Self.instructionLimit {
-            return "a step is longer than \(Self.instructionLimit) characters"
+            return String(localized: "a step is longer than \(Self.instructionLimit) characters")
         }
         if let reading {
             if reading.quantity.count > Self.quantityLimit {
-                return "a reading's name is longer than \(Self.quantityLimit) characters"
+                return String(localized: "a reading's name is longer than \(Self.quantityLimit) characters")
             }
             if let unit = reading.unit, unit.count > Self.unitLimit {
-                return "a reading's unit is longer than \(Self.unitLimit) characters"
+                return String(localized: "a reading's unit is longer than \(Self.unitLimit) characters")
             }
         }
         if let stopIf, stopIf.count > Self.stopIfLimit {
-            return "a stop-if is longer than \(Self.stopIfLimit) characters"
+            return String(localized: "a stop-if is longer than \(Self.stopIfLimit) characters")
         }
-        if !CoachingText.isSafeIdentifier(id) { return "a step's id isn't one this app writes" }
+        if !CoachingText.isSafeIdentifier(id) { return String(localized: "a step's id isn't one this app writes") }
         return nil
     }
 }
@@ -164,9 +164,9 @@ struct ExpertCoachingReply: Codable, Equatable, Sendable {
 
         var message: String {
             switch self {
-            case .noSteps: return "Add a step first."
-            case .tooManySteps: return "Coaching can have at most \(CoachingStep.maxSteps) steps."
-            case .step(let number, let why): return "Step \(number): \(why)."
+            case .noSteps: return String(localized: "Add a step first.")
+            case .tooManySteps: return String(localized: "Coaching can have at most \(CoachingStep.maxSteps) steps.")
+            case .step(let number, let why): return String(localized: "Step \(number): \(why).")
             }
         }
     }
@@ -211,9 +211,9 @@ struct ExpertCoachingReply: Codable, Equatable, Sendable {
 
     /// What the expert reads before they send it.
     var summary: String {
-        let count = steps.count == 1 ? "1 step" : "\(steps.count) steps"
+        let count = steps.count == 1 ? String(localized: "1 step") : String(localized: "\(steps.count) steps")
         let updates = generationsSeen.map(String.init).joined(separator: ", ")
-        return generationsSeen.count == 1 ? "\(count), for update \(updates)." : "\(count), for updates \(updates)."
+        return generationsSeen.count == 1 ? String(localized: "\(count), for update \(updates).") : String(localized: "\(count), for updates \(updates).")
     }
 }
 
@@ -276,11 +276,11 @@ enum ExpertCoachingReplyFile {
     static func describe(_ error: ReadError) -> String {
         switch error {
         case .unsupportedVersion:
-            return "Those coaching steps were made by a newer version of the app. Update the app to open them."
+            return String(localized: "Those coaching steps were made by a newer version of the app. Update the app to open them.")
         case .tooLarge:
-            return "That coaching file is larger than this app opens."
+            return String(localized: "That coaching file is larger than this app opens.")
         case .notAZip, .missingManifest, .unreadableManifest, .notCoaching, .unexpectedEntry, .badSteps:
-            return "That file isn't coaching this app can read, so nothing was loaded."
+            return String(localized: "That file isn't coaching this app can read, so nothing was loaded.")
         }
     }
 }

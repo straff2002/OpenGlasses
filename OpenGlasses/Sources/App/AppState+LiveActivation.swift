@@ -55,6 +55,10 @@ extension AppState: LiveSessionActivationOwner {
     }
 
     func stopSession(_ mode: AppMode) {
+        // Plan LU §8: a Live session started private takes its private conversation with it when it
+        // stops; an ordinary one leaves a phone-side private conversation open. No Live session is
+        // started private yet (P1b), so this ends nothing today.
+        notePrivateEvent(.liveStopped(sessionWasPrivate: false))
         switch mode {
         case .geminiLive: if geminiLiveSession.isActive { geminiLiveSession.stopSession() }
         case .openaiRealtime, .openaiCompatibleRealtime:

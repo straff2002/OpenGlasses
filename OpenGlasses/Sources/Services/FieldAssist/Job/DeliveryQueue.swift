@@ -17,8 +17,8 @@ struct QueuedSend: Codable, Equatable, Identifiable {
 
         var label: String {
             switch self {
-            case .report: return "Work order"
-            case .addendum: return "Debrief addendum"
+            case .report: return String(localized: "Work order")
+            case .addendum: return String(localized: "Debrief addendum")
             }
         }
 
@@ -139,7 +139,7 @@ struct QueuedSend: Codable, Equatable, Identifiable {
     /// "Work order · Job 1005 · email to office@example.com" — the card's row.
     var summaryLine: String {
         var line = "\(documentKind.label) · \(jobNumber) · \(channel.label)"
-        if !recipients.isEmpty { line += " to \(recipients.joined(separator: ", "))" }
+        if !recipients.isEmpty { line += " " + String(localized: "to \(recipients.joined(separator: ", "))") }
         return line
     }
 }
@@ -233,7 +233,7 @@ struct DeliveryQueue: Codable, Equatable {
     var cardHeadline: String? {
         let count = stagedCount
         guard count > 0 else { return nil }
-        return count == 1 ? "1 report ready to send" : "\(count) reports ready to send"
+        return count == 1 ? String(localized: "1 report ready to send") : String(localized: "\(count) reports ready to send")
     }
 
     /// What "what's waiting?" says in the car. Names every staged report and who it goes to, then

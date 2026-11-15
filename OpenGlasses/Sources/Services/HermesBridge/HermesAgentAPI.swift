@@ -199,25 +199,28 @@ enum HermesAgentAPI {
 
     /// `POST /v1/responses`. Text-only turns send `input` as a plain string; a turn with a picture
     /// sends the content-array form with the JPEG as a data URL. `store: true` keeps the response
-    /// on the server so the next turn can chain to it with `previous_response_id`.
+    /// on the server so the next turn can chain to it with `previous_response_id`. A private
+    /// conversation's turn sends `store: false` and chains to nothing (Plan LU §5).
     nonisolated static func responsesRequest(base: URL, apiKey: String, input: String,
                                              imageJPEG: Data? = nil,
-                                             previousResponseID: String? = nil) -> URLRequest {
+                                             previousResponseID: String? = nil,
+                                             store: Bool = true) -> URLRequest {
         var request = URLRequest(url: responsesURL(base: base), timeoutInterval: requestTimeout)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = responsesBody(input: input, imageJPEG: imageJPEG,
-                                         previousResponseID: previousResponseID)
+                                         previousResponseID: previousResponseID, store: store)
         return request
     }
 
-    nonisolated static func responsesBody(input: String, imageJPEG: Data?, previousResponseID: String?) -> Data {
+    nonisolated static func responsesBody(input: String, imageJPEG: Data?, previousResponseID: String?,
+                                          store: Bool = true) -> Data {
         var body: [String: Any] = [
             "model": model,
             "instructions": spokenReplyInstructions,
-            "store": true,
+            "store": store,
             "stream": false,
         ]
         if let imageJPEG {
@@ -232,7 +235,8 @@ enum HermesAgentAPI {
         } else {
             body["input"] = input
         }
-        if let previousResponseID, !previousResponseID.isEmpty {
+        // An unstored turn has nothing to chain from, and chains to nothing.
+        if store, let previousResponseID, !previousResponseID.isEmpty {
             body["previous_response_id"] = previousResponseID
         }
         return (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data("{}".utf8)

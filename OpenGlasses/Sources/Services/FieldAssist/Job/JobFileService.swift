@@ -40,7 +40,7 @@ final class JobFileService: ObservableObject {
         var speak: (String) -> Void = { _ in }
     }
 
-    static let fieldAssistOffMessage = "Field Assist is off on this phone, so a job file has nowhere to go. Turn it on under Settings → Field Assist, then open the file again."
+    static let fieldAssistOffMessage = String(localized: "Field Assist is off on this phone, so a job file has nowhere to go. Turn it on under Settings → Field Assist, then open the file again.")
 
     @Published private(set) var stage: Stage = .idle
     private var seams: Seams
@@ -66,7 +66,7 @@ final class JobFileService: ObservableObject {
             return
         }
         guard let data = try? Data(contentsOf: url) else {
-            stage = .refused("The job file couldn't be read.")
+            stage = .refused(String(localized: "The job file couldn't be read."))
             return
         }
         handle(data: data, fileName: url.lastPathComponent)
@@ -112,12 +112,12 @@ final class JobFileService: ObservableObject {
     }
 
     static func alreadyHeldMessage(_ title: String) -> String {
-        "\(title) is already on this phone, at this revision."
+        String(localized: "\(title) is already on this phone, at this revision.")
     }
-    static let olderRevisionMessage = "This phone already has a newer revision of this job, so this file wasn't added."
-    static let conflictingRevisionMessage = "This job file says it is the same revision of a job this phone already has, but what it says is different. Ask the office to send it again as a new revision."
-    static let unsignedRevisionMessage = "This job file isn't signed by your organisation, so it can't change a job that was. Ask the office to send it again, signed."
-    static let startedJobMessage = "This job has already been started on this phone, so a job file doesn't change it. Ask the office to tell you what has changed."
+    static let olderRevisionMessage = String(localized: "This phone already has a newer revision of this job, so this file wasn't added.")
+    static let conflictingRevisionMessage = String(localized: "This job file says it is the same revision of a job this phone already has, but what it says is different. Ask the office to send it again as a new revision.")
+    static let unsignedRevisionMessage = String(localized: "This job file isn't signed by your organisation, so it can't change a job that was. Ask the office to send it again, signed.")
+    static let startedJobMessage = String(localized: "This job has already been started on this phone, so a job file doesn't change it. Ask the office to tell you what has changed.")
 
     /// Validation, the signature check and the import policy, in that order.
     private func assess(_ data: Data) -> Assessment {
@@ -167,7 +167,7 @@ final class JobFileService: ObservableObject {
             }
         }
         // A job already started is not changed by a job file, and is not offered a second time.
-        if let (title, held, _) = latest(seams.startedJobFiles().map { ("This job", $0) }) {
+        if let (title, held, _) = latest(seams.startedJobFiles().map { (String(localized: "This job"), $0) }) {
             switch JobFile.relation(held: held, arriving: arriving) {
             case .same?: return .held(title)
             case .older?: return .refuse(Self.olderRevisionMessage)

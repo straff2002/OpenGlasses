@@ -145,6 +145,8 @@ struct MainView: View {
             // bar is open, which takes the bottom of the tab for itself); every other tab's is the
             // mic and that tab's own action (Plan KY).
             .modifier(TabStripAccessoryModifier(enabled: showsStrip, tab: selectedTab, facts: stripFacts))
+            // Plan LU §7: the first private conversation on this phone explains, once, what it keeps.
+            .modifier(PrivateConversationExplainerHost())
             .tint(accent)
             // Onboarding is drawn *over* the tabs, not instead of them, so without this the whole
             // session surface stays in the accessibility tree behind it: a VoiceOver user on the

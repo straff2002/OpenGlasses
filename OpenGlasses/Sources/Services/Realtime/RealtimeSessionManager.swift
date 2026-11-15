@@ -663,7 +663,7 @@ class RealtimeSessionManager: ObservableObject {
             // to hand-roll a partial teardown and set `isActive = false`, which made every
             // `if isActive { stopSession() }` call site in the app skip the real teardown — so
             // the tool router, the frame timer, the microphone lease and the camera stayed held.
-            let message = "Audio setup failed: \(error.localizedDescription)"
+            let message = String(localized: "Audio setup failed: \(error.localizedDescription)")
             stopSession()
             errorMessage = message
             return
@@ -687,7 +687,7 @@ class RealtimeSessionManager: ObservableObject {
             if case .error(let err) = providerSession.connectionState { errorStateMessage = err }
             let msg = model.profile == .geminiLiveV1
                 ? GeminiLiveFailureCopy.message(errorStateMessage: errorStateMessage, lastCloseReason: providerSession.lastCloseReason)
-                : (errorStateMessage ?? "Failed to connect to the realtime service.")
+                : (errorStateMessage ?? String(localized: "Failed to connect to the realtime service."))
             stopSession()   // Plan EW — the same teardown a finished session gets
             errorMessage = msg
             NoticeCenter.shared.post(msg, severity: .error, source: .liveSession)
@@ -698,7 +698,7 @@ class RealtimeSessionManager: ObservableObject {
         do {
             try audioManager.startCapture()
         } catch {
-            let message = "Mic capture failed: \(error.localizedDescription)"
+            let message = String(localized: "Mic capture failed: \(error.localizedDescription)")
             stopSession()   // Plan EW — the same teardown a finished session gets
             errorMessage = message
             return

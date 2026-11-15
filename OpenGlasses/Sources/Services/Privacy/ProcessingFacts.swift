@@ -75,21 +75,21 @@ struct ProcessingFacts: Equatable {
          liveProviderName: String? = nil,
          liveEndpointHost: String? = nil,
          modelKind: ModelKind = .cloud,
-         modelProviderName: String = "the selected provider",
+         modelProviderName: String = String(localized: "the selected provider"),
          modelHost: String? = nil,
-         modelAssetName: String = "the on-device model",
+         modelAssetName: String = String(localized: "the on-device model"),
          modelAssetPresent: Bool = true,
          modelAcceptsImages: Bool = true,
          speechRecognitionOnDevice: Bool = false,
-         speechRecognitionProviderName: String = "Apple's speech recognition",
-         speechRecognitionAssetName: String = "the on-device speech recognizer",
+         speechRecognitionProviderName: String = String(localized: "Apple's speech recognition"),
+         speechRecognitionAssetName: String = String(localized: "the on-device speech recognizer"),
          speechRecognitionAssetPresent: Bool = true,
          diarizationEnabled: Bool = false,
          diarizationProviderName: String? = nil,
          kokoroInstalled: Bool = false,
-         kokoroAssetName: String = "the on-device voice",
+         kokoroAssetName: String = String(localized: "the on-device voice"),
          remoteToolsEnabled: Bool = false,
-         remoteToolProviderName: String = "the agent gateway",
+         remoteToolProviderName: String = String(localized: "the agent gateway"),
          remoteToolHost: String? = nil,
          medicalLocalOnly: Bool = false) {
         self.voiceEngine = voiceEngine
@@ -164,7 +164,7 @@ enum ProcessingFactsProvider {
         case .local:
             facts.modelKind = .onDevice
             let id = model?.model ?? ""
-            facts.modelAssetName = id.isEmpty ? "the on-device model" : id
+            facts.modelAssetName = id.isEmpty ? String(localized: "the on-device model") : id
             facts.modelAssetPresent = !id.isEmpty && LocalLLMService().isModelDownloaded(id)
         case .appleOnDevice:
             facts.modelKind = .onDevice
@@ -221,7 +221,7 @@ enum ProcessingFactsProvider {
         // Tools on other machines. Gated by Agent Mode like every other autonomous capability, so
         // a configured gateway with Agent Mode off reads as switched off — which is what it is.
         facts.remoteToolsEnabled = Config.isOpenClawAgentActive
-        facts.remoteToolProviderName = "the agent gateway"
+        facts.remoteToolProviderName = String(localized: "the agent gateway")
         facts.remoteToolHost = facts.remoteToolsEnabled ? gatewayHost() : nil
 
         facts.medicalLocalOnly = Config.hipaaLocalOnly
@@ -232,7 +232,7 @@ enum ProcessingFactsProvider {
         switch Config.appMode {
         case .geminiLive: return "Google (Gemini Live)"
         case .openaiRealtime: return "OpenAI (Realtime)"
-        case .openaiCompatibleRealtime: return "your selected realtime service"
+        case .openaiCompatibleRealtime: return String(localized: "your selected realtime service")
         case .direct: return nil
         }
     }

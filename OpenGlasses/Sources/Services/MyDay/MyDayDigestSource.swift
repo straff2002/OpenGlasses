@@ -81,7 +81,7 @@ final class NotificationDigestDaySource: DigestDaySource {
         guard Config.digestEnabled else {
             return .init(
                 value: [],
-                state: .unavailable(.digest, message: "Actionable updates are off.")
+                state: .unavailable(.digest, message: String(localized: "Actionable updates are off."))
             )
         }
         return .init(

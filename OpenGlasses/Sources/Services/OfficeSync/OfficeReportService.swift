@@ -184,13 +184,13 @@ final class OfficeReportService: ObservableObject {
     /// only on its receipt; nothing here says sent or delivered for a finished transfer.
     static func status(_ summary: Summary) -> OfficeFieldConnectionPolicy.Status? {
         if summary.waiting > 0 {
-            return .init(title: summary.waiting == 1 ? "1 record for the office" : "\(summary.waiting) records for the office",
-                         detail: "Kept on this phone until the office confirms it has them.",
+            return .init(title: summary.waiting == 1 ? String(localized: "1 record for the office") : String(localized: "\(summary.waiting) records for the office"),
+                         detail: String(localized: "Kept on this phone until the office confirms it has them."),
                          systemImage: "tray.and.arrow.up")
         }
         if summary.evidencePending > 0 {
-            return .init(title: summary.evidencePending == 1 ? "The office has 1 record" : "The office has \(summary.evidencePending) records",
-                         detail: "Their documents are still on the way.",
+            return .init(title: summary.evidencePending == 1 ? String(localized: "The office has 1 record") : String(localized: "The office has \(summary.evidencePending) records"),
+                         detail: String(localized: "Their documents are still on the way."),
                          systemImage: "doc.badge.clock")
         }
         return nil

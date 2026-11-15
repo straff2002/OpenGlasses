@@ -68,7 +68,7 @@ struct MyManualsView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             if let info = fileInfo[manual.id] {
-                                Text("\(info.pages.map { "\($0) pages · " } ?? "")\(ByteCountFormatter.string(fromByteCount: info.bytes, countStyle: .file))")
+                                Text("\(info.pages.map { String(localized: "\($0) pages · ") } ?? "")\(ByteCountFormatter.string(fromByteCount: info.bytes, countStyle: .file))")
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             VStack(alignment: .leading, spacing: 8) {

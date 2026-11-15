@@ -256,7 +256,7 @@ struct DiagnosticsSupportView: View {
         return VStack(alignment: .leading, spacing: 4) {
             Text("Support email")
                 .font(.subheadline.weight(.semibold))
-            TextField(organisation ? "Your organisation's support address" : DiagnosticsReportBuilder.supportEmail,
+            TextField(organisation ? String(localized: "Your organisation's support address") : DiagnosticsReportBuilder.supportEmail,
                       text: $supportEmail)
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)

@@ -315,7 +315,7 @@ struct LocalModelManagerView: View {
                     }
                 }
                 .accessibilityLabel(row.state.spokenLabel)
-                .accessibilityValue(phase.accessibilityPercent.map { "\($0) percent" } ?? "")
+                .accessibilityValue(phase.accessibilityPercent.map { String(localized: "\($0) percent") } ?? "")
                 HStack {
                     Text(fileProgressCaption(staging, phase: phase))
                         .font(.caption.monospacedDigit())
@@ -437,8 +437,7 @@ struct LocalModelManagerView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .tint(.primary)
-                        .accessibilityLabel("Download \(entry.descriptor.displayName), "
-                                                + "\(entry.estimatedSize)")
+                        .accessibilityLabel("Download \(entry.descriptor.displayName), \(entry.estimatedSize)")
                 }
             }
             Text(entry.notes)
@@ -762,7 +761,7 @@ struct LocalModelManagerView: View {
             let phase = localService?.preparation ?? .loading(fraction: nil)
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text(phase.isLoadActive ? phase.displayLabel : "Preparing")
+                Text(phase.isLoadActive ? phase.displayLabel : String(localized: "Preparing"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -894,7 +893,7 @@ struct DownloadProgressRow: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(phase.spokenLabel)
-            .accessibilityValue(phase.accessibilityPercent.map { "\($0) percent" } ?? "")
+            .accessibilityValue(phase.accessibilityPercent.map { String(localized: "\($0) percent") } ?? "")
             // BK P5: a real Cancel — routes through the service so the in-flight
             // download is actually stopped, not just hidden. FC P2: during a load it cannot stop
             // promptly, so the phase says the stop is pending and the result is discarded.

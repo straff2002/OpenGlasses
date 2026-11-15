@@ -21,6 +21,9 @@ targets:
       # Shared with iOS app (Plan KT) — the prepared card model (and My Day's urgency ladder it
       # carries), so the watch decodes the cards the phone builds. Foundation only.
       - path: OpenGlasses/Sources/Shared/PreparedCard.swift
+      # Shared with iOS app (Plan LU) — the Private button's request, the phone's reply, the
+      # `isPrivate` context key and the wrist's reply rule. Foundation only.
+      - path: OpenGlasses/Sources/Shared/WatchPrivateWire.swift
     # The watch app writes listening/recording/connected state to the App Group suite and the
     # watch widget's complications read it back — two processes, so both need the group.
     entitlements:
@@ -36,7 +39,7 @@ targets:
         # project.local.yml when rebranding, or Watch install fails.
         WK_COMPANION_APP_BUNDLE_IDENTIFIER: com.openglasses.app
         MARKETING_VERSION: "2026.11"
-        CURRENT_PROJECT_VERSION: "690"
+        CURRENT_PROJECT_VERSION: "693"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: OpenGlassesWatch/Info.plist
@@ -73,7 +76,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.app.watchkitapp.watchwidget
         MARKETING_VERSION: "2026.11"
-        CURRENT_PROJECT_VERSION: "690"
+        CURRENT_PROJECT_VERSION: "693"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: "YES"

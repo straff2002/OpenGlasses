@@ -1245,7 +1245,7 @@ struct OnboardingView: View {
                     permissionRow(
                         icon: "mic.fill",
                         title: "Microphone",
-                        detail: "For wake word detection and voice commands",
+                        detail: String(localized: "For wake word detection and voice commands"),
                         granted: micGranted
                     ) {
                         await requestMicPermission()
@@ -1254,7 +1254,7 @@ struct OnboardingView: View {
                     permissionRow(
                         icon: "waveform",
                         title: "Speech Recognition",
-                        detail: "To understand what you say",
+                        detail: String(localized: "To understand what you say"),
                         granted: speechGranted
                     ) {
                         await requestSpeechPermission()
@@ -1263,7 +1263,7 @@ struct OnboardingView: View {
                     permissionRow(
                         icon: "location.fill",
                         title: "Location",
-                        detail: "For weather, nearby places, and context",
+                        detail: String(localized: "For weather, nearby places, and context"),
                         granted: locationGranted
                     ) {
                         requestLocationPermission()
@@ -1275,7 +1275,7 @@ struct OnboardingView: View {
                         permissionRow(
                             icon: "antenna.radiowaves.left.and.right",
                             title: "Bluetooth",
-                            detail: "To connect smart glasses, if you use them",
+                            detail: String(localized: "To connect smart glasses, if you use them"),
                             granted: bluetoothConfigured
                         ) {
                             configureWearablesSDK()
@@ -1285,7 +1285,7 @@ struct OnboardingView: View {
                     permissionRow(
                         icon: "house.fill",
                         title: "Home Data",
-                        detail: "To control lights, locks, and smart home devices",
+                        detail: String(localized: "To control lights, locks, and smart home devices"),
                         granted: homeKitGranted
                     ) {
                         await requestHomeKitPermission()
@@ -1399,8 +1399,8 @@ struct OnboardingView: View {
     /// flow, and a stalled flow the user cannot see is where onboarding is abandoned.
     private func announcePermission(_ name: String, granted: Bool) {
         SessionAnnouncer.say(granted
-            ? "\(name) access granted"
-            : "\(name) access not granted. iOS only asks once, so the row now offers an Open Settings button instead.")
+            ? String(localized: "\(name) access granted")
+            : String(localized: "\(name) access not granted. iOS only asks once, so the row now offers an Open Settings button instead."))
     }
 
     /// Remember a refusal, so the row can offer the only route that still works.
@@ -1412,7 +1412,7 @@ struct OnboardingView: View {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         micGranted = granted
         noteOutcome("Microphone", granted: granted)
-        announcePermission("Microphone", granted: granted)
+        announcePermission(String(localized: "Microphone"), granted: granted)
     }
 
     private func requestSpeechPermission() async {
@@ -1423,7 +1423,7 @@ struct OnboardingView: View {
         }
         speechGranted = status == .authorized
         noteOutcome("Speech Recognition", granted: speechGranted)
-        announcePermission("Speech recognition", granted: speechGranted)
+        announcePermission(String(localized: "Speech recognition"), granted: speechGranted)
     }
 
     private func requestLocationPermission() {
@@ -1434,7 +1434,7 @@ struct OnboardingView: View {
             let status = CLLocationManager().authorizationStatus
             locationGranted = status == .authorizedWhenInUse || status == .authorizedAlways
             noteOutcome("Location", granted: locationGranted)
-            announcePermission("Location", granted: locationGranted)
+            announcePermission(String(localized: "Location"), granted: locationGranted)
         }
     }
 
@@ -1448,7 +1448,7 @@ struct OnboardingView: View {
         // `statusDescription` embeds the SDK's own failure text, which names the bundle and the
         // credential it rejected — it belongs to the diagnostics panel, not the device log.
         PrivacyLog.device(.sdk, WearablesBootstrap.isConfigured ? .configured : .unavailable)
-        announcePermission("Bluetooth", granted: true)
+        announcePermission(String(localized: "Bluetooth"), granted: true)
     }
 
     private func requestHomeKitPermission() async {
@@ -1458,7 +1458,7 @@ struct OnboardingView: View {
         // Give time for the permission dialog
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         homeKitGranted = true
-        announcePermission("Home data", granted: true)
+        announcePermission(String(localized: "Home data"), granted: true)
     }
 
     // MARK: - Page 7: Add a Device (Plan FY P2)
@@ -1492,7 +1492,7 @@ struct OnboardingView: View {
                             permissionRow(
                                 icon: "camera.fill",
                                 title: "Camera",
-                                detail: "Required to stream video from your Meta glasses",
+                                detail: String(localized: "Required to stream video from your Meta glasses"),
                                 granted: cameraGranted
                             ) {
                                 await requestCameraPermission()
@@ -1502,7 +1502,7 @@ struct OnboardingView: View {
                             permissionRow(
                                 icon: "AvenkinMark",
                                 title: "Meta AI Integration",
-                                detail: "Links Avenkin to your glasses via the Meta AI app",
+                                detail: String(localized: "Links Avenkin to your glasses via the Meta AI app"),
                                 granted: metaRegistered
                             ) {
                                 await connectToMetaAI()
@@ -1615,7 +1615,7 @@ struct OnboardingView: View {
         if isRegistering {
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(registrationStatus.isEmpty ? "Connecting…" : registrationStatus)
+                Text(registrationStatus.isEmpty ? String(localized: "Connecting…") : registrationStatus)
             }
         } else if !registrationStatus.isEmpty && !metaRegistered {
             Text(registrationStatus)
@@ -1630,7 +1630,7 @@ struct OnboardingView: View {
     private func requestCameraPermission() async {
         cameraGranted = await AVCaptureDevice.requestAccess(for: .video)
         noteOutcome("Camera", granted: cameraGranted)
-        announcePermission("Camera", granted: cameraGranted)
+        announcePermission(String(localized: "Camera"), granted: cameraGranted)
     }
 
     private func connectToMetaAI() async {
@@ -1652,9 +1652,9 @@ struct OnboardingView: View {
         metaRegistered = stateRaw >= 3
         registrationStatus = metaRegistered
             ? ""
-            : "Open the Meta AI app to approve, then tap Connect again"
+            : String(localized: "Open the Meta AI app to approve, then tap Connect again")
         isRegistering = false
-        SessionAnnouncer.say(metaRegistered ? "Meta AI connected" : registrationStatus,
+        SessionAnnouncer.say(metaRegistered ? String(localized: "Meta AI connected") : registrationStatus,
                              interrupts: !metaRegistered)
 
         // Start observing devices now that registration is in progress
@@ -1991,8 +1991,8 @@ struct OnboardingView: View {
                 // further down the page — neither of which reaches a user whose focus is still on
                 // the key field, which is exactly where it is after typing one.
                 SessionAnnouncer.say(availableModels.isEmpty
-                                     ? "Key accepted"
-                                     : "Key accepted. \(availableModels.count) models available.")
+                                     ? String(localized: "Key accepted")
+                                     : String(localized: "Key accepted. \(availableModels.count) models available."))
             }
         }
     }

@@ -231,11 +231,11 @@ struct DeviceSeatHold: Equatable, Sendable {
     var message: String {
         switch kind {
         case .full(let seats?):
-            return "All \(seats) seats for \(licensee) are in use. Ask your administrator to free one."
+            return String(localized: "All \(seats) seats for \(licensee) are in use. Ask your administrator to free one.")
         case .full(nil):
-            return "All the seats for \(licensee) are in use. Ask your administrator to free one."
+            return String(localized: "All the seats for \(licensee) are in use. Ask your administrator to free one.")
         case .checkIn:
-            return "This phone needs to check its seat on \(licensee)'s licence. Connect to the internet and open the app; nothing on the phone has been removed."
+            return String(localized: "This phone needs to check its seat on \(licensee)'s licence. Connect to the internet and open the app; nothing on the phone has been removed.")
         }
     }
 }

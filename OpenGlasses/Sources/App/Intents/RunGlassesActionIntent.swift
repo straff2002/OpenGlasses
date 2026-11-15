@@ -132,7 +132,7 @@ enum SiriActionDispatcher {
            action.type != .prompt, action.type != .photoThenPrompt {
             return String(localized: "\(action.label) done.")
         }
-        return answer.isEmpty ? "\(entry.label) done." : answer
+        return answer.isEmpty ? String(localized: "\(entry.label) done.") : answer
     }
 
     static func parseArgs(_ json: String) -> [String: Any] {

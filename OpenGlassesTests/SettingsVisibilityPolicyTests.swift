@@ -106,7 +106,8 @@ final class SettingsVisibilityPolicyTests: XCTestCase {
         XCTAssertEqual(Policy.alwaysShown, [.key(.privacyFilterEnabled), .area(.requestRouting),
                                             .key(.aiConnectionCueEnabled),
                                             .key(.cloudDictationEnabled), .key(.interpreterEnabled),
-                                            .key(.instantReplayEnabled), .key(.conversationDigestsEnabled)])
+                                            .key(.instantReplayEnabled), .key(.conversationDigestsEnabled),
+                                            .key(.privateConversationsAllowed)])
         // Plan LQ §9: conversation notes pinned off are drawn read-only, naming the organisation.
         let lqContext = technician(lockEverything, keys: [.conversationDigestsEnabled])
         XCTAssertEqual(Policy.presentation(.key(.conversationDigestsEnabled), in: lqContext), .readOnly)

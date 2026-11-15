@@ -71,6 +71,33 @@ final class HermesAgentAPIClientTests: XCTestCase {
 
     // MARK: - Chaining
 
+    /// Plan LU §5: a private conversation's turns go out with `store: false` and no chain, and the
+    /// chain the next ordinary turn continues is left exactly as it was.
+    func testAPrivateTurnIsNotStoredAndLeavesTheChainAlone() async throws {
+        let transport = ScriptedTransport([
+            .http(200, Self.reply(id: "resp_1", text: "Hello.")),
+            .http(200, Self.reply(id: "resp_p", text: "A private answer.")),
+            .http(200, Self.reply(id: "resp_2", text: "Carrying on.")),
+        ])
+        let hermes = client(transport)
+        defer { PrivateConversationGate.setActive(false) }
+
+        _ = try await hermes.ask("hi")
+        XCTAssertEqual(hermes.conversationID, "resp_1")
+
+        PrivateConversationGate.setActive(true)
+        let answer = try await hermes.ask("a private question")
+        XCTAssertEqual(answer, "A private answer.")
+        XCTAssertEqual(transport.body(1)["store"] as? Bool, false)
+        XCTAssertNil(transport.body(1)["previous_response_id"])
+        XCTAssertEqual(hermes.conversationID, "resp_1", "the private reply's id is never chained to")
+
+        PrivateConversationGate.setActive(false)
+        _ = try await hermes.ask("and the earlier thing?")
+        XCTAssertEqual(transport.body(2)["store"] as? Bool, true)
+        XCTAssertEqual(transport.body(2)["previous_response_id"] as? String, "resp_1")
+    }
+
     func testTwoAsksChainAndResetDropsTheChain() async throws {
         let transport = ScriptedTransport([
             .http(200, Self.reply(id: "resp_1", text: "Hello.")),

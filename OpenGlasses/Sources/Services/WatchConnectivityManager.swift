@@ -45,7 +45,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "toggleListen", "toggleRecord", "toggleVideo", "capturePhoto", "photo", "describe",
             "ask", "persona", "connect", "disconnect", "sleep", "status",
             "quickAction", "resumeThread", WatchDictation.command, WatchStartGuidance.command,
-            WatchPreparedCardWire.command,
+            WatchPreparedCardWire.command, WatchPrivateWire.command,
         ]
         return known.contains(raw) ? PrivacyToken(raw) : nil
     }
@@ -97,8 +97,11 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     private func observeState() {
         guard let appState else { return }
         stateObservers.removeAll()
-        Publishers.Merge(appState.$isListening.removeDuplicates().dropFirst(),
-                         appState.$isConnected.removeDuplicates().dropFirst())
+        // Plan LU P1b: and when a private conversation starts or ends, so the wrist's badge and
+        // its idle summary follow the phone however it was started or ended.
+        Publishers.Merge3(appState.$isListening.removeDuplicates().dropFirst(),
+                          appState.$isConnected.removeDuplicates().dropFirst(),
+                          appState.privateConversation.$state.map(\.isActive).removeDuplicates().dropFirst())
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.sendStatusUpdate() }
             .store(in: &stateObservers)
@@ -121,6 +124,14 @@ class WatchConnectivityManager: NSObject, ObservableObject {
     func sendQuietDone() {
         guard let session, session.activationState == .activated, session.isReachable else { return }
         session.sendMessage(QuietDoneWatchMessage.payload, replyHandler: nil, errorHandler: nil)
+    }
+
+    /// The idle summary's reply line: the last 200 characters' worth of the reply, or the fixed
+    /// line in its place while a private conversation is open (Plan LU §3). A reply to a request
+    /// made on the watch is not this: it goes back to the watch whole (`watchRequestReply`). Pure.
+    nonisolated static func lastResponsePayload(_ lastResponse: String, placeholder: String?) -> String {
+        if let placeholder { return placeholder }
+        return String(lastResponse.prefix(200))
     }
 
     /// The recent conversations the watch lists: the last five, title and one line each. The line
@@ -162,7 +173,10 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "isListening": appState.isListening,
             "isRecording": appState.transcriptionService.isRecording,
             "isVideoRecording": appState.videoRecorder.isRecording,
-            "lastResponse": String(appState.lastResponse.prefix(200)),
+            "lastResponse": Self.lastResponsePayload(
+                appState.lastResponse, placeholder: PrivateConversationGate.placeholder(for: .watchLastResponse)),
+            // Plan LU §7: the watch shows the Private badge while one is open.
+            WatchPrivateWire.contextKey: PrivateConversationGate.isActive,
             "deviceName": appState.glassesService.deviceName ?? "",
             "batteryLevel": appState.glassesService.batteryLevel ?? 0,
             "personas": Config.enabledPersonas.prefix(3).map { ["id": $0.id, "name": $0.name] },
@@ -308,7 +322,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any],
                              replyHandler: @escaping ([String: Any]) -> Void) {
         guard let command = message["command"] as? String else {
-            replyHandler(["error": "No command specified"])
+            replyHandler(["error": String(localized: "No command specified")])
             return
         }
 
@@ -316,7 +330,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
 
         Task { @MainActor in
             guard let appState = self.appState else {
-                replyHandler(["error": "App not ready"])
+                replyHandler(["error": String(localized: "App not ready")])
                 return
             }
 
@@ -335,7 +349,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 // the previous answer as if it were this one.
                 if let question = WatchDictation.question(from: message) {
                     if appState.isProcessing {
-                        replyHandler(["error": "Avenkin is still working on something."])
+                        replyHandler(["error": String(localized: "Avenkin is still working on something.")])
                     } else {
                         await appState.sendTextMessage(question,
                                                        speakResponse: WatchDictation.speaksAnswerNow())
@@ -345,7 +359,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         ])
                     }
                 } else {
-                    replyHandler(["error": "I didn't catch a question."])
+                    replyHandler(["error": String(localized: "I didn't catch a question.")])
                 }
 
             case "persona":
@@ -361,7 +375,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     await appState.handleWakeWordDetected()
                     replyHandler(["status": "listening", "persona": persona.name])
                 } else {
-                    replyHandler(["error": "Persona not found"])
+                    replyHandler(["error": String(localized: "Persona not found")])
                 }
 
             // Plan LT §3: a photo command replies with its own result — the answer it made, or
@@ -466,7 +480,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         })
                     }
                 } else {
-                    replyHandler(["error": "Quick action not found"])
+                    replyHandler(["error": String(localized: "Quick action not found")])
                 }
 
             case "resumeThread":
@@ -484,11 +498,19 @@ extension WatchConnectivityManager: WCSessionDelegate {
                     await appState.handleWakeWordDetected()
                     replyHandler(["status": "resumed", "thread_id": threadId])
                 } else {
-                    replyHandler(["error": "No thread ID"])
+                    replyHandler(["error": String(localized: "No thread ID")])
                 }
 
             case WatchStartGuidance.command:
                 replyHandler(await self.startGuidance(message, appState: appState))
+
+            // Plan LU P1b: the wrist's Private button and its End.
+            case WatchPrivateWire.command:
+                if let action = WatchPrivateWire.action(from: message) {
+                    replyHandler(appState.handleWatchPrivateRequest(action))
+                } else {
+                    replyHandler(["error": "Unknown private conversation request"])
+                }
 
             case WatchPreparedCardWire.command:
                 // Plan KT §6.7: a press on a wrist card. `stage` is the Display's Send on phone.
@@ -503,7 +525,9 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 replyHandler([
                     "status": self.statusString(),
                     "isConnected": appState.isConnected,
-                    "lastResponse": String(appState.lastResponse.prefix(200))
+                    "lastResponse": Self.lastResponsePayload(
+                        appState.lastResponse,
+                        placeholder: PrivateConversationGate.placeholder(for: .watchLastResponse))
                 ])
 
             default:
@@ -513,7 +537,7 @@ extension WatchConnectivityManager: WCSessionDelegate {
                         await appState.capturePhotoAndSend(prompt: prompt, phoneCameraFallback: false)
                     })
                 } else {
-                    replyHandler(["error": "Unknown command: \(command)"])
+                    replyHandler(["error": String(localized: "Unknown command: \(command)")])
                 }
             }
 

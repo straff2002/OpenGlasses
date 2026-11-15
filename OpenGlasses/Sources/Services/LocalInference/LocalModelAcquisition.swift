@@ -148,7 +148,7 @@ final class LocalModelAcquisition: ObservableObject {
         let fit = fitReport(for: descriptor, acceptedLicenseRevision: acceptedLicenseRevision)
         guard fit.canInstall else {
             errorMessage = fit.blockers.first?.localizedMessage
-                ?? "This model can't be downloaded."
+                ?? String(localized: "This model can't be downloaded.")
             return
         }
         do {
@@ -234,16 +234,13 @@ final class LocalModelAcquisition: ObservableObject {
         let hasStaging = staging[id] != nil
         switch (hasInstall, hasStaging) {
         case (true, true):
-            return "Remove \(displayName)? Its installed files and the partly downloaded copy are "
-                + "both deleted. It can be downloaded again later."
+            return String(localized: "Remove \(displayName)? Its installed files and the partly downloaded copy are both deleted. It can be downloaded again later.")
         case (true, false):
-            return "Remove \(displayName)? Its installed files are deleted from this iPhone. It can "
-                + "be downloaded again later."
+            return String(localized: "Remove \(displayName)? Its installed files are deleted from this iPhone. It can be downloaded again later.")
         case (false, true):
-            return "Stop and remove \(displayName)? The partly downloaded files are deleted. "
-                + "Nothing was installed."
+            return String(localized: "Stop and remove \(displayName)? The partly downloaded files are deleted. Nothing was installed.")
         case (false, false):
-            return "Remove \(displayName)?"
+            return String(localized: "Remove \(displayName)?")
         }
     }
 

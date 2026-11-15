@@ -109,10 +109,10 @@ struct WebHUDMirrorSettingsView: View {
     private func exportPreview() {
         let screen = appState.glassesDisplay.mirrorScreen ?? HUDScreen(
             title: "Avenkin",
-            lines: [HUDLine("Web HUD mirror preview", icon: .info),
-                    HUDLine("Black is transparent on glasses", emphasis: .secondary)],
-            items: [HUDItem(id: "a", label: "Sample item", style: .primary) {},
-                    HUDItem(id: "b", label: "Another item") {}])
+            lines: [HUDLine(String(localized: "Web HUD mirror preview"), icon: .info),
+                    HUDLine(String(localized: "Black is transparent on glasses"), emphasis: .secondary)],
+            items: [HUDItem(id: "a", label: String(localized: "Sample item"), style: .primary) {},
+                    HUDItem(id: "b", label: String(localized: "Another item")) {}])
         let html = WebHUDRenderer.page(mode: .inline(WebHUDPayload.from(screen: screen)))
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("hud-preview.html")
         try? html.write(to: url, atomically: true, encoding: .utf8)

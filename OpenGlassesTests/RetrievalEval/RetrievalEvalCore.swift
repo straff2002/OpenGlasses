@@ -185,8 +185,22 @@ enum RetrievalEval {
         /// Scored questions that name a table (Plan JJ P1) by number or by title words, how many of
         /// them expect a table label, and their hit@4.
         var tableNamed = 0, tableNamedByTitle = 0, tableNamedExpectingTable = 0, tableNamedHit4 = 0
+        /// One outcome per scored question, in key order: hit@1, hit@4 and the reciprocal rank
+        /// (`reciprocalRank`), by the question's place and hash, never its text. The intervals are
+        /// read off these, and the Mac runner writes them out to pair a later run with this one.
+        var outcomes: [EvalOutcome] = []
 
         var missCount: Int { scored - hit4 }
+
+        /// The metrics an outcome carries, with the names the lines print.
+        static let metrics: [(name: String, key: String)] = [("hit@1", "hit1"), ("hit@4", "hit4"), ("MRR", "rr")]
+
+        /// The 95% bootstrap intervals of hit@1, hit@4 and MRR over the scored questions.
+        var intervalLine: String? {
+            EvalIntervals.intervalLine(prefix: "[EVAL]  ", metrics: Self.metrics.map { metric in
+                (metric.name, outcomes.compactMap { $0.metrics[metric.key] })
+            })
+        }
 
         /// Aggregate lines only — never a question or a passage.
         func lines(label: String, embedder: String) -> [String] {
@@ -221,6 +235,7 @@ enum RetrievalEval {
                 out.append("[EVAL]   overlays: multi-rule or calculation \(multiQuestions) (\(multiMisses) missed) · "
                            + "answer in doubt \(doubtQuestions) (\(doubtMisses) missed)")
             }
+            if let intervalLine { out.append(intervalLine) }
             return out
         }
     }
@@ -265,7 +280,7 @@ enum RetrievalEval {
                                    searchesTableRows: searchesTableRows,
                                    isClauseNumbered: { store.usesClausePassageBudget(documentId: $0) })
         }
-        for q in questions {
+        for (index, q) in questions.enumerated() {
             let gated = gatedFor(q.q), open = openFor(q.q)
             if q.outOfScope == true {
                 report.outOfScope += 1
@@ -294,14 +309,21 @@ enum RetrievalEval {
                 if !(q.tables ?? []).isEmpty { report.tableNamedExpectingTable += 1 }
                 if top4.contains(where: { holds($0, q) }) { report.tableNamedHit4 += 1 }
             }
-            if top4.first.map({ holds($0, q) }) == true { report.hit1 += 1 }
-            if top4.contains(where: { holds($0, q) }) { report.hit4 += 1; continue }
+            // The 30 ungated candidates, read for a question the four miss: its reciprocal rank
+            // and its miss class both come from this one read.
+            let hitAt = top4.firstIndex(where: { holds($0, q) })
+            let ranked = hitAt == nil ? open.retrieve(.init(turn: q.q, limit: 30)).passages : []
+            let rr = reciprocalRank(hitAt: hitAt, ranked: ranked, q)
+            report.outcomes.append(EvalOutcome(q: index + 1, h: EvalOutcomes.hash(q.q),
+                                               metrics: ["hit1": hitAt == 0 ? 1 : 0, "hit4": hitAt == nil ? 0 : 1, "rr": rr]))
+            if hitAt == 0 { report.hit1 += 1 }
+            if hitAt != nil { report.hit4 += 1; continue }
 
             if q.multi == true { report.multiMisses += 1 }
             if q.doubt == true { report.doubtMisses += 1 }
             if let retry = RetrievalEval.retry, retried(q, kind: retry, gated: gated, open: open, store: store) { report.retryHits += 1 }
             guard classifyMisses else { continue }
-            report.misses[classify(q, top4: top4, gated: gated, open: open, store: store), default: 0] += 1
+            report.misses[classify(q, top4: top4, gated: gated, ranked: ranked, store: store), default: 0] += 1
         }
         if classifyMisses {
             let rules = Set(questions.filter { $0.outOfScope != true }.flatMap { $0.rules ?? [] }).filter(looksLikeClause)
@@ -316,9 +338,19 @@ enum RetrievalEval {
         return report
     }
 
+    /// The reciprocal rank of the first passage holding the answer. Ranks 1–4 are the four the
+    /// shipped request hands the model, so MRR agrees with hit@1 (rank 1) and hit@4 (rank 4 or
+    /// better). A question those four miss takes its rank from `ranked`, the ungated 30-deep read
+    /// the miss classes use, never better than 5 (it was not in the four); not in the 30, it counts 0.
+    static func reciprocalRank(hitAt: Int?, ranked: [VaultRetriever.Passage], _ q: Question) -> Double {
+        if let hitAt { return 1 / Double(hitAt + 1) }
+        guard let deep = ranked.prefix(30).firstIndex(where: { holds($0, q) }) else { return 0 }
+        return 1 / Double(max(deep + 1, 5))
+    }
+
     @MainActor
     private static func classify(_ q: Question, top4: [VaultRetriever.Passage], gated: VaultRetriever,
-                                 open: VaultRetriever, store: DocumentStore) -> MissClass {
+                                 ranked: [VaultRetriever.Passage], store: DocumentStore) -> MissClass {
         let own = ownPassages(q, store: store)
         if own.isEmpty, !q.expectsLabels.isEmpty, (q.pages ?? [:]).isEmpty { return .notInDocuments }
         // A page expectation has no "rest of the rule": the chunk after a page's last one is
@@ -335,7 +367,6 @@ enum RetrievalEval {
         }
         if deduped.prefix(4).contains(where: { holds($0, q) }) { return .duplicates }
 
-        let ranked = open.retrieve(.init(turn: q.q, limit: 30)).passages
         if ranked.contains(where: { own.contains(Key($0)) || holds($0, q) }) { return .ranking }
         return .recall
     }

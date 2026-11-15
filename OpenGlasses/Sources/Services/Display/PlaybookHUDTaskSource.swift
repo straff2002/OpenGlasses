@@ -22,7 +22,7 @@ final class PlaybookHUDTaskSource: HUDTaskSource {
     private var session: PlaybookSession? { store.activeSession }
     private var playbook: Playbook? { session.flatMap { store.playbook(byId: $0.playbookId) } }
 
-    var title: String { playbook?.name ?? "Workflow" }
+    var title: String { playbook?.name ?? String(localized: "Workflow") }
 
     var current: HUDStep? { step(at: session?.currentStepIndex, instruction: true) }
 

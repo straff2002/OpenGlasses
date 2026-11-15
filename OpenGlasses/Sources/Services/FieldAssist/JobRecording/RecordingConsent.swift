@@ -18,25 +18,25 @@ enum RecordingConsent {
     /// to, so an acknowledgement of the old words does not stand for the new ones.
     static let wordingVersion = 1
 
-    static let title = "Before you record this job"
+    static let title = String(localized: "Before you record this job")
 
     /// What the button that acknowledges it says.
-    static let acknowledgeTitle = "I understand — record this job"
+    static let acknowledgeTitle = String(localized: "I understand — record this job")
 
     /// Shown each time a recording starts.
-    static let reminder = "Recording this job for your office. Tell the people nearby."
+    static let reminder = String(localized: "Recording this job for your office. Tell the people nearby.")
 
     /// The points the sheet makes, in the order it makes them.
     static func points(limits: RetentionDecision.Limits = .standard) -> [String] {
         let days = max(1, Int((limits.trimAfterAcknowledgement / 86_400).rounded()))
-        let kept = days == 1 ? "1 day" : "\(days) days"
+        let kept = days == 1 ? String(localized: "1 day") : String(localized: "\(days) days")
         return [
-            "Sound and pictures are recorded from the glasses for as long as the recording runs, including while you talk to the assistant.",
-            "The assistant's replies may be heard on the recording.",
-            "The recording goes to your organisation's office, and nowhere else. It can't be shared, saved to Photos or attached to a report from this phone.",
-            "Faces are not blurred unless your organisation requires it. The face blur setting in this app does not change this recording.",
-            "Tell the people nearby that you are recording.",
-            "The recording stays on this phone until the office confirms it has it. Its video and sound are removed from the phone \(kept) after that.",
+            String(localized: "Sound and pictures are recorded from the glasses for as long as the recording runs, including while you talk to the assistant."),
+            String(localized: "The assistant's replies may be heard on the recording."),
+            String(localized: "The recording goes to your organisation's office, and nowhere else. It can't be shared, saved to Photos or attached to a report from this phone."),
+            String(localized: "Faces are not blurred unless your organisation requires it. The face blur setting in this app does not change this recording."),
+            String(localized: "Tell the people nearby that you are recording."),
+            String(localized: "The recording stays on this phone until the office confirms it has it. Its video and sound are removed from the phone \(kept) after that."),
         ]
     }
 

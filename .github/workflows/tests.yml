@@ -88,6 +88,18 @@ jobs:
       - name: Licence issuance on Linux
         run: swift test --package-path Tools/LicenceIssuance
 
+  # The Mac eval harnesses (Scripts/*/run.sh) compile a hand-kept list of app sources, not the app
+  # target, so a new type in a listed file breaks them without breaking anything else — all four
+  # had drifted before this job existed. Compiling them needs only the runner's toolchain: no
+  # project generation, no packages, no simulator. Nothing is run; there is no vault on a runner.
+  eval-harnesses:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Eval harnesses compile
+        run: ./Scripts/check-eval-harnesses.sh
+
   test:
     runs-on: macos-26
     # Setup before the build (~7 min) + the build's 60 + the tests' 50, with a little to spare.

@@ -95,20 +95,20 @@ struct ExpertTimeReply: Codable, Equatable, Sendable {
     /// What the expert reads before they send it, in the words the sheet shows.
     var summary: String {
         var parts: [String] = []
-        parts.append(minutes == 1 ? "1 minute on the job." : "\(minutes) minutes on the job.")
+        parts.append(minutes == 1 ? String(localized: "1 minute on the job.") : String(localized: "\(minutes) minutes on the job."))
         if uncountedMinutes > 0 {
             parts.append(uncountedMinutes == 1
-                         ? "1 minute wasn't counted after the app closed."
-                         : "\(uncountedMinutes) minutes weren't counted after the app closed.")
+                         ? String(localized: "1 minute wasn't counted after the app closed.")
+                         : String(localized: "\(uncountedMinutes) minutes weren't counted after the app closed."))
         }
         if let callMinutes {
-            parts.append(callMinutes == 1 ? "Your phone saw 1 minute of calls while you had the job."
-                         : "Your phone saw \(callMinutes) minutes of calls while you had the job.")
+            parts.append(callMinutes == 1 ? String(localized: "Your phone saw 1 minute of calls while you had the job.")
+                         : String(localized: "Your phone saw \(callMinutes) minutes of calls while you had the job."))
         } else {
-            parts.append("Your phone didn't see a call while you had the job, so the reply carries no call minutes.")
+            parts.append(String(localized: "Your phone didn't see a call while you had the job, so the reply carries no call minutes."))
         }
         let updates = generationsSeen.map(String.init).joined(separator: ", ")
-        parts.append(generationsSeen.count == 1 ? "You saw update \(updates)." : "You saw updates \(updates).")
+        parts.append(generationsSeen.count == 1 ? String(localized: "You saw update \(updates).") : String(localized: "You saw updates \(updates)."))
         return parts.joined(separator: " ")
     }
 }
@@ -166,11 +166,11 @@ enum ExpertTimeReplyFile {
     static func describe(_ error: ReadError) -> String {
         switch error {
         case .unsupportedVersion:
-            return "That reply was made by a newer version of the app. Update the app to open it."
+            return String(localized: "That reply was made by a newer version of the app. Update the app to open it.")
         case .tooLarge:
-            return "That reply is larger than this app opens."
+            return String(localized: "That reply is larger than this app opens.")
         case .notAZip, .missingManifest, .unreadableManifest, .notAReply, .unexpectedEntry:
-            return "That file isn't an expert's reply this app can read."
+            return String(localized: "That file isn't an expert's reply this app can read.")
         }
     }
 }

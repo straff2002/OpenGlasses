@@ -46,7 +46,7 @@ enum LlamaRuntimeAvailability {
     /// Not localized on purpose: it is a build identifier, and translating it would make two
     /// people's bug reports disagree about the same binary.
     static var engineDescription: String {
-        guard let revision = engineRevision else { return "llama.cpp (revision unknown)" }
+        guard let revision = engineRevision else { return String(localized: "llama.cpp (revision unknown)") }
         let short = String(revision.prefix(12))
         guard let tag = engineTag else { return "llama.cpp (\(short))" }
         return "llama.cpp \(tag) (\(short))"

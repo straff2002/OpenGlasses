@@ -72,7 +72,7 @@ struct JobSendQueueSection: View {
 
     /// What one entry is waiting on, in words rather than a colour.
     private func waitingLine(_ entry: QueuedSend) -> String {
-        var line = "Queued \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))"
+        var line = String(localized: "Queued \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))")
         let reason = SpokenSendPolicy.stagingReason(for: entry.channel)
         if !reason.isEmpty { line += " · \(reason)" }
         if let failure = entry.failureReason, !failure.isEmpty { line += " · \(failure)" }

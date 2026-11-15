@@ -155,7 +155,7 @@ struct VaultLinkReviewSections: View {
                 Label(title, systemImage: "doc.text")
                     .font(.callout)
             }
-            Text(review.personalMode ? "Only the manuals will be added. Procedures, prompt rules and other Field Assist content are left out." : VaultLinkReview.groundingSentence)
+            Text(review.personalMode ? String(localized: "Only the manuals will be added. Procedures, prompt rules and other Field Assist content are left out.") : VaultLinkReview.groundingSentence)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } header: {
@@ -222,7 +222,7 @@ struct VaultLinkWarningBlock: View {
                 .strokeBorder(OGTheme.warnNoticeLabel, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(verbatim: "Unverified source. " + lines.joined(separator: " ")))
+        .accessibilityLabel(Text(verbatim: String(localized: "Unverified source.") + " " + lines.joined(separator: " ")))
     }
 }
 

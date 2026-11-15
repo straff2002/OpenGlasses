@@ -4182,6 +4182,23 @@ struct Config {
 
     static func setConversationDigestsEnabled(_ enabled: Bool) { conversationDigestsEnabled = enabled }
 
+    /// Plan LU: whether a private conversation may start ("off the record", the header and Chat
+    /// list menu items, the watch button). On by default (decision 6). An organisation profile may
+    /// pin it off (`SettingKey.privateConversationsAllowed`), never on; the stored value is the
+    /// wearer's. A job refuses a private conversation whatever this says.
+    static var privateConversationsAllowed: Bool {
+        get {
+            PolicyEnvelope.bool(.privateConversationsAllowed,
+                                stored: UserDefaults.standard.object(forKey: "privateConversationsAllowed") as? Bool ?? true)
+        }
+        set {
+            guard !PolicyEnvelope.isLocked(.privateConversationsAllowed) else { return }
+            UserDefaults.standard.set(newValue, forKey: "privateConversationsAllowed")
+        }
+    }
+
+    static func setPrivateConversationsAllowed(_ allowed: Bool) { privateConversationsAllowed = allowed }
+
     // MARK: - Teleprompter
 
     /// Default pacing mode for new teleprompter sessions.

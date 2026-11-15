@@ -40,7 +40,8 @@ struct ConversationPageBody: View {
             store: store,
             isRealtimeSession: isRealtime,
             liveUserText: liveUserText,
-            liveAssistantText: liveAssistantText)
+            liveAssistantText: liveAssistantText,
+            isPrivate: appState.privateConversation.isActive)
     }
 
     var body: some View {
@@ -55,6 +56,13 @@ struct ConversationPageBody: View {
         switch content {
         case .history(let threadId):
             ConversationThreadTranscript(store: store, threadId: threadId)
+        case .privateConversation:
+            ScrollView(.vertical) {
+                PrivateConversationMessages()
+                    .padding(.horizontal, 2)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .defaultScrollAnchor(.bottom)
         case .liveTurn, .empty:
             // `TranscriptOverlay` owns the live cards and the empty copy, and keeps owning them:
             // in a realtime session it is the only honest view, and before the first turn is
@@ -195,8 +203,12 @@ struct ConversationFeed<Lead: View, Trail: View>: View {
     private var content: ConversationContinuity.PageContent {
         ConversationContinuity.pageContent(
             store: store, isRealtimeSession: isRealtime,
-            liveUserText: liveUserText, liveAssistantText: liveAssistantText)
+            liveUserText: liveUserText, liveAssistantText: liveAssistantText,
+            isPrivate: appState.privateConversation.isActive)
     }
+
+    /// The private transcript's length, followed like a stored thread's.
+    private var privateTurnCount: Int { appState.privateConversation.transcript.count }
 
     private var threadId: String? {
         if case .history(let id) = content { return id }
@@ -220,6 +232,8 @@ struct ConversationFeed<Lead: View, Trail: View>: View {
                         switch content {
                         case .history(let id):
                             ConversationThreadMessages(store: store, threadId: id)
+                        case .privateConversation:
+                            PrivateConversationMessages()
                         case .liveTurn, .empty:
                             // `TranscriptOverlay` owns the live cards and the empty copy: in a
                             // realtime session it is the only honest view, and before the first
@@ -241,6 +255,7 @@ struct ConversationFeed<Lead: View, Trail: View>: View {
             // comes back, and anchoring to that moved the line being read. New lines are followed
             // by the explicit scrolls below instead.
             .onChange(of: messageCount) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: privateTurnCount) { _, _ in scrollToBottom(proxy) }
             .onChange(of: appState.isProcessing) { _, _ in scrollToBottom(proxy) }
             .onChange(of: streamingLength) { _, _ in scrollToBottom(proxy) }
             .onChange(of: liveAssistantText) { _, _ in scrollToBottom(proxy) }

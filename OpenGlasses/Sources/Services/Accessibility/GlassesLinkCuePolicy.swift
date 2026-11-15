@@ -98,8 +98,8 @@ enum GlassesLinkCuePolicy {
 
     // MARK: - Wording
 
-    static let disconnectedLine = "Glasses disconnected"
-    static let connectedLine = "Glasses connected"
+    static let disconnectedLine = String(localized: "Glasses disconnected")
+    static let connectedLine = String(localized: "Glasses connected")
 
     /// What VoiceOver is told with a cue. One wording for the glasses' link, shared with
     /// `SessionAnnouncementPolicy`, so the line is the same whichever of the two says it.

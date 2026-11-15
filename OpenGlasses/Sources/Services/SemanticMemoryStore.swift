@@ -750,12 +750,21 @@ class SemanticMemoryStore: ObservableObject {
     ///
     /// A tag the write gate refuses for a told-me request adds one sentence to the reply ("I don't
     /// keep card or ID numbers in memory."), said once however many tags it refused.
+    ///
+    /// **A private conversation** (Plan LU §3): every tag is still stripped from the reply, but
+    /// `[REMEMBER…]`, `[REMEMBER_GLOBAL…]` and `[DIARY…]` save nothing, whatever the model wrote.
+    /// `[FORGET…]` still forgets — forgetting is never blocked. A tag skipped for a told-me request
+    /// adds "This conversation is private, so I won't remember that. Want a reminder instead?"
     func parseAndExecuteCommands(in response: String, userUtterance: String? = nil,
                                  threadID: String? = nil,
                                  readUntrustedOutput: Bool = false) -> String {
         var cleaned = response
         var anySaveFailed = false
         var refusalNotice: String?
+        let skipsRemember = PrivateConversationGate.skips(.rememberTag)
+        let skipsRememberGlobal = PrivateConversationGate.skips(.rememberGlobalTag)
+        let skipsDiary = PrivateConversationGate.skips(.diaryTag)
+        var skippedPrivately = 0
         func note(_ outcome: FactWriteOutcome) {
             switch outcome {
             case .saved: break
@@ -775,7 +784,9 @@ class SemanticMemoryStore: ObservableObject {
             let source = cleaned
             let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let kr = Range(match.range(at: 1), in: source),
+                if skipsRememberGlobal {
+                    skippedPrivately += 1
+                } else if let kr = Range(match.range(at: 1), in: source),
                    let vr = Range(match.range(at: 2), in: source) {
                     note(storeFact(String(source[kr]), value: String(source[vr]), origin: origin,
                                    sourceRef: threadID, global: true,
@@ -790,7 +801,9 @@ class SemanticMemoryStore: ObservableObject {
             let source = cleaned
             let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let kr = Range(match.range(at: 1), in: source),
+                if skipsRemember {
+                    skippedPrivately += 1
+                } else if let kr = Range(match.range(at: 1), in: source),
                    let vr = Range(match.range(at: 2), in: source) {
                     note(storeFact(String(source[kr]), value: String(source[vr]), origin: origin,
                                    sourceRef: threadID, global: false,
@@ -816,11 +829,22 @@ class SemanticMemoryStore: ObservableObject {
             let source = cleaned
             let matches = regex.matches(in: source, range: NSRange(source.startIndex..., in: source))
             for match in matches.reversed() {
-                if let tr = Range(match.range(at: 1), in: source) { writeDiary(String(source[tr])) }
+                if skipsDiary {
+                    skippedPrivately += 1
+                } else if let tr = Range(match.range(at: 1), in: source) {
+                    writeDiary(String(source[tr]))
+                }
                 if let fr = Range(match.range, in: cleaned) { cleaned.removeSubrange(fr) }
             }
         }
 
+        if skippedPrivately > 0 {
+            PrivacyLog.store(.semanticMemory, .declined, count: skippedPrivately,
+                             detail: PrivacyToken("privateConversation"))
+            // The wearer asked for it to be kept: they are told once why it wasn't, and offered
+            // the thing that is kept in a private conversation (decision 2).
+            if origin == .toldMe, refusalNotice == nil { refusalNotice = PrivateConversationLines.wontRemember }
+        }
         let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
         let notices = [refusalNotice, anySaveFailed ? Self.saveFailedNotice : nil].compactMap { $0 }
         guard !notices.isEmpty else { return trimmed }
@@ -831,6 +855,8 @@ class SemanticMemoryStore: ObservableObject {
     // MARK: - Turn Nudge
 
     func incrementTurnAndCheckNudge() -> Bool {
+        // Plan LU §3: a private turn neither counts towards the review nor triggers it.
+        guard !PrivateConversationGate.skips(.memoryNudge) else { return false }
         turnsSinceLastNudge += 1
         if turnsSinceLastNudge >= nudgeInterval {
             turnsSinceLastNudge = 0
@@ -858,6 +884,9 @@ class SemanticMemoryStore: ObservableObject {
 
     private func pushToGateway(key: String, value: String) {
         guard !Config.hipaaMode else { return }
+        // Plan LU §5: nothing from a private conversation reaches the gateway's memory. The writes
+        // that would call this are already skipped; this holds for any that is added later.
+        guard !PrivateConversationGate.skips(.gatewayMemoryPush) else { return }
         guard let bridge = openClawBridge, bridge.connectionState == .connected else { return }
         let persona = activePersonaId
         Task {
@@ -869,6 +898,8 @@ class SemanticMemoryStore: ObservableObject {
 
     func syncFromGateway(query: String? = nil) async {
         guard !Config.hipaaMode else { return }
+        // Plan LU §5: a query would tell the gateway what the private conversation is about.
+        guard !PrivateConversationGate.skips(.gatewayMemoryQuery) else { return }
         guard let bridge = openClawBridge, bridge.connectionState == .connected else { return }
         let q = query ?? "user preferences facts context"
         let result = await bridge.queryMemory(query: q, limit: maxGatewayResults)

@@ -306,30 +306,30 @@ final class OfficeJobUpdateService: ObservableObject {
         case .parts?:
             let title = update.quantity > 0 ? "\(update.part) × \(update.quantity)" : update.part
             var state = partStateWords(update.partState)
-            if !update.expectedOn.isEmpty { state += ", expected \(update.expectedOn)" }
+            if !update.expectedOn.isEmpty { state += String(localized: ", expected \(update.expectedOn)") }
             return .init(title: title, detail: joined([state + ".", update.body]), systemImage: "shippingbox")
         case .schedule?:
             var when = date(Date(timeIntervalSince1970: TimeInterval(update.scheduledFor)))
             if update.scheduledUntil > 0 {
-                when += " to " + date(Date(timeIntervalSince1970: TimeInterval(update.scheduledUntil)))
+                when = String(localized: "\(when) to \(date(Date(timeIntervalSince1970: TimeInterval(update.scheduledUntil))))")
             }
-            return .init(title: "New time from the office", detail: joined([when, update.body]),
+            return .init(title: String(localized: "New time from the office"), detail: joined([when, update.body]),
                          systemImage: "calendar.badge.clock")
         case .note?, nil:
-            return .init(title: "Note from the office",
-                         detail: update.body.isEmpty ? "An update this version of the app can't show in full." : update.body,
+            return .init(title: String(localized: "Note from the office"),
+                         detail: update.body.isEmpty ? String(localized: "An update this version of the app can't show in full.") : update.body,
                          systemImage: "text.bubble")
         }
     }
 
     static func partStateWords(_ state: String) -> String {
         switch state {
-        case "ordered": return "Ordered"
-        case "dispatched": return "Dispatched"
-        case "arrived": return "Arrived"
-        case "substituted": return "Substituted"
-        case "unavailable": return "Unavailable"
-        default: return "Updated"
+        case "ordered": return String(localized: "Ordered")
+        case "dispatched": return String(localized: "Dispatched")
+        case "arrived": return String(localized: "Arrived")
+        case "substituted": return String(localized: "Substituted")
+        case "unavailable": return String(localized: "Unavailable")
+        default: return String(localized: "Updated")
         }
     }
 }
