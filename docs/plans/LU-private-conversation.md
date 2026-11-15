@@ -574,6 +574,18 @@ P1b: "Private", "Start a private conversation", "End", "Private conversation. No
 explainer sentence, the recognition line, "Private conversations", "Allow", "Allow private
 conversations", and on the watch "Private", "End", "Private
 conversation. Nothing of it is kept.", "End private conversation" and "Start a private conversation".
+Also the organisation ceiling's "Private conversations are off" (P1a), now `String(localized:)`
+since the service strings were localized on main.
+
+**Gate (2026-11-15, rebased on main at build 691).** P0–P1b compiled clean, with no warnings in
+any file the plan touched. Focused classes (every `Private*`, `PrivacyLogTests`, the Watch*,
+SettingsVisibility, `ConversationContinuityTests` and the classes covering the views P1b changed):
+580 tests, 0 failures. `PrivateConversationUITests` passes; the confirmation dialog's End reaches
+the accessibility tree twice, nested, so the test takes the first, and the class is now in the
+`conversation-setup` audit group. The watch target builds. Full unit suite on the simulator: 17,212
+tests, 16 skipped, 0 failures. Release: a simulator Release build succeeded (GiPhone wasn't
+reachable). Privacy-logging check, the gitleaks range scan, the three contract tests and the
+security-regression classes (run inside the full suite) all pass.
 
 ### P2 — device pass (owed)
 

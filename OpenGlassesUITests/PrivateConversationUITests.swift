@@ -37,9 +37,10 @@ final class PrivateConversationUITests: AccessibilityAuditCase {
         XCTAssertTrue(badge.waitForExistence(timeout: 10), "The header shows no Private badge")
         XCTAssertEqual(badge.label, "Private conversation. Nothing of it is kept.")
 
-        // The badge offers End.
+        // The badge offers End. The confirmation dialog's button reaches the tree twice, nested
+        // with the same identifier and frame, so the query takes the first.
         badge.tap()
-        let end = app.buttons["End"]
+        let end = app.buttons["privateConversationEnd"].firstMatch
         XCTAssertTrue(end.waitForExistence(timeout: 10), "Tapping the badge doesn't offer End")
         end.tap()
 

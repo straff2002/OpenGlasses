@@ -22,7 +22,8 @@ GROUPS = {
                     "FieldAssistModeUITests"],
     "conversation-setup": ["OnboardingAccessibilityTests", "SessionSurfaceAccessibilityTests",
                            "VaultLinkScreenshotTests", "AdaptiveWorkspaceUITests",
-                           "ConversationPageTests", "RealtimeModelSetupUITests"],
+                           "ConversationPageTests", "RealtimeModelSetupUITests",
+                           "PrivateConversationUITests"],
 }
 
 
