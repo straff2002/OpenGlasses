@@ -14,7 +14,7 @@ import UserNotifications
 enum JobUpdateNotifications {
 
     static let identifierPrefix = "field-assist.office-update."
-    static let title = "Update from the office"
+    static let title = String(localized: "Update from the office")
 
     static func identifier(jobID: String) -> String { identifierPrefix + jobID }
 
@@ -22,10 +22,10 @@ enum JobUpdateNotifications {
     /// an update all the same.
     static func kindWords(_ updateKind: String) -> String {
         switch updateKind {
-        case "parts": return "parts update"
-        case "schedule": return "new time"
-        case "note": return "note from the office"
-        default: return "update"
+        case "parts": return String(localized: "parts update")
+        case "schedule": return String(localized: "new time")
+        case "note": return String(localized: "note from the office")
+        default: return String(localized: "update")
         }
     }
 
@@ -33,7 +33,7 @@ enum JobUpdateNotifications {
     static func body(jobLabel: String?, updateKind: String) -> String {
         let words = kindWords(updateKind)
         guard let jobLabel, !jobLabel.isEmpty else {
-            return "One of your jobs: \(words)"
+            return String(localized: "One of your jobs: \(words)")
         }
         return "\(jobLabel): \(words)"
     }

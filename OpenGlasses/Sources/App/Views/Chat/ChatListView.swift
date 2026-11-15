@@ -43,7 +43,7 @@ struct ChatListView: View {
                                 Text("\(activeProjectName) only").tag(true)
                             }
                         } label: {
-                            Label(projectScoped ? activeProjectName : "All",
+                            Label(projectScoped ? activeProjectName : String(localized: "All"),
                                   systemImage: projectScoped ? "folder.fill" : "tray.full")
                         }
                         .accessibilityLabel("Filter conversations by project")

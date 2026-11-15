@@ -253,7 +253,7 @@ final class OrgEnrolmentService: ObservableObject {
             case .failure(let refusal): stage = .failed(refusal.errorDescription ?? "")
             }
         } catch {
-            stage = .failed("This office setup package failed verification. Ask your organisation for a new package.")
+            stage = .failed(String(localized: "This office setup package failed verification. Ask your organisation for a new package."))
         }
     }
 
@@ -266,7 +266,7 @@ final class OrgEnrolmentService: ObservableObject {
         } catch {
             reset()
             source = .office
-            stage = .failed("This Avenkin Office setup file is invalid. Ask your organisation for a new file.")
+            stage = .failed(String(localized: "This Avenkin Office setup file is invalid. Ask your organisation for a new file."))
         }
     }
 
@@ -284,7 +284,7 @@ final class OrgEnrolmentService: ObservableObject {
         guard let bytes else {
             reset()
             source = .office
-            stage = .failed("Couldn't read the Avenkin Office setup file. Ask your organisation to send it again.")
+            stage = .failed(String(localized: "Couldn't read the Avenkin Office setup file. Ask your organisation to send it again."))
             return
         }
         openOfficePackageFile(bytes)
@@ -363,9 +363,9 @@ final class OrgEnrolmentService: ObservableObject {
             guard case .fetching = stage else { return }
             activeFetch = nil
             if let licensee = settingUpFor {
-                stage = .failed("Setting this phone up for \(licensee) needs the internet once. Connect, then enter the licence key again.")
+                stage = .failed(String(localized: "Setting this phone up for \(licensee) needs the internet once. Connect, then enter the licence key again."))
             } else {
-                stage = .failed("Couldn't fetch the profile from \(host). Check the connection and open the link again.")
+                stage = .failed(String(localized: "Couldn't fetch the profile from \(host). Check the connection and open the link again."))
             }
             return
         }
@@ -414,7 +414,7 @@ final class OrgEnrolmentService: ObservableObject {
         guard case .modelKey(let model, let organization) = stage else { return nil }
         if model.access == .key, let problem = model.keyProblem(key) { return problem }
         guard manager.completeModelSetup(apiKey: key) else {
-            return "Couldn't save the key. Try again."
+            return String(localized: "Couldn't save the key. Try again.")
         }
         modelDidChange()
         stage = .applied(organization)

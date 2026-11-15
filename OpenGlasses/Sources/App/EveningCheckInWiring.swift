@@ -159,8 +159,10 @@ extension AppState {
         switch slot {
         case .checkIn:
             return CheckInNotificationPolicy.body
-        case .morning, .evening:
-            return "Your \(slot.rawValue) briefing is ready."
+        case .morning:
+            return String(localized: "Your morning briefing is ready.")
+        case .evening:
+            return String(localized: "Your evening briefing is ready.")
         }
     }
 }

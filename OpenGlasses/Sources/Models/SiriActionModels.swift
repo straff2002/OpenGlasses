@@ -26,11 +26,11 @@ enum SiriCapabilityKind: String, Codable, CaseIterable {
 
     var displayLabel: String {
         switch self {
-        case .captureFlow: return "Capture Flow"
-        case .procedure: return "Procedure"
-        case .playbook: return "Playbook"
-        case .customTool: return "Custom Tool"
-        case .gridAction: return "Grid Action"
+        case .captureFlow: return String(localized: "Capture Flow")
+        case .procedure: return String(localized: "Procedure")
+        case .playbook: return String(localized: "Playbook")
+        case .customTool: return String(localized: "Custom Tool")
+        case .gridAction: return String(localized: "Grid Action")
         }
     }
 }

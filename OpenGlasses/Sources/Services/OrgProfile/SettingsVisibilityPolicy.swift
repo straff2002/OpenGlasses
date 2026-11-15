@@ -159,7 +159,7 @@ enum SettingsVisibilityPolicy {
             if presentation(.category(id), in: context) == .hidden {
                 lines.append(title)
             } else if presentation(.row(in: id), in: context) == .hidden {
-                lines.append("Parts of \(title)")
+                lines.append(String(localized: "Parts of \(title)"))
             }
         }
         for area in ManagedArea.allCases where presentation(.area(area), in: context) == .hidden {
@@ -189,10 +189,10 @@ private extension ManagedArea {
     /// How the organisation's page names this area when it is hidden.
     var hiddenDescription: String {
         switch self {
-        case .glasses: return "Glasses"
-        case .requestRouting: return "How Your Requests Are Processed"
-        case .fieldAssistSwitch: return "Turning Field Assist off"
-        case .ownerControls: return "Simple Mode and Lock Settings"
+        case .glasses: return String(localized: "Glasses")
+        case .requestRouting: return String(localized: "How Your Requests Are Processed")
+        case .fieldAssistSwitch: return String(localized: "Turning Field Assist off")
+        case .ownerControls: return String(localized: "Simple Mode and Lock Settings")
         }
     }
 }

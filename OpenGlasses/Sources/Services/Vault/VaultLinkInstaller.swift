@@ -42,9 +42,9 @@ enum VaultLinkInstaller {
 
     /// Exact downloaded-review checks; installation repeats admission against current holdings.
     nonisolated static func personalPreflight(files: [String: Data]) throws {
-        guard let bytes = files["manifest.json"] else { throw InstallError.failed("The manual list is unavailable.") }
+        guard let bytes = files["manifest.json"] else { throw InstallError.failed(String(localized: "The manual list is unavailable.")) }
         let manifest = try JSONDecoder().decode(VaultManifest.self, from: bytes).personalProjection
-        guard !manifest.documents.isEmpty else { throw InstallError.failed("This publisher set contains no manuals.") }
+        guard !manifest.documents.isEmpty else { throw InstallError.failed(String(localized: "This publisher set contains no manuals.")) }
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("ManualSetReview-\(UUID().uuidString)")
         try fm.createDirectory(at: root, withIntermediateDirectories: true,
@@ -52,12 +52,12 @@ enum VaultLinkInstaller {
         defer { try? fm.removeItem(at: root) }
         for document in manifest.documents {
             let path = manifest.documentSourceRelativePath(document) ?? manifest.documentRelativePath(document)
-            guard VaultArchiveReader.isSafeRelativePath(path), let data = files[path] else { throw InstallError.failed("This set is missing an original PDF.") }
+            guard VaultArchiveReader.isSafeRelativePath(path), let data = files[path] else { throw InstallError.failed(String(localized: "This set is missing an original PDF.")) }
             var writes = [(path, data)]
             // The allowance fingerprints the original, which is the measured PDF unless a reading copy stands in.
             let original = ManualLibraryAdmission.originalRelativePath(manifest, document)
             if original != path {
-                guard VaultArchiveReader.isSafeRelativePath(original), let bytes = files[original] else { throw InstallError.failed("This set is missing an original manual.") }
+                guard VaultArchiveReader.isSafeRelativePath(original), let bytes = files[original] else { throw InstallError.failed(String(localized: "This set is missing an original manual.")) }
                 writes.append((original, bytes))
             }
             for (relative, bytes) in writes {
@@ -81,7 +81,7 @@ enum VaultLinkInstaller {
         let fm = FileManager.default
         guard let manifestData = request.files["manifest.json"],
               let manifest = try? JSONDecoder().decode(VaultManifest.self, from: manifestData) else {
-            throw InstallError.failed("The archive's manifest.json is unreadable.")
+            throw InstallError.failed(String(localized: "The archive's manifest.json is unreadable."))
         }
         let targetID = request.personalLibrary ? manifest.personalProjection.id : manifest.id
         return try await VaultOperationLock.withLock(targetID) {
@@ -93,7 +93,7 @@ enum VaultLinkInstaller {
             do {
                 for (path, data) in request.files {
                     guard VaultArchiveReader.isSafeRelativePath(path) else {
-                        throw InstallError.failed("The archive contains a file path that would write outside the vault.")
+                        throw InstallError.failed(String(localized: "The archive contains a file path that would write outside the vault."))
                     }
                     let url = staging.appendingPathComponent(path)
                     try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -102,7 +102,7 @@ enum VaultLinkInstaller {
                 let personal = request.personalLibrary
                 if personal {
                     guard request.receipt.verification == .signed else {
-                        throw InstallError.failed("Unverified archives need Field Assist. My Manuals accepts sets signed by a listed publisher.")
+                        throw InstallError.failed(String(localized: "Unverified archives need Field Assist. My Manuals accepts sets signed by a listed publisher."))
                     }
                     // Receipt continues to identify the verified ORIGINAL archive. This is a
                     // document-only projection, not a claim that rewritten bytes were signed.

@@ -361,7 +361,7 @@ final class MyDayService: ObservableObject {
     }
 
     private func lockedSourceStates(for selection: MyDaySourceSelection) -> [MyDaySourceState] {
-        let message = "Unlock iPhone to refresh My Day."
+        let message = String(localized: "Unlock iPhone to refresh My Day.")
         return [
             selection.calendar ? .unavailable(.calendar, message: message) : nil,
             selection.reminders ? .unavailable(.reminders, message: message) : nil,

@@ -161,19 +161,19 @@ enum HomeGridEntry: Identifiable, Equatable {
     /// What VoiceOver says a tile will do. The camera is the difference a hint has to carry; the
     /// drawn glyph is the only other place it exists.
     var spokenHint: String {
-        if capturesPhoto { return "Takes a photo, then asks about it." }
+        if capturesPhoto { return String(localized: "Takes a photo, then asks about it.") }
         switch self {
         case .builtIn:
-            return "Double-tap to ask."
+            return String(localized: "Double-tap to ask.")
         case .quickAction(let action):
-            if action.id == QuickAction.myManuals.id { return "Choose one or more manuals for this conversation." }
+            if action.id == QuickAction.myManuals.id { return String(localized: "Choose one or more manuals for this conversation.") }
             switch action.type {
-            case .prompt: return "Double-tap to ask."
-            case .homeAssistant: return "Double-tap to run this home control."
-            case .siriShortcut: return "Double-tap to run this shortcut."
-            case .openApp: return "Double-tap to open the app."
-            case .toggleRecording: return "Double-tap to start or stop recording."
-            case .photo, .photoThenPrompt: return "Takes a photo, then asks about it."
+            case .prompt: return String(localized: "Double-tap to ask.")
+            case .homeAssistant: return String(localized: "Double-tap to run this home control.")
+            case .siriShortcut: return String(localized: "Double-tap to run this shortcut.")
+            case .openApp: return String(localized: "Double-tap to open the app.")
+            case .toggleRecording: return String(localized: "Double-tap to start or stop recording.")
+            case .photo, .photoThenPrompt: return String(localized: "Takes a photo, then asks about it.")
             }
         }
     }

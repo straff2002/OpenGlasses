@@ -60,9 +60,9 @@ actor ConversationEncryptionService {
     }
 
     /// Prompt for biometric/passcode authentication.
-    func authenticate(reason: String = "Unlock your conversations") async throws -> Bool {
+    func authenticate(reason: String = String(localized: "Unlock your conversations")) async throws -> Bool {
         let context = LAContext()
-        context.localizedFallbackTitle = "Use Passcode"
+        context.localizedFallbackTitle = String(localized: "Use Passcode")
         return try await context.evaluatePolicy(
             .deviceOwnerAuthentication,
             localizedReason: reason
@@ -99,7 +99,7 @@ actor ConversationEncryptionService {
             .userPresence,  // Face ID, Touch ID, or device passcode
             nil
         ) else {
-            throw EncryptionError.keychainError("Failed to create access control")
+            throw EncryptionError.keychainError(String(localized: "Failed to create access control"))
         }
 
         let query: [String: Any] = [
@@ -121,7 +121,7 @@ actor ConversationEncryptionService {
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
-            throw EncryptionError.keychainError("Failed to store key: \(status)")
+            throw EncryptionError.keychainError(String(localized: "Failed to store key: \(status)"))
         }
 
         PrivacyLog.conversation(.conversations, .keyCreated)
@@ -144,14 +144,14 @@ actor ConversationEncryptionService {
             // biometric lockout, locked device). Must never be mistaken for "no key".
             return .authenticationFailed
         default:
-            return .keychainError("Failed to retrieve key: \(status)")
+            return .keychainError(String(localized: "Failed to retrieve key: \(status)"))
         }
     }
 
     /// Retrieve the symmetric key from Keychain. Triggers biometric prompt.
     private func retrieveKey() throws -> SymmetricKey {
         let context = LAContext()
-        context.localizedReason = "Access encrypted conversations"
+        context.localizedReason = String(localized: "Access encrypted conversations")
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -234,10 +234,10 @@ enum EncryptionError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .keyNotFound: return "Encryption key not found — re-enable encryption in Settings"
-        case .keychainError(let msg): return "Keychain error: \(msg)"
-        case .invalidData: return "Encrypted data is corrupted"
-        case .authenticationFailed: return "Authentication failed"
+        case .keyNotFound: return String(localized: "Encryption key not found — re-enable encryption in Settings")
+        case .keychainError(let msg): return String(localized: "Keychain error: \(msg)")
+        case .invalidData: return String(localized: "Encrypted data is corrupted")
+        case .authenticationFailed: return String(localized: "Authentication failed")
         }
     }
 }

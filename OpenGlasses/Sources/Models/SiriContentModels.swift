@@ -23,15 +23,15 @@ enum SiriContentType: String, Codable, CaseIterable {
 
     var displayLabel: String {
         switch self {
-        case .note: return "Notes"
-        case .meetingSummary: return "Meeting Summaries"
-        case .savedLocation: return "Saved Locations"
-        case .teleprompterScript: return "Teleprompter Scripts"
-        case .playbook: return "Playbooks"
-        case .studyDeck: return "Study Decks"
-        case .readingSession: return "Reading Sessions"
-        case .conversation: return "Conversations"
-        case .fieldSession: return "Field Sessions"
+        case .note: return String(localized: "Notes")
+        case .meetingSummary: return String(localized: "Meeting Summaries")
+        case .savedLocation: return String(localized: "Saved Locations")
+        case .teleprompterScript: return String(localized: "Teleprompter Scripts")
+        case .playbook: return String(localized: "Playbooks")
+        case .studyDeck: return String(localized: "Study Decks")
+        case .readingSession: return String(localized: "Reading Sessions")
+        case .conversation: return String(localized: "Conversations")
+        case .fieldSession: return String(localized: "Field Sessions")
         }
     }
 

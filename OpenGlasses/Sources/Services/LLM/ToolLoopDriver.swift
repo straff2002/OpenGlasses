@@ -100,7 +100,7 @@ struct ToolDispatcher {
             // told something didn't happen when it may well have.
             onStatus(.outcomeUnknown(invocation.name))
         case .rejected, .failedBeforeExecution:
-            onStatus(.failed(invocation.name, "Failed"))
+            onStatus(.failed(invocation.name, String(localized: "Failed")))
         }
         return ToolDispatchOutcome(
             invocation: invocation,

@@ -246,7 +246,7 @@ struct JobDayView: View {
                         }
                         .accessibilityElement(children: .combine)
                         if let next = day.next {
-                            row(symbol: "calendar", title: next.title, detail: "Next: \(next.whenText)",
+                            row(symbol: "calendar", title: next.title, detail: String(localized: "Next: \(next.whenText)"),
                                 destination: next.destination)
                         }
                     }

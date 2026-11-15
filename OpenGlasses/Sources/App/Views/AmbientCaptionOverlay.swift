@@ -287,7 +287,7 @@ struct AmbientCaptionOverlay: View {
             line = "\(chip.label): \(entry.text)"
         }
         if Config.translationShowOriginal, let original = entry.original, !original.isEmpty {
-            line += ". Original: \(original)"
+            line += ". " + String(localized: "Original: \(original)")
         }
         return line
     }

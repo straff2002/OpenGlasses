@@ -93,7 +93,7 @@ enum ToolExecutionOutcome: Sendable, Equatable {
     /// finding out. Nil for every other case, which the existing status text already covers.
     var userFacingStatus: String? {
         guard case .outcomeUnknown = self else { return nil }
-        return "Status unknown — checking"
+        return String(localized: "Status unknown — checking")
     }
 }
 

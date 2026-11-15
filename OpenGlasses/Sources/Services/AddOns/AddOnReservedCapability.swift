@@ -28,10 +28,10 @@ enum AddOnReservedCapability: String, CaseIterable, Equatable, Hashable, Sendabl
     /// internal names: this is what the wearer reads.
     var summaryText: String {
         switch self {
-        case .credentials: return "Use a key stored for it on this phone. The key is never shown or spoken."
-        case .parts: return "Look up part numbers in your manuals' parts list"
-        case .workRecord: return "Note parts against the job you're on"
-        case .office: return "Send to your office"
+        case .credentials: return String(localized: "Use a key stored for it on this phone. The key is never shown or spoken.")
+        case .parts: return String(localized: "Look up part numbers in your manuals' parts list")
+        case .workRecord: return String(localized: "Note parts against the job you're on")
+        case .office: return String(localized: "Send to your office")
         }
     }
 }

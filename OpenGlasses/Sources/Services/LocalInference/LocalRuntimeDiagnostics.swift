@@ -47,11 +47,11 @@ struct LocalRuntimeDiagnosticsSample: Equatable, Sendable {
         /// Said in terms of what it means for the person holding the phone, not the enum name.
         var displayName: String {
             switch self {
-            case .nominal: return "Normal"
-            case .fair: return "Warm"
-            case .serious: return "Hot — the phone is slowing itself down"
-            case .critical: return "Very hot — on-device work will be throttled hard"
-            case .unknown: return "Unknown"
+            case .nominal: return String(localized: "Normal")
+            case .fair: return String(localized: "Warm")
+            case .serious: return String(localized: "Hot — the phone is slowing itself down")
+            case .critical: return String(localized: "Very hot — on-device work will be throttled hard")
+            case .unknown: return String(localized: "Unknown")
             }
         }
     }
@@ -182,88 +182,88 @@ enum LocalRuntimeDiagnosticsCard {
     static func rows(sample: LocalRuntimeDiagnosticsSample?,
                      frameworkDescription: String) -> [Row] {
         // 1. Framework revision — from the linked binary, not a constant typed into Swift.
-        var rows = [Row(id: "framework", label: "Runtime build", value: frameworkDescription,
+        var rows = [Row(id: "framework", label: String(localized: "Runtime build"), value: frameworkDescription,
                         spokenValue: spokenRevisionPhrase(frameworkDescription))]
 
         guard let sample else {
-            rows.append(Row(id: "empty", label: "Last run",
-                            value: "No on-device run recorded yet",
-                            spokenValue: "No on-device run has been recorded yet"))
+            rows.append(Row(id: "empty", label: String(localized: "Last run"),
+                            value: String(localized: "No on-device run recorded yet"),
+                            spokenValue: String(localized: "No on-device run has been recorded yet")))
             return rows
         }
 
         // 2. Model revision — the descriptor's pinned revision, as installed.
-        rows.append(Row(id: "modelRevision", label: "Model version",
+        rows.append(Row(id: "modelRevision", label: String(localized: "Model version"),
                         value: revisionText(sample.modelRevision),
                         spokenValue: spokenRevision(sample.modelRevision)))
         // 3. Context — what the runtime actually created after every clamp, reported by the
         //    context itself at load time.
-        rows.append(Row(id: "context", label: "Context",
-                        value: "\(sample.contextTokens) tokens"))
+        rows.append(Row(id: "context", label: String(localized: "Context"),
+                        value: String(localized: "\(sample.contextTokens) tokens")))
 
         if sample.kind == .generation {
             // 4. First-token latency — the backend's `firstTokenMilliseconds`, measured from the
             //    start of the turn, prefill included.
-            rows.append(Row(id: "firstToken", label: "First token",
-                            value: sample.firstTokenMilliseconds.map { "\($0) ms" } ?? "—",
+            rows.append(Row(id: "firstToken", label: String(localized: "First token"),
+                            value: sample.firstTokenMilliseconds.map { String(localized: "\($0) ms") } ?? "—",
                             spokenValue: sample.firstTokenMilliseconds
-                                .map { "\($0) milliseconds" } ?? "not measured"))
+                                .map { String(localized: "\($0) milliseconds") } ?? String(localized: "not measured")))
             // 5. Tokens per second — derived from the recorded counts and durations beside it.
-            rows.append(Row(id: "rate", label: "Speed",
+            rows.append(Row(id: "rate", label: String(localized: "Speed"),
                             value: sample.tokensPerSecond
-                                .map { String(format: "%.1f tokens/s", $0) } ?? "—",
+                                .map { String(localized: "\(String(format: "%.1f", $0)) tokens/s") } ?? "—",
                             spokenValue: sample.tokensPerSecond
-                                .map { String(format: "%.1f tokens per second", $0) }
-                                ?? "not measured"))
-            rows.append(Row(id: "tokens", label: "Tokens",
-                            value: "\(sample.promptTokens) in, \(sample.generatedTokens) out",
-                            spokenValue: "\(sample.promptTokens) in, \(sample.generatedTokens) out"))
+                                .map { String(localized: "\(String(format: "%.1f", $0)) tokens per second") }
+                                ?? String(localized: "not measured")))
+            rows.append(Row(id: "tokens", label: String(localized: "Tokens"),
+                            value: String(localized: "\(sample.promptTokens) in, \(sample.generatedTokens) out"),
+                            spokenValue: String(localized: "\(sample.promptTokens) in, \(sample.generatedTokens) out")))
         } else {
-            rows.append(Row(id: "loadTime", label: "Load time",
-                            value: "\(sample.totalMilliseconds) ms",
-                            spokenValue: "\(sample.totalMilliseconds) milliseconds"))
+            rows.append(Row(id: "loadTime", label: String(localized: "Load time"),
+                            value: String(localized: "\(sample.totalMilliseconds) ms"),
+                            spokenValue: String(localized: "\(sample.totalMilliseconds) milliseconds")))
         }
 
         // 6. Memory delta — headroom now against the reading taken when the load finished.
-        rows.append(Row(id: "memory", label: "Memory since load",
+        rows.append(Row(id: "memory", label: String(localized: "Memory since load"),
                         value: signedBytes(sample.headroomDeltaBytes),
                         spokenValue: spokenMemoryDelta(sample.headroomDeltaBytes)))
         // 7. Thermal state — `ProcessInfo.thermalState` as read at the same moment.
-        rows.append(Row(id: "thermal", label: "Thermal state",
+        rows.append(Row(id: "thermal", label: String(localized: "Thermal state"),
                         value: sample.thermalState.displayName))
         return rows
     }
 
     private static func revisionText(_ revision: String) -> String {
         guard revision != LocalModelDescriptor.floatingRevision, !revision.isEmpty else {
-            return "Not pinned"
+            return String(localized: "Not pinned")
         }
         return String(revision.prefix(12))
     }
 
     private static func spokenRevision(_ revision: String) -> String {
         guard revision != LocalModelDescriptor.floatingRevision, !revision.isEmpty else {
-            return "not pinned to an exact version"
+            return String(localized: "not pinned to an exact version")
         }
-        return "version \(String(revision.prefix(12)))"
+        return String(localized: "version \(String(revision.prefix(12)))")
     }
 
     /// A build identifier read aloud verbatim is a stream of letters; say what it is first.
     private static func spokenRevisionPhrase(_ description: String) -> String {
-        "engine build \(description)"
+        String(localized: "engine build \(description)")
     }
 
     private static func signedBytes(_ delta: Int64) -> String {
         let magnitude = LocalModelPresentation.formatBytes(abs(delta))
-        if delta == 0 { return "unchanged" }
-        return delta > 0 ? "+\(magnitude) free" : "−\(magnitude) free"
+        if delta == 0 { return String(localized: "unchanged") }
+        return delta > 0 ? String(localized: "+\(magnitude) free") : String(localized: "−\(magnitude) free")
     }
 
     private static func spokenMemoryDelta(_ delta: Int64) -> String {
         let magnitude = LocalModelPresentation.formatBytes(abs(delta))
-        if delta == 0 { return "unchanged since the model loaded" }
+        if delta == 0 { return String(localized: "unchanged since the model loaded") }
         return delta > 0
-            ? "\(magnitude) more free than when the model loaded"
-            : "\(magnitude) less free than when the model loaded"
+            ? String(localized: "\(magnitude) more free than when the model loaded")
+            : String(localized: "\(magnitude) less free than when the model loaded")
     }
 }

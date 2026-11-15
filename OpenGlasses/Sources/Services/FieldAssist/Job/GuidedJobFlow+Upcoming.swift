@@ -137,7 +137,7 @@ enum UpcomingJobError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notFound: return "That upcoming job is no longer on this phone."
+        case .notFound: return String(localized: "That upcoming job is no longer on this phone.")
         }
     }
 }

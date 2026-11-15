@@ -119,10 +119,10 @@ final class LicenseService: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .malformed: return "That doesn't look like a valid license code."
-            case .badSignature: return "This license code failed verification. Check for typos or request a new code."
-            case .wrongFeature: return "This code is for a different product."
-            case .expired(let date): return "This license expired on \(date.formatted(date: .abbreviated, time: .omitted))."
+            case .malformed: return String(localized: "That doesn't look like a valid license code.")
+            case .badSignature: return String(localized: "This license code failed verification. Check for typos or request a new code.")
+            case .wrongFeature: return String(localized: "This code is for a different product.")
+            case .expired(let date): return String(localized: "This license expired on \(date.formatted(date: .abbreviated, time: .omitted)).")
             }
         }
     }

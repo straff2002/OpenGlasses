@@ -80,7 +80,7 @@ struct RecordingFiler {
         var playable: Bool? = nil
 
         /// The end of a "safe in …" sentence: the reassurance only for a file known to play.
-        private var lossClause: String { playable == true ? " — nothing was lost." : "." }
+        private var lossClause: String { playable == true ? String(localized: " — nothing was lost.") : "." }
 
         /// True when at least one copy survives outside the temporary directory.
         var isPersisted: Bool {
@@ -92,11 +92,11 @@ struct RecordingFiler {
         /// doesn't describe the user's own folder as "the app's".
         private var location: String {
             if savedToLibrary {
-                return "the app's \(primaryURL.deletingLastPathComponent().lastPathComponent) folder"
+                return String(localized: "the app's \(primaryURL.deletingLastPathComponent().lastPathComponent) folder")
             }
-            if folderCopyURL != nil { return "your chosen folder" }
-            if savedToPhotos { return "your Photos library" }
-            return "temporary storage"
+            if folderCopyURL != nil { return String(localized: "your chosen folder") }
+            if savedToPhotos { return String(localized: "your Photos library") }
+            return String(localized: "temporary storage")
         }
 
         /// What to tell the user, or nil when everything they asked for landed.
@@ -105,26 +105,21 @@ struct RecordingFiler {
         /// point of the safety-net copy is that the user can go and get it.
         var message: String? {
             guard isPersisted else {
-                return "The recording could not be saved anywhere — it is still in temporary "
-                     + "storage and may not survive. Free up some space and try again."
+                return String(localized: "The recording could not be saved anywhere — it is still in temporary storage and may not survive. Free up some space and try again.")
             }
             if encodeFailed || playable == false {
-                return "The recording couldn't be finished properly and may not play. What was "
-                     + "captured is kept in \(location)"
-                     + (photosRequested && !savedToPhotos ? " and wasn't added to Photos." : ".")
+                return photosRequested && !savedToPhotos
+                    ? String(localized: "The recording couldn't be finished properly and may not play. What was captured is kept in \(location) and wasn't added to Photos.")
+                    : String(localized: "The recording couldn't be finished properly and may not play. What was captured is kept in \(location).")
             }
             if photosRequested && !savedToPhotos {
                 if photosNotPermitted {
-                    return "Avenkin doesn't have permission to add to your photo library, so "
-                         + "the recording isn't in Photos. You can turn that on in Settings. It is "
-                         + "safe in \(location)\(lossClause)"
+                    return String(localized: "Avenkin doesn't have permission to add to your photo library, so the recording isn't in Photos. You can turn that on in Settings. It is safe in \(location)\(lossClause)")
                 }
-                return "Couldn't save the recording to Photos. The recording is safe in "
-                     + "\(location)\(lossClause)"
+                return String(localized: "Couldn't save the recording to Photos. The recording is safe in \(location)\(lossClause)")
             }
             if folderRequested && folderCopyURL == nil {
-                return "Couldn't copy the recording to your chosen folder. The recording is safe "
-                     + "in \(location)\(lossClause)"
+                return String(localized: "Couldn't copy the recording to your chosen folder. The recording is safe in \(location)\(lossClause)")
             }
             return nil
         }

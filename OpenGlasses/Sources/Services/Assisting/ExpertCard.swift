@@ -78,14 +78,14 @@ struct ExpertCard: Codable, Equatable, Sendable {
 
     /// Why this card can't be shared or imported, or nil.
     var problem: String? {
-        guard type == Self.typeIdentifier else { return "it isn't an expert card" }
-        guard version == Self.version else { return "it was made by a newer version of the app" }
+        guard type == Self.typeIdentifier else { return String(localized: "it isn't an expert card") }
+        guard version == Self.version else { return String(localized: "it was made by a newer version of the app") }
         guard Self.isCardId(cardId), cardId.count <= 64,
               cardId.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || $0 == "-" }) else {
-            return "its id isn't one this app writes"
+            return String(localized: "its id isn't one this app writes")
         }
         if let problem = contact.problem { return problem }
-        if licences.count > Self.maxLicences { return "it lists more than \(Self.maxLicences) licences" }
+        if licences.count > Self.maxLicences { return String(localized: "it lists more than \(Self.maxLicences) licences") }
         return nil
     }
 
@@ -191,9 +191,9 @@ enum ExpertCardCodec {
 
     static func describe(_ error: ReadError) -> String {
         switch error {
-        case .notACard: return "That isn't an expert card this app can read."
-        case .tooLarge: return "That card is larger than this app opens."
-        case .refused(let why): return "That expert card can't be used: \(why)."
+        case .notACard: return String(localized: "That isn't an expert card this app can read.")
+        case .tooLarge: return String(localized: "That card is larger than this app opens.")
+        case .refused(let why): return String(localized: "That expert card can't be used: \(why).")
         }
     }
 }
@@ -220,7 +220,7 @@ final class ExpertCardStore: @unchecked Sendable {
     @discardableResult
     func save(_ card: ExpertCard) -> String? {
         if let problem = card.problem { return problem }
-        guard let data = try? JSONEncoder().encode(card) else { return "the card could not be saved" }
+        guard let data = try? JSONEncoder().encode(card) else { return String(localized: "the card could not be saved") }
         defaults.set(data, forKey: Self.key)
         return nil
     }

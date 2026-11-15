@@ -36,12 +36,12 @@ enum TeleprompterScreen {
                       isPaused: Bool,
                       controls: Controls = .init()) -> HUDScreen {
         let pct = Int((min(max(progress, 0), 1) * 100).rounded())
-        var status = "\(pct)% · \(wpm) wpm"
-        if isPaused { status += " · paused" }
+        var status = String(localized: "\(pct)% · \(wpm) wpm")
+        if isPaused { status += String(localized: " · paused") }
 
         var lines: [HUDLine] = [HUDLine(status, emphasis: .meta)]
         if window.lines.isEmpty {
-            lines.append(HUDLine("— end —", emphasis: .secondary))
+            lines.append(HUDLine(String(localized: "— end —"), emphasis: .secondary))
         } else {
             for (i, line) in window.lines.enumerated() {
                 lines.append(HUDLine(line, emphasis: i == window.activeLineIndex ? .primary : .secondary))
@@ -50,12 +50,12 @@ enum TeleprompterScreen {
 
         let items: [HUDItem] = [
             HUDItem(id: ItemID.pause,
-                    label: isPaused ? "Resume" : "Pause",
+                    label: isPaused ? String(localized: "Resume") : String(localized: "Pause"),
                     icon: isPaused ? .success : .none,
                     style: .primary) { controls.togglePause() },
-            HUDItem(id: ItemID.slower, label: "Slower", style: .secondary) { controls.slower() },
-            HUDItem(id: ItemID.faster, label: "Faster", style: .secondary) { controls.faster() },
-            HUDItem(id: ItemID.stop, label: "Stop", style: .outline) { controls.stop() },
+            HUDItem(id: ItemID.slower, label: String(localized: "Slower"), style: .secondary) { controls.slower() },
+            HUDItem(id: ItemID.faster, label: String(localized: "Faster"), style: .secondary) { controls.faster() },
+            HUDItem(id: ItemID.stop, label: String(localized: "Stop"), style: .outline) { controls.stop() },
         ]
 
         return HUDScreen(title: title, lines: lines, items: items)

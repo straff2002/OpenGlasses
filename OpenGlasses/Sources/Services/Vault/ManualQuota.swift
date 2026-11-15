@@ -50,10 +50,10 @@ enum ManualQuota {
         var message: String? {
             switch self {
             case .allowed: return nil
-            case .unavailable: return "Manual usage could not be verified. Unlock the phone and try again. You can still remove a manual."
+            case .unavailable: return String(localized: "Manual usage could not be verified. Unlock the phone and try again. You can still remove a manual.")
             case .wouldExceed(let measure, let held, let adding, let limit):
-                let unit = measure == .manuals ? "manuals" : "pages"
-                return "My Manuals allows \(limit) \(unit)\(measure == .pagesPerManual ? " per manual" : ""). You have \(held); this change adds \(adding). Remove some content to make room."
+                let unit = measure == .manuals ? String(localized: "manuals") : String(localized: "pages")
+                return String(localized: "My Manuals allows \(limit) \(unit)\(measure == .pagesPerManual ? String(localized: " per manual") : ""). You have \(held); this change adds \(adding). Remove some content to make room.")
             }
         }
     }

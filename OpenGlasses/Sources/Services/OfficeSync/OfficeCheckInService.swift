@@ -418,16 +418,14 @@ final class OfficeCheckInService: ObservableObject {
         case .idle, .checkedIn:
             return nil
         case .unanswered(let since):
-            return .init(title: "The office hasn't answered a check-in",
-                         detail: "This phone checked in and had heard nothing back by "
-                            + "\(dateText(Date(timeIntervalSince1970: TimeInterval(since)))). "
-                            + "It checks in again when the office next asks. If this stays, tell your office.",
+            return .init(title: String(localized: "The office hasn't answered a check-in"),
+                         detail: String(localized: "This phone checked in and had heard nothing back by \(dateText(Date(timeIntervalSince1970: TimeInterval(since)))). It checks in again when the office next asks. If this stays, tell your office."),
                          systemImage: "questionmark.bubble")
         case .removed(let reason):
-            return .init(title: "Removed by your organisation",
+            return .init(title: String(localized: "Removed by your organisation"),
                          detail: reason == OfficeCheckIn.reasonRevoked
-                            ? "Your organisation has withdrawn this phone's access to its office."
-                            : "Your organisation has removed this phone from its office.",
+                            ? String(localized: "Your organisation has withdrawn this phone's access to its office.")
+                            : String(localized: "Your organisation has removed this phone from its office."),
                          systemImage: "person.crop.circle.badge.xmark")
         }
     }

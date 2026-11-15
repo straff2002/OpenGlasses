@@ -45,9 +45,9 @@ enum OAuthRefreshFailure: Equatable {
     func message(provider: String) -> String {
         switch self {
         case .unreachable:
-            return "Couldn't reach the \(provider) sign-in service; I'll try again."
+            return String(localized: "Couldn't reach the \(provider) sign-in service; I'll try again.")
         case .credentialDead, .rejected:
-            return "\(provider) sign-in expired — please sign in again."
+            return String(localized: "\(provider) sign-in expired — please sign in again.")
         }
     }
 }

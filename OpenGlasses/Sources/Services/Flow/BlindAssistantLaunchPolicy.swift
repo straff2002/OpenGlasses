@@ -104,26 +104,26 @@ enum BlindAssistantLaunchPolicy {
         var summary: String {
             switch self {
             case .settingOff:
-                return "Starting on launch is off."
+                return String(localized: "Starting on launch is off.")
             case .setupNotFinished:
-                return "Setup isn't finished yet."
+                return String(localized: "Setup isn't finished yet.")
             case .differentAssistantSelected:
-                return "Blind Assistant isn't the selected live mode."
+                return String(localized: "Blind Assistant isn't the selected live mode.")
             case .sessionAlreadyRunning:
-                return "A session is already running."
+                return String(localized: "A session is already running.")
             case .stoppedByUser:
-                return "You stopped the assistant, so it won't start again on its own."
+                return String(localized: "You stopped the assistant, so it won't start again on its own.")
             case .silentMode:
-                return "Silent Mode is on, so nothing starts on its own."
+                return String(localized: "Silent Mode is on, so nothing starts on its own.")
             case .microphonePermissionOff:
-                return "Microphone permission is off. Turn it on in iOS Settings, under Avenkin."
+                return String(localized: "Microphone permission is off. Turn it on in iOS Settings, under Avenkin.")
             case .speechPermissionOff:
-                return "Speech recognition permission is off. Turn it on in iOS Settings, under Avenkin."
+                return String(localized: "Speech recognition permission is off. Turn it on in iOS Settings, under Avenkin.")
             case .providerNotConfigured(let provider):
                 if provider == .openAICompatibleRealtime {
-                    return "Set up OpenAI-compatible Realtime in Settings → Assistant."
+                    return String(localized: "Set up OpenAI-compatible Realtime in Settings → Assistant.")
                 }
-                return "There's no \(provider.displayName) API key yet. Add one in Avenkin settings."
+                return String(localized: "There's no \(provider.displayName) API key yet. Add one in Avenkin settings.")
             }
         }
 
@@ -184,12 +184,12 @@ enum BlindAssistantLaunchPolicy {
             case .none:
                 return nil
             case .cameraPermissionOff:
-                return "Starting the assistant. Camera access is off, so it can hear you but not see."
+                return String(localized: "Starting the assistant. Camera access is off, so it can hear you but not see.")
             case .noGlasses:
                 #if AVENKIN_PHONE_ONLY
-                return "Starting the assistant. It can hear you, but there's no camera."
+                return String(localized: "Starting the assistant. It can hear you, but there's no camera.")
                 #else
-                return "Starting the assistant without the glasses. It can hear you, but there's no camera."
+                return String(localized: "Starting the assistant without the glasses. It can hear you, but there's no camera.")
                 #endif
             }
         }
@@ -212,7 +212,7 @@ enum BlindAssistantLaunchPolicy {
         var summary: String {
             switch self {
             case .start(let start):
-                return start.cue ?? "The assistant will start when you open the app."
+                return start.cue ?? String(localized: "The assistant will start when you open the app.")
             case .skip(let reason):
                 return reason.summary
             }

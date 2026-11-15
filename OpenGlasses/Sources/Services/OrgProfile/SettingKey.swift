@@ -196,26 +196,26 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     func contentProblem(_ value: ProfileValue, resolvableVaultIds: Set<String>) -> String? {
         switch (self, value) {
         case (.workizReportFieldName, .string(let name)):
-            return name.isEmpty || name.count > 120 || name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) ? "provide a report field name of at most 120 printable characters" : nil
+            return name.isEmpty || name.count > 120 || name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) ? String(localized: "provide a report field name of at most 120 printable characters") : nil
         case (.organizationDisplayName, .string(let name)):
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return "the organisation name is empty" }
-            if trimmed.count > 120 { return "the organisation name is longer than 120 characters" }
+            if trimmed.isEmpty { return String(localized: "the organisation name is empty") }
+            if trimmed.count > 120 { return String(localized: "the organisation name is longer than 120 characters") }
             return nil
         case (.organizationJobSigningKey, .string(let key)):
             guard let data = Data(base64Encoded: key), data.count == 32,
                   (try? Curve25519.Signing.PublicKey(rawRepresentation: data)) != nil else {
-                return "not a Curve25519 public key"
+                return String(localized: "not a Curve25519 public key")
             }
             return nil
         case (.organizationJobReportChannel, .string(let raw)):
-            return DeliveryChannel(rawValue: raw) == nil ? "not a delivery channel this build knows" : nil
+            return DeliveryChannel(rawValue: raw) == nil ? String(localized: "not a delivery channel this build knows") : nil
         case (.organizationToolDefinitionsMode, .string(let raw)):
             // Deny by default: a mode this build does not know is a named drop, never a guess.
-            return ToolDefinitionsMode(rawValue: raw) == nil ? "not one of automatic, always or never" : nil
+            return ToolDefinitionsMode(rawValue: raw) == nil ? String(localized: "not one of automatic, always or never") : nil
         case (.organizationManualSearchModel, .string(let raw)):
             // Deny by default, as above: an unknown model is a named drop.
-            return ManualSearchModel(rawValue: raw) == nil ? "not one of standard, smarter or searchTrained" : nil
+            return ManualSearchModel(rawValue: raw) == nil ? String(localized: "not one of standard, smarter or searchTrained") : nil
         case (.organizationExperts, .string(let text)):
             // Deny by default: one entry this build cannot read refuses the list, never half of it.
             if case .failure(let problem) = ExpertListCodec.decode(text) { return problem.message }
@@ -223,61 +223,60 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case (.expertHandoverTranscript, .string(let raw)):
             // Deny by default: a value this build does not know is a named drop, never a guess.
             return ReportTranscriptPolicy.ExpertRule(rawValue: raw) == nil
-                ? "not one of include, ask or never" : nil
+                ? String(localized: "not one of include, ask or never") : nil
         case (.expertHandoverRetentionDays, .string(let raw)):
-            return ExpertHandoverRetention.days(raw) == nil ? "not a whole number of days from 1 to 30" : nil
+            return ExpertHandoverRetention.days(raw) == nil ? String(localized: "not a whole number of days from 1 to 30") : nil
         case (.capturedManualsPolicy, .string(let raw)):
-            return ["off", "jobOnly", "reviewToPool"].contains(raw) ? nil : "not a photographed-manual policy"
+            return ["off", "jobOnly", "reviewToPool"].contains(raw) ? nil : String(localized: "not a photographed-manual policy")
         case (.organizationReportTranscriptInternal, .string(let raw)):
             // Deny by default: a value this build does not know is a named drop, never a guess.
             return ReportTranscriptPolicy.InternalRule(rawValue: raw) == nil
-                ? "not one of always or never" : nil
+                ? String(localized: "not one of always or never") : nil
         case (.organizationReportRecipients, .strings(let recipients)):
-            if recipients.isEmpty { return "no recipients" }
-            if recipients.count > 20 { return "more than 20 recipients" }
+            if recipients.isEmpty { return String(localized: "no recipients") }
+            if recipients.count > 20 { return String(localized: "more than 20 recipients") }
             let bad = recipients.contains { recipient in
                 recipient.isEmpty || recipient.count > 254
                     || recipient.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
             }
-            return bad ? "a recipient is empty, too long, or contains whitespace" : nil
+            return bad ? String(localized: "a recipient is empty, too long, or contains whitespace") : nil
         case (.pilotReportRecipients, .strings(let addresses)):
-            return PilotReportRecipients.validated(addresses) == nil ? "provide one to three email addresses" : nil
+            return PilotReportRecipients.validated(addresses) == nil ? String(localized: "provide one to three email addresses") : nil
         case (.technicianID, .string(let value)):
-            return value == TechnicianID.clean(value) && !value.isEmpty ? nil : "provide a printable technician ID of at most 40 characters"
+            return value == TechnicianID.clean(value) && !value.isEmpty ? nil : String(localized: "provide a printable technician ID of at most 40 characters")
         case (.technicianDisplayName, .string(let name)), (.technicianFullName, .string(let name)):
             // The contract's author rule: plain text, 1–120 characters once trimmed.
             if name.unicodeScalars.contains(where: LearningCandidateText.isRefused) {
-                return "the name contains a control character"
+                return String(localized: "the name contains a control character")
             }
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return "the name is empty" }
+            if trimmed.isEmpty { return String(localized: "the name is empty") }
             if LearningCandidateText.length(trimmed) > TechnicianName.limit {
-                return "the name is longer than \(TechnicianName.limit) characters"
+                return String(localized: "the name is longer than \(TechnicianName.limit) characters")
             }
             return nil
         case (.fieldAssistDefaultVaultId, .string(let id)):
-            return resolvableVaultIds.contains(id) ? nil : "no vault with that id is installed"
+            return resolvableVaultIds.contains(id) ? nil : String(localized: "no vault with that id is installed")
         case (.fieldAssistDefaultMode, .string(let raw)):
-            return FieldSession.Mode(rawValue: raw) == nil ? "not a Field Assist mode" : nil
+            return FieldSession.Mode(rawValue: raw) == nil ? String(localized: "not a Field Assist mode") : nil
         case (.supportReportEmail, .string(let address)):
             return SupportReportRecipient.isPlausible(address.trimmingCharacters(in: .whitespacesAndNewlines))
-                ? nil : "not an email address"
+                ? nil : String(localized: "not an email address")
         case (.organizationAccentColor, .string(let colour)), (.accentColorName, .string(let colour)):
             // A profile names a colour, never one of this build's presets: preset ids are an
             // app detail that may change, and a hex code means the same thing on every build.
-            return AppAccent.hexValue(colour) == nil ? "not a colour written as #RRGGBB" : nil
+            return AppAccent.hexValue(colour) == nil ? String(localized: "not a colour written as #RRGGBB") : nil
         case (.refrigerationUnits, .string(let raw)):
             // Deny by default: units this build cannot read are a named drop, never a guess.
             return RefrigerationUnits(encoded: raw) == nil
-                ? "not units written as pressure,temperature,mass (for example kPa,C,kg)" : nil
+                ? String(localized: "not units written as pressure,temperature,mass (for example kPa,C,kg)") : nil
         case (.fieldAssistDefaultTrades, .strings(let trades)):
             // An empty list is a choice: no trade tiles. A list this build reads none of is a
             // named drop; a list naming some trades it knows keeps them and ignores the rest, so a
             // profile written for a newer build still gives this one what it understands.
-            if trades.count > 20 { return "more than 20 trades" }
+            if trades.count > 20 { return String(localized: "more than 20 trades") }
             if !trades.isEmpty && FieldTrade.known(trades).isEmpty {
-                return "names no trade this version knows ("
-                    + FieldTrade.allCases.map(\.rawValue).joined(separator: ", ") + ")"
+                return String(localized: "names no trade this version knows (\(FieldTrade.allCases.map(\.rawValue).joined(separator: ", ")))")
             }
             return nil
         default:

@@ -82,15 +82,15 @@ final class XAIOAuthService: ObservableObject {
     @discardableResult
     func completeSignIn(pastedCode: String) async -> Bool {
         guard let verifier = pendingVerifier else {
-            lastError = "Sign-in wasn't started — tap Sign in with xAI first."
+            lastError = String(localized: "Sign-in wasn't started — tap Sign in with xAI first.")
             return false
         }
         guard let parsed = XAIOAuth.parseAuthorizationInput(pastedCode) else {
-            lastError = "That doesn't look like an authorization code or callback URL."
+            lastError = String(localized: "That doesn't look like an authorization code or callback URL.")
             return false
         }
         if let state = parsed.state, let expected = pendingState, state != expected {
-            lastError = "Sign-in state mismatch — start again and use the newest browser tab."
+            lastError = String(localized: "Sign-in state mismatch — start again and use the newest browser tab.")
             return false
         }
         do {
@@ -103,7 +103,7 @@ final class XAIOAuthService: ObservableObject {
             lastError = nil
             return true
         } catch {
-            lastError = "Sign-in failed: \(error.localizedDescription)"
+            lastError = String(localized: "Sign-in failed: \(error.localizedDescription)")
             return false
         }
     }

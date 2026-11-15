@@ -84,8 +84,7 @@ enum RetentionDecision {
 
     /// Said when a new recording is declined because too much is waiting to be sent: the reason,
     /// and what to do about it.
-    static let unsyncedLimitNote = "This phone is holding as many unsent recordings as it can. "
-        + "Connect to the office Wi-Fi and plug the phone in so they can be sent, then try again."
+    static let unsyncedLimitNote = String(localized: "This phone is holding as many unsent recordings as it can. Connect to the office Wi-Fi and plug the phone in so they can be sent, then try again.")
 
     /// Whether a running recording has reached the most one job may hold and must stop.
     static func mustStopRecording(sessionBytes: Int64, limits: Limits = .standard) -> Bool {
@@ -93,7 +92,7 @@ enum RetentionDecision {
     }
 
     /// Said when a recording stops at the limit. It is saved, not lost.
-    static let stoppedAtLimitNote = "The recording reached its size limit and has stopped. What was recorded is saved."
+    static let stoppedAtLimitNote = String(localized: "The recording reached its size limit and has stopped. What was recorded is saved.")
 
     // MARK: - Deleting the job
 
@@ -104,9 +103,9 @@ enum RetentionDecision {
     }
 
     static let unacknowledgedDeletionWarning =
-        "The office hasn't received this job's recording yet. Deleting the job deletes the recording for good."
+        String(localized: "The office hasn't received this job's recording yet. Deleting the job deletes the recording for good.")
 
     /// The same warning for deleting the recording by itself, and leaving the job.
     static let unacknowledgedRecordingDeletionWarning =
-        "The office hasn't received this recording yet. Deleting it removes the only copy."
+        String(localized: "The office hasn't received this recording yet. Deleting it removes the only copy.")
 }

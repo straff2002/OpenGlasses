@@ -62,11 +62,11 @@ final class ClaudeOAuthService: ObservableObject {
     @discardableResult
     func completeSignIn(pastedCode: String) async -> Bool {
         guard let verifier = pendingVerifier else {
-            lastError = "Sign-in wasn't started — tap Sign in with Claude first."
+            lastError = String(localized: "Sign-in wasn't started — tap Sign in with Claude first.")
             return false
         }
         guard let parsed = ClaudeOAuth.parseAuthorizationInput(pastedCode) else {
-            lastError = "That doesn't look like an authorization code."
+            lastError = String(localized: "That doesn't look like an authorization code.")
             return false
         }
         let request = ClaudeOAuth.tokenExchangeRequest(
@@ -82,7 +82,7 @@ final class ClaudeOAuthService: ObservableObject {
             lastError = nil
             return true
         } catch {
-            lastError = "Sign-in failed: \(error.localizedDescription)"
+            lastError = String(localized: "Sign-in failed: \(error.localizedDescription)")
             return false
         }
     }

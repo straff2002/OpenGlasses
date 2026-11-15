@@ -240,6 +240,6 @@ enum ParkingAutoSaveAnnouncement {
     }
 
     static let spokenConfirmation = "Saved where you parked."
-    static let notificationTitle = "Parking saved"
-    static let notificationBody = "Avenkin saved where you parked. Ask \u{201C}where did I park?\u{201D} to find your way back."
+    static let notificationTitle = String(localized: "Parking saved")
+    static let notificationBody = String(localized: "Avenkin saved where you parked. Ask \u{201C}where did I park?\u{201D} to find your way back.")
 }

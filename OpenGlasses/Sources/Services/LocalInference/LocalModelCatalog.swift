@@ -116,7 +116,7 @@ enum LocalModelCatalog {
                                          fileCount: 10,
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "On-device agent — tool calling, 140+ languages, vision. Uses about 4 GB of memory while running.",
+              notes: String(localized: "On-device agent — tool calling, 140+ languages, vision. Uses about 4 GB of memory while running."),
               minimumRAMGB: 8),
         entry(id: "mlx-community/gemma-4-e4b-it-4bit",
               displayName: "Gemma 4 E4B (Agent+)",
@@ -126,7 +126,7 @@ enum LocalModelCatalog {
                                          fileCount: 10,
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Bigger Gemma 4 — tool calling and vision with more room for quality. Needs a high-memory device (12 GB).",
+              notes: String(localized: "Bigger Gemma 4 — tool calling and vision with more room for quality. Needs a high-memory device (12 GB)."),
               minimumRAMGB: 12),
         // Vision models (can see photos from glasses)
         entry(id: "mlx-community/SmolVLM2-2.2B-Instruct-mlx",
@@ -137,8 +137,7 @@ enum LocalModelCatalog {
                                          fileCount: 14,
                                          verifiedOn: "2026-09-15"),
               quantization: nil,
-              notes: "Vision model — sees photos and video frames. Its weights are unquantized, so "
-                  + "both the download and the memory it needs are large for its parameter count."),
+              notes: String(localized: "Vision model — sees photos and video frames. Its weights are unquantized, so both the download and the memory it needs are large for its parameter count.")),
         entry(id: "mlx-community/SmolVLM2-500M-Video-Instruct-mlx",
               displayName: "SmolVLM2 500M (Vision)",
               snapshot: VerifiedSnapshot(revision: "fa57db46815177fbdfd65cc85a2b3416a8332268",
@@ -147,7 +146,7 @@ enum LocalModelCatalog {
                                          fileCount: 14,
                                          verifiedOn: "2026-09-15"),
               quantization: nil,
-              notes: "Small vision model — basic photo understanding."),
+              notes: String(localized: "Small vision model — basic photo understanding.")),
         // Text-only MLX models
         entry(id: "LiquidAI/LFM2.5-2.6B-MLX-4bit",
               displayName: "LFM2.5 2.6B (Reasoning)",
@@ -157,9 +156,7 @@ enum LocalModelCatalog {
                                          fileCount: 10,
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Liquid AI hybrid reasoning model — thinks before every answer (expect a "
-                  + "pause before speech starts), then answers with tool use and instruction "
-                  + "following."),
+              notes: String(localized: "Liquid AI hybrid reasoning model — thinks before every answer (expect a pause before speech starts), then answers with tool use and instruction following.")),
         entry(id: "mlx-community/Qwen2.5-3B-Instruct-4bit",
               displayName: "Qwen 2.5 3B",
               snapshot: VerifiedSnapshot(revision: "4f83f8f146fdf28b512a06562b671d7af4fab457",
@@ -168,7 +165,7 @@ enum LocalModelCatalog {
                                          fileCount: 11,
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "General reasoning and tool use."),
+              notes: String(localized: "General reasoning and tool use.")),
         // (Gemma 2 2B was retired from this list in favour of the Gemma 4 pair above —
         // vision + tools at comparable footprints. Already-downloaded copies keep working:
         // loading is by id, its `LocalModelBudget` entry remains, and the legacy migration
@@ -181,7 +178,7 @@ enum LocalModelCatalog {
                                          fileCount: 11,
                                          verifiedOn: "2026-09-15"),
               quantization: "4bit",
-              notes: "Ultra-light, basic capability."),
+              notes: String(localized: "Ultra-light, basic capability.")),
     ]
 
     /// Build an entry, deriving every runtime fact from the one place that already owns it —
@@ -294,7 +291,7 @@ enum LocalModelCatalog {
     /// is not rounded into "0.3 GB" ("0.29 GB"), and whole decimal megabytes under 100 MB. Zero or
     /// negative bytes are not silently drawn as "0.0 GB" — an absent measurement says so.
     static func formattedDownloadSize(_ bytes: Int64) -> String {
-        guard bytes > 0 else { return "Unknown size" }
+        guard bytes > 0 else { return String(localized: "Unknown size") }
         let gb = Double(bytes) / 1_000_000_000
         if gb >= 0.995 { return String(format: "%.1f GB", gb) }
         if gb >= 0.0995 { return String(format: "%.2f GB", gb) }

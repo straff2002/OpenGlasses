@@ -162,9 +162,9 @@ enum FingerspellingDownloadError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "No model repository configured yet."
+            return String(localized: "No model repository configured yet.")
         case .incompleteDownload(let missing):
-            return "Downloaded model is incomplete (missing: \(missing))"
+            return String(localized: "Downloaded model is incomplete (missing: \(missing))")
         }
     }
 }

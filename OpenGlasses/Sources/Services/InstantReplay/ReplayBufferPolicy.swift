@@ -96,12 +96,12 @@ enum ReplayOffReason: String, Equatable, CaseIterable {
     /// One short line for the settings row and the status mark's description.
     var statusLine: String {
         switch self {
-        case .settingOff: return "Off"
-        case .organisationOff: return "Off by your organisation"
-        case .medicalCompliance: return "Off in Medical Compliance mode"
-        case .cameraOff: return "Waiting for the camera"
-        case .power: return "Paused to save power"
-        case .lowStorage: return "Paused: low storage"
+        case .settingOff: return String(localized: "Off")
+        case .organisationOff: return String(localized: "Off by your organisation")
+        case .medicalCompliance: return String(localized: "Off in Medical Compliance mode")
+        case .cameraOff: return String(localized: "Waiting for the camera")
+        case .power: return String(localized: "Paused to save power")
+        case .lowStorage: return String(localized: "Paused: low storage")
         }
     }
 }
@@ -160,12 +160,12 @@ struct ReplayBufferPlan: Equatable {
     /// "about 44 MB" — megabytes in the decimal sense the Settings app and the Files app use.
     static func megabytesPhrase(_ bytes: Int64) -> String {
         let megabytes = Double(bytes) / 1_000_000
-        if megabytes < 10 { return String(format: "about %.1f MB", megabytes) }
-        return "about \(Int(megabytes.rounded())) MB"
+        if megabytes < 10 { return String(localized: "about \(String(format: "%.1f", megabytes)) MB") }
+        return String(localized: "about \(Int(megabytes.rounded())) MB")
     }
 
     /// The settings footer's size line, for the stream as it is configured now.
     var footerSizeLine: String {
-        "Keeps up to \(Self.megabytesPhrase(bufferBytes)) on the phone while the camera is on."
+        String(localized: "Keeps up to \(Self.megabytesPhrase(bufferBytes)) on the phone while the camera is on.")
     }
 }

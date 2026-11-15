@@ -853,16 +853,16 @@ struct JobFileImportPolicy: Equatable {
         case .signed(let organisation):
             return .offer(.signed, signer: organisation)
         case .invalid:
-            return .refuse("This job file's signature doesn't match what's in it — it may have been changed after it was signed. Ask the office to send it again.")
+            return .refuse(String(localized: "This job file's signature doesn't match what's in it — it may have been changed after it was signed. Ask the office to send it again."))
         case .unsigned, .unverifiable:
             let signature: JobFileProvenance.Signature = outcome == .unsigned ? .unsigned : .unverifiable
             switch unsigned {
             case .allowed:
                 return .offer(signature, signer: nil)
             case .forbiddenByMedicalMode:
-                return .refuse("Medical mode only accepts job files signed by your organisation. This one isn't, so it can't be added.")
+                return .refuse(String(localized: "Medical mode only accepts job files signed by your organisation. This one isn't, so it can't be added."))
             case .forbiddenByOrganisation:
-                return .refuse("Your organisation only accepts job files it has signed. This one isn't, so it can't be added.")
+                return .refuse(String(localized: "Your organisation only accepts job files it has signed. This one isn't, so it can't be added."))
             }
         }
     }
@@ -898,55 +898,57 @@ struct JobFileReview: Equatable, Identifiable {
     /// "This is revision 3 of Job 1007, which is on this phone at revision 2."
     var revisionNote: String? {
         guard let revises, let revision = proposed.provenance?.revision else { return nil }
-        let held = revises.provenance?.revision.map { " at revision \($0)" } ?? ""
-        return "This is revision \(revision) of \(revises.title), which is on this phone\(held). Updating replaces what's there with what this file says."
+        if let held = revises.provenance?.revision {
+            return String(localized: "This is revision \(revision) of \(revises.title), which is on this phone at revision \(held). Updating replaces what's there with what this file says.")
+        }
+        return String(localized: "This is revision \(revision) of \(revises.title), which is on this phone. Updating replaces what's there with what this file says.")
     }
 
     var duplicateQuestion: String? {
         guard let duplicate else { return nil }
-        return "\(duplicate.title) is already on this phone. Update it with this file, or keep both?"
+        return String(localized: "\(duplicate.title) is already on this phone. Update it with this file, or keep both?")
     }
 
     static func make(file: JobFile, provenance: JobFileProvenance,
                      existing: [UpcomingJob], revises: UpcomingJob? = nil,
                      now: Date = Date()) -> JobFileReview {
         let job = file.upcomingJob(provenance: provenance, createdAt: now)
-        var lines: [Line] = [Line(label: "Job number", value: job.jobReference ?? JobTabModel.noJobNumber)]
+        var lines: [Line] = [Line(label: String(localized: "Job number"), value: job.jobReference ?? JobTabModel.noJobNumber)]
         // The office's own number, when the other system's is the job's and the two differ.
-        if let office = job.officeReference { lines.append(Line(label: "Office reference", value: office)) }
-        if let revision = file.identity?.revision { lines.append(Line(label: "Revision", value: "\(revision)")) }
-        if let customer = job.site.customer { lines.append(Line(label: "Customer", value: customer)) }
-        if let address = job.site.address { lines.append(Line(label: "Address", value: address)) }
-        if let contact = job.site.contact { lines.append(Line(label: "Contact", value: contact)) }
-        if let fault = job.faultReport { lines.append(Line(label: "Fault report", value: fault.text)) }
+        if let office = job.officeReference { lines.append(Line(label: String(localized: "Office reference"), value: office)) }
+        if let revision = file.identity?.revision { lines.append(Line(label: String(localized: "Revision"), value: "\(revision)")) }
+        if let customer = job.site.customer { lines.append(Line(label: String(localized: "Customer"), value: customer)) }
+        if let address = job.site.address { lines.append(Line(label: String(localized: "Address"), value: address)) }
+        if let contact = job.site.contact { lines.append(Line(label: String(localized: "Contact"), value: contact)) }
+        if let fault = job.faultReport { lines.append(Line(label: String(localized: "Fault report"), value: fault.text)) }
         if !job.equipment.isEmpty {
-            lines.append(Line(label: "Equipment", value: job.equipment.map(\.summary).joined(separator: "\n")))
+            lines.append(Line(label: String(localized: "Equipment"), value: job.equipment.map(\.summary).joined(separator: "\n")))
         }
         if let scheduled = job.scheduledFor {
-            lines.append(Line(label: "Booked for", value: scheduled.formatted(date: .abbreviated, time: .shortened)))
+            lines.append(Line(label: String(localized: "Booked for"), value: scheduled.formatted(date: .abbreviated, time: .shortened)))
         }
-        if let notes = job.notes { lines.append(Line(label: "Notes", value: notes)) }
+        if let notes = job.notes { lines.append(Line(label: String(localized: "Notes"), value: notes)) }
         // An attachment the job names by digest follows it from the office; one it only names
         // does not come at all.
         if let following = job.needs?.attachments, !following.isEmpty {
-            lines.append(Line(label: "Attachments (follow from the office)",
+            lines.append(Line(label: String(localized: "Attachments (follow from the office)"),
                               value: following.map(\.name).joined(separator: "\n")))
         }
         if !job.attachments.isEmpty {
-            lines.append(Line(label: "Attachments (not included)", value: job.attachments.joined(separator: "\n")))
+            lines.append(Line(label: String(localized: "Attachments (not included)"), value: job.attachments.joined(separator: "\n")))
         }
         if let sets = job.needs?.manualSets, !sets.isEmpty {
-            lines.append(Line(label: "Manuals it needs", value: sets.joined(separator: "\n")))
+            lines.append(Line(label: String(localized: "Manuals it needs"), value: sets.joined(separator: "\n")))
         }
 
         let signatureLine: String
         switch provenance.signature {
         case .signed:
-            signatureLine = "Signed by \(provenance.signer ?? "your organisation")."
+            signatureLine = String(localized: "Signed by \(provenance.signer ?? String(localized: "your organisation")).")
         case .unsigned:
-            signatureLine = "Not signed — check it came from your office before adding it."
+            signatureLine = String(localized: "Not signed — check it came from your office before adding it.")
         case .unverifiable:
-            signatureLine = "Signed, but this phone has no organisation key to check it with — treat it as not signed and check it came from your office."
+            signatureLine = String(localized: "Signed, but this phone has no organisation key to check it with — treat it as not signed and check it came from your office.")
         }
         let claimed = JobSite.cleaned(file.body.issuedBy)
         // A revision of a job already here is that job, whatever its number: no second question.

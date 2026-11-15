@@ -197,13 +197,13 @@ struct JobMediaItem: Codable, Equatable, Identifiable {
     func spoken(taskTitle: String?, included: Bool, role: EvidenceSelection.Role?) -> String {
         var parts: [String] = [kind.noun.capitalized]
         if let durationLabel { parts.append(durationLabel) }
-        parts.append(caption?.isEmpty == false ? caption! : "No caption")
-        parts.append(taskTitle ?? "Against the job itself")
+        parts.append(caption?.isEmpty == false ? caption! : String(localized: "No caption"))
+        parts.append(taskTitle ?? String(localized: "Against the job itself"))
         parts.append(timeLabel)
         if let role { parts.append(role.label) }
-        parts.append(included ? "Included in the report" : "Not included")
-        if cutShort { parts.append("Cut short") }
-        if filterWasOn { parts.append("Captured with face blur on") }
+        parts.append(included ? String(localized: "Included in the report") : String(localized: "Not included"))
+        if cutShort { parts.append(String(localized: "Cut short")) }
+        if filterWasOn { parts.append(String(localized: "Captured with face blur on")) }
         return parts.joined(separator: ", ") + "."
     }
 }

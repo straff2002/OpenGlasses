@@ -53,8 +53,8 @@ enum ManualPageIntegrity: String, Equatable {
     /// The clause that ends the header line, or nil when nothing can honestly be said.
     var clause: String? {
         switch self {
-        case .unmodified: return "unmodified since import"
-        case .changed: return "changed since import"
+        case .unmodified: return String(localized: "unmodified since import")
+        case .changed: return String(localized: "changed since import")
         case .unknown: return nil
         }
     }
@@ -98,7 +98,7 @@ struct FigurePagingModel: Equatable {
     var isAwayFromCitedPage: Bool { currentPage != citedPage }
 
     /// "page 20 of 85". The title on both routes.
-    var title: String { "page \(currentPage) of \(pageCount)" }
+    var title: String { String(localized: "page \(currentPage) of \(pageCount)") }
 
     @discardableResult
     mutating func goForward() -> Int? {
@@ -231,7 +231,7 @@ struct ManualPageSheetModel: Equatable {
     /// the extracted-text route, which has no picture to outline.
     var pictureLine: String? {
         guard route == .manufacturerPDF, !pictureAreas(onPage: paging.currentPage).isEmpty else { return nil }
-        return "The table is printed as a picture: the outline marks where its values were read. Check them against the page."
+        return String(localized: "The table is printed as a picture: the outline marks where its values were read. Check them against the page.")
     }
 
     /// The marks for the extracted text of the page on screen — the text fallback marks the same
@@ -250,15 +250,15 @@ struct ManualPageSheetModel: Equatable {
         switch route {
         case .manufacturerPDF:
             var parts = photographed
-                ? [reviewedPhotograph ? "Reviewed photographed manual" : "Photographed manual", "page \(paging.currentPage) of \(pdfPageCount) photographed"]
-                : ["Manufacturer's document", paging.title]
-            if photographed, let printed = printedPages[paging.currentPage], printed > 0 { parts.append("printed page \(printed)") }
+                ? [reviewedPhotograph ? String(localized: "Reviewed photographed manual") : String(localized: "Photographed manual"), String(localized: "page \(paging.currentPage) of \(pdfPageCount) photographed")]
+                : [String(localized: "Manufacturer's document"), paging.title]
+            if photographed, let printed = printedPages[paging.currentPage], printed > 0 { parts.append(String(localized: "printed page \(printed)")) }
             if let clause = integrity.clause { parts.append(clause) }
             return parts.joined(separator: " \u{00B7} ")
         case .extractedText:
-            return "Extracted text \u{00B7} page \(paging.currentPage)"
+            return String(localized: "Extracted text \u{00B7} page \(paging.currentPage)")
         case .externalURL:
-            return "Manufacturer's published manual"
+            return String(localized: "Manufacturer's published manual")
         }
     }
 
@@ -267,8 +267,8 @@ struct ManualPageSheetModel: Equatable {
     var originalLine: String? {
         guard route == .extractedText else { return nil }
         return manufacturerPDF == nil
-            ? "Original not bundled in this vault"
-            : "The manufacturer's original is bundled with this vault."
+            ? String(localized: "Original not bundled in this vault")
+            : String(localized: "The manufacturer's original is bundled with this vault.")
     }
 
     /// How many pages a PDF has, for the `page N of M` title. Zero when it cannot be opened, which

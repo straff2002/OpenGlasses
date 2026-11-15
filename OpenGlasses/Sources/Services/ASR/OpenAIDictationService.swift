@@ -169,12 +169,12 @@ enum OpenAIDictationError: Error, Equatable, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notAllowed: return "Cloud dictation isn't available right now."
-        case .noKey: return "No OpenAI API key is saved for dictation."
-        case .noAudio: return "There was no audio to transcribe."
-        case .tooLong: return "The question was too long to transcribe."
-        case .http(let status): return "OpenAI couldn't transcribe the question (HTTP \(status))."
-        case .unreadableResponse: return "OpenAI's transcription reply couldn't be read."
+        case .notAllowed: return String(localized: "Cloud dictation isn't available right now.")
+        case .noKey: return String(localized: "No OpenAI API key is saved for dictation.")
+        case .noAudio: return String(localized: "There was no audio to transcribe.")
+        case .tooLong: return String(localized: "The question was too long to transcribe.")
+        case .http(let status): return String(localized: "OpenAI couldn't transcribe the question (HTTP \(status)).")
+        case .unreadableResponse: return String(localized: "OpenAI's transcription reply couldn't be read.")
         }
     }
 }

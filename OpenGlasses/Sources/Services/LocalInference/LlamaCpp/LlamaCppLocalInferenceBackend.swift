@@ -26,38 +26,30 @@ enum LlamaBackendError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .runtimeDisabled:
-            return "GGUF models are turned off. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model and open Download & Manage Models to pick a "
-                + "different on-device model."
+            return String(localized: "GGUF models are turned off. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model and open Download & Manage Models to pick a different on-device model.")
         case .installationIncomplete(let id):
-            return "The installed files for \(id.rawValue) are incomplete. Download the model again."
+            return String(localized: "The installed files for \(id.rawValue) are incomplete. Download the model again.")
         case .weightsMissing(let id):
-            return "The model file for \(id.rawValue) is missing. Download the model again."
+            return String(localized: "The model file for \(id.rawValue) is missing. Download the model again.")
         case .unsupportedArchitecture:
-            return "This model file doesn't say what architecture it is, so it can't be loaded."
+            return String(localized: "This model file doesn't say what architecture it is, so it can't be loaded.")
         case .unsupportedChatTemplate:
-            return "This model doesn't carry a usable chat template, so it can't be used for "
-                + "conversation. It stays installed, but it can't be selected for chat."
+            return String(localized: "This model doesn't carry a usable chat template, so it can't be used for conversation. It stays installed, but it can't be selected for chat.")
         case .contextTooSmall(let tokens):
-            return "There isn't enough memory to give this model a usable context window "
-                + "(\(tokens) tokens). Close other apps, or switch to a cloud model."
+            return String(localized: "There isn't enough memory to give this model a usable context window (\(tokens) tokens). Close other apps, or switch to a cloud model.")
         case .insufficientMemory(let needed, let available):
             let gb = { (bytes: Int64) in String(format: "%.1f", Double(bytes) / 1_073_741_824) }
-            return "Not enough memory to load the on-device model — it needs about \(gb(needed)) GB "
-                + "but only \(gb(available)) GB is available. Free up memory by closing other apps, "
-                + "or switch to a cloud model."
+            return String(localized: "Not enough memory to load the on-device model — it needs about \(gb(needed)) GB but only \(gb(available)) GB is available. Free up memory by closing other apps, or switch to a cloud model.")
         case .notLoaded:
-            return "No local model is loaded. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models."
+            return String(localized: "No local model is loaded. In Settings → Assistant → AI Models, edit or add a Local (On-Device MLX) model, then open Download & Manage Models.")
         case .alreadyGenerating:
-            return "The on-device model is already generating a response. Wait for it to finish."
+            return String(localized: "The on-device model is already generating a response. Wait for it to finish.")
         case .promptTooLong(let prompt, let reserve, let context):
-            return "This conversation is too long for the on-device model "
-                + "(\(prompt) tokens plus \(reserve) for the reply; the limit is \(context)). Start "
-                + "a new conversation, or switch to a cloud model."
+            return String(localized: "This conversation is too long for the on-device model (\(prompt) tokens plus \(reserve) for the reply; the limit is \(context)). Start a new conversation, or switch to a cloud model.")
         case .tokenizationFailed:
-            return "The on-device model couldn't read that prompt."
+            return String(localized: "The on-device model couldn't read that prompt.")
         case .engine:
-            return "The on-device model failed while generating. Try again, or switch to a cloud "
-                + "model."
+            return String(localized: "The on-device model failed while generating. Try again, or switch to a cloud model.")
         }
     }
 }

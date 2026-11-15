@@ -46,7 +46,7 @@ struct JobDaySession: Equatable {
     var label: String { Self.label(reference: jobReference) }
 
     static func label(reference: String?) -> String {
-        reference.flatMap { $0.isEmpty ? nil : "Job \($0)" } ?? JobTabModel.noJobNumber
+        reference.flatMap { $0.isEmpty ? nil : String(localized: "Job \($0)") } ?? JobTabModel.noJobNumber
     }
 }
 
@@ -64,10 +64,10 @@ struct JobDayDebrief: Equatable {
 /// the office has a recording: that is said only on the office's own verified receipt, on the
 /// job's page.
 struct JobDayRecording: Equatable {
-    static let waitingTitle = "Recording waiting to sync"
-    static let sendingTitle = "Sending the recording to the office"
-    static let sentTitle = "Recording sent"
-    static let attentionTitle = "Recording needs attention"
+    static let waitingTitle = String(localized: "Recording waiting to sync")
+    static let sendingTitle = String(localized: "Sending the recording to the office")
+    static let sentTitle = String(localized: "Recording sent")
+    static let attentionTitle = String(localized: "Recording needs attention")
 
     let sessionId: String
     /// "Job 1005". Carried, because the job need not be one of today's.
@@ -193,16 +193,16 @@ struct JobDay: Equatable {
             func phrase(_ count: Int) -> String {
                 let many = count != 1
                 switch self {
-                case .debrief: return many ? "\(count) debriefs to finish" : "1 debrief to finish"
-                case .reportFailed: return many ? "\(count) reports didn't send" : "1 report didn't send"
-                case .reportStaged: return many ? "\(count) reports to send" : "1 report to send"
-                case .reportNotSent: return many ? "\(count) reports not sent" : "1 report not sent"
-                case .signOff: return many ? "\(count) sign-offs owed" : "1 sign-off owed"
-                case .parts: return many ? "\(count) parts requests waiting" : "1 parts request waiting"
+                case .debrief: return many ? String(localized: "\(count) debriefs to finish") : String(localized: "1 debrief to finish")
+                case .reportFailed: return many ? String(localized: "\(count) reports didn't send") : String(localized: "1 report didn't send")
+                case .reportStaged: return many ? String(localized: "\(count) reports to send") : String(localized: "1 report to send")
+                case .reportNotSent: return many ? String(localized: "\(count) reports not sent") : String(localized: "1 report not sent")
+                case .signOff: return many ? String(localized: "\(count) sign-offs owed") : String(localized: "1 sign-off owed")
+                case .parts: return many ? String(localized: "\(count) parts requests waiting") : String(localized: "1 parts request waiting")
                 case .recordingAttention:
-                    return many ? "\(count) recordings need attention" : "1 recording needs attention"
+                    return many ? String(localized: "\(count) recordings need attention") : String(localized: "1 recording needs attention")
                 case .recording:
-                    return many ? "\(count) recordings not yet with the office" : "1 recording not yet with the office"
+                    return many ? String(localized: "\(count) recordings not yet with the office") : String(localized: "1 recording not yet with the office")
                 }
             }
         }
@@ -240,13 +240,13 @@ struct JobDay: Equatable {
     var isEmptyDay: Bool { jobs.isEmpty }
 
     static let empty = JobDay(jobs: [], todos: [], personal: [], showsPersonal: false, next: nil,
-                              summary: JobDayComposer.noJobs, spokenSummary: "Today, no jobs.")
+                              summary: JobDayComposer.noJobs, spokenSummary: String(localized: "Today, no jobs."))
 }
 
 enum JobDayComposer {
 
-    static let noJobs = "No jobs"
-    static let partsWaitingToBeEmailed = "Parts request waiting to be emailed"
+    static let noJobs = String(localized: "No jobs")
+    static let partsWaitingToBeEmailed = String(localized: "Parts request waiting to be emailed")
     /// How far back a failed send is still owed. A failure from last month is history, not a to-do.
     static let failedSendWindow: TimeInterval = 7 * 24 * 3600
 
@@ -361,22 +361,22 @@ enum JobDayComposer {
 
         if let debrief {
             todos.append(.init(id: "debrief-\(debrief.sessionId)", kind: .debrief,
-                               title: "Finish the debrief",
-                               detail: "\(debrief.label) — not saved yet",
+                               title: String(localized: "Finish the debrief"),
+                               detail: String(localized: "\(debrief.label) — not saved yet"),
                                destination: route(debrief.sessionId), sessionId: debrief.sessionId))
         }
 
         let failed = owedFailures(queue, now: now)
         todos += failed.map { entry in
             let reason = entry.failureReason.map { " — \($0)" } ?? ""
-            return .init(id: "send-\(entry.id)", kind: .reportFailed, title: "Report didn't send",
+            return .init(id: "send-\(entry.id)", kind: .reportFailed, title: String(localized: "Report didn't send"),
                          detail: "\(entry.documentKind.label) · \(entry.jobNumber)\(reason)",
                          destination: .send(queuedId: entry.id), sessionId: entry.sessionId)
         }
 
         let staged = queue.filter { $0.state == .staged }.sorted { $0.createdAt < $1.createdAt }
         todos += staged.map { entry in
-            .init(id: "send-\(entry.id)", kind: .reportStaged, title: "Report ready to send",
+            .init(id: "send-\(entry.id)", kind: .reportStaged, title: String(localized: "Report ready to send"),
                   detail: entry.summaryLine, destination: .send(queuedId: entry.id),
                   sessionId: entry.sessionId)
         }
@@ -388,7 +388,7 @@ enum JobDayComposer {
 
         todos += finished
             .filter { !$0.reportSent && !queued.contains($0.id) }
-            .map { .init(id: "unsent-\($0.id)", kind: .reportNotSent, title: "Report not sent",
+            .map { .init(id: "unsent-\($0.id)", kind: .reportNotSent, title: String(localized: "Report not sent"),
                          detail: $0.label, destination: .pastJob(sessionId: $0.id), sessionId: $0.id) }
 
         if signOffRequired {
@@ -396,7 +396,7 @@ enum JobDayComposer {
             // would describe a document nobody holds (`signOffIsStillOpen`).
             todos += finished
                 .filter { !$0.signedOff && !$0.reportSent }
-                .map { .init(id: "signoff-\($0.id)", kind: .signOff, title: "Customer sign-off owed",
+                .map { .init(id: "signoff-\($0.id)", kind: .signOff, title: String(localized: "Customer sign-off owed"),
                              detail: $0.label, destination: .pastJob(sessionId: $0.id), sessionId: $0.id) }
         }
 
@@ -409,13 +409,13 @@ enum JobDayComposer {
                 if unsent > 0 {
                     return .init(id: "parts-\(session.id)", kind: .parts,
                                  title: unsent == 1 ? partsWaitingToBeEmailed
-                                     : "\(unsent) parts requests waiting to be emailed",
+                                     : String(localized: "\(unsent) parts requests waiting to be emailed"),
                                  detail: session.label, destination: .partsOrder(sessionId: session.id),
                                  sessionId: session.id)
                 }
                 let count = session.openPartsRequests
                 return .init(id: "parts-\(session.id)", kind: .parts,
-                             title: count == 1 ? "Parts request waiting" : "\(count) parts requests waiting",
+                             title: count == 1 ? String(localized: "Parts request waiting") : String(localized: "\(count) parts requests waiting"),
                              detail: session.label, destination: route(session.id), sessionId: session.id)
             }
 
@@ -460,35 +460,35 @@ enum JobDayComposer {
 
         if jobs.isEmpty {
             parts.append(noJobs)
-            spoken.append("no jobs")
+            spoken.append(String(localized: "no jobs"))
         } else {
-            let count = jobs.count == 1 ? "1 job" : "\(jobs.count) jobs"
+            let count = jobs.count == 1 ? String(localized: "1 job") : String(localized: "\(jobs.count) jobs")
             parts.append(count)
             spoken.append(count)
         }
 
         if let open = jobs.first(where: { $0.status.isOpen }) {
-            let phrase = open.status == .paused ? "\(open.title) paused" : "on \(open.title)"
+            let phrase = open.status == .paused ? String(localized: "\(open.title) paused") : String(localized: "on \(open.title)")
             parts.append(phrase)
             spoken.append(phrase)
         } else if let ahead = jobs.first(where: { $0.status.isAhead }) {
             if ahead.status == .overdue {
-                parts.append("\(ahead.shortName) overdue")
-                spoken.append("\(ahead.shortName) overdue")
+                parts.append(String(localized: "\(ahead.shortName) overdue"))
+                spoken.append(String(localized: "\(ahead.shortName) overdue"))
             } else {
-                parts.append("next \(ahead.timeText) \(ahead.shortName)")
-                spoken.append("next at \(ahead.timeText), \(ahead.shortName)")
+                parts.append(String(localized: "next \(ahead.timeText) \(ahead.shortName)"))
+                spoken.append(String(localized: "next at \(ahead.timeText), \(ahead.shortName)"))
             }
         } else if !jobs.isEmpty {
-            parts.append("all done")
-            spoken.append("all done")
+            parts.append(String(localized: "all done"))
+            spoken.append(String(localized: "all done"))
         } else if let next {
-            parts.append("next \(next.whenText) \(next.title)")
-            spoken.append("next \(next.whenText), \(next.title)")
+            parts.append(String(localized: "next \(next.whenText) \(next.title)"))
+            spoken.append(String(localized: "next \(next.whenText), \(next.title)"))
         }
 
         var line = parts.joined(separator: " · ")
-        var sentence = "Today, " + spoken.joined(separator: ", ") + "."
+        var sentence = String(localized: "Today, \(spoken.joined(separator: ", ")).")
         if let todo = todoPhrase(todos) {
             line += " — \(todo)"
             sentence += " \(todo.prefix(1).uppercased() + todo.dropFirst())."
@@ -503,6 +503,6 @@ enum JobDayComposer {
         if todos.allSatisfy({ $0.kind.isReport }) {
             return JobDay.Todo.Kind.reportStaged.phrase(todos.count)
         }
-        return todos.count == 1 ? "1 thing to do" : "\(todos.count) things to do"
+        return todos.count == 1 ? String(localized: "1 thing to do") : String(localized: "\(todos.count) things to do")
     }
 }

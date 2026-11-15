@@ -98,7 +98,7 @@ enum EquipmentHUDCue {
     static func line(for identity: EquipmentIdentity?, vaultName: String?) -> String {
         let vault = vaultName.flatMap { $0.isEmpty ? nil : $0 }
         guard let identity else {
-            return vault.map { "No equipment set · \($0)" } ?? "No equipment set"
+            return vault.map { String(localized: "No equipment set · \($0)") } ?? String(localized: "No equipment set")
         }
         return vault.map { "\(identity.modelToken) · \($0)" } ?? identity.modelToken
     }

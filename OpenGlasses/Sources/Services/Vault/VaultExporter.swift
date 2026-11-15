@@ -36,9 +36,9 @@ enum VaultExporter {
 
         var errorDescription: String? {
             switch self {
-            case .unknownVault(let id): return "No vault found with id \(id)."
-            case .notExportable(let name): return "“\(name)” is paid content and can't be exported."
-            case .ioError(let message): return "Export failed: \(message)"
+            case .unknownVault(let id): return String(localized: "No vault found with id \(id).")
+            case .notExportable(let name): return String(localized: "“\(name)” is paid content and can't be exported.")
+            case .ioError(let message): return String(localized: "Export failed: \(message)")
             }
         }
     }

@@ -47,7 +47,7 @@ struct TaskSectionModel {
             isOperatorAdded = task.origin == .operatorAdded
             why = task.why.flatMap { $0.isEmpty ? nil : $0 }
             procedureLine = task.procedureId.map { id in
-                task.procedureOutcome.map { "Procedure \(id) — \($0)" } ?? "Procedure \(id)"
+                task.procedureOutcome.map { String(localized: "Procedure \(id) — \($0)") } ?? String(localized: "Procedure \(id)")
             }
             parts = task.parts.map(\.summary)
             completionNote = task.completionNote.flatMap { $0.isEmpty ? nil : $0 }
@@ -80,15 +80,15 @@ struct TaskSectionModel {
 
     /// "No tasks yet — recommendations you accept and work you add appear here."
     var emptyMessage: String {
-        "No tasks yet. A recommendation you accept, or a job you add out loud, appears here."
+        String(localized: "No tasks yet. A recommendation you accept, or a job you add out loud, appears here.")
     }
 
     /// "3 tasks · 1 still open" — the one-line header.
     var headline: String {
         let all = rows
         let open = all.filter { $0.status.isOpen }.count
-        var line = "\(all.count) task\(all.count == 1 ? "" : "s")"
-        if open > 0 { line += " · \(open) still open" }
+        var line = all.count == 1 ? String(localized: "\(all.count) task") : String(localized: "\(all.count) tasks")
+        if open > 0 { line += " · " + String(localized: "\(open) still open") }
         return line
     }
 
@@ -96,10 +96,10 @@ struct TaskSectionModel {
     /// without sending. Nil when there is nothing outstanding, so the card stays quiet.
     var unsentLine: String? {
         if unsentCount > 0 {
-            return "Unsent: \(unsentCount) — waiting to reach the office."
+            return String(localized: "Unsent: \(unsentCount) — waiting to reach the office.")
         }
         if host.lastDeliveryCancelled {
-            return "Unsent: the last report wasn't confirmed sent. It's still queued — send it again."
+            return String(localized: "Unsent: the last report wasn't confirmed sent. It's still queued — send it again.")
         }
         return nil
     }
@@ -132,9 +132,9 @@ enum TaskHUDCue {
     /// "On: check the pressure switch tubing" / "Done: check the pressure switch tubing".
     static func line(for cue: Cue) -> String {
         switch cue.phase {
-        case .started: return "On: \(cue.title)"
-        case .done: return "Done: \(cue.title)"
-        case .abandoned: return "Left: \(cue.title)"
+        case .started: return String(localized: "On: \(cue.title)")
+        case .done: return String(localized: "Done: \(cue.title)")
+        case .abandoned: return String(localized: "Left: \(cue.title)")
         }
     }
 

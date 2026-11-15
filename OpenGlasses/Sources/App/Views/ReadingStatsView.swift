@@ -80,14 +80,14 @@ struct ReadingBookDetailView: View {
                     }
                     LabeledContent("Pages read", value: "\(stats.pageCount)")
                     LabeledContent("Sittings", value: "\(stats.sessionCount)")
-                    LabeledContent("Time", value: "\(Int(stats.totalMinutes.rounded())) min")
+                    LabeledContent("Time", value: String(localized: "\(Int(stats.totalMinutes.rounded())) min"))
                     if stats.pagesPerMinute > 0, stats.pageCount >= 3 {
                         LabeledContent("Pace", value: String(format: "%.1f min/page", 1 / stats.pagesPerMinute))
                     }
                     let streak = ReadingStreaks.current(
                         sessionDates: store.sessions(forBook: bookID).map(\.startedAt))
                     if streak > 0 {
-                        LabeledContent("Streak", value: "\(streak) day\(streak == 1 ? "" : "s")")
+                        LabeledContent("Streak", value: streak == 1 ? String(localized: "1 day") : String(localized: "\(streak) days"))
                     }
                     if let last = stats.lastReadAt {
                         LabeledContent("Last read", value: last.formatted(date: .abbreviated, time: .shortened))
@@ -100,7 +100,7 @@ struct ReadingBookDetailView: View {
                     LabeledContent("Attached copy", value: reference.documentName)
                     if let asserted = reference.assertedReadUpTo, reference.wordCount > 0 {
                         LabeledContent("Confirmed read",
-                                       value: "up to \(min(100, max(1, Int((Double(asserted) / Double(reference.wordCount) * 100).rounded()))))%")
+                                       value: String(localized: "up to \(min(100, max(1, Int((Double(asserted) / Double(reference.wordCount) * 100).rounded()))))%"))
                     }
                     Button {
                         attachMessage = ReadingCompanionService.shared.assertCaughtUp(bookID: bookID)
@@ -128,9 +128,7 @@ struct ReadingBookDetailView: View {
             } header: {
                 Text("Reference copy")
             } footer: {
-                Text("Attach your own copy of the book and captures align to its clean text, with "
-                     + "true progress. The camera still decides what you've read — nothing past "
-                     + "the last page you've looked at is ever used. Takes effect next session.")
+                Text("Attach your own copy of the book and captures align to its clean text, with true progress. The camera still decides what you've read — nothing past the last page you've looked at is ever used. Takes effect next session.")
             }
 
             Section("Sittings") {

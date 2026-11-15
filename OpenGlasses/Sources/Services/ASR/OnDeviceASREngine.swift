@@ -13,10 +13,10 @@ enum ASRError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notCompiledIn: return "On-device ASR is not compiled into this build"
-        case .modelUnavailable: return "SenseVoice model is not downloaded"
-        case .modelLoadFailed: return "Failed to load the SenseVoice model"
-        case .recognitionFailed: return "On-device recognition failed"
+        case .notCompiledIn: return String(localized: "On-device ASR is not compiled into this build")
+        case .modelUnavailable: return String(localized: "SenseVoice model is not downloaded")
+        case .modelLoadFailed: return String(localized: "Failed to load the SenseVoice model")
+        case .recognitionFailed: return String(localized: "On-device recognition failed")
         }
     }
 }

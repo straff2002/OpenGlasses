@@ -6,9 +6,9 @@ import Foundation
 /// the generic `AssessmentCard` for the card/HUD. Advisory only — not a certified inspection.
 struct SafetyAssessmentSchema: AssessmentSchema {
     let kind = "safety_assessment"
-    let title = "Safety Assessment"
+    let title = String(localized: "Safety Assessment")
 
-    static let disclaimer = "Advisory only — verify on site. Not a certified safety inspection."
+    static let disclaimer = String(localized: "Advisory only — verify on site. Not a certified safety inspection.")
 
     var jsonSchema: [String: Any] {
         [

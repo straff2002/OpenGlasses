@@ -88,7 +88,7 @@ struct CloudVoiceNotice: Equatable {
     /// "the built-in voice" would be untrue.
     var nextIsCloud = false
 
-    private var vendor: String { engine.vendorName ?? "The cloud voice" }
+    private var vendor: String { engine.vendorName ?? String(localized: "The cloud voice") }
 
     /// Where the OpenAI, xAI and Gemini voices' keys live: on the saved model, not beside the
     /// ElevenLabs key, so "check the key" sends the wearer there.

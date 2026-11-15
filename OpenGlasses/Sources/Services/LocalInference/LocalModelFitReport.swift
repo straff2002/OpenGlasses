@@ -192,19 +192,19 @@ extension LocalModelFitReport.Blocker {
     var localizedMessage: String {
         switch self {
         case .unknownFileSize:
-            return "This model doesn't state how large its files are, so the download can't be checked."
+            return String(localized: "This model doesn't state how large its files are, so the download can't be checked.")
         case .missingDigest:
-            return "This model doesn't publish a checksum, so a download can't be verified."
+            return String(localized: "This model doesn't publish a checksum, so a download can't be verified.")
         case .unresolvedRevision:
-            return "This model isn't pinned to an exact version, so it can't be installed safely."
+            return String(localized: "This model isn't pinned to an exact version, so it can't be installed safely.")
         case .noFiles:
-            return "This model lists no files to download."
+            return String(localized: "This model lists no files to download.")
         case .freeSpaceUnreadable:
-            return "Available storage couldn't be checked, so the download hasn't been started."
+            return String(localized: "Available storage couldn't be checked, so the download hasn't been started.")
         case .insufficientStorage:
-            return "There isn't enough free storage for this model."
+            return String(localized: "There isn't enough free storage for this model.")
         case .licenseNotAccepted:
-            return "Accept this model's licence to continue."
+            return String(localized: "Accept this model's licence to continue.")
         }
     }
 }
@@ -213,20 +213,17 @@ extension LocalModelFitReport.Warning {
     var localizedMessage: String {
         switch self {
         case .mayInstallButNotLoad:
-            return "This model may install and still not run: on-device models must use a supported "
-                + "architecture and chat template, which is only known once it loads."
+            return String(localized: "This model may install and still not run: on-device models must use a supported architecture and chat template, which is only known once it loads.")
         case .unlikelyToLoad:
-            return "This device probably can't hold this model in memory right now. The files will "
-                + "install, but loading may fail until more memory is free."
+            return String(localized: "This device probably can't hold this model in memory right now. The files will install, but loading may fail until more memory is free.")
         case .tightMemoryHeadroom:
-            return "This model fits, but with little memory to spare. Expect slower answers and warmth."
+            return String(localized: "This model fits, but with little memory to spare. Expect slower answers and warmth.")
         case .contextWillBeClamped(let tokens):
-            return "Conversation length will be limited to about \(tokens) tokens on this device."
+            return String(localized: "Conversation length will be limited to about \(tokens) tokens on this device.")
         case .licenseNotSummarized:
-            return "This model's licence hasn't been summarized in the app. Read it on the "
-                + "repository page before installing."
+            return String(localized: "This model's licence hasn't been summarized in the app. Read it on the repository page before installing.")
         case .storageAfterInstallIsTight:
-            return "Storage will be nearly full after this download."
+            return String(localized: "Storage will be nearly full after this download.")
         }
     }
 }

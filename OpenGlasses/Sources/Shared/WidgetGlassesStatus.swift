@@ -198,10 +198,10 @@ enum WidgetGlassesPresentation {
         }
         if isStale(snapshot, now: now) {
             let time = snapshot.writtenAt.formatted(date: .omitted, time: .shortened)
-            return WidgetGlassesLine(text: "Last seen connected \(time)", symbol: "clock",
+            return WidgetGlassesLine(text: String(localized: "Last seen connected \(time)"), symbol: "clock",
                                      tone: .neutral, batteryText: nil, charging: false,
                                      deviceName: nil,
-                                     accessibilityLabel: "Glasses last seen connected at \(time)")
+                                     accessibilityLabel: String(localized: "Glasses last seen connected at \(time)"))
         }
         switch snapshot.phase {
         case .noGlassesAdded:
@@ -209,21 +209,21 @@ enum WidgetGlassesPresentation {
         case .addedDisconnected:
             return notConnected
         case .connecting:
-            return WidgetGlassesLine(text: "Connecting…", symbol: "eyeglasses", tone: .neutral,
+            return WidgetGlassesLine(text: String(localized: "Connecting…"), symbol: "eyeglasses", tone: .neutral,
                                      batteryText: nil, charging: false,
                                      deviceName: snapshot.deviceName,
-                                     accessibilityLabel: "Glasses connecting")
+                                     accessibilityLabel: String(localized: "Glasses connecting"))
         case .connected where snapshot.stoodDown:
-            return WidgetGlassesLine(text: "Glasses paused", symbol: "pause.circle", tone: .neutral,
+            return WidgetGlassesLine(text: String(localized: "Glasses paused"), symbol: "pause.circle", tone: .neutral,
                                      batteryText: nil, charging: false,
                                      deviceName: snapshot.deviceName,
-                                     accessibilityLabel: "Glasses paused")
+                                     accessibilityLabel: String(localized: "Glasses paused"))
         case .connected:
             let batteryText = snapshot.battery.map { "\($0)%" }
-            var label = "Glasses connected"
-            if let batteryText { label += ", battery \(batteryText)" }
-            if snapshot.charging { label += ", charging" }
-            return WidgetGlassesLine(text: "Connected", symbol: "eyeglasses", tone: .connected,
+            var label = String(localized: "Glasses connected")
+            if let batteryText { label += String(localized: ", battery \(batteryText)") }
+            if snapshot.charging { label += String(localized: ", charging") }
+            return WidgetGlassesLine(text: String(localized: "Connected"), symbol: "eyeglasses", tone: .connected,
                                      batteryText: batteryText, charging: snapshot.charging,
                                      deviceName: snapshot.deviceName, accessibilityLabel: label)
         }
@@ -238,9 +238,9 @@ enum WidgetGlassesPresentation {
     }
 
     private static let notAdded = WidgetGlassesLine(
-        text: "No glasses added", symbol: "eyeglasses", tone: .neutral, batteryText: nil,
-        charging: false, deviceName: nil, accessibilityLabel: "No glasses added")
+        text: String(localized: "No glasses added"), symbol: "eyeglasses", tone: .neutral, batteryText: nil,
+        charging: false, deviceName: nil, accessibilityLabel: String(localized: "No glasses added"))
     private static let notConnected = WidgetGlassesLine(
-        text: "Glasses not connected", symbol: "eyeglasses", tone: .neutral, batteryText: nil,
-        charging: false, deviceName: nil, accessibilityLabel: "Glasses not connected")
+        text: String(localized: "Glasses not connected"), symbol: "eyeglasses", tone: .neutral, batteryText: nil,
+        charging: false, deviceName: nil, accessibilityLabel: String(localized: "Glasses not connected"))
 }

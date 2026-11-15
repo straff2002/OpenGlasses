@@ -62,21 +62,21 @@ enum ProfileVerification {
         var errorDescription: String? {
             switch self {
             case .malformed:
-                return "That isn't an Avenkin organisation profile."
+                return String(localized: "That isn't an Avenkin organisation profile.")
             case .unknownKey:
-                return "This profile was signed with a key this version of the app doesn't know. Update the app, or ask your organisation for a new code."
+                return String(localized: "This profile was signed with a key this version of the app doesn't know. Update the app, or ask your organisation for a new code.")
             case .badSignature:
-                return "This profile failed verification. It may have been altered — ask your organisation for a new code."
+                return String(localized: "This profile failed verification. It may have been altered — ask your organisation for a new code.")
             case .unsupportedSchema:
-                return "This profile needs a newer version of the app."
+                return String(localized: "This profile needs a newer version of the app.")
             case .policyExpired(let date):
-                return "Your organisation's profile ended on \(date.formatted(date: .abbreviated, time: .omitted)). Ask them for a new code."
+                return String(localized: "Your organisation's profile ended on \(date.formatted(date: .abbreviated, time: .omitted)). Ask them for a new code.")
             case .licenceExpired(let date):
-                return "The licence in this profile expired on \(date.formatted(date: .abbreviated, time: .omitted)). Ask your organisation to renew it."
+                return String(localized: "The licence in this profile expired on \(date.formatted(date: .abbreviated, time: .omitted)). Ask your organisation to renew it.")
             case .licenceInvalid:
-                return "The licence in this profile failed verification. Ask your organisation for a new code."
+                return String(localized: "The licence in this profile failed verification. Ask your organisation for a new code.")
             case .invalidOfficeAuthority:
-                return "This profile has an invalid office authority. Ask your organisation for a corrected profile."
+                return String(localized: "This profile has an invalid office authority. Ask your organisation for a corrected profile.")
             }
         }
     }

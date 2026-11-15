@@ -37,7 +37,7 @@ enum RequestContextBudget {
         var toolsRanThisTurn = true
 
         var errorDescription: String? {
-            "The current question, equipment context or tool evidence is too large for this model. Your conversation and field session are saved. Narrow the manual lookup or choose a model with a larger context window."
+            String(localized: "The current question, equipment context or tool evidence is too large for this model. Your conversation and field session are saved. Narrow the manual lookup or choose a model with a larger context window.")
         }
     }
 

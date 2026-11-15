@@ -9,7 +9,7 @@ enum ModelDownloadError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .incompleteDownload(let missing):
-            return "Downloaded model is incomplete (missing: \(missing))"
+            return String(localized: "Downloaded model is incomplete (missing: \(missing))")
         }
     }
 }

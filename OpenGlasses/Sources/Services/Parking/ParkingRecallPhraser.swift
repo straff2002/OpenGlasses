@@ -97,7 +97,7 @@ enum ParkingRecallPhraser {
 
     /// "Car · L2 · 41 · 300 m NE". Omits what it doesn't have.
     static func hudLine(_ spot: ParkingSpot, from current: CLLocationCoordinate2D?, metric: Bool) -> String {
-        var parts = ["Car"]
+        var parts = [String(localized: "Car")]
         if let level = spot.level, !level.isEmpty {
             parts.append(level.first?.isNumber == true || level.hasPrefix("-") ? "L\(level)" : level)
         }
@@ -106,7 +106,7 @@ enum ParkingRecallPhraser {
         if let target = spot.coordinate, let current {
             let meters = distance(from: current, to: target)
             if meters <= hereRadius {
-                parts.append("here")
+                parts.append(String(localized: "here"))
             } else {
                 let banded = DistanceFormatter.banded(meters)
                 parts.append("\(DistanceFormatter.compact(banded, metric: metric)) \(compassPoint(bearing(from: current, to: target)).short)")

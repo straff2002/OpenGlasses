@@ -125,13 +125,13 @@ final class FingerspellingSessionService: ObservableObject {
                    display: GlassesDisplayService) async {
         guard !isActive else { return }
         guard Config.fingerspellingEnabled else {
-            statusDetail = "Fingerspelling is disabled in Settings."
+            statusDetail = String(localized: "Fingerspelling is disabled in Settings.")
             return
         }
         let store = FingerspellingModelStore()
         guard store.isModelPresent else {
             statusDetail = store.bundle.isConfigured
-                ? "Model not downloaded yet." : "No model repository configured."
+                ? String(localized: "Model not downloaded yet.") : String(localized: "No model repository configured.")
             return
         }
 
@@ -145,7 +145,7 @@ final class FingerspellingSessionService: ObservableObject {
                  try FingerspellingInferenceEngine(modelPackageURL: modelURL))
             }.value
         } catch {
-            statusDetail = "Couldn't start recognizer: \(error.localizedDescription)"
+            statusDetail = String(localized: "Couldn't start recognizer: \(error.localizedDescription)")
             return
         }
 
@@ -176,7 +176,7 @@ final class FingerspellingSessionService: ObservableObject {
             try await camera.claimStream(for: .fingerspelling)
             ownsCameraStream = true
         } catch {
-            statusDetail = "Camera unavailable: \(error.localizedDescription)"
+            statusDetail = String(localized: "Camera unavailable: \(error.localizedDescription)")
             stop()
         }
     }
@@ -255,7 +255,7 @@ actor FingerspellingPipeline {
             frame = try landmarks.holisticFrame(for: image,
                                                 timestampMilliseconds: timestampMilliseconds)
         } catch {
-            outcome.problem = "Landmark extraction failed: \(error.localizedDescription)"
+            outcome.problem = String(localized: "Landmark extraction failed: \(error.localizedDescription)")
             return outcome
         }
         recordSample(&extractionSamples, since: extractionStart)
@@ -271,7 +271,7 @@ actor FingerspellingPipeline {
             recordSample(&decodeSamples, since: decodeStart)
             outcome.perfSummary = perfSummary()
         } catch {
-            outcome.problem = "Decode failed: \(error.localizedDescription)"
+            outcome.problem = String(localized: "Decode failed: \(error.localizedDescription)")
         }
         return outcome
     }

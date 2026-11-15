@@ -19,25 +19,25 @@ enum DockPage: Int, CaseIterable, Identifiable, Hashable {
     /// page is also one named action away from wherever focus happens to be.
     var showActionName: String {
         switch self {
-        case .conversation: return "Show conversation"
-        case .actions: return "Show actions"
+        case .conversation: return String(localized: "Show conversation")
+        case .actions: return String(localized: "Show actions")
         }
     }
 
     /// Announced when the page becomes the visible one, so a swipe is not a silent change.
     var spokenName: String {
         switch self {
-        case .conversation: return "Conversation"
-        case .actions: return "Actions"
+        case .conversation: return String(localized: "Conversation")
+        case .actions: return String(localized: "Actions")
         }
     }
 }
 
 /// The panel's named accessibility actions that are not a page of their own.
 enum DockPanelActionName {
-    static let editHomeScreen = "Edit home screen"
-    static let nextGridPage = "Next page of actions"
-    static let previousGridPage = "Previous page of actions"
+    static let editHomeScreen = String(localized: "Edit home screen")
+    static let nextGridPage = String(localized: "Next page of actions")
+    static let previousGridPage = String(localized: "Previous page of actions")
 }
 
 /// Everything the pager remembers between state changes.

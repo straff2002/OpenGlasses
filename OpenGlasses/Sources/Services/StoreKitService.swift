@@ -112,7 +112,7 @@ class StoreKitService: ObservableObject {
         let willAutoRenew: Bool
 
         var planName: String {
-            productId.hasSuffix("annual") ? "Annual" : "Monthly"
+            productId.hasSuffix("annual") ? String(localized: "Annual") : String(localized: "Monthly")
         }
     }
 
@@ -163,21 +163,21 @@ class StoreKitService: ObservableObject {
             products = (products.filter { !Self.allProductIds.contains($0.id) } + loaded)
                 .sorted { $0.id < $1.id }
             if !Self.fieldAssistCatalogProductIds.isSubset(of: Set(loaded.map(\.id))) {
-                catalogError = "Some Field Assist plans are unavailable. Check your connection and App Store sign-in, then retry."
+                catalogError = String(localized: "Some Field Assist plans are unavailable. Check your connection and App Store sign-in, then retry.")
             }
             if !Self.medicalProductIds.isSubset(of: Set(loaded.map(\.id))) {
-                medicalCatalogError = "Some Medical Compliance plans are unavailable. Check your connection and App Store sign-in, then retry."
+                medicalCatalogError = String(localized: "Some Medical Compliance plans are unavailable. Check your connection and App Store sign-in, then retry.")
             }
             if !Self.myManualsCatalogProductIds.isSubset(of: Set(loaded.map(\.id))) {
-                myManualsCatalogError = "My Manuals plans are unavailable. Check your connection and App Store sign-in, then retry."
+                myManualsCatalogError = String(localized: "My Manuals plans are unavailable. Check your connection and App Store sign-in, then retry.")
             }
             PrivacyLog.purchase(.catalogLoaded, count: loaded.count)
             let generation = entitlementGeneration
             Task { await refreshRenewalInformation(generation: generation) }
         } catch {
-            catalogError = "Unable to load purchases: \(error.localizedDescription)"
+            catalogError = String(localized: "Unable to load purchases: \(error.localizedDescription)")
             medicalCatalogError = catalogError
-            myManualsCatalogError = "Unable to load My Manuals plans. Check your connection and App Store sign-in, then retry."
+            myManualsCatalogError = String(localized: "Unable to load My Manuals plans. Check your connection and App Store sign-in, then retry.")
             PrivacyLog.purchase(.catalogFailed, error: SafeErrorSummary(error))
         }
     }
@@ -213,13 +213,13 @@ class StoreKitService: ObservableObject {
 
             case .pending:
                 PrivacyLog.purchase(.pending, product: PrivacyToken(product.id))
-                purchaseError = "Purchase is pending approval."
+                purchaseError = String(localized: "Purchase is pending approval.")
 
             @unknown default:
                 PrivacyLog.purchase(.resultUnknown, product: PrivacyToken(product.id))
             }
         } catch {
-            purchaseError = "Purchase failed: \(error.localizedDescription)"
+            purchaseError = String(localized: "Purchase failed: \(error.localizedDescription)")
             PrivacyLog.purchase(.failed, product: PrivacyToken(product.id),
                                 error: SafeErrorSummary(error))
         }
@@ -319,13 +319,13 @@ class StoreKitService: ObservableObject {
             try await synchronize()
             await checkSubscriptionStatus()
             restoreMessage = myManualsSubscription != nil && fieldAssistSubscription == nil
-                ? "My Manuals purchases restored."
+                ? String(localized: "My Manuals purchases restored.")
                 : isFieldAssistPurchased
-                ? "Field Assist purchases restored."
-                : "No active Field Assist purchase was found for this App Store account."
+                ? String(localized: "Field Assist purchases restored.")
+                : String(localized: "No active Field Assist purchase was found for this App Store account.")
             return true
         } catch {
-            purchaseError = "Restore failed: \(error.localizedDescription)"
+            purchaseError = String(localized: "Restore failed: \(error.localizedDescription)")
             return false
         }
     }

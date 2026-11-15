@@ -329,7 +329,7 @@ final class OfficeManagedJobIntake: ObservableObject {
     }
 
     /// What the button that reviews a put-aside job again says.
-    static let reviewAgainTitle = "Review it now"
+    static let reviewAgainTitle = String(localized: "Review it now")
 
     /// The words for each state. Nil when nothing is shown: while nothing has arrived, the
     /// connection's own line says whether the phone is waiting for the office. A job is "received"
@@ -339,17 +339,17 @@ final class OfficeManagedJobIntake: ObservableObject {
         case .waitingForOffice:
             return nil
         case .jobReceived(let count):
-            return .init(title: "Job received",
-                         detail: count == 1 ? "A job from the office is ready for your review."
-                                            : "\(count) jobs from the office are ready for your review.",
+            return .init(title: String(localized: "Job received"),
+                         detail: count == 1 ? String(localized: "A job from the office is ready for your review.")
+                                            : String(localized: "\(count) jobs from the office are ready for your review."),
                          systemImage: "tray.and.arrow.down")
         case .jobPutAside(let count):
-            return .init(title: count == 1 ? "A job from the office was put aside" : "\(count) jobs from the office were put aside",
-                         detail: count == 1 ? "It hasn't been added to your jobs. You can review it again."
-                                            : "They haven't been added to your jobs. You can review them again, one at a time.",
+            return .init(title: count == 1 ? String(localized: "A job from the office was put aside") : String(localized: "\(count) jobs from the office were put aside"),
+                         detail: count == 1 ? String(localized: "It hasn't been added to your jobs. You can review it again.")
+                                            : String(localized: "They haven't been added to your jobs. You can review them again, one at a time."),
                          systemImage: "tray")
         case .jobRefused(let reason):
-            return .init(title: "A job from the office couldn't be added",
+            return .init(title: String(localized: "A job from the office couldn't be added"),
                          detail: reason.isEmpty ? nil : reason,
                          systemImage: "exclamationmark.triangle")
         }

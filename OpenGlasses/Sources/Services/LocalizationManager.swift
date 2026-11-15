@@ -129,7 +129,7 @@ final class LocalizationManager: ObservableObject {
 
         let urlString = "\(Self.translationsBaseURL)/\(code).json"
         guard let url = try? EndpointPolicy.requireOpenable(urlString, for: .localizationCatalogDownload) else {
-            downloadState = .failed("Language pack download is not available right now")
+            downloadState = .failed(String(localized: "Language pack download is not available right now"))
             return
         }
 
@@ -138,7 +138,7 @@ final class LocalizationManager: ObservableObject {
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
-                downloadState = .failed("Language pack not available (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0))")
+                downloadState = .failed(String(localized: "Language pack not available (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0))"))
                 return
             }
 

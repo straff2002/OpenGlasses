@@ -19,31 +19,31 @@ enum CameraErrorPolicy {
     static func message(for error: StreamError) -> String {
         switch error {
         case .hingesClosed:
-            return "Glasses hinges are closed — open them to use the camera."
+            return String(localized: "Glasses hinges are closed — open them to use the camera.")
         case .thermalHot:
-            return "Glasses are too hot — let them cool down."
+            return String(localized: "Glasses are too hot — let them cool down.")
         case .batteryLow:
-            return "Glasses battery is too low — charge them to use the camera."
+            return String(localized: "Glasses battery is too low — charge them to use the camera.")
         case .peakPowerLimit:
-            return "Glasses hit a power limit — try again in a moment."
+            return String(localized: "Glasses hit a power limit — try again in a moment.")
         case .permissionDenied:
-            return "Camera permission is required."
+            return String(localized: "Camera permission is required.")
         case .deviceNotConnected:
-            return "Glasses disconnected — check the Bluetooth connection."
+            return String(localized: "Glasses disconnected — check the Bluetooth connection.")
         case .deviceNotFound:
-            return "Glasses not found — check that they're connected."
+            return String(localized: "Glasses not found — check that they're connected.")
         case .timeout:
-            return "The glasses camera timed out — try again."
+            return String(localized: "The glasses camera timed out — try again.")
         case .videoStreamingError:
-            return "Glasses video streaming hit an error — try again."
+            return String(localized: "Glasses video streaming hit an error — try again.")
         case .audioStreamingError:
-            return "Glasses audio streaming hit an error — try again."
+            return String(localized: "Glasses audio streaming hit an error — try again.")
         case .internalError:
-            return "The glasses camera hit an internal error — try again."
+            return String(localized: "The glasses camera hit an internal error — try again.")
         case .photoCaptureFailed:
-            return "The glasses couldn't take that photo — try again."
+            return String(localized: "The glasses couldn't take that photo — try again.")
         @unknown default:
-            return error.errorDescription ?? "The glasses camera hit an error."
+            return error.errorDescription ?? String(localized: "The glasses camera hit an error.")
         }
     }
     #endif
@@ -176,5 +176,5 @@ enum CameraErrorPolicy {
     /// Shared copy for the device-level power/thermal refusals, which carry no per-case message of
     /// their own.
     static let deviceConditionNotice =
-        "The glasses stopped the camera to protect themselves — let them cool down or charge them, then start the camera again."
+        String(localized: "The glasses stopped the camera to protect themselves — let them cool down or charge them, then start the camera again.")
 }

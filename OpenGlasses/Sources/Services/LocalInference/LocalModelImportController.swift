@@ -111,8 +111,7 @@ final class LocalModelImportController: ObservableObject {
             } catch {
                 // Transport and decoding faults collapse to one sentence: the specific HTTP status
                 // of a repository lookup is not something a person can act on.
-                stage = .failed("That repository couldn't be read. Check the address and your "
-                                    + "connection, then try again.")
+                stage = .failed(String(localized: "That repository couldn't be read. Check the address and your connection, then try again."))
             }
         }
     }
@@ -157,7 +156,7 @@ final class LocalModelImportController: ObservableObject {
         } catch let fault as LocalModelImportFault {
             stage = .failed(fault.localizedMessage)
         } catch {
-            stage = .failed("That file couldn't be prepared for download.")
+            stage = .failed(String(localized: "That file couldn't be prepared for download."))
         }
     }
 
@@ -218,19 +217,19 @@ final class LocalModelImportController: ObservableObject {
     /// The candidate list's secondary line: what it is and whether it can be installed at all.
     static func candidateSubtitle(_ candidate: LocalModelImportCandidate) -> String {
         var parts: [String] = [LocalModelPresentation.formatBytes(candidate.byteCount)]
-        if candidate.files.count > 1 { parts.append("\(candidate.files.count) files") }
-        if !candidate.isInstallable { parts.append("no checksum — can't be verified") }
+        if candidate.files.count > 1 { parts.append(String(localized: "\(candidate.files.count) files")) }
+        if !candidate.isInstallable { parts.append(String(localized: "no checksum — can't be verified")) }
         return parts.joined(separator: " · ")
     }
 
     static func candidateSpokenLabel(_ candidate: LocalModelImportCandidate) -> String {
         var sentence = candidate.quantizationLabel
-            .map { "\(LocalModelPresentation.spellOut($0)) quantization" }
+            .map { String(localized: "\(LocalModelPresentation.spellOut($0)) quantization") }
             ?? candidate.id
         sentence += ", \(LocalModelPresentation.formatBytes(candidate.byteCount))"
-        if candidate.files.count > 1 { sentence += ", \(candidate.files.count) files" }
+        if candidate.files.count > 1 { sentence += ", " + String(localized: "\(candidate.files.count) files") }
         if !candidate.isInstallable {
-            sentence += ". This file publishes no checksum, so it can't be downloaded."
+            sentence += ". " + String(localized: "This file publishes no checksum, so it can't be downloaded.")
         }
         return sentence
     }

@@ -20,9 +20,9 @@ enum SessionExporter {
 
         var errorDescription: String? {
             switch self {
-            case .sessionNotFound(let url): return "No session found at \(url.lastPathComponent)."
-            case .metadataUnreadable: return "Session metadata could not be read."
-            case .notEntitled: return "Field Assist isn't unlocked on this device."
+            case .sessionNotFound(let url): return String(localized: "No session found at \(url.lastPathComponent).")
+            case .metadataUnreadable: return String(localized: "Session metadata could not be read.")
+            case .notEntitled: return String(localized: "Field Assist isn't unlocked on this device.")
             }
         }
     }

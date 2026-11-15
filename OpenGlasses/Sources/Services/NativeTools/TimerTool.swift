@@ -71,8 +71,8 @@ struct TimerTool: NativeTool {
     /// sets again (Plan LC §6), so a timer set from the glasses is the same timer.
     static func scheduleNotification(seconds: Int, label: String?) async throws -> String {
         let content = UNMutableNotificationContent()
-        content.title = label ?? "Timer"
-        content.body = label.map { "Your \($0) timer is done!" } ?? "Timer complete!"
+        content.title = label ?? String(localized: "Timer")
+        content.body = label.map { String(localized: "Your \($0) timer is done!") } ?? String(localized: "Timer complete!")
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false)

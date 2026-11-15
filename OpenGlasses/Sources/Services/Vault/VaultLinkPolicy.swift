@@ -130,9 +130,9 @@ struct VaultLinkInstallPolicy: Equatable {
         case .allowedWithAcknowledgement:
             return nil
         case .forbiddenByMedicalMode:
-            return "Medical mode only installs vaults signed by a listed publisher. This one isn't signed, so it can't be installed on this phone."
+            return String(localized: "Medical mode only installs vaults signed by a listed publisher. This one isn't signed, so it can't be installed on this phone.")
         case .forbiddenByOrganizationProfile:
-            return "Your organisation's configuration only allows vaults signed by a listed publisher. This one isn't signed, so it can't be installed on this phone."
+            return String(localized: "Your organisation's configuration only allows vaults signed by a listed publisher. This one isn't signed, so it can't be installed on this phone.")
         }
     }
 

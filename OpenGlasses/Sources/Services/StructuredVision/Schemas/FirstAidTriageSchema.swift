@@ -10,9 +10,9 @@ import Foundation
 /// `first_aid` coaching tool (triage tells you *what's wrong*; first_aid walks the *response*).
 struct FirstAidTriageSchema: AssessmentSchema {
     let kind = "first_aid_triage"
-    let title = "First-Aid Triage"
+    let title = String(localized: "First-Aid Triage")
 
-    static let disclaimer = "Advisory only — not a medical diagnosis. Call emergency services."
+    static let disclaimer = String(localized: "Advisory only — not a medical diagnosis. Call emergency services.")
 
     var jsonSchema: [String: Any] {
         [

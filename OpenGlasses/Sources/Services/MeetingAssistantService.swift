@@ -169,7 +169,7 @@ class MeetingAssistantService: ObservableObject {
 
     private func postNotification(body: String) {
         let content = UNMutableNotificationContent()
-        content.title = "Meeting Update"
+        content.title = String(localized: "Meeting Update")
         content.body = body
         content.categoryIdentifier = "meeting_assistant"
         content.sound = nil

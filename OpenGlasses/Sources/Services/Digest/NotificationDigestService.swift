@@ -177,10 +177,10 @@ final class NotificationDigestService: ObservableObject {
                              onDismiss: @escaping () -> Void) -> HUDScreen {
         var hudLines = lines.map { HUDLine($0, emphasis: .primary) }
         if overflowCount > 0 {
-            hudLines.append(HUDLine("+\(overflowCount) more", emphasis: .meta))
+            hudLines.append(HUDLine(String(localized: "+\(overflowCount) more"), emphasis: .meta))
         }
-        return HUDScreen(title: "What's new", lines: hudLines, items: [
-            HUDItem(id: "dismiss", label: "Dismiss", style: .primary) { onDismiss() },
+        return HUDScreen(title: String(localized: "What's new"), lines: hudLines, items: [
+            HUDItem(id: "dismiss", label: String(localized: "Dismiss"), style: .primary) { onDismiss() },
         ])
     }
 

@@ -108,7 +108,7 @@ struct CustomHarnessConfig: Codable, Equatable {
     var transportIssue: String? {
         let trimmed = startURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let url = URL(string: trimmed), !Self.isTransportSecure(url) else { return nil }
-        return "Use https — over http the auth token is sent in cleartext (http is allowed only for localhost)."
+        return String(localized: "Use https — over http the auth token is sent in cleartext (http is allowed only for localhost).")
     }
 
     /// https anywhere; http only to loopback hosts.
@@ -183,23 +183,22 @@ extension CustomHarnessConfig {
     /// error, so it is named in Settings and the request is refused, not sent half-formed.
     var fieldCollisionIssue: String? {
         var claimed: [String: String] = [:]
-        for (label, raw) in [("Prompt field", promptField), ("Project field", projectField),
-                             ("Image field", imageField), ("Agent field", agentField)] {
+        for (label, raw) in [(String(localized: "Prompt field"), promptField), (String(localized: "Project field"), projectField),
+                             (String(localized: "Image field"), imageField), (String(localized: "Agent field"), agentField)] {
             let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !key.isEmpty else { continue }
             if let other = claimed[key] {
-                return "\(other) and \(label) both send “\(key)”. Give each its own body key."
+                return String(localized: "\(other) and \(label) both send “\(key)”. Give each its own body key.")
             }
             claimed[key] = label
         }
         guard !inputURLTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let answer = inputField.trimmingCharacters(in: .whitespacesAndNewlines)
         if answer.isEmpty {
-            return "Set an answer field for the input endpoint, so a typed reply has a key to ride in."
+            return String(localized: "Set an answer field for the input endpoint, so a typed reply has a key to ride in.")
         }
         if Self.reservedReplyKeys.contains(answer) {
-            return "“\(answer)” is reserved on the reply — it already carries "
-                + Self.reservedReplyKeys.joined(separator: ", ") + ". Pick another answer field."
+            return String(localized: "“\(answer)” is reserved on the reply — it already carries \(Self.reservedReplyKeys.joined(separator: ", ")). Pick another answer field.")
         }
         return nil
     }

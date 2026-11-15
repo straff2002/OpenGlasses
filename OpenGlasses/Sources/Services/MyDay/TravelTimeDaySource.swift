@@ -213,13 +213,13 @@ final class MapKitTravelTimeDaySource: TravelTimeDaySource {
             let availability: MyDaySourceAvailability
             switch originResult {
             case .missingConfiguredOrigin(let name):
-                message = "Add a \(name) address in My Day settings."
+                message = String(localized: "Add a \(name) address in My Day settings.")
                 availability = .unavailable
             case .locationDenied:
-                message = "Location access is off."
+                message = String(localized: "Location access is off.")
                 availability = .denied
             case .unavailable:
-                message = "Your travel origin is unavailable."
+                message = String(localized: "Your travel origin is unavailable.")
                 availability = .unavailable
             case .success:
                 preconditionFailure("Handled above")
@@ -279,7 +279,7 @@ final class MapKitTravelTimeDaySource: TravelTimeDaySource {
             cache = nil
             return .init(
                 value: nil,
-                state: .unavailable(.travel, message: "Travel time could not be estimated.")
+                state: .unavailable(.travel, message: String(localized: "Travel time could not be estimated."))
             )
         }
     }
@@ -374,7 +374,7 @@ final class MapKitTravelTimeDaySource: TravelTimeDaySource {
                 return .unavailable
             }
         case .home, .work:
-            let name = settings.origin == .home ? "Home" : "Work"
+            let name = settings.origin == .home ? String(localized: "Home") : String(localized: "Work")
             let address = settings.origin == .home ? settings.homeAddress : settings.workAddress
             let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return .missingConfiguredOrigin(name) }

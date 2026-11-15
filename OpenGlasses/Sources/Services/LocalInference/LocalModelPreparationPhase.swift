@@ -131,16 +131,16 @@ enum LocalModelPreparationPhase: Equatable, Sendable {
     var displayLabel: String {
         switch self {
         case .idle: return ""
-        case .waitingForConsent: return "Waiting for you"
-        case .queued: return "Queued"
-        case .downloading: return "Downloading"
-        case .verifying: return "Checking"
-        case .installing: return "Installing"
-        case .loading: return "Preparing"
-        case .ready: return "Ready"
-        case .cancelling: return "Stopping"
-        case .cancelled: return "Cancelled"
-        case .failed: return "Stopped"
+        case .waitingForConsent: return String(localized: "Waiting for you")
+        case .queued: return String(localized: "Queued")
+        case .downloading: return String(localized: "Downloading")
+        case .verifying: return String(localized: "Checking")
+        case .installing: return String(localized: "Installing")
+        case .loading: return String(localized: "Preparing")
+        case .ready: return String(localized: "Ready")
+        case .cancelling: return String(localized: "Stopping")
+        case .cancelled: return String(localized: "Cancelled")
+        case .failed: return String(localized: "Stopped")
         }
     }
 
@@ -150,32 +150,32 @@ enum LocalModelPreparationPhase: Equatable, Sendable {
     var spokenLabel: String {
         switch self {
         case .idle:
-            return "Not started"
+            return String(localized: "Not started")
         case .waitingForConsent:
-            return "Waiting for you to confirm the download"
+            return String(localized: "Waiting for you to confirm the download")
         case .queued:
-            return "Download queued"
+            return String(localized: "Download queued")
         case .downloading(let fraction):
             return fraction == nil
-                ? "Downloading. The total size isn't known, so there's no percentage."
-                : "Downloading"
+                ? String(localized: "Downloading. The total size isn't known, so there's no percentage.")
+                : String(localized: "Downloading")
         case .verifying:
-            return "Checking the downloaded files"
+            return String(localized: "Checking the downloaded files")
         case .installing:
-            return "Installing the downloaded files"
+            return String(localized: "Installing the downloaded files")
         case .loading:
             // No percentage even when the factory reports one: it measures materializing weights,
             // not a transfer, and reading it as a download percentage is the confusion this
             // whole type removes.
-            return "Preparing the model. This can take a moment and has no percentage."
+            return String(localized: "Preparing the model. This can take a moment and has no percentage.")
         case .ready:
-            return "Ready"
+            return String(localized: "Ready")
         case .cancelling:
-            return "Stopping after the current step. The model won't be activated."
+            return String(localized: "Stopping after the current step. The model won't be activated.")
         case .cancelled:
-            return "Cancelled"
+            return String(localized: "Cancelled")
         case .failed(let reason):
-            return "Stopped. \(reason)"
+            return String(localized: "Stopped. \(reason)")
         }
     }
 }

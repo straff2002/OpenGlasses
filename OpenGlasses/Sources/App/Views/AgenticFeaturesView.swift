@@ -134,7 +134,7 @@ struct AgenticFeaturesView: View {
                             }
                             .frame(width: 60)
                             .accessibilityLabel(phase.spokenLabel)
-                            .accessibilityValue(phase.accessibilityPercent.map { "\($0) percent" } ?? "")
+                            .accessibilityValue(phase.accessibilityPercent.map { String(localized: "\($0) percent") } ?? "")
                             Text(phase.accessibilityPercent.map { "\($0)%" } ?? phase.displayLabel)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)

@@ -72,8 +72,7 @@ enum BillableClock {
         formatter.timeZone = timeZone
         formatter.dateFormat = "h:mm a"
         let minutes = Int((uncountedSeconds / 60).rounded())
-        return "Paused when the app closed at \(formatter.string(from: pausedAt)); "
-            + "\(WorkRecord.minutesPhrase(minutes: minutes)) not counted."
+        return String(localized: "Paused when the app closed at \(formatter.string(from: pausedAt)); \(WorkRecord.minutesPhrase(minutes: minutes)) not counted.")
     }
 }
 

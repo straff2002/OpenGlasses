@@ -156,11 +156,11 @@ struct SessionNoticeOverlay: View {
     var body: some View {
         Group {
             if let error = errorText, !error.isEmpty {
-                TranscriptCard(label: "Error", text: error, accent: OGTheme.error,
+                TranscriptCard(label: String(localized: "Error"), text: error, accent: OGTheme.error,
                                style: .error, onGlass: true, onDismiss: { dismissedError = error }) {
                     // Plan GB P4: an HTTP failure or a recorder error is the app talking, not the
                     // model — it is never badged or disclaimed as AI-generated.
-                    expandedCard = ExpandedCard(label: "Error", text: error, accent: OGTheme.error,
+                    expandedCard = ExpandedCard(label: String(localized: "Error"), text: error, accent: OGTheme.error,
                                                 isAIGenerated: false)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -298,7 +298,7 @@ private struct TranscriptCard: View {
             // are the value; the card is also only tappable through a gesture, which leaves no trait
             // behind to say it can be opened.
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(style == .ai ? "AI-generated response from \(label)" : label)
+            .accessibilityLabel(style == .ai ? String(localized: "AI-generated response from \(label)") : label)
             .accessibilityValue(text)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Double-tap to see the full response.")

@@ -54,8 +54,8 @@ struct ParkingSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(ParkingRecallPhraser.detailPhrase(spot).map { "Parked \($0)" }
-                         ?? "Parked here")
+                    Text(ParkingRecallPhraser.detailPhrase(spot).map { String(localized: "Parked \($0)") }
+                         ?? String(localized: "Parked here"))
                         .font(.headline)
                     Text(savedLine(spot))
                         .font(.subheadline)
@@ -158,7 +158,7 @@ struct ParkingSettingsView: View {
                 } else {
                     ForEach(store.history) { spot in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(ParkingRecallPhraser.detailPhrase(spot).map { "Parked \($0)" } ?? "Map position only")
+                            Text(ParkingRecallPhraser.detailPhrase(spot).map { String(localized: "Parked \($0)") } ?? String(localized: "Map position only"))
                             Text(savedLine(spot)).font(.caption).foregroundStyle(.secondary)
                         }
                         .accessibilityElement(children: .combine)
@@ -178,12 +178,12 @@ struct ParkingSettingsView: View {
         let age = ParkingRecallPhraser.agePhrase(Date().timeIntervalSince(spot.savedAt))
         let how: String
         switch spot.capture {
-        case .voice: how = "Saved by voice"
-        case .photo: how = "Saved from a sign photo"
-        case .carPlayDisconnect: how = "Saved when CarPlay disconnected"
-        case .motion: how = "Saved automatically when your drive ended"
+        case .voice: how = String(localized: "Saved by voice")
+        case .photo: how = String(localized: "Saved from a sign photo")
+        case .carPlayDisconnect: how = String(localized: "Saved when CarPlay disconnected")
+        case .motion: how = String(localized: "Saved automatically when your drive ended")
         }
-        let certainty = spot.confidence == .probable ? " — probably" : ""
+        let certainty = spot.confidence == .probable ? String(localized: " — probably") : ""
         return "\(how) \(age)\(certainty)"
     }
 

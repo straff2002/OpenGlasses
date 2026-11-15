@@ -47,10 +47,10 @@ final class VaultLinkService: ObservableObject {
 
         var message: String {
             var lines = [
-                "Download the publisher's set from \(host)?",
-                "Up to \(sizeCeilingText) is downloaded so you can see what it contains. Nothing is installed until you have reviewed it.",
+                String(localized: "Download the publisher's set from \(host)?"),
+                String(localized: "Up to \(sizeCeilingText) is downloaded so you can see what it contains. Nothing is installed until you have reviewed it."),
             ]
-            if isOnCellular { lines.append("You are on cellular data.") }
+            if isOnCellular { lines.append(String(localized: "You are on cellular data.")) }
             return lines.joined(separator: "\n\n")
         }
     }
@@ -59,7 +59,7 @@ final class VaultLinkService: ObservableObject {
         let received: Int
 
         var text: String {
-            "Downloading… " + ByteCountFormatter.string(fromByteCount: Int64(received), countStyle: .file)
+            String(localized: "Downloading… \(ByteCountFormatter.string(fromByteCount: Int64(received), countStyle: .file))")
         }
     }
 
@@ -207,7 +207,7 @@ final class VaultLinkService: ObservableObject {
             return
         } catch {
             activeDownload = nil
-            stage = .failed("Couldn't fetch the vault: \(error.localizedDescription)")
+            stage = .failed(String(localized: "Couldn't fetch the vault: \(error.localizedDescription)"))
             return
         }
         activeDownload = nil
@@ -226,12 +226,12 @@ final class VaultLinkService: ObservableObject {
             bytes = try staging.load(archive)
         } catch {
             staging.remove(archive)
-            stage = .failed("The downloaded vault is no longer available to review.")
+            stage = .failed(String(localized: "The downloaded vault is no longer available to review."))
             return
         }
         guard bytes.count <= maximumBytes else {
             staging.remove(archive)
-            stage = .failed("That vault is larger than this app will install.")
+            stage = .failed(String(localized: "That vault is larger than this app will install."))
             return
         }
         let extracted: VaultArchiveReader.Extracted
@@ -252,7 +252,7 @@ final class VaultLinkService: ObservableObject {
                 do { try await Task.detached(priority: .utility) { try VaultLinkInstaller.personalPreflight(files: extracted.files) }.value }
                 catch { admissionRefusal = error.localizedDescription }
             } else if case .unverified = verification {
-                admissionRefusal = "My Manuals accepts sets signed by a listed publisher. Unverified archives need Field Assist."
+                admissionRefusal = String(localized: "My Manuals accepts sets signed by a listed publisher. Unverified archives need Field Assist.")
             }
         }
         // The host the bytes actually came from, not the one that was typed: a link that redirects
@@ -296,21 +296,21 @@ final class VaultLinkService: ObservableObject {
             bytes = try staging.load(reviewed.archive)
         } catch {
             discardReviewed()
-            stage = .failed("Install refused because the reviewed archive is no longer available.")
+            stage = .failed(String(localized: "Install refused because the reviewed archive is no longer available."))
             return
         }
         guard VaultArchiveReader.sha256Hex(bytes) == reviewed.sha256,
               case .success(let extracted) = VaultArchiveReader.extract(zipData: bytes,
                                                                         maximumTotalBytes: maximumBytes) else {
             discardReviewed()
-            stage = .failed("Install refused because the reviewed archive changed.")
+            stage = .failed(String(localized: "Install refused because the reviewed archive changed."))
             return
         }
         let verification = VaultArchiveVerifier.verify(extracted, publishers: await publishers())
         guard verification == review.verification,
               review.allowsInstall(acknowledged: acknowledgedUnverified) else {
             discardReviewed()
-            stage = .failed("Install refused because the reviewed archive changed.")
+            stage = .failed(String(localized: "Install refused because the reviewed archive changed."))
             return
         }
 

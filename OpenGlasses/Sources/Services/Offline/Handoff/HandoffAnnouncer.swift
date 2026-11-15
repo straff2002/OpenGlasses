@@ -45,16 +45,16 @@ struct HandoffAnnouncer: Equatable {
 
     /// The notification body when a held question expires while still offline. Deliberately
     /// carries no question text: it lands on a lock screen.
-    static let heldExpiredNotificationTitle = "Question not answered"
-    static let heldExpiredNotificationBody = "A question you asked while offline wasn't answered. Ask again when you're back online."
+    static let heldExpiredNotificationTitle = String(localized: "Question not answered")
+    static let heldExpiredNotificationBody = String(localized: "A question you asked while offline wasn't answered. Ask again when you're back online.")
 
     /// A live session lost its connection for good and the conversation moved to the phone.
     static let liveHandoffLine = "The live session lost its connection. I'll carry on here on the phone and reconnect when the signal's back."
 
     /// The HUD status chip while on the phone.
-    static let phoneStatusChip = "Offline — running on the phone"
+    static let phoneStatusChip = String(localized: "Offline — running on the phone")
     /// The HUD status chip while offline with the handoff off.
-    static let offlineStatusChip = "Offline"
+    static let offlineStatusChip = String(localized: "Offline")
 
     // MARK: - Decisions
 

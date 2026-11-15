@@ -458,11 +458,11 @@ struct BroadcastHealth: Equatable {
     /// says "Live" for a connection that has yet to put a byte on the wire.
     var stateLabel: String {
         switch state {
-        case .idle: return "Idle"
-        case .connecting: return "Connecting"
-        case .live: return hasSentAnything ? "Live" : "Nothing sent yet"
-        case .reconnecting(let attempt): return "Reconnecting \(attempt)"
-        case .failed: return "Failed"
+        case .idle: return String(localized: "Idle")
+        case .connecting: return String(localized: "Connecting")
+        case .live: return hasSentAnything ? String(localized: "Live") : String(localized: "Nothing sent yet")
+        case .reconnecting(let attempt): return String(localized: "Reconnecting \(attempt)")
+        case .failed: return String(localized: "Failed")
         }
     }
 }
@@ -531,11 +531,8 @@ enum BroadcastStallPolicy {
     /// What to tell the wearer about a connection that is sending nothing.
     static func stalledMessage(target: String) -> String {
         guard isPrivateNetworkHost(target) else {
-            return "Connected to the streaming server, but nothing is reaching it. Check the "
-                 + "stream key and that the server is accepting a publish."
+            return String(localized: "Connected to the streaming server, but nothing is reaching it. Check the stream key and that the server is accepting a publish.")
         }
-        return "Connected to the streaming server, but nothing is reaching it. If that server is "
-             + "on your own network, allow Avenkin to use it in Settings, under Privacy & "
-             + "Security, Local Network."
+        return String(localized: "Connected to the streaming server, but nothing is reaching it. If that server is on your own network, allow Avenkin to use it in Settings, under Privacy & Security, Local Network.")
     }
 }

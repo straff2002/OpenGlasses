@@ -49,7 +49,7 @@ enum ModelFetcher {
         guard MedicalEgressGuard.allows(.providerModelCatalog) else {
             return .unreachable(MedicalEgressRefusal.userMessage)
         }
-        guard let url = URL(string: modelsEndpoint(from: baseURL)) else { return .unreachable("Invalid URL") }
+        guard let url = URL(string: modelsEndpoint(from: baseURL)) else { return .unreachable(String(localized: "Invalid URL")) }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
@@ -59,7 +59,7 @@ enum ModelFetcher {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             let latencyMs = Int(Date().timeIntervalSince(start) * 1000)
-            guard let http = response as? HTTPURLResponse else { return .unreachable("No HTTP response") }
+            guard let http = response as? HTTPURLResponse else { return .unreachable(String(localized: "No HTTP response")) }
             return classify(statusCode: http.statusCode, modelCount: modelCount(in: data), latencyMs: latencyMs)
         } catch let error as URLError {
             if error.code == .appTransportSecurityRequiresSecureConnection { return .insecure }

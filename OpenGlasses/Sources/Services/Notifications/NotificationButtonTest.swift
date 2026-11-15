@@ -52,8 +52,8 @@ enum NotificationButtonTest {
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
         guard granted else { return false }
         let content = UNMutableNotificationContent()
-        content.title = "Notification button test"
-        content.body = "Press Done or Stop for today. Kill the app first to test a cold launch."
+        content.title = String(localized: "Notification button test")
+        content.body = String(localized: "Press Done or Stop for today. Kill the app first to test a cold launch.")
         content.categoryIdentifier = category.id
         content.userInfo = [NotificationActionCatalog.subjectKey: "developer-test"]
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delaySeconds, repeats: false)
