@@ -40,6 +40,11 @@ struct MessageBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             bubble
+            // What this reply's turn held and did not run, by name (a Shortcut held while away).
+            if !isUser, !message.held.isEmpty {
+                HeldActionsView(held: HeldActionNote.cleaned(message.held))
+                    .padding(.trailing, 48)
+            }
             // Plan KZ: the web pages this reply rests on, and Google's Search Suggestions — outside
             // the bubble's combined VoiceOver element, so each stays its own control.
             let attachments = ReplyAttachments(message: message)
@@ -99,5 +104,31 @@ struct MessageBubble: View {
         if let onRegenerate {
             Button(action: onRegenerate) { Label("Regenerate", systemImage: "arrow.clockwise") }
         }
+    }
+}
+
+/// The actions a reply's turn held and did not run, named, under the reply — so a Shortcut held
+/// while the wearer was away is on screen, not only in a line spoken to an empty room.
+private struct HeldActionsView: View {
+    let held: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(HeldActionNote.screenHeading, systemImage: "hand.raised")
+                .font(.caption.weight(.semibold))
+            ForEach(held, id: \.self) { item in
+                Text(item)
+                    .font(.caption)
+            }
+            Text(HeldActionNote.screenHint)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(OGTheme.card.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(HeldActionNote.spokenLabel(held))
     }
 }

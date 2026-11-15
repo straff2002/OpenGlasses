@@ -6565,6 +6565,14 @@ class LLMService: ObservableObject {
 
     /// Inject a hidden system message into conversation history.
     /// Used by the memory nudge to prompt periodic review without the user seeing it.
+    /// Tell the model, with the reply it just gave, what its turn held and did not run
+    /// (`HeldActionNote`). The turn's tool calls are gone from the history by now, and with them
+    /// the only record of which Shortcut it was.
+    func noteHeldActions(_ held: [String]) {
+        guard !held.isEmpty else { return }
+        conversationHistory = HeldActionNote.appendingToLastAssistant(conversationHistory, held: held)
+    }
+
     func injectSystemMessage(_ message: String) {
         cancelOffConversationRun()
         conversationHistory.append(["role": "user", "content": message])

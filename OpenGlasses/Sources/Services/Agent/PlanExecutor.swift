@@ -53,7 +53,8 @@ struct PlanStop: Equatable {
         case .rejected(let reason):
             if reason.hasPrefix(ToolAuthorizationPolicy.holdMessage(tool)) { return .held }
             if reason.hasPrefix(ToolAuthorizationPolicy.declineMessage(tool)) { return .declined }
-            if reason.hasPrefix(ToolAuthorizationPolicy.unavailableConfirmationMessage(tool)) {
+            if reason.hasPrefix(ToolAuthorizationPolicy.unavailableConfirmationMessage(tool))
+                || reason.hasPrefix(ToolAuthorizationPolicy.busyConfirmationMessage(tool)) {
                 return .needsApproval
             }
             return .notAllowed

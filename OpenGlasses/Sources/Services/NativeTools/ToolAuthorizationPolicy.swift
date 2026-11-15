@@ -161,8 +161,8 @@ enum ToolAuthorizationPolicy {
             // is idle or away), the action was deferred, not forbidden — hold it for re-engagement.
             if input.safetyContext.autonomy != .autoAct,
                PromptInjectionPolicy.isHighImpact(toolName: name, args: args) {
-                return .hold(summary: PromptInjectionPolicy.actionSummary(toolName: name, args: args),
-                             message: holdMessage(name))
+                let summary = PromptInjectionPolicy.actionSummary(toolName: name, args: args)
+                return .hold(summary: summary, message: holdMessage(name, held: summary))
             }
             return .block(message: blockMessage(name, reason: reason))
         case .confirm(let reason):
@@ -202,8 +202,33 @@ enum ToolAuthorizationPolicy {
 
     /// Away is not using the app at all — neither the glasses nor the open phone app — so the
     /// copy no longer names the glasses (presence stopped reading their link as the person).
-    static func holdMessage(_ name: String) -> String {
-        "'\(name)' wasn't run because you've been away; I've held it to raise when you're back. Do not retry automatically."
+    ///
+    /// `holdMessage(name)` alone is the fixed opening a plan's stop is recognised by
+    /// (`PlanStop.kind`); `held` adds what was held, in the summary the wearer sees, so the model
+    /// can name it. Without it the model knew only the tool's name, and asked later "which
+    /// Shortcut?" it could only say `run_shortcut` was an internal label (field report).
+    static func holdMessage(_ name: String, held: String? = nil) -> String {
+        let opening = "'\(name)' wasn't run because you've been away; I've held it to raise when you're back. Do not retry automatically."
+        guard let held = held?.trimmingCharacters(in: .whitespacesAndNewlines), !held.isEmpty else {
+            return opening
+        }
+        return opening + " " + heldDetail(held)
+    }
+
+    /// What a held or unasked call was, and what the model is to say about it: the action by
+    /// name, that it has not run, and how the user gets it run.
+    static func heldDetail(_ held: String) -> String {
+        "The action, which has NOT run: \(held). Tell the user plainly, naming it, that it has not run, and that they can ask for it again or approve it when it's put to them."
+    }
+
+    /// Another approval was already on screen, so this one was never put to the user. Not a no:
+    /// the call simply was not asked about (`ApprovalDecision.busy`).
+    static func busyConfirmationMessage(_ name: String, held: String? = nil) -> String {
+        let opening = "'\(name)' needs the user's OK, but another approval was already waiting on their screen, so it was not asked about and was NOT performed. Do not retry automatically."
+        guard let held = held?.trimmingCharacters(in: .whitespacesAndNewlines), !held.isEmpty else {
+            return opening
+        }
+        return opening + " " + heldDetail(held)
     }
 }
 

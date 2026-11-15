@@ -142,11 +142,11 @@ final class AgentRunner {
     /// for the model, and never a tool's internal name.
     static func summary(plan: AgentPlan, run: PlanRunResult) -> String {
         let done = plan.steps.prefix(run.completedSteps).enumerated()
-            .map { index, step in clause(step.rationale) ?? "did step \(index + 1)" }
+            .map { index, step in described(step) ?? "did step \(index + 1)" }
         if run.aborted {
             let index = run.stop?.stepIndex ?? run.completedSteps
             let step = plan.steps.indices.contains(index) ? plan.steps[index] : nil
-            let what = step.map { clause($0.rationale) ?? "do step \(index + 1)" } ?? "do the rest"
+            let what = step.map { described($0) ?? "do step \(index + 1)" } ?? "do the rest"
             var line = stopSentence(run.stop?.kind ?? .failed, what: what)
             // Every stop sentence opens with "I", so it follows "but" as it stands.
             if !done.isEmpty { line = "I \(joinClauses(done)), but \(line)" }
@@ -167,6 +167,27 @@ final class AgentRunner {
         case .failed: return "I couldn't \(what) — it didn't go through."
         case .unsure: return "I'm not sure I managed to \(what), so I stopped there."
         }
+    }
+
+    /// A step as a clause: its rationale, naming the Shortcut a `run_shortcut` step runs when the
+    /// rationale does not ("run the shortcut" → "run the shortcut (the “Check Email” Shortcut)"),
+    /// so a held or declined step can be picked out from the summary — the one record of it the
+    /// conversation keeps. Nil when there is nothing to say.
+    static func described(_ step: AgentStep) -> String? {
+        let base = clause(step.rationale)
+        guard step.tool == "run_shortcut", let name = shortcutName(step.args) else { return base }
+        guard let base else { return "run the “\(name)” Shortcut" }
+        if base.range(of: name, options: [.caseInsensitive, .diacriticInsensitive]) != nil { return base }
+        return "\(base) (the “\(name)” Shortcut)"
+    }
+
+    /// The Shortcut a `run_shortcut` call names, read as the tool reads it.
+    private static func shortcutName(_ args: [String: Any]) -> String? {
+        for key in ["shortcut_name", "name"] {
+            if let value = (args[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty { return value }
+        }
+        return nil
     }
 
     /// A rationale as a clause inside a sentence: trimmed, without a closing full stop, and with a

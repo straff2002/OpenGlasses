@@ -55,6 +55,9 @@ enum ApprovalDecision: Equatable {
     case denied
     /// The wearer has withdrawn consent for this source, so nothing was asked.
     case consentWithdrawn
+    /// Another approval was already on screen, so nothing was asked. Not a no: told apart so the
+    /// model is never told the wearer declined something they were never shown.
+    case busy
 }
 
 /// Human-in-the-loop gate for destructive / high-impact tool calls.
@@ -146,6 +149,7 @@ final class ToolConfirmationCoordinator: ObservableObject {
             PrivacyLog.toolGate(.consentWithdrawn, tool: toolName)
             return .consentWithdrawn
         }
+        guard pending == nil else { return .busy }
         let asked = consent.promptPrefix.map { "\($0) \(summary)" } ?? summary
         let approved = await requestConfirmation(toolName: toolName, summary: asked, source: source)
         guard approved else { return .denied }
