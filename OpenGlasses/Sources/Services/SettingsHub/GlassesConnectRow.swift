@@ -39,8 +39,8 @@ struct GlassesConnectRow: Equatable, Sendable {
             // own refusal is a bare "Internal error" (see `RegistrationFlow.beforeHandoffMessage`).
             action = .connect
             title = nil
-            footer = "Avenkin isn't connected to your glasses in the Meta AI app. "
-                + RegistrationFlow.beforeHandoffMessage()
+            footer = String(localized: "Avenkin isn't connected to your glasses in the Meta AI app.")
+                + " " + RegistrationFlow.beforeHandoffMessage()
         case .permissionNeeded:
             action = .allowCameraAccess
             title = nil
@@ -56,6 +56,41 @@ struct GlassesConnectRow: Equatable, Sendable {
         case .linkComingUp, .connected:
             return nil
         }
+    }
+
+    /// The line shown above the footer: the step a connect is on while it runs, then why it gave up.
+    enum Progress: Equatable, Sendable {
+        case step(String)
+        case gaveUp(String)
+
+        var text: String {
+            switch self {
+            case .step(let text), .gaveUp(let text): return text
+            }
+        }
+    }
+
+    /// What to show above the footer, or nil when there is nothing to add.
+    ///
+    /// A connect from this row can run for about 40 s: up to 25 s waiting for Meta AI's approval
+    /// (`RegistrationFlow.approvalDeadlineSeconds`), then up to 15 s for a link. This screen used
+    /// to show only the spinner for all of it, and then the same button and footer, while the
+    /// reason it gave up went to the main screen. A TestFlight tester on build 681 sent a
+    /// screenshot of exactly that, with no comment.
+    ///
+    /// - Parameters:
+    ///   - connecting: a connect the wearer asked for is under way (`AppState.isConnectingGlasses`).
+    ///   - connectionStatus: the glasses service's own status line, which names the step.
+    ///   - failure: how the last connect ended, when it gave up and nothing has fixed it since.
+    static func progress(connecting: Bool, connectionStatus: String, failure: String?) -> Progress? {
+        if connecting {
+            // The service's resting value says nothing about a connect in flight.
+            let status = connectionStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !status.isEmpty, status != GlassesConnectionService.restingStatus else { return nil }
+            return .step(status)
+        }
+        guard let failure, !failure.isEmpty else { return nil }
+        return .gaveUp(failure)
     }
 
     /// The footer under "Allow camera access in Meta AI": what the row is for until the
