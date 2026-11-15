@@ -1,6 +1,7 @@
 # Plan LU — Private Conversation (a conversation Avenkin keeps nothing of)
 
-**Status:** 🚧 P0 built 2026-11-15 (headless): the pure core, see [As built (P0)](#as-built-p0). P1 (wiring)
+**Status:** 🚧 P0 + P1a built 2026-11-15 (headless): the pure core, see [As built (P0)](#as-built-p0), and
+the wiring, see [As built (P1a)](#as-built-p1a). P1b (the phone and watch UI, Settings, the explainer)
 is next. All six [decisions](#decisions-for-greig-taken) taken 2026-11-14 as recommended.
 **Track:** Everyday assistant: privacy. Every way a conversation starts (wake word, Chat tab, watch
 dictation, photo turns, live modes), the conversation store and everything fed from it, memory writers,
@@ -412,6 +413,95 @@ Tests:
 - **`PrivateLiveActivityTests`** and **`WatchPrivateContextTests`**: no reply text in either.
 - **`OpenClawPrivateSessionTests`**: a throwaway key, the stable key untouched, no memory push.
 - A UI test: start from the header menu, see the badge, end, and see nothing in the Chat list.
+
+#### As built (P1a)
+
+Built 2026-11-15, headless: everything in P1 except the phone and watch UI.
+
+**The owner and the gate.** `PrivateConversationController` (an `ObservableObject`, beside the P0
+types) holds the one `PrivateConversationState` and `PrivateTranscript`; `AppState` owns one as
+`appState.privateConversation`, the way it owns `guidedJobFlow`. The controller keeps
+`PrivateConversationGate` in step — a lock-guarded process-wide flag, in the style of `PolicyEnvelope`,
+whose `rule(for:)` gives each sink its P0 rule while one is open and `.keep` otherwise. That is how the
+services that can't see `AppState` ask. `AppState+PrivateConversation.swift` holds the only writers:
+`beginPrivate(entry:) -> PrivateStartRefusal?`, `endPrivate(reason:)` and `notePrivateEvent(_:announce:)`.
+- **Refusals** (`PrivateStartConditions`, pure): a job open, or the active thread a job's or a debrief's;
+  the organisation's pin; the wearer's own switch off; Live running. Each `PrivateStartRefusal` has its
+  spoken `reason`. The wearer's switch is a fourth refusal the design didn't name.
+- **Settings.** `SettingKey.privateConversationsAllowed` (a ceiling pinned off, in `alwaysShown`) and
+  `Config.privateConversationsAllowed`, on by default.
+- **`PrivacyLog.privateConversation(.started/.refused/.ended)`**: the conversation category, the entry,
+  refusal or end reason as a token, never the id.
+- **A start** moves the model's context to the private transcript (`LLMService.beginPrivateHistory`,
+  the stored conversation's context put aside), gives OpenClaw a throwaway key, drops any question
+  held for the cloud while offline, and starts the quiet-gap timer. **An end** empties the transcript,
+  restores the context (after a turn still running), drops the key, and clears `lastResponse` so the
+  Live Activity and the watch never show the private reply once the placeholder lifts.
+
+**Ends, at their sources.** The end phrase (`routePrivatePhrase`); a disconnect (`applyGlassesUse`, when
+the glasses stop being in use); the 30-minute gap at the next turn and by timer; `requestNewChat`,
+`requestResume` of a different thread and `startJob` through a new `GuidedJobFlow.Seams.privateEvent`;
+`conversationReset.requestReset` (at its turn boundary, so the reset then acts on the stored
+conversation); the org pin (`applyOrgPolicyChange`); Live stopping (`stopSession`, ending nothing until
+P1b starts a Live-private session); app quit (`willTerminateNotification`). Spoken: "Private
+conversation ended." unless the end is a disconnect, a quit, the timer or a reset (which says its own
+line).
+
+**Turns.** `routePrivatePhrase` runs in `handleTranscription` before the pre-LLM chain and
+`prepareThreadForTurn`, and at the top of `sendTextMessage` (not for a held question replayed). A start
+with a question says "Private. I won't keep any of this." alongside the answer (`turnAnnouncement`); a
+start alone says "Private. Go ahead." and listens; a refusal says its reason. Every store write a turn
+makes goes through `persistsConversation` (history on and not private), captured per turn as
+`turnPersists` on the voice and typed paths, with the turn going to `notePrivateTurn` instead; the job
+flow's persistence seam and `AskPersonaIntent` use it too. `timelineRequestThread()` is nil while
+private. The stored conversation stays active and unchanged.
+
+**Sinks.** Each consults the gate inside the writer, so every caller is covered: the memory tags
+(stripped; REMEMBER, REMEMBER_GLOBAL and DIARY not saved; FORGET runs; a told-me request gets "This
+conversation is private, so I won't remember that. Want a reminder instead?"), the nudge, gateway push
+and query, `MemoryLoopService.observeTurn`/`enrich`, `SkillEvolutionService.noteUserTurn`,
+`TurnTraceStore.append` (`TurnTrace.withoutText()`: no search text, manual passages or thread; timings
+kept), `ActivityStore.append` (HIPAA's title-only rule), the Photos sink (`CaptureLibraryScope.$explicitPhoto`
+marks the three "take a photo" paths), the Live Activity snippet and the watch's `lastResponse`
+(placeholder; the context gains `isPrivate`). The `onThreadLeft` work needs no gate: a private turn opens,
+leaves and ends no thread, and every end runs before the thread moves.
+
+**Tools and prompt.** `NativeToolRouter` refuses a memory-like native call before authorization
+(`PrivateToolRule.refusalReason`, a new `privateConversation` tool-gate log line). Direct mode's prompt
+gains `SystemPromptBuilder.privateConversationLine`; Live prompts are untouched.
+
+**Bridges.** `OpenClawBridge.effectiveSessionKey` is the throwaway key while private, for chat and
+`tools.effective`. The Hermes API sends `store: false` with no `previous_response_id`, and the stored
+chain is left as it was. Deviation: a private Hermes conversation's follow-ups don't carry its earlier
+turns, as an unstored response can't be chained to.
+
+**Recognition (decision 4).** `PrivateRecognitionPolicy`: `requiresOnDeviceRecognition` on Apple's
+request where the locale supports it, and no cloud vendor. The turn that says "off the record" is
+recognised before the conversation is private, so it uses the ordinary recogniser.
+
+**Other deviations.** The `capture_photo` tool's still counts as a photo turn (not filed while private).
+A scheduled task that runs while private has its memory tags skipped too. Typing in the active stored
+conversation's page doesn't end a private conversation; opening a different one does.
+
+**Tests.** `PrivateConversationTraceTests` (a whole private Direct conversation at the seams below
+`AppState`: real stores in a temp directory, the router, the LLM context, the gateway key, the
+surfaces), `PrivateConversationEndTests`, `OpenClawPrivateSessionTests`, Hermes request and client
+tests, and `PrivateConversationSinkGuardTests`, which scrapes the sources for store writes outside the
+helper, self-consulting writers that stop consulting, and writers of the gate or the state outside
+their owners. The Live Activity and watch checks are in the trace test, on pure `snippet` and
+`lastResponsePayload` helpers. Not run headless: `AppState` itself (the test host never configures
+the glasses SDK), so `handleTranscription`'s routing, the spoken lines and the timer are covered by
+the guard test and the device pass.
+
+**P1b owes:** the badge and End, the header and Chat-list menu items (`beginPrivate(entry: .button)`,
+showing `refusal.reason`), the watch button (`.watch`) and badge (`isPrivate` in the context), the Live
+Activity placeholder's look, the first-time explainer and Settings › Everyday › Private conversations
+with its locked control, the lens line, the UI test, the full suite, the Release build and the catalog
+sync of P0's placeholder and P1a's eight new strings: the four refusal reasons, the three spoken lines
+and the won't-remember line. Also:
+`ChatThreadView.reloadHistory` replays the stored thread after a model or persona switch, so while
+private it should replay `privateConversation.transcript`; the manual picker should not start a thread
+while private.
 
 ### P2 — device pass (owed)
 
