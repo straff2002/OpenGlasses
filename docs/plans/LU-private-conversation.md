@@ -1,8 +1,9 @@
 # Plan LU — Private Conversation (a conversation Avenkin keeps nothing of)
 
-**Status:** 🚧 P0 + P1a built 2026-11-15 (headless): the pure core, see [As built (P0)](#as-built-p0), and
-the wiring, see [As built (P1a)](#as-built-p1a). P1b (the phone and watch UI, Settings, the explainer)
-is next. All six [decisions](#decisions-for-greig-taken) taken 2026-11-14 as recommended.
+**Status:** 🚧 P0–P1 built (headless + one UI test), 2026-11-15; P2 device pass owed; catalog sync
+owed. The pure core, see [As built (P0)](#as-built-p0); the wiring, see [As built (P1a)](#as-built-p1a);
+the phone, watch and Settings surfaces, see [As built (P1b)](#as-built-p1b). All six
+[decisions](#decisions-for-greig-taken) taken 2026-11-14 as recommended.
 **Track:** Everyday assistant: privacy. Every way a conversation starts (wake word, Chat tab, watch
 dictation, photo turns, live modes), the conversation store and everything fed from it, memory writers,
 diagnostics, the watch, the Live Activity, the gateway bridges.
@@ -502,6 +503,77 @@ and the won't-remember line. Also:
 `ChatThreadView.reloadHistory` replays the stored thread after a model or persona switch, so while
 private it should replay `privateConversation.transcript`; the manual picker should not start a thread
 while private.
+
+#### As built (P1b)
+
+Built 2026-11-15: the phone, watch and Settings surfaces, with headless tests and one UI test.
+
+**The page is the private conversation.** `AppState` relays `privateConversation`'s changes as its
+own, so every view that reads it redraws as one starts, takes a turn and ends.
+`ConversationContinuity.PageContent` gains `.privateConversation`, chosen before the stored thread,
+and the Voice tab's feed and the workspace's page draw `PrivateConversationMessages` (the in-memory
+turns in the conversation's own bubbles, no edit or regenerate) in its place. The stored thread
+stays active underneath and is drawn again, unchanged, at the end. The Chat tab's thread page
+(`ChatThreadView`) is the private page while one is open and it is the active thread it was
+opened on; the Chat list's private start opens a page of its own (`ChatThreadView.privateRoute`)
+that closes when the conversation ends. On the private page what is typed goes private and the
+stored thread is neither activated nor titled; making a stored thread live anywhere else (opening
+it from the list, or typing, regenerating or editing on a page that isn't the private one) is
+`otherConversationOpened`, so the private conversation ends first. `reloadHistory` replays the
+private transcript while one is open. The manual selection strip is hidden and the picker refuses
+to start or change a thread while private. Share transcript and the Siri on-screen activity are off
+on the private page.
+
+**Badge, menus, refusals.** `PrivateConversationBadge` (lock and **Private**; a tap offers **End**,
+which goes through `notePrivateEvent(.endButton)` so the end is said) takes the header's title
+place and the thread page's title. The header's new-conversation button and the Chat list's New
+chat are menus with a primary action: a tap starts a new conversation as before, and held they
+offer **Start a private conversation** (also a named VoiceOver action). Both, and the thread page's
+Chat options menu, call `startPrivateFromButton()`: `beginPrivate(entry: .button)` with a refusal
+posted to `NoticeCenter` like the app's other short notices.
+
+**Watch.** `WatchPrivateWire` (Foundation only, in `Shared/`, compiled into the watch) is the
+`privateConversation` command with a start or end action, the phone's reply (`isPrivate`, and the
+refusal under `error`), the `isPrivate` context key, and the wrist's reply rule. The phone answers
+through `AppState.handleWatchPrivateRequest` (`beginPrivate(entry: .watch)` or `.endOnWatch`) and
+pushes its status whenever the private state changes. The watch's main screen has **Private**, or
+while one is open the lock, **Private** and **End**; its idle summary shows no reply while private,
+only a reply to a request made on the watch (held apart as `privateReply` and dropped at the end,
+when the summary takes the phone's emptied line, so no private answer lingers on the wrist).
+
+**Live Activity.** The extension draws `lastResponseSnippet` and no other reply text, and the
+content state is filled only from `LiveActivityManager.snippet` or left empty; a start and an end
+now refresh it at once.
+
+**Lens.** `glassesDisplay.flash("Private", duration: 3)` at every start; the HUD's own gate drops it
+without Display glasses.
+
+**Words.** The §7 explainer is shown once per phone (`PrivateConversationExplainer.takeFirstShowing`,
+an alert at the root), with "For this language, Apple's speech recognition is used to hear what you
+say." added when the speech language can't be recognised on the phone. Settings › Everyday ends with
+a **Private conversations** section: the explainer as its footer and an **Allow** switch bound to
+`Config.privateConversationsAllowed`, drawn read-only with the organisation named when its profile
+pins it (`ManagedSettingNote`). Not on the one-group page Devices & Privacy opens.
+
+**Not done.** Starting a Live session private (the plan's "a Live session must be started private")
+has no entry yet, so `liveStopped(sessionWasPrivate:)` still ends nothing; the watch shows its own
+strings, owed the watch catalog's sync.
+
+**Tests.** `WatchPrivateContextTests` (the wire, the reply, no reply text in the context or on the
+wrist while private, a watch request's reply still shown), `PrivateLiveActivityTests` (the snippet,
+the content state's only writers, the extension reading nothing but the snippet),
+`PrivateConversationExplainerTests` (the sentence, once per phone, the recognition line, no plan
+letters, the page content, the transcript gone at the end), and the UI test
+`PrivateConversationUITests` (start from the header menu, the badge, End, nothing new in History).
+
+**New English strings for the catalog sync (P0–P1b).** P0: "Private conversation". P1a: the four
+refusal reasons, "Private. I won't keep any of this.", "Private. Go ahead.", "Private conversation
+ended.", and "This conversation is private, so I won't remember that. Want a reminder instead?".
+P1b: "Private", "Start a private conversation", "End", "Private conversation. Nothing of it is kept.",
+"Double-tap to end it.", "Manuals can't be chosen in a private conversation. End it first.", the
+explainer sentence, the recognition line, "Private conversations", "Allow", "Allow private
+conversations", and on the watch "Private", "End", "Private
+conversation. Nothing of it is kept.", "End private conversation" and "Start a private conversation".
 
 ### P2 — device pass (owed)
 
