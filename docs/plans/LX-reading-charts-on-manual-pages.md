@@ -278,6 +278,27 @@ The picture goes to the provider the wearer has chosen, the same one that answer
 - The import-time estimate uses `ModelPricing.estimate` with the measured tokens per chart from P1.
 - Rendering uses JN's thermal-aware scales; reading pauses while the phone is hot, as JN does.
 
+### 11 · Is it a chart at all? A second signal (added 2026-11-15)
+
+Tick labels (§1) are one signal. A flow diagram or a wiring sequence drawn as numbered boxes can carry
+two evenly spaced runs of numbers too: steps 1 to 6 down the left, boxes 1 to 4 across the top. Taken
+for a chart, it would be sent to be read and come back as a confident nonsense curve. So a second
+signal, the **picture type**, sits beside the ticks, and `ChartCandidate` needs both:
+- **A rule over the region's shape and text** (`ChartShape`, pure, in P0): two long straight lines
+  along the tick runs that meet at a corner (from the PDF's drawn paths, or from the rendered region on
+  a scanned page); tick values that step evenly in value as well as in position; numbers outside the
+  plot area rather than inside boxes; few words inside the plot area.
+- **Optionally, a small on-device picture classifier** (chart, diagram, photograph, other), only if the
+  measurement shows the rule alone misses. It runs on the phone with no network, like the other readers.
+- **When the two disagree**, the candidate is words-only: indexed for its printed words, never read for
+  values.
+
+Measured on the Mac test bench of Plan [MA](MA-reading-manuals-better.md) §1, whose second reader
+classifies pictures: over manuals a developer holds, how many of our candidates it calls something
+other than a chart, and how many charts it finds that we miss, counted and triaged there, never text.
+P0's `ChartCandidateTests` gain a numbered-box flow diagram and a wiring sequence that must not be
+charts.
+
 ## Decisions for Greig
 
 1. **When charts are read.** *Recommended:* printed words at import on device (free), values on demand
