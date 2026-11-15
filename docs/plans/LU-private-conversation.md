@@ -1,7 +1,7 @@
 # Plan LU — Private Conversation (a conversation Avenkin keeps nothing of)
 
-**Status:** 📝 Drafted 2026-11-14, nothing implemented. All six [decisions](#decisions-for-greig-taken) taken
-2026-11-14 as recommended.
+**Status:** 🚧 P0 built 2026-11-15 (headless): the pure core, see [As built (P0)](#as-built-p0). P1 (wiring)
+is next. All six [decisions](#decisions-for-greig-taken) taken 2026-11-14 as recommended.
 **Track:** Everyday assistant: privacy. Every way a conversation starts (wake word, Chat tab, watch
 dictation, photo turns, live modes), the conversation store and everything fed from it, memory writers,
 diagnostics, the watch, the Live Activity, the gateway bridges.
@@ -347,6 +347,45 @@ Tests:
 - `PrivateConversationPolicyTests`: every sink has a rule, and the table matches §3.
 - `PrivateToolRuleGuardTests`: every registered `write` tool is classified; forget is never blocked.
 - `PrivacyLogTests`: no `addDebugEvent` interpolates spoken or reply text.
+
+#### As built (P0)
+
+Built 2026-11-15, headless. The types live in `OpenGlasses/Sources/Services/PrivateConversation/`:
+`PrivateConversationState` (with `PrivateEntry` and an in-memory `PrivateTranscript` whose
+`replayMessages()` returns the same `(role, content)` pairs as `ConversationStore.replayMessages(for:)`),
+`PrivateStartPhrase`, `PrivateEndPolicy`, `ConversationSink` + `PrivateConversationPolicy`, and
+`PrivateToolRule`. Nothing calls them yet; that is P1.
+
+Where it differs from the design above, or settles something the design left open:
+- **Separators.** A full stop, a semicolon, an exclamation mark and a spaced dash count as well as a
+  comma, a colon and "please", because speech recognition writes "Off the record. Is…". A question
+  mark never counts, so "This is private?" doesn't start one. A hyphen may join a phrase's words
+  ("off-the-record"); "privately-owned" doesn't match.
+- **End phrases** also accept "end private conversation" and "stop private conversation". An end phrase
+  may be followed by an ordinary question, which the match returns.
+- **The wake phrase.** A wake-word turn reaches `handleTranscription` without the wake phrase (dictation
+  starts after it), but a push-to-talk or Action Button turn carries whatever was said. The matcher
+  takes the configured wake phrases from its caller and skips one, optionally after "hey" or "ok".
+  Non-English locales match nothing until their phrases are reviewed.
+- **Ends.** `PrivateEndEvent` has `turnStarting(quietFor:)` and `idleTimerFired(quietFor:)`, both
+  measured against `JobThreadPolicy.conversationIdleGap`, and `liveStopped(sessionWasPrivate:)`, which
+  ends only a Live-private session. With no private conversation open, nothing ends.
+- **The sink roster** splits the table's rows into their writers and adds four the design names
+  elsewhere: `gatewayMemoryQuery` (§5), `wearerDirectedTools` (§4, `.keep`), `promptAgentDocuments`
+  (Agent Mode's documents, read like the memory block per decision 1) and `forgetTag` (`.keep`). The
+  debug transcript line is `.titleOnly` (its length, for every conversation). The bridge and
+  recognition rows are `.skip` of the stable OpenClaw key, the Hermes `store` flag and server
+  recognition; P1 supplies the throwaway key and the on-device fallback rule. The placeholder line is
+  localizable and is owed a catalog sync.
+- **Tools.** Every native tool whose `ToolEffectClassifier.nativeClass` is `write` is classified (MCP,
+  custom, skill-pack and gateway tools are not). Choices the design didn't name: `scan_badge` is
+  memory-like (it saves the person to the brain); `meeting_summary` is refused unless the call passes
+  `save: false`; `brain`'s `resolve_need` runs with forgetting; on a mixed memory-like tool an action
+  the table doesn't know is refused. Every other write tool is wearer-directed, including the Field
+  Assist job tools (a private conversation never starts during a job) and `new_topic`, which P1
+  should treat as `startFresh`.
+- **§6.** The grep found one `addDebugEvent` call carrying spoken or reply text, the transcript line,
+  now `Transcription: N characters`. `PrivacyLogTests` scans every `addDebugEvent(` argument for it.
 
 ### P1 — wiring (headless, plus a UI test on the simulator)
 
