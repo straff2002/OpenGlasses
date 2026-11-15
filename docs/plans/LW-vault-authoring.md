@@ -1,8 +1,10 @@
 # Plan LW — Vault Authoring (build a vault from your manuals on the phone, and get help with the hard parts)
 
-**Status:** 📝 Drafted 2026-11-15. [Decisions](#decisions-for-greig) taken 2026-11-16: 1, 3, 4 and 5 as
-recommended; 2 replaced by the owner's own call (bring your own model by copy and paste, §4a); 6 investigated
-(the gap is unreachable in production, see the decision). Nothing implemented.
+**Status:** 🚧 P0 built 2026-11-16 (headless): the starter, the trade templates (HVAC-R, General), the prompt
+kits and the paste parser in the core package; the row check, the three proposal builders, the vault check's
+scoring and `expects` in the export on the phone. P1 (the screens) next; P2 Automotive; P3 device pass owed.
+[Decisions](#decisions-for-greig) taken 2026-11-16: 1, 3, 4 and 5 as recommended; 2 replaced by the owner's own
+call (bring your own model by copy and paste, §4a); 6 investigated (the gap is unreachable in production).
 **Track:** Field Assist — your own vaults. Custom Vaults, manual import, the vault editor, export.
 **Builds on:**
 - Plan [JK](JK-my-manuals.md) / My Manuals: `ManualFileUpload`, the upload sheet (PDF, Word, Markdown, a publisher
@@ -98,7 +100,9 @@ written by hand today:
 
 Input: name, trade template, models (optional). Output: a manifest and core files that pass
 `VaultPackRules`:
-- `prompt_rules.md` from the template (the *fabricate* and *cite* themes always present);
+- the manifest's `prompt_rules` from the template (the *fabricate* and *cite* themes always present). They live
+  in the manifest, not a `prompt_rules.md` core file: that is where `VaultPackRules` and the importer read them,
+  and a core file would send them to the model a second time on every turn;
 - `safety.md` from the template's starter, which the author edits;
 - `models.md`, one `## MODEL (aliases)` heading per model, so `VaultModelIndex` reads it unchanged;
 - `fault-codes.md` and `symptoms.md` with their headings and nothing else.
@@ -292,6 +296,15 @@ types they share, also in the core package so the portal can show the same kits;
 page text; `FaultCodeProposals`, `ModelMapProposals`, `SymptomProposals` over fixture tables and pages with
 **invented** codes, models and wording; `VaultCheck` scoring; `expects` in the manifest (absent →
 byte-identical). **Exit:** the tests and `Contracts/tests/*.py` green.
+
+**As built (2026-11-16).** Core package (`Tools/LicenceIssuance`, compiled into the app beside
+`VaultPackRules.swift`): `TradeTemplate.swift`, `VaultStarter.swift`, `VaultDrafts.swift` (`DraftRow` and its
+row types, `PromptKit`, `PastedDraftParser`, `IndexRowWriter`). App (`Services/Vault/Authoring/`):
+`DraftPageText` (the page-text seam, `ManualPageText`), `DraftRowCheck`, `DraftProposals`
+(`FaultCodeProposals`, `ModelMapProposals`, `SymptomProposals`), `VaultCheck`, `VaultExpects`; `VaultExporter`
+writes `expects`. An expected manual's key is made from its file name (stable across exports; P1 may store it
+on the document if a rename must keep it). Symptom proposals read troubleshooting tables and `Problem:` /
+`Cause:` / `Check:` blocks; headings alone are not read yet.
 
 ### P1 — the screens (headless, plus a UI test on the simulator)
 
