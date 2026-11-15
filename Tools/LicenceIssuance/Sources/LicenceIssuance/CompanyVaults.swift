@@ -58,6 +58,8 @@ public enum CompanyVaultContract {
         /// Rows in one catalog.
         public static let vaultsPerCatalog = 64
         public static let manualsPerCatalog = 2_000
+        /// Expected manuals on one vault entry (Plan LV).
+        public static let expectsPerVault = 500
 
         /// The cap for one manual of `kind`.
         public static func manualBytes(_ kind: ManualKind) -> Int {
@@ -104,13 +106,70 @@ public enum CompanyVaultContract {
         /// The pack signature (`VaultPackSignature`), base64, by the pack-catalog key.
         public let packSignature: String
 
+        // Plan LV — published vaults. Every field below is optional and absent from the JSON when
+        // nil, so an entry without them is the bytes, and behaves exactly as, a v1 entry.
+
+        /// The partner whose vault this is, when it is one partner's vault delivered to many
+        /// companies. Never on a company layer (`extends`).
+        public let publisher: Publisher?
+        /// True: the archive at `downloadURL` is the pack sealed for this company (`CoreSeal`), and
+        /// `sizeBytes` and `sha256` describe the sealed file as served. The pack signature is over
+        /// the plaintext pack, as for any pack. Absent or false: a plain pack, as in v1.
+        public let sealedCore: Bool?
+        /// The manuals the vault was written against, from the archive the partner uploaded.
+        public let expects: [ExpectedManual]?
+        /// True: the publisher no longer updates this vault. The phone keeps the version it has and
+        /// compares no versions for this entry; the company removes it when it wants to.
+        public let frozen: Bool?
+        /// A company layer: the `vaultId` of the vault in this catalog this entry adds files and
+        /// prompt rules to. A layer never carries `publisher`.
+        public let extends: String?
+
         public init(id: String, vaultId: String, version: String, name: String, summary: String? = nil,
                     author: String? = nil, minAppBuild: Int? = nil, sizeBytes: Int, downloadURL: String,
-                    sha256: String, packSignature: String) {
+                    sha256: String, packSignature: String, publisher: Publisher? = nil, sealedCore: Bool? = nil,
+                    expects: [ExpectedManual]? = nil, frozen: Bool? = nil, extends: String? = nil) {
             self.id = id; self.vaultId = vaultId; self.version = version; self.name = name
             self.summary = summary; self.author = author; self.minAppBuild = minAppBuild
             self.sizeBytes = sizeBytes; self.downloadURL = downloadURL; self.sha256 = sha256
             self.packSignature = packSignature
+            self.publisher = publisher; self.sealedCore = sealedCore; self.expects = expects
+            self.frozen = frozen; self.extends = extends
+        }
+
+        /// Whether the archive is sealed for the company. Absent reads as false.
+        public var isSealedCore: Bool { sealedCore == true }
+        /// Whether the publisher has stopped updating it. Absent reads as false.
+        public var isFrozen: Bool { frozen == true }
+    }
+
+    /// Plan LV: the partner a published vault belongs to.
+    public struct Publisher: Codable, Equatable, Sendable {
+        /// The partner's id on the service (`p-…`), a safe identifier.
+        public let id: String
+        /// The trading name the phone shows: "from ⟨name⟩".
+        public let name: String
+        /// The partner's own version number, the one people talk about. `Vault.version` stays the
+        /// per-company number the phone compares.
+        public let version: Int
+
+        public init(id: String, name: String, version: Int) {
+            self.id = id; self.name = name; self.version = version
+        }
+    }
+
+    /// Plan LV: one manual a vault was written against. `revision` is optional: a partner may name
+    /// a manual by title and edition only.
+    public struct ExpectedManual: Codable, Equatable, Sendable {
+        /// Unique within the entry; the key the vault's index rows cite.
+        public let key: String
+        public let title: String
+        public let edition: String?
+        /// Lowercase hex SHA-256 of the plaintext the partner wrote against, when known.
+        public let revision: String?
+
+        public init(key: String, title: String, edition: String? = nil, revision: String? = nil) {
+            self.key = key; self.title = title; self.edition = edition; self.revision = revision
         }
     }
 
@@ -227,6 +286,14 @@ public enum CompanyVaultContract {
             }
             total += Int64(vault.sizeBytes)
         }
+        // Plan LV: a company layer extends a vault in this same catalog, never another layer.
+        let layers = Dictionary(catalog.vaults.compactMap { v in v.extends.map { (v.vaultId, $0) } }, uniquingKeysWith: { a, _ in a })
+        for (layer, base) in layers.sorted(by: { $0.key < $1.key }) {
+            guard vaultIds.contains(base) else {
+                throw refuse("\(layer) extends \(base), which is not a vault in this catalog")
+            }
+            guard layers[base] == nil else { throw refuse("\(layer) extends \(base), which is itself a company layer") }
+        }
         var files = Set<String>()
         for manual in catalog.manuals {
             if let problem = problem(with: manual) { throw refuse(problem) }
@@ -257,6 +324,41 @@ public enum CompanyVaultContract {
         guard isHexDigest(vault.sha256), !vault.packSignature.isEmpty else { return "\(vault.vaultId) has no checksum or signature" }
         guard isDownloadURL(vault.downloadURL) else { return "\(vault.vaultId)'s download address must be HTTPS" }
         if let build = vault.minAppBuild, build < 1 { return "\(vault.vaultId)'s minAppBuild must be positive" }
+        return publishingProblem(with: vault)
+    }
+
+    /// Plan LV: why a vault row's publishing fields cannot be used, or nil. Nil for every v1 row.
+    static func publishingProblem(with vault: Vault) -> String? {
+        if let publisher = vault.publisher {
+            guard ProfileContract.isSafeIdentifier(publisher.id) else { return "\(vault.vaultId)'s publisher id is not a safe identifier" }
+            guard isPrintable(publisher.name, maximum: 200, spaces: true) else { return "\(vault.vaultId)'s publisher needs a name" }
+            guard publisher.version >= 1 else { return "\(vault.vaultId)'s publisher version must be 1 or more" }
+        }
+        if let base = vault.extends {
+            guard vault.publisher == nil else {
+                return "\(vault.vaultId) is a company layer and cannot also name a publisher"
+            }
+            guard ProfileContract.isSafeIdentifier(base), base != vault.vaultId else {
+                return "\(vault.vaultId) must extend another vault"
+            }
+        }
+        if let expects = vault.expects {
+            guard expects.count <= Limits.expectsPerVault else {
+                return "\(vault.vaultId) expects at most \(Limits.expectsPerVault) manuals"
+            }
+            var keys = Set<String>()
+            for expected in expects {
+                guard ProfileContract.isSafeIdentifier(expected.key) else { return "\(expected.key) is not a safe manual key" }
+                guard keys.insert(expected.key).inserted else { return "\(vault.vaultId) expects \(expected.key) twice" }
+                guard isPrintable(expected.title, maximum: 200, spaces: true) else { return "\(expected.key) needs a title" }
+                if let edition = expected.edition, !isPrintable(edition, maximum: 80, spaces: true) {
+                    return "\(expected.key)'s edition is empty or too long"
+                }
+                if let revision = expected.revision, !isHexDigest(revision) {
+                    return "\(expected.key)'s revision is not a lowercase SHA-256"
+                }
+            }
+        }
         return nil
     }
 
@@ -366,9 +468,147 @@ public enum CompanyVaultContract {
         return catalog
     }
 
+    // MARK: - The chunked seal (manuals and, Plan LV, cores)
+
+    /// The one construction both seals use, parameterised by its domain and its magic, so a
+    /// sealed manual and a sealed core share every line of crypto and neither opens as the other.
+    ///
+    /// ```
+    /// key      = HKDF-SHA256(ikm: company secret, salt: none, info: domain), 32 bytes
+    /// sealed   = header ‖ chunk₀ ‖ chunk₁ ‖ … ‖ chunkₙ₋₁
+    /// header   = magic (4 bytes) ‖ 0x01 ‖ chunkSize (UInt32, big-endian; 1 MiB in version 1)
+    /// chunkᵢ   = nonce (12 random bytes) ‖ ciphertext ‖ tag (16 bytes)
+    /// AADᵢ     = UTF-8(domain + "\n" + field₁ + "\n" + … + fieldₖ + "\n") ‖ header ‖ i (UInt64, big-endian)
+    ///            ‖ (0x01 for the last chunk, else 0x00)
+    /// ```
+    struct ChunkedSeal {
+        let domain: String
+        let magic: Data
+
+        static let formatVersion: UInt8 = 1
+        static let chunkSize = 1_048_576
+        static let headerLength = 9
+        static let chunkOverhead = 12 + 16
+
+        typealias Problem = ManualSeal.Problem
+
+        func header(chunkSize: Int = ChunkedSeal.chunkSize) -> Data {
+            var bytes = magic
+            bytes.append(Self.formatVersion)
+            let size = UInt32(chunkSize)
+            bytes.append(contentsOf: [UInt8(size >> 24), UInt8((size >> 16) & 0xFF), UInt8((size >> 8) & 0xFF), UInt8(size & 0xFF)])
+            return bytes
+        }
+
+        func key(_ secret: Data) -> SymmetricKey {
+            HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: secret), info: Data(domain.utf8), outputByteCount: 32)
+        }
+
+        func authenticated(_ fields: [String], header: Data, index: UInt64, isLast: Bool) -> Data {
+            var bytes = Data((domain + "\n" + fields.map { $0 + "\n" }.joined()).utf8)
+            bytes.append(header)
+            for shift in stride(from: 56, through: 0, by: -8) { bytes.append(UInt8((index >> UInt64(shift)) & 0xFF)) }
+            bytes.append(isLast ? 1 : 0)
+            return bytes
+        }
+
+        static func sealedLength(plaintextBytes: Int) -> Int {
+            let chunks = (plaintextBytes + chunkSize - 1) / chunkSize
+            return headerLength + plaintextBytes + chunks * chunkOverhead
+        }
+
+        func seal(_ plaintext: Data, fields: [String], companySecret: Data,
+                  nonce: ((UInt64) throws -> AES.GCM.Nonce)?) throws -> Data {
+            guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
+            guard !plaintext.isEmpty else { throw Problem.empty }
+            let head = header()
+            var output = head
+            let key = key(companySecret)
+            var index: UInt64 = 0
+            var offset = plaintext.startIndex
+            while offset < plaintext.endIndex {
+                let end = plaintext.index(offset, offsetBy: Self.chunkSize, limitedBy: plaintext.endIndex) ?? plaintext.endIndex
+                let isLast = end == plaintext.endIndex
+                let box = try AES.GCM.seal(plaintext[offset..<end], using: key, nonce: try nonce?(index) ?? AES.GCM.Nonce(),
+                                           authenticating: authenticated(fields, header: head, index: index, isLast: isLast))
+                guard let combined = box.combined else { throw Problem.malformed }
+                output.append(combined)
+                offset = end
+                index += 1
+            }
+            return output
+        }
+
+        func open(length: Int, read: (Range<Int>) throws -> Data, fields: [String], companySecret: Data,
+                  sink: (Data) throws -> Void) throws {
+            guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
+            guard length > Self.headerLength + Self.chunkOverhead else { throw Problem.malformed }
+            let head = try read(0..<Self.headerLength)
+            guard head == header() else { throw Problem.malformed }
+            let body = length - Self.headerLength
+            let full = Self.chunkSize + Self.chunkOverhead
+            let chunks = (body + full - 1) / full
+            let lastLength = body - (chunks - 1) * full
+            guard lastLength > Self.chunkOverhead else { throw Problem.malformed }
+            let key = key(companySecret)
+            for index in 0..<chunks {
+                let start = Self.headerLength + index * full
+                let end = index == chunks - 1 ? length : start + full
+                let isLast = index == chunks - 1
+                guard let box = try? AES.GCM.SealedBox(combined: try read(start..<end)),
+                      let plain = try? AES.GCM.open(box, using: key,
+                                                    authenticating: authenticated(fields, header: head, index: UInt64(index), isLast: isLast)) else {
+                    throw Problem.unreadable
+                }
+                try sink(plain)
+            }
+        }
+
+        /// Seal a file to another file one chunk at a time. `fields` receives the plaintext's
+        /// SHA-256 (a manual binds it; a core does not need to).
+        func sealFile(at input: URL, to output: URL, companySecret: Data,
+                      fields: (String) -> [String]) throws -> (revision: String, sizeBytes: Int, sealedSha256: String) {
+            guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
+            guard let reader = try? FileHandle(forReadingFrom: input) else { throw Problem.io }
+            defer { try? reader.close() }
+            var plainHash = SHA256()
+            var size = 0
+            while let chunk = try reader.read(upToCount: Self.chunkSize), !chunk.isEmpty {
+                plainHash.update(data: chunk)
+                size += chunk.count
+            }
+            guard size > 0 else { throw Problem.empty }
+            let revision = plainHash.finalize().map { String(format: "%02x", $0) }.joined()
+            let context = fields(revision)
+            guard FileManager.default.createFile(atPath: output.path, contents: nil),
+                  let writer = try? FileHandle(forWritingTo: output) else { throw Problem.io }
+            defer { try? writer.close() }
+            try reader.seek(toOffset: 0)
+            let head = header()
+            var sealedHash = SHA256()
+            try writer.write(contentsOf: head)
+            sealedHash.update(data: head)
+            let key = key(companySecret)
+            var index: UInt64 = 0
+            var remaining = size
+            while remaining > 0, let chunk = try reader.read(upToCount: Self.chunkSize), !chunk.isEmpty {
+                remaining -= chunk.count
+                let box = try AES.GCM.seal(chunk, using: key,
+                                           authenticating: authenticated(context, header: head, index: index, isLast: remaining == 0))
+                guard let combined = box.combined else { throw Problem.malformed }
+                try writer.write(contentsOf: combined)
+                sealedHash.update(data: combined)
+                index += 1
+            }
+            guard remaining == 0 else { throw Problem.io }
+            return (revision, size, sealedHash.finalize().map { String(format: "%02x", $0) }.joined())
+        }
+    }
+
     // MARK: - The manual seal
 
-    /// A manual's file, sealed for one company's phones.
+    /// A manual's file, sealed for one company's phones: the chunked seal under
+    /// `openglasses.company-manual.v1`, magic `OGCM`.
     ///
     /// ```
     /// key      = HKDF-SHA256(ikm: company secret, salt: none, info: "openglasses.company-manual.v1"), 32 bytes
@@ -388,10 +628,12 @@ public enum CompanyVaultContract {
         /// sealed would stop opening.
         public static let domain = "openglasses.company-manual.v1"
         public static let magic = Data("OGCM".utf8)
-        public static let formatVersion: UInt8 = 1
-        public static let chunkSize = 1_048_576
-        public static let headerLength = 9
-        public static let chunkOverhead = 12 + 16
+        public static let formatVersion: UInt8 = ChunkedSeal.formatVersion
+        public static let chunkSize = ChunkedSeal.chunkSize
+        public static let headerLength = ChunkedSeal.headerLength
+        public static let chunkOverhead = ChunkedSeal.chunkOverhead
+
+        static let construction = ChunkedSeal(domain: domain, magic: magic)
 
         public struct Context: Equatable, Sendable {
             public let profileId: String
@@ -405,6 +647,8 @@ public enum CompanyVaultContract {
             public init(profileId: String, manual: Manual) {
                 self.init(profileId: profileId, vaultId: manual.vaultId, fileName: manual.fileName, revision: manual.revision)
             }
+
+            var fields: [String] { [profileId, vaultId, fileName, revision] }
         }
 
         public enum Problem: Error, Equatable {
@@ -412,31 +656,11 @@ public enum CompanyVaultContract {
         }
 
         public static func header(chunkSize: Int = ManualSeal.chunkSize) -> Data {
-            var bytes = magic
-            bytes.append(formatVersion)
-            let size = UInt32(chunkSize)
-            bytes.append(contentsOf: [UInt8(size >> 24), UInt8((size >> 16) & 0xFF), UInt8((size >> 8) & 0xFF), UInt8(size & 0xFF)])
-            return bytes
-        }
-
-        static func key(_ secret: Data) -> SymmetricKey {
-            HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: secret), info: Data(domain.utf8), outputByteCount: 32)
-        }
-
-        static func authenticated(_ context: Context, header: Data, index: UInt64, isLast: Bool) -> Data {
-            var bytes = Data((domain + "\n" + context.profileId + "\n" + context.vaultId + "\n" + context.fileName
-                              + "\n" + context.revision + "\n").utf8)
-            bytes.append(header)
-            for shift in stride(from: 56, through: 0, by: -8) { bytes.append(UInt8((index >> UInt64(shift)) & 0xFF)) }
-            bytes.append(isLast ? 1 : 0)
-            return bytes
+            construction.header(chunkSize: chunkSize)
         }
 
         /// The sealed file's exact length for `plaintextBytes` (at least 1).
-        public static func sealedLength(plaintextBytes: Int) -> Int {
-            let chunks = (plaintextBytes + chunkSize - 1) / chunkSize
-            return headerLength + plaintextBytes + chunks * chunkOverhead
-        }
+        public static func sealedLength(plaintextBytes: Int) -> Int { ChunkedSeal.sealedLength(plaintextBytes: plaintextBytes) }
 
         /// Lowercase hex SHA-256: a manual's `revision`, or a sealed file's `sealedSha256`.
         public static func digest(_ data: Data) -> String { IssuanceWire.digest(data) }
@@ -447,22 +671,7 @@ public enum CompanyVaultContract {
             guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
             guard !plaintext.isEmpty else { throw Problem.empty }
             guard digest(plaintext) == context.revision else { throw Problem.wrongRevision }
-            let head = header()
-            var output = head
-            let key = key(companySecret)
-            var index: UInt64 = 0
-            var offset = plaintext.startIndex
-            while offset < plaintext.endIndex {
-                let end = plaintext.index(offset, offsetBy: chunkSize, limitedBy: plaintext.endIndex) ?? plaintext.endIndex
-                let isLast = end == plaintext.endIndex
-                let box = try AES.GCM.seal(plaintext[offset..<end], using: key, nonce: try nonce?(index) ?? AES.GCM.Nonce(),
-                                           authenticating: authenticated(context, header: head, index: index, isLast: isLast))
-                guard let combined = box.combined else { throw Problem.malformed }
-                output.append(combined)
-                offset = end
-                index += 1
-            }
-            return output
+            return try construction.seal(plaintext, fields: context.fields, companySecret: companySecret, nonce: nonce)
         }
 
         /// Open bytes already in memory, checking the plaintext against `context.revision`.
@@ -479,67 +688,93 @@ public enum CompanyVaultContract {
         /// until its tag has verified. The caller checks the revision over what `sink` received.
         public static func open(length: Int, read: (Range<Int>) throws -> Data, context: Context, companySecret: Data,
                                 sink: (Data) throws -> Void) throws {
-            guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
-            guard length > headerLength + chunkOverhead else { throw Problem.malformed }
-            let head = try read(0..<headerLength)
-            guard head == header() else { throw Problem.malformed }
-            let body = length - headerLength
-            let full = chunkSize + chunkOverhead
-            let chunks = (body + full - 1) / full
-            let lastLength = body - (chunks - 1) * full
-            guard lastLength > chunkOverhead else { throw Problem.malformed }
-            let key = key(companySecret)
-            for index in 0..<chunks {
-                let start = headerLength + index * full
-                let end = index == chunks - 1 ? length : start + full
-                let isLast = index == chunks - 1
-                guard let box = try? AES.GCM.SealedBox(combined: try read(start..<end)),
-                      let plain = try? AES.GCM.open(box, using: key,
-                                                    authenticating: authenticated(context, header: head, index: UInt64(index), isLast: isLast)) else {
-                    throw Problem.unreadable
-                }
-                try sink(plain)
-            }
+            try construction.open(length: length, read: read, fields: context.fields, companySecret: companySecret, sink: sink)
         }
 
         /// Seal a file on disk to another file, one chunk in memory at a time, and return the
         /// catalog row's `revision`, `sizeBytes` and `sealedSha256`. For the service's uploads.
         public static func sealFile(at input: URL, to output: URL, profileId: String, vaultId: String,
                                     fileName: String, companySecret: Data) throws -> (revision: String, sizeBytes: Int, sealedSha256: String) {
-            guard companySecret.count == ProfileContract.Credential.secretLength else { throw Problem.invalidSecret }
-            guard let reader = try? FileHandle(forReadingFrom: input) else { throw Problem.io }
-            defer { try? reader.close() }
-            var plainHash = SHA256()
-            var size = 0
-            while let chunk = try reader.read(upToCount: chunkSize), !chunk.isEmpty {
-                plainHash.update(data: chunk)
-                size += chunk.count
+            try construction.sealFile(at: input, to: output, companySecret: companySecret) { revision in
+                Context(profileId: profileId, vaultId: vaultId, fileName: fileName, revision: revision).fields
             }
-            guard size > 0 else { throw Problem.empty }
-            let revision = plainHash.finalize().map { String(format: "%02x", $0) }.joined()
-            let context = Context(profileId: profileId, vaultId: vaultId, fileName: fileName, revision: revision)
-            guard FileManager.default.createFile(atPath: output.path, contents: nil),
-                  let writer = try? FileHandle(forWritingTo: output) else { throw Problem.io }
-            defer { try? writer.close() }
-            try reader.seek(toOffset: 0)
-            let head = header()
-            var sealedHash = SHA256()
-            try writer.write(contentsOf: head)
-            sealedHash.update(data: head)
-            let key = key(companySecret)
-            var index: UInt64 = 0
-            var remaining = size
-            while remaining > 0, let chunk = try reader.read(upToCount: chunkSize), !chunk.isEmpty {
-                remaining -= chunk.count
-                let box = try AES.GCM.seal(chunk, using: key,
-                                           authenticating: authenticated(context, header: head, index: index, isLast: remaining == 0))
-                guard let combined = box.combined else { throw Problem.malformed }
-                try writer.write(contentsOf: combined)
-                sealedHash.update(data: combined)
-                index += 1
+        }
+    }
+
+    // MARK: - The core seal (Plan LV)
+
+    /// A vault's core pack, sealed for one company's phones (`Vault.sealedCore`): the chunked seal
+    /// under `openglasses.company-core.v1`, magic `OGCP`.
+    ///
+    /// ```
+    /// key      = HKDF-SHA256(ikm: company secret, salt: none, info: "openglasses.company-core.v1"), 32 bytes
+    /// header   = "OGCP" ‖ 0x01 ‖ chunkSize (UInt32, big-endian; 1 MiB)
+    /// AADᵢ     = UTF-8("openglasses.company-core.v1\n" + profileId + "\n" + vaultId + "\n" + packId + "\n" + version + "\n")
+    ///            ‖ header ‖ i (UInt64, big-endian) ‖ (0x01 for the last chunk, else 0x00)
+    /// ```
+    ///
+    /// The catalog row's `sha256` and `sizeBytes` describe the sealed file; the row's
+    /// `packSignature` is over the plaintext pack and is checked after opening, as for any pack. The
+    /// authenticated context binds the sealed file to one company, vault, pack and version, so it
+    /// cannot be replayed as another version or delivered to another company.
+    public enum CoreSeal {
+        /// **Key-derivation and authentication domain.** Never change it: every core already sealed
+        /// would stop opening.
+        public static let domain = "openglasses.company-core.v1"
+        public static let magic = Data("OGCP".utf8)
+
+        static let construction = ChunkedSeal(domain: domain, magic: magic)
+
+        public typealias Problem = ManualSeal.Problem
+
+        public struct Context: Equatable, Sendable {
+            public let profileId: String
+            public let vaultId: String
+            /// The pack id, `com.openglasses.vault.<…>`.
+            public let packId: String
+            /// The catalog row's (per-company) `version`.
+            public let version: String
+            public init(profileId: String, vaultId: String, packId: String, version: String) {
+                self.profileId = profileId; self.vaultId = vaultId; self.packId = packId; self.version = version
             }
-            guard remaining == 0 else { throw Problem.io }
-            return (revision, size, sealedHash.finalize().map { String(format: "%02x", $0) }.joined())
+            public init(profileId: String, vault: Vault) {
+                self.init(profileId: profileId, vaultId: vault.vaultId, packId: vault.id, version: vault.version)
+            }
+
+            var fields: [String] { [profileId, vaultId, packId, version] }
+        }
+
+        public static func header() -> Data { construction.header() }
+
+        /// The sealed core's exact length for a pack of `plaintextBytes` (at least 1).
+        public static func sealedLength(plaintextBytes: Int) -> Int { ChunkedSeal.sealedLength(plaintextBytes: plaintextBytes) }
+
+        /// Seal a pack already in memory. `nonce` exists for the golden fixtures only; leave it out.
+        public static func seal(_ pack: Data, context: Context, companySecret: Data,
+                                nonce: ((UInt64) throws -> AES.GCM.Nonce)? = nil) throws -> Data {
+            try construction.seal(pack, fields: context.fields, companySecret: companySecret, nonce: nonce)
+        }
+
+        /// Open a sealed core already in memory.
+        public static func open(_ sealed: Data, context: Context, companySecret: Data) throws -> Data {
+            var plain = Data()
+            try open(length: sealed.count, read: { range in sealed.subdata(in: range) }, context: context,
+                     companySecret: companySecret) { plain.append($0) }
+            return plain
+        }
+
+        /// The streaming form: as `ManualSeal.open(length:read:context:companySecret:sink:)`.
+        public static func open(length: Int, read: (Range<Int>) throws -> Data, context: Context, companySecret: Data,
+                                sink: (Data) throws -> Void) throws {
+            try construction.open(length: length, read: read, fields: context.fields, companySecret: companySecret, sink: sink)
+        }
+
+        /// Seal a pack archive on disk to another file and return the catalog row's `sizeBytes` and
+        /// `sha256` (both of the sealed file) and the plaintext pack's SHA-256.
+        public static func sealFile(at input: URL, to output: URL, context: Context,
+                                    companySecret: Data) throws -> (sizeBytes: Int, sha256: String, plaintextSha256: String) {
+            let sealed = try construction.sealFile(at: input, to: output, companySecret: companySecret) { _ in context.fields }
+            return (sealedLength(plaintextBytes: sealed.sizeBytes), sealed.sealedSha256, sealed.revision)
         }
     }
 }

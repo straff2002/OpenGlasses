@@ -1,0 +1,264 @@
+{
+  "cases" : [
+    {
+      "catalog" : {
+        "format" : "openglasses.company-vault-catalog",
+        "generation" : 12,
+        "issued" : "2027-01-15T08:00:00Z",
+        "manuals" : [
+
+        ],
+        "manualsOnAnyNetwork" : false,
+        "profileId" : "fixture-company",
+        "vaults" : [
+          {
+            "author" : "Fixture Publishing",
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-7.sealed",
+            "expects" : [
+              {
+                "edition" : "Rev C",
+                "key" : "install-manual",
+                "revision" : "fef661fa0c62b50e280af3b4b14b0792dc04f9c76e6fd9eae09dea836790554e",
+                "title" : "Installation manual"
+              },
+              {
+                "edition" : "Rev B",
+                "key" : "service-manual",
+                "revision" : "5ffc625cee53a384522cf87dccfc75598d9a66766ef0f1db0229880185256c4f",
+                "title" : "Service manual"
+              },
+              {
+                "edition" : "2024",
+                "key" : "wiring-diagram",
+                "title" : "Wiring diagram"
+              }
+            ],
+            "id" : "com.openglasses.vault.fixture-split-systems",
+            "minAppBuild" : 691,
+            "name" : "Fixture Split Systems",
+            "packSignature" : "uq3Uy4LOCugQs2JWZb3jD4B40fpS3S7Kuhpl1WN6/LwlIT2zOdlkuvQMEnDiAodJcMS1LD8GSHSl3K/Xzf3SBQ==",
+            "publisher" : {
+              "id" : "p-fixture",
+              "name" : "Fixture Publishing",
+              "version" : 5
+            },
+            "sealedCore" : true,
+            "sha256" : "8f84df9f4b6f46b0a61c44fdbd08d8ab26c841bf38a886b20c1bcdb8dc0baa04",
+            "sizeBytes" : 1140,
+            "summary" : "Invented fixture published vault.",
+            "vaultId" : "fixture-split-systems",
+            "version" : "7"
+          },
+          {
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-company-2.zip",
+            "extends" : "fixture-not-listed",
+            "id" : "com.openglasses.vault.fixture-split-systems-company",
+            "name" : "Fixture Company Notes",
+            "packSignature" : "KBlBYMgHcB7qjceQIes0W7FTgTG4TnFxKBsp1Ofv+tZSTIfV8ovoWU1DGRkiZ5zsDibKoOwM+2ISiUP91c5rDg==",
+            "sha256" : "970aed4e9db4fb2a9c2b3cd1d7c18d306d5fa8f479f57f827756564baf539af3",
+            "sizeBytes" : 933,
+            "vaultId" : "fixture-split-systems-company",
+            "version" : "2"
+          }
+        ],
+        "version" : 1
+      },
+      "name" : "extends-missing",
+      "refusal" : "not a vault in this catalog"
+    },
+    {
+      "catalog" : {
+        "format" : "openglasses.company-vault-catalog",
+        "generation" : 12,
+        "issued" : "2027-01-15T08:00:00Z",
+        "manuals" : [
+
+        ],
+        "manualsOnAnyNetwork" : false,
+        "profileId" : "fixture-company",
+        "vaults" : [
+          {
+            "author" : "Fixture Publishing",
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-7.sealed",
+            "expects" : [
+              {
+                "edition" : "Rev C",
+                "key" : "install-manual",
+                "revision" : "fef661fa0c62b50e280af3b4b14b0792dc04f9c76e6fd9eae09dea836790554e",
+                "title" : "Installation manual"
+              },
+              {
+                "edition" : "Rev B",
+                "key" : "service-manual",
+                "revision" : "5ffc625cee53a384522cf87dccfc75598d9a66766ef0f1db0229880185256c4f",
+                "title" : "Service manual"
+              },
+              {
+                "edition" : "2024",
+                "key" : "wiring-diagram",
+                "title" : "Wiring diagram"
+              }
+            ],
+            "id" : "com.openglasses.vault.fixture-split-systems",
+            "minAppBuild" : 691,
+            "name" : "Fixture Split Systems",
+            "packSignature" : "uq3Uy4LOCugQs2JWZb3jD4B40fpS3S7Kuhpl1WN6/LwlIT2zOdlkuvQMEnDiAodJcMS1LD8GSHSl3K/Xzf3SBQ==",
+            "publisher" : {
+              "id" : "p-fixture",
+              "name" : "Fixture Publishing",
+              "version" : 5
+            },
+            "sealedCore" : true,
+            "sha256" : "8f84df9f4b6f46b0a61c44fdbd08d8ab26c841bf38a886b20c1bcdb8dc0baa04",
+            "sizeBytes" : 1140,
+            "summary" : "Invented fixture published vault.",
+            "vaultId" : "fixture-split-systems",
+            "version" : "7"
+          },
+          {
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-company-2.zip",
+            "extends" : "fixture-split-systems",
+            "id" : "com.openglasses.vault.fixture-split-systems-company",
+            "name" : "Fixture Company Notes",
+            "packSignature" : "KBlBYMgHcB7qjceQIes0W7FTgTG4TnFxKBsp1Ofv+tZSTIfV8ovoWU1DGRkiZ5zsDibKoOwM+2ISiUP91c5rDg==",
+            "publisher" : {
+              "id" : "p-fixture",
+              "name" : "Fixture Publishing",
+              "version" : 5
+            },
+            "sha256" : "970aed4e9db4fb2a9c2b3cd1d7c18d306d5fa8f479f57f827756564baf539af3",
+            "sizeBytes" : 933,
+            "vaultId" : "fixture-split-systems-company",
+            "version" : "2"
+          }
+        ],
+        "version" : 1
+      },
+      "name" : "extends-with-publisher",
+      "refusal" : "cannot also name a publisher"
+    },
+    {
+      "catalog" : {
+        "format" : "openglasses.company-vault-catalog",
+        "generation" : 12,
+        "issued" : "2027-01-15T08:00:00Z",
+        "manuals" : [
+
+        ],
+        "manualsOnAnyNetwork" : false,
+        "profileId" : "fixture-company",
+        "vaults" : [
+          {
+            "author" : "Fixture Publishing",
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-7.sealed",
+            "expects" : [
+              {
+                "edition" : "Rev C",
+                "key" : "install-manual",
+                "revision" : "fef661fa0c62b50e280af3b4b14b0792dc04f9c76e6fd9eae09dea836790554e",
+                "title" : "Installation manual"
+              },
+              {
+                "edition" : "Rev B",
+                "key" : "service-manual",
+                "revision" : "5ffc625cee53a384522cf87dccfc75598d9a66766ef0f1db0229880185256c4f",
+                "title" : "Service manual"
+              },
+              {
+                "edition" : "2024",
+                "key" : "wiring-diagram",
+                "title" : "Wiring diagram"
+              }
+            ],
+            "id" : "com.openglasses.vault.fixture-split-systems",
+            "minAppBuild" : 691,
+            "name" : "Fixture Split Systems",
+            "packSignature" : "uq3Uy4LOCugQs2JWZb3jD4B40fpS3S7Kuhpl1WN6/LwlIT2zOdlkuvQMEnDiAodJcMS1LD8GSHSl3K/Xzf3SBQ==",
+            "publisher" : {
+              "id" : "p-fixture",
+              "name" : "Fixture Publishing",
+              "version" : 5
+            },
+            "sealedCore" : true,
+            "sha256" : "8f84df9f4b6f46b0a61c44fdbd08d8ab26c841bf38a886b20c1bcdb8dc0baa04",
+            "sizeBytes" : 1140,
+            "summary" : "Invented fixture published vault.",
+            "vaultId" : "fixture-split-systems",
+            "version" : "7"
+          },
+          {
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-company-2.zip",
+            "extends" : "fixture-split-systems",
+            "id" : "com.openglasses.vault.fixture-split-systems-company",
+            "name" : "Fixture Company Notes",
+            "packSignature" : "KBlBYMgHcB7qjceQIes0W7FTgTG4TnFxKBsp1Ofv+tZSTIfV8ovoWU1DGRkiZ5zsDibKoOwM+2ISiUP91c5rDg==",
+            "sha256" : "970aed4e9db4fb2a9c2b3cd1d7c18d306d5fa8f479f57f827756564baf539af3",
+            "sizeBytes" : 933,
+            "vaultId" : "fixture-split-systems-company",
+            "version" : "2"
+          },
+          {
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-layer-two-2.zip",
+            "extends" : "fixture-split-systems-company",
+            "id" : "com.openglasses.vault.fixture-layer-two",
+            "name" : "Fixture Company Notes",
+            "packSignature" : "KBlBYMgHcB7qjceQIes0W7FTgTG4TnFxKBsp1Ofv+tZSTIfV8ovoWU1DGRkiZ5zsDibKoOwM+2ISiUP91c5rDg==",
+            "sha256" : "970aed4e9db4fb2a9c2b3cd1d7c18d306d5fa8f479f57f827756564baf539af3",
+            "sizeBytes" : 933,
+            "vaultId" : "fixture-layer-two",
+            "version" : "2"
+          }
+        ],
+        "version" : 1
+      },
+      "name" : "extends-a-layer",
+      "refusal" : "itself a company layer"
+    },
+    {
+      "catalog" : {
+        "format" : "openglasses.company-vault-catalog",
+        "generation" : 12,
+        "issued" : "2027-01-15T08:00:00Z",
+        "manuals" : [
+
+        ],
+        "manualsOnAnyNetwork" : false,
+        "profileId" : "fixture-company",
+        "vaults" : [
+          {
+            "downloadURL" : "https://licence.example.test/c/opaque/v/fixture-split-systems-7.sealed",
+            "expects" : [
+              {
+                "edition" : "Rev C",
+                "key" : "install-manual",
+                "revision" : "fef661fa0c62b50e280af3b4b14b0792dc04f9c76e6fd9eae09dea836790554e",
+                "title" : "Installation manual"
+              },
+              {
+                "edition" : "Rev D",
+                "key" : "install-manual",
+                "title" : "Installation manual"
+              }
+            ],
+            "id" : "com.openglasses.vault.fixture-split-systems",
+            "name" : "Fixture Split Systems",
+            "packSignature" : "uq3Uy4LOCugQs2JWZb3jD4B40fpS3S7Kuhpl1WN6/LwlIT2zOdlkuvQMEnDiAodJcMS1LD8GSHSl3K/Xzf3SBQ==",
+            "publisher" : {
+              "id" : "p-fixture",
+              "name" : "Fixture Publishing",
+              "version" : 5
+            },
+            "sealedCore" : true,
+            "sha256" : "8f84df9f4b6f46b0a61c44fdbd08d8ab26c841bf38a886b20c1bcdb8dc0baa04",
+            "sizeBytes" : 1140,
+            "vaultId" : "fixture-split-systems",
+            "version" : "7"
+          }
+        ],
+        "version" : 1
+      },
+      "name" : "expects-key-twice",
+      "refusal" : "twice"
+    }
+  ]
+}

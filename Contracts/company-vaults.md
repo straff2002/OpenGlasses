@@ -1,11 +1,12 @@
-# Company vaults and manuals — contract v1
+# Company vaults and manuals — contract v1, with the v2 published-vault fields
 
 The licence service publishes, for one company, the vaults it has and the manuals in them; every
 phone enrolled in that company installs them and picks up each new version by itself. This is the
 contract the phone reads. The reference implementation is
 `Tools/LicenceIssuance/Sources/LicenceIssuance/CompanyVaults.swift` (`CompanyVaultContract`), the
 phone restates it (`CompanyVaultCatalog`, `CompanyManualSeal`), and both sides' tests read the
-golden fixtures in `fixtures/company-vaults-v1/`. Invented content only; the fixture keys are
+golden fixtures in `fixtures/company-vaults-v1/` and, for the published-vault fields of §6 (Plan LV),
+`fixtures/company-vaults-v2/`. Invented content only; the fixture keys are
 SHA-256 of the public labels in `fixture-keys.json` and have no authority anywhere.
 
 ## 1. The profile's pointer
@@ -109,6 +110,61 @@ installed on the phone, at most 16, and only when the request still fits in
 `SeatPolicy.fleetVersions` counts held seats by version for the portal. It is disclosed in the
 privacy manifest and the in-app copy.
 
+## 6. Published vaults and company layers (Plan LV, additive)
+
+A vault row may carry five more fields. Each is optional and absent from the JSON when unset, so a
+row without them is the bytes of a v1 row and behaves exactly as one; the catalog stays
+`version: 1`. The service raises the row's (or the pointer's) `minAppBuild` to the first build that
+reads them, so an older build never receives a row it cannot open.
+
+```json
+{
+  "id": "com.openglasses.vault.fixture-split-systems", "vaultId": "fixture-split-systems", "version": "7", "…": "…",
+  "publisher": { "id": "p-fixture", "name": "Fixture Publishing", "version": 5 },
+  "sealedCore": true,
+  "expects": [ { "key": "install-manual", "title": "Installation manual", "edition": "Rev C",
+                 "revision": "<sha256 of the plaintext>" } ],
+  "frozen": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `publisher` | `{id, name, version}`: the partner whose vault this is. `id` a safe identifier, `name` 1–200 printable characters, `version` (the partner's own number, the one people talk about) 1 or more. `version` on the row stays the per-company number the phone compares. |
+| `sealedCore` | True: the archive is the pack sealed for this company (§7). `sizeBytes` and `sha256` are the **sealed** file's; `packSignature` is over the plaintext pack, checked after opening. Absent or false: a plain pack. Any company vault row may be sealed, published or not. |
+| `expects` | The manuals the vault was written against: `{key, title, edition?, revision?}`, at most 500. `key` a safe identifier, unique in the row (the key the vault's index rows cite); `title` 1–200 printable characters; `edition` 1–80 if present; `revision` lowercase hex SHA-256 of the plaintext if known. |
+| `frozen` | True: the publisher has ended. The phone keeps the version it has, compares no versions for the row and never updates it; it still installs it on a phone that has none, and the company removes it in the portal when it wants to. |
+| `extends` | A **company layer**: the `vaultId` of another row in the same catalog that this one adds files and prompt rules to. It must name a row that is present and is not itself a layer, never itself, and a layer never carries `publisher`. |
+
+`CompanyVaultContract.check` refuses a catalog that breaks any of these (`publishingProblem(with:)`
+for one row; the `extends` rules across rows); the phone leaves out a row that breaks them and names
+it on that vault's row.
+
+**The company layer is add-only** (decision 4). Its pack is an EG pack whose `files` must not name a
+file the vault it extends already lists (compared case-insensitively, after any leading `./`), and
+which carries no documents and no site documents: `VaultPackRules.layerIssues(_:baseFiles:)`, the
+same code on both sides. The phone reads publisher baseline → company layer → technician overlay, the
+overlay winning; a layer that would replace a publisher file is refused, never applied.
+
+## 7. The sealed core (Plan LV)
+
+`CompanyVaultContract.CoreSeal`: the construction of §3 in every byte (both seals are one
+`ChunkedSeal`, parameterised by domain and magic), under its own domain and magic:
+
+```
+key     = HKDF-SHA256(ikm: company secret, salt: none, info: "openglasses.company-core.v1"), 32 bytes
+header  = "OGCP" ‖ 0x01 ‖ 0x00100000
+AADᵢ    = "openglasses.company-core.v1\n" + profileId + "\n" + vaultId + "\n" + packId + "\n" + version + "\n"
+          ‖ header ‖ i (UInt64 big-endian) ‖ (0x01 last chunk, else 0x00)
+```
+
+`packId` and `version` are the row's `id` and `version`, so a sealed core cannot be moved to another
+company, vault, pack or version. A pack of n bytes seals to `sealedLength(plaintextBytes: n)`. Use
+`CoreSeal.sealFile(at:to:context:companySecret:)` for uploads: it returns the row's `sizeBytes` and
+`sha256` (the sealed file's) and the plaintext pack's digest. The phone (`CompanyCoreSeal`) checks the
+sealed length and `sha256`, opens each chunk, and hands the plaintext pack to the installer, which
+checks `packSignature` as for any pack.
+
 ## Fixtures
 
 `fixtures/company-vaults-v1/`: `fixture-keys.json` (labels and the pack-catalog public key),
@@ -117,3 +173,16 @@ privacy manifest and the in-app copy.
 `seat-renew-v1.json`. Regenerate with `REGENERATE_COMPANY_VAULT_FIXTURES=1 swift test --package-path
 Tools/LicenceIssuance --filter CompanyVaultTests/testRegenerateFixtures`; the catalog's signature
 changes on every run (randomised Ed25519), the sealed manual does not.
+
+`fixtures/company-vaults-v2/` (Plan LV): `fixture-keys.json` (adds a second company,
+`fixture-other-company`, and its secret's label), `catalog-v12.json` (generation 12: the published
+vault `fixture-split-systems`, sealed, with `publisher` and three `expects` — one matched, one at a
+different revision, one missing — and its plain company layer `fixture-split-systems-company`),
+`catalog-frozen-v13.json` (the same, `frozen`), `fixture-split-systems-7.zip` and its `.sealed`,
+`fixture-split-systems-company-2.zip`, two sealed manuals, `layer-collides-manifest.json` (a layer
+that would replace a publisher file), and `negative-catalogs.json` (unsigned payloads the service
+refuses: `extends` naming a vault not in the catalog, `extends` with `publisher`, `extends` naming a
+layer, an `expects` key twice — each with the words of its refusal). Regenerate with
+`REGENERATE_COMPANY_VAULT_V2_FIXTURES=1 swift test --package-path Tools/LicenceIssuance --filter
+CompanyVaultV2Tests/testRegenerateV2Fixtures`; the sealed files and packs regenerate to the same
+bytes, the catalogs' signatures do not.

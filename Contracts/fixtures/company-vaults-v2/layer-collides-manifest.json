@@ -1,0 +1,1 @@
+{"documents":[],"files":["fault_codes.md","site_notes.md"],"gating":{"iap":"com.openglasses.vault.fixture-split-systems-company"},"id":"fixture-split-systems-company","name":"Fixture Company Notes","prompt_rules":["Never fabricate a value.","Cite the source file for every claim."],"version":"3"}

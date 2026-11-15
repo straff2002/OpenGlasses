@@ -118,4 +118,34 @@ public enum VaultPackRules {
         if manifest.hasSites { issues.append("a pack must not carry site documents; sites belong in a customer's own vault") }
         return issues
     }
+
+    // MARK: - Company layers (Plan LV)
+
+    /// A vault-relative path as the phone finds a file: without any leading `./`, case-insensitive,
+    /// so two spellings of one file on a case-insensitive volume count as one file.
+    public static func layerFileKey(_ path: String) -> String {
+        var trimmed = path
+        while trimmed.hasPrefix("./") { trimmed.removeFirst(2) }
+        return trimmed.lowercased()
+    }
+
+    /// The files a company layer lists that the vault it extends also lists, in the layer's order.
+    /// A layer may add files and prompt rules, never replace one of the publisher's files (Plan LV
+    /// decision 4), so any file here refuses the layer.
+    public static func layerCollisions(baseFiles: [String], layerFiles: [String]) -> [String] {
+        let base = Set(baseFiles.map(layerFileKey))
+        return layerFiles.filter { base.contains(layerFileKey($0)) }
+    }
+
+    /// What makes `layer` unfit to extend a vault whose core files are `baseFiles`: a file the base
+    /// already has, and the documents and site documents a pack never carries. For the service to
+    /// run on an uploaded layer, and the phone again before it installs one.
+    public static func layerIssues(_ layer: Manifest, baseFiles: [String]) -> [String] {
+        var issues = layerCollisions(baseFiles: baseFiles, layerFiles: layer.files).map {
+            "a company layer may add files, not replace the vault's own: \($0)"
+        }
+        if layer.documentCount != 0 { issues.append("a company layer must not ship documents; manuals arrive on their own rows") }
+        if layer.hasSites { issues.append("a company layer must not carry site documents") }
+        return issues
+    }
 }
