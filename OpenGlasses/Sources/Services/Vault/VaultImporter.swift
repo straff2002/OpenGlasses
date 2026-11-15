@@ -559,6 +559,8 @@ enum VaultImporter {
     static func uninstall(id: String) {
         let fm = FileManager.default
         try? fm.removeItem(at: baselineDirectory(for: id))
+        // Plan LV: a company layer goes with the vault it extends.
+        try? fm.removeItem(at: VaultCompanyLayer.directory(baseId: id))
         try? fm.removeItem(at: overlayDirectory(for: id))
         try? fm.removeItem(at: registryDirectory.appendingPathComponent("\(id).json"))
     }

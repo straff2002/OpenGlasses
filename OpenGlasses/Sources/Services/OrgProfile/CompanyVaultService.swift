@@ -35,11 +35,20 @@ protocol CompanyVaultInstalling: AnyObject {
     /// The pack id and version installed for `vaultId`, or nil.
     func installedPack(vaultId: String) -> CompanyVaultPlan.InstalledVault?
     /// Install or update a vault's core files, keeping every manual it holds. Nil, or why it failed.
+    /// For a sealed core (Plan LV) `fetch` returns the pack already opened, so the archive checksum,
+    /// which describes the sealed file, is not checked again; the pack signature still is. A
+    /// company layer installs as its own baseline beside the vault it extends.
     func install(_ vault: CompanyVaultCatalog.Vault, fetch: @escaping (URL) async throws -> Data,
                  publicKeyBase64: String, currentBuild: Int) async -> String?
     /// Take manuals out of a vault and put opened ones in, then index what changed.
     func applyManuals(vaultId: String, adding: [StagedCompanyManual], removing: Set<String>) async throws
     func uninstall(vaultId: String) async
+    /// The manuals an installed vault holds (Plan LV: a published vault's checklist).
+    func documents(vaultId: String) -> [VaultDocument]
+}
+
+extension CompanyVaultInstalling {
+    func documents(vaultId: String) -> [VaultDocument] { [] }
 }
 
 /// Plan LR P1 — the company vault pass: fetch and verify the company's vault list, plan, and carry
@@ -110,7 +119,29 @@ final class CompanyVaultService: ObservableObject {
         let manager = seams.manager()
         guard let profile = manager.profile, profile.companyVaults != nil, let record = manager.record,
               let state = record.companyVaults else { return [] }
-        return CompanyVaultRow.rows(state: state, catalog: verifiedCatalog(state, profile: profile))
+        let installer = seams.vaults()
+        return CompanyVaultRow.rows(state: state, catalog: verifiedCatalog(state, profile: profile),
+                                    documents: { installer.documents(vaultId: $0) })
+    }
+
+    /// Plan LV: what an answer from `store` carries when it is a published vault: whose files it
+    /// draws on, and a line for a cited page in a manual held at another revision or an expected
+    /// manual the phone doesn't hold. Nil for every other vault. Beside the "still downloading"
+    /// note, in the same place in the prompt.
+    func answerNote(for store: VaultStore) -> String? {
+        let manager = seams.manager()
+        let vaultId = store.manifest.id
+        guard let profile = manager.profile, let state = manager.record?.companyVaults,
+              let installed = state.vaults[vaultId], installed.extends == nil else { return nil }
+        let listed = verifiedCatalog(state, profile: profile)?.vault(vaultId)
+        let publisher = installed.publisherName ?? listed?.publisher?.name
+        let expects = listed?.expects ?? []
+        guard publisher != nil || !expects.isEmpty else { return nil }
+        let files = store.readAll()
+        return PublishedVaultAnswerNote.promptNote(
+            publisher: publisher,
+            publisherFiles: store.manifest.files.filter { store.baseLayer(of: $0) == .publisher },
+            expects: expects, documents: store.manifest.documents, files: files)
     }
 
     /// The whole-list problem, when there is one.
@@ -201,7 +232,10 @@ final class CompanyVaultService: ObservableObject {
         state.catalog = envelope
         state.highWater = max(state.highWater ?? 0, catalog.generation)
         state.failures[CompanyVaultState.catalogFailureKey] = nil
-        if moved || catalog.generation > verifiedBefore { state.removedNames = [] }
+        if moved || catalog.generation > verifiedBefore {
+            state.removedNames = []
+            state.removedPublished = []
+        }
 
         let installer = seams.vaults()
         // What is recorded must still be on the phone: a vault deleted by hand is installed again.
@@ -238,28 +272,52 @@ final class CompanyVaultService: ObservableObject {
             case .notEnoughSpace(let vaultId, let shortfall):
                 state.waits[vaultId] = .space(shortfall: shortfall)
             case .remove(let vaultId):
-                let name = state.vaults[vaultId]?.name ?? vaultId
+                let removed = state.vaults[vaultId]
+                let name = removed?.name ?? vaultId
                 await installer.uninstall(vaultId: vaultId)
                 state.vaults[vaultId] = nil
                 state.manuals[vaultId] = nil
                 state.downloading[vaultId] = nil
-                state.removedNames.append(name)
+                if let publisher = removed?.publisherName {
+                    // Plan LV: a published vault leaves because its partner took it off.
+                    state.removedPublished.append(.init(name: name, publisher: publisher))
+                } else if let base = removed?.extends, catalog.vault(base) == nil {
+                    // A layer that leaves with its vault is said with it.
+                } else {
+                    state.removedNames.append(name)
+                }
             case .install(let vault), .update(let vault, _):
                 let staging = seams.staging()
                 let download = seams.download
-                let fetch: (URL) async throws -> Data = { url in
-                    let staged = try await download(url, vault.sizeBytes, staging)
-                    defer { staging.remove(staged) }
-                    // Mapped, then unlinked: the mapping outlives the file, and the pack is never
-                    // held twice in memory.
-                    return try staging.load(staged)
+                let fetch: (URL) async throws -> Data
+                if vault.isSealedCore {
+                    // Plan LV: the core is sealed for this company. Opened here, before the
+                    // installer sees it; a core that won't open is named on its row.
+                    let pack: Data
+                    do {
+                        pack = try await openSealedCore(vault, profileId: profile.profileId, staging: staging)
+                    } catch {
+                        state.failures[vault.vaultId] = Self.reason(error, vault: vault)
+                        save()
+                        continue
+                    }
+                    fetch = { _ in pack }
+                } else {
+                    fetch = { url in
+                        let staged = try await download(url, vault.sizeBytes, staging)
+                        defer { staging.remove(staged) }
+                        // Mapped, then unlinked: the mapping outlives the file, and the pack is never
+                        // held twice in memory.
+                        return try staging.load(staged)
+                    }
                 }
                 if let failure = await installer.install(vault, fetch: fetch, publicKeyBase64: seams.publicKeyBase64,
                                                          currentBuild: build) {
                     state.failures[vault.vaultId] = String(localized: "Couldn't install \(vault.name): \(failure).")
                 } else {
                     state.vaults[vault.vaultId] = .init(packId: vault.id, name: vault.name, version: vault.version,
-                                                        updatedAt: seams.now())
+                                                        updatedAt: seams.now(), publisherName: vault.publisher?.name,
+                                                        publisherVersion: vault.publisher?.version, extends: vault.extends)
                 }
             case .addManual(let manual), .replaceManual(let manual, _):
                 if manualWork[manual.vaultId] == nil { manualOrder.append(manual.vaultId) }
@@ -322,6 +380,58 @@ final class CompanyVaultService: ObservableObject {
         }
     }
 
+    /// Plan LV — a sealed core: the row's length, a length a pack can seal to, `sha256` of the sealed
+    /// file, then opened with the company secret for this company, vault, pack and version. The
+    /// pack comes back mapped from protected staging; its signature is the installer's to check.
+    private func openSealedCore(_ vault: CompanyVaultCatalog.Vault, profileId: String,
+                                staging: VaultLinkStagingStore) async throws -> Data {
+        guard let url = CompanyVaultCatalog.downloadURL(vault.downloadURL),
+              let packBytes = CompanyCoreSeal.plaintextLength(sealedBytes: vault.sizeBytes) else {
+            throw CompanyCoreSeal.Failure.malformed
+        }
+        guard let secret = seams.companySecret(), secret.count == OrgCredentialSeal.secretLength else {
+            throw CompanyCoreSeal.Failure.noSecret
+        }
+        let sealed = try await seams.download(url, vault.sizeBytes, staging)
+        defer { staging.remove(sealed) }
+        let size = (try? FileManager.default.attributesOfItem(atPath: sealed.fileURL.path)[.size] as? NSNumber)?.intValue
+        guard size == vault.sizeBytes else { throw CompanyCoreSeal.Failure.malformed }
+        guard try CompanyManualSeal.fileDigest(sealed.fileURL) == vault.sha256.lowercased() else {
+            throw CompanyCoreSeal.Failure.wrongRevision
+        }
+        let plain = try staging.create()
+        defer { staging.remove(plain) }
+        let handle = try FileHandle(forReadingFrom: sealed.fileURL)
+        defer { try? handle.close() }
+        let opened = try CompanyCoreSeal.open(
+            length: vault.sizeBytes,
+            read: { range in
+                try handle.seek(toOffset: UInt64(range.lowerBound))
+                return try handle.read(upToCount: range.count) ?? Data()
+            },
+            context: .init(profileId: profileId, vault: vault), companySecret: secret,
+            sink: { try staging.append($0, to: plain) })
+        guard opened.bytes == packBytes else { throw CompanyCoreSeal.Failure.malformed }
+        // Mapped, then unlinked: the mapping outlives the file.
+        return try staging.load(plain)
+    }
+
+    /// Why a sealed core did not open, in words for its vault's row (Plan LV).
+    static func reason(_ error: Error, vault: CompanyVaultCatalog.Vault) -> String {
+        switch error {
+        case CompanyCoreSeal.Failure.tampered:
+            return String(localized: "\(vault.name) couldn't be opened with your company's key, so it was refused.")
+        case CompanyCoreSeal.Failure.wrongRevision:
+            return String(localized: "\(vault.name) doesn't match your organisation's vault list, so it was refused.")
+        case CompanyCoreSeal.Failure.noSecret:
+            return String(localized: "\(vault.name) can't be opened on this phone. Enter your company's activation key again.")
+        case CompanyCoreSeal.Failure.malformed, VaultLinkStagingError.tooLarge:
+            return String(localized: "\(vault.name) didn't arrive whole. It tries again when the app opens.")
+        default:
+            return String(localized: "Couldn't download \(vault.name). It tries again when the app opens.")
+        }
+    }
+
     /// One manual: download → `sealedSha256` → open with the company secret → `revision`.
     private func stage(_ manual: CompanyVaultCatalog.Manual, profileId: String, secret: Data,
                        staging: VaultLinkStagingStore) async throws -> StagedCompanyManual {
@@ -368,9 +478,15 @@ final class CompanyVaultService: ObservableObject {
 
     private func verifiedCatalog(_ state: CompanyVaultState, profile: ConfigProfile) -> CompanyVaultCatalog.Verified? {
         guard let envelope = state.catalog else { return nil }
-        return try? CompanyVaultCatalog.verify(envelope, publicKeyBase64: seams.publicKeyBase64, profileId: profile.profileId,
-                                               highWater: nil, profileGeneration: 0).get()
+        // Verified again before each use, once per envelope: an answer reads it on every turn.
+        if let memo = verifiedMemo, memo.envelope == envelope, memo.profileId == profile.profileId,
+           memo.key == seams.publicKeyBase64 { return memo.verified }
+        let verified = try? CompanyVaultCatalog.verify(envelope, publicKeyBase64: seams.publicKeyBase64, profileId: profile.profileId,
+                                                       highWater: nil, profileGeneration: 0).get()
+        verifiedMemo = (envelope, profile.profileId, seams.publicKeyBase64, verified)
+        return verified
     }
+    private var verifiedMemo: (envelope: Data, profileId: String, key: String, verified: CompanyVaultCatalog.Verified?)?
 
     /// Why one manual did not arrive, in words for its vault's row.
     static func reason(_ error: Error, manual: CompanyVaultCatalog.Manual) -> String {
@@ -457,19 +573,43 @@ final class LiveCompanyVaultInstaller: CompanyVaultInstalling {
     static let shared = LiveCompanyVaultInstaller()
 
     func installedPack(vaultId: String) -> CompanyVaultPlan.InstalledVault? {
-        VaultImporter.installedPack(for: vaultId).map { .init(packId: $0.id, version: $0.version) }
+        if let pack = VaultImporter.installedPack(for: vaultId) { return .init(packId: pack.id, version: pack.version) }
+        // Plan LV: a company layer lives beside the vault it extends.
+        return VaultCompanyLayer.installed(vaultId: vaultId).map {
+            .init(packId: $0.pack.id, version: $0.pack.version, extends: $0.baseId)
+        }
     }
 
     func install(_ vault: CompanyVaultCatalog.Vault, fetch: @escaping (URL) async throws -> Data,
                  publicKeyBase64: String, currentBuild: Int) async -> String? {
+        if let base = vault.extends {
+            guard let url = URL(string: vault.downloadURL) else { return "bad download URL" }
+            let zip: Data
+            do { zip = try await fetch(url) } catch {
+                return "download failed: \(error.localizedDescription)"
+            }
+            // A sealed layer arrives opened; a plain one is checked against its row.
+            guard vault.isSealedCore || VaultPackArchive.sha256Hex(zip) == vault.sha256.lowercased() else {
+                return "download doesn't match the catalog's checksum"
+            }
+            return await VaultOperationLock.withLock(base) {
+                VaultCompanyLayer.install(zipData: zip, vault: vault, baseId: base, publicKeyBase64: publicKeyBase64,
+                                          currentBuild: currentBuild)
+            }
+        }
         let service = VaultPackCatalogService(catalogURL: { nil }, fetch: fetch, publicKeyBase64: publicKeyBase64,
                                               currentBuild: currentBuild)
-        await service.install(vault.entry, keeping: VaultDocumentCarry.current(vaultId: vault.vaultId))
+        await service.install(vault.entry, keeping: VaultDocumentCarry.current(vaultId: vault.vaultId),
+                              checksArchive: !vault.isSealedCore)
         switch service.installStates[vault.id] {
         case .installed?: return nil
         case .failed(let reason)?: return reason
         default: return String(localized: "it did not finish installing")
         }
+    }
+
+    func documents(vaultId: String) -> [VaultDocument] {
+        VaultImporter.installedManifest(id: vaultId)?.documents ?? []
     }
 
     func applyManuals(vaultId: String, adding: [StagedCompanyManual], removing: Set<String>) async throws {
@@ -485,7 +625,10 @@ final class LiveCompanyVaultInstaller: CompanyVaultInstalling {
         }
         for item in adding {
             let manual = item.manual
-            let document = VaultDocument(file: manual.fileName, title: manual.title, kind: "company_manual")
+            // Plan LV: the company's copy, with the revision its row names, so a published vault's
+            // checklist can tell it from the technician's own and compare it with what is expected.
+            let document = VaultDocument(file: manual.fileName, title: manual.title, kind: "company_manual",
+                                         revision: manual.revision, origin: .company)
             switch manual.kind {
             case .pdf, .md:
                 kept.append(.init(document: document, files: [manual.fileName: item.file]))
@@ -498,7 +641,8 @@ final class LiveCompanyVaultInstaller: CompanyVaultInstalling {
                 prepared.append(copy)
                 let reading = manual.fileName + ".reading.pdf"
                 kept.append(.init(document: VaultDocument(file: manual.fileName, title: manual.title, kind: "company_manual",
-                                                          source: reading, personalReadingCopy: true),
+                                                          source: reading, personalReadingCopy: true,
+                                                          revision: manual.revision, origin: .company),
                                   files: [manual.fileName: copy.original, reading: copy.readingPDF]))
             }
         }
@@ -511,6 +655,11 @@ final class LiveCompanyVaultInstaller: CompanyVaultInstalling {
     }
 
     func uninstall(vaultId: String) async {
+        if let layer = VaultCompanyLayer.installed(vaultId: vaultId) {
+            // Plan LV: a company layer leaves; the vault it extends and the technician's edits stay.
+            await VaultOperationLock.withLock(layer.baseId) { VaultCompanyLayer.remove(baseId: layer.baseId) }
+            return
+        }
         if let store = AppStateProvider.shared?.documentStore {
             await VaultImporter.uninstall(id: vaultId, documentStore: store)
         } else {
