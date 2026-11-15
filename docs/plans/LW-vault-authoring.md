@@ -1,6 +1,8 @@
 # Plan LW — Vault Authoring (build a vault from your manuals on the phone, and get help with the hard parts)
 
-**Status:** 📝 Drafted 2026-11-15, nothing implemented. Six [decisions](#decisions-for-greig) open.
+**Status:** 📝 Drafted 2026-11-15. [Decisions](#decisions-for-greig) taken 2026-11-16: 1, 3, 4 and 5 as
+recommended; 2 replaced by the owner's own call (bring your own model by copy and paste, §4a); 6 investigated
+(the gap is unreachable in production, see the decision). Nothing implemented.
 **Track:** Field Assist — your own vaults. Custom Vaults, manual import, the vault editor, export.
 **Builds on:**
 - Plan [JK](JK-my-manuals.md) / My Manuals: `ManualFileUpload`, the upload sheet (PDF, Word, Markdown, a publisher
@@ -42,6 +44,9 @@ written by hand today:
   later). The vault exists and works from the first manual added: manual retrieval answers from the manuals
   alone.
 - They add manuals the way My Manuals does: a file, a publisher link or photographed pages.
+- For the three layers they can also **bring their own model**: the app gives a prompt kit for the layer and
+  trade, they run it in whatever model they use with their own copy of the manual, and paste the answer back.
+  The phone reads the answer and checks every row against the manual before it can be kept (§4a).
 - When a manual finishes indexing, the phone proposes work for the three layers, one card at a time:
   *"Found 3 fault-code tables on pages 41–44. Add 38 codes?"*, *"This manual names 4 models. Add them to the
   map?"*, *"Found a troubleshooting chart on page 60. Draft 12 symptoms?"*. Each card is **Keep / Edit /
@@ -145,8 +150,55 @@ review screen does, on *Keep*.
 - **The review screen:** one card per proposal, grouped by manual, with **Keep / Edit / Skip** and the page shown
   beside each row. *Keep all* exists per card, never per vault.
 
-Drafting with a language model is off by default ([decision 2](#decisions-for-greig)). The builders above are
-deterministic and on the phone.
+The builders above are deterministic and on the phone. The app never drafts with a language model of its own
+([decision 2](#decisions-for-greig)); an author who wants one brings it, by copy and paste (§4a). Proposals and
+pasted rows are the same row types, so the review screen and the check below are shared.
+
+### 4a · Paste and check (bring your own model)
+
+Avenkin provides no model and pays for none. An author who wants a model's help uses their own:
+
+1. **The prompt kit.** For each layer (fault codes, model map, symptoms) and trade template, the app shows a
+   prompt the author copies (`PromptKit`). It says what to read (the author's own copy of the manual, attached
+   in their model), what to leave out (anything the manual doesn't say; codes or models not printed in it),
+   to write labels in a few words of their own rather than the manual's sentences, and the **exact return
+   format**, one row per line:
+   - fault codes: `code | what it means | page`;
+   - model map: `model | other spellings, comma-separated, or - | page`;
+   - symptoms: `what the technician says | likely cause | first check | page`.
+
+   `page` is the number printed on the page, or the PDF page when none is printed.
+2. **Paste.** The author pastes the answer into the layer's file on the phone. `PastedDraftParser` reads it into
+   rows, tolerating what models add: code fences, numbered or bulleted lists, bold, a Markdown table (its
+   header and rule rows are formatting, not content), leading prose. **Every line that does not fit the format
+   is shown as unparsed, with its text, never dropped.**
+3. **Check.** Every row is checked against the manual's page text on the phone (`DraftRowCheck`) before it can be
+   kept. Nothing leaves the phone.
+
+The check, by row:
+- **Fault code** (`code · label · page`): the printed page is mapped to the PDF page through the manual's
+  printed-page map (`DocumentStore.pageLabels`, the map the page viewer reads; a photographed manual's own
+  `printedPage` per page); when no page prints that number, the number is read as the PDF page. The code,
+  normalised (case, spaces, hyphen and en dash alike; on a photographed page also O/0, I/1, S/5), must be on
+  that page, and the label's key words near it. Not there, but on exactly one other page: *found on page N*, a
+  suggestion. On several: the list. Nowhere: *not in this manual*. Six or more consecutive words of the label
+  matching the page: *in the manual's words*.
+- **Model row:** each spelling must be printed in the manual (normalised the same way). A model printed only
+  once, deep in the manual, is kept with a soft note: *mentioned once, page N*.
+- **Symptom row:** only partly checkable. The page exists and shares key words with the row's cause and check;
+  any code or part number in the row gets the code check. The result is *section checked · wording is yours*,
+  never a full tick.
+- **Page text unclear** (recognition confidence low, or garbled): *page text unclear*, neither pass nor fail.
+
+The marks: **checked**, **found on another page**, **not found**, **in the manual's words**, **section checked**,
+**page text unclear**. *Keep all checked* exists; *keep all* doesn't.
+
+**Index rows** are written so Plan LV's revision check can read them: the expected manual's `key` (the one the
+export's `expects` carries, §7) followed by `p. N`, the PDF page, with the printed page beside it when it
+differs (`install-manual p. 43 (printed 41)`). The phone's answer note reads `key p. N`, `page N` and `pp.`.
+
+A later, opt-in *Draft with my AI* through the user's own configured provider is out of scope: it would send
+manual text off the phone, and needs a line in the privacy copy.
 
 ### 5 · Add a file
 
@@ -186,40 +238,65 @@ plain editor for the Markdown files later.
 
 ## Decisions for Greig
 
-1. **Where drafting runs.** *Recommended:* on the phone, for partners too. The partner authors on their own
+1. **Where drafting runs.** ✅ *Taken as recommended, 2026-11-16.* *Recommended:* on the phone, for partners too. The partner authors on their own
    phone with their own copies and uploads the export. The service never reads a manual, so nothing about
    server-side processing needs disclosing. Not recommended: a drafting workspace on the service, which needs a
    second PDF reader on Linux (the table geometry is pure, but the word positions come from PDFKit) and puts
    the vendor in the business of processing manuals.
-2. **Drafting with a language model.** *Recommended:* off for now; deterministic builders only. Turning it on
-   later sends manual text to the wearer's chosen provider, and needs a line in the privacy copy. Not
-   recommended: model-drafted symptoms in P1, which reads well but sends manuals off the phone by default.
-3. **Limits on a solo subscriber's own vaults.** *Recommended:* the per-file caps and the phone's free space
+2. **Drafting with a language model.** ✅ *Replaced by the owner's own call, 2026-11-16:* Avenkin provides no
+   model and pays for none. **Bring your own model by copy and paste:** a prompt kit per layer and trade, the
+   author runs it with their own copy of the manual and pastes the answer back, and the phone parses it (what
+   doesn't fit is shown, never dropped) and checks every row against the manual before it can be kept (§4a).
+   A later opt-in *Draft with my AI* through the user's own configured provider is out of scope: it would send
+   manual text off the phone and needs a privacy line. (Was recommended: off for now, deterministic builders
+   only.)
+3. **Limits on a solo subscriber's own vaults.** ✅ *Taken as recommended, 2026-11-16.* *Recommended:* the per-file caps and the phone's free space
    only. `.fieldWork` already separates a solo subscriber from My Manuals. Not recommended: a manual count, which
    a working technician would hit.
-4. **The publishing check.** *Recommended:* warnings only, shown only on export. The author decides. Not
+4. **The publishing check.** ✅ *Taken as recommended, 2026-11-16.* *Recommended:* warnings only, shown only on export. The author decides. Not
    recommended: blocking export on rows in the manual's words, which would stop a partner exporting to their own
    second phone.
-5. **My Manuals carry-over.** *Recommended:* move, so there aren't two copies of every manual. Not
+5. **My Manuals carry-over.** ✅ *Taken as recommended, 2026-11-16.* *Recommended:* move, so there aren't two copies of every manual. Not
    recommended: copy and keep both, which doubles storage for nothing.
 6. **`.ownVaults` for an org licence at `.solo`.** *Recommended:* grant it, so a solo operator on a licence code
-   has what a solo store subscriber has. The reason it is missing isn't recorded in the plans; check Plan EE's
-   history before changing it. Not recommended: leave it, which means a licence-code solo operator can't use
-   this plan at all.
+   has what a solo store subscriber has. Not recommended: leave it, which means a licence-code solo operator
+   can't use this plan at all.
+
+   🔎 *Investigated 2026-11-16; no entitlement change in P0.* **No reason for leaving it out is recorded**, and
+   **the case cannot arise in production**:
+   - Plan EE (P1–P4, `f30c43720`, 2026-09-03) drew the tier table when *Solo* meant the store purchase: custom
+     vault import was a Team column, and "teams are licensed by signed code, not StoreKit".
+   - Plan FS decision 1 (`f442fc6d4`, 2026-09-22) moved the gates to capabilities and granted `.ownVaults` to
+     the subscriptions and to team and enterprise licences, "behaviour-preserving for licence holders". The
+     org `.solo` row kept what it had (bundled vaults only). Neither plan mentions a licence code at solo.
+     `bd36c5990` (My Manuals, 2026-10-25) added `.fieldWork` to the row and nothing else.
+   - But `LicenseService.LicensePayload.resolvedTier` has read a signed `solo` claim as **team** since
+     `f30c43720` (`parsed == .solo ? .team : parsed`), and anything below team as team since `bd36c5990`
+     (`parsed < .team ? .team : parsed`). `FieldAssistEntitlementProvider` builds the evidence with
+     `payload.resolvedTier`, and the licence core's issuance policy delegates only `team`. So a licence code
+     never produces `.verifiedOrganizationLicense(tier: .solo)`; a solo operator on a code gets team's
+     capabilities, `.ownVaults` included. The row is reached only by `FieldAssistCapabilityTests`, which pins
+     it to the bundled set.
+
+   So this plan works for a licence-code solo operator today. Granting `.ownVaults` in the row is a consistency
+   change with no effect on any shipped code; it needs only the test updated, and can wait for a licence that
+   really issues solo.
 
 ## Phases
 
 ### P0 — the pure core (headless)
 
 `VaultStarter` and its tests in the core package (every template's starter passes `VaultPackRules`);
-`TradeTemplate` with HVAC-R and General; `FaultCodeProposals`, `ModelMapProposals`, `SymptomProposals` over
-fixture tables and pages with **invented** codes, models and wording; `VaultCheck` scoring; `expects` in the
-manifest (absent → byte-identical). **Exit:** the tests and `Contracts/tests/*.py` green.
+`TradeTemplate` with HVAC-R and General; the prompt kits (`PromptKit`) and `PastedDraftParser`, with the row
+types they share, also in the core package so the portal can show the same kits; `DraftRowCheck` over injected
+page text; `FaultCodeProposals`, `ModelMapProposals`, `SymptomProposals` over fixture tables and pages with
+**invented** codes, models and wording; `VaultCheck` scoring; `expects` in the manifest (absent →
+byte-identical). **Exit:** the tests and `Contracts/tests/*.py` green.
 
 ### P1 — the screens (headless, plus a UI test on the simulator)
 
-New Vault, Add manual, the proposal review screen, *Add this model* from a nameplate, *Add file*, the vault
-check screen, export with `expects` and the publishing check, the My Manuals card. **Exit:** a UI test that
+New Vault, Add manual, the proposal review screen, the prompt kit and paste screen (the same review screen),
+*Add this model* from a nameplate, *Add file*, the vault check screen, export with `expects` and the publishing check, the My Manuals card. **Exit:** a UI test that
 makes a vault, adds a fixture manual, keeps a fault-code card and exports; the strings synced to the catalog in
 a separate PR.
 
@@ -246,5 +323,6 @@ exports it and uploads it in the portal.
 
 ## Out of scope
 
-A drafting workspace on the service; model-drafted content (decision 2); publishing straight from the app; a VIN
+A drafting workspace on the service; a model the app provides or pays for (decision 2); an in-app *Draft with
+my AI* through the user's own provider (it would send manual text off the phone); publishing straight from the app; a VIN
 decode service; editing a company layer on the phone.
