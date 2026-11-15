@@ -6,7 +6,8 @@ what the key expects. It compiles the app's `TableLookup`, `TableReference`, `Ta
 `PDFTableReader` and the picture readers (`PictureTableReading`, `VisionTableReader`) unchanged, with `OpenGlassesTests/TableLookupEval/TableLookupEvalCore.swift` doing
 the scoring, and reads each PDF as an import on the phone does. Use it on a vault folder anywhere
 on the Mac, your own licensed books included, with a key you wrote against them. Nothing it reads
-is written anywhere.
+is written anywhere; the one file it can write, an outcomes file you ask for, holds numbers and
+hashes only (see "Is a change real?" below).
 
 ```
 Scripts/table-lookup-eval/run.sh /path/to/vault-folder /path/to/key.jsonl
@@ -74,6 +75,7 @@ Counts only (the numbers below are an example, not a measurement):
 [CELLS]   cells: expected=34 matched=18 (0.53)
 [CELLS]   between rows: expected=3 matched=2
 [CELLS]   asks: expected=3 asked=3 candidates_agree=2
+[CELLS]   95% intervals over 34 questions (bootstrap, 2000 resamples): cells 0.53 [0.35, 0.71] · between rows 0.67 [0.00, 1.00] (n=3) · asks 1.00 [1.00, 1.00] (n=3)
 ```
 
 - **tables**: the table each question names is `read` to a grid, `unread` (its caption was found
@@ -87,6 +89,36 @@ Counts only (the numbers below are an example, not a measurement):
   the key names.
 - **asks**: the lookup asked which, and whether every candidate the key lists is among those it
   offered.
+
+## Is a change real? Intervals and comparing two runs
+
+A key of a few dozen cells moves the matched share by a few points per question, so the run prints
+a **95% interval** for each share it can: cells matched, between rows matched and asks asked, each
+over the questions of its kind (`n=` when that differs from the first). It is the percentile
+bootstrap over questions (2,000 resamples drawn with replacement, a fixed seed, so a run is
+reproducible): the range the share would land in on another key of that size. With three
+questions, the interval is nearly everything, and that is the honest answer.
+
+To compare a change with what came before, pair the two runs question by question:
+
+1. Run A with `TABLE_LOOKUP_EVAL_OUTCOMES=/path/outside/the/repo/a.jsonl`. It writes one line per
+   question: its place in the key, the first 16 hex digits of a SHA-256 of its fields (never the
+   fields), and whether it matched. The folder must exist and must not be inside a git working tree.
+2. Make the change and run B with `TABLE_LOOKUP_EVAL_BASELINE=/path/outside/the/repo/a.jsonl` (and
+   its own `TABLE_LOOKUP_EVAL_OUTCOMES` if a later run will compare with it).
+
+B pairs questions with A's by hash and prints, for each share, the difference B − A with a paired
+bootstrap interval and a verdict:
+
+```
+[CELLS]   vs baseline: paired 40 of 40 (unmatched: 0 here, 0 in the baseline)
+[CELLS]   vs baseline, change 95% paired interval: cells +0.09 [+0.03, +0.15] better · between rows +0.00 [+0.00, +0.00] within noise (n=3) · asks +0.00 [+0.00, +0.00] within noise (n=3)
+```
+
+`better` and `worse` mean the interval excludes 0, `within noise` that it does not. Below 80% of the
+questions in both runs, the key changed too much and the runs are not compared; a question with any
+field edited is a new question. **A change whose paired interval includes 0 has not been shown to
+help.** Delete outcomes files with the key when you're done.
 
 **Nothing from the key or the book is printed**: no question, label, row, column, cell or
 document name. A matched cell is only as right as the key; an unchecked key measures agreement,
