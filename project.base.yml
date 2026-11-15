@@ -142,9 +142,14 @@ targets:
       # so iOS opens the app and runs it here; it hands the press over as a pending request.
       - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
       - path: GlassesActivityWidget/PendingAskRequest.swift
-      # The one licence-core file the app compiles (Plan LR): the vault pack rules the licence
+      # The licence-core files the app compiles. Plan LR: the vault pack rules the licence
       # service also holds a company vault to. Foundation only; it verifies no key or signature.
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift
+      # Plan LW: the starter vault, the trade templates, the prompt kits and the paste parser, so
+      # the phone and the portal make the same starter and show the same kits. Foundation only.
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/TradeTemplate.swift
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultStarter.swift
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultDrafts.swift
     configFiles:
       Debug: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig
       Release: Vendor/MediaPipeTasks/Frameworks/holistic-linker-flags.xcconfig

@@ -33,6 +33,9 @@ targets:
       - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
       - path: GlassesActivityWidget/PendingAskRequest.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/TradeTemplate.swift
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultStarter.swift
+      - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultDrafts.swift
       - path: .generated/Localizable.xcstrings
       - path: .generated/InfoPlist.xcstrings
     settings:

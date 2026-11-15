@@ -82,10 +82,11 @@ enum VaultExporter {
             try fm.createDirectory(at: root, withIntermediateDirectories: true)
 
             // manifest.json — same shape the importer/validator expects, with the manuals listed
-            // as required and marked not included.
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let manifestData = try encoder.encode(manifest.markingDocumentsNotIncluded())
+            // as required and marked not included, and (Plan LW) the manuals it was written
+            // against, by the key its index rows cite.
+            let expects = VaultExpects.expects(for: manifest.documents,
+                                               ledgerHashes: VaultExpects.ledgerHashes(VaultImporter.documentLedger(for: manifest.id)))
+            let manifestData = try manifestJSON(manifest.markingDocumentsNotIncluded(), expects: expects)
             try manifestData.write(to: root.appendingPathComponent("manifest.json"), options: .atomic)
 
             // Markdown files — merged overlay-over-bundle so a tech's edits are captured.
@@ -132,5 +133,32 @@ enum VaultExporter {
             throw ExportError.ioError(error.localizedDescription)
         }
         return root
+    }
+
+    /// The export's `manifest.json`: the manifest as it has always been written, plus `expects`
+    /// (Plan LW §7, `VaultExpects`) when the vault has manuals. With none, these are exactly the bytes
+    /// an export wrote before `expects` existed.
+    nonisolated static func manifestJSON(_ manifest: VaultManifest,
+                                         expects: [CompanyVaultCatalog.ExpectedManual]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard !expects.isEmpty else { return try encoder.encode(manifest) }
+        return try encoder.encode(ExportedVaultManifest(manifest: manifest, expects: expects))
+    }
+}
+
+/// The manifest's own keys, then `expects` in the same object. The app's `VaultManifest` does not
+/// read `expects` (an import ignores it, and the next export works it out again from the same file
+/// names); the portal does.
+private struct ExportedVaultManifest: Encodable {
+    let manifest: VaultManifest
+    let expects: [CompanyVaultCatalog.ExpectedManual]
+
+    private enum CodingKeys: String, CodingKey { case expects }
+
+    func encode(to encoder: Encoder) throws {
+        try manifest.encode(to: encoder)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(expects, forKey: .expects)
     }
 }
