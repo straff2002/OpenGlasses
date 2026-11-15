@@ -4349,6 +4349,95 @@
         }
       }
     },
+    "%@ couldn't check camera access with Meta AI (%@). Make sure the Meta AI app is installed and %@ is still approved in it, then try again in Settings › Devices & Privacy › Glasses." : {
+      "comment" : "Glasses: why they aren't connected. The first and third %@ are the app's name; the second is the error.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر على %1$@ التحقق من الوصول إلى الكاميرا مع Meta AI (%2$@). تأكّد من تثبيت تطبيق Meta AI ومن أن %3$@ لا يزال موافقًا عليه فيه، ثم حاول مرة أخرى من «الإعدادات › الأجهزة والخصوصية › نظارات»."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ couldn't check camera access with Meta AI (%2$@). Make sure the Meta AI app is installed and %3$@ is still approved in it, then try again in Settings › Devices & Privacy › Glasses."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ no pudo comprobar el acceso a la cámara con Meta AI (%2$@). Asegúrate de que la app Meta AI esté instalada y de que %3$@ siga aprobado en ella, e intenta de nuevo en Configuración › Dispositivos y privacidad › Lentes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ n’a pas pu vérifier l’accès à la caméra auprès de Meta AI (%2$@). Assurez-vous que l’application Meta AI est installée et que %3$@ y est toujours approuvé, puis réessayez dans Réglages › Appareils et vie privée › Lunettes."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %1$@ nem tudta ellenőrizni a kamera-hozzáférést a Meta AI-ban (%2$@). Győződjön meg arról, hogy a Meta AI alkalmazás telepítve van, és a(z) %3$@ továbbra is jóvá van hagyva benne, majd próbálja újra a Beállítások › Eszközök és adatvédelem › Szemüveg alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ non è riuscito a verificare l'accesso alla fotocamera con Meta AI (%2$@). Assicurati che l'app Meta AI sia installata e che %3$@ sia ancora approvato al suo interno, poi riprova in Impostazioni › Dispositivi e privacy › Occhiali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@はMeta AIでカメラへのアクセスを確認できませんでした（%2$@）。Meta AIアプリがインストールされていて、%3$@がまだ承認されていることを確認してから、設定 › デバイスとプライバシー › 眼鏡でもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@이(가) Meta AI에서 카메라 접근을 확인하지 못했습니다(%2$@). Meta AI 앱이 설치되어 있고 그 안에서 %3$@이(가) 여전히 승인되어 있는지 확인한 후 설정 › 장치 및 개인정보 보호 › 안경에서 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ kon de cameratoegang niet controleren bij Meta AI (%2$@). Zorg dat de Meta AI-app is geïnstalleerd en dat %3$@ daarin nog is goedgekeurd, en probeer het dan opnieuw via Instellingen › Apparaten en privacy › Bril."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ não conseguiu verificar o acesso à câmera com o Meta AI (%2$@). Verifique se o aplicativo Meta AI está instalado e se %3$@ ainda está aprovado nele, depois tente novamente em Configurações › Dispositivos e privacidade › Óculos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ не удалось проверить доступ к камере через Meta AI (%2$@). Убедитесь, что приложение Meta AI установлено и %3$@ по-прежнему в нём одобрено, затем попробуйте ещё раз в разделе «Настройки › Устройства и конфиденциальность › Очки»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ Meta AI کے ساتھ کیمرا تک رسائی کی جانچ نہیں کر سکا (%2$@)۔ یقینی بنائیں کہ Meta AI ایپ انسٹال ہے اور اس میں %3$@ اب بھی منظور ہے، پھر ترتیبات › ڈیوائسز اور رازداری › عینک میں دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 无法通过 Meta AI 检查摄像头访问权限（%2$@）。请确认已安装 Meta AI 应用，且 %3$@ 在其中仍处于已批准状态，然后在“设置 › 设备与隐私 › 眼镜”中重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 無法透過 Meta AI 檢查相機存取權限（%2$@）。請確認已安裝 Meta AI 應用程式，且 %3$@ 在其中仍為已核准狀態，然後在「設定 › 裝置與隱私 › 眼鏡」中重試。"
+          }
+        }
+      }
+    },
     "%@ details" : {
       "localizations" : {
         "ar" : {
@@ -5862,6 +5951,95 @@
         }
       }
     },
+    "%@ is approved in Meta AI, but camera access isn't allowed there yet, and Meta AI shows %@ your glasses only once it is. Allow it in Settings › Devices & Privacy › Glasses." : {
+      "comment" : "Glasses: why they aren't connected. Both %@ are the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تمت الموافقة على %1$@ في Meta AI، لكن الوصول إلى الكاميرا غير مسموح هناك بعد، ولن يُظهر Meta AI نظاراتك لـ %2$@ إلا بعد السماح به. اسمح به من «الإعدادات › الأجهزة والخصوصية › نظارات»."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ is approved in Meta AI, but camera access isn't allowed there yet, and Meta AI shows %2$@ your glasses only once it is. Allow it in Settings › Devices & Privacy › Glasses."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ está aprobado en Meta AI, pero el acceso a la cámara aún no está permitido ahí, y Meta AI solo le muestra tus lentes a %2$@ cuando lo está. Permítelo en Configuración › Dispositivos y privacidad › Lentes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ est approuvé dans Meta AI, mais l’accès à la caméra n’y est pas encore autorisé, et Meta AI ne montre vos lunettes à %2$@ qu’une fois qu’il l’est. Autorisez-le dans Réglages › Appareils et vie privée › Lunettes."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %1$@ jóvá van hagyva a Meta AI-ban, de a kamera-hozzáférés ott még nincs engedélyezve, és a Meta AI csak akkor mutatja meg a szemüvegét a(z) %2$@ számára, ha engedélyezve van. Engedélyezze a Beállítások › Eszközök és adatvédelem › Szemüveg alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ è approvato in Meta AI, ma lì l'accesso alla fotocamera non è ancora consentito, e Meta AI mostra i tuoi occhiali a %2$@ solo quando lo è. Consentilo in Impostazioni › Dispositivi e privacy › Occhiali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@はMeta AIで承認されていますが、そこでのカメラへのアクセスはまだ許可されていません。Meta AIは、許可されて初めて%2$@にメガネを表示します。設定 › デバイスとプライバシー › 眼鏡で許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@은(는) Meta AI에서 승인되었지만 그곳에서 카메라 접근이 아직 허용되지 않았으며, Meta AI는 허용된 후에만 %2$@에 안경을 표시합니다. 설정 › 장치 및 개인정보 보호 › 안경에서 허용하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is goedgekeurd in Meta AI, maar cameratoegang is daar nog niet toegestaan, en Meta AI toont uw bril pas aan %2$@ zodra dat wel zo is. Sta het toe via Instellingen › Apparaten en privacy › Bril."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ está aprovado no Meta AI, mas o acesso à câmera ainda não está permitido lá, e o Meta AI só mostra seus óculos para %2$@ depois que estiver. Permita em Configurações › Dispositivos e privacidade › Óculos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ одобрено в Meta AI, но доступ к камере там ещё не разрешён, а Meta AI покажет %2$@ ваши очки только после этого. Разрешите его в разделе «Настройки › Устройства и конфиденциальность › Очки»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ Meta AI میں منظور ہے، لیکن وہاں ابھی کیمرا تک رسائی کی اجازت نہیں ہے، اور Meta AI آپ کی عینک %2$@ کو تبھی دکھاتا ہے جب اجازت ہو۔ ترتیبات › ڈیوائسز اور رازداری › عینک میں اس کی اجازت دیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已在 Meta AI 中获得批准，但那里尚未允许摄像头访问，而 Meta AI 只有在允许后才会向 %2$@ 显示你的眼镜。请在“设置 › 设备与隐私 › 眼镜”中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 已在 Meta AI 中獲得核准，但那裡尚未允許相機存取，而 Meta AI 只有在允許後才會向 %2$@ 顯示你的眼鏡。請在「設定 › 裝置與隱私 › 眼鏡」中允許。"
+          }
+        }
+      }
+    },
     "%@ is larger than the %@ a vault may be." : {
       "localizations" : {
         "ar" : {
@@ -6860,6 +7038,95 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ 在設定中關閉。重新打開它即可使用它。"
+          }
+        }
+      }
+    },
+    "%@ isn't allowed to use the camera on this iPhone, which glasses camera access needs first. Turn Camera on for %@ in the iPhone's Settings app, then try again." : {
+      "comment" : "Glasses: why they aren't connected. Both %@ are the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يُسمح لـ %1$@ باستخدام الكاميرا على هذا iPhone، وهو ما يتطلبه الوصول إلى كاميرا النظارات أولًا. شغّل الكاميرا لـ %2$@ في تطبيق الإعدادات على iPhone، ثم حاول مرة أخرى."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ isn't allowed to use the camera on this iPhone, which glasses camera access needs first. Turn Camera on for %2$@ in the iPhone's Settings app, then try again."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ no tiene permiso para usar la cámara de este iPhone, algo que el acceso a la cámara de los lentes necesita primero. Activa Cámara para %2$@ en la app Configuración del iPhone e intenta de nuevo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ n’est pas autorisé à utiliser la caméra de cet iPhone, ce dont l’accès à la caméra des lunettes a d’abord besoin. Activez Appareil photo pour %2$@ dans l’app Réglages de l’iPhone, puis réessayez."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %1$@ nem használhatja a kamerát ezen az iPhone-on, pedig a szemüveg kamerájához először erre van szükség. Kapcsolja be a Kamerát a(z) %2$@ számára az iPhone Beállítások appjában, majd próbálja újra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ non è autorizzato a usare la fotocamera di questo iPhone, che serve prima di tutto per l'accesso alla fotocamera degli occhiali. Attiva Fotocamera per %2$@ nell'app Impostazioni dell'iPhone, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@はこのiPhoneのカメラの使用を許可されていません。メガネのカメラにアクセスするには、まずこれが必要です。iPhoneの設定アプリで%2$@のカメラをオンにしてから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@은(는) 이 iPhone의 카메라를 사용할 수 없습니다. 안경 카메라에 접근하려면 먼저 이 권한이 필요합니다. iPhone의 설정 앱에서 %2$@의 카메라를 켠 후 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ mag de camera op deze iPhone niet gebruiken, en dat is eerst nodig voor toegang tot de camera van de bril. Zet Camera aan voor %2$@ in de app Instellingen van de iPhone en probeer het dan opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ não tem permissão para usar a câmera deste iPhone, o que o acesso à câmera dos óculos exige primeiro. Ative Câmera para %2$@ no app Ajustes do iPhone e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ не разрешено использовать камеру на этом iPhone, а это сначала нужно для доступа к камере очков. Включите «Камера» для %2$@ в приложении «Настройки» на iPhone, затем попробуйте ещё раз."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ کو اس iPhone پر کیمرا استعمال کرنے کی اجازت نہیں ہے، جو عینک کے کیمرا تک رسائی کے لیے پہلے ضروری ہے۔ iPhone کی ترتیبات ایپ میں %2$@ کے لیے کیمرا آن کریں، پھر دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 未被允许使用这部 iPhone 的相机，而访问眼镜摄像头首先需要这项权限。请在 iPhone 的“设置”App 中为 %2$@ 打开“相机”，然后再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 未獲允許使用這支 iPhone 的相機，而存取眼鏡相機首先需要此權限。請在 iPhone 的「設定」App 中為 %2$@ 開啟「相機」，然後再試一次。"
           }
         }
       }
@@ -32942,6 +33209,89 @@
         }
       }
     },
+    "A live session can't go private part-way. Stop it first." : {
+      "comment" : "Spoken and shown when the wearer asks for a private conversation while a live voice session is running.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يمكن للجلسة المباشرة أن تصبح خاصة في منتصفها. أوقفها أولًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una sesión en vivo no puede volverse privada a la mitad. Detenla primero."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une session en direct ne peut pas devenir privée en cours de route. Arrêtez-la d’abord."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egy élő munkamenet nem válhat menet közben priváttá. Előbb állítsa le."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una sessione live non può diventare privata a metà. Fermala prima."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブセッションを途中からプライベートにすることはできません。先に停止してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "라이브 세션은 도중에 비공개로 전환할 수 없습니다. 먼저 중지하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Een livesessie kan niet halverwege privé worden. Stop die eerst."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma sessão ao vivo não pode ficar privada no meio. Pare-a primeiro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Живой сеанс нельзя сделать приватным на полпути. Сначала остановите его."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لائیو سیشن درمیان میں نجی نہیں ہو سکتا۔ پہلے اسے روکیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时会话无法中途转为私密。请先停止它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "即時工作階段無法中途轉為私密。請先停止它。"
+          }
+        }
+      }
+    },
     "A live view to an expert is off in Medical Compliance mode, so your camera and microphone stay on this phone. You can still ask for an expert, and they get the job record." : {
       "localizations" : {
         "ar" : {
@@ -51876,6 +52226,89 @@
         }
       }
     },
+    "Allow private conversations" : {
+      "comment" : "VoiceOver label of the Allow switch under Settings › Private conversations.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "السماح بالمحادثات الخاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir conversaciones privadas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autoriser les conversations privées"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetések engedélyezése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti conversazioni private"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話を許可"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화 허용"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprekken toestaan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir conversas privadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить приватные разговоры"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو کی اجازت دیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许私密对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許私密對話"
+          }
+        }
+      }
+    },
     "Allow sending this data" : {
       "localizations" : {
         "ar" : {
@@ -52450,6 +52883,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "允許在建立自己的套件時安裝未簽名套件。未簽名套件會在其行上標示。目錄自身的簽名始終會被強制執行。"
+          }
+        }
+      }
+    },
+    "Already registered — connecting…" : {
+      "comment" : "Glasses connection status.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مسجّل بالفعل — جارٍ الاتصال…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya registrado — conectando…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déjà enregistré — connexion…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Már regisztrálva — csatlakozás…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Già registrato — connessione…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録済み — 接続中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이미 등록됨 — 연결 중…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al geregistreerd — verbinden…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Já registrado — conectando…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уже зарегистрировано — подключение…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پہلے سے رجسٹرڈ — منسلک ہو رہا ہے…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已注册 — 正在连接…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已註冊 — 連接中…"
           }
         }
       }
@@ -59067,6 +59583,89 @@
         }
       }
     },
+    "Approve %@ in the Meta AI app to continue…" : {
+      "comment" : "Glasses connection status. %@ is the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وافق على %@ في تطبيق Meta AI للمتابعة…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprueba %@ en la app Meta AI para continuar…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approuvez %@ dans l’application Meta AI pour continuer…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A folytatáshoz hagyja jóvá a(z) %@ alkalmazást a Meta AI appban…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approva %@ nell'app Meta AI per continuare…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続行するには、Meta AIアプリで%@を承認してください…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계속하려면 Meta AI 앱에서 %@을(를) 승인하세요…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keur %@ goed in de Meta AI-app om door te gaan…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aprove %@ no aplicativo Meta AI para continuar…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Одобрите %@ в приложении Meta AI, чтобы продолжить…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جاری رکھنے کے لیے Meta AI ایپ میں %@ کو منظور کریں…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Meta AI 应用中批准 %@ 以继续…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Meta AI 應用程式中核准 %@ 以繼續…"
+          }
+        }
+      }
+    },
     "Approve a signed office binding on this phone first." : {
       "localizations" : {
         "ar" : {
@@ -60663,6 +61262,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用語音向特定的 Avenkin 人格提問並聽取答案"
+          }
+        }
+      }
+    },
+    "Ask again to run it. You'll be asked to approve it first." : {
+      "comment" : "Chat, under the 'Held, not run' list on an assistant reply: how the user gets a held action run.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اطلب ذلك مرة أخرى لتشغيله. سيُطلب منك الموافقة عليه أولًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pídelo de nuevo para ejecutarlo. Primero se te pedirá que lo apruebes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redemandez-le pour l’exécuter. On vous demandera d’abord de l’approuver."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kérje újra a futtatáshoz. Előbb jóvá kell hagynia."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiedilo di nuovo per eseguirlo. Ti verrà chiesto prima di approvarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "実行するには、もう一度依頼してください。先に承認を求められます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행하려면 다시 요청하세요. 먼저 승인하라는 요청을 받게 됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vraag het opnieuw om het uit te voeren. U wordt eerst gevraagd het goed te keuren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peça de novo para executar. Primeiro, será pedido que você aprove."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Попросите ещё раз, чтобы выполнить. Сначала вас попросят это одобрить."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اسے چلانے کے لیے دوبارہ کہیں۔ پہلے آپ سے اس کی منظوری مانگی جائے گی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次提出请求即可运行。系统会先请你批准。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次提出要求即可執行。系統會先請你核准。"
           }
         }
       }
@@ -71514,6 +72196,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Avenkin 尚未獲准在此 iPhone 上使用攝像頭，而眼鏡的攝像頭訪問需要先允許。請在 iPhone 的設定應用程式中為 Avenkin 打開攝像頭，然後再試。"
+          }
+        }
+      }
+    },
+    "Avenkin isn't connected to your glasses in the Meta AI app." : {
+      "comment" : "Glasses connect row: the glasses are added but this app isn't approved in the Meta AI app.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin غير متصل بنظاراتك في تطبيق Meta AI."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin no está conectado a tus lentes en la app Meta AI."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin n’est pas connecté à vos lunettes dans l’application Meta AI."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az Avenkin nincs csatlakoztatva a szemüvegéhez a Meta AI alkalmazásban."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin non è connesso ai tuoi occhiali nell'app Meta AI."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin は Meta AI アプリでメガネに接続されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin이 Meta AI 앱에서 안경에 연결되어 있지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin is niet verbonden met uw bril in de Meta AI-app."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin não está conectado aos seus óculos no aplicativo Meta AI."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin не подключён к вашим очкам в приложении Meta AI."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI ایپ میں Avenkin آپ کی عینک سے منسلک نہیں ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin 尚未在 Meta AI 应用中连接到你的眼镜。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin 尚未在 Meta AI 應用程式中連接到你的眼鏡。"
           }
         }
       }
@@ -82911,6 +83676,89 @@
         }
       }
     },
+    "Camera access is allowed, but Meta AI hasn't shown %@ your glasses. Wake them, check that they're connected in the Meta AI app and that no other glasses app is using Developer Mode, then try again." : {
+      "comment" : "Glasses: why they aren't connected. %@ is the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الوصول إلى الكاميرا مسموح، لكن Meta AI لم يُظهر نظاراتك لـ %@ بعد. أيقظها، وتحقّق من أنها متصلة في تطبيق Meta AI وأنه لا يوجد تطبيق نظارات آخر يستخدم وضع المطور، ثم حاول مرة أخرى."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El acceso a la cámara está permitido, pero Meta AI no le ha mostrado tus lentes a %@. Actívalos, comprueba que estén conectados en la app Meta AI y que ninguna otra app de lentes esté usando el Modo de desarrollador, e intenta de nuevo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’accès à la caméra est autorisé, mais Meta AI n’a pas montré vos lunettes à %@. Réveillez-les, vérifiez qu’elles sont connectées dans l’application Meta AI et qu’aucune autre application de lunettes n’utilise le mode développeur, puis réessayez."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A kamera-hozzáférés engedélyezve van, de a Meta AI még nem mutatta meg a szemüvegét a(z) %@ számára. Ébressze fel a szemüveget, ellenőrizze, hogy csatlakozik-e a Meta AI alkalmazásban, és hogy más szemüveges alkalmazás nem használja-e a fejlesztői módot, majd próbálja újra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso alla fotocamera è consentito, ma Meta AI non ha ancora mostrato i tuoi occhiali a %@. Riattivali, controlla che siano connessi nell'app Meta AI e che nessun'altra app per occhiali stia usando la Modalità sviluppatore, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カメラへのアクセスは許可されていますが、Meta AIがまだ%@にメガネを表示していません。メガネをスリープ解除し、Meta AIアプリで接続されていること、ほかのメガネアプリが開発者モードを使っていないことを確認してから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "카메라 접근은 허용되었지만 Meta AI가 아직 %@에 안경을 표시하지 않았습니다. 안경을 깨우고, Meta AI 앱에서 연결되어 있는지와 다른 안경 앱이 개발자 모드를 사용하고 있지 않은지 확인한 후 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cameratoegang is toegestaan, maar Meta AI heeft uw bril nog niet aan %@ getoond. Maak de bril wakker, controleer of die verbonden is in de Meta AI-app en of geen andere bril-app de ontwikkelaarsmodus gebruikt, en probeer het dan opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O acesso à câmera está permitido, mas o Meta AI ainda não mostrou seus óculos para %@. Desperte-os, verifique se estão conectados no aplicativo Meta AI e se nenhum outro app de óculos está usando o Modo de desenvolvedor, depois tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доступ к камере разрешён, но Meta AI ещё не показал %@ ваши очки. Выведите их из сна, проверьте, что они подключены в приложении Meta AI и что ни одно другое приложение для очков не использует режим разработчика, затем попробуйте ещё раз."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "کیمرا تک رسائی کی اجازت ہے، لیکن Meta AI نے ابھی تک %@ کو آپ کی عینک نہیں دکھائی۔ عینک کو جگائیں، تصدیق کریں کہ وہ Meta AI ایپ میں منسلک ہے اور کوئی دوسری عینک ایپ ڈیولپر موڈ استعمال نہیں کر رہی، پھر دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已允许摄像头访问，但 Meta AI 还没有向 %@ 显示你的眼镜。请唤醒眼镜，确认它们已在 Meta AI 应用中连接，且没有其他眼镜应用在使用开发者模式，然后再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已允許相機存取，但 Meta AI 還沒有向 %@ 顯示你的眼鏡。請喚醒眼鏡，確認它們已在 Meta AI 應用程式中連接，且沒有其他眼鏡 App 在使用開發者模式，然後再試一次。"
+          }
+        }
+      }
+    },
     "Camera access is needed to take a photo." : {
       "localizations" : {
         "ar" : {
@@ -83401,6 +84249,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相機存取已關閉。請在 iPhone「設定」→ App → Avenkin → 相機中開啟。"
+          }
+        }
+      }
+    },
+    "Camera access wasn't allowed in Meta AI, and your glasses can't connect to %@ without it. Try again in Settings › Devices & Privacy › Glasses and allow it there." : {
+      "comment" : "Glasses: why they aren't connected. %@ is the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُسمح بالوصول إلى الكاميرا في Meta AI، ولا يمكن لنظاراتك الاتصال بـ %@ من دونه. حاول مرة أخرى من «الإعدادات › الأجهزة والخصوصية › نظارات» واسمح به هناك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se permitió el acceso a la cámara en Meta AI, y tus lentes no pueden conectarse a %@ sin él. Intenta de nuevo en Configuración › Dispositivos y privacidad › Lentes y permítelo ahí."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’accès à la caméra n’a pas été autorisé dans Meta AI, et vos lunettes ne peuvent pas se connecter à %@ sans cet accès. Réessayez dans Réglages › Appareils et vie privée › Lunettes et autorisez-le là."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A kamera-hozzáférés nem lett engedélyezve a Meta AI-ban, és enélkül a szemüvege nem tud csatlakozni a(z) %@ alkalmazáshoz. Próbálja újra a Beállítások › Eszközök és adatvédelem › Szemüveg alatt, és ott engedélyezze."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso alla fotocamera non è stato consentito in Meta AI e senza di esso i tuoi occhiali non possono connettersi a %@. Riprova in Impostazioni › Dispositivi e privacy › Occhiali e consentilo lì."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AIでカメラへのアクセスが許可されなかったため、メガネを%@に接続できません。設定 › デバイスとプライバシー › 眼鏡でもう一度試し、そこで許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI에서 카메라 접근이 허용되지 않았으며, 이 권한이 없으면 안경을 %@에 연결할 수 없습니다. 설정 › 장치 및 개인정보 보호 › 안경에서 다시 시도하고 그곳에서 허용하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cameratoegang is niet toegestaan in Meta AI, en zonder die toegang kan uw bril geen verbinding maken met %@. Probeer het opnieuw via Instellingen › Apparaten en privacy › Bril en sta het daar toe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O acesso à câmera não foi permitido no Meta AI, e seus óculos não podem se conectar a %@ sem ele. Tente novamente em Configurações › Dispositivos e privacidade › Óculos e permita lá."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доступ к камере в Meta AI не был разрешён, а без него очки не могут подключиться к %@. Попробуйте ещё раз в разделе «Настройки › Устройства и конфиденциальность › Очки» и разрешите доступ там."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI میں کیمرا تک رسائی کی اجازت نہیں دی گئی، اور اس کے بغیر آپ کی عینک %@ سے منسلک نہیں ہو سکتی۔ ترتیبات › ڈیوائسز اور رازداری › عینک میں دوبارہ کوشش کریں اور وہاں اجازت دیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI 中未允许摄像头访问，没有它你的眼镜就无法连接到 %@。请在“设置 › 设备与隐私 › 眼镜”中重试，并在那里允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI 中未允許相機存取，沒有它你的眼鏡就無法連接到 %@。請在「設定 › 裝置與隱私 › 眼鏡」中重試，並在那裡允許。"
           }
         }
       }
@@ -136936,6 +137867,89 @@
         }
       }
     },
+    "Double-tap to end it." : {
+      "comment" : "VoiceOver hint of the Private badge on the conversation page.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اضغط مرتين لإنهائها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca dos veces para terminarla."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez deux fois pour y mettre fin."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dupla koppintás a befejezéshez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca due volte per terminarla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダブルタップして終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "두 번 탭하여 종료합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dubbeltik om het te beëindigen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toque duas vezes para encerrá-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Коснитесь дважды, чтобы завершить его."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ختم کرنے کے لیے دو بار تھپتھپائیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连按两下以结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點兩下以結束。"
+          }
+        }
+      }
+    },
     "Double-tap to execute" : {
       "localizations" : {
         "ar" : {
@@ -150618,6 +151632,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "結束對話"
+          }
+        }
+      }
+    },
+    "End private conversation" : {
+      "comment" : "VoiceOver label, watch: the End button beside the Private badge, which ends the private conversation.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إنهاء المحادثة الخاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminar la conversación privada"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminer la conversation privée"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetés befejezése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina la conversazione privata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話を終了"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화 종료"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beëindig privégesprek"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerrar a conversa privada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершить приватный разговор"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو ختم کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束私密对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束私密對話"
           }
         }
       }
@@ -172747,6 +173844,89 @@
         }
       }
     },
+    "For this language, Apple's speech recognition is used to hear what you say." : {
+      "comment" : "Added to the private conversation explainer when the speech language can't be recognised on the phone itself, so Apple's server recognition is used.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لهذه اللغة، تُستخدم ميزة التعرّف على الكلام من Apple لسماع ما تقوله."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para este idioma, se usa el reconocimiento de voz de Apple para escuchar lo que dices."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour cette langue, la reconnaissance vocale d’Apple est utilisée pour entendre ce que vous dites."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ennél a nyelvnél az Apple beszédfelismerése hallja, amit mond."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per questa lingua, per sentire ciò che dici viene usato il riconoscimento vocale di Apple."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この言語では、話した内容を聞き取るためにAppleの音声認識が使われます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 언어에서는 사용자가 말한 내용을 듣기 위해 Apple의 음성 인식이 사용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voor deze taal wordt de spraakherkenning van Apple gebruikt om te horen wat u zegt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para este idioma, o reconhecimento de fala da Apple é usado para ouvir o que você diz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для этого языка, чтобы слышать, что вы говорите, используется распознавание речи Apple."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس زبان کے لیے، آپ کی بات سننے کے لیے Apple کی اسپیچ ریکگنیشن استعمال ہوتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对于这种语言，会使用 Apple 的语音识别来听取你说的话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "對於這種語言，會使用 Apple 的語音辨識來聽取你說的話。"
+          }
+        }
+      }
+    },
     "For: %@" : {
       "localizations" : {
         "ar" : {
@@ -182519,6 +183699,89 @@
         }
       }
     },
+    "Glasses registration didn't complete. If you approved %@ in the Meta AI app and this persists, the approval link-back may not be reaching this app — on a custom build, verify the AppLink domain and associated-domains entitlement match your bundle ID." : {
+      "comment" : "Glasses connection failure. %@ is the app's name; AppLink, associated-domains and bundle ID are technical terms.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يكتمل تسجيل النظارات. إذا وافقت على %@ في تطبيق Meta AI واستمرت المشكلة، فقد لا يصل رابط العودة الخاص بالموافقة إلى هذا التطبيق — في الإصدار المخصص، تحقّق من أن نطاق AppLink واستحقاق associated-domains يطابقان معرّف الحزمة (bundle ID) لديك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El registro de los lentes no se completó. Si aprobaste %@ en la app Meta AI y esto continúa, puede que el enlace de vuelta de la aprobación no llegue a esta app; en una compilación personalizada, verifica que el dominio de AppLink y el entitlement associated-domains coincidan con tu bundle ID."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’enregistrement des lunettes n’a pas abouti. Si vous avez approuvé %@ dans l’application Meta AI et que le problème persiste, le lien de retour de l’approbation n’atteint peut-être pas cette application — sur une version personnalisée, vérifiez que le domaine AppLink et l’entitlement associated-domains correspondent à votre bundle ID."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemüveg regisztrációja nem fejeződött be. Ha jóváhagyta a(z) %@ alkalmazást a Meta AI-ban, és a hiba továbbra is fennáll, lehet, hogy a jóváhagyás visszairányító linkje nem jut el ehhez az alkalmazáshoz — egyéni buildnél ellenőrizze, hogy az AppLink-domain és az associated-domains jogosultság egyezik-e a bundle ID-val."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La registrazione degli occhiali non è stata completata. Se hai approvato %@ nell'app Meta AI e il problema persiste, il link di ritorno dell'approvazione potrebbe non raggiungere questa app: in una build personalizzata, verifica che il dominio AppLink e l'entitlement associated-domains corrispondano al tuo bundle ID."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メガネの登録が完了しませんでした。Meta AIアプリで%@を承認してもこの状態が続く場合は、承認後の戻りリンクがこのアプリに届いていない可能性があります。カスタムビルドの場合は、AppLinkドメインとassociated-domainsエンタイトルメントがバンドルIDと一致しているか確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안경 등록이 완료되지 않았습니다. Meta AI 앱에서 %@을(를) 승인했는데도 이 문제가 계속되면 승인 후 돌아오는 링크가 이 앱에 도달하지 않는 것일 수 있습니다. 사용자 지정 빌드라면 AppLink 도메인과 associated-domains 인타이틀먼트가 번들 ID와 일치하는지 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De registratie van de bril is niet voltooid. Als u %@ in de Meta AI-app hebt goedgekeurd en dit blijft gebeuren, bereikt de terugkoppeling van de goedkeuring deze app mogelijk niet — controleer bij een eigen build of het AppLink-domein en de associated-domains-entitlement overeenkomen met uw bundle-ID."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O registro dos óculos não foi concluído. Se você aprovou %@ no aplicativo Meta AI e isso continuar, o link de retorno da aprovação pode não estar chegando a este app — em uma build personalizada, verifique se o domínio do AppLink e o entitlement associated-domains correspondem ao seu bundle ID."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Регистрация очков не завершилась. Если вы одобрили %@ в приложении Meta AI, а проблема повторяется, обратная ссылка после одобрения, возможно, не доходит до этого приложения — в собственной сборке проверьте, что домен AppLink и entitlement associated-domains совпадают с вашим bundle ID."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عینک کی رجسٹریشن مکمل نہیں ہوئی۔ اگر آپ نے Meta AI ایپ میں %@ کو منظور کیا ہے اور یہ مسئلہ برقرار ہے، تو ممکن ہے منظوری کا واپسی لنک اس ایپ تک نہ پہنچ رہا ہو — کسٹم بلڈ پر تصدیق کریں کہ AppLink ڈومین اور associated-domains entitlement آپ کی bundle ID سے میل کھاتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "眼镜注册未完成。如果你已在 Meta AI 应用中批准 %@ 但问题仍然存在，可能是批准后的回跳链接没有到达此应用 — 如果是自定义构建，请确认 AppLink 域名和 associated-domains 权利与你的 bundle ID 一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "眼鏡註冊未完成。如果你已在 Meta AI 應用程式中核准 %@ 但問題仍然存在，可能是核准後的回跳連結沒有到達此 App — 如果是自訂建置，請確認 AppLink 網域和 associated-domains 權利與你的 bundle ID 相符。"
+          }
+        }
+      }
+    },
     "Glasses, hardware, privacy, and medical compliance" : {
       "localizations" : {
         "ar" : {
@@ -190911,6 +192174,89 @@
         }
       }
     },
+    "Held while away" : {
+      "comment" : "Glasses display heading: actions held while the user was away, shown when they come back.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محتجز أثناء غيابك"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retenido mientras no estabas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mis en attente en votre absence"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Távollétében visszatartva"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trattenuto mentre eri via"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不在中に保留"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자리 비운 동안 보류됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tijdens afwezigheid vastgehouden"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retido enquanto você estava fora"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удержано, пока вас не было"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "غیر موجودگی میں روکا گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离开期间暂缓"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離開期間暫緩"
+          }
+        }
+      }
+    },
     "Held while you were away" : {
       "comment" : "My Day, Waiting on you: under a held action.",
       "localizations" : {
@@ -190990,6 +192336,172 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你不在時已擱置"
+          }
+        }
+      }
+    },
+    "Held, not run" : {
+      "comment" : "Chat, under an assistant reply: actions the reply's turn asked for that did not run and are waiting for the user's OK (for example a Shortcut held while they were away).",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معلّق، لم يُنفَّذ"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retenido, sin ejecutar"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En attente, non exécuté"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visszatartva, nem futott le"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trattenuto, non eseguito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留中・未実行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보류됨, 실행 안 됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vastgehouden, niet uitgevoerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retido, não executado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удержано, не выполнено"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "روکا گیا، چلایا نہیں گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暂缓，未执行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暫緩，未執行"
+          }
+        }
+      }
+    },
+    "Held, not run: %@. Ask again to run it." : {
+      "comment" : "VoiceOver, chat: the actions held under an assistant reply, then how to get one run.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معلّق، لم يُنفَّذ: %@. اطلب ذلك مرة أخرى لتشغيله."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retenido, sin ejecutar: %@. Pídelo de nuevo para ejecutarlo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En attente, non exécuté : %@. Redemandez-le pour l’exécuter."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visszatartva, nem futott le: %@. Kérje újra a futtatáshoz."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trattenuto, non eseguito: %@. Chiedilo di nuovo per eseguirlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留中・未実行：%@。実行するには、もう一度依頼してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보류됨, 실행 안 됨: %@. 실행하려면 다시 요청하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vastgehouden, niet uitgevoerd: %@. Vraag het opnieuw om het uit te voeren."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retido, não executado: %@. Peça de novo para executar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удержано, не выполнено: %@. Попросите ещё раз, чтобы выполнить."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "روکا گیا، چلایا نہیں گیا: %@۔ اسے چلانے کے لیے دوبارہ کہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暂缓，未执行：%@。再次提出请求即可运行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已暫緩，未執行：%@。再次提出要求即可執行。"
           }
         }
       }
@@ -209774,6 +211286,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "安裝技能包？"
+          }
+        }
+      }
+    },
+    "Install the Meta AI app and pair your glasses there first." : {
+      "comment" : "Glasses connection failure: the Meta AI app is missing.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ثبّت تطبيق Meta AI واقرن نظاراتك فيه أولًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Primero instala la app Meta AI y vincula tus lentes ahí."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installez d’abord l’application Meta AI et jumelez-y vos lunettes."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Először telepítse a Meta AI alkalmazást, és ott párosítsa a szemüvegét."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installa prima l'app Meta AI e associa lì i tuoi occhiali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まずMeta AIアプリをインストールし、そこでメガネをペアリングしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "먼저 Meta AI 앱을 설치하고 거기서 안경을 페어링하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installeer eerst de Meta AI-app en koppel daar uw bril."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Primeiro instale o aplicativo Meta AI e emparelhe seus óculos nele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сначала установите приложение Meta AI и подключите в нём очки."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پہلے Meta AI ایپ انسٹال کریں اور وہاں اپنی عینک جوڑیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先安装 Meta AI 应用，并在其中配对你的眼镜。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請先安裝 Meta AI 應用程式，並在其中配對你的眼鏡。"
           }
         }
       }
@@ -238587,6 +240182,89 @@
         }
       }
     },
+    "Manuals can't be chosen in a private conversation. End it first." : {
+      "comment" : "Shown in the manual picker when the wearer tries to choose manuals during a private conversation.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يمكن اختيار الكتيبات في محادثة خاصة. أنهِها أولًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pueden elegir manuales en una conversación privada. Termínala primero."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de choisir des manuels dans une conversation privée. Terminez-la d’abord."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetésben nem lehet kézikönyveket választani. Előbb fejezze be."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non puoi scegliere manuali in una conversazione privata. Terminala prima."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話ではマニュアルを選べません。先に会話を終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화에서는 매뉴얼을 선택할 수 없습니다. 먼저 대화를 종료하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In een privégesprek kunnen geen handleidingen worden gekozen. Beëindig het eerst."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não é possível escolher manuais em uma conversa privada. Encerre-a primeiro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В приватном разговоре нельзя выбирать руководства. Сначала завершите его."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو میں مینوئلز منتخب نہیں کیے جا سکتے۔ پہلے اسے ختم کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话中无法选择手册。请先结束对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話中無法選擇手冊。請先結束對話。"
+          }
+        }
+      }
+    },
     "Manuals used" : {
       "localizations" : {
         "ar" : {
@@ -244233,6 +245911,89 @@
         }
       }
     },
+    "Meta AI hasn't approved %@ yet — glasses access is invite-only." : {
+      "comment" : "Glasses connection status. %@ is the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يوافق Meta AI على %@ بعد — الوصول إلى النظارات بالدعوة فقط."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI aún no aprobó %@: el acceso a los lentes es solo por invitación."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI n’a pas encore approuvé %@ — l’accès aux lunettes se fait sur invitation seulement."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Meta AI még nem hagyta jóvá a(z) %@ alkalmazást — a szemüveghez csak meghívással lehet hozzáférni."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI non ha ancora approvato %@: l'accesso agli occhiali è solo su invito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AIはまだ%@を承認していません。メガネへのアクセスは招待制です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI가 아직 %@을(를) 승인하지 않았습니다. 안경 접근은 초대받은 경우에만 가능합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI heeft %@ nog niet goedgekeurd — toegang tot de bril is alleen op uitnodiging."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Meta AI ainda não aprovou %@ — o acesso aos óculos é só por convite."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI ещё не одобрил %@ — доступ к очкам только по приглашению."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI نے ابھی تک %@ کو منظور نہیں کیا — عینک تک رسائی صرف دعوت پر ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI 尚未批准 %@ — 眼镜访问仅限受邀用户。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI 尚未核准 %@ — 眼鏡存取僅限受邀者。"
+          }
+        }
+      }
+    },
     "Meta AI isn't showing your glasses yet" : {
       "localizations" : {
         "ar" : {
@@ -244315,6 +246076,178 @@
         }
       }
     },
+    "Meta AI opens next to approve %@. Meta only completes this for testers invited to %@'s beta, or with Developer Mode turned on in Meta AI (Settings › About › tap the version number five times). An \"Internal error\" in Meta AI means neither applies yet." : {
+      "comment" : "Glasses: shown before the Meta AI app opens to approve this app. Both %@ are the app's name; Settings › About is a path in the Meta AI app.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سيُفتح Meta AI بعد ذلك للموافقة على %1$@. لا تُكمل Meta ذلك إلا للمختبرين المدعوين إلى النسخة التجريبية من %2$@، أو عند تشغيل وضع المطور في Meta AI (الإعدادات › حول › اضغط على رقم الإصدار خمس مرات). وتعني رسالة \"خطأ داخلي\" في Meta AI أن أيًّا من ذلك لا ينطبق بعد."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Meta AI opens next to approve %1$@. Meta only completes this for testers invited to %2$@'s beta, or with Developer Mode turned on in Meta AI (Settings › About › tap the version number five times). An \"Internal error\" in Meta AI means neither applies yet."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI se abrirá a continuación para aprobar %1$@. Meta solo completa esto para testers invitados a la beta de %2$@, o con el Modo de desarrollador activado en Meta AI (Configuración › Información › toca cinco veces el número de versión). Un \"Error interno\" en Meta AI significa que todavía no se cumple ninguna de las dos cosas."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI s’ouvre ensuite pour approuver %1$@. Meta ne termine cette étape que pour les testeurs invités à la bêta de %2$@, ou si le mode développeur est activé dans Meta AI (Réglages › À propos › touchez cinq fois le numéro de version). Une « Erreur interne » dans Meta AI signifie qu’aucune de ces conditions n’est encore remplie."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ezután megnyílik a Meta AI a(z) %1$@ jóváhagyásához. A Meta ezt csak a(z) %2$@ bétájára meghívott tesztelőknek végzi el, vagy ha a Meta AI-ban be van kapcsolva a fejlesztői mód (Beállítások › Névjegy › koppintson ötször a verziószámra). Ha a Meta AI „Belső hiba” üzenetet mutat, egyik feltétel sem teljesül még."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta AI si apre subito dopo per approvare %1$@. Meta completa questa operazione solo per i tester invitati alla beta di %2$@, oppure con la Modalità sviluppatore attivata in Meta AI (Impostazioni › Info › tocca cinque volte il numero di versione). Un \"Errore interno\" in Meta AI significa che nessuna delle due condizioni vale ancora."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次にMeta AIが開き、%1$@を承認します。Metaがこれを完了するのは、%2$@のベータに招待されたテスターの場合か、Meta AIで開発者モードがオンになっている場合（設定 › 情報 › バージョン番号を5回タップ）だけです。Meta AIで「内部エラー」と表示される場合は、まだどちらにも当てはまっていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음으로 Meta AI가 열려 %1$@을(를) 승인합니다. Meta는 %2$@ 베타에 초대된 테스터이거나 Meta AI에서 개발자 모드를 켠 경우(설정 › 정보 › 버전 번호를 다섯 번 탭)에만 이 과정을 완료합니다. Meta AI에 \"내부 오류\"가 표시되면 아직 둘 다 해당하지 않는다는 뜻입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hierna opent Meta AI om %1$@ goed te keuren. Meta voltooit dit alleen voor testers die zijn uitgenodigd voor de bèta van %2$@, of met de ontwikkelaarsmodus ingeschakeld in Meta AI (Instellingen › Over › tik vijf keer op het versienummer). Een \"Interne fout\" in Meta AI betekent dat geen van beide al van toepassing is."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Em seguida, o Meta AI abre para aprovar %1$@. A Meta só conclui isso para testadores convidados para o beta de %2$@, ou com o Modo de desenvolvedor ativado no Meta AI (Configurações › Sobre › toque cinco vezes no número da versão). Um \"Erro interno\" no Meta AI significa que nenhuma das duas condições se aplica ainda."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Далее откроется Meta AI, чтобы одобрить %1$@. Meta завершает это только для тестировщиков, приглашённых в бета-версию %2$@, или при включённом режиме разработчика в Meta AI («Настройки › О программе» › коснитесь номера версии пять раз). «Внутренняя ошибка» в Meta AI означает, что ни то, ни другое пока не выполнено."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس کے بعد %1$@ کو منظور کرنے کے لیے Meta AI کھلے گا۔ Meta یہ صرف ان ٹیسٹرز کے لیے مکمل کرتا ہے جنہیں %2$@ کے بیٹا میں مدعو کیا گیا ہو، یا جب Meta AI میں ڈیولپر موڈ آن ہو (ترتیبات › تعارف › ورژن نمبر پر پانچ بار تھپتھپائیں)۔ Meta AI میں \"اندرونی خرابی\" کا مطلب ہے کہ ابھی ان میں سے کوئی بھی شرط پوری نہیں ہوئی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接下来会打开 Meta AI 以批准 %1$@。只有受邀参加 %2$@ 测试版的测试者，或在 Meta AI 中开启了开发者模式（设置 › 关于 › 轻点版本号五次），Meta 才会完成此步骤。如果 Meta AI 显示“内部错误”，说明这两项都还不满足。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接下來會開啟 Meta AI 以核准 %1$@。只有受邀參加 %2$@ 測試版的測試者，或在 Meta AI 中開啟了開發者模式（設定 › 關於 › 點一下版本號碼五次），Meta 才會完成此步驟。如果 Meta AI 顯示「內部錯誤」，表示這兩項都還不符合。"
+          }
+        }
+      }
+    },
+    "Meta didn't approve %@ for your glasses. Glasses access is invite-only for now: ask to join the tester group, or turn on Developer Mode in the Meta AI app." : {
+      "comment" : "Glasses connection failure. %@ is the app's name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم توافق Meta على %@ لنظاراتك. الوصول إلى النظارات بالدعوة فقط حاليًا: اطلب الانضمام إلى مجموعة المختبرين، أو شغّل وضع المطور في تطبيق Meta AI."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta no aprobó %@ para tus lentes. Por ahora, el acceso a los lentes es solo por invitación: pide unirte al grupo de testers o activa el Modo de desarrollador en la app Meta AI."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta n’a pas approuvé %@ pour vos lunettes. Pour l’instant, l’accès aux lunettes se fait sur invitation seulement : demandez à rejoindre le groupe de testeurs, ou activez le mode développeur dans l’application Meta AI."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Meta nem hagyta jóvá a(z) %@ alkalmazást a szemüvegéhez. A szemüveghez egyelőre csak meghívással lehet hozzáférni: kérje felvételét a tesztelői csoportba, vagy kapcsolja be a fejlesztői módot a Meta AI alkalmazásban."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta non ha approvato %@ per i tuoi occhiali. Per ora l'accesso agli occhiali è solo su invito: chiedi di entrare nel gruppo di tester o attiva la Modalità sviluppatore nell'app Meta AI."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metaはメガネでの%@の利用を承認しませんでした。メガネへのアクセスは現在招待制です。テスターグループへの参加を申請するか、Meta AIアプリで開発者モードをオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta가 안경에서 %@ 사용을 승인하지 않았습니다. 현재 안경 접근은 초대받은 경우에만 가능합니다. 테스터 그룹 참여를 요청하거나 Meta AI 앱에서 개발자 모드를 켜세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta heeft %@ niet goedgekeurd voor uw bril. Toegang tot de bril is voorlopig alleen op uitnodiging: vraag om lid te worden van de testersgroep, of schakel de ontwikkelaarsmodus in de Meta AI-app in."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Meta não aprovou %@ para seus óculos. Por enquanto, o acesso aos óculos é só por convite: peça para entrar no grupo de testadores ou ative o Modo de desenvolvedor no aplicativo Meta AI."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta не одобрила %@ для ваших очков. Доступ к очкам пока только по приглашению: попросите добавить вас в группу тестировщиков или включите режим разработчика в приложении Meta AI."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta نے آپ کی عینک کے لیے %@ کو منظور نہیں کیا۔ فی الحال عینک تک رسائی صرف دعوت پر ہے: ٹیسٹر گروپ میں شامل ہونے کی درخواست کریں، یا Meta AI ایپ میں ڈیولپر موڈ آن کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta 未批准 %@ 用于你的眼镜。眼镜访问目前仅限受邀用户：请申请加入测试者群组，或在 Meta AI 应用中开启开发者模式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta 未核准 %@ 用於你的眼鏡。眼鏡存取目前僅限受邀者：請申請加入測試者群組，或在 Meta AI 應用程式中開啟開發者模式。"
+          }
+        }
+      }
+    },
     "Meta glasses, linked through the Meta AI app" : {
       "localizations" : {
         "ar" : {
@@ -244393,6 +246326,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "透過 Meta AI 應用程式連接的 Meta 眼鏡"
+          }
+        }
+      }
+    },
+    "Meta SDK unavailable — %@" : {
+      "comment" : "Glasses connection status. %@ is the reason, e.g. 'not configured'.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK غير متاح — %@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK no disponible — %@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK indisponible — %@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Meta SDK nem érhető el — %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK non disponibile — %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDKを利用できません — %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK를 사용할 수 없음 — %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK niet beschikbaar — %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK indisponível — %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK недоступен — %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK دستیاب نہیں — %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK 不可用 — %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meta SDK 無法使用 — %@"
           }
         }
       }
@@ -264101,6 +266117,89 @@
         }
       }
     },
+    "No network. Registration needs a connection — reconnect and try again." : {
+      "comment" : "Glasses connection failure.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا توجد شبكة. يحتاج التسجيل إلى اتصال — أعد الاتصال وحاول مرة أخرى."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin red. El registro necesita conexión: vuelve a conectarte e intenta de nuevo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun réseau. L’enregistrement nécessite une connexion — reconnectez-vous et réessayez."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nincs hálózat. A regisztrációhoz kapcsolat kell — csatlakozzon újra, és próbálja újra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna rete. La registrazione richiede una connessione: riconnettiti e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ネットワークがありません。登録には接続が必要です。再接続してもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "네트워크가 없습니다. 등록하려면 연결이 필요합니다. 다시 연결한 후 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geen netwerk. Registratie heeft een verbinding nodig — maak opnieuw verbinding en probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sem rede. O registro precisa de conexão — reconecte e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет сети. Для регистрации нужно подключение — подключитесь и попробуйте ещё раз."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نیٹ ورک نہیں ہے۔ رجسٹریشن کے لیے کنکشن ضروری ہے — دوبارہ منسلک ہوں اور پھر کوشش کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有网络。注册需要网络连接 — 请重新连接后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有網路。註冊需要網路連線 — 請重新連線後再試。"
+          }
+        }
+      }
+    },
     "No notes yet. They are written once older messages no longer fit in a request." : {
       "localizations" : {
         "ar" : {
@@ -269427,6 +271526,89 @@
         }
       }
     },
+    "not configured" : {
+      "comment" : "Glasses connection status: the reason in 'Meta SDK unavailable — %@'.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "غير مُهيَّأ"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no configurado"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "non configuré"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nincs beállítva"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "non configurato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 안 됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "niet geconfigureerd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "não configurado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "не настроено"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ترتیب نہیں دیا گیا"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未配置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未設定"
+          }
+        }
+      }
+    },
     "Not configured" : {
       "localizations" : {
         "ar" : {
@@ -269833,6 +272015,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未下載"
+          }
+        }
+      }
+    },
+    "Not during a job: its record has to be complete. End the job first." : {
+      "comment" : "Spoken and shown when the wearer asks for a private conversation while a Field Assist job is open.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ليس أثناء مهمة: يجب أن يكون سجلها كاملًا. أنهِ المهمة أولًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No durante un trabajo: su registro tiene que estar completo. Termina primero el trabajo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas pendant un travail : son dossier doit être complet. Terminez d’abord le travail."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Munka közben nem: a munka nyilvántartásának teljesnek kell lennie. Előbb fejezze be a munkát."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non durante un lavoro: il suo registro deve essere completo. Termina prima il lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブ中はできません。ジョブの記録は完全である必要があります。先にジョブを終了してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 중에는 안 됩니다. 작업 기록은 빠짐없이 남아야 합니다. 먼저 작업을 끝내세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet tijdens een taak: het taakdossier moet volledig zijn. Beëindig eerst de taak."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não durante um trabalho: o registro dele precisa estar completo. Encerre o trabalho primeiro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не во время задания: его запись должна быть полной. Сначала завершите задание."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جاب کے دوران نہیں: اس کا ریکارڈ مکمل ہونا ضروری ہے۔ پہلے جاب ختم کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作业进行中不行：作业记录必须完整。请先结束作业。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作進行中不行：工作紀錄必須完整。請先結束工作。"
           }
         }
       }
@@ -322159,6 +324424,670 @@
         }
       }
     },
+    "Private" : {
+      "comment" : "Badge on the conversation page and the watch while a conversation is private, and the line the glasses display shows as one starts.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "خاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privada"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privée"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベート"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privé"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватно"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密"
+          }
+        }
+      }
+    },
+    "Private conversation" : {
+      "comment" : "Shown on the Live Activity and the watch in place of the reply while a conversation is private.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محادثة خاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversación privada"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversation privée"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversazione privata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprek"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversa privada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватный разговор"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話"
+          }
+        }
+      }
+    },
+    "Private conversation ended." : {
+      "comment" : "Spoken when a private conversation ends while the wearer is there to hear it.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتهت المحادثة الخاصة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminó la conversación privada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversation privée terminée."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A privát beszélgetés véget ért."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversazione privata terminata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話を終了しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화가 종료되었습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprek beëindigd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversa privada encerrada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватный разговор завершён."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو ختم ہو گئی۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话已结束。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話已結束。"
+          }
+        }
+      }
+    },
+    "Private conversation. Nothing of it is kept." : {
+      "comment" : "VoiceOver label of the Private badge on the conversation page.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محادثة خاصة. لا يُحفظ أي شيء منها."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversación privada. No se guarda nada de ella."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversation privée. Rien n’en est conservé."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetés. Semmi sem marad meg belőle."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversazione privata. Non ne viene conservato nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話。内容は一切保存されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화. 아무것도 보관되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprek. Er wordt niets van bewaard."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversa privada. Nada dela é guardado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватный разговор. Ничего из него не сохраняется."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو۔ اس میں سے کچھ بھی محفوظ نہیں رکھا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话。不会保留任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話。不會保留任何內容。"
+          }
+        }
+      }
+    },
+    "Private conversations" : {
+      "comment" : "Settings section heading: whether private conversations (ones the assistant keeps nothing of) are allowed.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المحادثات الخاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversaciones privadas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversations privées"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetések"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversazioni private"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprekken"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversas privadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватные разговоры"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگوئیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話"
+          }
+        }
+      }
+    },
+    "Private conversations are off" : {
+      "comment" : "Organisation profile review: one of the limits the profile sets; private conversations can't be started.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المحادثات الخاصة متوقفة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las conversaciones privadas están desactivadas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les conversations privées sont désactivées"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A privát beszélgetések ki vannak kapcsolva"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le conversazioni private sono disattivate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話はオフ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화 꺼짐"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprekken staan uit"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As conversas privadas estão desativadas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватные разговоры отключены"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو بند ہے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话已关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話已關閉"
+          }
+        }
+      }
+    },
+    "Private conversations are switched off in Settings." : {
+      "comment" : "Spoken and shown when the wearer asks for a private conversation after switching them off in Settings.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المحادثات الخاصة متوقفة في الإعدادات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las conversaciones privadas están desactivadas en Configuración."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les conversations privées sont désactivées dans Réglages."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A privát beszélgetések ki vannak kapcsolva a Beállításokban."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le conversazioni private sono disattivate in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話は設定でオフになっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화가 설정에서 꺼져 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprekken zijn uitgeschakeld in Instellingen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As conversas privadas estão desativadas em Configurações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватные разговоры отключены в настройках."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو ترتیبات میں بند ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话已在设置中关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話已在設定中關閉。"
+          }
+        }
+      }
+    },
+    "Private conversations aren't saved, listed or remembered, and leave no notes. The AI service you use still receives what you say, as it does for every conversation." : {
+      "comment" : "Explains what a private conversation keeps and what it does not change. Shown once when the first one starts, and in Settings.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا تُحفظ المحادثات الخاصة ولا تظهر في القائمة ولا تُتذكَّر، ولا تترك أي ملاحظات. لكن خدمة الذكاء الاصطناعي التي تستخدمها تظل تتلقى ما تقوله، كما في كل محادثة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las conversaciones privadas no se guardan, no aparecen en la lista ni se recuerdan, y no dejan notas. El servicio de IA que usas sigue recibiendo lo que dices, como en cualquier conversación."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les conversations privées ne sont ni enregistrées, ni listées, ni mémorisées, et ne laissent aucune note. Le service d’IA que vous utilisez reçoit quand même ce que vous dites, comme pour toute conversation."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A privát beszélgetéseket az alkalmazás nem menti, nem listázza és nem jegyzi meg, és nem maradnak utánuk jegyzetek. Az Ön által használt AI-szolgáltatás ugyanúgy megkapja, amit mond, mint minden beszélgetésnél."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le conversazioni private non vengono salvate, elencate né ricordate e non lasciano note. Il servizio di IA che usi riceve comunque ciò che dici, come per ogni conversazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話は保存されず、一覧に表示されず、記憶もされず、メモも残りません。ただし、ご利用のAIサービスには、ほかの会話と同様に、話した内容が届きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화는 저장되거나 목록에 표시되거나 기억되지 않으며, 메모도 남지 않습니다. 단, 사용 중인 AI 서비스는 다른 모든 대화와 마찬가지로 사용자가 말한 내용을 받습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprekken worden niet opgeslagen, vermeld of onthouden en laten geen notities achter. De AI-dienst die u gebruikt, ontvangt nog steeds wat u zegt, zoals bij elk gesprek."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As conversas privadas não são salvas, listadas nem lembradas, e não deixam notas. O serviço de IA que você usa ainda recebe o que você diz, como em qualquer conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватные разговоры не сохраняются, не попадают в список и не запоминаются, и после них не остаётся заметок. Сервис ИИ, которым вы пользуетесь, по-прежнему получает то, что вы говорите, как и при любом разговоре."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگوئیں نہ محفوظ ہوتی ہیں، نہ فہرست میں آتی ہیں اور نہ یاد رکھی جاتی ہیں، اور کوئی نوٹس نہیں چھوڑتیں۔ آپ جو AI سروس استعمال کرتے ہیں وہ پھر بھی آپ کی کہی ہوئی بات وصول کرتی ہے، جیسا کہ ہر گفتگو میں ہوتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话不会被保存、列出或记住，也不会留下任何笔记。你使用的 AI 服务仍会收到你说的内容，与所有对话一样。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話不會被儲存、列出或記住，也不會留下任何筆記。你使用的 AI 服務仍會收到你說的內容，與所有對話一樣。"
+          }
+        }
+      }
+    },
     "private LAN" : {
       "localizations" : {
         "ar" : {
@@ -322237,6 +325166,172 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "私人區域網路"
+          }
+        }
+      }
+    },
+    "Private. Go ahead." : {
+      "comment" : "Spoken when a private conversation starts with nothing after the phrase; the assistant then listens.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محادثة خاصة. تفضّل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversación privada. Adelante."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversation privée. Allez-y."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetés. Kérem, mondja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversazione privata. Vai pure."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話です。どうぞ。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화입니다. 말씀하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprek. Gaat uw gang."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversa privada. Pode falar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватный разговор. Говорите."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو۔ بولیے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话。请讲。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話。請說。"
+          }
+        }
+      }
+    },
+    "Private. I won't keep any of this." : {
+      "comment" : "Spoken when a private conversation starts with a question; the answer follows.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "محادثة خاصة. لن أحتفظ بأي شيء من هذا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversación privada. No guardaré nada de esto."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversation privée. Je n’en garderai rien."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetés. Ebből semmit sem őrzök meg."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversazione privata. Non ne conserverò nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話です。この内容は何も残しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화입니다. 이 내용은 아무것도 보관하지 않겠습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privégesprek. Ik bewaar hier niets van."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversa privada. Não vou guardar nada disto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Приватный разговор. Я ничего из этого не сохраню."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو۔ میں اس میں سے کچھ بھی محفوظ نہیں رکھوں گا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密对话。这些内容我都不会保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "私密對話。這些內容我都不會保留。"
           }
         }
       }
@@ -341531,6 +344626,172 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在向 Meta AI 註冊…"
+          }
+        }
+      }
+    },
+    "Registering…" : {
+      "comment" : "Glasses connection status.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ التسجيل…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrando…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regisztrálás…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "등록 중…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registreren…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrando…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Регистрация…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رجسٹر ہو رہا ہے…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在注册…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在註冊…"
+          }
+        }
+      }
+    },
+    "Registration failed. Restart the glasses and try again." : {
+      "comment" : "Glasses connection failure.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فشل التسجيل. أعد تشغيل النظارات وحاول مرة أخرى."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falló el registro. Reinicia los lentes e intenta de nuevo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échec de l’enregistrement. Redémarrez les lunettes et réessayez."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A regisztráció nem sikerült. Indítsa újra a szemüveget, és próbálja újra."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazione non riuscita. Riavvia gli occhiali e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登録に失敗しました。メガネを再起動して、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "등록에 실패했습니다. 안경을 다시 시작한 후 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registratie mislukt. Start de bril opnieuw op en probeer het opnieuw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falha no registro. Reinicie os óculos e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Регистрация не удалась. Перезапустите очки и попробуйте ещё раз."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رجسٹریشن ناکام ہو گئی۔ عینک دوبارہ شروع کریں اور پھر کوشش کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "注册失败。请重启眼镜后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "註冊失敗。請重新啟動眼鏡後再試。"
           }
         }
       }
@@ -405361,6 +408622,89 @@
         }
       }
     },
+    "Start a private conversation" : {
+      "comment" : "Menu item that starts a conversation the assistant keeps nothing of.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ابدأ محادثة خاصة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar una conversación privada"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Démarrer une conversation privée"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privát beszélgetés indítása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avvia una conversazione privata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートな会話を開始"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 대화 시작"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start een privégesprek"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar uma conversa privada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Начать приватный разговор"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نجی گفتگو شروع کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始私密对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始私密對話"
+          }
+        }
+      }
+    },
     "Start a separate chat" : {
       "localizations" : {
         "ar" : {
@@ -450796,6 +454140,89 @@
         }
       }
     },
+    "The recommended quantization is selected. Tap another to change it." : {
+      "comment" : "Import a local model: footer under the list of quantizations (file sizes) of a model.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تم تحديد التكميم الموصى به. اضغط على تكميم آخر لتغييره."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Está seleccionada la cuantización recomendada. Toca otra para cambiarla."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La quantification recommandée est sélectionnée. Touchez-en une autre pour la changer."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az ajánlott kvantálás van kiválasztva. Koppintson egy másikra a módosításhoz."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "È selezionata la quantizzazione consigliata. Toccane un'altra per cambiarla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推奨の量子化が選択されています。変更するには別の量子化をタップしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "권장 양자화가 선택되어 있습니다. 변경하려면 다른 항목을 탭하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De aanbevolen kwantisering is geselecteerd. Tik op een andere om die te wijzigen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A quantização recomendada está selecionada. Toque em outra para alterar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбрана рекомендуемая квантизация. Коснитесь другой, чтобы изменить выбор."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجویز کردہ کوانٹائزیشن منتخب ہے۔ تبدیل کرنے کے لیے کسی دوسری پر تھپتھپائیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选择推荐的量化版本。轻点其他版本即可更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已選擇建議的量化版本。點一下其他版本即可更改。"
+          }
+        }
+      }
+    },
     "The recording is saved on this phone and will be prepared for the office." : {
       "localizations" : {
         "ar" : {
@@ -460289,6 +463716,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這個對話"
+          }
+        }
+      }
+    },
+    "This conversation is private, so I won't remember that. Want a reminder instead?" : {
+      "comment" : "Appended to a reply when the wearer asked the assistant to remember something during a private conversation.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذه المحادثة خاصة، لذا لن أتذكر ذلك. هل تريد تذكيرًا بدلًا من ذلك؟"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta conversación es privada, así que no recordaré eso. ¿Quieres un recordatorio en su lugar?"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette conversation est privée, alors je ne m’en souviendrai pas. Voulez-vous plutôt un rappel?"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez a beszélgetés privát, ezért ezt nem jegyzem meg. Kér helyette egy emlékeztetőt?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa conversazione è privata, quindi non lo ricorderò. Vuoi invece un promemoria?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この会話はプライベートなので、それは覚えません。代わりにリマインダーを設定しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대화는 비공개이므로 그 내용은 기억하지 않겠습니다. 대신 알림을 설정할까요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit gesprek is privé, dus dat onthoud ik niet. Wilt u in plaats daarvan een herinnering?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta conversa é privada, então não vou me lembrar disso. Quer um lembrete em vez disso?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот разговор приватный, поэтому я этого не запомню. Может, создать напоминание?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ گفتگو نجی ہے، اس لیے میں یہ یاد نہیں رکھوں گا۔ کیا اس کے بجائے یاد دہانی چاہیے؟"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这是私密对话，所以我不会记住这件事。要改为设置提醒吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這是私密對話，所以我不會記住這件事。要改為設定提醒嗎？"
           }
         }
       }
@@ -500577,6 +504087,89 @@
         }
       }
     },
+    "Waiting for device…" : {
+      "comment" : "Glasses connection status: registered with Meta AI, waiting for the glasses to appear.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "في انتظار الجهاز…"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esperando el dispositivo…"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En attente de l’appareil…"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Várakozás az eszközre…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In attesa del dispositivo…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバイスを待っています…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기를 기다리는 중…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wachten op apparaat…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aguardando o dispositivo…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ожидание устройства…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ڈیوائس کا انتظار ہے…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待设备…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待裝置…"
+          }
+        }
+      }
+    },
     "Waiting for the app to be open (on-device model)" : {
       "localizations" : {
         "ar" : {
@@ -525460,6 +529053,255 @@
         }
       }
     },
+    "Your glasses are connected." : {
+      "comment" : "Glasses: connection status.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نظاراتك متصلة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus lentes están conectados."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos lunettes sont connectées."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemüvege csatlakoztatva van."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I tuoi occhiali sono connessi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メガネが接続されています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안경이 연결되었습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw bril is verbonden."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seus óculos estão conectados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очки подключены."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی عینک منسلک ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的眼镜已连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的眼鏡已連接。"
+          }
+        }
+      }
+    },
+    "Your glasses are out of reach. Check that they're switched on, out of their case and nearby." : {
+      "comment" : "Glasses: why they aren't connected.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نظاراتك خارج النطاق. تحقّق من أنها قيد التشغيل وخارج علبتها وقريبة منك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus lentes están fuera de alcance. Comprueba que estén encendidos, fuera del estuche y cerca."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos lunettes sont hors de portée. Vérifiez qu’elles sont allumées, sorties de leur étui et à proximité."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemüvege hatótávolságon kívül van. Ellenőrizze, hogy be van-e kapcsolva, kint van-e a tokjából, és a közelben van-e."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I tuoi occhiali sono fuori portata. Controlla che siano accesi, fuori dalla custodia e vicini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メガネが範囲外にあります。電源が入っていること、ケースから出していること、近くにあることを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안경이 범위를 벗어났습니다. 안경이 켜져 있고 케이스 밖에 있으며 가까이 있는지 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw bril is buiten bereik. Controleer of die is ingeschakeld, uit de koker is en in de buurt is."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seus óculos estão fora de alcance. Verifique se estão ligados, fora do estojo e por perto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очки вне зоны досягаемости. Проверьте, что они включены, вынуты из футляра и находятся рядом."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی عینک رینج سے باہر ہے۔ تصدیق کریں کہ وہ آن ہے، کیس سے باہر ہے اور قریب ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的眼镜不在范围内。请确认眼镜已开机、已从眼镜盒中取出，并且就在附近。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的眼鏡不在範圍內。請確認眼鏡已開機、已從眼鏡盒中取出，並且就在附近。"
+          }
+        }
+      }
+    },
+    "Your glasses are still connecting. Give them a moment." : {
+      "comment" : "Glasses: connection status.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا تزال نظاراتك قيد الاتصال. امنحها لحظة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus lentes aún se están conectando. Dales un momento."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos lunettes sont encore en cours de connexion. Laissez-leur un instant."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szemüvege még csatlakozik. Adjon neki egy kis időt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I tuoi occhiali si stanno ancora connettendo. Attendi un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メガネはまだ接続中です。少しお待ちください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안경이 아직 연결 중입니다. 잠시 기다려 주세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw bril maakt nog verbinding. Geef hem even de tijd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seus óculos ainda estão se conectando. Aguarde um momento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очки ещё подключаются. Подождите немного."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی عینک ابھی منسلک ہو رہی ہے۔ تھوڑا انتظار کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的眼镜仍在连接。请稍等片刻。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的眼鏡仍在連接。請稍候片刻。"
+          }
+        }
+      }
+    },
     "Your glasses have a display" : {
       "comment" : "Phone banner shown once when Meta Ray-Ban Display glasses first connect.",
       "localizations" : {
@@ -527840,6 +531682,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的組織"
+          }
+        }
+      }
+    },
+    "Your organisation has switched private conversations off." : {
+      "comment" : "Spoken and shown when the wearer asks for a private conversation and their organisation's profile has switched them off.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أوقفت مؤسستك المحادثات الخاصة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu organización desactivó las conversaciones privadas."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre organisation a désactivé les conversations privées."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A szervezete kikapcsolta a privát beszélgetéseket."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua organizzazione ha disattivato le conversazioni private."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "組織によりプライベートな会話はオフになっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "조직에서 비공개 대화를 꺼 두었습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uw organisatie heeft privégesprekken uitgeschakeld."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua organização desativou as conversas privadas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваша организация отключила приватные разговоры."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کی تنظیم نے نجی گفتگو بند کر دی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的组织已关闭私密对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的組織已關閉私密對話。"
           }
         }
       }
