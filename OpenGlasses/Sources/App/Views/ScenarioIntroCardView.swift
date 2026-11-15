@@ -30,7 +30,8 @@ struct ScenarioIntroSlot: View {
         ConversationContinuity.pageContent(
             store: conversations, isRealtimeSession: false,
             liveUserText: appState.currentTranscription,
-            liveAssistantText: appState.lastResponse) == .empty
+            liveAssistantText: appState.lastResponse,
+            isPrivate: appState.privateConversation.isActive) == .empty
     }
 
     private var shows: Bool {

@@ -52,6 +52,8 @@ final class MemoryLoopService: ObservableObject {
 
     /// Live entry point — call at turn completion.
     func observeTurn(userText: String, assistantText: String = "", toolNames: [String] = []) {
+        // Plan LU §3: a private turn is not ingested, offered or learned from.
+        guard !PrivateConversationGate.skips(.memoryLoopObserveTurn) else { return }
         let nudges = Config.memoryNudgesEnabled
         let agent = Config.agentModeEnabled
         guard nudges || agent else { return }
@@ -73,6 +75,8 @@ final class MemoryLoopService: ObservableObject {
     /// Nothing here throws or surfaces. A failed call, an empty answer and a refusal the wearer
     /// asked for are each one counted line and no edges; the feature merely being off is silent.
     func enrich(turn: CompletedTurn, sessionID: String?) async {
+        // Plan LU §3: a private turn's words are not sent for relationships, nor filed.
+        guard !PrivateConversationGate.skips(.memoryLoopEnrich) else { return }
         let outcome = RelationEnrichmentPolicy.decide(
             agentMode: Config.agentModeEnabled,
             enrichmentEnabled: Config.brainEnrichmentEnabled,

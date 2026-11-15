@@ -109,6 +109,11 @@ struct ManualPickerView: View {
     private func apply() {
         guard PersonalManualLibrary.canManage, !store.isLocked, !appState.isProcessing,
               !appState.llmService.isProcessing, missing.isEmpty else { return }
+        // Plan LU P1b: a private conversation starts no thread, and changes none it isn't in.
+        guard !appState.privateConversation.isActive else {
+            notice = PrivateConversationLines.noManualsWhilePrivate
+            return
+        }
         var id = threadID
         if id == nil {
             guard store.activeThreadId == nil else {
@@ -146,7 +151,9 @@ struct ManualSelectionButton: View {
     }
 
     var body: some View {
-        if PersonalManualLibrary.canManage {
+        // Plan LU P1b: not in a private conversation. It has no thread to keep a choice on, and
+        // the stored thread under it is not the one being talked in.
+        if PersonalManualLibrary.canManage, !appState.privateConversation.isActive {
             Button {
                 appState.manualPickerThreadID = threadID
                 appState.showManualPicker = true

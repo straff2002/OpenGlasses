@@ -288,7 +288,8 @@ struct VoiceTab: View {
             onboardingDone: onboardingDone, alreadySettled: scenarios.shelfOpeningSettled,
             conversationIsEmpty: ConversationContinuity.pageContent(
                 store: appState.conversationStore, isRealtimeSession: false,
-                liveUserText: appState.currentTranscription, liveAssistantText: appState.lastResponse) == .empty,
+                liveUserText: appState.currentTranscription, liveAssistantText: appState.lastResponse,
+                isPrivate: appState.privateConversation.isActive) == .empty,
             hasCards: !appState.scenarioShelfCards(progress: scenarios.progress).isEmpty)
     }
 

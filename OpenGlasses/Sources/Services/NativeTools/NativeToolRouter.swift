@@ -161,12 +161,30 @@ final class NativeToolRouter: ToolExecutionAuthority {
     /// only applied to a call the ledger shows in flight, so a call from a session that keeps no
     /// ledger is never judged against an earlier turn.
     var turnLedger: @MainActor () -> AttemptToolLedger? = { nil }
+    /// Whether a private conversation is open (Plan LU §4). A seam so the refusal is testable
+    /// without one; the app reads the process-wide gate.
+    var isPrivateConversation: @MainActor () -> Bool = { PrivateConversationGate.isActive }
 
     init(registry: NativeToolRegistry, openClawBridge: OpenClawBridge? = nil) {
         self.registry = registry
         self.openClawBridge = openClawBridge
         // Plan IU: `lookup_tools` may describe the MCP tools this router offers, never others.
         registry.mcpClientSource = { [weak self] in self?.mcpClient }
+    }
+
+    // MARK: - Private conversation (Plan LU §4)
+
+    /// The refusal for a memory-like native call while a private conversation is open, or nil.
+    /// MCP, custom and gateway tools are not classified (`PrivateToolRule`) and are not judged here.
+    private func privateConversationRefusal(_ call: ResolvedToolCall,
+                                            profile: DispatchProfile) -> ToolExecutionOutcome? {
+        guard case .native = profile.seam, isPrivateConversation() else { return nil }
+        guard case .refuse(let reason) = PrivateToolRule.decision(tool: call.name,
+                                                                  args: call.arguments.rawValues) else {
+            return nil
+        }
+        PrivacyLog.toolGate(.privateConversation, tool: call.name)
+        return .rejected(reason: reason)
     }
 
     // MARK: - Dispatch profile (W04.4)
@@ -309,6 +327,11 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // approval is issued against need to know what will actually be dispatched — a native tool,
         // a named server's tool, a user-authored HTTP call, or the gateway.
         let profile = dispatchProfile(for: call)
+
+        // Plan LU §4: in a private conversation a memory-like native tool is refused before
+        // anything is asked or run, so no approval card goes up for something that would keep what
+        // the wearer asked not to be kept. A wearer-directed tool runs as usual (decision 2).
+        if let refusal = privateConversationRefusal(call, profile: profile) { return refusal }
 
         // Outbound egress screen (Plan R), hoisted ahead of authorization. A call whose arguments
         // carry secrets or PII is withheld whatever anyone would have said about it, so screening

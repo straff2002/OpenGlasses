@@ -54,8 +54,10 @@ struct AskPersonaIntent: AppIntent {
 
         let resolved = resolvePersona(appState: appState)
 
-        // Conversational follow-up: continue a recent Siri thread, else start fresh.
-        if Config.conversationPersistenceEnabled {
+        // Conversational follow-up: continue a recent Siri thread, else start fresh. Not while a
+        // private conversation is open (Plan LU §3): the ask joins it, and the stored conversation
+        // open before it stays exactly as it was.
+        if appState.persistsConversation {
             appState.conversationStore.continueRecentOrStartThread(
                 mode: appState.currentMode.rawValue,
                 within: Self.followUpWindow

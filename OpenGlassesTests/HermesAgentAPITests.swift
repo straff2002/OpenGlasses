@@ -116,6 +116,15 @@ final class HermesAgentAPITests: XCTestCase {
         XCTAssertNil(try body(empty)["previous_response_id"], "an empty id is no chain")
     }
 
+    /// Plan LU §5: a private conversation's turn is not stored, and chains to nothing.
+    func testAPrivateTurnIsNotStoredAndChainsToNothing() throws {
+        let request = HermesAgentAPI.responsesRequest(base: base, apiKey: "k", input: "a private question",
+                                                      previousResponseID: "resp_abc", store: false)
+        let json = try body(request)
+        XCTAssertEqual(json["store"] as? Bool, false)
+        XCTAssertNil(json["previous_response_id"], "an unstored turn continues no chain")
+    }
+
     func testHealthAndModelsRequests() throws {
         let health = HermesAgentAPI.healthRequest(url: HermesAgentAPI.healthURLs(base: base)[0])
         XCTAssertEqual(health.url?.absoluteString, "http://192.168.1.20:8642/health")

@@ -722,6 +722,11 @@ class LLMService: ObservableObject {
             ? SystemPromptBuilder.onDeviceSpokenManners(replyLanguage: replyLanguage)
             : SystemPromptBuilder.spokenManners(replyLanguage: replyLanguage))
         closeBlock("spoken manners")
+        // Plan LU §4: a private conversation's turn says so, once.
+        if PrivateConversationGate.isActive {
+            prompt += "\n\n" + SystemPromptBuilder.privateConversationLine
+            closeBlock("private conversation")
+        }
 
         if includeTools && shouldInclude(.tools) {
             var toolSection = """
@@ -2394,7 +2399,55 @@ class LLMService: ObservableObject {
     var isTurnInFlight: Bool { turnDepth > 0 }
 
     private func beginTurnScope() { turnDepth += 1 }
-    private func endTurnScope() { turnDepth = max(0, turnDepth - 1) }
+    private func endTurnScope() {
+        turnDepth = max(0, turnDepth - 1)
+        // Plan LU: a private conversation that ended while a turn was running gives the stored
+        // conversation's context back now, after that turn has written its own exchange — into the
+        // private history, which goes with it.
+        if turnDepth == 0, pendingPrivateRestore {
+            pendingPrivateRestore = false
+            restoreHistoryAfterPrivate()
+        }
+    }
+
+    // MARK: - Private conversation (Plan LU §1)
+
+    /// The model's context for the stored conversation, put aside while a private one runs.
+    private var historyBeforePrivate: [[String: Any]]?
+    private var pendingPrivateRestore = false
+
+    /// A private conversation started: the model's context becomes its transcript, replayed as a
+    /// stored thread's would be (`replayMessages(for:)`), and the stored conversation's context is
+    /// put aside untouched, to come back when the private one ends.
+    func beginPrivateHistory(_ messages: [(role: String, content: String)]) {
+        cancelOffConversationRun()
+        if historyBeforePrivate == nil { historyBeforePrivate = conversationHistory }
+        pendingPrivateRestore = false
+        conversationHistory = messages.map { ["role": $0.role, "content": $0.content] }
+        toolExposureMemory.removeAll()   // Plan IU: what was looked up belongs to the conversation
+        PrivacyLog.model(.historyLoaded, count: conversationHistory.count, total: messages.count)
+    }
+
+    /// The private conversation ended: its turns leave the model's context, and the stored
+    /// conversation's comes back as it was. Deferred to the end of a turn still running.
+    func endPrivateHistory() {
+        guard historyBeforePrivate != nil else { return }
+        if isTurnInFlight {
+            pendingPrivateRestore = true
+        } else {
+            restoreHistoryAfterPrivate()
+        }
+    }
+
+    /// Whether the model's context is a private conversation's.
+    var holdsPrivateHistory: Bool { historyBeforePrivate != nil }
+
+    private func restoreHistoryAfterPrivate() {
+        cancelOffConversationRun()
+        conversationHistory = historyBeforePrivate ?? []
+        historyBeforePrivate = nil
+        toolExposureMemory.removeAll()
+    }
 
     /// Clear the conversation history — immediately when idle, or after the in-flight turn
     /// completes when the model itself requested it via the `new_topic` tool (a mid-loop wipe

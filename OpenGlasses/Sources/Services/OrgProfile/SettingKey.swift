@@ -114,6 +114,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// is written about anyone's conversations on its phones, and never on: writing notes about a
     /// person's conversations is the person's choice, not the employer's.
     case conversationDigestsEnabled
+    /// Private conversations (Plan LU decision 6): an organisation may pin them off, so the phrase
+    /// and the buttons start none on its phones, and never on — whether a wearer may keep a
+    /// conversation out of the record is theirs to choose. Jobs refuse them whatever this says.
+    case privateConversationsAllowed
 
     // Starting values the person may change.
     case fieldAssistEnabled
@@ -177,7 +181,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,
              .mcpServerEnabled, .agentModeEnabled, .teamLearningReviewerDevice,
              .cloudDictationEnabled, .interpreterEnabled, .instantReplayEnabled, .preparedCardCustomerTexts,
-             .conversationDigestsEnabled:
+             .conversationDigestsEnabled, .privateConversationsAllowed:
             return .ceiling(pinnedTo: false)
         case .pilotReportRecipients:
             return .startingValue(.strings)

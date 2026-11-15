@@ -99,6 +99,10 @@ struct WatchMainView: View {
                         // Ask by speaking to the watch itself
                         dictateRow
 
+                        // A conversation Avenkin keeps nothing of (Plan LU): Private, or while one
+                        // is open its badge and End
+                        privateRow
+
                         // Record toggle (transcription)
                         recordRow
 
@@ -136,7 +140,7 @@ struct WatchMainView: View {
                         }
 
                         // Response
-                        if !connectivity.lastResponse.isEmpty,
+                        if !connectivity.shownReply.isEmpty,
                            !(answerSupersededByError && errorMessage != nil) {
                             responseSection
                                 .id(Self.responseAnchor)
@@ -281,6 +285,57 @@ struct WatchMainView: View {
             }
         }
         .disabled(!connectivity.isReachable || connectivity.isProcessing)
+    }
+
+    // MARK: - Private Row
+
+    /// **Private** starts a private conversation on the phone. While one is open, the lock and
+    /// Private, and **End**. The phone's refusal, when it can't start (a job, the organisation, the
+    /// wearer's own switch, a live session), shows as any other error here.
+    @ViewBuilder
+    private var privateRow: some View {
+        if connectivity.isPrivate {
+            HStack(spacing: 6) {
+                Label("Private", systemImage: "lock.fill")
+                    .font(.body.weight(.semibold))
+                    .accessibilityLabel("Private conversation. Nothing of it is kept.")
+                Spacer(minLength: 4)
+                Button("End") { sendPrivate(.end) }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("End private conversation")
+                    .accessibilityIdentifier("watchPrivateEnd")
+                    .disabled(!connectivity.isReachable)
+            }
+            .accessibilityIdentifier("watchPrivateBadge")
+        } else {
+            Button {
+                sendPrivate(.start)
+            } label: {
+                Label {
+                    Text("Private")
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } icon: {
+                    Image(systemName: "lock")
+                        .foregroundStyle(accentColor)
+                }
+            }
+            .accessibilityLabel("Start a private conversation")
+            .accessibilityIdentifier("watchPrivateStart")
+            .disabled(!connectivity.isReachable)
+        }
+    }
+
+    private func sendPrivate(_ action: WatchPrivateWire.Action) {
+        errorMessage = nil
+        connectivity.sendPrivateRequest(action) { error in
+            if let error {
+                errorMessage = error
+                errorFeedbackTrigger += 1
+            } else {
+                feedbackTrigger += 1
+            }
+        }
     }
 
     // MARK: - Record Toggle Row
@@ -502,7 +557,7 @@ struct WatchMainView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             // In full: for a question dictated with nothing else on, this is the whole answer.
-            Text(connectivity.lastResponse)
+            Text(connectivity.shownReply)
                 .font(.caption)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

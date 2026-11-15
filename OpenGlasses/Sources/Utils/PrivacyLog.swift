@@ -251,6 +251,8 @@ enum PrivacyLog {
         /// An outbound call copied a span of the wearer's private data on a turn that read outside
         /// content, so the wearer is asked first (Plan LT §2). The span itself is never logged.
         case privateSpanCopied
+        /// A memory-like tool was refused because the conversation is private (Plan LU §4).
+        case privateConversation
     }
 
     @discardableResult
@@ -1901,6 +1903,9 @@ enum PrivacyLog {
         // Plan LQ, conversation notes: counts, durations and named reasons only. Never the text.
         case digestSkipped, digestWritten, digestFailed, digestSaveRefused, digestPointsDropped
         case digestForgotten, digestRedacted, digestBacklog
+        // Plan LU §1, private conversations: that one started and how, that one was refused and why,
+        // and why one ended. Never its id, never a word of it.
+        case privateStarted, privateRefused, privateEnded
         case loaded, recovered, saveSkipped, saveFailed
         case encryptionEnabled, encryptionDisabled, encryptionFailed
         case unlockFailed, locked, awaitingAuthentication
@@ -1927,6 +1932,31 @@ enum PrivacyLog {
         if let detail { fields.append(.init(.detail, .token(detail))) }
         if let error { fields.append(.init(.error, .summary(error))) }
         return emit(.init(.conversation, .conversation, fields))
+    }
+
+    /// Plan LU §1: what a private conversation did, as the one content-free line it leaves.
+    enum PrivateConversationLogEvent: Equatable {
+        case started(PrivateEntry)
+        case refused(PrivateStartRefusal)
+        case ended(PrivateEndReason)
+    }
+
+    /// The only record a private conversation leaves: that it started (and from where), that a
+    /// start was refused (and why), and why it ended. Its id is never written — not even as a
+    /// fingerprint — so two lines cannot be joined into one conversation.
+    @discardableResult
+    static func privateConversation(_ event: PrivateConversationLogEvent) -> PrivacyEvent {
+        let name: ConversationEvent
+        let detail: String
+        switch event {
+        case .started(let entry): name = .privateStarted; detail = entry.rawValue
+        case .refused(let refusal): name = .privateRefused; detail = refusal.rawValue
+        case .ended(let reason): name = .privateEnded; detail = reason.rawValue
+        }
+        return emit(.init(.conversation, .conversation, [
+            .init(.event, .token(PrivacyToken(name.rawValue))),
+            .init(.reason, .token(PrivacyToken(detail))),
+        ]))
     }
 
     // MARK: - Persistence
