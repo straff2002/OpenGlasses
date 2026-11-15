@@ -17,7 +17,7 @@ struct AttributionsView: View {
     private let models: [Attribution] = [
         Attribution(
             name: String(localized: "Fingerspelling recognition model"),
-            role: String(localized: "On-device ASL fingerspelling recognition (Plan CK). Trained on the Google ASL Fingerspelling corpus by Google and the Deaf Professional Arts Network."),
+            role: String(localized: "On-device ASL fingerspelling recognition. Trained on the Google ASL Fingerspelling corpus by Google and the Deaf Professional Arts Network."),
             license: String(localized: "Model Apache 2.0 · corpus CC BY 4.0")),
         Attribution(
             name: "MediaPipe holistic landmarker",

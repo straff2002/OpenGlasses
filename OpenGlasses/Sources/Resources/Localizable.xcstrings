@@ -3253,7 +3253,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Met 'Breng me daarheen' wordt deze app geopend met een routebeschrijving naar het adres van de baan. Als het niet is geïnstalleerd, wordt Apple Maps gebruikt en wordt u dat verteld. De opdracht is altijd één tik of één zin verwijderd; als je hem hier aanzet, leest hij het ook als de auto verbinding maakt."
+            "value" : "Met 'Breng me daarheen' wordt deze app geopend met een routebeschrijving naar het adres van de taak. Als het niet is geïnstalleerd, wordt Apple Maps gebruikt en wordt u dat verteld. De opdracht is altijd één tik of één zin verwijderd; als je hem hier aanzet, leest hij het ook als de auto verbinding maakt."
           }
         },
         "pt-BR" : {
@@ -5117,7 +5117,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ · Vision"
+            "value" : "%@ · Beeldherkenning"
           }
         },
         "pt-BR" : {
@@ -5627,7 +5627,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ toegevoegd aan komende vacatures."
+            "value" : "%1$@ toegevoegd aan komende taken."
           }
         },
         "pt-BR" : {
@@ -14473,7 +14473,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ Az eltávolításához válassza a Profil eltávolítása lehetőséget az oldal alján, a „Hagyja a %2$@-t” alatt.%3$@"
+            "value" : "%1$@ Az eltávolításához válassza a Profil eltávolítása lehetőséget az oldal alján, a „Kilépés: %2$@” alatt.%3$@"
           }
         },
         "it" : {
@@ -14527,7 +14527,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ 若要移除，請在此頁面底部的「離開 %2$@」下選擇「移除個人資料」。%3$@"
+            "value" : "%1$@ 若要移除，請在此頁面底部的「退出 %2$@」下選擇「移除個人資料」。%3$@"
           }
         }
       }
@@ -14561,7 +14561,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ Az eltávolításához nyissa meg a Beállítások › Szervezet › %2$@ menüpontot, és válassza a Profil eltávolítása lehetőséget a „Hagyja a %3$@-t” alatt.%4$@"
+            "value" : "%1$@ Az eltávolításához nyissa meg a Beállítások › Szervezet › %2$@ menüpontot, és válassza a Profil eltávolítása lehetőséget a „Kilépés: %3$@” alatt.%4$@"
           }
         },
         "it" : {
@@ -14615,7 +14615,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ 若要移除，請前往「設定」›「組織」›「%2$@」，然後在「離開 %3$@」下選擇「移除個人資料」。%4$@"
+            "value" : "%1$@ 若要移除，請前往「設定」›「組織」›「%2$@」，然後在「退出 %3$@」下選擇「移除個人資料」。%4$@"
           }
         }
       }
@@ -46696,7 +46696,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Er staat een vacature open. U wordt gevraagd of u de taak wilt hervatten, afmaken of de nieuwe taak voor later wilt plannen."
+            "value" : "Er staat een taak open. U wordt gevraagd of u de taak wilt hervatten, afmaken of de nieuwe taak voor later wilt plannen."
           }
         },
         "pt-BR" : {
@@ -61122,13 +61122,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 직업 추가"
+            "value" : "새 작업 추가"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nieuwe baan toevoegen"
+            "value" : "Nieuwe taak toevoegen"
           }
         },
         "pt-BR" : {
@@ -68208,7 +68208,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AI-visie · %1$@"
+            "value" : "AI-beeldherkenning · %1$@"
           }
         },
         "pt-BR" : {
@@ -76705,7 +76705,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles wat het kantoor heeft weggelaten, blijft leeg. De vacature wordt toegevoegd aan Aankomend op het tabblad Vacatures; het start niet en er wordt niets verzonden."
+            "value" : "Alles wat het kantoor heeft weggelaten, blijft leeg. De taak wordt toegevoegd aan Aankomend op het tabblad Taak; het start niet en er wordt niets verzonden."
           }
         },
         "pt-BR" : {
@@ -76789,7 +76789,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles wat het kantoor heeft weggelaten, blijft leeg. De vacature wordt toegevoegd aan Aankomend op het tabblad Vacatures; het start niet en er wordt niets verzonden."
+            "value" : "Alles wat het kantoor heeft weggelaten, blijft leeg. De taak wordt toegevoegd aan Aankomend op het tabblad Taken; het start niet en er wordt niets verzonden."
           }
         },
         "pt-BR" : {
@@ -84753,13 +84753,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "먼저 묻습니다. 이 전화에서 이 녹음을 제거합니다. 직업은 유지됩니다."
+            "value" : "먼저 묻습니다. 이 전화에서 이 녹음을 제거합니다. 작업은 유지됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vraagt eerst. Verwijdert deze opname van deze telefoon; de baan blijft behouden."
+            "value" : "Vraagt eerst. Verwijdert deze opname van deze telefoon; de taak blijft behouden."
           }
         },
         "pt-BR" : {
@@ -84841,7 +84841,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vraagt eerst. De baan houdt hoe dan ook een gesprek."
+            "value" : "Vraagt eerst. De taak houdt het gesprek hoe dan ook."
           }
         },
         "pt-BR" : {
@@ -88713,7 +88713,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Authenticeer op het tabblad Chat om het gesprek van deze vacature te lezen."
+            "value" : "Authenticeer op het tabblad Chat om het gesprek van deze taak te lezen."
           }
         },
         "pt-BR" : {
@@ -88797,7 +88797,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verifieer op het tabblad Geschiedenis om het gesprek van deze vacature te lezen."
+            "value" : "Verifieer op het tabblad Geschiedenis om het gesprek van deze taak te lezen."
           }
         },
         "pt-BR" : {
@@ -94916,7 +94916,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin Bureau affiche un code lorsqu'il ajoute ce téléphone. Un code que votre organisation vous a envoyé se scanne de la même manière."
+            "value" : "Avenkin Office affiche un code lorsqu'il ajoute ce téléphone. Un code que votre organisation vous a envoyé se scanne de la même manière."
           }
         },
         "hu" : {
@@ -94970,13 +94970,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 办公室在添加此手机时会显示一个代码。您组织发送给您的代码也按相同方式扫描。"
+            "value" : "Avenkin Office 在添加此手机时会显示一个代码。您组织发送给您的代码也按相同方式扫描。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 辦公室在新增此手機時會顯示一個代碼。您組織發送給您的代碼也是以相同方式掃描。"
+            "value" : "Avenkin Office 在新增此手機時會顯示一個代碼。您組織發送給您的代碼也是以相同方式掃描。"
           }
         }
       }
@@ -118480,7 +118480,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chats en vragen van deze dag die niet bij een baan hoorden. Schakel dit uit om alleen taken te verzenden."
+            "value" : "Chats en vragen van deze dag die niet bij een taak hoorden. Schakel dit uit om alleen taken te verzenden."
           }
         },
         "pt-BR" : {
@@ -128168,7 +128168,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sluit baan"
+            "value" : "Taak sluiten"
           }
         },
         "pt-BR" : {
@@ -128250,7 +128250,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sluit vacature en verstuur deze"
+            "value" : "Taak sluiten en deze versturen"
           }
         },
         "pt-BR" : {
@@ -128687,7 +128687,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze vacature sluiten?"
+            "value" : "Deze taak sluiten?"
           }
         },
         "pt-BR" : {
@@ -131477,7 +131477,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vernietig de banen van vandaag"
+            "value" : "Taken van vandaag samenvouwen"
           }
         },
         "pt-BR" : {
@@ -132205,7 +132205,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これらの値をオフィスのコンピューター上のAvenkinオフィスと比較してください。インポートされたファイルは、ベンダー確認済み組織プロファイルに名前が記載された管理者によって署名されている必要があります。"
+            "value" : "これらの値をオフィスのコンピューター上のAvenkin Officeと比較してください。インポートされたファイルは、ベンダー確認済み組織プロファイルに名前が記載された管理者によって署名されている必要があります。"
           }
         },
         "ko" : {
@@ -132241,13 +132241,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将这些值与办公室计算机上的 Avenkin 办公室进行比较。导入的文件必须由您经过供应商验证的组织配置文件中指定的管理员签署。"
+            "value" : "将这些值与办公室计算机上的 Avenkin Office 进行比较。导入的文件必须由您经过供应商验证的组织配置文件中指定的管理员签署。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "將這些值與辦公室電腦上的 Avenkin 辦公室進行比較。導入的檔案必須由您的供應商驗證組織資料中的管理員簽署。"
+            "value" : "將這些值與辦公室電腦上的 Avenkin Office 進行比較。導入的檔案必須由您的供應商驗證組織資料中的管理員簽署。"
           }
         }
       }
@@ -143556,7 +143556,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "複製代幣"
+            "value" : "複製權杖"
           }
         }
       }
@@ -146407,7 +146407,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinオフィスの設定ファイルを開けませんでした。もう一度選択してください。"
+            "value" : "Avenkin Officeの設定ファイルを開けませんでした。もう一度選択してください。"
           }
         },
         "ko" : {
@@ -146443,13 +146443,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法打开 Avenkin 办公室设置文件。请重新选择。"
+            "value" : "无法打开 Avenkin Office 设置文件。请重新选择。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法開啟 Avenkin 辦公室設定檔。請重新選擇。"
+            "value" : "無法開啟 Avenkin Office 設定檔。請重新選擇。"
           }
         }
       }
@@ -147968,7 +147968,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinオフィスの設定ファイルを読み取れませんでした。もう一度選択してください。"
+            "value" : "Avenkin Officeの設定ファイルを読み取れませんでした。もう一度選択してください。"
           }
         },
         "ko" : {
@@ -148004,13 +148004,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法读取 Avenkin 办公室设置文件。请重新选择。"
+            "value" : "无法读取 Avenkin Office 设置文件。请重新选择。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無法讀取 Avenkin 辦公室設定檔。請重新選擇。"
+            "value" : "無法讀取 Avenkin Office 設定檔。請重新選擇。"
           }
         }
       }
@@ -165047,13 +165047,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已禁用的工具将完全从 AI 的提示中移除——它甚至不会知道它们的存在。使用此功能可以缩小 AI 的使用范围或节省代币。"
+            "value" : "已禁用的工具将完全从 AI 的提示中移除——它甚至不会知道它们的存在。使用此功能可以缩小 AI 的使用范围或节省 token。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已禁用的工具將完全從 AI 的提示中移除——它甚至不會知道它們的存在。使用此功能可縮小 AI 的範圍或節省代幣。"
+            "value" : "已禁用的工具將完全從 AI 的提示中移除——它甚至不會知道它們的存在。使用此功能可縮小 AI 的範圍或節省 token。"
           }
         }
       }
@@ -179836,7 +179836,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每個回合只傳送簡短提示和近期對話 — 不包含工具清單或完整系統提示。對於像 Groq（8k 代幣上限）這樣限制緊湊的供應商，請開啟；對於空間較大的模型，請關閉以保持工具運作。"
+            "value" : "每個回合只傳送簡短提示和近期對話 — 不包含工具清單或完整系統提示。對於像 Groq（8k token 上限）這樣限制緊湊的供應商，請開啟；對於空間較大的模型，請關閉以保持工具運作。"
           }
         }
       }
@@ -191033,13 +191033,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "根据每个提供商报告的代币使用按标价估算。本地使用——永远不会离开您的设备。实时语音会话和流式聊天回复尚未计入。"
+            "value" : "根据每个提供商报告的 token 用量按标价估算。本地使用——永远不会离开您的设备。实时语音会话和流式聊天回复尚未计入。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "根據各提供者報告的代幣使用量按標價估算。本地使用 — 永不離開您的設備。即時語音會話和串流聊天回覆尚未計入。"
+            "value" : "根據各提供者報告的 token 用量按標價估算。本地使用 — 永不離開您的設備。即時語音會話和串流聊天回覆尚未計入。"
           }
         }
       }
@@ -191199,13 +191199,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "估计代币"
+            "value" : "估计 token 用量"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "估算代幣"
+            "value" : "估算 token 用量"
           }
         }
       }
@@ -194526,7 +194526,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles is tot nu toe gezegd, zowel in banen als daarbuiten, voor ondersteuning. Je ziet het voordat er iets wordt verzonden."
+            "value" : "Alles wat vandaag tot nu toe is gezegd, zowel in taken als daarbuiten, ter ondersteuning. Je ziet het voordat er iets wordt verzonden."
           }
         },
         "pt-BR" : {
@@ -194604,13 +194604,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "오늘 지금까지 말한 모든 것은 이 직업을 포함하여 지원을 위한 것입니다. 무언가가 전송되기 전에 볼 수 있습니다."
+            "value" : "오늘 지금까지 말한 모든 것은 이 작업을 포함하여 지원을 위한 것입니다. 무언가가 전송되기 전에 볼 수 있습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles wat vandaag tot nu toe is gezegd, inclusief deze baan, ter ondersteuning. Je ziet het voordat er iets wordt verzonden."
+            "value" : "Alles wat vandaag tot nu toe is gezegd, inclusief deze taak, ter ondersteuning. Je ziet het voordat er iets wordt verzonden."
           }
         },
         "pt-BR" : {
@@ -195438,7 +195438,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Breid de banen van vandaag uit"
+            "value" : "Taken van vandaag uitvouwen"
           }
         },
         "pt-BR" : {
@@ -239720,7 +239720,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Történelem"
+            "value" : "Előzmények"
           }
         },
         "it" : {
@@ -249663,7 +249663,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importer le fichier de configuration du bureau Avenkin"
+            "value" : "Importer le fichier de configuration d’Avenkin Office"
           }
         },
         "hu" : {
@@ -249675,13 +249675,13 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importa il file di installazione di Office Avenkin"
+            "value" : "Importa il file di installazione di Avenkin Office"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinオフィス設定ファイルをインポート"
+            "value" : "Avenkin Office設定ファイルをインポート"
           }
         },
         "ko" : {
@@ -249699,7 +249699,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importar arquivo de configuração do Office Avenkin"
+            "value" : "Importar arquivo de configuração do Avenkin Office"
           }
         },
         "ru" : {
@@ -249717,13 +249717,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "导入 Avenkin 办公设置文件"
+            "value" : "导入 Avenkin Office 设置文件"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "匯入 Avenkin 辦公室設置檔"
+            "value" : "匯入 Avenkin Office 設置檔"
           }
         }
       }
@@ -250637,7 +250637,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "先に、組織の署名済みAvenkinオフィス設定ファイルを読み込んでください。"
+            "value" : "先に、組織の署名済みAvenkin Office設定ファイルを読み込んでください。"
           }
         },
         "ko" : {
@@ -250673,13 +250673,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先导入你组织已签署的 Avenkin 办公室设置文件。"
+            "value" : "请先导入你组织已签署的 Avenkin Office 设置文件。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請先匯入你組織已簽署的 Avenkin 辦公室設定檔。"
+            "value" : "請先匯入你組織已簽署的 Avenkin Office 設定檔。"
           }
         }
       }
@@ -258880,7 +258880,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Intent Classifier figyelmen kívül hagyja a közeli csevegést, így az AI csak akkor válaszol, amikor Ön beszél hozzá. A memória és a történelem lehetővé teszi, hogy a mesterséges intelligencia emlékezzen a munkamenetek során, hogy ki vagy. Az intelligens útválasztás kiválasztja a feladathoz a megfelelő modellt; Az ügynöki funkciók lehetővé teszik a mesterséges intelligencia számára, hogy önállóan többlépcsős műveleteket hajtson végre."
+            "value" : "Az Intent Classifier figyelmen kívül hagyja a közeli csevegést, így az AI csak akkor válaszol, amikor Ön beszél hozzá. A memória és az előzmények lehetővé teszik, hogy a mesterséges intelligencia emlékezzen a munkamenetek során, hogy ki vagy. Az intelligens útválasztás kiválasztja a feladathoz a megfelelő modellt; Az ügynöki funkciók lehetővé teszik a mesterséges intelligencia számára, hogy önállóan többlépcsős műveleteket hajtson végre."
           }
         },
         "it" : {
@@ -265041,13 +265041,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "직업"
+            "value" : "작업"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Baan"
+            "value" : "Taak"
           }
         },
         "pt-BR" : {
@@ -265208,7 +265208,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "직업 %1$@"
+            "value" : "작업 %1$@"
           }
         },
         "nl" : {
@@ -265454,13 +265454,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "직업과 현장"
+            "value" : "작업과 현장"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Baan en locatie"
+            "value" : "Taak en locatie"
           }
         },
         "pt-BR" : {
@@ -267669,7 +267669,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "직업 보고서"
+            "value" : "작업 보고서"
           }
         },
         "nl" : {
@@ -267923,7 +267923,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Banen"
+            "value" : "Taken"
           }
         },
         "pt-BR" : {
@@ -268247,13 +268247,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "아직 시작하지 않은 작업입니다. 여기에 하나를 추가하고 \"다음 직업: 1007, 난방 없음, Smith Street\"라고 말하거나 사무실에서 이메일로 보낸 작업 파일을 엽니다."
+            "value" : "아직 시작하지 않은 작업입니다. 여기에 하나를 추가하고 \"다음 작업: 1007, 난방 없음, Smith Street\"라고 말하거나 사무실에서 이메일로 보낸 작업 파일을 엽니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Banen waar je nog niet aan bent begonnen. Voeg er hier een toe, zeg \"volgende klus: 1007, geen warmte, Smith Street\", of open een vacaturebestand dat het kantoor u per e-mail heeft gestuurd."
+            "value" : "Taken waar je nog niet aan bent begonnen. Voeg er hier een toe, zeg \"volgende klus: 1007, geen warmte, Smith Street\", of open een taakbestand dat het kantoor u per e-mail heeft gestuurd."
           }
         },
         "pt-BR" : {
@@ -268459,7 +268459,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "الانضمام إلى مكتب Avenkin"
+            "value" : "الانضمام إلى Avenkin Office"
           }
         },
         "es-MX" : {
@@ -268471,43 +268471,43 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rejoindre le bureau Avenkin"
+            "value" : "Rejoindre Avenkin Office"
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Csatlakozzon a Avenkin irodához"
+            "value" : "Csatlakozzon az Avenkin Office-hoz"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Unisciti all'ufficio Avenkin"
+            "value" : "Unisciti ad Avenkin Office"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinオフィスに参加"
+            "value" : "Avenkin Officeに参加"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 사무실에 가입하세요"
+            "value" : "Avenkin Office에 가입하세요"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Word lid van het Avenkin-kantoor"
+            "value" : "Word lid van Avenkin Office"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Junte-se ao escritório Avenkin"
+            "value" : "Junte-se ao Avenkin Office"
           }
         },
         "ru" : {
@@ -268525,13 +268525,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加入 Avenkin 办公室"
+            "value" : "加入 Avenkin Office"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "加入 Avenkin 辦公室"
+            "value" : "加入 Avenkin Office"
           }
         }
       }
@@ -269819,7 +269819,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Blijf in de baan"
+            "value" : "In de taak houden"
           }
         },
         "pt-BR" : {
@@ -270807,7 +270807,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dit in de baan houden?"
+            "value" : "Dit in de taak houden?"
           }
         },
         "pt-BR" : {
@@ -277262,7 +277262,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hagyja a %1$@-t"
+            "value" : "Kilépés: %1$@"
           }
         },
         "it" : {
@@ -277274,7 +277274,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@を残す"
+            "value" : "%1$@から退出"
           }
         },
         "ko" : {
@@ -277310,13 +277310,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留 %1$@"
+            "value" : "退出 %1$@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留 %1$@"
+            "value" : "退出 %1$@"
           }
         }
       }
@@ -277398,7 +277398,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留任何你不知道的部分。簡介說明了缺少的內容，而不是猜測。"
+            "value" : "你不知道的部分請留空。簡介說明了缺少的內容，而不是猜測。"
           }
         }
       }
@@ -277509,7 +277509,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hagyja el"
+            "value" : "Indulás legkésőbb"
           }
         },
         "it" : {
@@ -277521,7 +277521,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「By」を残す"
+            "value" : "出発時刻"
           }
         },
         "ko" : {
@@ -277557,13 +277557,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留通过"
+            "value" : "最晚出发"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留 By"
+            "value" : "最晚出發"
           }
         }
       }
@@ -277969,13 +277969,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留期限缓冲区：%1$lld 分钟"
+            "value" : "出发缓冲时间：%1$lld 分钟"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "留存緩衝時間：%1$lld 分鐘"
+            "value" : "出發緩衝時間：%1$lld 分鐘"
           }
         }
       }
@@ -285041,7 +285041,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Live visie"
+            "value" : "Live beeldherkenning"
           }
         },
         "pt-BR" : {
@@ -290500,7 +290500,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zoekt iets op in deze handleiding voor de openstaande vacature."
+            "value" : "Zoekt iets op in deze handleiding voor de openstaande taak."
           }
         },
         "pt-BR" : {
@@ -314444,13 +314444,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새로운 직업"
+            "value" : "새로운 작업"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nieuwe baan"
+            "value" : "Nieuwe taak"
           }
         },
         "pt-BR" : {
@@ -314534,7 +314534,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nieuwe banen starten op deze kluis."
+            "value" : "Nieuwe taken starten op deze kluis."
           }
         },
         "pt-BR" : {
@@ -314618,7 +314618,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nieuwe banen starten op deze kluis. Een kluis kan zijn eigen model koppelen, dat alleen wordt gebruikt terwijl een taak wordt uitgevoerd."
+            "value" : "Nieuwe taken starten op deze kluis. Een kluis kan zijn eigen model koppelen, dat alleen wordt gebruikt terwijl een taak wordt uitgevoerd."
           }
         },
         "pt-BR" : {
@@ -320112,7 +320112,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Er is geen gesprek opgeslagen tegen deze baan."
+            "value" : "Er is geen gesprek opgeslagen bij deze taak."
           }
         },
         "pt-BR" : {
@@ -321595,7 +321595,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nog geen voltooide klussen. Vacatures die u sluit, verschijnen hier, de nieuwste eerst."
+            "value" : "Nog geen voltooide klussen. Taken die u sluit, verschijnen hier, de nieuwste eerst."
           }
         },
         "pt-BR" : {
@@ -324097,7 +324097,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geen banen vandaag"
+            "value" : "Geen taken vandaag"
           }
         },
         "pt-BR" : {
@@ -327409,13 +327409,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "일치하는 과거 직업이 없습니다."
+            "value" : "일치하는 과거 작업이 없습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geen enkele vorige baan kan daaraan tippen."
+            "value" : "Geen eerdere taak komt daarmee overeen."
           }
         },
         "pt-BR" : {
@@ -340311,7 +340311,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Er is nog niets gezegd over deze baan."
+            "value" : "Er is nog niets gezegd over deze taak."
           }
         },
         "pt-BR" : {
@@ -340669,7 +340669,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這份報告中沒有任何看起來像鑰匙、代幣或個人識別資訊的內容。"
+            "value" : "這份報告中沒有任何看起來像金鑰、權杖或個人識別資訊的內容。"
           }
         }
       }
@@ -340885,7 +340885,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Er wordt niets vastgelegd en de vacature blijft open."
+            "value" : "Er wordt niets vastgelegd en de taak blijft open."
           }
         },
         "pt-BR" : {
@@ -343359,7 +343359,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Er werd niets gezegd over deze baan"
+            "value" : "Er werd niets gezegd over deze taak"
           }
         },
         "pt-BR" : {
@@ -351934,7 +351934,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Op weg naar een baan"
+            "value" : "Op weg naar een taak"
           }
         },
         "pt-BR" : {
@@ -352872,84 +352872,84 @@
         }
       }
     },
-    "On-device ASL fingerspelling recognition (Plan CK). Trained on the Google ASL Fingerspelling corpus by Google and the Deaf Professional Arts Network." : {
+    "On-device ASL fingerspelling recognition. Trained on the Google ASL Fingerspelling corpus by Google and the Deaf Professional Arts Network." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "التعرف على تهجئة الأصابع بلغة ASL على الجهاز (Plan CK). مدرَّب على مجموعة بيانات Google ASL Fingerspelling من Google وDeaf Professional Arts Network."
+            "value" : "التعرف على تهجئة الأصابع بلغة ASL على الجهاز. مدرَّب على مجموعة بيانات Google ASL Fingerspelling من Google وDeaf Professional Arts Network."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconocimiento en el dispositivo del deletreo manual de ASL (Plan CK). Entrenado con el corpus Google ASL Fingerspelling de Google y la Deaf Professional Arts Network."
+            "value" : "Reconocimiento en el dispositivo del deletreo manual de ASL. Entrenado con el corpus Google ASL Fingerspelling de Google y la Deaf Professional Arts Network."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconnaissance sur l’appareil de l’épellation digitale en ASL (Plan CK). Entraînée sur le corpus Google ASL Fingerspelling de Google et du Deaf Professional Arts Network."
+            "value" : "Reconnaissance sur l’appareil de l’épellation digitale en ASL. Entraînée sur le corpus Google ASL Fingerspelling de Google et du Deaf Professional Arts Network."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eszközön futó ASL ujjábécé-felismerés (Plan CK). A Google és a Deaf Professional Arts Network Google ASL Fingerspelling korpuszán tanítva."
+            "value" : "Eszközön futó ASL ujjábécé-felismerés. A Google és a Deaf Professional Arts Network Google ASL Fingerspelling korpuszán tanítva."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Riconoscimento sul dispositivo dello spelling manuale ASL (Plan CK). Addestrato sul corpus Google ASL Fingerspelling di Google e del Deaf Professional Arts Network."
+            "value" : "Riconoscimento sul dispositivo dello spelling manuale ASL. Addestrato sul corpus Google ASL Fingerspelling di Google e del Deaf Professional Arts Network."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オンデバイスのASL指文字認識 (Plan CK)。GoogleとDeaf Professional Arts NetworkによるGoogle ASL Fingerspellingコーパスで学習しています。"
+            "value" : "オンデバイスのASL指文字認識。GoogleとDeaf Professional Arts NetworkによるGoogle ASL Fingerspellingコーパスで学習しています。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "온디바이스 ASL 지문자 인식 (Plan CK). Google과 Deaf Professional Arts Network의 Google ASL Fingerspelling 코퍼스로 학습했습니다."
+            "value" : "온디바이스 ASL 지문자 인식. Google과 Deaf Professional Arts Network의 Google ASL Fingerspelling 코퍼스로 학습했습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Herkenning van ASL-vingerspelling op het apparaat (Plan CK). Getraind op het Google ASL Fingerspelling-corpus door Google en het Deaf Professional Arts Network."
+            "value" : "Herkenning van ASL-vingerspelling op het apparaat. Getraind op het Google ASL Fingerspelling-corpus door Google en het Deaf Professional Arts Network."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reconhecimento de soletração manual em ASL no dispositivo (Plan CK). Treinado com o corpus Google ASL Fingerspelling pelo Google e pela Deaf Professional Arts Network."
+            "value" : "Reconhecimento de soletração manual em ASL no dispositivo. Treinado com o corpus Google ASL Fingerspelling pelo Google e pela Deaf Professional Arts Network."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Распознавание дактильной азбуки ASL на устройстве (Plan CK). Обучено на корпусе Google ASL Fingerspelling компанией Google и Deaf Professional Arts Network."
+            "value" : "Распознавание дактильной азбуки ASL на устройстве. Обучено на корпусе Google ASL Fingerspelling компанией Google и Deaf Professional Arts Network."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "آن ڈیوائس ASL فنگر اسپیلنگ کی شناخت (Plan CK)۔ Google اور Deaf Professional Arts Network کے Google ASL Fingerspelling کارپس پر تربیت یافتہ۔"
+            "value" : "آن ڈیوائس ASL فنگر اسپیلنگ کی شناخت۔ Google اور Deaf Professional Arts Network کے Google ASL Fingerspelling کارپس پر تربیت یافتہ۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "设备端 ASL 指拼识别 (Plan CK)。使用 Google 与 Deaf Professional Arts Network 制作的 Google ASL Fingerspelling 语料库训练。"
+            "value" : "设备端 ASL 指拼识别。使用 Google 与 Deaf Professional Arts Network 制作的 Google ASL Fingerspelling 语料库训练。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "裝置端 ASL 指拼辨識 (Plan CK)。使用 Google 與 Deaf Professional Arts Network 製作的 Google ASL Fingerspelling 語料庫訓練。"
+            "value" : "裝置端 ASL 指拼辨識。使用 Google 與 Deaf Professional Arts Network 製作的 Google ASL Fingerspelling 語料庫訓練。"
           }
         }
       }
@@ -360428,7 +360428,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Openstaande vacature"
+            "value" : "Openstaande taak"
           }
         },
         "pt-BR" : {
@@ -365129,7 +365129,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Opent het tabblad Chatten voor het gesprek van deze vacature."
+            "value" : "Opent het tabblad Chatten voor het gesprek van deze taak."
           }
         },
         "pt-BR" : {
@@ -365541,7 +365541,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Opent het tabblad Geschiedenis in het gesprek van deze vacature."
+            "value" : "Opent het tabblad Geschiedenis in het gesprek van deze taak."
           }
         },
         "pt-BR" : {
@@ -373701,7 +373701,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "اقتران Avenkin المكتب"
+            "value" : "إقران Avenkin Office"
           }
         },
         "es-MX" : {
@@ -373713,7 +373713,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appairer Avenkin Bureau"
+            "value" : "Appairer Avenkin Office"
           }
         },
         "hu" : {
@@ -373725,19 +373725,19 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Associa l'ufficio Avenkin"
+            "value" : "Associa Avenkin Office"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinオフィスとペアリング"
+            "value" : "Avenkin Officeとペアリング"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 쌍 사무실"
+            "value" : "Avenkin Office 페어링"
           }
         },
         "nl" : {
@@ -373749,7 +373749,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Par Avenkin Escritório"
+            "value" : "Emparelhar o Avenkin Office"
           }
         },
         "ru" : {
@@ -373767,13 +373767,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "配对 Avenkin 办公室"
+            "value" : "配对 Avenkin Office"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "配對 Avenkin 辦公室"
+            "value" : "配對 Avenkin Office"
           }
         }
       }
@@ -374123,7 +374123,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appairer avec Avenkin Bureau"
+            "value" : "Appairer avec Avenkin Office"
           }
         },
         "hu" : {
@@ -374141,7 +374141,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinオフィスとペアリング"
+            "value" : "Avenkin Officeとペアリング"
           }
         },
         "ko" : {
@@ -374177,13 +374177,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "配对 Avenkin 办公室"
+            "value" : "配对 Avenkin Office"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "與 Avenkin 辦公室配對"
+            "value" : "與 Avenkin Office 配對"
           }
         }
       }
@@ -375629,13 +375629,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "부분 단위는 녹음된 작업 후 최소 1단위로 반올림됩니다. 새로운 직업에 적용됩니다. 정확한 시간은 기록에 남습니다."
+            "value" : "부분 단위는 녹음된 작업 후 최소 1단위로 반올림됩니다. 새로운 작업에 적용됩니다. 정확한 시간은 기록에 남습니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gedeeltelijke eenheden worden naar boven afgerond, met een minimum van één eenheid na elk opgenomen werk. Toegepast op nieuwe banen; de exacte tijd blijft in het record staan."
+            "value" : "Gedeeltelijke eenheden worden naar boven afgerond, met een minimum van één eenheid na elk opgenomen werk. Toegepast op nieuwe taken; de exacte tijd blijft in het record staan."
           }
         },
         "pt-BR" : {
@@ -376872,13 +376872,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "과거 직업"
+            "value" : "과거 작업"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eerdere banen"
+            "value" : "Eerdere taken"
           }
         },
         "pt-BR" : {
@@ -377072,7 +377072,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "貼上一個代幣以啟用後端 — 端點已預先填充（僅當您的部署不同時才覆蓋基本 URL）。代幣存儲在鑰匙鏈中。實時分派會對照您的端點進行驗證。"
+            "value" : "貼上一個權杖以啟用後端 — 端點已預先填充（僅當您的部署不同時才覆蓋基本 URL）。權杖存儲在鑰匙鏈中。實時分派會對照您的端點進行驗證。"
           }
         }
       }
@@ -387404,7 +387404,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kies uit de lijst of typ een model-ID. Schakel Vision in om foto's naar de AI te sturen."
+            "value" : "Kies uit de lijst of typ een model-ID. Schakel Beeldherkenning in om foto's naar de AI te sturen."
           }
         },
         "pt-BR" : {
@@ -405230,7 +405230,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snelle Visie"
+            "value" : "Snelle beeldherkenning"
           }
         },
         "pt-BR" : {
@@ -432188,7 +432188,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "보고서에는 기록된 정확한 활동 시간이 표시됩니다. 새로운 직업에 적용됩니다."
+            "value" : "보고서에는 기록된 정확한 활동 시간이 표시됩니다. 새로운 작업에 적용됩니다."
           }
         },
         "nl" : {
@@ -439715,7 +439715,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "旋轉代幣"
+            "value" : "輪替權杖"
           }
         }
       }
@@ -449581,7 +449581,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已與此模型一起儲存並應用於每個工作。推理代幣計為輸出，因此更高設置成本更高且回應速度較慢。"
+            "value" : "已與此模型一起儲存並應用於每個工作。推理 token 計為輸出，因此更高設置成本更高且回應速度較慢。"
           }
         }
       }
@@ -453712,7 +453712,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "امسح رمز مؤسستك، أو الرمز Avenkin الذي يظهره المكتب عند إضافة جهاز، أو استورد ملف الإعداد الموقع الخاص به. ستراجع الإعدادات قبل أن يحدث أي تغيير."
+            "value" : "امسح رمز مؤسستك، أو الرمز الذي يظهره Avenkin Office عند إضافة جهاز، أو استورد ملف الإعداد الموقع الخاص به. ستراجع الإعدادات قبل أن يحدث أي تغيير."
           }
         },
         "es-MX" : {
@@ -453742,19 +453742,19 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "組織のコード、またはデバイスを追加するときにAvenkinオフィスが表示するコードをスキャンするか、署名済みのセットアップファイルをインポートしてください。変更が行われる前に設定を確認できます。"
+            "value" : "組織のコード、またはデバイスを追加するときにAvenkin Officeが表示するコードをスキャンするか、署名済みのセットアップファイルをインポートしてください。変更が行われる前に設定を確認できます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "조직의 코드를 스캔하거나 Office에서 장치를 추가할 때 표시되는 Avenkin 코드를 스캔하거나 서명된 설정 파일을 가져올 수 있습니다. 변경사항이 발생하기 전에 설정을 검토하게 됩니다."
+            "value" : "조직의 코드를 스캔하거나 Avenkin Office에서 장치를 추가할 때 표시되는 코드를 스캔하거나 서명된 설정 파일을 가져올 수 있습니다. 변경사항이 발생하기 전에 설정을 검토하게 됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scan de code van uw organisatie, of de code Avenkin Office die wordt weergegeven wanneer een apparaat wordt toegevoegd, of importeer het ondertekende installatiebestand. U zult de instellingen controleren voordat er iets verandert."
+            "value" : "Scan de code van uw organisatie, of de code die Avenkin Office toont wanneer het een apparaat toevoegt, of importeer het ondertekende installatiebestand. U zult de instellingen controleren voordat er iets verandert."
           }
         },
         "pt-BR" : {
@@ -453778,13 +453778,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "扫描你组织的代码，或 Avenkin 办公室在添加设备时显示的代码，或者导入其签名的设置文件。你将在任何更改发生之前审查设置。"
+            "value" : "扫描你组织的代码，或 Avenkin Office 在添加设备时显示的代码，或者导入其签名的设置文件。你将在任何更改发生之前审查设置。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "掃描您組織的代碼，或 Avenkin 辦公室在添加設備時顯示的代碼，或導入其簽名的設置檔案。您將在任何更改前檢視設定。"
+            "value" : "掃描您組織的代碼，或 Avenkin Office 在添加設備時顯示的代碼，或導入其簽名的設置檔案。您將在任何更改前檢視設定。"
           }
         }
       }
@@ -457199,7 +457199,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sedili"
+            "value" : "Postazioni"
           }
         },
         "ja" : {
@@ -471119,7 +471119,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "شارك هذه التفاصيل العامة مع مكتب Avenkin. تبقى المفاتيح الخاصة للهاتف هنا."
+            "value" : "شارك هذه التفاصيل العامة مع Avenkin Office. تبقى المفاتيح الخاصة للهاتف هنا."
           }
         },
         "es-MX" : {
@@ -471131,7 +471131,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Partager ces informations publiques avec le bureau de Avenkin. Les clés privées du téléphone restent ici."
+            "value" : "Partager ces informations publiques avec Avenkin Office. Les clés privées du téléphone restent ici."
           }
         },
         "hu" : {
@@ -471149,7 +471149,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この公開情報をAvenkinオフィスと共有します。電話の秘密鍵はここに残ります。"
+            "value" : "この公開情報をAvenkin Officeと共有します。電話の秘密鍵はここに残ります。"
           }
         },
         "ko" : {
@@ -471161,7 +471161,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deel deze openbare gegevens met het Avenkin-kantoor. De privé-sleutels van de telefoon blijven hier."
+            "value" : "Deel deze openbare gegevens met Avenkin Office. De privé-sleutels van de telefoon blijven hier."
           }
         },
         "pt-BR" : {
@@ -471185,13 +471185,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "与 Avenkin 办公室共享这些公开信息。电话的私钥保留在此处。"
+            "value" : "与 Avenkin Office 共享这些公开信息。电话的私钥保留在此处。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "與 Avenkin 辦公室分享這些公開資訊。電話的私鑰留在這裡。"
+            "value" : "與 Avenkin Office 分享這些公開資訊。電話的私鑰留在這裡。"
           }
         }
       }
@@ -476013,7 +476013,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toont Field Assist, Baan en Instellingen, met de meeste instellingen vergrendeld"
+            "value" : "Toont Field Assist, Taak en Instellingen, met de meeste instellingen vergrendeld"
           }
         },
         "pt-BR" : {
@@ -476153,7 +476153,7 @@
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az oldal alján megjeleníti a „Hagyja a %@-t” lehetőséget."
+            "value" : "Az oldal alján megjeleníti a „Kilépés: %@” lehetőséget."
           }
         },
         "it" : {
@@ -476201,13 +476201,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在此页面底部显示“离开 %@”。"
+            "value" : "在此页面底部显示“退出 %@”。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在此頁面底部顯示「離開 %@」。"
+            "value" : "在此頁面底部顯示「退出 %@」。"
           }
         }
       }
@@ -497006,7 +497006,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Begin baan"
+            "value" : "Taak starten"
           }
         },
         "pt-BR" : {
@@ -497613,7 +497613,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Begin ter plaatse. Het jobnummer, de locatie en het storingsrapport gaan ermee mee; de apparatuur wordt daar herkend, zoals bij elke baan."
+            "value" : "Begin ter plaatse. Het jobnummer, de locatie en het storingsrapport gaan ermee mee; de apparatuur wordt daar herkend, zoals bij elke taak."
           }
         },
         "pt-BR" : {
@@ -513290,7 +513290,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schakelt de nieuwe banen van de kluis in."
+            "value" : "Wisselt de kluis waarop nieuwe taken starten."
           }
         },
         "pt-BR" : {
@@ -527416,7 +527416,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "هذا ليس رمز مكتب Avenkin يمكن لهذا الهاتف استخدامه. اطلب من المكتب إظهار الرمز مرة أخرى."
+            "value" : "هذا ليس رمز Avenkin Office يمكن لهذا الهاتف استخدامه. اطلب من المكتب إظهار الرمز مرة أخرى."
           }
         },
         "es-MX" : {
@@ -527428,25 +527428,25 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce n'est pas un code de bureau Avenkin que ce téléphone peut utiliser. Demandez au bureau de montrer le code à nouveau."
+            "value" : "Ce n'est pas un code Avenkin Office que ce téléphone peut utiliser. Demandez au bureau de montrer le code à nouveau."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ez nem egy Avenkin irodai kód, amit ez a telefon használhat. Kérje meg az irodát, hogy mutassa meg újra a kódot."
+            "value" : "Ez nem egy Avenkin Office-kód, amit ez a telefon használhat. Kérje meg az irodát, hogy mutassa meg újra a kódot."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non è un codice ufficio Avenkin che questo telefono può utilizzare. Chiedere all'ufficio di mostrare nuovamente il codice."
+            "value" : "Non è un codice Avenkin Office che questo telefono può utilizzare. Chiedere all'ufficio di mostrare nuovamente il codice."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これはこの電話が使用できる Avenkin オフィスコードではありません。コードを再表示するようオフィスに依頼してください。"
+            "value" : "これはこの電話が使用できる Avenkin Office コードではありません。コードを再表示するようオフィスに依頼してください。"
           }
         },
         "ko" : {
@@ -527458,13 +527458,13 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dat is geen Avenkin kantoorcodes die deze telefoon kan gebruiken. Vraag aan het kantoor om de code opnieuw te tonen."
+            "value" : "Dat is geen Avenkin Office-code die deze telefoon kan gebruiken. Vraag aan het kantoor om de code opnieuw te tonen."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esse não é um código do Office Avenkin que este telefone pode usar. Peça ao escritório para mostrar o código novamente."
+            "value" : "Esse não é um código do Avenkin Office que este telefone pode usar. Peça ao escritório para mostrar o código novamente."
           }
         },
         "ru" : {
@@ -527482,13 +527482,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这不是此电话可以使用的 Avenkin 办公室代码。请让办公室重新显示代码。"
+            "value" : "这不是此电话可以使用的 Avenkin Office 代码。请让办公室重新显示代码。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這不是此電話能使用的 Avenkin 辦公室代碼。請請辦公室再次顯示代碼。"
+            "value" : "這不是此電話能使用的 Avenkin Office 代碼。請辦公室再次顯示代碼。"
           }
         }
       }
@@ -528108,7 +528108,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "그 직업은 여기 없어"
+            "value" : "그 작업은 여기 없어"
           }
         },
         "nl" : {
@@ -545644,7 +545644,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "직업"
+            "value" : "작업"
           }
         },
         "nl" : {
@@ -546792,7 +546792,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "지금까지의 직업"
+            "value" : "지금까지의 작업"
           }
         },
         "nl" : {
@@ -559891,7 +559891,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bij het geselecteerde model staat beeldinvoer uit. Zet Visie aan in de instellingen ervan of selecteer een beeldmodel en probeer het opnieuw."
+            "value" : "Bij het geselecteerde model staat beeldinvoer uit. Zet Beeldherkenning aan in de instellingen ervan of selecteer een beeldmodel en probeer het opnieuw."
           }
         },
         "pt-BR" : {
@@ -576161,13 +576161,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 직업"
+            "value" : "이 작업"
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze baan"
+            "value" : "Deze taak"
           }
         },
         "pt-BR" : {
@@ -576987,7 +576987,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze baan staat niet langer op de lijst."
+            "value" : "Deze taak staat niet langer op de lijst."
           }
         },
         "pt-BR" : {
@@ -577151,7 +577151,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze baan is niet ondertekend. Je kunt nog steeds vragen totdat het rapport is verzonden."
+            "value" : "Deze taak is niet ondertekend. Je kunt nog steeds vragen totdat het rapport is verzonden."
           }
         },
         "pt-BR" : {
@@ -582829,7 +582829,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "الهاتف الآن مُدار بواسطة %1$@ ومرتبط بمكتبه، ولكنه لم يتمكن من الوصول إلى المكتب بعد. على شبكة المكتب، افتح إعدادات Field Assist، ثم اربط بمكتب Avenkin، واستخدم اختبار اتصال المكتب."
+            "value" : "الهاتف الآن مُدار بواسطة %1$@ ومرتبط بمكتبه، ولكنه لم يتمكن من الوصول إلى المكتب بعد. على شبكة المكتب، افتح إعدادات Field Assist، ثم «قم بالإقران مع Avenkin Office»، واستخدم اختبار اتصال المكتب."
           }
         },
         "es-MX" : {
@@ -582841,13 +582841,13 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce téléphone est maintenant géré par %1$@ et appairé avec son bureau, mais il n'a pas encore pu atteindre le bureau. Sur le réseau du bureau, ouvrez les réglages de Field Assist, puis Appairez avec le bureau Avenkin, et utilisez Tester la connexion au bureau."
+            "value" : "Ce téléphone est maintenant géré par %1$@ et appairé avec son bureau, mais il n'a pas encore pu atteindre le bureau. Sur le réseau du bureau, ouvrez les réglages de Field Assist, puis Appairer avec Avenkin Office, et utilisez Tester la connexion au bureau."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ez a telefon most a %1$@ által van kezeltetve és párosítva az irodájával, de még nem tudott kapcsolódni az irodához. Az iroda hálózatán nyisd meg a Field Assist beállításait, majd válaszd a Párosítás a Avenkin irodával, és használd az Iroda kapcsolat tesztelését."
+            "value" : "Ez a telefon most a %1$@ által van kezeltetve és párosítva az irodájával, de még nem tudott kapcsolódni az irodához. Az iroda hálózatán nyisd meg a Field Assist beállításait, majd válaszd a Párosítás az Avenkin Office-szal, és használd az Iroda kapcsolat tesztelését."
           }
         },
         "it" : {
@@ -582859,7 +582859,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この電話は現在%1$@によって管理され、オフィスとペアリングされていますが、まだオフィスに到達できませんでした。オフィスのネットワーク上で、Field Assistの設定を開き、Avenkinオフィスとペアリングを選択し、オフィス接続をテストしてください。"
+            "value" : "この電話は現在%1$@によって管理され、オフィスとペアリングされていますが、まだオフィスに到達できませんでした。オフィスのネットワーク上で、Field Assistの設定を開き、「Avenkin Officeとペアリング」を選択し、オフィス接続をテストしてください。"
           }
         },
         "ko" : {
@@ -582871,7 +582871,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deze telefoon wordt nu beheerd door %1$@ en gekoppeld aan zijn kantoor, maar hij kon het kantoor nog niet bereiken. Open op het kantoornetwerk de Field Assist-instellingen, kies vervolgens Koppelen met Avenkin-kantoor, en gebruik Kantoorverbinding testen."
+            "value" : "Deze telefoon wordt nu beheerd door %1$@ en gekoppeld aan zijn kantoor, maar hij kon het kantoor nog niet bereiken. Open op het kantoornetwerk de Field Assist-instellingen, kies vervolgens Koppel met Avenkin Office, en gebruik Kantoorverbinding testen."
           }
         },
         "pt-BR" : {
@@ -582895,13 +582895,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这部手机现在由%1$@管理并与其办公室配对，但尚未能够连接到办公室。在办公室网络上，打开Field Assist设置，然后配对到Avenkin办公室，并使用测试办公室连接。"
+            "value" : "这部手机现在由%1$@管理并与其办公室配对，但尚未能够连接到办公室。在办公室网络上，打开Field Assist设置，然后选择“配对 Avenkin Office”，并使用测试办公室连接。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這支手機現在由 %1$@ 管理並與其辦公室配對，但尚未能連接辦公室。在辦公室網路上，打開 Field Assist 設定，然後選擇「與 Avenkin 辦公室配對」，並使用「測試辦公室連線」。"
+            "value" : "這支手機現在由 %1$@ 管理並與其辦公室配對，但尚未能連接辦公室。在辦公室網路上，打開 Field Assist 設定，然後選擇「與 Avenkin Office 配對」，並使用「測試辦公室連線」。"
           }
         }
       }
@@ -589039,7 +589039,7 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cette version de Avenkin ne peut pas rejoindre un bureau en scannant son code. Demandez à votre organisation un fichier de configuration Office Avenkin à la place."
+            "value" : "Cette version de Avenkin ne peut pas rejoindre un bureau en scannant son code. Demandez à votre organisation un fichier de configuration Avenkin Office à la place."
           }
         },
         "hu" : {
@@ -589051,13 +589051,13 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questa versione di Avenkin non può unirsi a un ufficio scansionandone il codice. Chiedi invece alla tua organizzazione un file di installazione di Office Avenkin."
+            "value" : "Questa versione di Avenkin non può unirsi a un ufficio scansionandone il codice. Chiedi invece alla tua organizzazione un file di installazione di Avenkin Office."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このバージョンの Avenkin ではコードをスキャンしてオフィスに参加できません。代わりに組織に Avenkin のオフィス設定ファイルを依頼してください。"
+            "value" : "このバージョンの Avenkin ではコードをスキャンしてオフィスに参加できません。代わりに組織に Avenkin Office の設定ファイルを依頼してください。"
           }
         },
         "ko" : {
@@ -589075,7 +589075,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esta versão do Avenkin não pode ingressar em um escritório digitalizando seu código. Peça à sua organização um arquivo de configuração do Office Avenkin."
+            "value" : "Esta versão do Avenkin não pode ingressar em um escritório digitalizando seu código. Peça à sua organização um arquivo de configuração do Avenkin Office."
           }
         },
         "ru" : {
@@ -589093,13 +589093,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此版本的 Avenkin 无法通过扫描其代码加入办公室。请向您的组织索取 Avenkin 办公室设置文件。"
+            "value" : "此版本的 Avenkin 无法通过扫描其代码加入办公室。请向您的组织索取 Avenkin Office 设置文件。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此版本的 Avenkin 無法通過掃描其代碼加入辦公室。請向您的組織索取 Avenkin 辦公室設置檔。"
+            "value" : "此版本的 Avenkin 無法通過掃描其代碼加入辦公室。請向您的組織索取 Avenkin Office 設置檔。"
           }
         }
       }
@@ -594389,7 +594389,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "代幣估算約略 (~每個代幣約 4 個字符)。"
+            "value" : "token 估算約略 (~每個 token 約 4 個字符)。"
           }
         }
       }
@@ -594635,7 +594635,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "代幣 & 預估費用"
+            "value" : "Token & 預估費用"
           }
         }
       }
@@ -602413,7 +602413,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zet Vision aan om foto's naar de AI te sturen. Laat het uit voor alleen tekstmodellen."
+            "value" : "Zet Beeldherkenning aan om foto's naar de AI te sturen. Laat het uit voor alleen tekstmodellen."
           }
         },
         "pt-BR" : {
@@ -611581,7 +611581,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다가오는 직업"
+            "value" : "다가오는 작업"
           }
         },
         "nl" : {
@@ -613508,13 +613508,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每 1M 代币的美元价格"
+            "value" : "每 1M token 的美元价格"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每100萬代幣的美元價格"
+            "value" : "每100萬 token 的美元價格"
           }
         }
       }
@@ -616072,7 +616072,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "استخدم عنوان LAN المعروض في مكتب Avenkin. يتحقق الهاتف مرة أخرى من موافقته المحفوظة، ويثبت شهادة المكتب ولا يفتح أي مجلدات مشتركة. احتفظ بهذه الشاشة مفتوحة للاختبار."
+            "value" : "استخدم عنوان LAN المعروض في Avenkin Office. يتحقق الهاتف مرة أخرى من موافقته المحفوظة، ويثبت شهادة المكتب ولا يفتح أي مجلدات مشتركة. احتفظ بهذه الشاشة مفتوحة للاختبار."
           }
         },
         "es-MX" : {
@@ -616084,13 +616084,13 @@
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Utilisez l'adresse LAN affichée dans le bureau Avenkin. Le téléphone vérifie à nouveau son approbation enregistrée, attache le certificat du bureau et n'ouvre aucun dossier partagé. Gardez cet écran ouvert pour le test."
+            "value" : "Utilisez l'adresse LAN affichée dans Avenkin Office. Le téléphone vérifie à nouveau son approbation enregistrée, attache le certificat du bureau et n'ouvre aucun dossier partagé. Gardez cet écran ouvert pour le test."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Használja a LAN címet, amely a Avenkin irodában látható. A telefon újra ellenőrzi a mentett jóváhagyást, rögzíti az iroda tanúsítványát és nem nyit meg megosztott mappákat. Tartsa nyitva ezt a képernyőt a teszthez."
+            "value" : "Használja a LAN címet, amely az Avenkin Office-ban látható. A telefon újra ellenőrzi a mentett jóváhagyást, rögzíti az iroda tanúsítványát és nem nyit meg megosztott mappákat. Tartsa nyitva ezt a képernyőt a teszthez."
           }
         },
         "it" : {
@@ -616102,7 +616102,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin オフィスに表示されている LAN アドレスを使用します。電話は保存された承認を再確認し、オフィス証明書を固定し、共有フォルダを開きません。この画面をテストのために開いたままにしてください。"
+            "value" : "Avenkin Office に表示されている LAN アドレスを使用します。電話は保存された承認を再確認し、オフィス証明書を固定し、共有フォルダを開きません。この画面をテストのために開いたままにしてください。"
           }
         },
         "ko" : {
@@ -616138,13 +616138,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 Avenkin 办公室显示的 LAN 地址。手机会重新检查其保存的批准，固定办公室证书并且不打开任何共享文件夹。测试期间请保持此屏幕打开。"
+            "value" : "使用 Avenkin Office 显示的 LAN 地址。手机会重新检查其保存的批准，固定办公室证书并且不打开任何共享文件夹。测试期间请保持此屏幕打开。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 Avenkin 辦公室顯示的 LAN 位址。手機會再次檢查已儲存的批准，固定辦公室憑證並不打開任何共享資料夾。保持此畫面以進行測試。"
+            "value" : "使用 Avenkin Office 顯示的 LAN 位址。手機會再次檢查已儲存的批准，固定辦公室憑證並不打開任何共享資料夾。保持此畫面以進行測試。"
           }
         }
       }
@@ -617338,7 +617338,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새로운 직업에 사용됩니다. 활성 작업은 사용자가 완료할 때까지 원래 저장소를 유지합니다."
+            "value" : "새로운 작업에 사용됩니다. 활성 작업은 사용자가 완료할 때까지 원래 저장소를 유지합니다."
           }
         },
         "nl" : {
@@ -623000,7 +623000,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Visie"
+            "value" : "Beeldherkenning"
           }
         },
         "pl" : {
@@ -623107,7 +623107,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Visie (beeldinvoer)"
+            "value" : "Beeldherkenning (beeldinvoer)"
           }
         },
         "pl" : {
@@ -635378,7 +635378,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 직업이 파견된 이후 사무실에서 이 직업에 관해 말한 내용입니다. 직업 자체는 변함이 없습니다."
+            "value" : "이 작업이 파견된 이후 사무실에서 이 작업에 관해 말한 내용입니다. 작업 자체는 변함이 없습니다."
           }
         },
         "nl" : {
@@ -640025,7 +640025,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "啟用時，當場景沒有明顯改變時，眼鏡會停止向即時 AI 發送新影格──節省頻寬和代幣。不同視角仍然會傳送。"
+            "value" : "啟用時，當場景沒有明顯改變時，眼鏡會停止向即時 AI 發送新影格──節省頻寬和 token。不同視角仍然會傳送。"
           }
         }
       }
@@ -649642,7 +649642,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "\"다음 직업: 1007, 난방 없음, Smith Street\"라고 말하거나 사무실에서 이메일로 보낸 작업 파일을 열 수도 있습니다."
+            "value" : "\"다음 작업: 1007, 난방 없음, Smith Street\"라고 말하거나 사무실에서 이메일로 보낸 작업 파일을 열 수도 있습니다."
           }
         },
         "nl" : {
@@ -658235,7 +658235,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다음 직업은 아래와 같습니다."
+            "value" : "다음 작업은 아래와 같습니다."
           }
         },
         "nl" : {

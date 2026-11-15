@@ -235,6 +235,15 @@ final class LocalizationCatalogGuardTests: XCTestCase {
         }
     }
 
+    /// Plan letters are internal shorthand; a reader of the app shouldn't meet "(Plan CK)".
+    func testNoStringNamesAPlan() throws {
+        let plan = try NSRegularExpression(pattern: #"\bPlans? [A-Z]{1,2}\b"#)
+        let named = try Self.loadStrings().keys.filter { key in
+            plan.firstMatch(in: key, range: NSRange(key.startIndex..., in: key)) != nil
+        }
+        XCTAssertEqual(named.sorted(), [], "on-screen strings that name a plan")
+    }
+
     @MainActor
     func testCompleteLanguagesAreOfferedAsBundled() {
         for language in Self.completeLanguages.keys {
