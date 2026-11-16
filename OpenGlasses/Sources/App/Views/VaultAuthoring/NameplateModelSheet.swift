@@ -57,11 +57,11 @@ struct NameplateModelSheet: View {
                     }
                 }
                 Section {
-                    TextField("Model", text: $model)
+                    TextField("Model number", text: $model)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                 } header: {
-                    Text("Model")
+                    Text("Model number")
                 }
                 Section {
                     Picker("Manual", selection: $manualFile) {
