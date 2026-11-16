@@ -13,7 +13,8 @@ base, lays it again over a base that changed and removes it with its base; the r
 publisher → company → technician; company manuals carry `revision` and `origin: company` (My Manuals uploads
 `technician`, photographed ones `capture`); the rows say "from ⟨partner⟩ · version ⟨n⟩", the manual checklist
 (opening a list naming each), frozen and "⟨vault⟩ was removed by ⟨partner⟩"; an answer's prompt carries the
-source line and `CitationEditionCheck`'s notes for pages the vault's index cites, beside the downloading note.
+source line and `CitationEditionCheck`'s notes for pages the vault's index cites, beside the downloading note. **P3 (shared manuals) planned 2026-11-16, not built:** a partner who may distribute a manual uploads it once; it is
+encrypted once and each subscribed company receives a small wrapped key ([§8](#8--shared-manuals-one-copy-a-key-per-company)).
 P2 device pass owed; catalog sync of the new strings owed. All six [decisions](#decisions-for-greig) taken: 1–3 by the owner while discussing, 4–6 as
 recommended (2026-11-15). Manual matching treats one-sided evidence as no difference: an edition or revision known on only one side is
 not a difference.
@@ -63,6 +64,9 @@ customers means twenty uploads of version 5.
   current job, with a notice naming the partner.
 - The partner stops being a partner → every subscribed company keeps the last version, marked *"No longer
   updated by ⟨partner⟩"*. Nothing is removed until the company removes it.
+- A partner with a manufacturer's distribution agreement uploads that manual **once**. Every subscribed company
+  has it, nobody else can read it, and the service stores one copy however many companies there are. The
+  agreement ends → it is removed once and leaves every company's phones after the current job.
 - The partner's files cannot be read by anyone outside a subscribed company, even with the download URL, and
   cannot be exported from a phone.
 
@@ -177,6 +181,37 @@ The job wait, the Wi-Fi wait for manuals, the space check, lapse locks and erasu
 and CT unchanged. The company's licence lapsing still locks a published vault like any other company vault. No
 new data leaves the phone: the fleet view's installed versions (LR P2, disclosed) already cover published vaults.
 
+### 8 · Shared manuals (one copy, a key per company)
+
+Added 2026-11-16, when the partner asked to upload a manual once rather than to each company (P3). Sealing a copy
+per company stores the manual once per company: 30 manuals of 20 MB is 60 GB at 100 companies. Instead the manual
+is encrypted **once** and only its key is given to each company (envelope encryption).
+
+- **The file:** the service encrypts the manual with a random 32-byte content key, using the same chunked
+  AES-GCM construction as `CompanyManualSeal` under its own domain (`openglasses.shared-manual.v1`), with the
+  context `[contentId, keyId]`. One file, one URL, served like any sealed manual.
+- **The key, per company:** the content key wrapped with a key derived from that company's secret (HKDF-SHA256,
+  domain `openglasses.shared-manual-key.v1`, context `[profileId, contentId, keyId]`), then AES-GCM. About 100
+  bytes, carried on the company's own manual row.
+- **The manual row** gains an optional `shared {contentId, keyId, wrappedKey}`. With it, `sealedSha256` and
+  `sizeBytes` describe the shared file, and `revision` is still the plaintext's SHA-256. Without it, the row is a
+  company-sealed manual exactly as today.
+- **On the phone:** unwrap the content key with the company secret, open the shared file with it, check
+  `revision`, then lay the manual in as any company manual (`origin: company`). Everything after that (the
+  checklist, the revision line, the Wi-Fi wait, the job wait, removal) is unchanged.
+- **Rotation:** when a company leaves (unsubscribed, the manual's company list changed, the agreement's end date
+  passed), the service re-encrypts the one file under a fresh content key with a new `keyId`, and wraps it again
+  for the companies that remain. A company's phones may have kept the old key; the old file is deleted, so the
+  old key opens nothing that is still served. The remaining companies download the manual again, the same cost
+  as replacing it.
+- **Older phones:** a phone without P3 would treat a `shared` row as a company-sealed manual and fail to open it.
+  So the service writes `shared` rows only into a vault row whose `minAppBuild` is at least the first P3 build
+  (its own setting, `sharedManualsMinAppBuild`, alongside `publishedVaultsMinAppBuild`).
+- **What anyone can see:** two companies' catalogs point at the same file, so someone holding both could tell
+  they share a manual. They still cannot read it. Accepted as the price of storing it once.
+- **The company's own copy wins:** a company that uploaded its own copy of the same manual (same `revision`)
+  keeps its copy; the service writes no `shared` row for it there.
+
 ## Decisions for Greig
 
 **Taken while this was discussed, 2026-11-15:**
@@ -199,6 +234,21 @@ new data leaves the phone: the fleet view's installed versions (LR P2, disclosed
 6. **The revision line in answers.** *Recommended:* only when the vault's index cites a page in a manual held at
    a different revision. Not recommended: a line on every answer from that vault, which would be noise on most
    answers.
+
+**Taken by the owner, 2026-11-16, with the partner's agreement:**
+
+7. **Shared manuals.** ✅ A partner who may distribute a manual uploads it once, under a rights line that says
+   so, and it reaches every company they choose, encrypted once with a key per company (§8). The storage counts
+   against the partner, not each company's 1 GB.
+
+**Proposed to the partner, 2026-11-16 (confirm before P3 is built):**
+
+8. **Which companies.** *Recommended:* every company subscribed to the vault, with a per-manual *only these
+   companies* option for agreements limited to some customers or regions.
+9. **End date.** *Recommended:* an optional agreement note and end date on the manual; after the end date the
+   service stops delivering it and rotates it away, with a line in the portal a week before.
+10. **A company's own copy.** *Recommended:* if a company already holds the same manual (same revision) it
+    keeps its own copy and receives no shared key for it.
 
 ## Phases
 
@@ -229,6 +279,16 @@ by the service's `core.lock`). The phone's P1 is useless until the service's S1 
 Two phones in two companies subscribed to one partner vault, one company with an extra layer: one publish
 reaches both; each row's checklist matches what that company uploaded; an answer citing a different revision
 says so; the partner ends → both keep the last version, marked frozen.
+
+### P3 — shared manuals (headless; with the service's S4)
+
+- Core package: the shared-manual seal, the key wrap and unwrap, the row's `shared` field and its checks (a
+  `shared` row must name a vault row whose `minAppBuild` is high enough), fixtures `company-vaults-v3` with
+  negatives (another company's secret, a rotated `keyId`, a wrapped key for another profile).
+- Phone: the manual download unwraps the key and opens the shared file; a rotation replaces the manual like a
+  new revision.
+- **Exit:** two fixture companies with one shared file: both open it; a third company's secret can't; after a
+  rotation the old key opens nothing served and both remaining companies still open the new file.
 
 ## Risks
 
