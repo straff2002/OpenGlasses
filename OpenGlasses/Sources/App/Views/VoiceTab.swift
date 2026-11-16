@@ -364,7 +364,8 @@ struct VoiceTab: View {
                           tabHeight: CGFloat) -> some View {
         let inlineManual = layout.showsContext ? nil : appState.manualFigureRequest
         ConversationFeed(store: appState.conversationStore, session: session,
-                         openAISession: openAISession, trailID: inlineManual?.id) {
+                         openAISession: openAISession, trailID: inlineManual?.id,
+                         revealToken: appState.manualPageReveals) {
             feedModules(voiceState, showsContext: layout.showsContext)
         } trail: {
             if let request = inlineManual {
@@ -372,6 +373,12 @@ struct VoiceTab: View {
                     appState.manualFigureRequest = nil
                 }
                 .padding(.horizontal, 12)
+                // Where the feed scrolls to when the page is shown. A tag on a background rather
+                // than `.id` on the page, which would override the request's own identity (a new
+                // request is a new sheet).
+                .background(alignment: .top) {
+                    Color.clear.frame(height: 1).id(ConversationFeedFollow.pageAnchor)
+                }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
