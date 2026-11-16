@@ -237,9 +237,13 @@ extension SkillPackManifest {
         }
 
         var settings: [SettingDeclaration] = []
+        // A key declared twice is dropped after the first: both would bind to the one stored
+        // value, and two rows with the same key crash the settings list.
+        var seenSettingKeys = Set<String>()
         for element in ((root["settings"] as? [Any]) ?? []) {
             if let elementData = try? JSONSerialization.data(withJSONObject: element),
-               let decoded = try? decoder.decode(SettingDeclaration.self, from: elementData) {
+               let decoded = try? decoder.decode(SettingDeclaration.self, from: elementData),
+               seenSettingKeys.insert(decoded.key).inserted {
                 settings.append(decoded)
             } else {
                 report.droppedSettings += 1

@@ -652,7 +652,8 @@ struct VariablePickerSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(variables, id: \.name) { v in
+                // Keyed by position: two steps can name their output the same.
+                ForEach(Array(variables.enumerated()), id: \.offset) { _, v in
                     Button {
                         onSelect(v.name)
                         dismiss()
