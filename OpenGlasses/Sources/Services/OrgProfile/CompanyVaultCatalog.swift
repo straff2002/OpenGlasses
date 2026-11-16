@@ -57,12 +57,29 @@ enum CompanyVaultCatalog {
         let sealedSha256: String
         let downloadURL: String
         let kind: ManualKind
+        /// Plan LV P3: a shared manual. The file at `downloadURL` is the one copy every company
+        /// receives (`CompanySharedManualSeal`) and `sealedSha256` its digest; `sizeBytes` and
+        /// `revision` are its plaintext's, as for any manual. Absent on a company-sealed row.
+        var shared: SharedManual? = nil
+
+        var isShared: Bool { shared != nil }
 
         /// What a citation calls it: the file name without its extension.
         var title: String {
             let base = (fileName as NSString).deletingPathExtension
             return base.isEmpty ? fileName : base
         }
+    }
+
+    /// Plan LV P3: which shared file a manual row is, and its content key wrapped for this company
+    /// (`CompanyVaultContract.SharedManual`).
+    struct SharedManual: Codable, Equatable, Sendable {
+        /// The shared file's id, the same for every company.
+        let contentId: String
+        /// The content key's number; a rotation raises it.
+        let keyId: Int
+        /// The content key wrapped for this company: base64 of `CompanySharedManualKey.wrappedKeyLength` bytes.
+        let wrappedKey: String
     }
 
     /// One vault row: the public pack catalog's row, with its size required.
@@ -234,8 +251,11 @@ enum CompanyVaultCatalog {
         seen = Set(vaults.map(\.vaultId))
         var manuals: [Manual] = []
         var files = Set<String>()
+        // Plan LV P3: a shared manual belongs only in a vault row that names a minimum build
+        // (`CompanyVaultContract.check`), so a build that can't open it never receives it.
+        let gated = Set(vaults.filter { $0.minAppBuild != nil }.map(\.vaultId))
         for manual in catalog.manuals.prefix(CompanyVaultLimits.manualsPerCatalog) where seen.contains(manual.vaultId) {
-            if let problem = problem(with: manual) {
+            if let problem = problem(with: manual) ?? (manual.isShared && !gated.contains(manual.vaultId) ? incomplete(manual) : nil) {
                 problems[manual.vaultId] = problems[manual.vaultId] ?? problem
                 continue
             }
@@ -291,14 +311,25 @@ enum CompanyVaultCatalog {
     static func problem(with manual: Manual) -> String? {
         let ext = (manual.fileName as NSString).pathExtension.lowercased()
         guard safeFileName(manual.fileName), manual.kind.extensions.contains(ext), isDigest(manual.revision),
-              isDigest(manual.sealedSha256), downloadURL(manual.downloadURL) != nil else {
-            return String(localized: "A manual can't be downloaded: its entry in the vault list is incomplete.")
+              isDigest(manual.sealedSha256), downloadURL(manual.downloadURL) != nil,
+              manual.shared.map(sharedFieldIsSound) ?? true else {
+            return incomplete(manual)
         }
         guard (1...manual.kind.maximumBytes).contains(manual.sizeBytes) else {
             let limit = ByteCountFormatter.string(fromByteCount: Int64(manual.kind.maximumBytes), countStyle: .file)
             return String(localized: "\(manual.title) is larger than the \(limit) this kind of manual may be.")
         }
         return nil
+    }
+
+    static func incomplete(_ manual: Manual) -> String {
+        String(localized: "A manual can't be downloaded: its entry in the vault list is incomplete.")
+    }
+
+    /// Plan LV P3: a safe `contentId`, a `keyId` of 1 or more, and a wrapped key of the right length.
+    static func sharedFieldIsSound(_ shared: SharedManual) -> Bool {
+        safeIdentifier(shared.contentId) && shared.keyId >= 1
+            && Data(base64Encoded: shared.wrappedKey)?.count == CompanySharedManualKey.wrappedKeyLength
     }
 
     /// HTTPS, a host, no credentials and no fragment.
@@ -602,5 +633,127 @@ enum CompanyCoreSeal {
     /// As the licence service seals one. Tests and fixtures only on the phone.
     static func seal(_ pack: Data, context: Context, companySecret: Data) throws -> Data {
         try construction.seal(pack, fields: context.fields, companySecret: companySecret)
+    }
+}
+
+/// Plan LV P3 — a shared manual's one file, opened on the phone with the content key unwrapped for
+/// this company (`CompanySharedManualKey`).
+///
+/// The chunked seal under `openglasses.shared-manual.v1`, magic `OGSM`, keyed from the 32-byte
+/// content key rather than the company secret, each chunk authenticating the file's `contentId` and
+/// `keyId`. The context names no company: every company receives the same file. Mirrors
+/// `CompanyVaultContract.SharedManualSeal`; pinned by `CompanySharedManualContractTests`.
+enum CompanySharedManualSeal {
+    /// **Key-derivation and authentication domain, not a product name.** Never change it: every
+    /// shared manual already delivered would stop opening.
+    static let sealingDomain = "openglasses.shared-manual.v1"
+    static let contentKeyLength = 32
+
+    static let construction = CompanyChunkedSeal(domain: sealingDomain, magic: "OGSM")
+
+    typealias Failure = CompanyManualSeal.Failure
+
+    struct Context: Equatable, Sendable {
+        let contentId: String
+        let keyId: Int
+
+        init(contentId: String, keyId: Int) {
+            self.contentId = contentId
+            self.keyId = keyId
+        }
+
+        init(shared: CompanyVaultCatalog.SharedManual) {
+            self.init(contentId: shared.contentId, keyId: shared.keyId)
+        }
+
+        var fields: [String] { [contentId, String(keyId)] }
+    }
+
+    static var header: Data { construction.header }
+
+    /// The shared file's exact length for `plaintextBytes`: the same as any sealed manual.
+    static func sealedLength(plaintextBytes: Int) -> Int { CompanyChunkedSeal.sealedLength(plaintextBytes: plaintextBytes) }
+
+    /// Open chunk by chunk, as `CompanyManualSeal.open(length:…)`. Returns the plaintext's length; a
+    /// plaintext whose SHA-256 is not `revision` throws `wrongRevision`.
+    @discardableResult
+    static func open(length: Int, read: (Range<Int>) throws -> Data, context: Context, contentKey: Data, revision: String,
+                     sink: (Data) throws -> Void) throws -> Int {
+        guard contentKey.count == contentKeyLength else { throw Failure.noSecret }
+        let opened = try construction.open(length: length, read: read, fields: context.fields, companySecret: contentKey, sink: sink)
+        guard opened.digest == revision else { throw Failure.wrongRevision }
+        return opened.bytes
+    }
+
+    /// Open bytes already in memory. Tests and fixtures.
+    static func open(_ sealed: Data, context: Context, contentKey: Data, revision: String) throws -> Data {
+        var plain = Data()
+        try open(length: sealed.count, read: { sealed.subdata(in: $0) }, context: context, contentKey: contentKey,
+                 revision: revision) { plain.append($0) }
+        return plain
+    }
+
+    /// As the licence service seals one. Tests and fixtures only on the phone.
+    static func seal(_ plaintext: Data, context: Context, contentKey: Data) throws -> Data {
+        try construction.seal(plaintext, fields: context.fields, companySecret: contentKey)
+    }
+}
+
+/// Plan LV P3 — a shared manual's content key, wrapped for one company.
+///
+/// KEK = HKDF-SHA256(company secret, info: "openglasses.shared-manual-key.v1\n" + profileId + "\n" +
+/// contentId + "\n" + keyId + "\n"); the wrapped key is base64 of nonce ‖ AES-256-GCM(KEK, content key,
+/// AAD: the same bytes) ‖ tag, 60 bytes. A key wrapped for another company, profile, file or `keyId`
+/// does not unwrap. Mirrors `CompanyVaultContract.SharedManualKey`; pinned by
+/// `CompanySharedManualContractTests`.
+enum CompanySharedManualKey {
+    /// **Key-derivation and authentication domain, not a product name.** Never change it: every
+    /// wrapped key already delivered would stop unwrapping.
+    static let derivationDomain = "openglasses.shared-manual-key.v1"
+    /// nonce (12) ‖ ciphertext (32) ‖ tag (16).
+    static let wrappedKeyLength = 12 + CompanySharedManualSeal.contentKeyLength + 16
+
+    typealias Failure = CompanyManualSeal.Failure
+
+    struct Context: Equatable, Sendable {
+        let profileId: String
+        let contentId: String
+        let keyId: Int
+
+        init(profileId: String, contentId: String, keyId: Int) {
+            self.profileId = profileId
+            self.contentId = contentId
+            self.keyId = keyId
+        }
+
+        init(profileId: String, shared: CompanyVaultCatalog.SharedManual) {
+            self.init(profileId: profileId, contentId: shared.contentId, keyId: shared.keyId)
+        }
+
+        var bytes: Data {
+            Data((CompanySharedManualKey.derivationDomain + "\n" + [profileId, contentId, String(keyId)].map { $0 + "\n" }.joined()).utf8)
+        }
+    }
+
+    private static func kek(_ companySecret: Data, context: Context) -> SymmetricKey {
+        HKDF<SHA256>.deriveKey(inputKeyMaterial: SymmetricKey(data: companySecret), info: context.bytes, outputByteCount: 32)
+    }
+
+    /// The content key: `noSecret` without a company secret, `malformed` for anything but 60 bytes
+    /// of base64, `tampered` for a key wrapped for anyone else.
+    static func unwrap(_ wrapped: String, context: Context, companySecret: Data) throws -> Data {
+        guard companySecret.count == OrgCredentialSeal.secretLength else { throw Failure.noSecret }
+        guard let bytes = Data(base64Encoded: wrapped), bytes.count == wrappedKeyLength else { throw Failure.malformed }
+        guard let box = try? AES.GCM.SealedBox(combined: bytes),
+              let key = try? AES.GCM.open(box, using: kek(companySecret, context: context), authenticating: context.bytes),
+              key.count == CompanySharedManualSeal.contentKeyLength else { throw Failure.tampered }
+        return key
+    }
+
+    /// As the licence service wraps one. Tests and fixtures only on the phone.
+    static func wrap(_ contentKey: Data, context: Context, companySecret: Data) throws -> String {
+        guard let combined = try AES.GCM.seal(contentKey, using: kek(companySecret, context: context),
+                                              authenticating: context.bytes).combined else { throw Failure.malformed }
+        return combined.base64EncodedString()
     }
 }
