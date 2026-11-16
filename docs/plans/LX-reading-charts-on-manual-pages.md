@@ -3,10 +3,10 @@
 **Status:** 🚧 P0 and the words-only part of P2 built 2026-11-16 (headless) — the deterministic core and, live on
 the phone with no model, charts found at import and indexed as words-only passages, announced to the model as unread,
 their page opened for the phone and never sent as the model's picture (see "What shipped in P0"). Not built: P1
-(reading a chart's values: prompts, schema, the cache on disk, the disclosure, Max's switch and the org key, `AIFeature.chartReading`),
+(reading a chart's values: prompts, schema, the cache on disk, the disclosure, the company and solo setting, the org key, `AIFeature.chartReading`),
 the rest of P2 (`chart_lookup`, precedence wired into `table_lookup` / `domain_calc`, chain-step marking), P3, and the
-P4 device pass. Decisions 1, 2, 5, 6 and 7 taken 2026-11-16: chart reading is a company setting on the phone, on by
-default (on demand, §8); decisions 3–4 open. P0 sends no picture anywhere and calls no model: reading
+P4 device pass. Decisions 1, 2, 5, 6 and 7 taken 2026-11-16: sending charts to the model is on by default, set
+company-wide in the portal or by a solo user on the phone (§8); decisions 3–4 open. P0 sends no picture anywhere and calls no model: reading
 values is P1.
 **Track:** Field Assist first (charging charts, pressure–temperature curves, derating curves), app-wide
 underneath: any vault PDF, any My Manuals PDF, any photographed manual page.
@@ -259,14 +259,21 @@ The picture goes to the provider the wearer has chosen, the same one that answer
   take images, so it offers the page instead.
 - **HIPAA mode** uses the same routing it uses for every image. If that routing refuses, the chart
   isn't read and the page is offered.
-- **Max's switch (decisions 1–2, taken 2026-11-16).** Chart reading is an option the company sets on
-  the phone, **on by default**: *Read charts on manual pages* in Field Assist settings, `off` /
-  `onDemand` / `atImport`, default `onDemand`. Whoever runs the company sets it there, with no office
-  app and no profile needed. An organisation profile may also pin it through a ceiling
-  `SettingKey.organizationChartReading` (same values, tighten only); a pinned value shows on the
-  phone as set by the organisation. Off means nothing is read: the chart is still found, searched
-  and cited by its page, as P0 does. On by default does not skip the disclosure: the first cloud
-  reading from each manual still asks.
+- **Who decides (decisions 1–2, taken 2026-11-16).** Sending a chart's picture to the model to read
+  it is a setting, **on by default**, with three values: `off` / `onDemand` / `atImport`, default
+  `onDemand`.
+  - **A company** sets it once in the portal, for every phone in the company: The company's administrator sets it there, like
+    LR's *Manuals on any network*. It reaches the phones in the company vault catalog
+    (`CompanyVaultCatalog`, a new `chartReading` field beside `manualsOnAnyNetwork`), fetched at
+    enrolment and on every foreground. On a company phone the setting shows read-only, *Set by your
+    company*; a catalog without the field (an older service) means the default. Service work: the
+    portal control and the catalog field, in the licence service, before the phone reads it.
+  - **A solo user** sets it on the phone: *Read charts on manual pages* in Field Assist settings,
+    same values, same default.
+  - **Off** means no picture is sent: the chart is still found, searched and cited by its page, as P0
+    does. On by default does not skip the disclosure: the first cloud reading from each manual still
+    asks. An organisation profile may still pin it through a ceiling
+    `SettingKey.organizationChartReading` (tighten only), which wins over the catalog.
 - A new `AIFeature.chartReading` registers the feature, its switch and what stays on disk.
 
 ### 9 · The cache (`ChartReadingCache`, `ChartCachePolicy`, pure decision)
@@ -314,13 +321,13 @@ charts.
 
 ## Decisions for Greig
 
-1. **When charts are read.** **Taken 2026-11-16 as recommended, as Max's switch (§8), on by default
-   (on demand).** *Recommended:* printed words at import on device (free), values on demand
+1. **When charts are read.** **Taken 2026-11-16 as recommended, on by default (on demand): set for a
+   company in the portal, for a solo user on the phone (§8).** *Recommended:* printed words at import on device (free), values on demand
    the first time a turn needs them, cached; an organisation can add reading at import. *Not
    recommended:* every chart at import for everyone, which costs money and sends pictures for charts
    nobody asks about; or on demand only, without the free words, which leaves charts unfindable.
-2. **Where the picture may go.** **Taken 2026-11-16 as recommended, with the ceiling a phone setting
-   the company sets, on by default (§8).** *Recommended:* the wearer's chosen provider, with the one-time
+2. **Where the picture may go.** **Taken 2026-11-16 as recommended. Whether a picture is sent at all is
+   the company's setting in the portal, or a solo user's on the phone, on by default (§8).** *Recommended:* the wearer's chosen provider, with the one-time
    disclosure per manual; on device when the local model takes images; HIPAA routing unchanged; an org
    ceiling, default on demand. This is a deliberate exception to JN's "no page image leaves the phone",
    limited to chart regions, and the disclosure says so. *Alternative:* on device only, which today
@@ -435,8 +442,9 @@ open on a reading or a correction, which ask for no page.
 ### P1 — reading (live model, headless measurement)
 
 The two prompts and the schema, pass 1 through `analyzeFrameStructured`, pass 2 as a text call, the
-cache on disk, the disclosure sheet, Max's switch in Field Assist settings (on, on demand, by
-default) and the org key that may pin it, `AIFeature.chartReading`, the HIPAA rule.
+cache on disk, the disclosure sheet, the setting (a solo user's in Field Assist settings; a company's
+read from the vault catalog, shown read-only) and the org key that may pin it, with the portal
+control and catalog field in the licence service first, `AIFeature.chartReading`, the HIPAA rule.
 
 **Measurement without licensed material.** A script draws synthetic charts with Core Graphics from
 known data: lines, families, a log axis, dense and sparse ticks, a shaded band, two fonts. The
