@@ -37,7 +37,7 @@ struct DraftReviewView: View {
                 Section {
                     Picker("Layer", selection: $layer) {
                         Text("Fault codes").tag(DraftLayer.faultCodes)
-                        Text("Models").tag(DraftLayer.modelMap)
+                        Text("Equipment models").tag(DraftLayer.modelMap)
                         Text("Symptoms").tag(DraftLayer.symptoms)
                     }
                     .pickerStyle(.segmented)
@@ -349,7 +349,7 @@ private struct DraftRowEditor: View {
                     TextField("Code", text: $first)
                     TextField("What it means, in your words", text: $second, axis: .vertical)
                 case .model:
-                    TextField("Model", text: $first)
+                    TextField("Model number", text: $first)
                     TextField("Other spellings, comma-separated", text: $second)
                 case .symptom:
                     TextField("What the technician says", text: $first, axis: .vertical)

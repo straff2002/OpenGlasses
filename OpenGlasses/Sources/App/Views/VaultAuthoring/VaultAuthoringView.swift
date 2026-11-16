@@ -38,7 +38,7 @@ struct VaultAuthoringView: View {
                 }
                 .disabled(manifest?.documents.isEmpty ?? true)
             } header: {
-                Text("Models")
+                Text("Equipment models")
             } footer: {
                 Text("Photograph the plate at the unit, pick the model it shows, and say which manual covers it.")
             }

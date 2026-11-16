@@ -59,7 +59,7 @@ struct NewVaultSheet: View {
                     Button("Cancel") { dismiss() }.disabled(working)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { create() } label: { if moving { Text("Move") } else { Text("Create") } }
+                    Button { create() } label: { if moving { Text("Move into a vault") } else { Text("Create") } }
                         .disabled(working || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("newVault.create")
                 }
