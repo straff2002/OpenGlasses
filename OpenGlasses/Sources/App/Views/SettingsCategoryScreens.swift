@@ -161,13 +161,6 @@ struct DisplayHUDSettingsScreen: View {
 struct DisplayHUDSections: View {
     @ObservedObject var appState: AppState
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
-    #if !AVENKIN_PHONE_ONLY
-    @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
-
-    private var displayedDisplayBackendName: String {
-        DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
-    }
-    #endif
 
     var body: some View {
         #if !AVENKIN_PHONE_ONLY
@@ -227,8 +220,6 @@ struct DisplayHUDSections: View {
             }
         } header: {
             Text("In-Lens Display")
-        } footer: {
-            Text("These are the same switches as under Devices & Privacy → Hardware & Privacy. Glasses without a display ignore them.")
         }
         #endif
 
@@ -238,17 +229,6 @@ struct DisplayHUDSections: View {
                 HUDMirrorView(router: appState.hudRouter)
             } label: {
                 Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
-            }
-
-            NavigationLink {
-                EvenDisplaySettingsView()
-            } label: {
-                HStack {
-                    Label("Display Backend", systemImage: "display")
-                    Spacer()
-                    Text(displayedDisplayBackendName)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             NavigationLink {
@@ -284,7 +264,7 @@ struct DisplayHUDSections: View {
             #if AVENKIN_PHONE_ONLY
             Text("Read a script hands-free.")
             #else
-            Text("Preview the lens on your phone, choose which display hardware to drive, mirror the HUD to a browser, or read a script hands-free.")
+            Text("Preview the lens on your phone, mirror the HUD to a browser, or read a script hands-free. Which glasses draw the lens is chosen on the Glasses page.")
             #endif
         }
     }

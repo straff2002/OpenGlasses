@@ -88,6 +88,13 @@ final class DisplaySettingsPlacementTests: XCTestCase {
         XCTAssertFalse(Placement.organisationOpensDisplay(otherOpened))
     }
 
+    /// The backend choice waits for nothing but the category: EVEN G2 glasses are recognised only
+    /// once chosen.
+    func testTheBackendChoiceIsOfferedWhereverTheCategoryIs() {
+        XCTAssertTrue(Placement.showsBackendChoiceOnGlassesPage(categoryVisible: true))
+        XCTAssertFalse(Placement.showsBackendChoiceOnGlassesPage(categoryVisible: false))
+    }
+
     // MARK: - Devices & Privacy no longer draws it
 
     func testDevicesAndPrivacyNeverDrawsTheDisplaySections() {
@@ -141,6 +148,26 @@ final class DisplaySettingsPlacementTests: XCTestCase {
         XCTAssertTrue(glasses.contains("DisplaySettingsPlacement.showsOnGlassesPage("))
         XCTAssertTrue(glasses.contains("SettingsCategoryScreen(appState: appState, id: .display)"),
                       "the link goes through the category's lock wrapper")
+        let hardware = try XCTUnwrap(glasses.components(separatedBy: "struct HardwarePrivacyView: View {").dropFirst().first?
+            .components(separatedBy: "// MARK: - Glasses Sub-View").first, "HardwarePrivacyView is gone")
+        for row in ["glassesDisplayEnabled", "hudChoiceButtonsEnabled", "HUDMirrorView(", "EvenDisplaySettingsView(",
+                    "WebHUDMirrorSettingsView("] {
+            XCTAssertFalse(hardware.contains(row), "\(row) is in Hardware & Privacy too; it has one home, Display & HUD")
+        }
+        let glassesPage = try XCTUnwrap(glasses.components(separatedBy: "struct GlassesSettingsView: View {").dropFirst()
+            .first?.components(separatedBy: "// MARK: - Info Status Row").first, "GlassesSettingsView is gone")
+        XCTAssertTrue(glassesPage.contains("EvenDisplaySettingsView("), "which glasses draw the lens is chosen on Glasses")
+        XCTAssertTrue(glassesPage.contains("DisplaySettingsPlacement.showsBackendChoiceOnGlassesPage("))
+        let display = try Self.source("OpenGlasses/Sources/App/Views/SettingsCategoryScreens.swift")
+        let sections = try XCTUnwrap(display.components(separatedBy: "struct DisplayHUDSections: View {").dropFirst().first)
+        XCTAssertFalse(sections.contains("EvenDisplaySettingsView("), "the backend choice has one home, the Glasses page")
+        XCTAssertTrue(sections.contains("TeleprompterSettingsView("), "the teleprompter is on Display & HUD")
+        // Hardware & Privacy keeps the teleprompter only on the phone-only copy, which has no display page.
+        let teleprompter = try XCTUnwrap(hardware.range(of: "TeleprompterSettingsView("))
+        let directives = hardware[..<teleprompter.lowerBound].components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { $0.hasPrefix("#") }
+        XCTAssertEqual(directives.suffix(2), ["#if !AVENKIN_PHONE_ONLY", "#else"],
+                       "Hardware & Privacy's teleprompter is the phone-only copy's")
         let service = try Self.source("OpenGlasses/Sources/Services/GlassesDisplayService.swift")
         XCTAssertTrue(service.contains("DisplaySettingsPlacement.remembersSeen("))
     }

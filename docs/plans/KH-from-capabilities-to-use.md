@@ -195,8 +195,11 @@ while they are connected), the display switch is on, the connect-time display of
 the EVEN G2 backend is chosen, or an organisation's lockdown opens Display & HUD. Still only where
 the category itself is visible: Simple Mode, a lockdown and a copy without glasses hide it as
 before. `.display` keeps its row, id, lock and `openSettings(.display)` route; only where it is
-drawn moved (`DisplaySettingsPlacement`, `DisplaySettingsPlacementTests`). The same switches stay
-under Hardware & Privacy, so nothing is out of reach for someone the rule does not recognise yet.
+drawn moved (`DisplaySettingsPlacement`, `DisplaySettingsPlacementTests`). Each display setting has one
+home: the copies under Hardware & Privacy went; the teleprompter is on Display & HUD (on the
+phone-only copy, which has no display page, it stays under Hardware & Privacy); and the display
+backend choice is on the Glasses page for anyone who can see the category, because EVEN G2 glasses are
+recognised only once they are chosen.
 
 | Hub row | Holds | Opens |
 |---|---|---|

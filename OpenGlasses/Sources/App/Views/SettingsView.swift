@@ -675,17 +675,6 @@ struct HardwarePrivacyView: View {
     @State private var historyRetentionDays = Config.historyRetentionDays
     @Binding var isTogglingEncryption: Bool
     @State private var showEncryptionInfo = false
-    #if !AVENKIN_PHONE_ONLY
-    @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
-    #endif
-    @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
-
-    #if !AVENKIN_PHONE_ONLY
-    private var displayedDisplayBackendName: String {
-        DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
-    }
-    #endif
-
     var body: some View {
         Form {
             // Plan CL P3: unified capture route. Headset mode exists because the
@@ -722,29 +711,8 @@ struct HardwarePrivacyView: View {
                     ),
                     info: "Disables camera video streaming from the glasses. Voice commands still work but vision features (photo capture, live video analysis) are unavailable. Significantly extends glasses battery life."
                 )
-                InfoToggle(
-                    title: "Glasses Display (HUD)",
-                    isOn: Binding(
-                        get: { Config.glassesDisplayEnabled },
-                        set: { newValue in
-                            Config.setGlassesDisplayEnabled(newValue)
-                            if !newValue {
-                                Task { await appState.glassesDisplay.shutdown() }
-                            } else {
-                                appState.glassesDisplay.wearerTurnedLensOn()
-                            }
-                        }
-                    ),
-                    info: "Shows AI responses, live captions, notifications and turn-by-turn guidance on the in-lens display, and runs interactive task cards you complete hands-free with the Neural Band or voice (\"next\", \"done\", \"skip\", \"back\"). A manual page you ask to see can open on the lens too, where you can zoom in and move around it. Ray-Ban Display glasses only — no effect on glasses without a built-in display."
-                )
-                InfoToggle(
-                    title: "HUD Choice Buttons",
-                    isOn: Binding(
-                        get: { Config.hudChoiceButtonsEnabled },
-                        set: { Config.setHudChoiceButtonsEnabled($0) }
-                    ),
-                    info: "When a reply lays out explicit options (\"A) the fast route, B) the scenic route\"), they appear as selectable buttons on the in-lens display — pick one with the Neural Band instead of re-speaking it. Detection is deliberately conservative: plain numbered steps never become buttons."
-                )
+                // The in-lens display's own switches are on Devices & Privacy › Glasses › Display & HUD,
+                // for someone with display glasses (`DisplaySettingsPlacement`), and only there.
                 InfoToggle(
                     title: "Dwell Capture",
                     isOn: Binding(
@@ -770,33 +738,9 @@ struct HardwarePrivacyView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                NavigationLink {
-                    HUDMirrorView(router: appState.hudRouter)
-                } label: {
-                    Label("HUD Mirror (phone preview)", systemImage: "eyeglasses")
-                }
-                NavigationLink {
-                    EvenDisplaySettingsView()
-                } label: {
-                    HStack {
-                        Label("Display Backend", systemImage: "display")
-                        Spacer()
-                        Text(displayedDisplayBackendName)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                NavigationLink {
-                    WebHUDMirrorSettingsView()
-                } label: {
-                    HStack {
-                        Label("Web HUD Mirror", systemImage: "globe.desk")
-                        Spacer()
-                        Text(LocalServiceExposurePolicy.current.permitsListener(for: .webHUDMirror)
-                             ? (hudMirrorEnabled ? "On" : "Off") : "Unavailable")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                #endif
+                #else
+                // A copy with glasses has the teleprompter on Display & HUD. This copy has no such
+                // page, so it is here, and only here.
                 NavigationLink {
                     TeleprompterSettingsView(service: appState.teleprompterService,
                                              store: appState.teleprompterStore)
@@ -809,6 +753,7 @@ struct HardwarePrivacyView: View {
                         }
                     }
                 }
+                #endif
                 NavigationLink {
                     InsightsView().environmentObject(appState)
                 } label: {
@@ -997,13 +942,23 @@ struct GlassesSettingsView: View {
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
     @AppStorage("simpleModeEnabled") private var simpleModeEnabled = false
 
+    /// Display & HUD is among the hub's visible categories: not in Simple Mode, not where a
+    /// lockdown locks it.
+    private var displayCategoryVisible: Bool {
+        SettingsHub.visibleCategories(simpleMode: simpleModeEnabled, in: adminGate.settingsContext, on: .current)
+            .contains { $0.id == .display }
+    }
+
+    private var displayedDisplayBackendName: String {
+        DisplayBackendChoice(rawValue: displayBackendRaw)?.displayName ?? Config.displayBackend.displayName
+    }
+
     /// Whether this page carries the link to Display & HUD: only for someone with display glasses,
     /// connected or not, and only where the category itself is visible (`DisplaySettingsPlacement`).
     private var showsDisplaySettings: Bool {
         let context = adminGate.settingsContext
-        let visible = SettingsHub.visibleCategories(simpleMode: simpleModeEnabled, in: context, on: .current)
         return DisplaySettingsPlacement.showsOnGlassesPage(
-            categoryVisible: visible.contains { $0.id == .display },
+            categoryVisible: displayCategoryVisible,
             evidence: .init(
                 displayGlassesSeen: displayGlassesSeen || appState.glassesDisplay.hasDisplayCapability,
                 displayEnabled: glassesDisplayEnabled,
@@ -1151,17 +1106,31 @@ struct GlassesSettingsView: View {
                 }
             }
 
-            // The in-lens display, for someone with display glasses: near the top, where a wearer
-            // with new display glasses looks first, and through the category's own lock wrapper.
-            if showsDisplaySettings {
+            // The in-lens display: near the top, where a wearer with new display glasses looks
+            // first. The link to its settings is for someone with display glasses, through the
+            // category's own lock wrapper; which glasses draw the lens is chosen here by anyone, since
+            // EVEN G2 glasses are nothing but a display and are only recognised once chosen.
+            if DisplaySettingsPlacement.showsBackendChoiceOnGlassesPage(categoryVisible: displayCategoryVisible) {
                 Section {
+                    if showsDisplaySettings {
+                        NavigationLink {
+                            SettingsCategoryScreen(appState: appState, id: .display)
+                        } label: {
+                            HStack {
+                                SettingsLinkLabel(.display)
+                                Spacer()
+                                Text(glassesDisplayEnabled ? String(localized: "On") : String(localized: "Off"))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                     NavigationLink {
-                        SettingsCategoryScreen(appState: appState, id: .display)
+                        EvenDisplaySettingsView()
                     } label: {
                         HStack {
-                            SettingsLinkLabel(.display)
+                            Label("Display Backend", systemImage: "display")
                             Spacer()
-                            Text(glassesDisplayEnabled ? String(localized: "On") : String(localized: "Off"))
+                            Text(displayedDisplayBackendName)
                                 .foregroundStyle(.secondary)
                         }
                     }
