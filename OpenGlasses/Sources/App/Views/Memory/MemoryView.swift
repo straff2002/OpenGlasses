@@ -13,7 +13,9 @@ struct MemoryView: View {
         Form {
             if !model.statusMessages.isEmpty {
                 Section {
-                    ForEach(model.statusMessages, id: \.self) { message in
+                    // Keyed by position: two unreadable sources can word the same message, and a repeated id
+                    // in a Form crashes UIKit's list update.
+                    ForEach(Array(model.statusMessages.enumerated()), id: \.offset) { _, message in
                         OGNotice(text: message, systemImage: "lock")
                             .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                     }
@@ -237,7 +239,8 @@ struct MemoryFactDetailView: View {
                 if fact.id.store == .conversationDigest {
                     if !fact.details.isEmpty {
                         Section {
-                            ForEach(fact.details, id: \.self) { point in
+                            // Keyed by position: the AI writes these points and may repeat one.
+                            ForEach(Array(fact.details.enumerated()), id: \.offset) { _, point in
                                 Text(verbatim: point)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -316,7 +319,7 @@ struct MemoryForgetSheet: View {
                 }
                 if !plan.noteLines.isEmpty {
                     Section {
-                        ForEach(plan.noteLines, id: \.self) { line in
+                        ForEach(Array(plan.noteLines.enumerated()), id: \.offset) { _, line in
                             Text(verbatim: line).font(.callout)
                         }
                         Toggle("Also remove these lines", isOn: $removeNoteLines)
@@ -328,7 +331,8 @@ struct MemoryForgetSheet: View {
                 }
                 if !plan.digestPoints.isEmpty {
                     Section {
-                        ForEach(plan.digestPoints, id: \.self) { point in
+                        // Keyed by position: one note can repeat a point, and lines can match twice.
+                        ForEach(Array(plan.digestPoints.enumerated()), id: \.offset) { _, point in
                             Text(verbatim: point.text).font(.callout)
                         }
                         Toggle("Also remove these", isOn: $removeNoteLines)

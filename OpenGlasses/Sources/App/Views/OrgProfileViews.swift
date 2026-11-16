@@ -235,7 +235,8 @@ struct OrgProfileReviewList: View {
 
             if !review.dropLines.isEmpty {
                 Section {
-                    ForEach(review.dropLines, id: \.self) { line in
+                    // Keyed by position: the same bad entry twice gives two identical lines.
+                    ForEach(Array(review.dropLines.enumerated()), id: \.offset) { _, line in
                         Text(verbatim: line)
                             .font(.footnote)
                     }

@@ -38,7 +38,8 @@ struct ExpertCardImportSheet: View {
 
                 if !card.licences.isEmpty {
                     Section {
-                        ForEach(card.licences, id: \.self) { Text($0) }
+                        // Keyed by position: an expert may list the same licence twice.
+                        ForEach(Array(card.licences.enumerated()), id: \.offset) { Text($0.element) }
                     } header: {
                         Text("Licensed for, as they say")
                     } footer: {

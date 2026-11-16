@@ -297,7 +297,8 @@ struct AssistingHandoverView: View {
         }
         if !work.ruledOut.isEmpty {
             Section {
-                ForEach(work.ruledOut, id: \.self) { Text($0) }
+                // Keyed by position: these lines can repeat, and a repeated id in a list crashes UIKit's update.
+                ForEach(Array(work.ruledOut.enumerated()), id: \.offset) { Text($0.element) }
             } header: {
                 header("Ruled out", .ruledOut, held)
             } footer: {
@@ -306,7 +307,7 @@ struct AssistingHandoverView: View {
         }
         if !work.deviations.isEmpty {
             Section(header: header("Done differently", .deviations, held)) {
-                ForEach(work.deviations, id: \.self) { Text($0) }
+                ForEach(Array(work.deviations.enumerated()), id: \.offset) { Text($0.element) }
             }
         }
     }
