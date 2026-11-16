@@ -155,10 +155,6 @@ P1 adds the modifier to each, or records why not.
    device.
 5. **The source guard.** *Recommended:* yes, failing the build on a new unrostered site.
    *Alternative:* a warning only.
-6. **A deliberate crash for the device pass.** *Recommended:* a *Crash the app now* row in the
-   Developer panel, shown only in Debug builds and when `AppBuildIdentity.channel` is
-   `.testFlight` (the store and TestFlight share one binary, so this is a run-time check, not a
-   compile-time one), so P3 can check a real crash end to end.
 
 ## Phases
 
@@ -189,9 +185,9 @@ offsets (the Mac rarely has the device's system symbols; see the Organizer note 
 
 ### P3 — device pass (owed)
 
-On a phone: Xcode's *Debug › Simulate MetricKit Payloads*, then the Developer crash row on a
-TestFlight build. Check the banner, the review sheet, the crashed-run section, the last screens, and
-the symbolicated frames against the archive.
+On a phone: Xcode's *Debug › Simulate MetricKit Payloads* for the banner, the review sheet and the
+crashed-run section; then the next real crash a tester sends, for the last screens and the
+symbolicated frames against the archive. No deliberate-crash control is added to the app.
 
 ## Risks
 
