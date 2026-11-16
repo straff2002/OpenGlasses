@@ -1943,6 +1943,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     VaultRegistry.shared.reloadUserManifests()
                 }
                 self.upcomingJobs.removeAll()
+                // The sites this phone remembered for the organisation's clients (Plan MD §4).
+                ClientSiteLinkStore.shared.removeAll()
                 // …and so does what the office said about the open job's units and site (Plan HU).
                 FieldSessionService.shared.eraseOfficeSuppliedContext()
                 // Team-learning candidates were filed for this organisation's supervisor (Plan FP).

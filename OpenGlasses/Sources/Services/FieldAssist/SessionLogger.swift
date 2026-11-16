@@ -193,6 +193,14 @@ final class SessionLogger {
             /// A recognised unit was said to be part of the matched site system (Plan HV §5), once
             /// per unit per job: the site's id and the unit's id.
             case siteSystemAnnounced = "site_system_announced"
+            /// The technician chose the job's site on New job (Plan MD §3): which kind of choice,
+            /// whether it filled the job's site, the site document's id and its unit count. Never
+            /// the customer, the address or the site's name.
+            case siteChosen = "site_chosen"
+            /// A serial, a unit identifier or the job file named another documented site than the
+            /// one chosen, and the technician was asked which (Plan MD §3), once per pair: both
+            /// sites' ids and what named the other.
+            case siteSystemConflictRaised = "site_system_conflict_raised"
             /// The job report left by a channel the technician chose (Plan EM P2).
             case reportSent = "report_sent"
             /// …or the composer was dismissed, and the record is still in the queue.

@@ -53,6 +53,7 @@ enum SiteSystemContract {
         var lede = lede + " " + citationSentence(document, sourceFormat: sourceFormat)
         if match?.strength == .probable { lede += " " + probableLede }
         protected.append(lede)
+        if let match, let line = conflictLine(match) { protected.append(line) }
         let body = bodyLines(document, activeUnitID: activeUnitID)
         var remaining = limit - protected.reduce(0) { $0 + $1.count + 1 }
         // Whole when it fits; otherwise clipped from the end with room kept for the line that
@@ -161,6 +162,7 @@ enum SiteSystemContract {
         case (.confirmed, .serial?): return "confirmed by a serial on this job"
         case (.confirmed, .equipmentID?): return "confirmed by a unit identifier on the job file"
         case (.confirmed, .location?): return "confirmed by the job file's location"
+        case (.confirmed, .chosen?): return "chosen by the technician on site"
         case (.confirmed, _): return "confirmed"
         case (.probable, _): return "probable, by model only"
         case (.ambiguous, _), (.unmatched, _): return "not matched"
@@ -180,9 +182,37 @@ enum SiteSystemContract {
     /// 2026-10-20: one line plus a lookup).
     static func liveLine(_ match: SiteSystemMatch?, vaultId: String) -> String? {
         guard let match, match.applies(toVault: vaultId), let name = match.siteName else { return nil }
-        let strength = match.strength == .probable ? "probable, by model only" : "confirmed"
-        return "SITE SYSTEM: " + quote(name) + ", \(match.units.count) \(match.units.count == 1 ? "unit" : "units") (\(strength)). "
+        let strength = match.strength == .probable ? "probable, by model only"
+            : match.basis == .chosen ? "chosen by the technician" : "confirmed"
+        var line = "SITE SYSTEM: " + quote(name) + ", \(match.units.count) \(match.units.count == 1 ? "unit" : "units") (\(strength)). "
             + "Before blaming one unit for a fault that crosses units, call equipment_lookup with query '\(lookupQuery)' for how they connect."
+        if let conflict = conflictLine(match) { line += " " + conflict }
+        return line
+    }
+
+    // MARK: - A chosen site the evidence disagrees with (Plan MD §3)
+
+    /// What the technician is asked once when a serial names a unit at another documented site
+    /// than the one they chose: "That serial is listed at Elm Road, not Smith Street — which is
+    /// it?" Nil when there is no conflict. Spoken by the app's caller; never logged.
+    static func conflictQuestion(_ match: SiteSystemMatch) -> String? {
+        guard let conflict = match.conflict, match.strength.isMatch,
+              let here = match.siteLabel ?? match.siteName else { return nil }
+        switch conflict.basis {
+        case .serial: return "That serial is listed at \(conflict.siteLabel), not \(here) — which is it?"
+        case .equipmentID: return "That unit is listed at \(conflict.siteLabel), not \(here) — which is it?"
+        default: return "The job file names \(conflict.siteLabel), not \(here) — which is it?"
+        }
+    }
+
+    /// The model's line for the same conflict, inside the site block and the live line: the other
+    /// site quoted as data, and the rule — ask, never switch.
+    static func conflictLine(_ match: SiteSystemMatch) -> String? {
+        guard let conflict = match.conflict, match.strength.isMatch else { return nil }
+        let what = conflict.basis == .serial ? "A serial on this job" : conflict.basis == .equipmentID
+            ? "A unit identifier on this job" : "The job file"
+        return "SITE CONFLICT: \(what) names " + quote(conflict.siteLabel)
+            + ", another documented site, while the technician chose this one. If they have not answered it yet, ask once which site this is; never treat the other site as this job's on your own."
     }
 
     // MARK: - The technician's side

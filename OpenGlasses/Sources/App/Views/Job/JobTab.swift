@@ -70,6 +70,8 @@ private struct JobTabContent: View {
     @State private var path: [JobRoute] = []
     /// The number being typed, either to start a job with or to record on the open one.
     @State private var typedReference = ""
+    /// The site chosen on New job, waiting for Start job (Plan MD).
+    @State private var sitePick: NewJobSitePick?
     @State private var search = ""
     /// A link that could not land on the job it named (Plan HC).
     @State private var notice: String?
@@ -284,7 +286,9 @@ private struct JobTabContent: View {
     private var currentJobPage: some View {
         switch model.state {
         case .noJob(let empty):
-            NewJobView(empty: empty, typedReference: $typedReference,
+            NewJobView(empty: empty, typedReference: $typedReference, sitePick: $sitePick,
+                       siteChoices: model.siteChoices(upcoming: upcoming.jobs),
+                       documentedSites: model.documentedSiteChoices(),
                        onStart: startJob, onSchedule: { addingUpcoming = true })
                 .navigationTitle("New job")
                 .navigationBarTitleDisplayMode(.inline)
@@ -355,9 +359,19 @@ private struct JobTabContent: View {
     // MARK: - Actions
 
     private func startJob() {
+        let pick = sitePick
+        // Today's job, read before it starts: starting takes it off Scheduled (Plan MD §2).
+        let ahead = pick?.upcomingJobId.flatMap { upcoming.job(id: $0) }
         do {
-            try model.startJob(jobReference: typedReference)
+            try model.startJob(jobReference: typedReference, site: pick)
             typedReference = ""
+            sitePick = nil
+            if let ahead {
+                // The started line, then the office's warnings — said once, as Scheduled's Start
+                // says them (Plan HU P3).
+                let spoken = flow.startLines(for: ahead).joined(separator: " ")
+                Task { await appState.speechService.speak(spoken, source: .job) }
+            }
         } catch {
             problem = error.localizedDescription
         }

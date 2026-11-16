@@ -41,6 +41,10 @@ protocol JobTabHosting: WorkRecordHosting {
     // Per-job cost (Plan GD1). On the protocol so every record the tab builds carries what the job
     // cost, from the one usage store, and a test can state the figures.
     func jobUsage(sessionId: String) -> JobUsageSummary
+
+    // The site chosen on New job (Plan MD §3), applied to the job just started.
+    func applyChosenSite(site: JobSite?, siteDocumentId: String?, source: String,
+                         rememberClient: SiteSystemDocument.ExternalRef?)
 }
 
 extension FieldSessionService: JobTabHosting {}
@@ -60,6 +64,9 @@ protocol JobFlowHosting: AnyObject {
     @discardableResult
     func startJob(vaultId: String, assetId: String?, mode: FieldSession.Mode,
                   jobReference: String?) throws -> FieldSession
+    /// Start a job ahead (Plan MD: today's job chosen on New job), as Scheduled's Start does.
+    @discardableResult
+    func startUpcomingJob(id: String, vaultId: String, mode: FieldSession.Mode) throws -> FieldSession
     @discardableResult
     func closeJob(outcome: FieldSession.Outcome) throws -> FieldSession
     func supplyJobReference(_ text: String)
@@ -361,6 +368,16 @@ struct JobTabModel {
         }
         var vaultName: (String) -> String = { VaultRegistry.shared.manifest(id: $0)?.name ?? $0 }
         var vaultUnlocked: (String) -> Bool = { VaultRegistry.shared.isUnlocked($0) }
+        /// The vault's documented sites (Plan MD §2). Empty for a locked or missing vault.
+        var siteDocuments: (String) -> [SiteSystemDocument] = { id in
+            guard let manifest = VaultRegistry.shared.manifest(id: id),
+                  VaultRegistry.shared.isUnlocked(manifest) else { return [] }
+            return VaultRegistry.shared.store(for: manifest).siteDocuments()
+        }
+        /// The sites this phone remembers for connected clients, in a vault (Plan MD §4).
+        var clientSites: (String) -> [SiteSystemDocument.ExternalRef: String] = {
+            ClientSiteLinkStore.shared.siteIDs(vaultId: $0)
+        }
     }
 
     private let host: JobTabHosting
@@ -524,6 +541,46 @@ struct JobTabModel {
         let vaultId = defaults.vaultId()
         return try flow.startJob(vaultId: vaultId, assetId: nil, mode: defaults.mode(),
                                  jobReference: JobIntakeState.cleaned(jobReference))
+    }
+
+    /// Start a job from New job with the site the technician chose (Plan MD §2–§3).
+    ///
+    /// Today's job starts **that job ahead**, through the same `startUpcomingJob` Scheduled's Start
+    /// uses, with its number, site, fault, notes and brief; a number typed over its own is recorded
+    /// as the correction. Anything else starts an ordinary job and then applies the customer and
+    /// address and the documented site, matched as chosen. No site behaves exactly as `startJob`.
+    @discardableResult
+    func startJob(jobReference: String?, site pick: NewJobSitePick?) throws -> FieldSession {
+        guard let pick else { return try startJob(jobReference: jobReference) }
+        let vaultId = defaults.vaultId()
+        let typed = JobIntakeState.cleaned(jobReference)
+        let session: FieldSession
+        if let id = pick.upcomingJobId {
+            session = try flow.startUpcomingJob(id: id, vaultId: vaultId, mode: defaults.mode())
+            if let typed, typed != pick.jobReference { flow.supplyJobReference(typed) }
+        } else {
+            session = try flow.startJob(vaultId: vaultId, assetId: nil, mode: defaults.mode(), jobReference: typed)
+        }
+        if pick.appliesAfterStart {
+            host.applyChosenSite(site: pick.siteToFill, siteDocumentId: pick.documentToChoose,
+                                 source: pick.kind.rawValue, rememberClient: pick.clientToRemember)
+        }
+        return host.activeSession ?? session
+    }
+
+    /// What New job's site picker offers (Plan MD §2): today's jobs, the default vault's documented
+    /// sites, and this phone's recent sites — each place once.
+    func siteChoices(upcoming: [UpcomingJob], now: Date = Date()) -> [NewJobSiteChoice] {
+        let vaultId = defaults.vaultId()
+        return NewJobSiteChoices.choices(.init(
+            upcoming: upcoming, documents: defaults.siteDocuments(vaultId), vaultId: vaultId,
+            recent: NewJobSiteChoices.recentSites(from: host.history, vaultId: vaultId),
+            clientSites: defaults.clientSites(vaultId), now: now))
+    }
+
+    /// The default vault's documented sites alone, for giving today's job one (Plan MD §4).
+    func documentedSiteChoices() -> [NewJobSiteChoice] {
+        NewJobSiteChoices.documentedSites(defaults.siteDocuments(defaults.vaultId()))
     }
 
     /// Record a number typed on this screen. Ignored when it is blank, so a stray tap on Done

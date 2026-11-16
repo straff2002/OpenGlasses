@@ -335,6 +335,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.conversationThreads, ConversationStore.fileProtection),
             (.jobDeliveryQueue, DeliveryQueueStore.fileProtection),
             (.upcomingJobs, UpcomingJobStore.fileProtection),
+            (.clientSiteLinks, ClientSiteLinkStore.fileProtection),
             (.learningCandidates, LearningCandidateStore.fileProtection),
             (.learningEntries, LearningEntryStore.fileProtection),
             (.vanStock, VanStockStore.fileProtection),
