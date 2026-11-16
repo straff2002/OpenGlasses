@@ -142,6 +142,26 @@ regexes = ['''^\+?\s*\|.*\|\s*$''']
 
 # --- History ----------------------------------------------------------------------------------
 #
+[[allowlists]]
+description = """
+Wrapped content keys in the shared-manual contract fixtures (Plan LV P3). Each is a 32-byte test
+content key wrapped under one of the fixture companies' published test secrets
+(`Contracts/fixtures/company-vaults-v3/fixture-keys.json`), so it opens only the fixture manual,
+and some are deliberately wrong for the negative cases. gitleaks also finds them inside the
+signed catalogs' base64 payloads, and one is from an earlier generation of a fixture on this
+branch. Regenerating the fixtures reproduces the
+same bytes. Scoped to these exact strings in that fixture folder, so a real key still fires.
+"""
+condition = "AND"
+paths = ['''Contracts/fixtures/company-vaults-v3/[^/]+\.json''']
+regexes = [
+  '''B4Yz23yXcm\+Pi\+BgtMNWPg10rivhQoT8Vk2NDFjG''',
+  '''B4Yz23yXcm\+Pi\+BgtMNWPg10rivhQoT8Vk2NDFjGFICiS5RYGBLa6\+dwm3vLxlMYwIsAWEE57PlFDIvg''',
+  '''G10vgmveqt4AwLEKkI\+KxNmQy1K8FGjLLeshH6cZaVwDyQxWXrpeW\+7XSaNeFZnMZ\+tybl\+4u\\?/8zLnm8''',
+  '''ffIIATcxWbwYiskByQfCIQtX9bNzSBz6mzpYKGS5utzIc3I9bwdLtB\\?/XyQHRfOKF9kRH\+xrPsZJd\\?/eAw''',
+  '''qWr2MWOkfYSIXe\\?/oCRUmS3v8FdK8EsY2fgmb\\?/Up4RY\+4ZBtIOUUkDd4NnH5eh8sn6p\+wTIMoN\+dS59TJ''',
+]
+
 # The two entries below exempt specific historical COMMITS, not paths or values, because the
 # content they cover no longer exists in the tree. Scoping by commit means a revert that brings
 # any of it back fires again, which is the behaviour we want. The first full-history scan
