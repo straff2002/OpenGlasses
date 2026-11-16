@@ -95,6 +95,8 @@ enum SensitiveStore: String, CaseIterable {
     case expertLedger
     case jobDeliveryQueue
     case upcomingJobs
+    /// Which documented site a connected system's client is, remembered on this phone (Plan MD §4).
+    case clientSiteLinks
     case workizConnection
     /// The company secret from the activation file, which opens the profile's sealed credentials.
     case orgCompanySecret
@@ -832,6 +834,22 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "UpcomingJobStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/UpcomingJobStore.swift"],
                           location: "Application Support/FieldAssist/upcoming-jobs.json")
+
+        case .clientSiteLinks:
+            // Which documented site a Workiz client is (Plan MD §4): the client's id in that
+            // system, the vault and site document ids, and the site's own label. No name, address
+            // or phone — the job carries those. A client id names a customer of the firm, filed as
+            // `upcomingJobs` is: the organisation's work, issued to this technician, so the linkage
+            // is the wearer's. Protected and kept out of backup, because a restored copy would
+            // match jobs this phone never chose a site for; removed with the organisation's content.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .cap(ClientSiteLinkStore.entryCap),
+                          deleteAll: .api("ClientSiteLinkStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "ClientSiteLinkStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/Job/ClientSiteLinkStore.swift"],
+                          location: "Application Support/FieldAssist/client-site-links.json")
 
         case .vanStock:
             // What is on the technician's own van (Plan IH P1): lines of stock and the movements

@@ -747,6 +747,13 @@ final class RecordingJobFlow: JobFlowHosting {
     }
 
     @discardableResult
+    func startUpcomingJob(id: String, vaultId: String, mode: FieldSession.Mode) throws -> FieldSession {
+        startCount += 1
+        startedVaultIds.append(vaultId)
+        return try inner.startUpcomingJob(id: id, vaultId: vaultId, mode: mode)
+    }
+
+    @discardableResult
     func closeJob(outcome: FieldSession.Outcome) throws -> FieldSession {
         closeCount += 1
         return try inner.closeJob(outcome: outcome)

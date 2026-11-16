@@ -16,24 +16,50 @@ struct SiteSystemEvidence: Codable, Equatable, Sendable {
     var equipmentIDs: [SiteSystemDocument.ExternalRef] = []
     /// The job file's `external.system` with its `external.location_id`.
     var location: SiteSystemDocument.ExternalRef?
+    /// The site document the technician chose on New job (Plan MD §3): its id in the job's vault.
+    /// Nil, and absent from the JSON, for every job started without a choice.
+    var chosenSiteID: String?
+    /// The client the job is for in the system it came from (`external.customer_id`, e.g. a
+    /// Workiz `CL-…`), read through the sites this phone remembers for clients (Plan MD §4).
+    /// Not evidence by itself — a client is not a place — so it never makes `isEmpty` false.
+    var customer: SiteSystemDocument.ExternalRef?
 
     static let maximumEntries = 24
 
-    var isEmpty: Bool { serials.isEmpty && models.isEmpty && equipmentIDs.isEmpty && location == nil }
+    var isEmpty: Bool {
+        serials.isEmpty && models.isEmpty && equipmentIDs.isEmpty && location == nil && chosenSiteID == nil
+    }
 
     enum CodingKeys: String, CodingKey {
         case serials, models
         case equipmentIDs = "equipment_ids"
         case location
+        case chosenSiteID = "chosen_site_id"
+        case customer
     }
 
     init(serials: [String] = [], models: [String] = [],
-         equipmentIDs: [SiteSystemDocument.ExternalRef] = [], location: SiteSystemDocument.ExternalRef? = nil) {
+         equipmentIDs: [SiteSystemDocument.ExternalRef] = [], location: SiteSystemDocument.ExternalRef? = nil,
+         chosenSiteID: String? = nil, customer: SiteSystemDocument.ExternalRef? = nil) {
         self.serials = []
         self.models = []
         self.equipmentIDs = []
         self.location = location
+        self.chosenSiteID = chosenSiteID
+        self.customer = customer
         add(serials: serials, models: models, equipmentIDs: equipmentIDs)
+    }
+
+    /// Hand-written so a match saved before Plan MD (no `chosen_site_id`, no `customer`) — or one
+    /// missing any list — still loads.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        serials = try c.decodeIfPresent([String].self, forKey: .serials) ?? []
+        models = try c.decodeIfPresent([String].self, forKey: .models) ?? []
+        equipmentIDs = try c.decodeIfPresent([SiteSystemDocument.ExternalRef].self, forKey: .equipmentIDs) ?? []
+        location = try c.decodeIfPresent(SiteSystemDocument.ExternalRef.self, forKey: .location)
+        chosenSiteID = try c.decodeIfPresent(String.self, forKey: .chosenSiteID)
+        customer = try c.decodeIfPresent(SiteSystemDocument.ExternalRef.self, forKey: .customer)
     }
 
     /// What a job ahead says: its machines' serials and models, and the job file's identifiers.
@@ -55,8 +81,9 @@ struct SiteSystemEvidence: Codable, Equatable, Sendable {
             }
         }
         let location = external.flatMap { ref in ref.locationID.map { SiteSystemDocument.ExternalRef(system: ref.system, id: $0) } }
+        let customer = external.flatMap { ref in ref.customerID.map { SiteSystemDocument.ExternalRef(system: ref.system, id: $0) } }
         self.init(serials: equipment.compactMap(\.serial), models: equipment.compactMap(\.model),
-                  equipmentIDs: ids, location: location)
+                  equipmentIDs: ids, location: location, customer: customer)
     }
 
     /// What an open job has learned on site: every serial written down, every unit recognised,
@@ -93,6 +120,9 @@ struct SiteSystemEvidence: Codable, Equatable, Sendable {
         var result = self
         result.add(serials: other.serials, models: other.models, equipmentIDs: other.equipmentIDs)
         if result.location == nil { result.location = other.location }
+        if result.customer == nil { result.customer = other.customer }
+        // A later choice replaces an earlier one: the technician chose again (Plan MD).
+        if let chosen = other.chosenSiteID { result.chosenSiteID = chosen }
         return result
     }
 }
@@ -129,6 +159,26 @@ struct SiteSystemMatch: Codable, Equatable, Sendable {
         case equipmentID = "equipment_id"
         case location
         case model
+        /// The technician chose the site on New job (Plan MD §3). Confirmed: they are on site and
+        /// said so — stronger than a model, weaker than a serial, which is weighed against it.
+        case chosen
+    }
+
+    /// Another documented site that a serial, a unit identifier or the location on the job names,
+    /// while the technician chose this one (Plan MD §3). Kept so the job asks once which it is;
+    /// the match never switches to it by itself.
+    struct Conflict: Codable, Equatable, Sendable {
+        let siteId: String
+        /// What the technician hears the other site called: its `location_label`, else its name.
+        let siteLabel: String
+        /// What named it: `serial`, `equipment_id` or `location`.
+        let basis: Basis
+
+        enum CodingKeys: String, CodingKey {
+            case siteId = "site_id"
+            case siteLabel = "site_label"
+            case basis
+        }
     }
 
     /// One unit the site lists, as the job's line and page name it.
@@ -152,6 +202,9 @@ struct SiteSystemMatch: Codable, Equatable, Sendable {
     /// How many site documents fit, for `ambiguous`; 1 for a match.
     let candidateCount: Int
     let evidence: SiteSystemEvidence
+    /// Set only on a `chosen` match whose evidence names a unit at another documented site. Nil,
+    /// and absent from the JSON, otherwise.
+    var conflict: Conflict? = nil
 
     enum CodingKeys: String, CodingKey {
         case vaultId = "vault_id"
@@ -163,6 +216,7 @@ struct SiteSystemMatch: Codable, Equatable, Sendable {
         case matchedUnitIDs = "matched_unit_ids"
         case candidateCount = "candidate_count"
         case evidence
+        case conflict
     }
 
     /// The units the site lists that the job's evidence did not name.
@@ -196,9 +250,19 @@ enum SiteSystemMatcher {
 
     /// The match for this evidence, or nil when the vault has no site documents or the job has
     /// said nothing at all.
+    ///
+    /// `clientSites` is the phone's remembered client sites for this vault (Plan MD §4): a
+    /// client's `{system, id}` to the site document's id. A job for a remembered client is matched
+    /// as though its job file named the location.
+    ///
+    /// A site the technician chose (`evidence.chosenSiteID`, Plan MD §3) is the match, confirmed
+    /// with basis `chosen`. A serial at the chosen site only adds the unit it names; one naming a
+    /// unit at another documented site is kept as the match's `conflict`, never switched to.
     static func match(evidence: SiteSystemEvidence, documents: [SiteSystemDocument], vaultId: String,
-                      modelKey: (String) -> String) -> SiteSystemMatch? {
-        guard !documents.isEmpty, !evidence.isEmpty else { return nil }
+                      modelKey: (String) -> String,
+                      clientSites: [SiteSystemDocument.ExternalRef: String] = [:]) -> SiteSystemMatch? {
+        let linkedSiteID = evidence.customer.flatMap { clientSites[$0] }
+        guard !documents.isEmpty, !evidence.isEmpty || linkedSiteID != nil else { return nil }
         let serials = Set(evidence.serials)
         let ids = Set(evidence.equipmentIDs)
 
@@ -207,12 +271,29 @@ enum SiteSystemMatcher {
         for document in documents {
             let bySerial = document.units.filter { $0.serial.map { serials.contains(normalisedSerial($0)) } ?? false }
             let byID = document.units.filter { !ids.isDisjoint(with: $0.externalIDs ?? []) }
-            let byLocation = evidence.location.map { (document.externalLocationIDs ?? []).contains($0) } ?? false
+            let byLocation = (evidence.location.map { (document.externalLocationIDs ?? []).contains($0) } ?? false)
+                || linkedSiteID == document.id
             let named = (bySerial + byID).map(\.id)
             guard !named.isEmpty || byLocation else { continue }
             let basis: SiteSystemMatch.Basis = !bySerial.isEmpty ? .serial : !byID.isEmpty ? .equipmentID : .location
             confirmed.append((document, basis, unique(named)))
         }
+
+        // Chosen by the technician (Plan MD §3): the site, whatever else the evidence says — and
+        // what it says about another site is kept as the question, not acted on.
+        if let chosenID = evidence.chosenSiteID, let chosen = documents.first(where: { $0.id == chosenID }) {
+            let here = confirmed.first { $0.document.id == chosenID }
+            let named = unique((here?.units ?? []) + modelMatched(chosen, evidence: evidence, modelKey: modelKey))
+            var result = make(chosen, vaultId: vaultId, strength: .confirmed, basis: .chosen,
+                              matched: named, evidence: evidence)
+            if let other = confirmed.first(where: { $0.document.id != chosenID }) {
+                result.conflict = SiteSystemMatch.Conflict(
+                    siteId: other.document.id, siteLabel: other.document.locationLabel ?? other.document.name,
+                    basis: other.basis)
+            }
+            return result
+        }
+
         if confirmed.count == 1, let hit = confirmed.first {
             let named = unique(hit.units + modelMatched(hit.document, evidence: evidence, modelKey: modelKey))
             return make(hit.document, vaultId: vaultId, strength: .confirmed, basis: hit.basis,

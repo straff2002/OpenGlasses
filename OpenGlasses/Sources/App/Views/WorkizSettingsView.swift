@@ -115,6 +115,8 @@ struct WorkizSettingsView: View {
                     }.accessibilityIdentifier("workiz.timezone")
                     Text("Use the same time zone as your Workiz account so booked times appear correctly.").font(.footnote)
                 }
+                // The sites this phone remembers for Workiz clients (Plan MD §4).
+                ClientSiteLinksSection(store: ClientSiteLinkStore.shared)
                 if connection.credential != nil && !connection.isManagedKey {
                     Section { Button(role: .destructive) { controller.remove() } label: { Text("Remove Workiz key").fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }.buttonStyle(.plain).foregroundStyle(OGTheme.errorLabel).disabled(!canEditKey).accessibilityIdentifier("workiz.remove") }
                 }

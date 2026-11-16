@@ -973,6 +973,64 @@ final class FieldSessionService: ObservableObject {
         refreshSiteSystem(adding: SiteSystemEvidence(job: job))
     }
 
+    // MARK: - The site chosen on New job (Plan MD)
+
+    /// The sites this phone remembers for connected clients (Plan MD §4). Injected by a test; the
+    /// app reads the shared store.
+    var clientSiteLinks: ClientSiteLinkStore?
+    var linkStore: ClientSiteLinkStore { clientSiteLinks ?? .shared }
+
+    /// What New job's Site row chose, applied to the job just started (Plan MD §3).
+    ///
+    /// - `site`: the customer and address to file the job under — a recent site, the customer's
+    ///   details beside a documented site, or a new site typed in. Applied only to a job that has
+    ///   no site yet, so a job ahead's own site is never overwritten.
+    /// - `siteDocumentId`: a documented site in the job's vault, matched as `chosen`.
+    /// - `rememberClient`: the connected client to remember that site for (Plan MD §4), when the
+    ///   technician chose a documented site for that client's job.
+    ///
+    /// Logged as ids and counts only: never the customer, the address or the site's name.
+    func applyChosenSite(site: JobSite?, siteDocumentId: String?, source: String,
+                         rememberClient: SiteSystemDocument.ExternalRef? = nil) {
+        guard let session = activeSession else { return }
+        let fillsSite = site.map { !$0.isEmpty } == true && session.site == nil
+        if fillsSite, let site { mutateSession { $0.site = site } }
+        var payload: [String: AnyCodable] = [
+            "source": AnyCodable(source),
+            "fills_site": AnyCodable(fillsSite),
+        ]
+        if let siteDocumentId, let document = activeVault?.siteDocument(id: siteDocumentId) {
+            payload["site_id"] = AnyCodable(document.id)
+            payload["units"] = AnyCodable(document.units.count)
+            refreshSiteSystem(adding: SiteSystemEvidence(chosenSiteID: document.id))
+            if let client = rememberClient {
+                linkStore.remember(client: client, vaultId: session.vaultId, siteId: document.id,
+                                   siteLabel: document.locationLabel ?? document.name)
+                payload["remembered_for_client"] = AnyCodable(true)
+            }
+        }
+        logger?.append(.init(timestamp: Date(), kind: .siteChosen, text: "site chosen", payload: payload))
+    }
+
+    /// What the technician is asked, **once**, when the evidence names another documented site
+    /// than the one they chose (Plan MD §3): "That serial is listed at Elm Road, not Smith Street
+    /// — which is it?" Recorded on the job's log as both sites' ids; nil every other time.
+    func siteSystemConflictQuestion() -> String? {
+        guard let session = activeSession, let match = session.siteSystem,
+              match.applies(toVault: session.vaultId), let siteId = match.siteId,
+              let conflict = match.conflict,
+              let question = SiteSystemContract.conflictQuestion(match) else { return nil }
+        let already = (logger?.readEvents() ?? []).contains {
+            $0.kind == .siteSystemConflictRaised && $0.payload?["site_id"]?.value as? String == siteId
+                && $0.payload?["other_site_id"]?.value as? String == conflict.siteId
+        }
+        guard !already else { return nil }
+        logger?.append(.init(timestamp: Date(), kind: .siteSystemConflictRaised, text: "site system conflict",
+                             payload: ["site_id": AnyCodable(siteId), "other_site_id": AnyCodable(conflict.siteId),
+                                       "basis": AnyCodable(conflict.basis.rawValue)]))
+        return question
+    }
+
     // MARK: - Site systems (Plan HV)
 
     /// The open job's matched site document, when the match is about this session's vault.
@@ -1009,13 +1067,15 @@ final class FieldSessionService: ObservableObject {
         if let kept = session.siteSystem, kept.vaultId == session.vaultId { evidence = kept.evidence.merged(with: evidence) }
         if let extra { evidence = evidence.merged(with: extra) }
         let match = SiteSystemMatcher.match(evidence: evidence, documents: documents, vaultId: session.vaultId,
-                                            modelKey: SiteSystemMatcher.modelKey(index: modelIndex))
+                                            modelKey: SiteSystemMatcher.modelKey(index: modelIndex),
+                                            clientSites: linkStore.siteIDs(vaultId: session.vaultId))
         guard match != session.siteSystem else { return }
         let previous = session.siteSystem
         mutateSession { $0.siteSystem = match }
         // Only a change in what is known is an event; more evidence for the same answer is not.
         if let match, match.strength != previous?.strength || match.siteId != previous?.siteId
-            || match.matchedUnitIDs != previous?.matchedUnitIDs {
+            || match.matchedUnitIDs != previous?.matchedUnitIDs || match.basis != previous?.basis
+            || match.conflict != previous?.conflict {
             logSiteSystem(match, previous: previous)
         }
     }
@@ -1029,6 +1089,7 @@ final class FieldSessionService: ObservableObject {
         ]
         if let site = match.siteId { payload["site_id"] = AnyCodable(site) }
         if let basis = match.basis { payload["basis"] = AnyCodable(basis.rawValue) }
+        if let conflict = match.conflict { payload["conflict_site_id"] = AnyCodable(conflict.siteId) }
         if let previous { payload["previous_strength"] = AnyCodable(previous.strength.rawValue) }
         if let site = previous?.siteId { payload["previous_site_id"] = AnyCodable(site) }
         logger?.append(.init(timestamp: Date(), kind: .siteSystemMatched,

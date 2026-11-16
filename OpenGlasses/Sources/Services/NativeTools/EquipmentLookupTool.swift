@@ -122,7 +122,13 @@ final class EquipmentLookupTool: NativeTool {
            let field = session.recordIdentityField(name: name, value: value, source: .spoken) {
             recordedFields.append(field.summary)
         }
-        let fieldsNote = recordedFields.isEmpty ? "" : "Recorded " + recordedFields.joined(separator: "; ") + ".\n\n"
+        var fieldsNote = recordedFields.isEmpty ? "" : "Recorded " + recordedFields.joined(separator: "; ") + "."
+        // A serial at another documented site than the one the technician chose (Plan MD §3):
+        // asked once, in the app's words, and the site is not switched.
+        if !recordedFields.isEmpty, let question = session.siteSystemConflictQuestion() {
+            fieldsNote += " Ask the technician, in these words: \"\(question)\" Keep the site they chose until they answer."
+        }
+        if !fieldsNote.isEmpty { fieldsNote += "\n\n" }
 
         // Corrections first: they are what the technician says when the last read was wrong, and
         // they must not be treated as a question about a machine.

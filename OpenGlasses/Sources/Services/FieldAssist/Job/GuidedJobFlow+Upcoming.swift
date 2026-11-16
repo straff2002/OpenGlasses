@@ -83,7 +83,9 @@ extension GuidedJobFlow {
             now: now)
         inputs.siteSystem = SiteSystemMatcher.match(
             evidence: SiteSystemEvidence(job: job), documents: store.siteDocuments(), vaultId: manifest.id,
-            modelKey: SiteSystemMatcher.modelKey(index: inputs.modelIndex))
+            modelKey: SiteSystemMatcher.modelKey(index: inputs.modelIndex),
+            // A client this phone remembers a site for is matched by it (Plan MD §4).
+            clientSites: sessions.linkStore.siteIDs(vaultId: manifest.id))
         return inputs
     }
 

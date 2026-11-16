@@ -1,6 +1,6 @@
 # Plan MD — Choose the Site on New Job (the customer or site first, and its units with it)
 
-**Status:** 📝 Drafted 2026-11-16. Nothing is implemented yet.
+**Status:** 🚧 P0–P2 built 2026-11-17 (one PR), decisions 1–3 taken as recommended; decision 4 (voice) deferred. Catalog sync and the P3 device check are owed.
 **Track:** Field Assist / jobs.
 **Builds on:** Plan [HC](HC-jobs-list.md) (the New job page), Plan [HV](HV-site-system-vaults.md) (site documents in
 a vault and `SiteSystemMatcher`), Plan [FO](FO-guided-job-flow-and-job-tab.md) (jobs ahead and `applyJobAhead`), Plan
@@ -97,6 +97,42 @@ never written back to Workiz.
 - **P3 — device check:** start from a documented site, a recent site, a Workiz job and a new site. Hear a
   serial that agrees and one that contradicts. Confirm the report's site line and the history's same-site
   visits.
+
+## As built (2026-11-17)
+
+Decisions 1–3 as recommended. Decision 4 (voice) is **deferred**: `field_session start` has no
+site argument and its intake has no read-back for one, so choosing a site by voice is its own
+change, not a small one.
+
+- **P0, the choices and the chosen match.** `NewJobSiteChoices` (`Sources/Services/FieldAssist/Job/
+  NewJobSiteChoices.swift`) builds the list in plan order — today's jobs, documented sites, recent
+  sites (`JobHistoryIndex.siteKey`) — each place once, with `filter(_:query:)` (every word, case
+  and accents ignored). `NewJobSitePick` is what the Site row holds and what starting does with
+  it. `SiteSystemMatch.Basis.chosen` and `SiteSystemMatch.Conflict`; `SiteSystemEvidence` gained
+  `chosenSiteID` and `customer` (old JSON still decodes). `SiteSystemMatcher.match(…, clientSites:)`
+  makes a chosen site the match; a serial, unit id or location at another documented site is the
+  conflict. `SiteSystemContract.conflictQuestion` / `conflictLine`; the block says "chosen by the
+  technician on site". `JobTabModel.startJob(jobReference:site:)` routes today's job to
+  `startUpcomingJob` (now on `JobFlowHosting`) and anything else to `startJob` then
+  `FieldSessionService.applyChosenSite` (logged as `site_chosen`, ids and counts only). The
+  question is asked once (`siteSystemConflictQuestion()`, `site_system_conflict_raised`) through
+  `equipment_lookup`'s reply when the serial is recorded.
+- **Decision 2, prefer not restrict:** delivered through the HV site block a `confirmed` match
+  already sends — the chosen site's units are what the model is told about first. Retrieval
+  ranking is unchanged (it has no clean seam for a unit boost); nothing is excluded.
+- **P1, the Site row and the picker** in `NewJobView` (`NewJobSitePicker`, `NewJobNewSiteForm`),
+  with VoiceOver labels and hints and 44 pt rows. Today's job fills the job-number field. A Workiz
+  job with no documented site gets a "Documented site" row and a "Remember this site for this
+  Workiz client" toggle.
+- **P2, remembered Workiz clients.** `ClientSiteLinkStore` (`Sources/Services/FieldAssist/Job/
+  ClientSiteLinkStore.swift`), registered as `clientSiteLinks`, protected, out of backup, cleared
+  with the organisation's content; listed and forgettable in Workiz settings
+  (`ClientSiteLinksSection`). Read by the matcher in `refreshSiteSystem` and the brief.
+- **Not built:** answering the conflict question changes nothing by itself — there is no "it's
+  Elm Road" action yet, so the job stays at the chosen site. A client with several sites keeps the
+  newest choice (Workiz gives one address per client).
+- Tests: `NewJobSiteChoicesTests`, `SiteSystemChosenMatchTests`, `ClientSiteLinkStoreTests`,
+  `ChosenSiteSessionTests`.
 
 ## Not in this plan
 
