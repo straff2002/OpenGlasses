@@ -164,9 +164,12 @@ final class SettingsHubTests: XCTestCase {
         ("MeetingRecordsView", .capture, ["CaptureStreamingSettingsScreen", "CaptureStreamingSections"]),
         // Display & HUD.
         ("HUDMirrorView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
-        ("EvenDisplaySettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         ("WebHUDMirrorSettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         ("TeleprompterSettingsView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
+        // Display & HUD is one link on the Glasses page, for someone with display glasses, and which
+        // glasses draw the lens is chosen beside it.
+        ("SettingsCategoryScreen", .devices, ["GlassesPrivacySettingsScreen", "GlassesSettingsView"]),
+        ("EvenDisplaySettingsView", .devices, ["GlassesPrivacySettingsScreen", "GlassesSettingsView"]),
         ("BandPracticeView", .display, ["DisplayHUDSettingsScreen", "DisplayHUDSections"]),
         // Advanced.
         ("DeveloperPanelView", .advanced, ["AdvancedSettingsScreen"]),

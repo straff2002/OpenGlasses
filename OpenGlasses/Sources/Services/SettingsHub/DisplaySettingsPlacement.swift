@@ -48,6 +48,14 @@ enum DisplaySettingsPlacement {
         categoryVisible && evidence.hasDisplayGlasses
     }
 
+    /// Whether Devices & Privacy › Glasses offers the choice of which glasses draw the lens (the
+    /// display backend). Anyone who can see the category may choose: EVEN G2 glasses are only a
+    /// display, so they are recognised only once chosen, and the choice cannot wait for the evidence.
+    /// It is on the Glasses page and nowhere else.
+    static func showsBackendChoiceOnGlassesPage(categoryVisible: Bool) -> Bool {
+        categoryVisible
+    }
+
     /// The categories Devices & Privacy draws as sections on its own page, after its own. Display &
     /// HUD is on the hub row still (it is a category of that row, so locks and paths follow it),
     /// but its sections are drawn behind Glasses instead.
