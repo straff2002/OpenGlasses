@@ -27,7 +27,8 @@ swiftc "$opt" -parse-as-library -D RETRIEVAL_EVAL -target "$(uname -m)-apple-mac
   "$src/Vault/TableExtractor.swift" "$src/Vault/CaptionWords.swift" "$src/Vault/TableChecks.swift" "$src/Vault/TableRowPassage.swift" "$src/Vault/TableReference.swift" \
   "$src/Vault/PDFTableReader.swift" \
   "$src/Vault/RecognisedTable.swift" "$src/Vault/CellCertainty.swift" "$src/Vault/PictureRegion.swift" \
-  "$src/Vault/PictureTableReading.swift" "$src/Vault/VisionTableReader.swift"
+  "$src/Vault/PictureTableReading.swift" "$src/Vault/VisionTableReader.swift" \
+  "$src/Vault/Charts/ChartCandidate.swift" "$src/Vault/Charts/ChartReading.swift" "$src/Vault/Charts/ChartPassage.swift"
 
 # Scripts/check-eval-harnesses.sh builds every harness this way, to catch a stale file list.
 if [ "${EVAL_COMPILE_ONLY:-}" = 1 ]; then exit 0; fi

@@ -77,10 +77,19 @@ struct DocumentChunker {
     /// PDF, written as a sentence by [[TableRowPassage]] (Plan JJ P0). It is text the app wrote,
     /// not text on the page, so it is not a drawing, it is left out of the document's own text,
     /// and it never opens a page by itself.
+    ///
+    /// `chart` is never produced by the chunker either: a chart found on a page from its tick
+    /// labels and axis titles, written as a passage by [[ChartPassage]] (Plan LX). Like a row
+    /// passage it is the app's text, kept out of the document's own.
     enum Kind: String, Equatable, CaseIterable {
         case prose
         case diagram
         case tableRow = "table_row"
+        case chart
+
+        /// A passage the app wrote rather than text printed on the page: a table's row, a chart's
+        /// words. Left out of the document's own text, its language and its re-chunking.
+        var isAppWritten: Bool { self == .tableRow || self == .chart }
     }
 
     /// Where a page starts inside a chunk's text (Plan KE P2): the character offset in `text`, and

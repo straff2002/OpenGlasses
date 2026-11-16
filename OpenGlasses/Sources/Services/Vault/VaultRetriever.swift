@@ -137,6 +137,11 @@ struct VaultRetriever {
             }
             if kind == .tableRow, let figure, !figure.isEmpty {
                 parts.append(figure)
+            } else if kind == .chart {
+                // A chart's passage (Plan LX) names its chart by its caption, as a drawing does
+                // (`ChartCitation.label`); an uncaptioned one says it is a chart, after its page.
+                guard let figure, !figure.isEmpty else { return parts.joined(separator: ", ") + " (chart)" }
+                parts.append(figure)
             } else if kind == .diagram {
                 guard let figure, !figure.isEmpty else {
                     return parts.joined(separator: ", ") + " (diagram)"
@@ -189,6 +194,14 @@ struct VaultRetriever {
                 if let figure, !figure.isEmpty { parts.append(figure) }
                 if let page { parts.append("page \(page)") }
                 return "(" + parts.joined(separator: ", ") + ")"
+            }
+            if kind == .chart {
+                // The app's words about a chart found on the page (Plan LX): its caption, axes and
+                // labels, never its values, which have not been read.
+                var parts = ["chart"]
+                if let figure, !figure.isEmpty { parts.append(figure) }
+                if let page { parts.append("page \(page)") }
+                return "(" + parts.joined(separator: ", ") + "; values not read)"
             }
             guard kind == .diagram else { return nil }
             // A table page meets the same test as a drawing and is accepted there (its rows stay
@@ -412,7 +425,7 @@ struct VaultRetriever {
     func continuingSection(_ outcome: RetrievalOutcome, turn: String?) -> RetrievalOutcome {
         guard let followingChunks, let turn, case .sufficient(let passages) = outcome,
               let anchorAt = passages.firstIndex(where: { passage in
-                  passage.source == .manual && passage.kind != .tableRow
+                  passage.source == .manual && !passage.kind.isAppWritten
                       && Self.turnNamesSection(passage.section, turn: turn, rule: passage.termRule)
               }) else { return outcome }
         let anchor = passages[anchorAt]
@@ -977,6 +990,14 @@ struct VaultRetriever {
     static let tableRowRule = "Passages marked (table row …) are sentences the app wrote from a table's rows: "
         + "before you say a value from a table, read it with table_lookup (table, row, column) — never quote it from these."
 
+    /// The standing instruction beside any chart passage (Plan LX §4, §8). The chart's words were
+    /// found at import; its values have not been read, so the model has nothing to give a number
+    /// from, and a number from general knowledge would sound as though the manual said it.
+    static let chartRule = "Passages marked (chart …) describe a chart printed on a manual page: its caption, axes and labels. "
+        + "Its values have not been read. Never give a number from the chart, and never give one from general knowledge "
+        + "as if the manual said it. Say the manual gives this as a chart on the page its Source line names, and send the "
+        + "technician to that page to read it."
+
     /// The standing instruction beside any passage that crosses a page (Plan KE P2). The citation
     /// rule itself is the block's; this says which page of the range a claim belongs to.
     static let pageMarkRule = "A mark such as [page 12] or [page 12 (printed 3-4)] inside a passage says the words after it, "
@@ -989,6 +1010,7 @@ struct VaultRetriever {
         if passages.contains(where: { !$0.pageBreaks.isEmpty }) { rules.append(pageMarkRule) }
         if passages.contains(where: { $0.source == .teamLearning }) { rules.append(teamLearningRule) }
         if passages.contains(where: { $0.kind == .tableRow }) { rules.append(tableRowRule) }
+        if passages.contains(where: { $0.kind == .chart }) { rules.append(chartRule) }
         return rules.map { "\n\n" + $0 }.joined()
     }
 
@@ -1132,12 +1154,13 @@ struct RankingFeatures: Equatable, Codable, Sendable {
     var characters: Int
     var routes: Routes
 
-    /// prose 0, table row 1, diagram (a figure or a table page) 2.
+    /// prose 0, table row 1, diagram (a figure or a table page) 2, chart passage 3.
     static func code(for kind: DocumentChunker.Kind) -> Int {
         switch kind {
         case .prose: return 0
         case .tableRow: return 1
         case .diagram: return 2
+        case .chart: return 3
         }
     }
 

@@ -112,6 +112,7 @@ final class DocumentStore: ObservableObject {
                 namespace: String = "global",
                 pageLabels: [PageLabel] = [],
                 tables: [ManualTable] = [],
+                charts: [ChartCandidate] = [],
                 progress: ((Int, Int) -> Void)? = nil) async -> DocumentRef? {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return nil }
@@ -123,7 +124,9 @@ final class DocumentStore: ObservableObject {
         // A table's rows follow the document's own text (Plan JJ P0), numbered after it, so the
         // text chunks are numbered exactly as they would be without any table.
         let rows = TableRowPassage.chunks(for: tables, startingAt: textChunks.count)
-        let chunks = textChunks + rows.chunks
+        // A chart's words-only passage (Plan LX) follows the rows, numbered after them.
+        let chartChunks = ChartPassage.chunks(for: charts, startingAt: textChunks.count + rows.chunks.count)
+        let chunks = textChunks + rows.chunks + chartChunks
 
         // The document's script picks its model (Plan JY P1). A manual in a script whose model is
         // not on the phone asks for it and waits a bounded time for a download under way; then it
@@ -554,7 +557,7 @@ final class DocumentStore: ObservableObject {
     /// Used by sources that need the whole document, e.g. the teleprompter.
     func fullText(documentId: String) -> String? {
         let chunks = fetchChunks(namespace: nil, documentIds: [documentId])
-            .filter { $0.kind != .tableRow }
+            .filter { !$0.kind.isAppWritten }
             .sorted { $0.chunkIndex < $1.chunkIndex }
             .map(\.text)
         guard !chunks.isEmpty else { return nil }
@@ -1533,10 +1536,16 @@ final class DocumentStore: ObservableObject {
     /// come from the sentences that were packed into it, and a table's row and a drawing's label
     /// stop opening a section. Neither moves a word: the rows and vectors stay, and the page,
     /// section and breaks are written beside them.
-    nonisolated static let locationVersion = 10
+    /// 11 (Plan LX): the charts on a stored PDF document's pages are found from their placed words
+    /// and indexed as words-only passages. Nothing else is read again: a document already at 10
+    /// has its charts added and its text, tables and row passages left exactly as they are.
+    nonisolated static let locationVersion = 11
     /// The location version at which a document's text was last read again, below which the
     /// migration re-reads it rather than only its tables.
     nonisolated static let textReadVersion = 10
+    /// The location version at which a document's tables were last read again (version 10's full
+    /// re-read read them too), at or above which the migration reads only its charts.
+    nonisolated static let tablesReadVersion = 10
 
     /// The oldest location version among a document's own text chunks (its table rows left out),
     /// or nil when it has none. A never-located row counts as 0.
@@ -1595,6 +1604,10 @@ final class DocumentStore: ObservableObject {
             // A row that cannot be read back is matched only as its own sentence, which no page
             // prints: the page opens unmarked rather than marked by a piece of the sentence.
             if runs.isEmpty { runs = [text] }
+        } else if optionalText(5) == DocumentChunker.Kind.chart.rawValue {
+            // A chart's passage (Plan LX) is the app's words about the chart, which no page prints
+            // as one run: the page opens unmarked.
+            runs = [text]
         }
         return PassageAnchor(documentId: documentId, chunkIndex: chunkIndex, text: text,
                              page: page, pageStart: pageStart, pageEnd: pageEnd,
@@ -1664,7 +1677,7 @@ final class DocumentStore: ObservableObject {
     @discardableResult
     func rechunk(documentId: String, chunks: [DocumentChunker.Chunk]) async -> Bool {
         guard !chunks.isEmpty, let namespace = storedNamespace(documentId: documentId) else { return false }
-        let profile = DocumentLanguageProfile.detect(chunks.filter { $0.kind != .tableRow }.map(\.text).joined(separator: "\n"))
+        let profile = DocumentLanguageProfile.detect(chunks.filter { !$0.kind.isAppWritten }.map(\.text).joined(separator: "\n"))
         let chunkEmbedder = ingestEmbedder(namespace: namespace, script: EmbeddingScript(profile: profile), excluding: documentId)
         var vectors: [Data?] = []
         for chunk in chunks {
@@ -1820,10 +1833,13 @@ final class DocumentStore: ObservableObject {
 
     /// The kinds `query` and `passages(sharingTermsWith:)` search by default: prose and the row
     /// passages of extracted tables. Drawings are reached by token and by figure.
-    nonisolated static let searchedKinds: Set<DocumentChunker.Kind> = [.prose, .tableRow]
+    /// A chart's words-only passage (Plan LX) is searched the same way: found like any passage.
+    nonisolated static let searchedKinds: Set<DocumentChunker.Kind> = [.prose, .tableRow, .chart]
 
-    /// SQL that leaves a table's row passages out of a document's own text.
-    private static let notTableRow = "(kind IS NULL OR kind != '\(DocumentChunker.Kind.tableRow.rawValue)')"
+    /// SQL that leaves the passages the app wrote — a table's rows, a chart's words — out of a
+    /// document's own text.
+    private static let notTableRow = "(kind IS NULL OR kind NOT IN ('\(DocumentChunker.Kind.tableRow.rawValue)', "
+        + "'\(DocumentChunker.Kind.chart.rawValue)'))"
 
     /// Row passages the last `ingest` left out at `TableRowPassage.rowCap`, for the caller's log.
     private(set) var lastTableRowsDropped = 0
@@ -1834,6 +1850,8 @@ final class DocumentStore: ObservableObject {
         var rowPassages = 0
         /// Rows past `TableRowPassage.rowCap` in some table: kept in the table, given no passage.
         var rowsDropped = 0
+        /// Chart passages written (Plan LX); zero when the call left the charts as they were.
+        var chartPassages = 0
     }
 
     /// The tables extracted from a document, in the order they were stored.
@@ -1913,7 +1931,7 @@ final class DocumentStore: ObservableObject {
         where stored.table.label.caseInsensitiveCompare(label) == .orderedSame {
             for page in stored.table.pages.map(\.physical) {
                 out += passages(onPage: page, namespace: namespace, documentIds: [stored.documentId], limit: Int.max)
-                    .filter { $0.kind != .tableRow }
+                    .filter { !$0.kind.isAppWritten }
             }
         }
         return out
@@ -1944,8 +1962,12 @@ final class DocumentStore: ObservableObject {
     /// document's last text chunk and embedded with the model the vault is served by. For the
     /// location migration, which brings tables to documents indexed before there were any; an
     /// empty list takes them away.
+    ///
+    /// A chart's passages (Plan LX) are numbered after the rows. Given `charts`, they are replaced
+    /// in the same transaction (an empty list takes them away); without, the stored ones are kept
+    /// and only renumbered after the new rows, so no two passages share an index.
     @discardableResult
-    func replaceTables(_ tables: [ManualTable], documentId: String) async -> TableWrite {
+    func replaceTables(_ tables: [ManualTable], charts: [ChartCandidate]? = nil, documentId: String) async -> TableWrite {
         guard let namespace = storedNamespace(documentId: documentId) else { return TableWrite() }
         let sql = "SELECT MAX(chunk_index) FROM doc_chunks WHERE document_id = ? AND \(Self.notTableRow)"
         var stmt: OpaquePointer?
@@ -1959,18 +1981,33 @@ final class DocumentStore: ObservableObject {
         sqlite3_finalize(stmt)
 
         let rows = TableRowPassage.chunks(for: tables, startingAt: next)
+        let chartChunks = charts.map { ChartPassage.chunks(for: $0, startingAt: next + rows.chunks.count) } ?? []
+        let written = rows.chunks + chartChunks
         let chunkEmbedder = ingestEmbedder(namespace: namespace, script: embeddingScript(documentId: documentId))
         var vectors: [Data?] = []
-        for chunk in rows.chunks {
+        for chunk in written {
             vectors.append(await chunkEmbedder?.embedPassage(chunk.text).map(vecToData))
             await Task.yield()
         }
         // The document may have been removed while the rows were embedded.
         guard storedNamespace(documentId: documentId) == namespace, exec("BEGIN IMMEDIATE") else { return TableWrite() }
-        exec("DELETE FROM doc_chunks WHERE document_id = '\(escapedSQL(documentId))' "
+        let id = escapedSQL(documentId)
+        exec("DELETE FROM doc_chunks WHERE document_id = '\(id)' "
              + "AND kind = '\(DocumentChunker.Kind.tableRow.rawValue)'")
+        if charts != nil {
+            exec("DELETE FROM doc_chunks WHERE document_id = '\(id)' AND kind = '\(DocumentChunker.Kind.chart.rawValue)'")
+        } else {
+            // The stored chart passages move after the new rows, in their order.
+            let kept: [String] = self.rows("SELECT id FROM doc_chunks WHERE document_id = '\(id)' "
+                                      + "AND kind = '\(DocumentChunker.Kind.chart.rawValue)' ORDER BY chunk_index ASC") { stmt in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) } ?? ""
+            }
+            for (offset, chunkId) in kept.enumerated() {
+                exec("UPDATE doc_chunks SET chunk_index = \(next + rows.chunks.count + offset) WHERE id = '\(escapedSQL(chunkId))'")
+            }
+        }
         let now = Date().timeIntervalSince1970
-        for (index, chunk) in rows.chunks.enumerated() {
+        for (index, chunk) in written.enumerated() {
             insertChunk(documentId: documentId, index: chunk.index, text: chunk.text, embedding: vectors[index],
                         page: chunk.page, section: chunk.section, kind: chunk.kind, figure: chunk.figure,
                         createdAt: now, version: vectors[index] == nil ? nil : chunkEmbedder?.version.tag,
@@ -1981,9 +2018,45 @@ final class DocumentStore: ObservableObject {
              + "'\(escapedSQL(documentId))') WHERE id = '\(escapedSQL(documentId))'")
         guard exec("COMMIT") else { exec("ROLLBACK"); return TableWrite() }
         refresh()
-        return TableWrite(tables: tables.count, rowPassages: rows.chunks.count, rowsDropped: rows.dropped)
+        return TableWrite(tables: tables.count, rowPassages: rows.chunks.count, rowsDropped: rows.dropped,
+                          chartPassages: chartChunks.count)
     }
 
+    /// Replace a stored document's chart passages (Plan LX) and nothing else, numbered after its
+    /// last other chunk and embedded with the model the vault is served by. For the location
+    /// migration's charts-only step, so a manual gains its charts without its tables being read
+    /// again. Returns how many passages were written.
+    @discardableResult
+    func replaceCharts(_ charts: [ChartCandidate], documentId: String) async -> Int {
+        guard let namespace = storedNamespace(documentId: documentId) else { return 0 }
+        let id = escapedSQL(documentId)
+        let next = (self.rows("SELECT MAX(chunk_index) FROM doc_chunks WHERE document_id = '\(id)' "
+                              + "AND (kind IS NULL OR kind != '\(DocumentChunker.Kind.chart.rawValue)')") { stmt -> Int? in
+            sqlite3_column_type(stmt, 0) == SQLITE_NULL ? nil : Int(sqlite3_column_int(stmt, 0))
+        }.first ?? nil).map { $0 + 1 } ?? 0
+        let chunks = ChartPassage.chunks(for: charts, startingAt: next)
+        let chunkEmbedder = ingestEmbedder(namespace: namespace, script: embeddingScript(documentId: documentId))
+        var vectors: [Data?] = []
+        for chunk in chunks {
+            vectors.append(await chunkEmbedder?.embedPassage(chunk.text).map(vecToData))
+            await Task.yield()
+        }
+        // The document may have been removed while the passages were embedded.
+        guard storedNamespace(documentId: documentId) == namespace, exec("BEGIN IMMEDIATE") else { return 0 }
+        exec("DELETE FROM doc_chunks WHERE document_id = '\(id)' AND kind = '\(DocumentChunker.Kind.chart.rawValue)'")
+        let now = Date().timeIntervalSince1970
+        for (index, chunk) in chunks.enumerated() {
+            insertChunk(documentId: documentId, index: chunk.index, text: chunk.text, embedding: vectors[index],
+                        page: chunk.page, section: chunk.section, kind: chunk.kind, figure: chunk.figure,
+                        createdAt: now, version: vectors[index] == nil ? nil : chunkEmbedder?.version.tag,
+                        location: chunk)
+        }
+        exec("UPDATE documents SET chunk_count = (SELECT COUNT(*) FROM doc_chunks WHERE document_id = '\(id)') "
+             + "WHERE id = '\(id)'")
+        guard exec("COMMIT") else { exec("ROLLBACK"); return 0 }
+        refresh()
+        return chunks.count
+    }
 
     // MARK: - SQLite setup
 

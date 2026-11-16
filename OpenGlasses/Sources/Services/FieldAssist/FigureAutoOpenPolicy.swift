@@ -149,16 +149,26 @@ enum FigureAutoOpenPolicy {
         /// One row of an extracted table, written by the app (Plan JJ P0). Never a drawing, and
         /// never opens its page unasked: it is attached to the model at most.
         case tableRow
+        /// A chart whose values have not been read (Plan LX): its page is where the answer is, so
+        /// a question about it opens it. Never handed to the model as a picture.
+        case chart
+        /// A chart that must always send the technician to the page (Plan LX §7,
+        /// `ChartSafetyClass`): refrigerant charge, electrical limits, fuel gas, combustion.
+        case criticalChart = "critical_chart"
 
         /// The kind a retrieved chunk presents as. A prose passage reaches here only when it
-        /// carries a caption (`FieldSessionService.bestFigure`).
-        init(_ kind: DocumentChunker.Kind) {
+        /// carries a caption (`FieldSessionService.bestFigure`). A chart passage is a chart; whether
+        /// it is a critical one is the caller's to say.
+        init(_ kind: DocumentChunker.Kind, criticalChart: Bool = false) {
             switch kind {
             case .diagram: self = .diagram
             case .prose: self = .captioned
             case .tableRow: self = .tableRow
+            case .chart: self = criticalChart ? .criticalChart : .chart
             }
         }
+
+        var isChart: Bool { self == .chart || self == .criticalChart }
     }
 
     enum Decision: Equatable {
@@ -215,6 +225,12 @@ enum FigureAutoOpenPolicy {
         case labelAsked = "label_asked"
         /// A table that would have gone to the model alone, its label neither named nor looked up.
         case labelNotAsked = "label_not_asked"
+        /// A question whose evidence is a chart whose values have not been read (Plan LX): the
+        /// answer sends the technician to the page, so the page opens.
+        case chartForQuestion = "chart_for_question"
+        /// A chart of refrigerant charge, an electrical limit, fuel gas or combustion (Plan LX §7):
+        /// its page always opens with what is said about it.
+        case criticalChart = "critical_chart"
     }
 
     /// Decide for one turn. `tokenHits` are the exact tokens that matched the passage — a hit made
@@ -231,7 +247,11 @@ enum FigureAutoOpenPolicy {
         // page opened under a printed page asked for in words. The page is `manual_figure`'s to
         // open (`printed_page` when "printed" is said); on the named page the model may still be
         // handed it under the usual rules.
-        if !namedPages.isEmpty, case .present = decision { return .attachToModelOnly(reason: .pageNamed) }
+        // A chart is never handed to the model as a picture (Plan LX: where its picture may go is
+        // not decided), so on a named page it is not staged at all.
+        if !namedPages.isEmpty, case .present = decision {
+            return passageKind?.isChart == true ? .none(reason: .pageNamed) : .attachToModelOnly(reason: .pageNamed)
+        }
         return decision
     }
 
@@ -255,6 +275,15 @@ enum FigureAutoOpenPolicy {
         }
         // Asked for: whatever it is, it opens.
         if turnKind == .showMe { return .present(reason: .askedForPage) }
+        // A chart whose values have not been read (Plan LX): the answer can only send the
+        // technician to its page, so the page opens for a question about it — found through its
+        // numbers too, since a value off a chart is asked with numbers ("at 67 wet bulb and 85
+        // outside"). A critical chart's page opens with anything said about it (§7). Other charts
+        // open when asked, as figures do.
+        if passageKind.isChart {
+            if passageKind == .criticalChart { return .present(reason: .criticalChart) }
+            return turnKind == .question ? .present(reason: .chartForQuestion) : .none(reason: .notAQuestion)
+        }
         // Found only through a number. A number is what a reading is made of and what a table
         // cell is made of, so the page does not open — but a drawing still reaches the model when
         // the turn asks about it ("what does the 120 VAC output feed", EK §4).

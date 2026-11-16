@@ -415,16 +415,23 @@ enum VaultImporter {
                     PictureTableReading.context($0, checkpointIn: ledgerDir, contentHash: tablesHash)
                 })
             }.value
+            // The charts on its pages (Plan LX), found from the same PDF's placed words with no
+            // model and no image, each indexed as a words-only passage.
+            let charts: [ChartCandidate]? = await Task.detached(priority: .utility) {
+                tablesPDF.flatMap(VaultDocumentExtractor.charts(from:))
+            }.value
             // A one-page PDF has no form feed to establish pagination. Its physical page is
             // known, so establish it explicitly instead of returning a citation without a page.
             let indexedText = extracted.pageCount == 1 ? "Page 1\n" + extracted.text : extracted.text
             let ref = await store.ingest(name: want.title, text: indexedText,
                                          sourceType: sourceType, namespace: namespace,
                                          pageLabels: extracted.pageLabels,
-                                         tables: tables?.stored ?? []) { done, total in
+                                         tables: tables?.stored ?? [],
+                                         charts: charts ?? []) { done, total in
                 progress?(want.title, done, total)
             }
             VaultDocumentExtractor.logTables(tables, rowsDropped: store.lastTableRowsDropped)
+            VaultDocumentExtractor.logCharts(charts)
             guard let ref else {
                 ledger.entries = entries
                 try? ledger.save(to: ledgerDir)
