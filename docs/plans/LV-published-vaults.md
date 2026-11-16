@@ -21,7 +21,7 @@ AES-GCM, 60 bytes of base64), the manual row's optional `shared` and its checks 
 `minAppBuild`, at least `sharedManualsMinAppBuild` when the service passes it), and `company-vaults-v3` fixtures. The
 phone unwraps the key before downloading, checks and opens the one file, and lays the manual in as a company manual;
 a rotation at the same revision keeps the installed manual and downloads nothing, a new revision replaces it.
-Decisions 8–10 taken as recommended (all service-side). **The service's S4 is next.**
+Decisions 8–10 built as recommended, to be confirmed with the partner (all service-side). **The service's S4 is next.**
 P2 device pass owed; catalog sync of the new strings owed. All six [decisions](#decisions-for-greig) taken: 1–3 by the owner while discussing, 4–6 as
 recommended (2026-11-15). Manual matching treats one-sided evidence as no difference: an edition or revision known on only one side is
 not a difference.
@@ -248,7 +248,7 @@ is encrypted **once** and only its key is given to each company (envelope encryp
    so, and it reaches every company they choose, encrypted once with a key per company (§8). The storage counts
    against the partner, not each company's 1 GB.
 
-**Proposed to the partner, 2026-11-16; taken as recommended when P3 was built (all three are the service's):**
+**Proposed to the partner, 2026-11-16; built as recommended, still to be confirmed with the partner before S4 ships (all three are the service's):**
 
 8. **Which companies.** *Recommended:* every company subscribed to the vault, with a per-manual *only these
    companies* option for agreements limited to some customers or regions.
