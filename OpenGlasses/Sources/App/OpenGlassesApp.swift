@@ -357,6 +357,12 @@ struct OpenGlassesApp: App {
                     UITestPublishedVaultRows()
                         .zIndex(10)
                 }
+                // Plan LW: the draft review screen over a fixture vault, for the UI test that keeps a row.
+                if UITestSupport.isSet(.vaultAuthoring) {
+                    UITestVaultAuthoring()
+                        .environmentObject(appState)
+                        .zIndex(10)
+                }
                 #endif
 
                 // A job file opened from Mail, Files or Messages (Plan FO P3c). Nothing is added
