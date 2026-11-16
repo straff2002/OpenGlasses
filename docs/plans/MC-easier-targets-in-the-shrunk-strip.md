@@ -1,6 +1,7 @@
 # Plan MC — Easier Targets in the Shrunk Strip (bigger tap areas for the mic and the buttons button, with even borders)
 
-**Status:** 📝 Drafted 2026-11-16. Nothing is implemented yet.
+**Status:** 🚧 P0 built 2026-11-17 (one PR), with the decisions taken as recommended: 60 pt targets, a
+press highlight, and a 4 pt border. The P1 device check is owed.
 **Track:** Home / navigation.
 **Builds on:** Plan [KX](KX-conversation-first-voice-tab.md), which put the mic and the buttons button in
 Apple's bottom accessory, and Plan [KY](KY-context-aware-bottom-strip.md), which gave every tab a strip.
@@ -80,6 +81,30 @@ target width and the border, and returns each target's frame, aligned to the tra
 - the controls never cross the pill's leading edge on the narrowest pill (iPhone SE size, the largest
   Dynamic Type), and if they would, the target width is reduced first, down to 44 pt
 - right to left mirrors the order and the alignment
+
+## As built (2026-11-17)
+
+- **`InlineStripLayout`** (`Sources/Models/InlineStripLayout.swift`, tests in `InlineStripLayoutTests`):
+  the target size, the border and each target's frame, from the pill's measured size.
+- **Decision 2 is settled by construction, not measurement.** The border is the same 4 pt above, below and
+  at the trailing end, so the borders are even whatever height the system gives the pill. On a pill too
+  short to spare 4 pt, the border shrinks first so the targets stay at 44 pt.
+- **`BottomControlBar`**: the inline placement of `accessoryRow` and `tabStripRow` is now `inlineRow`. It
+  measures the pill with `onGeometryChange` and places the targets edge to edge at the trailing end. The
+  expanded placement is unchanged.
+- **`MicButton` / `RoundDockButton`** take an `inlineTarget` size. The circle and glyph keep their size,
+  and the frame and hit shape become a capsule of the target's size. `InlineTargetButtonStyle` draws the
+  capsule on press only. In the shrunk strip, the glyph's square no longer grows past the target at large
+  text sizes.
+- **A keyboard in the shrunk strip (the owner, 2026-11-17).** On the Avenkin tab, a keyboard target sits
+  left of the mic and opens the typed bar, as the full strip's "Type a request" does. It shows in the
+  same cases that field does: on the conversation, outside a live session. It reuses that field's label
+  and hint, so there are still no new strings.
+- **A visible way out of typing (the owner, 2026-11-17).** The Avenkin typed bar's leading button was a
+  mic labelled "Switch to voice input". It closed the bar, but it read as "start listening", so a wearer
+  who began typing and changed their mind found no exit. It is now an ✕ labelled "Close", which drops the
+  draft and brings the strip back. "Close" is already translated. The transcript review keeps its own
+  cancel.
 
 ## Decisions owed (the owner)
 
