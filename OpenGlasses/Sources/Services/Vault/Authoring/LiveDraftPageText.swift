@@ -3,8 +3,8 @@ import Foundation
 /// Plan LW P1 — the live source of `DraftPageText`: one indexed manual's page text, printed-page
 /// map and tables, read from what indexing already stored on the phone. Nothing leaves it.
 ///
-/// - **Text** is `DocumentStore.pageTexts(documentId:)`, the text the page viewer's extracted route
-///   shows, by PDF page.
+/// - **Text** is the text indexing stored, by PDF page, each chunk cut at the page breaks it packs
+///   across (`DocumentStore.pageTextsSplitAtBreaks`), so a short page keeps its own words.
 /// - **Printed pages** are the document's `DocumentStore.pageLabels(documentId:)`, the map citations
 ///   and the viewer already read; for a reviewed photographed manual, its pages' own `printedPage`
 ///   (as `FieldSessionService.manualPageSheet(for:)` maps them).
@@ -36,7 +36,7 @@ enum LiveDraftPageText {
         let available = VaultManualRemoval.availabilityCheck(forVault: vaultId, documentStore: documentStore)
         guard available(entry.documentId) else { return nil }
         let labels = entry.capturedManual.map(labels(from:)) ?? documentStore.pageLabels(documentId: entry.documentId)
-        let text = assemble(pages: documentStore.pageTexts(documentId: entry.documentId), labels: labels,
+        let text = assemble(pages: documentStore.pageTextsSplitAtBreaks(documentId: entry.documentId), labels: labels,
                             recognised: entry.usedRecognition || document.personalCapture == true)
         return Manual(vaultId: vaultId, document: document, key: VaultAuthoring.key(for: document, in: manifest),
                       pageText: text, tables: documentStore.tables(documentId: entry.documentId))

@@ -481,6 +481,42 @@ final class DocumentStore: ObservableObject {
         }
     }
 
+    /// Plan LW P1 — each page's text with every chunk cut at the page breaks it packs across
+    /// (`DocumentChunker.PageBreak`), so a short page swallowed by the chunk before it keeps its own
+    /// text: what the draft check needs to say which page a code is printed on. `pageTexts` stays as
+    /// the page viewer reads it.
+    func pageTextsSplitAtBreaks(documentId: String) -> [(page: Int, text: String)] {
+        if documentId.hasPrefix("captured:"), !capturedNamespaceAllowed(documentId) { return [] }
+        let sql = """
+        SELECT page, text, page_breaks FROM doc_chunks
+        WHERE document_id = '\(escapedSQL(documentId))' AND page IS NOT NULL AND \(Self.notTableRow)
+        ORDER BY chunk_index ASC
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        var byPage: [Int: [String]] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(stmt, 1) else { continue }
+            let first = Int(sqlite3_column_int(stmt, 0))
+            let stored = sqlite3_column_type(stmt, 2) == SQLITE_NULL ? nil : String(cString: sqlite3_column_text(stmt, 2))
+            let characters = Array(String(cString: raw))
+            var page = first
+            var from = 0
+            for pageBreak in DocumentChunker.PageBreak.decode(stored).sorted(by: { $0.offset < $1.offset })
+            where pageBreak.offset >= from && pageBreak.offset <= characters.count {
+                if pageBreak.offset > from { byPage[page, default: []].append(String(characters[from..<pageBreak.offset])) }
+                page = pageBreak.page
+                from = pageBreak.offset
+            }
+            if from < characters.count { byPage[page, default: []].append(String(characters[from...])) }
+        }
+        return byPage.keys.sorted().compactMap { page in
+            let text = DocumentReconstructor.deOverlap(byPage[page]!).trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : (page, text)
+        }
+    }
+
     func list() -> [DocumentRef] { documents }
 
     /// Documents in a single namespace (project scope, Plan AN).
