@@ -7,9 +7,15 @@ import SwiftUI
 /// Plan LV: a published vault's row also says whose it is and at which of the partner's versions
 /// ("from ⟨partner⟩ · version 5"), that it is no longer updated when its partner has ended, and the
 /// manuals it was written against against the ones this phone holds, opening a list naming each.
+///
+/// *Check for Updates* draws on every managed phone that hasn't been revoked, rows or not: a
+/// company's first vault arrives with a profile renewal, which otherwise waits a day, and the
+/// button forces that renewal (`CompanyVaultSectionVisibility`).
 struct CompanyVaultRowsView: View {
     @ObservedObject var manager: OrgProfileManager
     let organization: String
+    /// False until the profile lists the company's vaults: only *Check for Updates* is drawn.
+    var showsRows = true
     @State private var checking = false
 
     private var service: CompanyVaultService { .shared }
@@ -17,22 +23,24 @@ struct CompanyVaultRowsView: View {
     var body: some View {
         // Read through the manager, which publishes the record the rows are made from.
         let _ = manager.record?.companyVaults
-        if let problem = service.listProblem() {
-            OGDivider()
-            OGNotice(text: problem, systemImage: "exclamationmark.triangle")
-                .padding(12)
-        }
-        CompanyVaultRowList(rows: service.rows(), onDownloadNow: { id in Task { await service.downloadNow(id) } })
-        if let removed = manager.record?.companyVaults?.removedNames, !removed.isEmpty {
-            OGDivider()
-            OGNotice(text: String(localized: "\(organization) removed \(removed.joined(separator: ", ")) from this phone, with the manuals in it."),
-                     systemImage: "minus.circle")
-                .padding(12)
-        }
-        ForEach(CompanyVaultRowList.removalNotices(manager.record?.companyVaults?.removedPublished ?? []), id: \.self) { notice in
-            OGDivider()
-            OGNotice(text: notice, systemImage: "minus.circle")
-                .padding(12)
+        if showsRows {
+            if let problem = service.listProblem() {
+                OGDivider()
+                OGNotice(text: problem, systemImage: "exclamationmark.triangle")
+                    .padding(12)
+            }
+            CompanyVaultRowList(rows: service.rows(), onDownloadNow: { id in Task { await service.downloadNow(id) } })
+            if let removed = manager.record?.companyVaults?.removedNames, !removed.isEmpty {
+                OGDivider()
+                OGNotice(text: String(localized: "\(organization) removed \(removed.joined(separator: ", ")) from this phone, with the manuals in it."),
+                         systemImage: "minus.circle")
+                    .padding(12)
+            }
+            ForEach(CompanyVaultRowList.removalNotices(manager.record?.companyVaults?.removedPublished ?? []), id: \.self) { notice in
+                OGDivider()
+                OGNotice(text: notice, systemImage: "minus.circle")
+                    .padding(12)
+            }
         }
         OGDivider()
         Button {
@@ -50,6 +58,24 @@ struct CompanyVaultRowsView: View {
         .buttonStyle(.plain)
         .disabled(checking)
     }
+}
+
+/// What the company-vault part of *Managed by ⟨org⟩* draws. The rows wait for the profile to list
+/// the company's vaults; *Check for Updates* does not, because on a company's first vault that
+/// listing only arrives with a profile renewal (24 h apart unless forced) and the button is what
+/// forces it. A revoked phone draws neither.
+enum CompanyVaultSectionVisibility: Equatable {
+    case hidden
+    case checkForUpdatesOnly
+    case rowsAndCheckForUpdates
+
+    static func decide(listsCompanyVaults: Bool, revoked: Bool) -> Self {
+        if revoked { return .hidden }
+        return listsCompanyVaults ? .rowsAndCheckForUpdates : .checkForUpdatesOnly
+    }
+
+    var showsCheckForUpdates: Bool { self != .hidden }
+    var showsRows: Bool { self == .rowsAndCheckForUpdates }
 }
 
 /// The rows themselves, drawn from `CompanyVaultRow`s alone so the same view serves the managed

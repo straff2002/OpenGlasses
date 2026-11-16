@@ -449,9 +449,13 @@ struct ManagedByOrganisationSection: View {
                              systemImage: "exclamationmark.triangle")
                         .padding(12)
                 }
-                // Plan LR: the company's own vaults, and Check for Updates.
-                if profile.companyVaults != nil, record.revoked != true {
-                    CompanyVaultRowsView(manager: manager, organization: profile.organizationName)
+                // Plan LR: the company's own vaults, and Check for Updates — the button even before
+                // the profile lists any vaults, since it is what brings the first listing at once.
+                let vaultSection = CompanyVaultSectionVisibility.decide(
+                    listsCompanyVaults: profile.companyVaults != nil, revoked: record.revoked == true)
+                if vaultSection.showsCheckForUpdates {
+                    CompanyVaultRowsView(manager: manager, organization: profile.organizationName,
+                                         showsRows: vaultSection.showsRows)
                 }
                 if manager.needsModelSetup, let model = manager.organizationModel {
                     OGDivider()
