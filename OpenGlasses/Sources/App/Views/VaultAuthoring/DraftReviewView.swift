@@ -13,6 +13,8 @@ struct DraftReviewView: View {
     var title: String = ""
     /// The UI test's manual, drawn without indexing.
     var fixture: LiveDraftPageText.Manual? = nil
+    /// The UI test's pasted reply, put in the fault-code paste field as a paste would.
+    var fixturePaste: String? = nil
 
     @StateObject private var model = DraftReviewModel()
     @State private var layer: DraftLayer = .faultCodes
@@ -56,6 +58,7 @@ struct DraftReviewView: View {
         .onAppear {
             if model.manual == nil {
                 model.load(vaultId: vaultId, file: file, documentStore: appState.documentStore, fixture: fixture)
+                if let fixturePaste { model.pasteText[.faultCodes] = fixturePaste }
             }
         }
         .scrollDismissesKeyboard(.interactively)
@@ -214,8 +217,8 @@ private struct DraftItemRow: View {
             DraftMarkLabel(item: item, labels: model.manual?.pageText.labels ?? PageLabelMap([]))
             actions
         }
+        // No identifier on the row itself: on a stack it would replace its buttons' own.
         .padding(.vertical, 2)
-        .accessibilityIdentifier("draftReview.row.\(DraftRowText.identifier(item.row))")
     }
 
     @ViewBuilder

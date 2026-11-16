@@ -7,9 +7,9 @@ import SwiftUI
 /// made by the shipping *New Vault* path (`VaultAuthoring.createVault`) and the manual added by the
 /// shipping *Add manual* path (`VaultAuthoring.addManual`), so *Keep* writes into a real vault's
 /// file. The manual's page text is handed to the shipping review screen as the live source would
-/// read it (`LiveDraftPageText.assemble`), without waiting on indexing. Drawn over the app rather
-/// than presented, as the published-vault fixture is: a sheet raised while the first scene comes up
-/// was dropped on a UI test run. Every name, code and model is invented.
+/// read it (`LiveDraftPageText.assemble`), without waiting on indexing. Shown in place of the app's
+/// own screens, so nothing the app raises at launch sits over it. Every name, code and model is
+/// invented.
 struct UITestVaultAuthoring: View {
 
     static let vaultName = "Fixture Rooftop Units"
@@ -20,6 +20,11 @@ struct UITestVaultAuthoring: View {
         (3, "Troubleshooting\nProblem: Unit runs but the room stays warm\nCause: Dirty outdoor coil\nCheck: Clean the outdoor coil and measure the airflow.")
     ]
 
+    /// A reply as an author's own AI might give it: a line of prose, a row on its page, and a row
+    /// cited on a page it is not printed on. Handed to the paste field as a paste puts it there, so
+    /// the test does not depend on the simulator's keyboard.
+    static let reply = "Here are the codes I found:\nE9 | Low suction pressure | 2\nF17 | Fan motor overload | 5"
+
     @State private var prepared: LiveDraftPageText.Manual?
     @State private var failure: String?
 
@@ -28,7 +33,7 @@ struct UITestVaultAuthoring: View {
             Group {
                 if let prepared {
                     DraftReviewView(vaultId: prepared.vaultId, file: prepared.document.file, title: prepared.title,
-                                    fixture: prepared)
+                                    fixture: prepared, fixturePaste: Self.reply)
                 } else if let failure {
                     Text(verbatim: failure)
                 } else {
