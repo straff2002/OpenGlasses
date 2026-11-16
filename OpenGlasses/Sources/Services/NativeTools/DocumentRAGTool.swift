@@ -108,6 +108,8 @@ struct DocumentRAGTool: NativeTool {
             parts.append(figure)
         } else if p.kind == .diagram {
             parts.append(p.figure.flatMap { $0.isEmpty ? nil : $0 } ?? "diagram")
+        } else if p.kind == .chart {
+            parts.append((p.figure.flatMap { $0.isEmpty ? nil : $0 + ", " } ?? "") + "chart")
         } else if let section = p.section, !section.isEmpty {
             parts.append(section)
         }

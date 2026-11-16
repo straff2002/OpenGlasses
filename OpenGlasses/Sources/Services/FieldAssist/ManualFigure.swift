@@ -28,6 +28,10 @@ enum ManualFigureAttachment {
         case onDevice
         /// The document was imported as text, so there is no page to render.
         case noSourcePage
+        /// A chart's page (Plan LX). Its values have not been read, and where a picture of a chart
+        /// may go is not decided, so the page opens on the phone and is never the model's image:
+        /// the model would read values off it that nothing has checked.
+        case chartPage
     }
 
     enum Decision: Equatable {
@@ -47,6 +51,7 @@ enum ManualFigureAttachment {
                        hasCameraImage: Bool,
                        isOnDevice: Bool) -> Decision {
         guard let staged else { return .skip(.noFigure) }
+        if staged.isChart { return .skip(.chartPage) }
         if hasCameraImage { return .skip(.cameraFrame) }
         if isOnDevice { return .skip(.onDevice) }
         guard let sourceURL, staged.hasSourcePage else { return .skip(.noSourcePage) }

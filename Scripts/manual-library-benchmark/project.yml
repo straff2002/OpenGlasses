@@ -37,6 +37,12 @@ targets:
       - ../../OpenGlasses/Sources/Services/Vault/PictureRegion.swift
       - ../../OpenGlasses/Sources/Services/Vault/PictureTableReading.swift
       - ../../OpenGlasses/Sources/Services/Vault/VisionTableReader.swift
+      - ../../OpenGlasses/Sources/Services/Vault/Charts/ChartCandidate.swift
+      - ../../OpenGlasses/Sources/Services/Vault/Charts/ChartReading.swift
+      - ../../OpenGlasses/Sources/Services/Vault/Charts/ChartPassage.swift
+      - ../../OpenGlasses/Sources/Services/Vault/Charts/ChartPrecedence.swift
+      - ../../OpenGlasses/Sources/Services/Vault/Charts/ChartLookup.swift
+      - ../../OpenGlasses/Sources/Services/Vault/Charts/PDFChartReader.swift
       - ../../OpenGlasses/Sources/Services/Accessibility/OCRService.swift
       - ../../OpenGlasses/Sources/Services/Reading/BookFileExtractor.swift
       - ../../OpenGlasses/Sources/Services/Security/SecretPatterns.swift

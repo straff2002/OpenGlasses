@@ -41,6 +41,12 @@ import PDFKit
 /// breaks of a chunk packed across a page and for sections no longer opened by a table's rows. No
 /// word moves, so the rows and vectors stay. The library outside vaults has no file to read and is only
 /// stamped.
+///
+/// **Charts (Plan LX, location version 11).** A document's PDF is read for the charts on its pages
+/// (from their placed words, no model, no image) and their words-only passages added beside the
+/// existing chunks. A document already at version 10 has only its charts read: its text, tables
+/// and row passages, ids and vectors are left exactly as they are. A document with no PDF has no
+/// positions to find a chart by, and a page read by recognition has no words to find one by.
 @MainActor
 enum PassageLocationMigration {
 
@@ -154,6 +160,20 @@ enum PassageLocationMigration {
             checkpointDirectory.map { PictureTableReading.context(reader, checkpointIn: $0, contentHash: tablesHash) }
                 ?? PictureTableReading.Context(reader: reader)
         }
+        func readCharts() async -> [ChartCandidate]? {
+            guard let tablesPDF else { return nil }
+            return await Task.detached(priority: .utility) { VaultDocumentExtractor.charts(from: tablesPDF) }.value
+        }
+        // Text and tables read again at version 10 (Plan KE P2): only the charts are new since — a
+        // manual read by recognition included, whose text is current too.
+        if let floor = store.textLocationVersion(documentId: entry.documentId),
+           floor >= DocumentStore.tablesReadVersion {
+            let charts = await readCharts()
+            if let charts { await store.replaceCharts(charts, documentId: entry.documentId) }
+            store.markLocated(documentId: entry.documentId)
+            VaultDocumentExtractor.logCharts(charts)
+            return .located
+        }
         func readTables() async -> PDFTableReader.Result? {
             guard let tablesPDF else { return nil }
             let read = await Task.detached(priority: .utility) {
@@ -181,12 +201,16 @@ enum PassageLocationMigration {
                 if let labels { store.setPageLabels(labels, documentId: entry.documentId) }
             }
             let tables = await readTables()
+            let charts = await readCharts()
             var dropped = 0
             if let tables {
-                dropped = await store.replaceTables(tables.stored, documentId: entry.documentId).rowsDropped
+                dropped = await store.replaceTables(tables.stored, charts: charts ?? [], documentId: entry.documentId).rowsDropped
+            } else if let charts {
+                await store.replaceCharts(charts, documentId: entry.documentId)
             }
             store.markLocated(documentId: entry.documentId)
             VaultDocumentExtractor.logTables(tables, rowsDropped: dropped)
+            VaultDocumentExtractor.logCharts(charts)
             return .located
         }
         let record = recognised
@@ -220,11 +244,15 @@ enum PassageLocationMigration {
         } else {
             return .unreadable
         }
+        let charts = await readCharts()
         var dropped = 0
         if let tables = read.tables {
-            dropped = await store.replaceTables(tables.stored, documentId: entry.documentId).rowsDropped
+            dropped = await store.replaceTables(tables.stored, charts: charts ?? [], documentId: entry.documentId).rowsDropped
+        } else if let charts {
+            await store.replaceCharts(charts, documentId: entry.documentId)
         }
         VaultDocumentExtractor.logTables(read.tables, rowsDropped: dropped)
+        VaultDocumentExtractor.logCharts(charts)
         return outcome
     }
 }

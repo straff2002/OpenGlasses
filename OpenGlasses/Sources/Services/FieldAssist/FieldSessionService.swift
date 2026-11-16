@@ -2147,7 +2147,14 @@ final class FieldSessionService: ObservableObject {
             openNote = reopenForObjectlessShowMe()
         } else if decidesFigure {
             let candidate = Self.bestFigure(in: ownOutcome.passages)
-            let passageKind = candidate.map { FigureAutoOpenPolicy.PassageKind($0.kind) }
+            // A page the turn's evidence holds a chart passage for is the chart's (Plan LX), however
+            // it was found — its drawing's own chunk included — and whether it is critical is read
+            // off that passage's words.
+            let chart = candidate.flatMap { Self.chartPassage(onPageOf: $0, in: ownOutcome.passages) }
+            let passageKind = candidate.map {
+                FigureAutoOpenPolicy.PassageKind(chart == nil ? $0.kind : .chart,
+                                                 criticalChart: chart.map(Self.isCriticalChart) ?? false)
+            }
             var decision = FigureAutoOpenPolicy.decide(
                 turnKind: kind,
                 passageKind: passageKind,
@@ -2167,6 +2174,11 @@ final class FieldSessionService: ObservableObject {
             }
             var staged = decision.stagesFigure ? makeStagedFigure(for: candidate, vaultId: store.manifest.id) : nil
             staged?.origin = kind == .showMe ? .requested : .automatic
+            if chart != nil {
+                staged?.isChart = true
+                // Staged for the phone or not at all: a chart's page is never the model's picture.
+                if !decision.presentsOnPhone { staged = nil }
+            }
 
             // A code book opens when it is asked for through its citation (`show_source`), never off
             // a turn's wording (Plan IN decisions 1 and 2). The passages still go to the model.
@@ -2825,6 +2837,9 @@ final class FieldSessionService: ObservableObject {
         var pictureAreas: [ManualTable.PictureArea] = []
         /// Library pages bind both searchable content and original-PDF revisions.
         let sourceRevision: String?
+        /// The page holds a chart whose values have not been read (Plan LX): it opens on the phone
+        /// and is never handed to the model as the turn's picture (`ManualFigureAttachment`).
+        var isChart = false
 
         init(documentId: String, documentTitle: String, page: Int, figure: String? = nil,
              sourceFile: String? = nil, origin: PageOrigin = .requested,
@@ -2884,9 +2899,24 @@ final class FieldSessionService: ObservableObject {
 
     /// The best drawing among a turn's evidence: a drawing outright, else prose that names one.
     /// Ranked order is the retriever's, so "best" is "highest ranked" and nothing re-scores here.
+    /// A chart's passage (Plan LX) is a drawing here: its page is the picture.
     static func bestFigure(in passages: [VaultRetriever.Passage]) -> VaultRetriever.Passage? {
-        passages.first { $0.kind == .diagram && $0.page != nil }
+        passages.first { ($0.kind == .diagram || $0.kind == .chart) && $0.page != nil }
             ?? passages.first { $0.figure?.isEmpty == false && $0.page != nil }
+    }
+
+    /// The chart passage among `passages` on the same page of the same manual as `passage` (or
+    /// `passage` itself when it is one), else nil.
+    static func chartPassage(onPageOf passage: VaultRetriever.Passage,
+                             in passages: [VaultRetriever.Passage]) -> VaultRetriever.Passage? {
+        if passage.kind == .chart { return passage }
+        return passages.first { $0.kind == .chart && $0.documentId == passage.documentId && $0.page == passage.page }
+    }
+
+    /// Whether a chart passage's caption, axes and labels name refrigerant charge, an electrical
+    /// limit, fuel gas or combustion (Plan LX §7).
+    static func isCriticalChart(_ passage: VaultRetriever.Passage) -> Bool {
+        ChartSafetyClass.classify(caption: passage.text, titles: [], units: [], rule: passage.termRule).isCritical
     }
 
     /// Stage a figure for this turn, or clear the staging when there is none. A figure the phone

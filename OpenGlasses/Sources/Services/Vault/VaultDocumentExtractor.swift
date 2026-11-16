@@ -328,6 +328,29 @@ enum VaultDocumentExtractor {
         return await PDFTableReader.read(document: document, printedLabels: labels, pictures: pictures)
     }
 
+    // MARK: - Charts (Plan LX)
+
+    /// The charts in a vault document's PDF, found from each page's placed words by
+    /// [[PDFChartReader]] — on the phone, with no model and no image — each page named by its
+    /// printed number where one is known. Nil when `url` is not a PDF PDFKit can open. Like
+    /// `tables(from:)`, nothing here touches the document's own text.
+    static func charts(from url: URL) -> [ChartCandidate]? {
+        guard url.pathExtension.lowercased() == "pdf", let document = PDFDocument(url: url) else { return nil }
+        let labels = Dictionary(pageLabels(of: document).map { ($0.page, $0.label) }, uniquingKeysWith: { first, _ in first })
+        return PDFChartReader.read(document: document, printedLabels: labels)
+    }
+
+    /// What one document's charts came to, in counts: how many found, how many critical. Never a
+    /// caption, a title or a label.
+    static func logCharts(_ charts: [ChartCandidate]?) {
+        guard let charts, !charts.isEmpty else { return }
+        PrivacyLog.store(.ragDocuments, .indexed, count: charts.count, detail: PrivacyToken("charts_words_only"))
+        let critical = charts.filter { ChartSafetyClass.classify($0).isCritical }.count
+        if critical > 0 {
+            PrivacyLog.store(.ragDocuments, .indexed, count: critical, detail: PrivacyToken("charts_critical"))
+        }
+    }
+
     /// The PDF a vault document's tables are read from: the document itself when it is one, else
     /// the original it was extracted from when the vault carries that, else nil.
     static func tablesSource(document: URL, original: URL?) -> URL? {

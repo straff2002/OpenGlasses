@@ -1,6 +1,13 @@
 # Plan LX — Reading Charts on Manual Pages (a charging chart or a fan curve, read off the page and said to be approximate)
 
-**Status:** 📝 Drafted 2026-11-15 — nothing implemented.
+**Status:** 🚧 P0 and the words-only part of P2 built 2026-11-16 (headless) — the deterministic core and, live on
+the phone with no model, charts found at import and indexed as words-only passages, announced to the model as unread,
+their page opened for the phone and never sent as the model's picture (see "What shipped in P0"). Not built: P1
+(reading a chart's values: prompts, schema, the cache on disk, the disclosure, the company and solo setting, the org key, `AIFeature.chartReading`),
+the rest of P2 (`chart_lookup`, precedence wired into `table_lookup` / `domain_calc`, chain-step marking), P3, and the
+P4 device pass. Decisions 1, 2, 5, 6 and 7 taken 2026-11-16: sending charts to the model is on by default, set
+company-wide in the portal or by a solo user on the phone (§8); decisions 3–4 open. P0 sends no picture anywhere and calls no model: reading
+values is P1.
 **Track:** Field Assist first (charging charts, pressure–temperature curves, derating curves), app-wide
 underneath: any vault PDF, any My Manuals PDF, any photographed manual page.
 **Builds on:**
@@ -252,8 +259,21 @@ The picture goes to the provider the wearer has chosen, the same one that answer
   take images, so it offers the page instead.
 - **HIPAA mode** uses the same routing it uses for every image. If that routing refuses, the chart
   isn't read and the page is offered.
-- **An organisation** can switch chart reading off, or allow it only on demand, through a new ceiling
-  `SettingKey.organizationChartReading` (`off` / `onDemand` / `atImport`), default `onDemand`.
+- **Who decides (decisions 1–2, taken 2026-11-16).** Sending a chart's picture to the model to read
+  it is a setting, **on by default**, with three values: `off` / `onDemand` / `atImport`, default
+  `onDemand`.
+  - **A company** sets it once in the portal, for every phone in the company: The company's administrator sets it there, like
+    LR's *Manuals on any network*. It reaches the phones in the company vault catalog
+    (`CompanyVaultCatalog`, a new `chartReading` field beside `manualsOnAnyNetwork`), fetched at
+    enrolment and on every foreground. On a company phone the setting shows read-only, *Set by your
+    company*; a catalog without the field (an older service) means the default. Service work: the
+    portal control and the catalog field, in the licence service, before the phone reads it.
+  - **A solo user** sets it on the phone: *Read charts on manual pages* in Field Assist settings,
+    same values, same default.
+  - **Off** means no picture is sent: the chart is still found, searched and cited by its page, as P0
+    does. On by default does not skip the disclosure: the first cloud reading from each manual still
+    asks. An organisation profile may still pin it through a ceiling
+    `SettingKey.organizationChartReading` (tighten only), which wins over the catalog.
 - A new `AIFeature.chartReading` registers the feature, its switch and what stays on disk.
 
 ### 9 · The cache (`ChartReadingCache`, `ChartCachePolicy`, pure decision)
@@ -301,11 +321,13 @@ charts.
 
 ## Decisions for Greig
 
-1. **When charts are read.** *Recommended:* printed words at import on device (free), values on demand
+1. **When charts are read.** **Taken 2026-11-16 as recommended, on by default (on demand): set for a
+   company in the portal, for a solo user on the phone (§8).** *Recommended:* printed words at import on device (free), values on demand
    the first time a turn needs them, cached; an organisation can add reading at import. *Not
    recommended:* every chart at import for everyone, which costs money and sends pictures for charts
    nobody asks about; or on demand only, without the free words, which leaves charts unfindable.
-2. **Where the picture may go.** *Recommended:* the wearer's chosen provider, with the one-time
+2. **Where the picture may go.** **Taken 2026-11-16 as recommended. Whether a picture is sent at all is
+   the company's setting in the portal, or a solo user's on the phone, on by default (§8).** *Recommended:* the wearer's chosen provider, with the one-time
    disclosure per manual; on device when the local model takes images; HIPAA routing unchanged; an org
    ceiling, default on demand. This is a deliberate exception to JN's "no page image leaves the phone",
    limited to chart regions, and the disclosure says so. *Alternative:* on device only, which today
@@ -350,10 +372,79 @@ Tests:
 - `ChartCachePolicyTests`: a cut-off reply, a failure and an undecodable reply not stored; a rejected
   reading stored as rejected; the same image and prompt hit; a changed prompt misses.
 
+### What shipped in P0 (2026-11-16)
+
+All pure, Foundation and CoreGraphics only, under `Services/Vault/Charts/`; every input in the tests is
+invented (placed words and hand-written readings).
+
+- **`ChartCandidate`** (§1, §11). Tick runs (`ChartTicks`): at least three upright numbers on one baseline, or
+  aligned at their right edge or centre down a column, evenly spaced (12 % of the median gap) and stepping
+  evenly in value, linearly or by a constant ratio (a logarithmic axis). The second signal is `ChartShape`, from
+  words and region shape: the row is under the column and the column at the row's start (the plot's lower-left
+  corner, within five type sizes); the tick labels stand alone (a column whose numbers head lines of text, or a
+  row set among words, is numbered boxes); words inside the plot that line up with most ticks are a table's
+  rows or columns; more than 24 words inside is not a chart. A candidate needs both. The axis title is the line
+  under the row, or the words set on their side beside the column (else the line over its top tick); its unit
+  is a bracketed run at its end or a last word that is a unit. The caption is the nearest "Figure N" line within
+  a fifth of the page. Header and footer bands never hold ticks. A second column at the row's far end is a
+  second y axis. `pictureType` is where an on-device classifier's answer goes; none is built.
+- **`ChartReading`, `ChartReadingValidator`, `ValidatedChartReading`** (§3), as the plan lists the rules. A
+  reading's axis the page has no run for counts as ticks not on the page; a unit printed on the page is enough
+  when the reading left it out. Only `ValidatedChartReading` (made only by the validator) can be looked up.
+- **`ChartLookup` and `ChartValue`** (§5). `ChartValue` has no public initialiser; it is rounded to the step and
+  carries it. Interpolation is in log space on a logarithmic axis. Past either end of a series' own points is
+  `.outsideChart(.xOutsideSeries)`, as well as past the axis and outside the family.
+- **`ChartCitation`** (§5). The value, outside-the-chart and page-only sentences are held per language in code
+  (English, German, French, Spanish), not in the string catalog, so the tests can prove the word for *about* and
+  the page are in every wording; a language without a template is said in English. A value is written to its
+  step's precision with the language's decimal separator.
+- **`ChartPassage` and `ChartDescriptionCheck`** (§4, §2). The words-only passage: caption and page, "Values not
+  read: the manual gives them only as a chart.", the axes as printed with their tick ranges, and up to 16 words
+  printed inside the plot. The read template is there for P1.
+- **`ChartPrecedence`** (§6) with a count-only `DisagreementTally`; **`ChartSafetyClass`** (§7), the vocabulary in
+  English, German, French and Spanish matched as `LexicalSupport` content terms under the document's rule, plus
+  current against temperature; **`ChartCachePolicy`** (§9) with the key (image SHA-256 : prompt SHA-256, the parts
+  joined by a unit separator) and the store/retry decision. Nothing is written to disk.
+
+**The words-only part of P2, live.**
+- **At import.** `PDFChartReader` reads each page's placed words (`PDFTableReader.positionedWords`) on pages whose
+  plain text holds six numbers and a line of numbers alone, from the document's PDF or the original it was
+  imported from, and `DocumentStore.ingest(charts:)` stores one passage per chart, `DocumentChunker.Kind.chart`,
+  numbered after the row passages and embedded like them. It is the app's text: left out of the document's own
+  text, its language, `writeLocations` and the reconstructed text, like a row passage (`Kind.isAppWritten`).
+  Counts only are logged (`charts_words_only`, `charts_critical`). A page with no text layer gives no chart.
+- **Manuals already imported.** Location version 11. A document whose text is at version 10 has only its charts
+  read (`DocumentStore.replaceCharts`): no table is read again, nothing is recognised again, no text chunk or row
+  is re-embedded. Below 10, the existing paths run and write the charts with the tables (`replaceTables(charts:)`,
+  which otherwise keeps stored chart passages and renumbers them after new rows). A photographed manual
+  (`ingestPages`) gets no charts.
+- **Retrieval.** `.chart` is a searched kind. A chart passage is announced as "(chart, Figure 9, page 41; values
+  not read)", cited like a drawing ("…, page 41, Figure 9", or "…, page 41 (chart)" uncaptioned), and the block
+  carries `VaultRetriever.chartRule`: never a number from the chart or from general knowledge as if the manual
+  said it; say the manual gives this as a chart on the cited page, and send the technician there.
+- **The page.** `FigureAutoOpenPolicy.PassageKind` gains `chart` and `criticalChart`. A question whose evidence is a
+  chart opens its page (`chart_for_question`), found through numbers too, since a value off a chart is asked with
+  numbers; a critical chart's page opens with any question or statement (`critical_chart`); readings, corrections
+  and job bookkeeping open nothing, as before; a named page stages nothing for a chart. A drawing chunk on a page
+  the turn's evidence holds a chart passage for is treated as the chart. `StagedFigure.isChart` keeps the page off
+  the model's image slot (`ManualFigureAttachment.Skipped.chartPage`): the phone shows it, the model never reads
+  values off it. A chart page asked for by name through `manual_figure` or `show_source` is unchanged.
+
+Tests: `ChartCandidateTests`, `ChartReadingValidatorTests`, `ChartLookupTests`, `ChartPassageTests`,
+`ChartCitationTests`, `ChartDescriptionCheckTests`, `ChartPrecedenceTests`, `ChartSafetyClassTests`,
+`ChartCachePolicyTests`, and `ChartPagesTests` (an invented manual drawn into a real PDF: found at import, stored,
+searched, migrated from version 10, announced, staged).
+
+Interpretations: the candidate carries the page and caption but no document id (the store keys it); the shape
+rule reads words only, because PDFKit gives no access to a page's drawn paths; a critical chart's page does not
+open on a reading or a correction, which ask for no page.
+
 ### P1 — reading (live model, headless measurement)
 
 The two prompts and the schema, pass 1 through `analyzeFrameStructured`, pass 2 as a text call, the
-cache on disk, the disclosure sheet, the org key, `AIFeature.chartReading`, the HIPAA rule.
+cache on disk, the disclosure sheet, the setting (a solo user's in Field Assist settings; a company's
+read from the vault catalog, shown read-only) and the org key that may pin it, with the portal
+control and catalog field in the licence service first, `AIFeature.chartReading`, the HIPAA rule.
 
 **Measurement without licensed material.** A script draws synthetic charts with Core Graphics from
 known data: lines, families, a log axis, dense and sparse ticks, a shaded band, two fonts. The
