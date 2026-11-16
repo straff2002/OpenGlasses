@@ -36,6 +36,13 @@ struct VaultManagerView: View {
     @StateObject private var link = VaultLinkService()
     @State private var addingFromLink = false
     @ObservedObject private var store = StoreKitService.shared
+    /// Plan LW: a vault of your own, made here, and the screens that build it.
+    @State private var creatingVault = false
+    @State private var movingManuals = false
+    @State private var moveAnswered = MyManualsMove.isAnswered
+    @State private var authoring: String?
+    @State private var reviewingManual: VaultAuthoringView.ReviewTarget?
+    @State private var reviewingVault: String?
 
     /// One manual of one vault, named the way a removal is addressed: by the manifest's file name,
     /// never by the title a citation might have got wrong.
@@ -62,6 +69,10 @@ struct VaultManagerView: View {
     var body: some View {
         Form {
             PhotographedManualSection()
+            if MyManualsMove.shouldOffer(hasOwnVaults: ownVaultsGate.allowsImport,
+                                         personalManuals: MyManualsMove.personalManualCount, answered: moveAnswered) {
+                moveCard
+            }
             Section {
                 Button {
                     importing = true
@@ -75,6 +86,15 @@ struct VaultManagerView: View {
                     Label("Add from Link or QR…", systemImage: "link")
                 }
                 .disabled(indexing.isIndexingAny || removalInFlight != nil || !ownVaultsGate.allowsImport)
+                if ownVaultsGate.allowsImport {
+                    Button {
+                        creatingVault = true
+                    } label: {
+                        Label("New Vault…", systemImage: "plus.rectangle.on.folder")
+                    }
+                    .disabled(indexing.isIndexingAny || removalInFlight != nil)
+                    .accessibilityIdentifier("vaults.newVault")
+                }
                 if let explanation = ownVaultsGate.explanation {
                     Text(explanation)
                         .font(.caption)
@@ -214,6 +234,49 @@ struct VaultManagerView: View {
         .sheet(item: $shareItem) { item in
             ShareSheet(items: item.items)
         }
+        .sheet(isPresented: $creatingVault) {
+            NewVaultSheet { name, template, models in
+                let manifest = try VaultAuthoring.createVault(name: name, template: template, models: models)
+                reloadLedgers()
+                successMessage = String(localized: "Made \(manifest.name). Add its first manual.")
+                authoring = manifest.id
+            }
+        }
+        .sheet(isPresented: $movingManuals) {
+            NewVaultSheet(moving: true, initialName: String(localized: "My manuals")) { name, template, models in
+                let manifest = try await MyManualsMove.move(name: name, template: template, models: models,
+                                                            documentStore: appState.documentStore)
+                moveAnswered = true
+                reloadLedgers()
+                successMessage = String(localized: "Your manuals are in \(manifest.name).")
+                Task { await sync(manifest) }
+            }
+        }
+        .navigationDestination(item: $authoring) { id in
+            VaultAuthoringView(vaultId: id)
+        }
+        .navigationDestination(item: $reviewingManual) { target in
+            DraftReviewView(vaultId: reviewingVault ?? "", file: target.file, title: target.title)
+        }
+    }
+
+    // MARK: - My Manuals into a vault (Plan LW §8)
+
+    private var moveCard: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Move your manuals into a vault").font(.headline)
+                Text("Your plan now includes vaults of your own. Move the manuals from My Manuals into one, and build fault codes, models and symptoms around them.")
+                    .font(.footnote)
+            }
+            Button("Move my manuals…") { movingManuals = true }
+                .disabled(indexing.isIndexingAny || removalInFlight != nil)
+            Button("Not now") {
+                MyManualsMove.isAnswered = true
+                moveAnswered = true
+            }
+            .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Packs (Plan EG)
@@ -316,6 +379,13 @@ struct VaultManagerView: View {
                 Text("Pack v\(pack.version)\(pack.author.map { " · by \($0)" } ?? "")")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+            if ownVaultsGate.allowsImport, VaultAuthoring.isOwned(manifest.id) {
+                Button("Build this vault") { authoring = manifest.id }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                    .disabled(isBusy(manifest.id))
+                    .accessibilityIdentifier("vaults.build.\(manifest.id)")
+            }
             if let receipt = VaultImporter.receipt(for: manifest.id) {
                 if let badge = VaultSourceBadge.forInstalledVault(id: manifest.id) {
                     OGStatusLabel(badge.label, kind: .warn)
@@ -397,6 +467,15 @@ struct VaultManagerView: View {
                                    pdfURL: tablesPDF(manifest: manifest, file: row.file),
                                    documentStore: appState.documentStore,
                                    canCheck: ownVaultsGate.allowsImport)
+            }
+
+            if let entry, !row.isPendingRemoval, ownVaultsGate.allowsImport, VaultAuthoring.isOwned(manifest.id) {
+                Button("Review drafts") {
+                    reviewingVault = manifest.id
+                    reviewingManual = .init(file: entry.file, title: row.title)
+                }
+                .font(.caption2)
+                .buttonStyle(.borderless)
             }
 
             if let action = row.action {

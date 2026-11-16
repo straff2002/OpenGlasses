@@ -50,6 +50,8 @@ enum LaunchState: String {
     case standInComposer = "-OGUITestStandInComposer"
     /// A published vault's managed row — partner, version, manual checklist — on a sheet (Plan LV).
     case publishedVaultRows = "-OGUITestPublishedVaultRows"
+    /// A fixture vault's draft review screen, drawn over the app (Plan LW P1).
+    case vaultAuthoring = "-OGUITestVaultAuthoring"
 }
 
 // MARK: - Deferrals

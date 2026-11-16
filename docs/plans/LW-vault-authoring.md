@@ -2,7 +2,9 @@
 
 **Status:** 🚧 P0 built 2026-11-16 (headless): the starter, the trade templates (HVAC-R, General), the prompt
 kits and the paste parser in the core package; the row check, the three proposal builders, the vault check's
-scoring and `expects` in the export on the phone. P1 (the screens) next; P2 Automotive; P3 device pass owed.
+scoring and `expects` in the export on the phone. **P1 built 2026-11-16** (the screens, headless tests and a UI
+test on the simulator; [as built](#p1--the-screens-headless-plus-a-ui-test-on-the-simulator)). P2 Automotive;
+P3 device pass owed; the P1 strings' catalog sync owed (a separate PR).
 [Decisions](#decisions-for-greig) taken 2026-11-16: 1, 3, 4 and 5 as recommended; 2 replaced by the owner's own
 call (bring your own model by copy and paste, §4a); 6 investigated (the gap is unreachable in production).
 **Track:** Field Assist — your own vaults. Custom Vaults, manual import, the vault editor, export.
@@ -312,6 +314,41 @@ New Vault, Add manual, the proposal review screen, the prompt kit and paste scre
 *Add this model* from a nameplate, *Add file*, the vault check screen, export with `expects` and the publishing check, the My Manuals card. **Exit:** a UI test that
 makes a vault, adds a fixture manual, keeps a fault-code card and exports; the strings synced to the catalog in
 a separate PR.
+
+**As built (2026-11-16).** Services (`Services/Vault/Authoring/`): `VaultAuthoring` (*New Vault* installs the
+starter through `VaultImporter.installReporting` as a user-imported vault, with `freeId` numbering an id that is
+taken; *Add manual* re-lays the vault through `VaultDocumentCarry.relay` with the document's `revision` (SHA-256 of
+the indexed file, the ledger's digest), `origin` (`.technician`, `.capture` for photographed pages) and `edition`;
+*Add file* re-lays it with one more file in `manifest.files`; *Keep* writes through `VaultStore.write`, the
+editor's overlay path), `VaultAuthoringRecord` (beside the overlay, never exported: the trade, the check's
+questions and bar, the last score, kept rows still in the manual's words), `DraftKeeper` (pure: a fault code
+under `VaultStarter.faultCodeTableHeader`, a model merged into the `##` section any of its spellings names or a new
+one, a symptom as the next numbered check under its heading), `LiveDraftPageText` (the live `DraftPageText`:
+the stored page text with each chunk cut at the page breaks it packs across (`DocumentStore.pageTextsSplitAtBreaks`,
+so a short page keeps its own words), `pageLabels` or a reviewed capture's `printedPage`, recognised pages from the ledger, unclear pages by
+`looksGarbled`, and nothing for a manual `availabilityCheck` refuses), `DraftReview` (the review rows: checked,
+*Use page N*, edit clears the manual's words, *Keep all checked* per card), `PublishingCheck`, `VaultCheckRunner`
+(the session's own `makeRetriever`, no model, no network), `NameplateModelRead` (`OCRService` and the model-map
+token read, no field session), `ScannedPagesPDF`, `AuthoringLinkIntake` and `MyManualsMove` (make the vault, copy
+the manuals renamed by title, check every copied file's SHA-256 against its source, and only then uninstall My
+Manuals; any failure before that uninstalls the new vault and leaves the library as it was). Screens
+(`App/Views/VaultAuthoring/`): *New Vault…* (Custom Vaults, with `.ownVaults`), *Build this vault* on a vault of
+your own (`VaultAuthoringView`: manuals, *Add manual*, *Review drafts*, *Add this model from a nameplate…*, files,
+vault check, *Export for publishing…* and *Export a private copy*), the draft review screen (also opened from
+*Review drafts* under an indexed manual in Custom Vaults), the vault check, *Add file…* in the files editor, and
+the one-time *Move your manuals into a vault* card. Owned means installed from a folder or made here: not My
+Manuals, not a pack, not received from a link, no company layer.
+
+Differences from the design above: *Add manual* from a publisher link reviews the link as the link sheet always
+does and adds the archive's manuals to the vault, never its core files. A Word or Markdown upload keeps the My
+Manuals shape (the upload as `file`, its PDF reading copy as `source`). The vault check reruns when its screen
+opens and on *Run check*, not on every change. The prompt kits, the starter files and the template data stay
+English in P1: the kits are read by the author's own model and the starter files become the author's own text;
+the screens' strings are localised as usual and synced to the catalog separately. The author's own check
+questions live on the phone and are not exported yet. The UI test shows the review screen (Debug only) in place of the
+app's screens, on a vault made and a manual added by the shipping paths, with the manual's page text and the
+pasted reply handed in rather than indexed and typed; it checks the reply's marks and the unparsed line and keeps
+a checked row. The export is covered by a headless test.
 
 ### P2 — Automotive
 
