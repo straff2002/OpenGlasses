@@ -26,6 +26,9 @@ class WatchConnectivityService: NSObject, ObservableObject {
     @Published var accentColorName: String = "green"
     @Published var recentThreads: [ThreadInfo] = []
     @Published var quickActions: [QuickActionInfo] = []
+    /// The phone grid's first tiles, in the phone's order. Nil from a phone too old to send them,
+    /// which sends only `quickActions`.
+    @Published var gridTiles: [WatchGridWire.Tile]?
     /// The open job, when there is one (Plan FO P3a). Read-only: the watch shows it and offers
     /// nothing to press, because starting, closing and answering are all decisions that belong
     /// where the question can actually be put.
@@ -90,12 +93,47 @@ class WatchConnectivityService: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        #if DEBUG
+        // A screen to look at in the simulator without a paired phone (Debug builds only).
+        if ProcessInfo.processInfo.arguments.contains("-watchHomeDemo") {
+            loadDemo()
+            return
+        }
+        #endif
         if WCSession.isSupported() {
             let session = WCSession.default
             session.delegate = self
             session.activate()
         }
     }
+
+    #if DEBUG
+    /// Sample state shaped like a phone's: its first twelve grid tiles, a persona and an answer.
+    private func loadDemo() {
+        isReachable = true
+        isConnected = true
+        isListening = ProcessInfo.processInfo.arguments.contains("-watchHomeDemoListening")
+        batteryLevel = 82
+        accentColorName = "violet"
+        personas = [PersonaInfo(id: "chef", name: "Chef")]
+        lastResponse = "Two left today: design review at 2:30 in the studio, and a call with the supplier at 4."
+        let tiles: [(String, String, String, Bool)] = [
+            ("builtin:meetings-today", "Meetings", "calendar", false),
+            ("builtin:tasks-today", "Tasks", "checklist", false),
+            ("builtin:daily-brief", "Brief", "sunrise", false),
+            ("builtin:weather", "Weather", "cloud.sun", false),
+            ("builtin:quick-note", "Note", "note.text", false),
+            ("builtin:timer", "Timer", "timer", false),
+            ("builtin:photo-to-event", "Photo → Event", "calendar.badge.plus", true),
+            ("builtin:photo-to-task", "Photo → Task", "text.badge.plus", true),
+            ("builtin:scan-document", "Scan Doc", "doc.viewfinder", true),
+            ("builtin:read-text", "Read Text", "text.magnifyingglass", true),
+            ("quick:lights", "Lights", "lightbulb", false),
+            ("quick:record", "Record", "waveform.circle", false),
+        ]
+        gridTiles = tiles.map { WatchGridWire.Tile(id: $0.0, label: $0.1, icon: $0.2, takesPhoto: $0.3, dimmed: false) }
+    }
+    #endif
 
     // MARK: - Shared State (App Group)
 
@@ -419,6 +457,8 @@ extension WatchConnectivityService: WCSessionDelegate {
                 )
             }
         }
+        let tiles = WatchGridWire.decode(applicationContext[WatchGridWire.contextKey])
+        if tiles != gridTiles { gridTiles = tiles }
         // The open job, or nothing. An absent key clears it: a finished job must not linger
         // on the wrist looking open.
         if let jobData = applicationContext["job"] as? [String: String],

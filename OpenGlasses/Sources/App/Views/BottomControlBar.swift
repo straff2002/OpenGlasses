@@ -99,17 +99,11 @@ struct BottomControlBar: View {
     }
 
     private var slots: [DockSlot] {
-        let controlOrder = DockLayout.decode(dockOrder)
-        let quickActions = Config.quickActions
-        let available = DockGridCatalog.available(controlOrder: controlOrder,
-                                                  quickActions: quickActions).map(\.id)
-        let arrangement = HomeGridStore.decode(storedArrangement, available: available).arrangement
-        let restricted = adminGate.isRestricted
-        return DockGridCatalog.slots(arrangement: arrangement,
-                                     controlOrder: controlOrder,
-                                     quickActions: quickActions,
-                                     showsActions: showsActions)
-            .filter { !EditionPresentation.hidesDockSlot($0, restricted: restricted) }
+        DockGridCatalog.storedSlots(dockOrder: dockOrder,
+                                    storedArrangement: storedArrangement,
+                                    quickActions: Config.quickActions,
+                                    showsActions: showsActions,
+                                    restricted: adminGate.isRestricted)
     }
 
     /// Three glass keys across at every standard text size — see `DockGridMetrics.columns`. At
