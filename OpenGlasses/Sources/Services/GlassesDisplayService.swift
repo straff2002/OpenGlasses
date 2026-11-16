@@ -724,7 +724,14 @@ final class GlassesDisplayService: ObservableObject {
         // The Meta bootstrap cannot protect the separate EVEN BLE backend. A saved backend and
         // pairing from TestFlight must not start a glasses transport after an App Store upgrade.
         let supported = GlassesSupportPolicy.isSupported && (testCapabilityOverride ?? activeBackend.isAvailable)
-        if hasDisplayCapability != supported { hasDisplayCapability = supported }
+        if hasDisplayCapability != supported {
+            hasDisplayCapability = supported
+            // Remembered for Devices & Privacy › Glasses, which keeps the display settings for
+            // someone who has display glasses while they are off (`DisplaySettingsPlacement`).
+            let seen = DisplaySettingsPlacement.remembersSeen(previously: Config.displayGlassesSeen,
+                                                              hasDisplayCapability: supported)
+            if seen != Config.displayGlassesSeen { Config.displayGlassesSeen = seen }
+        }
         // Plan LC §2.5: whether a Meta Display is there to lose to the glasses' hands-free mic.
         LensMicPolicy.metaDisplayPresent = supported && readsSessionAvailability
         return supported

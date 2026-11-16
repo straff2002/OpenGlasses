@@ -122,6 +122,9 @@ enum SettingsHub {
         switch category {
         case .voice, .advanced, .myManuals:
             return "\(row) > \(SettingsCatalog.category(category).title)"
+        case .display where phone.glassesSupported:
+            // Drawn behind Glasses, not on the row's page (`DisplaySettingsPlacement`).
+            return "\(row) > \(String(localized: "Glasses")) > \(SettingsCatalog.category(category).title)"
         default:
             return row
         }

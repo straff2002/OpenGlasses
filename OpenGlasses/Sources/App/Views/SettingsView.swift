@@ -990,6 +990,27 @@ struct GlassesSettingsView: View {
     @State private var wakeListenMic = Config.wakeListenMic
     @State private var replyAudioMode = Config.replyAudioMode
     @State private var replySwitchTimeLimit = Config.replySwitchTimeLimit
+    @ObservedObject private var adminGate = AdminGate.shared
+    @AppStorage("glassesDisplayEnabled") private var glassesDisplayEnabled = false
+    @AppStorage("displayGlassesSeen") private var displayGlassesSeen = false
+    @AppStorage("displayOfferAnswered") private var displayOfferAnswered = false
+    @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
+    @AppStorage("simpleModeEnabled") private var simpleModeEnabled = false
+
+    /// Whether this page carries the link to Display & HUD: only for someone with display glasses,
+    /// connected or not, and only where the category itself is visible (`DisplaySettingsPlacement`).
+    private var showsDisplaySettings: Bool {
+        let context = adminGate.settingsContext
+        let visible = SettingsHub.visibleCategories(simpleMode: simpleModeEnabled, in: context, on: .current)
+        return DisplaySettingsPlacement.showsOnGlassesPage(
+            categoryVisible: visible.contains { $0.id == .display },
+            evidence: .init(
+                displayGlassesSeen: displayGlassesSeen || appState.glassesDisplay.hasDisplayCapability,
+                displayEnabled: glassesDisplayEnabled,
+                displayOfferAnswered: displayOfferAnswered,
+                evenBackendChosen: DisplayBackendChoice(rawValue: displayBackendRaw) == .evenG2,
+                organisationOpensDisplay: DisplaySettingsPlacement.organisationOpensDisplay(context.lockdown)))
+    }
 
     /// Deep-link to the glasses-side DAT app update flow. Failure is reported rather than
     /// swallowed: the whole point is that the user could not find this screen on their own, so a
@@ -1127,6 +1148,23 @@ struct GlassesSettingsView: View {
                                          connecting: appState.isConnectingGlasses,
                                          failure: glassesConnectFailure,
                                          footer: row.footer)
+                }
+            }
+
+            // The in-lens display, for someone with display glasses: near the top, where a wearer
+            // with new display glasses looks first, and through the category's own lock wrapper.
+            if showsDisplaySettings {
+                Section {
+                    NavigationLink {
+                        SettingsCategoryScreen(appState: appState, id: .display)
+                    } label: {
+                        HStack {
+                            SettingsLinkLabel(.display)
+                            Spacer()
+                            Text(glassesDisplayEnabled ? String(localized: "On") : String(localized: "Off"))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
 
