@@ -45,7 +45,7 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "toggleListen", "toggleRecord", "toggleVideo", "capturePhoto", "photo", "describe",
             "ask", "persona", "connect", "disconnect", "sleep", "status",
             "quickAction", "resumeThread", WatchDictation.command, WatchStartGuidance.command,
-            WatchPreparedCardWire.command, WatchPrivateWire.command,
+            WatchPreparedCardWire.command, WatchPrivateWire.command, WatchGridWire.command,
         ]
         return known.contains(raw) ? PrivacyToken(raw) : nil
     }
@@ -105,6 +105,87 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.sendStatusUpdate() }
             .store(in: &stateObservers)
+        // The wrist's tiles follow the phone's grid: an arrangement edited, a speed-dial action
+        // added, or a model that can or cannot see. Defaults change often, so only a change in the
+        // tiles themselves sends anything.
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .compactMap { [weak self] _ in
+                // Delivered on the main queue by the line above.
+                MainActor.assumeIsolated {
+                    self?.appState.map { WatchGridWire.encode(WatchConnectivityManager.gridTiles(for: $0)) }
+                }
+            }
+            .removeDuplicates()
+            .dropFirst()
+            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.sendStatusUpdate() }
+            .store(in: &stateObservers)
+    }
+
+    /// The phone grid's first tiles, as the dock draws them now.
+    private static func gridTiles(for appState: AppState) -> [WatchGridWire.Tile] {
+        let defaults = UserDefaults.standard
+        let slots = DockGridCatalog.storedSlots(
+            dockOrder: defaults.string(forKey: "dockItemOrder") ?? "",
+            storedArrangement: defaults.string(forKey: "homeGridArrangement") ?? "",
+            quickActions: Config.quickActions,
+            showsActions: true,
+            restricted: AdminGate.shared.isRestricted)
+        return WatchGridTiles.tiles(slots: slots, photoBlocked: photoBlocked(appState))
+    }
+
+    /// The dock's rule for dimming its photo tiles.
+    private static func photoBlocked(_ appState: AppState) -> Bool {
+        appState.currentMode.isRealtime
+            ? !appState.realtimeSupportsVision
+            : HomeGridPhotoPolicy.blocksPhoto(activeModel: Config.activeModel)
+    }
+
+    /// A tile tapped on the wrist, run as the phone's tile runs, never opening the phone's camera.
+    private func runGridTile(_ message: [String: Any], appState: AppState) async -> [String: Any] {
+        let route = WatchGridTiles.route(entryId: message[WatchGridWire.entryIdKey] as? String,
+                                         quickActions: Config.quickActions,
+                                         photoBlocked: Self.photoBlocked(appState),
+                                         glassesConnected: appState.isConnected)
+        let busy: [String: Any] = ["error": String(localized: "Avenkin is still working on something.")]
+        switch route {
+        case .refused(let reason):
+            return ["error": reason]
+        case .photo:
+            return await self.watchPhotoTurn(appState) {
+                await appState.captureAndAnalyzePhoto(phoneCameraFallback: false)
+            }
+        case .photoTurn(let prompt):
+            return await self.watchPhotoTurn(appState) {
+                await appState.capturePhotoAndSend(prompt: prompt, phoneCameraFallback: false)
+            }
+        case .textTurn(let prompt):
+            // Checked first, as for a dictated question: a turn in flight would swallow this one
+            // and the reply would carry the previous answer.
+            guard !appState.isProcessing else { return busy }
+            await appState.sendTextMessage(prompt, speakResponse: WatchDictation.speaksAnswerNow())
+            return ["status": "completed", "response": appState.lastResponse]
+        case .quickAction(let action):
+            guard !appState.isProcessing else { return busy }
+            let answered = action.type == .prompt || action.type == .homeAssistant
+            let before = appState.lastResponse
+            let errorBefore = appState.errorMessage
+            let wasRecording = appState.sessionRecorder.isRecording
+            await appState.executeQuickAction(action)
+            if action.type == .toggleRecording, !wasRecording, !appState.sessionRecorder.isRecording {
+                return ["error": String(localized: "Recording didn't start."), "status": statusString()]
+            }
+            // Only a turn that answered sends an answer: a light, a shortcut or a recording leaves
+            // `lastResponse` as an earlier turn's, and the wrist must not show that as this one's.
+            if answered, appState.lastResponse != before {
+                return ["status": "completed", "response": appState.lastResponse]
+            }
+            if answered, let error = appState.errorMessage, !error.isEmpty, error != errorBefore {
+                return ["error": error]
+            }
+            return ["status": statusString()]
+        }
     }
 
     /// Send current app status to the Watch for display.
@@ -182,7 +263,8 @@ class WatchConnectivityManager: NSObject, ObservableObject {
             "personas": Config.enabledPersonas.prefix(3).map { ["id": $0.id, "name": $0.name] },
             "accentColor": Config.accentColorName,
             "recentThreads": recentThreads,
-            "quickActions": quickActions
+            "quickActions": quickActions,
+            WatchGridWire.contextKey: WatchGridWire.encode(Self.gridTiles(for: appState))
         ]
 
         // Plan FO P3a — read-only job state on the wrist: which job, running or paused, which
@@ -482,6 +564,9 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 } else {
                     replyHandler(["error": String(localized: "Quick action not found")])
                 }
+
+            case WatchGridWire.command:
+                replyHandler(await self.runGridTile(message, appState: appState))
 
             case "resumeThread":
                 if let threadId = message["thread_id"] as? String {

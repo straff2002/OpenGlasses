@@ -67,11 +67,14 @@ final class WatchPhotoReplyTests: XCTestCase {
                        "every photo turn replies through the gate and WatchPhotoReply")
     }
 
-    /// The only command still answering with `lastResponse` is dictation, which checks for a turn
-    /// in flight first; no photo command does.
+    /// The only commands still answering with `lastResponse` are dictation and a tapped grid tile's
+    /// typed turns, and each checks for a turn in flight first; no photo command does.
     func testNoPhotoCommandRepliesWithTheLastResponse() throws {
         let code = try managerCode()
         let stale = code.filter { $0.contains("\"response\": appState.lastResponse") }
-        XCTAssertEqual(stale.count, 1, "only the dictation reply: \(stale)")
+        XCTAssertEqual(stale.count, 3, "dictation, a tile's built-in turn and its speed-dial turn: \(stale)")
+        let tile = code.drop { !$0.hasPrefix("private func runGridTile(") }
+        XCTAssertEqual(tile.prefix(60).filter { $0 == "guard !appState.isProcessing else { return busy }" }.count, 2,
+                       "both of a tile's typed turns check for a turn in flight before they answer")
     }
 }

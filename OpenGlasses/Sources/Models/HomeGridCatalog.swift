@@ -554,6 +554,23 @@ enum DockGridCatalog {
         return unplaced.filter(\.leadsWhenUnplaced) + result
             + unplaced.filter { !$0.leadsWhenUnplaced }
     }
+
+    /// The grid as the wearer stored it, from the two strings the dock persists: what the dock
+    /// draws, and what the watch draws its first rows from, so the two cannot disagree.
+    static func storedSlots(dockOrder: String,
+                            storedArrangement: String,
+                            quickActions: [QuickAction],
+                            showsActions: Bool,
+                            restricted: Bool) -> [DockSlot] {
+        let controlOrder = DockLayout.decode(dockOrder)
+        let available = available(controlOrder: controlOrder, quickActions: quickActions).map(\.id)
+        let arrangement = HomeGridStore.decode(storedArrangement, available: available).arrangement
+        return slots(arrangement: arrangement,
+                     controlOrder: controlOrder,
+                     quickActions: quickActions,
+                     showsActions: showsActions)
+            .filter { !EditionPresentation.hidesDockSlot($0, restricted: restricted) }
+    }
 }
 
 // MARK: - Persistence
