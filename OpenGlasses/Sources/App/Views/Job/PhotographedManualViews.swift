@@ -13,6 +13,12 @@ struct ManualDocumentCamera: UIViewControllerRepresentable {
         onSave = { PersonalManualCapture.shared.accept($0, request: request) }
         onCancel = { PersonalManualCapture.shared.cancel(request.id, message: $0) }
     }
+    /// The same camera for a caller that takes the scan itself (Plan LW: a manual for a vault of your
+    /// own, a nameplate).
+    init(onSave: @escaping @MainActor (VNDocumentCameraScan) -> Void, onCancel: @escaping @MainActor (String) -> Void) {
+        self.onSave = onSave
+        self.onCancel = onCancel
+    }
     func makeCoordinator() -> Coordinator { Coordinator(onSave: onSave, onCancel: onCancel) }
     func makeUIViewController(context:Context) -> VNDocumentCameraViewController {
         let view = VNDocumentCameraViewController();view.delegate = context.coordinator;return view

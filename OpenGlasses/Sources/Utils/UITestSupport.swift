@@ -110,6 +110,10 @@ enum UITestSupport {
         /// signed by a key this build cannot hold, so no enrolment is faked: the rows are made by
         /// the shipping `CompanyVaultRow.rows` from fixture state and drawn by the shipping view.
         case publishedVaultRows = "-OGUITestPublishedVaultRows"
+        /// Plan LW P1: a vault made by the shipping New Vault path with one invented manual added,
+        /// and its draft review screen drawn over the app, so a pasted reply can be checked and a row
+        /// kept into the vault's file.
+        case vaultAuthoring = "-OGUITestVaultAuthoring"
     }
 
     /// Whether a vault-link review is being staged for a screenshot.

@@ -326,8 +326,22 @@ struct OpenGlassesApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
+                #if DEBUG
+                // Plan LW: the draft review screen on a fixture vault in place of the app's own
+                // screens, for the UI test that keeps a row. In place rather than over them: drawn
+                // over the app it sat beneath the launch's consent sheet, which took the keyboard
+                // and, on some launches, the screen.
+                if UITestSupport.isSet(.vaultAuthoring) {
+                    UITestVaultAuthoring()
+                        .environmentObject(appState)
+                } else {
+                    RootView()
+                        .environmentObject(appState)
+                }
+                #else
                 RootView()
                     .environmentObject(appState)
+                #endif
 
                 // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
                 SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
