@@ -32,7 +32,8 @@ struct VaultFilesEditorView: View {
                         }
                     }
                     Section {
-                        ForEach(store.manifest.files, id: \.self) { filename in
+                        // Keyed by position: an imported manifest can list a file twice.
+                        ForEach(Array(store.manifest.files.enumerated()), id: \.offset) { _, filename in
                             NavigationLink {
                                 VaultSingleFileEditor(store: store, filename: filename, readOnly: !unlocked)
                             } label: {

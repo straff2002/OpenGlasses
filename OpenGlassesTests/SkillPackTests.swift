@@ -76,6 +76,22 @@ final class SkillPackTests: XCTestCase {
         XCTAssertTrue(report.summary.contains("future_js_action"))
     }
 
+    func testLossyDecodeKeepsFirstOfARepeatedSettingKeyAndSaysSo() throws {
+        var root = try XCTUnwrap(JSONSerialization.jsonObject(with: manifestJSON()) as? [String: Any])
+        root["settings"] = [
+            ["key": "grind", "type": "text", "label": "Grind"],
+            ["key": "dose", "type": "number"],
+            ["key": "grind", "type": "toggle", "label": "Grind again"],
+        ]
+        let (decoded, report) = SkillPackManifest.lossyDecode(try JSONSerialization.data(withJSONObject: root))
+        let manifest = try XCTUnwrap(decoded)
+
+        XCTAssertEqual(manifest.settings.map(\.key), ["grind", "dose"],
+                       "a repeated key is dropped so the settings list never has two rows with one id")
+        XCTAssertEqual(manifest.settings.first?.label, "Grind", "the first declaration wins")
+        XCTAssertEqual(report.droppedSettings, 1)
+    }
+
     func testUnreadableIdentityIsTotalFailureNotEmptyPack() {
         let (decoded, _) = SkillPackManifest.lossyDecode(Data("{\"version\": \"1.0.0\"}".utf8))
         XCTAssertNil(decoded, "no id/name — nothing safe to partially load")

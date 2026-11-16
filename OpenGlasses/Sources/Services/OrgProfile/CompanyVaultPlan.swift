@@ -346,7 +346,7 @@ struct CompanyVaultRow: Equatable, Identifiable, Sendable {
             let id: String
             /// The manual's title, with its edition when the vault names one.
             let title: String
-            /// "Held", "A different revision", "Missing".
+            /// "On this phone", "A different revision", "Missing".
             let status: String
             let state: ExpectedManualMatch.Status
         }
@@ -363,7 +363,7 @@ struct CompanyVaultRow: Equatable, Identifiable, Sendable {
                     ?? entry.expected.title
                 let status: String
                 switch entry.status {
-                case .matched: status = String(localized: "Held")
+                case .matched: status = String(localized: "On this phone")
                 case .differentRevision: status = String(localized: "A different revision")
                 case .missing: status = String(localized: "Missing")
                 }

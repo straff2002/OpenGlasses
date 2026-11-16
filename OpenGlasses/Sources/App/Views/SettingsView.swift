@@ -413,9 +413,11 @@ struct TierModelDetailPicker: View {
 
     /// Unique providers from saved models (all providers, not just those with API keys).
     private var providers: [(config: ModelConfig, provider: LLMProvider)] {
-        var seen = Set<String>()
+        // De-duplicated on the provider the rows are keyed by, not the raw string: every
+        // unrecognised provider string maps to `.custom`, and two `.custom` sections share an id.
+        var seen = Set<LLMProvider>()
         return models.compactMap { model in
-            guard seen.insert(model.provider).inserted else { return nil }
+            guard seen.insert(model.llmProvider).inserted else { return nil }
             return (config: model, provider: model.llmProvider)
         }.sorted { $0.provider.displayName < $1.provider.displayName }
     }
