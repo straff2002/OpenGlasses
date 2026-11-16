@@ -193,11 +193,13 @@ final class VanStockService {
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: true) {
             case .failure(let message): return (message, nil)
             case .success(let found):
+                let before = log.level(of: found.item.id)
                 log.record(.counted, itemID: found.item.id, quantity: quantity, at: at, batch: batch,
                            source: source, id: self.makeID())
                 let after = log.level(of: found.item.id)
-                return (self.composer.counted(found.item, after: after, created: found.created),
-                        "\(found.item.name) counted: \(after.onHand) on the van")
+                let check = VanStockCountCheck(before: before, counted: after.onHand)
+                return (self.composer.counted(found.item, before: before, after: after, created: found.created),
+                        "\(found.item.name) counted: \(after.onHand) on the van" + (check?.said(found.item.unit) ?? ""))
             }
         }
     }

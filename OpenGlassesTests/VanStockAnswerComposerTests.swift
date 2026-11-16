@@ -180,9 +180,33 @@ final class VanStockAnswerComposerTests: XCTestCase {
         XCTAssertEqual(answer, "Removed 1 × Flame sensor (62-23543-01) (returned). That was the last on the van.")
     }
 
-    func testACountReadsBack() {
-        XCTAssertEqual(composer.counted(item(), after: level(5), created: false),
+    func testACountOfALineWithNothingRecordedReadsBackAlone() {
+        XCTAssertEqual(composer.counted(item(), before: VanStockLevel(itemID: "i"), after: level(5), created: false),
                        "Counted: 5 × Flame sensor (62-23543-01) on the van.")
+    }
+
+    func testACountSaysHowItComparesWithTheLog() {
+        XCTAssertEqual(composer.counted(item(), before: level(7, .inferred), after: level(5), created: false),
+                       "Counted: 5 × Flame sensor (62-23543-01) on the van. The log expected 7, so that is 2 short.")
+        XCTAssertEqual(composer.counted(item(), before: level(4), after: level(5), created: false),
+                       "Counted: 5 × Flame sensor (62-23543-01) on the van. The log expected 4, so that is 1 over.")
+        XCTAssertEqual(composer.counted(item(), before: level(5), after: level(5), created: false),
+                       "Counted: 5 × Flame sensor (62-23543-01) on the van. That matches the 5 the log expected.")
+    }
+
+    func testACountAgainstAnUnreliableFigureComparesNothing() {
+        let answer = composer.counted(item(), before: level(0, .inferred, unreliable: true), after: level(3), created: false)
+        XCTAssertTrue(answer.contains("nothing to check this against"), answer)
+        XCTAssertFalse(answer.contains("short"), answer)
+        XCTAssertFalse(answer.contains("over"), answer)
+    }
+
+    func testACountComparisonKeepsTheUnit() {
+        let cable = VanStockItem(id: "i", description: "Thermostat cable", unit: .m, createdBatch: "b0")
+        XCTAssertEqual(composer.counted(cable, before: level(30), after: level(25), created: false),
+                       "Counted: 25 m of Thermostat cable on the van. The log expected 30 m, so that is 5 m short.")
+        XCTAssertEqual(VanStockCountCheck(before: level(30), counted: 25)?.said(.m), ", 5 m short of the 30 m expected")
+        XCTAssertEqual(VanStockCountCheck(before: level(1), counted: 2)?.said(.pack), ", 1 pack over the 1 pack expected")
     }
 
     // MARK: Lists and misses
