@@ -214,7 +214,7 @@ It does not require an active session. Its description names both "van" and "tru
 | `load` | One or more lines of `part`/`description`, `quantity`, `unit` |
 | `use` | The same shape; tagged to the active job when there is one |
 | `remove` | The same shape, with a reason |
-| `count` | Sets one or more levels: a stocktake |
+| `count` | Sets one or more levels: a stocktake. The read-back compares the count with the figure the log expected ("2 short", "1 over", "matches"), except for a line's first figure or one the log could not trust (added 2026-11-17) |
 | `undo` | Reverses the most recent batch, once |
 | `send_to_base` | Stages the end-of-shift handover (§8). It sends nothing by itself |
 
