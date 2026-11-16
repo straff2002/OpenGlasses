@@ -174,13 +174,18 @@ struct ConversationFeed<Lead: View, Trail: View>: View {
     @ObservedObject var store: ConversationStore
     @ObservedObject var session: GeminiLiveSessionManager
     @ObservedObject var openAISession: OpenAIRealtimeSessionManager
-    /// Changes when what follows the conversation does (a manual page opening), so the feed can
-    /// bring it into view.
+    /// Changes when what follows the conversation does (a manual page opening or closing).
     var trailID: String? = nil
+    /// Changes every time a page is put in front of the technician, the open one included
+    /// (`AppState.manualPageReveals`), so the feed scrolls to the top of it. The trail tags its
+    /// top with `ConversationFeedFollow.pageAnchor`.
+    var revealToken: Int = 0
     @ViewBuilder var lead: () -> Lead
     @ViewBuilder var trail: () -> Trail
 
     private let bottomAnchor = "voice-feed-bottom"
+
+    @State private var follow = ConversationFeedFollow()
 
     private var isRealtime: Bool { appState.currentMode.isRealtime }
 
@@ -256,23 +261,56 @@ struct ConversationFeed<Lead: View, Trail: View>: View {
             // by the explicit scrolls below instead.
             .onChange(of: messageCount) { _, _ in scrollToBottom(proxy) }
             .onChange(of: privateTurnCount) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: appState.isProcessing) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: appState.isProcessing) { _, processing in
+                // A new turn: what the wearer says next is what they want to read, not the page.
+                if processing { follow.turnStarted() }
+                scrollToBottom(proxy)
+            }
+            .onChange(of: liveUserText) { _, text in
+                // A realtime session has no processing flag; the wearer speaking starts the turn.
+                if !text.isEmpty { follow.turnStarted() }
+            }
             .onChange(of: streamingLength) { _, _ in scrollToBottom(proxy) }
             .onChange(of: liveAssistantText) { _, _ in scrollToBottom(proxy) }
-            .onChange(of: trailID) { _, _ in scrollToBottom(proxy) }
+            .onChange(of: trailID) { _, id in
+                if id == nil { follow.pageClosed() }
+                scrollToBottom(proxy)
+            }
+            .onChange(of: revealToken) { _, _ in
+                follow.pageShown()
+                revealPage(proxy)
+            }
             .onChange(of: threadId) { _, _ in scrollToBottom(proxy, animated: false) }
             .onAppear { scrollToBottom(proxy, animated: false) }
             .environment(\.citationOpener, appState.citationOpener)
         }
     }
 
+    /// Follow new content: the newest line, or — for the rest of the turn a page was shown in —
+    /// the top of that page (`ConversationFeedFollow`).
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        if follow.target(pageOnScreen: trailID != nil) == .pageTop {
+            revealPage(proxy)
+            return
+        }
         guard animated else {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
             return
         }
         withAnimation(.easeOut(duration: 0.2)) {
             proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        }
+    }
+
+    /// Bring the top of the page into view. Deferred past this update: a page that is opening is
+    /// inserted in the same transaction that changed the token, and scrolling before it has a frame
+    /// lands where the feed ended without it — which is to say, nowhere new.
+    private func revealPage(_ proxy: ScrollViewProxy) {
+        guard trailID != nil else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeOut(duration: 0.25)) {
+                proxy.scrollTo(ConversationFeedFollow.pageAnchor, anchor: .top)
+            }
         }
     }
 }

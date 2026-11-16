@@ -5823,6 +5823,11 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var showManualPicker = false
     /// Non-nil while the manual figure sheet should be presented.
     @Published var manualFigureRequest: ManualFigureRequest?
+    /// Counts every time a page is put in front of the technician — including the page already
+    /// open, asked for again. The Voice tab's feed scrolls to the page on each one: a page that is
+    /// open but scrolled out of view does not change `manualFigureRequest`, and "show me the page"
+    /// answered with nothing moving reads as nothing happening.
+    @Published private(set) var manualPageReveals = 0
 
     // MARK: - Job reports (Plan EM P2)
 
@@ -6313,8 +6318,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan KV §4: the lens first, so a page asked for again after its view was closed opens
         // again; the session itself ignores the page already in the view.
         presentOnLens([staged], opening: 0)
+        manualPageReveals += 1
         // Already on screen: staging the same drawing again (a follow-up question about it, or
-        // "show that again" while it is still up) must not re-log it or blink the sheet.
+        // "show that again" while it is still up) must not re-log it or blink the sheet — but the
+        // feed still brings it into view (`manualPageReveals`).
         if let open = manualFigureRequest, open.id == ManualFigureRequest.identity(of: [staged]) { return open.presenter }
         let presenter = ManualFigurePresenter.present(staged, session: FieldSessionService.shared)
         manualFigureRequest = ManualFigureRequest(
@@ -6345,6 +6352,7 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         manualFigureRequest = ManualFigureRequest(presenter: stops[0].presenter, sheet: stops[0].sheet,
                                                   others: Array(stops.dropFirst()), opening: opening)
+        manualPageReveals += 1
         // The lens got these pages when they were requested (`ShowSourceCenter.lensRequest`), so a
         // request made with the phone locked was already on the glasses.
     }
