@@ -101,7 +101,10 @@ struct SettingsHubRowScreen: View {
         case .advancedSupport:
             DiagnosticsSupportView(appState: appState, showsAdvancedLink: true)
         case .devicesPrivacy where children.first == .devices:
-            GlassesPrivacySettingsScreen(appState: appState, alsoShows: Array(children.dropFirst()))
+            // Display & HUD is behind Glasses, for someone with display glasses
+            // (`DisplaySettingsPlacement`), not at the bottom of this page for everyone.
+            GlassesPrivacySettingsScreen(appState: appState,
+                                         alsoShows: DisplaySettingsPlacement.sectionsOnDevicesPage(alsoShowing: children))
         case .devicesPrivacy, .connections:
             Form {
                 ForEach(children, id: \.self) { category in

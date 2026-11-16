@@ -156,7 +156,8 @@ struct DisplayHUDSettingsScreen: View {
     }
 }
 
-/// The sections themselves, which Devices & Privacy draws on its own page (Plan KH P2).
+/// The sections themselves. Devices & Privacy drew them on its own page (Plan KH P2); they are
+/// behind Devices & Privacy › Glasses now, for someone with display glasses (`DisplaySettingsPlacement`).
 struct DisplayHUDSections: View {
     @ObservedObject var appState: AppState
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false

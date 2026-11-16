@@ -185,11 +185,24 @@ Triggers. Services & Integrations keeps the engines and keys it still holds.
 were simplifying settings not adding yet another one?" So the hub became 8 rows and Everyday stayed.
 "The hub stays one fixed list" above is superseded by this.
 
+**2026-11-17: Display & HUD moved behind Glasses.** A wearer with new Ray-Ban Display glasses could
+not find why nothing showed on the lens: the switch is off by default, and its sections were at the
+bottom of Devices & Privacy for everyone on a copy that offers glasses, including people with no
+display glasses. Glasses-only settings belong with the glasses, so Devices & Privacy › Glasses now
+carries a Display & HUD link, and Devices & Privacy no longer draws those sections. The link shows
+when display glasses have ever been connected (remembered, because the live capability is true only
+while they are connected), the display switch is on, the connect-time display offer was answered,
+the EVEN G2 backend is chosen, or an organisation's lockdown opens Display & HUD. Still only where
+the category itself is visible: Simple Mode, a lockdown and a copy without glasses hide it as
+before. `.display` keeps its row, id, lock and `openSettings(.display)` route; only where it is
+drawn moved (`DisplaySettingsPlacement`, `DisplaySettingsPlacementTests`). The same switches stay
+under Hardware & Privacy, so nothing is out of reach for someone the rule does not recognise yet.
+
 | Hub row | Holds | Opens |
 |---|---|---|
 | Assistant | AI & Personality, Voice & Triggers | AI & Personality's content, with Voice & Triggers as one link row at the top. Both are too long to share a page. |
 | Everyday | Everyday, My Manuals | Things to Try, My Manuals, then the six groups |
-| Devices & Privacy | Devices, Capture & Streaming, Display & HUD | All three on one page, with their existing sections |
+| Devices & Privacy | Devices, Capture & Streaming, Display & HUD | Devices and Capture & Streaming on one page, with their existing sections. Display & HUD is a link on the Glasses page, shown only to someone with display glasses (2026-11-17, below) |
 | Connections | Connections, Tools & Actions | Both on one page |
 | Accessibility | Accessibility | Unchanged, pinned |
 | Field Assist | Field Assist | Unchanged |

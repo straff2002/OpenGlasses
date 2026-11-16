@@ -4117,6 +4117,12 @@ struct Config {
     /// switch moved by hand). Asked once per install.
     @UserDefaultsBacked("displayOfferAnswered", default: false) static var displayOfferAnswered: Bool
 
+    /// Display glasses have been connected to this phone at least once. Remembered because the
+    /// live capability is true only while they are connected, and Devices & Privacy › Glasses keeps
+    /// the display settings for someone who has them whether or not they are on now
+    /// (`DisplaySettingsPlacement`). Never cleared.
+    @UserDefaultsBacked("displayGlassesSeen", default: false) static var displayGlassesSeen: Bool
+
     /// Plan KP §8 rule 5: while another app has the Display, the first answer spoken is followed
     /// once by "Your display's busy…" (once per stretch). On by default (decision 9).
     @UserDefaultsBacked("displayBusyHintEnabled", default: true) static var displayBusyHintEnabled: Bool
