@@ -1,6 +1,6 @@
 # Plan MD — Choose the Site on New Job (the customer or site first, and its units with it)
 
-**Status:** 🚧 P0–P2 built 2026-11-17 (one PR), decisions 1–3 taken as recommended; decision 4 (voice) deferred. Catalog sync and the P3 device check are owed.
+**Status:** 🚧 P0–P2 built 2026-11-17 (PR 1091, merged), decisions 1–3 taken as recommended; decision 4 (voice) deferred. Its 35 new strings are in the catalog, translated into all 13 languages (catalog sync PR). The P3 device check is owed.
 **Track:** Field Assist / jobs.
 **Builds on:** Plan [HC](HC-jobs-list.md) (the New job page), Plan [HV](HV-site-system-vaults.md) (site documents in
 a vault and `SiteSystemMatcher`), Plan [FO](FO-guided-job-flow-and-job-tab.md) (jobs ahead and `applyJobAhead`), Plan
