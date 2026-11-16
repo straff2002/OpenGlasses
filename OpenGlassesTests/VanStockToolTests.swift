@@ -261,10 +261,30 @@ final class VanStockToolTests: XCTestCase {
         _ = try await run(["action": "load", "description": "Igniter", "quantity": 9])
         clock.addTimeInterval(60)
         let counted = try await run(["action": "count", "description": "igniter", "quantity": 5])
-        XCTAssertEqual(counted, "Counted: 5 × Igniter on the van.\nSay: Igniter counted: 5 on the van. Put this in the reply, whatever else the technician asked this turn.")
+        XCTAssertEqual(counted, "Counted: 5 × Igniter on the van. The log expected 9, so that is 4 short."
+            + "\nSay: Igniter counted: 5 on the van, 4 short of the 9 expected. Put this in the reply, whatever else the technician asked this turn.")
         clock.addTimeInterval(3_600)
         let check = try await run(["action": "check", "description": "igniter"])
         XCTAssertTrue(check.hasPrefix("5 × Igniter on the van — counted today at"), check)
+    }
+
+    /// A shop keeping its shelf by voice: an opening figure, a delivery, then a stocktake checked
+    /// against what the log expected.
+    func testAStocktakeSaysHowFarItIsFromTheLog() async throws {
+        let opening = try await run(["action": "count", "part": "1042", "quantity": 18])
+        XCTAssertTrue(opening.hasPrefix("Counted: 18 × 1042 on the van. That is a new line"), opening)
+        XCTAssertFalse(opening.contains("expected"), opening)
+        clock.addTimeInterval(60)
+        let delivery = try await run(["action": "load", "part": "1042", "quantity": 6])
+        XCTAssertTrue(delivery.hasPrefix("Loaded 6 × 1042. 24 × 1042 on the van now."), delivery)
+        clock.addTimeInterval(3_600)
+        let short = try await run(["action": "count", "part": 1042, "quantity": 22])
+        XCTAssertTrue(short.hasPrefix("Counted: 22 × 1042 on the van. The log expected 24, so that is 2 short."), short)
+        XCTAssertTrue(short.contains("Say: 1042 counted: 22 on the van, 2 short of the 24 expected."), short)
+        clock.addTimeInterval(3_600)
+        let same = try await run(["action": "count", "part": "1042", "quantity": 22])
+        XCTAssertTrue(same.contains("That matches the 22 the log expected."), same)
+        XCTAssertTrue(same.contains("on the van, as expected."), same)
     }
 
     func testACountNeedsAFigure() async throws {

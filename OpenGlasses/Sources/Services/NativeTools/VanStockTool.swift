@@ -46,7 +46,7 @@ final class VanStockTool: NativeTool {
     open and without signal. Pass 'action': 'check' (how many of one part; pass 'part' and/or \
     'description'), 'low' (what has run out or is at its minimum), 'load' (parts put on the van), \
     'use' (parts fitted from the van; tagged to the open job), 'remove' (parts taken off for \
-    another reason; pass 'reason'), 'count' (a stocktake: sets the figure), 'undo' (takes back \
+    another reason; pass 'reason'), 'count' (a stocktake: sets the figure and says how it compares with what the log expected), 'undo' (takes back \
     the last spoken entry), 'unrecorded' (parts on this job's finished tasks with no stock entry), \
     'not_from_van' (a part on this job that was ordered in or was the customer's; pass 'part'), \
     'top_up' (what it takes to bring the van back to its standard load), 'set_standard' (how many \

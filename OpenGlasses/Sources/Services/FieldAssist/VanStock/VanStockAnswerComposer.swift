@@ -111,8 +111,23 @@ struct VanStockAnswerComposer {
         return lines.joined(separator: " ")
     }
 
-    func counted(_ item: VanStockItem, after: VanStockLevel, created: Bool) -> String {
+    /// A stocktake reads back what was counted and how it compares with what the log expected, so
+    /// "I counted 16, check that against stock" is answered "2 short" by the tool rather than by
+    /// the model doing sums across two results.
+    func counted(_ item: VanStockItem, before: VanStockLevel, after: VanStockLevel, created: Bool) -> String {
         var lines = ["Counted: \(item.phrase(after.onHand)) on the van."]
+        switch VanStockCountCheck(before: before, counted: after.onHand) {
+        case nil: break
+        case .matches(let expected):
+            lines.append("That matches the \(item.unit.amount(expected)) the log expected.")
+        case .short(let expected, let by):
+            lines.append("The log expected \(item.unit.amount(expected)), so that is \(item.unit.amount(by)) short.")
+        case .over(let expected, let by):
+            lines.append("The log expected \(item.unit.amount(expected)), so that is \(item.unit.amount(by)) over.")
+        case .unreliable:
+            lines.append("The log's figure could not be trusted, so there was nothing to check this against; "
+                + "the count is the figure now.")
+        }
         if created { lines.append(contentsOf: newLine(item)) }
         return lines.joined(separator: " ")
     }

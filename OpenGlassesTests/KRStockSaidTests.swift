@@ -82,7 +82,7 @@ final class KRStockSaidTests: XCTestCase {
         XCTAssertEqual(sayLine(removed)?.hasPrefix("Say: 1 × Pressure switch taken off the van (returned)."), true, removed)
 
         let counted = try await run(["action": "count", "description": "pressure switch", "quantity": 5])
-        XCTAssertEqual(sayLine(counted)?.hasPrefix("Say: Pressure switch counted: 5 on the van."), true, counted)
+        XCTAssertEqual(sayLine(counted)?.hasPrefix("Say: Pressure switch counted: 5 on the van, 3 over the 2 expected."), true, counted)
 
         let undone = try await run(["action": "undo"])
         XCTAssertEqual(sayLine(undone)?.hasPrefix("Say: the last van stock entry taken back."), true, undone)
