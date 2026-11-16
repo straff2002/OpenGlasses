@@ -512,6 +512,51 @@ final class CompanyVaultServiceTests: XCTestCase {
         XCTAssertEqual(service.rows(), [])
     }
 
+    /// A company's first vault: the profile the phone enrolled with lists none, so the pointer comes
+    /// only with a renewal, which a foreground leaves for a day. *Check for Updates* is drawn anyway
+    /// and brings it at once, so an administrator can check a new phone during setup.
+    func testACompanysFirstVaultArrivesAtOnceWithCheckForUpdates() async throws {
+        profileResponse = Data(try ProfileVerification.makeDocument(
+            ConfigProfile(keyId: "fixture-profile", profileId: profileId, organizationName: "Fixture Mechanical",
+                          issued: clock, leaseDays: 30),
+            privateKeyBase64: profileKey.rawRepresentation.base64EncodedString()).utf8)
+        let m = manager()
+        try await enrol(m)
+        XCTAssertEqual(visibility(m), .checkForUpdatesOnly, "the button shows before any vault is listed")
+
+        try publish(generation: 1, vaults: [pack("lennox", "1").row], manuals: [])
+        await foreground(m)
+        XCTAssertNil(phone.vaults["lennox"], "a foreground within the day doesn't refetch the profile")
+        XCTAssertEqual(catalogFetches, 0)
+
+        clock = clock.addingTimeInterval(60)
+        await m.checkForUpdates()
+        XCTAssertEqual(phone.vaults["lennox"]?.version, "1")
+        XCTAssertEqual(visibility(m), .rowsAndCheckForUpdates)
+        XCTAssertEqual(service.rows().map(\.name), ["Lennox"])
+    }
+
+    private func visibility(_ m: OrgProfileManager) -> CompanyVaultSectionVisibility {
+        CompanyVaultSectionVisibility.decide(listsCompanyVaults: m.profile?.companyVaults != nil,
+                                             revoked: m.record?.revoked == true)
+    }
+
+    func testCheckForUpdatesShowsOnEveryManagedPhoneThatIsNotRevoked() {
+        XCTAssertEqual(CompanyVaultSectionVisibility.decide(listsCompanyVaults: false, revoked: false),
+                       .checkForUpdatesOnly)
+        XCTAssertEqual(CompanyVaultSectionVisibility.decide(listsCompanyVaults: true, revoked: false),
+                       .rowsAndCheckForUpdates)
+        for lists in [false, true] {
+            let revoked = CompanyVaultSectionVisibility.decide(listsCompanyVaults: lists, revoked: true)
+            XCTAssertEqual(revoked, .hidden)
+            XCTAssertFalse(revoked.showsCheckForUpdates)
+            XCTAssertFalse(revoked.showsRows)
+        }
+        XCTAssertTrue(CompanyVaultSectionVisibility.checkForUpdatesOnly.showsCheckForUpdates)
+        XCTAssertFalse(CompanyVaultSectionVisibility.checkForUpdatesOnly.showsRows, "rows wait for the listing")
+        XCTAssertTrue(CompanyVaultSectionVisibility.rowsAndCheckForUpdates.showsRows)
+    }
+
     func testTheStateGoesWithTheEnrolment() async throws {
         try publish(generation: 1, vaults: [pack("lennox", "1").row], manuals: [])
         let m = manager()
