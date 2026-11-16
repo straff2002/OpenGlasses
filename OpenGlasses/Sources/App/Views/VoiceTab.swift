@@ -608,7 +608,7 @@ private struct VoiceTabControls: View {
 // MARK: - Chat Input Bar
 
 /// Voice-tab inline chat input — the mic's typed-message alternative.
-/// A thin wrapper over the shared `ChatComposer`: the mic button switches back to voice,
+/// A thin wrapper over the shared `ChatComposer`: the leading ✕ closes it, back to voice,
 /// and sends route through the standard voice pipeline (spoken reply preserved).
 struct ChatInputBar: View {
     @EnvironmentObject var appState: AppState
@@ -631,7 +631,11 @@ struct ChatInputBar: View {
             }
             .id(review.id)
         } else {
-            ChatComposer(autoFocus: true, voiceAction: { showChatInput = false }) { text, image in
+            // The way out reads as one: a close, not a mic. The mic looked like "start listening",
+            // so a wearer who began typing and changed their mind found no exit (Plan MC). Closing
+            // drops the draft and puts the strip back, mic and all.
+            ChatComposer(autoFocus: true, voiceAction: { showChatInput = false },
+                         voiceActionSymbol: "xmark", voiceActionLabel: "Close") { text, image in
                 Task { await appState.sendTextMessage(text, imageData: image) }
             }
         }

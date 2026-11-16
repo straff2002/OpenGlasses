@@ -61,6 +61,8 @@ struct BottomControlBar: View {
     @Binding var pager: DockPagerState
     /// The home screen's editor, presented from the cog (or the long press on the grid's gaps).
     @State private var showEditor = false
+    /// The shrunk strip's pill, as last measured (Plan MC).
+    @State private var inlinePill = InlineStripLayout.unmeasuredPill
 
     private var isRealtime: Bool { appState.currentMode.isRealtime }
 
@@ -234,56 +236,103 @@ struct BottomControlBar: View {
 
     /// The row in the tab view's bottom accessory. Full width above the tab bar, its free width is
     /// the way in to typing (or the cog while the buttons are up) with the two controls at the
-    /// trailing edge; shrunk beside the Avenkin mark, it is just the two controls, still trailing.
+    /// trailing edge; shrunk beside the Avenkin mark, it is just the two controls, still trailing,
+    /// with targets sized for the shrunk pill (`inlineRow`).
     @ViewBuilder
     private func accessoryRow(_ placement: TabViewBottomAccessoryPlacement) -> some View {
-        HStack(spacing: 10) {
-            if placement == .expanded {
-                if showsGrid {
-                    RoundDockButton(icon: "gearshape.fill", size: DockGridMetrics.accessoryButtonSize,
-                                    label: DockPanelActionName.editHomeScreen,
-                                    hint: "Add, remove and reorder the tiles, and choose the cards on the home screen.",
-                                    onSystemGlass: true) {
-                        showEditor = true
+        if placement != .expanded {
+            // Typing keeps a way in while the strip is shrunk: the keyboard, left of the mic, opens
+            // the same typed bar as the full strip's "Type a request".
+            let typing = inlineTypingBinding
+            inlineRow(count: typing == nil ? 2 : 3) { target in
+                if let typing {
+                    RoundDockButton(icon: "keyboard", size: DockGridMetrics.accessoryButtonSize,
+                                    label: String(localized: "Type a request"),
+                                    hint: "Opens the keyboard to type instead of speaking.",
+                                    onSystemGlass: true, inlineTarget: target) {
+                        typing.wrappedValue = true
                     }
-                    Spacer(minLength: 0)
-                } else if let showChatInput, !isRealtime {
-                    // The strip's free width is the way in to typing: it reads as an empty field and
-                    // opens the typed bar, keyboard up — never words that look tappable and are not.
-                    Button {
-                        showChatInput.wrappedValue = true
-                    } label: {
-                        Text("Type a request")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
-                                   alignment: .leading)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Type a request")
-                    .accessibilityHint("Opens the keyboard to type instead of speaking.")
-                } else {
-                    // A live session has no typed turn, so the two controls simply keep right.
-                    Spacer(minLength: 0)
                 }
+                accessoryMic(inlineTarget: target)
+                buttonsButton(inlineTarget: target)
             }
-            accessoryMic
-            RoundDockButton(icon: showsGrid ? "text.bubble" : "square.grid.2x2",
-                            size: DockGridMetrics.accessoryButtonSize,
-                            label: showsGrid ? DockPage.conversation.showActionName
-                                             : DockPage.actions.showActionName,
-                            hint: "Switch between your buttons and the conversation.",
-                            isActive: showsGrid, badge: showsGrid && unseenReply,
-                            onSystemGlass: true) {
-                move { DockPagerPolicy.userMoved(pager, to: showsGrid ? .conversation : .actions) }
-            }
+        } else {
+            expandedAccessoryRow
         }
-        .padding(.horizontal, placement == .expanded ? 14 : 6)
-        // Shrunk beside the mark, the two controls keep to the strip's trailing end — where the
-        // thumb finds them in both placements.
-        .frame(maxWidth: .infinity, alignment: placement == .expanded ? .leading : .trailing)
+    }
+
+    /// The accessory row above the full-size tab bar.
+    private var expandedAccessoryRow: some View {
+        HStack(spacing: 10) {
+            if showsGrid {
+                RoundDockButton(icon: "gearshape.fill", size: DockGridMetrics.accessoryButtonSize,
+                                label: DockPanelActionName.editHomeScreen,
+                                hint: "Add, remove and reorder the tiles, and choose the cards on the home screen.",
+                                onSystemGlass: true) {
+                    showEditor = true
+                }
+                Spacer(minLength: 0)
+            } else if let showChatInput, !isRealtime {
+                // The strip's free width is the way in to typing: it reads as an empty field and
+                // opens the typed bar, keyboard up — never words that look tappable and are not.
+                Button {
+                    showChatInput.wrappedValue = true
+                } label: {
+                    Text("Type a request")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget,
+                               alignment: .leading)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Type a request")
+                .accessibilityHint("Opens the keyboard to type instead of speaking.")
+            } else {
+                // A live session has no typed turn, so the two controls simply keep right.
+                Spacer(minLength: 0)
+            }
+            accessoryMic()
+            buttonsButton()
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The typed bar's switch, when the shrunk strip offers typing: on the conversation, outside a
+    /// live session (which has no typed turn) — the same cases the full strip shows its field in.
+    private var inlineTypingBinding: Binding<Bool>? {
+        guard let showChatInput, !isRealtime, !showsGrid else { return nil }
+        return showChatInput
+    }
+
+    /// The buttons button: swaps the grid and the conversation.
+    private func buttonsButton(inlineTarget: CGSize? = nil) -> some View {
+        RoundDockButton(icon: showsGrid ? "text.bubble" : "square.grid.2x2",
+                        size: DockGridMetrics.accessoryButtonSize,
+                        label: showsGrid ? DockPage.conversation.showActionName
+                                         : DockPage.actions.showActionName,
+                        hint: "Switch between your buttons and the conversation.",
+                        isActive: showsGrid, badge: showsGrid && unseenReply,
+                        onSystemGlass: true, inlineTarget: inlineTarget) {
+            move { DockPagerPolicy.userMoved(pager, to: showsGrid ? .conversation : .actions) }
+        }
+    }
+
+    // MARK: - The shrunk strip
+
+    /// The strip shrunk beside the Avenkin mark (Plan MC). iOS sizes that pill to fill the row, so
+    /// it can't hug its controls; they keep to its trailing end, where the thumb finds them in both
+    /// placements, and `InlineStripLayout` makes their targets easy to hit: as tall as the pill
+    /// allows, wider than they are tall, edge to edge, with one border above, below and at the end.
+    private func inlineRow<Targets: View>(count: Int,
+                                          @ViewBuilder targets: (CGSize) -> Targets) -> some View {
+        let layout = InlineStripLayout.make(pill: inlinePill, count: count)
+        return HStack(spacing: 0) { targets(layout.targetSize) }
+            .padding(layout.border)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { inlinePill = $0 }
     }
 
     // MARK: - Another tab's strip
@@ -293,9 +342,19 @@ struct BottomControlBar: View {
     /// where the thumb finds it on every tab.
     @ViewBuilder
     private func tabStripRow(_ placement: TabViewBottomAccessoryPlacement) -> some View {
-        HStack(spacing: 10) {
-            if let tabLead {
-                if placement == .expanded {
+        if placement != .expanded {
+            inlineRow(count: tabLead == nil ? 1 : 2) { target in
+                if let tabLead {
+                    RoundDockButton(icon: tabLead.lead.systemImage,
+                                    size: DockGridMetrics.accessoryButtonSize,
+                                    label: tabLead.title, hint: "",
+                                    onSystemGlass: true, inlineTarget: target, action: tabLead.action)
+                }
+                accessoryMic(inlineTarget: target)
+            }
+        } else {
+            HStack(spacing: 10) {
+                if let tabLead {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         tabLead.action()
@@ -310,18 +369,13 @@ struct BottomControlBar: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    RoundDockButton(icon: tabLead.lead.systemImage,
-                                    size: DockGridMetrics.accessoryButtonSize,
-                                    label: tabLead.title, hint: "",
-                                    onSystemGlass: true, action: tabLead.action)
+                    Spacer(minLength: 0)
                 }
-            } else if placement == .expanded {
-                Spacer(minLength: 0)
+                accessoryMic()
             }
-            accessoryMic
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, placement == .expanded ? 14 : 6)
-        .frame(maxWidth: .infinity, alignment: placement == .expanded ? .leading : .trailing)
     }
 
     // MARK: - Panel
@@ -531,9 +585,9 @@ struct BottomControlBar: View {
     // MARK: - Mic
 
     /// The mic on the accessory's glass, with the same long-press mute as the floating one.
-    private var accessoryMic: some View {
+    private func accessoryMic(inlineTarget: CGSize? = nil) -> some View {
         MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState,
-                  onSystemGlass: true)
+                  onSystemGlass: true, inlineTarget: inlineTarget)
             .simultaneousGesture(
                 LongPressGesture(minimumDuration: 0.5).onEnded { _ in appState.micMuted.toggle() }
             )
@@ -862,6 +916,9 @@ private struct MicButton: View {
     /// Drawn on the tab view's accessory strip, which is already glass: a smaller, solid circle
     /// rather than glass on glass.
     var onSystemGlass: Bool = false
+    /// In the strip shrunk beside the Avenkin mark: the tap target `InlineStripLayout` gives it,
+    /// larger than the circle, which stays its size (Plan MC).
+    var inlineTarget: CGSize? = nil
 
     @ScaledMetric(relativeTo: .title) private var scale: CGFloat = 1
     /// Grows with the text size, but not past half again its size: the mic shares one row with the
@@ -904,10 +961,10 @@ private struct MicButton: View {
                     // the next.
                     .id(activity)
             )
-            .frame(width: target, height: target)
-            .contentShape(.circle)
+            .frame(width: inlineTarget?.width ?? target, height: inlineTarget?.height ?? target)
+            .contentShape(inlineTarget == nil ? AnyShape(.circle) : AnyShape(.capsule))
         }
-        .buttonStyle(.plain)
+        .dockTargetStyle(inline: inlineTarget != nil)
         // Exactly one button, the size of the circle, by its spoken name.
         .accessibilityRepresentation {
             Button(control.label, action: control.action)
@@ -1000,6 +1057,9 @@ private struct RoundDockButton: View {
     var badge: Bool = false
     /// On the accessory's glass: no glass of its own, just the glyph in its tap target.
     var onSystemGlass: Bool = false
+    /// In the strip shrunk beside the Avenkin mark: the tap target `InlineStripLayout` gives it,
+    /// larger than the glyph's own square (Plan MC).
+    var inlineTarget: CGSize? = nil
     let action: () -> Void
 
     @Environment(\.appAccent) private var accent
@@ -1007,7 +1067,10 @@ private struct RoundDockButton: View {
 
     /// Grows with the text size, capped like the mic so the row always fits across the screen.
     private var side: CGFloat {
-        max(OGMetrics.minTouchTarget, size * min(scale, DockGridMetrics.dockButtonMaxScale))
+        let grown = max(OGMetrics.minTouchTarget, size * min(scale, DockGridMetrics.dockButtonMaxScale))
+        // In the shrunk strip the system sets the height, so the glyph's square (and the active
+        // tint drawn on it) never grows past the target.
+        return inlineTarget.map { min(grown, $0.height) } ?? grown
     }
 
     var body: some View {
@@ -1031,8 +1094,11 @@ private struct RoundDockButton: View {
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
+                // The badge stays at the glyph's corner; the target around it is only larger.
+                .frame(width: inlineTarget?.width ?? side, height: inlineTarget?.height ?? side)
+                .contentShape(inlineTarget == nil ? AnyShape(.circle) : AnyShape(.capsule))
         }
-        .buttonStyle(.plain)
+        .dockTargetStyle(inline: inlineTarget != nil)
         .accessibilityLabel(label)
         .accessibilityValue(badge ? String(localized: "New reply") : "")
         .accessibilityHint(hint)
@@ -1335,6 +1401,32 @@ extension AppState: HomeGridSession {
 
 /// A round dock button's surface: its own glass over the page, or a light accent wash when it
 /// already sits on the accessory's glass.
+/// A target in the shrunk strip (Plan MC): no surface at rest, so the pill reads as it always has,
+/// and a capsule the size of the target while it is pressed, so the larger area shows when used.
+/// The capsule is concentric with the pill, whose border `InlineStripLayout` keeps even.
+private struct InlineTargetButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                Capsule()
+                    .fill(Color.primary.opacity(configuration.isPressed ? OGTheme.Opacity.hairline : 0))
+            }
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private extension View {
+    /// The dock's buttons press plainly, except in the shrunk strip, where the target shows.
+    @ViewBuilder
+    func dockTargetStyle(inline: Bool) -> some View {
+        if inline {
+            buttonStyle(InlineTargetButtonStyle())
+        } else {
+            buttonStyle(.plain)
+        }
+    }
+}
+
 private struct RoundDockSurface: ViewModifier {
     let isActive: Bool
     let accent: Color
