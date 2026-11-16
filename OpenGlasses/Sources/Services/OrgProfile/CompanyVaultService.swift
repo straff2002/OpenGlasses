@@ -433,9 +433,17 @@ final class CompanyVaultService: ObservableObject {
     }
 
     /// One manual: download → `sealedSha256` → open with the company secret → `revision`.
+    ///
+    /// Plan LV P3: a shared manual's content key is unwrapped with the company secret for this
+    /// company, file and `keyId` first, so a key that isn't this company's costs no download; then the
+    /// one shared file is checked and opened as a company manual is, and laid in as one.
     private func stage(_ manual: CompanyVaultCatalog.Manual, profileId: String, secret: Data,
                        staging: VaultLinkStagingStore) async throws -> StagedCompanyManual {
         guard let url = CompanyVaultCatalog.downloadURL(manual.downloadURL) else { throw CompanyManualSeal.Failure.malformed }
+        let contentKey = try manual.shared.map { shared in
+            try CompanySharedManualKey.unwrap(shared.wrappedKey, context: .init(profileId: profileId, shared: shared),
+                                              companySecret: secret)
+        }
         let expected = CompanyManualSeal.sealedLength(plaintextBytes: manual.sizeBytes)
         let sealed = try await seams.download(url, expected, staging)
         defer { staging.remove(sealed) }
@@ -448,14 +456,19 @@ final class CompanyVaultService: ObservableObject {
         do {
             let handle = try FileHandle(forReadingFrom: sealed.fileURL)
             defer { try? handle.close() }
-            let opened = try CompanyManualSeal.open(
-                length: expected,
-                read: { range in
-                    try handle.seek(toOffset: UInt64(range.lowerBound))
-                    return try handle.read(upToCount: range.count) ?? Data()
-                },
-                context: .init(profileId: profileId, manual: manual), companySecret: secret,
-                sink: { try staging.append($0, to: plain) })
+            let read: (Range<Int>) throws -> Data = { range in
+                try handle.seek(toOffset: UInt64(range.lowerBound))
+                return try handle.read(upToCount: range.count) ?? Data()
+            }
+            let opened: Int
+            if let shared = manual.shared, let contentKey {
+                opened = try CompanySharedManualSeal.open(length: expected, read: read, context: .init(shared: shared),
+                                                          contentKey: contentKey, revision: manual.revision,
+                                                          sink: { try staging.append($0, to: plain) })
+            } else {
+                opened = try CompanyManualSeal.open(length: expected, read: read, context: .init(profileId: profileId, manual: manual),
+                                                    companySecret: secret, sink: { try staging.append($0, to: plain) })
+            }
             guard opened == manual.sizeBytes else { throw CompanyManualSeal.Failure.wrongRevision }
         } catch {
             staging.remove(plain)

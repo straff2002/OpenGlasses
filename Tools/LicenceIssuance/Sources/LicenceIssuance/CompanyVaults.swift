@@ -189,11 +189,16 @@ public enum CompanyVaultContract {
         public let sealedSha256: String
         public let downloadURL: String
         public let kind: ManualKind
+        /// Plan LV P3: a shared manual. The file at `downloadURL` is the one shared copy
+        /// (`SharedManualSeal`), `sealedSha256` its digest, `sizeBytes` and `revision` its plaintext's;
+        /// this field carries the content key wrapped for this company. Absent from the JSON when
+        /// nil, so a company-sealed row is the bytes it always was.
+        public let shared: SharedManual?
 
         public init(vaultId: String, fileName: String, revision: String, sizeBytes: Int, sealedSha256: String,
-                    downloadURL: String, kind: ManualKind) {
+                    downloadURL: String, kind: ManualKind, shared: SharedManual? = nil) {
             self.vaultId = vaultId; self.fileName = fileName; self.revision = revision; self.sizeBytes = sizeBytes
-            self.sealedSha256 = sealedSha256; self.downloadURL = downloadURL; self.kind = kind
+            self.sealedSha256 = sealedSha256; self.downloadURL = downloadURL; self.kind = kind; self.shared = shared
         }
     }
 
@@ -264,7 +269,13 @@ public enum CompanyVaultContract {
 
     /// What the service holds a catalog to before signing it. The phone checks the same rows again
     /// and leaves out any that fail.
-    public static func check(_ catalog: Catalog, companyTotalBytes: Int64 = Limits.companyTotalBytes) throws {
+    ///
+    /// Plan LV P3: a manual row with `shared` must sit in a vault row that carries a `minAppBuild`,
+    /// so a phone that cannot open a shared manual never receives one. `sharedManualsMinAppBuild` is
+    /// the service's setting for the first build that can; when given, that `minAppBuild` must be at
+    /// least it.
+    public static func check(_ catalog: Catalog, companyTotalBytes: Int64 = Limits.companyTotalBytes,
+                             sharedManualsMinAppBuild: Int? = nil) throws {
         func refuse(_ message: String) -> Refusal { .invalid(message) }
         guard catalog.format == catalogFormat, catalog.version == catalogVersion else {
             throw refuse("format must be \(catalogFormat), version \(catalogVersion)")
@@ -302,6 +313,14 @@ public enum CompanyVaultContract {
             }
             guard files.insert(manual.vaultId + "\u{0}" + manual.fileName.lowercased()).inserted else {
                 throw refuse("\(manual.fileName) is listed twice in \(manual.vaultId)")
+            }
+            if manual.shared != nil {
+                guard let minimum = catalog.vaults.first(where: { $0.vaultId == manual.vaultId })?.minAppBuild else {
+                    throw refuse("\(manual.fileName) is a shared manual, so \(manual.vaultId) needs a minAppBuild")
+                }
+                if let floor = sharedManualsMinAppBuild, minimum < floor {
+                    throw refuse("\(manual.fileName) is a shared manual, so \(manual.vaultId)'s minAppBuild must be at least \(floor)")
+                }
             }
             total += Int64(manual.sizeBytes)
         }
@@ -384,6 +403,7 @@ public enum CompanyVaultContract {
         }
         guard isHexDigest(manual.revision), isHexDigest(manual.sealedSha256) else { return "\(manual.fileName) has no revision or checksum" }
         guard isDownloadURL(manual.downloadURL) else { return "\(manual.fileName)'s download address must be HTTPS" }
+        if let shared = manual.shared { return sharedProblem(shared, fileName: manual.fileName) }
         return nil
     }
 
@@ -431,8 +451,9 @@ public enum CompanyVaultContract {
 
     /// Check, encode and sign a catalog with the pack-catalog key. Returns the envelope's JSON.
     public static func sign(_ catalog: Catalog, signer: ByteSigner,
-                            companyTotalBytes: Int64 = Limits.companyTotalBytes) throws -> Data {
-        try check(catalog, companyTotalBytes: companyTotalBytes)
+                            companyTotalBytes: Int64 = Limits.companyTotalBytes,
+                            sharedManualsMinAppBuild: Int? = nil) throws -> Data {
+        try check(catalog, companyTotalBytes: companyTotalBytes, sharedManualsMinAppBuild: sharedManualsMinAppBuild)
         let payload = try encoder().encode(catalog)
         let signature = try signer(Data(catalogDomain.utf8) + payload)
         guard signature.count == 64 else { throw IssuanceWire.WireError.signatureLength }

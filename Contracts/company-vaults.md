@@ -1,12 +1,12 @@
-# Company vaults and manuals — contract v1, with the v2 published-vault fields
+# Company vaults and manuals — contract v1, with the v2 published-vault fields and v3 shared manuals
 
 The licence service publishes, for one company, the vaults it has and the manuals in them; every
 phone enrolled in that company installs them and picks up each new version by itself. This is the
 contract the phone reads. The reference implementation is
 `Tools/LicenceIssuance/Sources/LicenceIssuance/CompanyVaults.swift` (`CompanyVaultContract`), the
 phone restates it (`CompanyVaultCatalog`, `CompanyManualSeal`), and both sides' tests read the
-golden fixtures in `fixtures/company-vaults-v1/` and, for the published-vault fields of §6 (Plan LV),
-`fixtures/company-vaults-v2/`. Invented content only; the fixture keys are
+golden fixtures in `fixtures/company-vaults-v1/`, for the published-vault fields of §6 (Plan LV)
+`fixtures/company-vaults-v2/`, and for the shared manuals of §8 (Plan LV P3) `fixtures/company-vaults-v3/`. Invented content only; the fixture keys are
 SHA-256 of the public labels in `fixture-keys.json` and have no authority anywhere.
 
 ## 1. The profile's pointer
@@ -165,6 +165,83 @@ company, vault, pack or version. A pack of n bytes seals to `sealedLength(plaint
 sealed length and `sha256`, opens each chunk, and hands the plaintext pack to the installer, which
 checks `packSignature` as for any pack.
 
+## 8. Shared manuals (Plan LV P3)
+
+A partner who may distribute a manual uploads it once. The service encrypts it **once**, under a
+random 32-byte content key, and gives each company that receives it only that key, wrapped with a key
+derived from the company's secret. The reference is
+`Tools/LicenceIssuance/Sources/LicenceIssuance/SharedManuals.swift`; the phone restates it
+(`CompanySharedManualSeal`, `CompanySharedManualKey`).
+
+**The row.** A manual row may carry one more optional field, absent from the JSON when unset, so a
+company-sealed row is the bytes it always was:
+
+```json
+{ "vaultId": "fixture-split-systems", "fileName": "Installation manual.md", "kind": "md",
+  "revision": "<sha256 of the plaintext>", "sizeBytes": 186, "sealedSha256": "<sha256 of the shared file>",
+  "downloadURL": "https://…/s/c-fixture-installation-manual/1",
+  "shared": { "contentId": "c-fixture-installation-manual", "keyId": 1, "wrappedKey": "<80 characters of base64>" } }
+```
+
+| Field | Meaning |
+|---|---|
+| `shared.contentId` | The shared file's id, a safe identifier, the same for every company. |
+| `shared.keyId` | The content key's number, 1 or more. A rotation raises it. |
+| `shared.wrappedKey` | The content key wrapped for this company: standard base64 of exactly 60 bytes. |
+
+With `shared`, `downloadURL` and `sealedSha256` describe the one shared file, which is the same for
+every company; `sizeBytes` is the plaintext's length and `revision` its SHA-256, exactly as for a
+company-sealed manual, so the phone's length check (`sealedLength(plaintextBytes: sizeBytes)`), the
+limits, the space and Wi-Fi rules and the revision comparison are unchanged.
+
+**The file** (`CompanyVaultContract.SharedManualSeal`): the construction of §3 in every byte (the
+same `ChunkedSeal`), keyed from the content key, under its own domain and magic:
+
+```
+key     = HKDF-SHA256(ikm: content key, salt: none, info: "openglasses.shared-manual.v1"), 32 bytes
+header  = "OGSM" ‖ 0x01 ‖ 0x00100000
+AADᵢ    = "openglasses.shared-manual.v1\n" + contentId + "\n" + keyId + "\n"
+          ‖ header ‖ i (UInt64 big-endian) ‖ (0x01 last chunk, else 0x00)
+```
+
+`keyId` is written in decimal. The context names no company, because the file is every company's.
+Use `SharedManualSeal.newContentKey()` for a new file or a rotation and
+`SharedManualSeal.sealFile(at:to:context:contentKey:)` to seal it; it returns the rows' `revision`,
+`sizeBytes` and `sealedSha256`.
+
+**The key, per company** (`CompanyVaultContract.SharedManualKey`):
+
+```
+context = "openglasses.shared-manual-key.v1\n" + profileId + "\n" + contentId + "\n" + keyId + "\n"
+KEK     = HKDF-SHA256(ikm: company secret, salt: none, info: context), 32 bytes
+wrapped = base64( nonce (12 random bytes) ‖ AES-256-GCM(KEK, content key, AAD: context) ‖ tag (16) )
+```
+
+`SharedManualKey.wrap(_:context:companySecret:)` writes it; `unwrap` refuses a key wrapped for another
+company's secret, another profile, another file or another `keyId` (`unreadable`; the phone says
+`tampered`).
+
+**Rules** (`CompanyVaultContract.check`, again on the phone): `contentId` a safe identifier, `keyId`
+1 or more, `wrappedKey` 60 bytes of base64; and a row with `shared` must be in a vault row that
+carries a `minAppBuild`, so a build that cannot open it never receives it. The service passes its
+`sharedManualsMinAppBuild` setting to `check`/`sign` (`sharedManualsMinAppBuild:`) and that
+`minAppBuild` must be at least it. A phone below a vault row's `minAppBuild` skips the whole vault,
+its manuals included.
+
+**On the phone.** It unwraps the content key with the company secret and
+`[profileId, contentId, keyId]` (before downloading), downloads the shared file into protected
+staging, checks its length and `sealedSha256`, opens it, checks `sizeBytes` and `revision`, and lays
+the manual in as any company manual (`origin: company`, `revision`).
+
+**Rotation.** The service re-encrypts the one file under a new content key with a higher `keyId`, at a
+new address, wraps the new key for each company that remains and deletes the old file. A phone that
+already holds the manual at that `revision` keeps it: the plaintext is unchanged, so nothing is
+downloaded. A phone that does not yet hold it downloads the new file. A new `revision` replaces the
+manual as any new revision does. A key a phone kept from before opens nothing still served.
+
+**Visible to a holder of two catalogs**: that two companies share a file (the same `contentId`,
+`downloadURL` and `sealedSha256`). Not its contents.
+
 ## Fixtures
 
 `fixtures/company-vaults-v1/`: `fixture-keys.json` (labels and the pack-catalog public key),
@@ -186,3 +263,19 @@ layer, an `expects` key twice — each with the words of its refusal). Regenerat
 `REGENERATE_COMPANY_VAULT_V2_FIXTURES=1 swift test --package-path Tools/LicenceIssuance --filter
 CompanyVaultV2Tests/testRegenerateV2Fixtures`; the sealed files and packs regenerate to the same
 bytes, the catalogs' signatures do not.
+
+`fixtures/company-vaults-v3/` (Plan LV P3): `fixture-keys.json` (adds a third company,
+`fixture-third-company`, the content keys' labels and `sharedManualsMinAppBuild` 692),
+`Installation manual.md` (the plaintext), `installation-manual.k1.sealed` and, after a rotation,
+`installation-manual.k2.sealed` (the one shared file under `keyId` 1 and 2), `fixture-split-systems-8.zip`
+(the plain pack of the vault both companies hold, `minAppBuild` 692),
+`catalog-fixture-company-v20.json` and `catalog-fixture-other-company-v20.json` (the same shared row
+with each company's own wrapped key), `catalog-fixture-company-v21.json` and
+`catalog-fixture-other-company-v21.json` (the rotation), `negative-catalogs.json` (a `shared` row under
+a vault row without `minAppBuild`, `keyId` 0, an unsafe `contentId`, a short wrapped key, each with the
+words of its refusal) and `negative-keys.json` (keys that never open the manual: a third company's
+secret, a key wrapped for another profile, the `keyId` 1 key against the rotated file, the new key
+named with the old `keyId`; `fails` says whether the unwrap or the open refuses). Regenerate with
+`REGENERATE_COMPANY_VAULT_V3_FIXTURES=1 swift test --package-path Tools/LicenceIssuance --filter
+CompanyVaultV3Tests/testRegenerateV3Fixtures`; the shared files and wrapped keys regenerate to the
+same bytes, the catalogs' and pack's signatures do not.

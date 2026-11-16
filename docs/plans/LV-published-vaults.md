@@ -13,8 +13,15 @@ base, lays it again over a base that changed and removes it with its base; the r
 publisher → company → technician; company manuals carry `revision` and `origin: company` (My Manuals uploads
 `technician`, photographed ones `capture`); the rows say "from ⟨partner⟩ · version ⟨n⟩", the manual checklist
 (opening a list naming each), frozen and "⟨vault⟩ was removed by ⟨partner⟩"; an answer's prompt carries the
-source line and `CitationEditionCheck`'s notes for pages the vault's index cites, beside the downloading note. **P3 (shared manuals) planned 2026-11-16, not built:** a partner who may distribute a manual uploads it once; it is
+source line and `CitationEditionCheck`'s notes for pages the vault's index cites, beside the downloading note. **P3 (shared manuals) built 2026-11-16 (headless):** a partner who may distribute a manual uploads it once; it is
 encrypted once and each subscribed company receives a small wrapped key ([§8](#8--shared-manuals-one-copy-a-key-per-company)).
+The core package has `SharedManualSeal` (`openglasses.shared-manual.v1`, magic `OGSM`, the same chunked construction
+keyed from a random content key), `SharedManualKey` (HKDF of the company secret over `[profileId, contentId, keyId]`,
+AES-GCM, 60 bytes of base64), the manual row's optional `shared` and its checks (a `shared` row needs its vault row's
+`minAppBuild`, at least `sharedManualsMinAppBuild` when the service passes it), and `company-vaults-v3` fixtures. The
+phone unwraps the key before downloading, checks and opens the one file, and lays the manual in as a company manual;
+a rotation at the same revision keeps the installed manual and downloads nothing, a new revision replaces it.
+Decisions 8–10 built as recommended, to be confirmed with the partner (all service-side). **The service's S4 is next.**
 P2 device pass owed; catalog sync of the new strings owed. All six [decisions](#decisions-for-greig) taken: 1–3 by the owner while discussing, 4–6 as
 recommended (2026-11-15). Manual matching treats one-sided evidence as no difference: an edition or revision known on only one side is
 not a difference.
@@ -241,7 +248,7 @@ is encrypted **once** and only its key is given to each company (envelope encryp
    so, and it reaches every company they choose, encrypted once with a key per company (§8). The storage counts
    against the partner, not each company's 1 GB.
 
-**Proposed to the partner, 2026-11-16 (confirm before P3 is built):**
+**Proposed to the partner, 2026-11-16; built as recommended, still to be confirmed with the partner before S4 ships (all three are the service's):**
 
 8. **Which companies.** *Recommended:* every company subscribed to the vault, with a per-manual *only these
    companies* option for agreements limited to some customers or regions.
