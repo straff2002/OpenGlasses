@@ -1,0 +1,56 @@
+{
+  "cases" : [
+    {
+      "fails" : "unwrap",
+      "file" : "installation-manual.k1.sealed",
+      "name" : "another-company-secret",
+      "profileId" : "fixture-company",
+      "revision" : "a5d735386f5bd15dc0854c69ccc9cbdbf788f138272b0b4b472e6ddd7a6f95af",
+      "secretLabel" : "Avenkin public fixture third company secret v3",
+      "shared" : {
+        "contentId" : "c-fixture-installation-manual",
+        "keyId" : 1,
+        "wrappedKey" : "B4Yz23yXcm+Pi+BgtMNWPg10rivhQoT8Vk2NDFjGFICiS5RYGBLa6+dwm3vLxlMYwIsAWEE57PlFDIvg"
+      }
+    },
+    {
+      "fails" : "unwrap",
+      "file" : "installation-manual.k1.sealed",
+      "name" : "wrapped-for-another-profile",
+      "profileId" : "fixture-company",
+      "revision" : "a5d735386f5bd15dc0854c69ccc9cbdbf788f138272b0b4b472e6ddd7a6f95af",
+      "secretLabel" : "Avenkin public fixture company secret v1",
+      "shared" : {
+        "contentId" : "c-fixture-installation-manual",
+        "keyId" : 1,
+        "wrappedKey" : "G10vgmveqt4AwLEKkI+KxNmQy1K8FGjLLeshH6cZaVwDyQxWXrpeW+7XSaNeFZnMZ+tybl+4u/8zLnm8"
+      }
+    },
+    {
+      "fails" : "open",
+      "file" : "installation-manual.k2.sealed",
+      "name" : "stale-key-against-rotated-file",
+      "profileId" : "fixture-company",
+      "revision" : "a5d735386f5bd15dc0854c69ccc9cbdbf788f138272b0b4b472e6ddd7a6f95af",
+      "secretLabel" : "Avenkin public fixture company secret v1",
+      "shared" : {
+        "contentId" : "c-fixture-installation-manual",
+        "keyId" : 1,
+        "wrappedKey" : "B4Yz23yXcm+Pi+BgtMNWPg10rivhQoT8Vk2NDFjGFICiS5RYGBLa6+dwm3vLxlMYwIsAWEE57PlFDIvg"
+      }
+    },
+    {
+      "fails" : "unwrap",
+      "file" : "installation-manual.k2.sealed",
+      "name" : "new-key-named-with-stale-key-id",
+      "profileId" : "fixture-company",
+      "revision" : "a5d735386f5bd15dc0854c69ccc9cbdbf788f138272b0b4b472e6ddd7a6f95af",
+      "secretLabel" : "Avenkin public fixture company secret v1",
+      "shared" : {
+        "contentId" : "c-fixture-installation-manual",
+        "keyId" : 1,
+        "wrappedKey" : "qWr2MWOkfYSIXe/oCRUmS3v8FdK8EsY2fgmb/Up4RY+4ZBtIOUUkDd4NnH5eh8sn6p+wTIMoN+dS59TJ"
+      }
+    }
+  ]
+}
