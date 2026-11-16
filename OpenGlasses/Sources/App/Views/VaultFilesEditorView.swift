@@ -12,6 +12,13 @@ struct VaultFilesEditorView: View {
 
     private var store: VaultStore? { VaultRegistry.shared.store(forId: vaultId) }
     private var unlocked: Bool { VaultRegistry.shared.isUnlocked(vaultId) }
+    /// Plan LW: a vault of your own grows by adding files.
+    private var canAddFiles: Bool { unlocked && VaultAuthoring.isOwned(vaultId) }
+    @State private var addingFile = false
+    @State private var newFileName = ""
+    @State private var addFileError: String?
+    /// Bumped after a file is added, so the list re-reads the vault's manifest.
+    @State private var revision = 0
 
     var body: some View {
         Group {
@@ -32,7 +39,20 @@ struct VaultFilesEditorView: View {
                                 Label(displayName(filename), systemImage: "doc.text")
                             }
                         }
+                        if canAddFiles {
+                            Button {
+                                newFileName = ""
+                                addingFile = true
+                            } label: {
+                                Label("Add file…", systemImage: "doc.badge.plus")
+                            }
+                            .accessibilityIdentifier("vaultFiles.addFile")
+                        }
+                        if let addFileError {
+                            OGStatusLabel(addFileError, kind: .error)
+                        }
                     }
+                    .id(revision)
                     // Read-only: the vault's own manifest decides it, and nothing on the phone
                     // changes it (Plan KR P6, owner decision 6). The job report says the same.
                     Section {
@@ -51,6 +71,23 @@ struct VaultFilesEditorView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .ogFormStyle()
+        .alert("Add file", isPresented: $addingFile) {
+            TextField("File name", text: $newFileName)
+            Button("Add") { addFile() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A Markdown file the assistant reads with the vault's other files.")
+        }
+    }
+
+    private func addFile() {
+        do {
+            _ = try VaultAuthoring.addFile(named: newFileName, to: vaultId)
+            addFileError = nil
+            revision += 1
+        } catch {
+            addFileError = error.localizedDescription
+        }
     }
 
     private func displayName(_ filename: String) -> String {
