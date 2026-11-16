@@ -40,6 +40,10 @@ targets:
       - path: Contracts/fixtures/company-vaults-v2
         type: folder
         buildPhase: resources
+      # Plan LV P3: shared manuals (one copy, a key per company).
+      - path: Contracts/fixtures/company-vaults-v3
+        type: folder
+        buildPhase: resources
       # Shared FX1 public assignment/archive fixtures (no production keys or content).
       - path: Contracts/fixtures/manual-assignment-v1.json
         buildPhase: resources
