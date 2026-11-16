@@ -1,6 +1,12 @@
 # Plan LX — Reading Charts on Manual Pages (a charging chart or a fan curve, read off the page and said to be approximate)
 
-**Status:** 📝 Drafted 2026-11-15 — nothing implemented.
+**Status:** 🚧 P0 and the words-only part of P2 built 2026-11-16 (headless) — the deterministic core and, live on
+the phone with no model, charts found at import and indexed as words-only passages, announced to the model as unread,
+their page opened for the phone and never sent as the model's picture (see "What shipped in P0"). Not built: P1
+(reading a chart's values: prompts, schema, the cache on disk, the disclosure, the org key, `AIFeature.chartReading`),
+the rest of P2 (`chart_lookup`, precedence wired into `table_lookup` / `domain_calc`, chain-step marking), P3, and the
+P4 device pass. Decisions 5, 6 and 7 taken as recommended 2026-11-16; decisions 1–4 open, so nothing here sends a
+picture anywhere or calls a model.
 **Track:** Field Assist first (charging charts, pressure–temperature curves, derating curves), app-wide
 underneath: any vault PDF, any My Manuals PDF, any photographed manual page.
 **Builds on:**
@@ -349,6 +355,73 @@ Tests:
 - `ChartSafetyClassTests`: charge, derating and gas captions critical; a fan curve not.
 - `ChartCachePolicyTests`: a cut-off reply, a failure and an undecodable reply not stored; a rejected
   reading stored as rejected; the same image and prompt hit; a changed prompt misses.
+
+### What shipped in P0 (2026-11-16)
+
+All pure, Foundation and CoreGraphics only, under `Services/Vault/Charts/`; every input in the tests is
+invented (placed words and hand-written readings).
+
+- **`ChartCandidate`** (§1, §11). Tick runs (`ChartTicks`): at least three upright numbers on one baseline, or
+  aligned at their right edge or centre down a column, evenly spaced (12 % of the median gap) and stepping
+  evenly in value, linearly or by a constant ratio (a logarithmic axis). The second signal is `ChartShape`, from
+  words and region shape: the row is under the column and the column at the row's start (the plot's lower-left
+  corner, within five type sizes); the tick labels stand alone (a column whose numbers head lines of text, or a
+  row set among words, is numbered boxes); words inside the plot that line up with most ticks are a table's
+  rows or columns; more than 24 words inside is not a chart. A candidate needs both. The axis title is the line
+  under the row, or the words set on their side beside the column (else the line over its top tick); its unit
+  is a bracketed run at its end or a last word that is a unit. The caption is the nearest "Figure N" line within
+  a fifth of the page. Header and footer bands never hold ticks. A second column at the row's far end is a
+  second y axis. `pictureType` is where an on-device classifier's answer goes; none is built.
+- **`ChartReading`, `ChartReadingValidator`, `ValidatedChartReading`** (§3), as the plan lists the rules. A
+  reading's axis the page has no run for counts as ticks not on the page; a unit printed on the page is enough
+  when the reading left it out. Only `ValidatedChartReading` (made only by the validator) can be looked up.
+- **`ChartLookup` and `ChartValue`** (§5). `ChartValue` has no public initialiser; it is rounded to the step and
+  carries it. Interpolation is in log space on a logarithmic axis. Past either end of a series' own points is
+  `.outsideChart(.xOutsideSeries)`, as well as past the axis and outside the family.
+- **`ChartCitation`** (§5). The value, outside-the-chart and page-only sentences are held per language in code
+  (English, German, French, Spanish), not in the string catalog, so the tests can prove the word for *about* and
+  the page are in every wording; a language without a template is said in English. A value is written to its
+  step's precision with the language's decimal separator.
+- **`ChartPassage` and `ChartDescriptionCheck`** (§4, §2). The words-only passage: caption and page, "Values not
+  read: the manual gives them only as a chart.", the axes as printed with their tick ranges, and up to 16 words
+  printed inside the plot. The read template is there for P1.
+- **`ChartPrecedence`** (§6) with a count-only `DisagreementTally`; **`ChartSafetyClass`** (§7), the vocabulary in
+  English, German, French and Spanish matched as `LexicalSupport` content terms under the document's rule, plus
+  current against temperature; **`ChartCachePolicy`** (§9) with the key (image SHA-256 : prompt SHA-256, the parts
+  joined by a unit separator) and the store/retry decision. Nothing is written to disk.
+
+**The words-only part of P2, live.**
+- **At import.** `PDFChartReader` reads each page's placed words (`PDFTableReader.positionedWords`) on pages whose
+  plain text holds six numbers and a line of numbers alone, from the document's PDF or the original it was
+  imported from, and `DocumentStore.ingest(charts:)` stores one passage per chart, `DocumentChunker.Kind.chart`,
+  numbered after the row passages and embedded like them. It is the app's text: left out of the document's own
+  text, its language, `writeLocations` and the reconstructed text, like a row passage (`Kind.isAppWritten`).
+  Counts only are logged (`charts_words_only`, `charts_critical`). A page with no text layer gives no chart.
+- **Manuals already imported.** Location version 11. A document whose text is at version 10 has only its charts
+  read (`DocumentStore.replaceCharts`): no table is read again, nothing is recognised again, no text chunk or row
+  is re-embedded. Below 10, the existing paths run and write the charts with the tables (`replaceTables(charts:)`,
+  which otherwise keeps stored chart passages and renumbers them after new rows). A photographed manual
+  (`ingestPages`) gets no charts.
+- **Retrieval.** `.chart` is a searched kind. A chart passage is announced as "(chart, Figure 9, page 41; values
+  not read)", cited like a drawing ("…, page 41, Figure 9", or "…, page 41 (chart)" uncaptioned), and the block
+  carries `VaultRetriever.chartRule`: never a number from the chart or from general knowledge as if the manual
+  said it; say the manual gives this as a chart on the cited page, and send the technician there.
+- **The page.** `FigureAutoOpenPolicy.PassageKind` gains `chart` and `criticalChart`. A question whose evidence is a
+  chart opens its page (`chart_for_question`), found through numbers too, since a value off a chart is asked with
+  numbers; a critical chart's page opens with any question or statement (`critical_chart`); readings, corrections
+  and job bookkeeping open nothing, as before; a named page stages nothing for a chart. A drawing chunk on a page
+  the turn's evidence holds a chart passage for is treated as the chart. `StagedFigure.isChart` keeps the page off
+  the model's image slot (`ManualFigureAttachment.Skipped.chartPage`): the phone shows it, the model never reads
+  values off it. A chart page asked for by name through `manual_figure` or `show_source` is unchanged.
+
+Tests: `ChartCandidateTests`, `ChartReadingValidatorTests`, `ChartLookupTests`, `ChartPassageTests`,
+`ChartCitationTests`, `ChartDescriptionCheckTests`, `ChartPrecedenceTests`, `ChartSafetyClassTests`,
+`ChartCachePolicyTests`, and `ChartPagesTests` (an invented manual drawn into a real PDF: found at import, stored,
+searched, migrated from version 10, announced, staged).
+
+Interpretations: the candidate carries the page and caption but no document id (the store keys it); the shape
+rule reads words only, because PDFKit gives no access to a page's drawn paths; a critical chart's page does not
+open on a reading or a correction, which ask for no page.
 
 ### P1 — reading (live model, headless measurement)
 
