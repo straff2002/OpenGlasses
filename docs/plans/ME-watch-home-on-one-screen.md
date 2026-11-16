@@ -1,6 +1,6 @@
 # Plan ME — The Watch Home on One Screen (the phone's first tiles, glass keys, and More)
 
-**Status:** ✅ P0 built 2026-11-17 — device pass (P1) owed.
+**Status:** ✅ P0 merged 2026-11-17 ([#1090](https://github.com/straff2002/OpenGlasses/pull/1090), build 699); its 15 new strings translated and synced to the watch catalog in the catalog-sync PR that follows it — device pass (P1) owed.
 **Track:** Apple Watch app, every channel that ships it.
 **Builds on:**
 - The phone's home grid: `HomeGridCatalog`, `DockGridCatalog` and `HomeGridDispatcher`
