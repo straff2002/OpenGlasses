@@ -25,6 +25,9 @@ struct AddOnSheetModel: Equatable {
         /// Signed by the enrolled organisation.
         case organisation
         case builtByAssistant
+        /// A file shaped like one an assistant built, received from someone else: a note, never
+        /// trust (anyone can write such an id).
+        case builtByAnotherAssistant
         case editedOnPhone
 
         var text: String {
@@ -32,8 +35,22 @@ struct AddOnSheetModel: Equatable {
             case .reviewed: return String(localized: "Reviewed")
             case .organisation: return String(localized: "From your organisation")
             case .builtByAssistant: return String(localized: "Built by your assistant")
+            case .builtByAnotherAssistant: return String(localized: "Built by an assistant on another phone")
             case .editedOnPhone: return String(localized: "Edited on this phone")
             }
+        }
+    }
+
+    /// The Tested panel: what the assistant's one test of the add-on did.
+    struct Tested: Equatable {
+        let question: String
+        let answer: String
+        let domains: String
+        let time: String
+        let source: String
+        /// Spoken by VoiceOver as one element.
+        var accessibilityText: String {
+            String(localized: "Tested. Asked: \(question). It answered: \(answer). Contacted \(domains). Took \(time).")
         }
     }
 
@@ -50,6 +67,10 @@ struct AddOnSheetModel: Equatable {
     let skills: [Row]
     let permissions: [Row]
     let confirmTitle: String
+    /// Only for an add-on the assistant built and tested.
+    let tested: Tested?
+    /// Under the buttons' meaning: cancelling a built add-on deletes it.
+    let cancelNote: String?
 
     init(review: AddOnInstallService.Review) {
         let candidate = review.candidate
@@ -58,9 +79,21 @@ struct AddOnSheetModel: Equatable {
         version = manifest.version
         icon = manifest.icon
         summary = manifest.description
-        if let domain = candidate.authorDomain {
+        let builtHere = review.origin.isSelfBuilt
+        let builtElsewhere = !builtHere && SelfBuiltIdentity.isSelfBuiltID(manifest.id)
+            && manifest.author.name == SelfBuiltIdentity.authorName
+        switch (builtHere, builtElsewhere, candidate.authorDomain) {
+        case (true, _, let domain?):
+            byline = String(localized: "Built by your assistant · data from \(domain)")
+        case (true, _, nil):
+            byline = String(localized: "Built by your assistant")
+        case (false, true, let domain?):
+            byline = String(localized: "Built by an assistant on another phone · data from \(domain)")
+        case (false, true, nil):
+            byline = String(localized: "Built by an assistant on another phone")
+        case (false, false, let domain?):
             byline = String(localized: "By \(manifest.author.name) · \(domain)")
-        } else {
+        case (false, false, nil):
             byline = String(localized: "By \(manifest.author.name)")
         }
 
@@ -70,7 +103,8 @@ struct AddOnSheetModel: Equatable {
         case .organisationSigned: badges.append(.organisation)
         case .community: break
         }
-        if review.origin.isSelfBuilt { badges.append(.builtByAssistant) }
+        if builtHere { badges.append(.builtByAssistant) }
+        if builtElsewhere { badges.append(.builtByAnotherAssistant) }
         if case .edit = review.kind { badges.append(.editedOnPhone) }
         self.badges = badges
 
@@ -111,6 +145,20 @@ struct AddOnSheetModel: Equatable {
         permissions = AddOnPermissionSummary.lines(for: manifest.permissions).map { line in
             let grew = (line.kind == .network && networkGrew) || addedKinds.contains(line.kind.rawValue)
             return Row(id: "permission-\(line.kind.rawValue)", text: line.text, emphasis: grew ? .added : .normal)
+        }
+
+        if let summary = review.tested {
+            let domains = summary.domainsContacted.isEmpty
+                ? String(localized: "nothing")
+                : summary.domainsContacted.formatted(.list(type: .and))
+            let answer = summary.spokenAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
+            tested = Tested(question: summary.sampleQuestion,
+                            answer: answer.isEmpty ? String(localized: "(nothing)") : answer,
+                            domains: domains, time: summary.elapsedText, source: summary.sourceText)
+            cancelNote = String(localized: "Cancel deletes this add-on and its test. Nothing is installed unless you tap \(confirmTitle).")
+        } else {
+            tested = nil
+            cancelNote = nil
         }
     }
 

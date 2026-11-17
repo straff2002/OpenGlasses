@@ -2850,6 +2850,14 @@ struct Config {
         return ceiling
     }
 
+    /// Whether the organisation forbids the assistant building add-ons ("build yourself a skill
+    /// for that"). A ceiling pinned on, written only by a profile; false on a phone without one.
+    /// Add-ons it already built follow the community-add-on ceiling in `addOnCeiling`.
+    static var organizationForbidsSelfBuiltAddOns: Bool {
+        PolicyEnvelope.bool(.organizationForbidsSelfBuiltAddOns,
+                            stored: UserDefaults.standard.bool(forKey: "organizationForbidsSelfBuiltAddOns"))
+    }
+
     /// The wearer's own switch for every add-on at once (Plan GF): off, no add-on skill is offered
     /// to the model and none runs; each add-on keeps its own switch underneath. On by default.
     static var addOnsEnabled: Bool {
@@ -3234,6 +3242,7 @@ struct Config {
         "reading_session",      // No passive camera OCR of documents — a "book" can be a chart
         "manual_capture",      // Paper manuals must not become clinical capture records.
         "team_learning",        // A clinical site's "learning" is a patient note wearing a different hat
+        "build_addon",          // Researching, reading pages and test-calling a new service are all egress
     ]
 
     // MARK: - Medical Export

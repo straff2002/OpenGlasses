@@ -918,6 +918,7 @@ struct ToolsActionsSections: View {
             if Config.agentModeEnabled {
                 NavigationLink {
                     SuggestedSkillsView()
+                        .environmentObject(appState)
                 } label: {
                     HStack {
                         Label("Suggested Skills", systemImage: "lightbulb.max")

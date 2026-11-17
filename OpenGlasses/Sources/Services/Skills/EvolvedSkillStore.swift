@@ -13,12 +13,25 @@ final class EvolvedSkillStore: ObservableObject {
 
     enum Status: String { case pending, approved, dismissed }
 
+    /// What a proposal is. Rows written before the column existed are voice skills.
+    enum Kind: String, Equatable, Sendable {
+        /// A trigger→instruction rule that becomes a voice skill when approved.
+        case voiceSkill
+        /// "Build an add-on for: …?" — the draft's trigger is the goal; Build it starts an
+        /// ordinary building session, and nothing is fetched before that.
+        case addOnIdea
+    }
+
     struct EvolvedSkill: Identifiable, Equatable {
         let id: String
         let draft: SkillDraft
         let status: Status
         let createdAt: Date
         let resolvedAt: Date?
+        var kind: Kind = .voiceSkill
+
+        /// For an add-on idea: what the add-on should do.
+        var addOnGoal: String? { kind == .addOnIdea ? draft.trigger : nil }
     }
 
     private var db: OpaquePointer?
@@ -31,6 +44,7 @@ final class EvolvedSkillStore: ObservableObject {
         dbURL = docs.appendingPathComponent("evolved_skills.sqlite")
         openDatabase()
         createTable()
+        migrateKindColumn()
         StoreProtection.applyDatabase(at: dbURL)
     }
 
@@ -41,11 +55,11 @@ final class EvolvedSkillStore: ObservableObject {
     /// Enqueue a proposed draft as `pending`. No-ops (returns false) if a skill with the same name
     /// already exists in any status — once dismissed, it's never re-proposed. Returns true if inserted.
     @discardableResult
-    func enqueue(_ draft: SkillDraft) -> Bool {
+    func enqueue(_ draft: SkillDraft, kind: Kind = .voiceSkill) -> Bool {
         guard !knownNames().contains(draft.name) else { return false }
         let sql = """
-        INSERT INTO evolved_skills (id, name, trigger_text, instruction, status, created_at, resolved_at)
-        VALUES (?, ?, ?, ?, 'pending', ?, NULL)
+        INSERT INTO evolved_skills (id, name, trigger_text, instruction, status, created_at, resolved_at, kind)
+        VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?)
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
@@ -55,7 +69,17 @@ final class EvolvedSkillStore: ObservableObject {
         sqlite3_bind_text(stmt, 3, draft.trigger, -1, SQLITE_TRANSIENT)
         sqlite3_bind_text(stmt, 4, draft.instruction, -1, SQLITE_TRANSIENT)
         sqlite3_bind_double(stmt, 5, Date().timeIntervalSince1970)
+        sqlite3_bind_text(stmt, 6, kind.rawValue, -1, SQLITE_TRANSIENT)
         return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    /// Suggest building an add-on for `goal`. Never twice for the same goal (its name is on record
+    /// once suggested, whatever happened to it).
+    @discardableResult
+    func enqueueAddOnIdea(goal: String) -> Bool {
+        let draft = SkillDraft(name: AddOnIdeaClassifier.name(for: goal), trigger: goal,
+                               instruction: "Build an add-on")
+        return enqueue(draft, kind: .addOnIdea)
     }
 
     func approve(id: String) { resolve(id: id, to: .approved) }
@@ -88,13 +112,14 @@ final class EvolvedSkillStore: ObservableObject {
         return names
     }
 
-    /// Drafts to dedup a new proposal against — pending + approved (dismissed ones are blocked by name).
+    /// Drafts to dedup a new proposal against — pending + approved voice skills (dismissed ones
+    /// are blocked by name; add-on ideas are a different kind of proposal).
     func activeDrafts() -> [SkillDraft] {
-        (pending() + approved()).map(\.draft)
+        (pending() + approved()).filter { $0.kind == .voiceSkill }.map(\.draft)
     }
 
     private func fetch(status: Status?) -> [EvolvedSkill] {
-        var sql = "SELECT id, name, trigger_text, instruction, status, created_at, resolved_at FROM evolved_skills"
+        var sql = "SELECT id, name, trigger_text, instruction, status, created_at, resolved_at, kind FROM evolved_skills"
         if let status { sql += " WHERE status = '\(status.rawValue)'" }
         sql += " ORDER BY created_at DESC"
         var rows: [EvolvedSkill] = []
@@ -110,7 +135,9 @@ final class EvolvedSkillStore: ObservableObject {
                 status: Status(rawValue: String(cString: sqlite3_column_text(stmt, 4))) ?? .pending,
                 createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 5)),
                 resolvedAt: sqlite3_column_type(stmt, 6) != SQLITE_NULL
-                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 6)) : nil
+                    ? Date(timeIntervalSince1970: sqlite3_column_double(stmt, 6)) : nil,
+                kind: sqlite3_column_type(stmt, 7) != SQLITE_NULL
+                    ? Kind(rawValue: String(cString: sqlite3_column_text(stmt, 7))) ?? .voiceSkill : .voiceSkill
             ))
         }
         return rows
@@ -175,9 +202,29 @@ final class EvolvedSkillStore: ObservableObject {
             instruction TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'pending',
             created_at REAL NOT NULL,
-            resolved_at REAL
+            resolved_at REAL,
+            kind TEXT NOT NULL DEFAULT 'voiceSkill'
         )
         """)
+    }
+
+    /// Add the `kind` column to a database made before it existed; every existing row is a voice
+    /// skill. Idempotent: a database that has the column is left alone.
+    private func migrateKindColumn() {
+        guard !columnNames().contains("kind") else { return }
+        exec("ALTER TABLE evolved_skills ADD COLUMN kind TEXT NOT NULL DEFAULT 'voiceSkill'")
+    }
+
+    /// The table's columns, for the migration and its test.
+    func columnNames() -> Set<String> {
+        var names = Set<String>()
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(evolved_skills)", -1, &stmt, nil) == SQLITE_OK else { return names }
+        defer { sqlite3_finalize(stmt) }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let text = sqlite3_column_text(stmt, 1) { names.insert(String(cString: text)) }
+        }
+        return names
     }
 
     @discardableResult

@@ -2438,6 +2438,10 @@ class AppState: ObservableObject, AppStateProtocol {
     let addOnInstall: AddOnInstallService
     /// Runs add-on skills for the model; wired once the app's stores exist.
     private(set) var addOnRunService: AddOnRunService?
+    /// Add-ons the assistant built and tested, waiting for the wearer's approval on the sheet.
+    let addOnDrafts = AddOnDraftStore()
+    /// "Build yourself a skill for that" (`build_addon`); wired with the add-ons.
+    private(set) var addOnAuthoring: AddOnAuthoringService?
 
     /// Receiving a vault from a publisher's link or QR code (Plan FS PR2). This instance serves
     /// the `openglasses://vault?src=…` route — the one a code scanned with the phone's own Camera
@@ -7883,11 +7887,62 @@ class AppState: ObservableObject, AppStateProtocol {
                     await self?.speechService.speak(text, source: .acknowledgement)
                 }))
         addOnInstall.onChange = { [weak self] in self?.refreshAddOnTools() }
+        wireAddOnAuthoring()
         // An organisation profile arriving or leaving changes which signatures the phone trusts.
         NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.refreshAddOnTools() }
         }
         refreshAddOnTools()
+    }
+
+    /// The assistant's add-on builder: the wearer's cloud model off the conversation, web search
+    /// through the router like any tool call, documentation over the hardened client, the test over
+    /// the add-on transport, and the consent asked on the shared confirmation surface (phone card
+    /// and voice). Re-registers `build_addon` with it.
+    private func wireAddOnAuthoring() {
+        let location = locationService
+        let registry = nativeToolRegistry
+        let memory = userMemory
+        let llm = llmService
+        let service = AddOnAuthoringService(
+            store: addOnStore, drafts: addOnDrafts, install: addOnInstall,
+            dependencies: AddOnAuthoringService.Dependencies(
+                model: LiveAddOnAuthoringModel(fallback: { system, user in
+                    try await llm.completeStateless(user, system: system)
+                }),
+                search: { [weak self] query in
+                    guard let self else { return "" }
+                    let outcome = await self.nativeToolRouter.execute(
+                        .root(name: "web_search", arguments: ["query": query], origin: .appInternal))
+                    return outcome.text
+                },
+                docs: BoundedAddOnDocsFetcher(),
+                transport: BoundedAddOnHTTPTransport(),
+                consent: { [weak self] request in
+                    guard let self else { return false }
+                    return await self.toolConfirmationCoordinator.requestConfirmation(
+                        toolName: BuildAddOnTool.toolName, summary: request.line, spokenPrompt: request.line)
+                },
+                announce: { [weak self] line in
+                    NoticeCenter.shared.post(line, severity: .advisory, source: .app)
+                    await self?.speechService.speak(line, source: .acknowledgement)
+                },
+                conditions: { BuildAddOnTool.liveConditions() },
+                nativeCapabilities: {
+                    registry.allTools.compactMap { tool in
+                        (tool is SkillPackToolWrapper || tool is AddOnToolWrapper) ? nil
+                            : AddOnAuthoringPreflight.Capability(name: tool.name, summary: tool.description)
+                    }
+                },
+                nativeToolNames: { AppState.addOnNativeToolNames(registry) },
+                wearerFacts: { memory.allEntries().map(\.value) },
+                runContext: { permissions in
+                    let fix = permissions.location ? location.currentLocation?.coordinate : nil
+                    return AddOnRunContextSource.context(permissions: permissions,
+                                                         latitude: fix?.latitude, longitude: fix?.longitude)
+                }))
+        addOnAuthoring = service
+        nativeToolRegistry.register(BuildAddOnTool(service: { [weak service] in service }))
     }
 
     /// Rebuild the registry's add-on skills after an install, edit, removal or switch (Plan GF).

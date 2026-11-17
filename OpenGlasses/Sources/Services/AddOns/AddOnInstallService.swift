@@ -98,6 +98,8 @@ final class AddOnInstallService: ObservableObject {
         let candidate: AddOnCandidate
         let kind: Kind
         let origin: AddOnOrigin
+        /// For an add-on the assistant built: what its test did, for the sheet's Tested panel.
+        var tested: AddOnTestedSummary? = nil
     }
 
     enum Prompt: Identifiable, Equatable {
@@ -130,6 +132,9 @@ final class AddOnInstallService: ObservableObject {
     /// Called after anything is installed or saved, to rebuild the registry. Settable so the app
     /// can wire it once it exists.
     var onChange: @MainActor () -> Void
+    /// Told when the wearer accepts or turns down the sheet for an add-on the assistant built, so
+    /// its draft and test trace are deleted either way (kept only as the installed add-on).
+    var onSelfBuiltResolved: (@MainActor (_ sessionID: String, _ installed: Bool) -> Void)?
     private var pendingOffer: FetchOffer?
 
     init(store: AddOnStore,
@@ -194,17 +199,17 @@ final class AddOnInstallService: ObservableObject {
     }
 
     /// Bytes from any source — a link, a file, the gallery, or the assistant (with `.selfBuilt`
-    /// provenance). Admission runs; the sheet shows what it found.
-    func receive(_ data: Data, origin: AddOnOrigin) {
+    /// provenance and what its test did). Admission runs; the sheet shows what it found.
+    func receive(_ data: Data, origin: AddOnOrigin, tested: AddOnTestedSummary? = nil) {
         // A snapshot of what is installed, so the pure review reads values rather than the store.
         var installed: [String: AddOnAdmission.Installed] = [:]
         for row in store.installed { installed[row.id] = store.admissionInstalled(id: row.id) }
         let outcome = AddOnAdmission.review(data, installed: { installed[$0] }, context: context())
         switch outcome {
         case .install(let candidate):
-            prompt = .review(Review(id: UUID(), candidate: candidate, kind: .install, origin: origin))
+            prompt = .review(Review(id: UUID(), candidate: candidate, kind: .install, origin: origin, tested: tested))
         case .update(let candidate, let diff):
-            prompt = .review(Review(id: UUID(), candidate: candidate, kind: .update(diff), origin: origin))
+            prompt = .review(Review(id: UUID(), candidate: candidate, kind: .update(diff), origin: origin, tested: tested))
         case .refused(let reasons):
             prompt = .refused(reasons)
         }
@@ -231,6 +236,9 @@ final class AddOnInstallService: ObservableObject {
         switch result {
         case .success(let row):
             onChange()
+            if case .selfBuilt(let provenance) = review.origin, review.tested != nil {
+                onSelfBuiltResolved?(provenance.sessionID, true)
+            }
             switch review.kind {
             case .install: prompt = .done(String(localized: "\(row.name) is installed."))
             case .update: prompt = .done(String(localized: "\(row.name) is updated to \(row.version)."))
@@ -243,6 +251,9 @@ final class AddOnInstallService: ObservableObject {
 
     func dismiss() {
         pendingOffer = nil
+        if case .review(let review) = prompt, case .selfBuilt(let provenance) = review.origin, review.tested != nil {
+            onSelfBuiltResolved?(provenance.sessionID, false)
+        }
         prompt = nil
     }
 

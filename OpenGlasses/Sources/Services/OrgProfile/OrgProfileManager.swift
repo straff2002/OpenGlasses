@@ -1111,6 +1111,7 @@ extension SettingKey {
         case .organizationForbidsAddOns: return String(localized: "Add-ons are off")
         case .organizationForbidsCommunityAddOns: return String(localized: "Only signed add-ons can be installed")
         case .organizationAllowsOnlyOrganisationAddOns: return String(localized: "Only your organisation's add-ons can be installed")
+        case .organizationForbidsSelfBuiltAddOns: return String(localized: "The assistant can't build add-ons")
         case .organizationRequiresBlurBeforeOfficeSync: return String(localized: "Faces must be blurred before a job recording goes to the office")
         case .organizationForbidsRecordingSyncOnCellular: return String(localized: "Job recordings are never sent over mobile data")
         case .organizationRequiresTableChecks: return String(localized: "A table read from a picture gives no value until it is checked")

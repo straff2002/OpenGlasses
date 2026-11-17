@@ -47,6 +47,8 @@ struct AddOnsSettingsView: View {
                 Text("Every add-on shows what it can do before it installs, and nothing updates without asking you.")
             }
 
+            AddOnDraftsSection(drafts: appState.addOnDrafts)
+
             Section {
                 Button {
                     importing = true
@@ -98,6 +100,42 @@ struct AddOnsSettingsView: View {
                 return AddOnAvailability.explanation(hidden)
             }
             return record.version
+        }
+    }
+}
+
+/// Add-ons the assistant built and tested that are waiting for the wearer: open the sheet again,
+/// or delete one. Shown only when there is one.
+struct AddOnDraftsSection: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var drafts: AddOnDraftStore
+
+    var body: some View {
+        if !drafts.drafts.isEmpty {
+            Section {
+                ForEach(drafts.drafts) { draft in
+                    Button {
+                        appState.addOnAuthoring?.review(draftID: draft.id)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(draft.name)
+                            Text("Built for: \(draft.goal)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .swipeActions {
+                        Button("Delete", role: .destructive) {
+                            appState.addOnAuthoring?.discard(draftID: draft.id)
+                        }
+                    }
+                }
+            } header: {
+                Text("Built for You")
+            } footer: {
+                Text("Your assistant built and tested these. Tap one to review it; nothing is installed until you approve it. Each is deleted after a day.")
+            }
+            .onAppear { drafts.sweepExpired(now: Date()) }
         }
     }
 }
@@ -210,6 +248,10 @@ struct AddOnDetailView: View {
             }
             Button("Remove", role: .destructive) { confirmingRemove = true }
                 .disabled(!store.isWritable)
+        } footer: {
+            if record.isBuiltByAssistant {
+                Text("Exported as a plain add-on file. Whoever opens it is told an assistant built it.")
+            }
         }
     }
 
@@ -464,6 +506,32 @@ struct AddOnReviewSheet: View {
             }
             Section("What it can do") {
                 ForEach(model.permissions) { row(for: $0) }
+            }
+            if let tested = model.tested {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        LabeledContent("Asked", value: tested.question)
+                        LabeledContent("It answered", value: tested.answer)
+                        LabeledContent("Contacted", value: tested.domains)
+                        LabeledContent("Took", value: tested.time)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(tested.accessibilityText)
+                    NavigationLink("View Source") {
+                        ScrollView {
+                            Text(tested.source)
+                                .font(.system(.footnote, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                        .navigationTitle("Source")
+                    }
+                } header: {
+                    Text("Tested")
+                } footer: {
+                    if let note = model.cancelNote { Text(note) }
+                }
             }
         }
         .navigationTitle(model.title)

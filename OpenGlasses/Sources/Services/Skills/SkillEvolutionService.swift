@@ -14,7 +14,7 @@ struct LLMSkillEvolutionAnalyzer: SkillEvolutionAnalyzer {
 
     func analyze(_ samples: [FailureSample]) async -> String? {
         guard !samples.isEmpty else { return nil }
-        return try? await complete(SkillEvolutionPrompt.system, SkillEvolutionPrompt.build(samples))
+        return try? await complete(SkillEvolutionPrompt.systemPrompt(for: samples), SkillEvolutionPrompt.build(samples))
     }
 }
 
@@ -80,8 +80,17 @@ final class SkillEvolutionService: ObservableObject {
 
         let batch = samples
         defer { samples.removeAll() }
-        guard let raw = await analyzer.analyze(batch),
-              let draft = SkillProposal.validate(raw, existingNames: store.knownNames()),
+        guard let raw = await analyzer.analyze(batch) else { return nil }
+        // A second kind of proposal, an add-on idea: accepted only when the batch
+        // really is mostly "no tool could get it", whatever the analyser says, and only ever as an
+        // inbox suggestion — nothing is fetched until the wearer taps Build it.
+        if let goal = AddOnIdeaClassifier.idea(in: raw) {
+            if AddOnIdeaClassifier.isDominatedByMissingCapability(batch) {
+                store.enqueueAddOnIdea(goal: goal)
+            }
+            return nil
+        }
+        guard let draft = SkillProposal.validate(raw, existingNames: store.knownNames()),
               !SkillDeduplicator.isDuplicate(draft, against: store.activeDrafts()) else { return nil }
         return store.enqueue(draft) ? draft : nil
     }
@@ -92,7 +101,7 @@ final class SkillEvolutionService: ObservableObject {
     /// skill retrieval and the prompt-injection screen. Self-authored instructions only ever enter the
     /// prompt through this explicit user action.
     func approve(id: String) {
-        guard let item = store.pending().first(where: { $0.id == id }) else { return }
+        guard let item = store.pending().first(where: { $0.id == id }), item.kind == .voiceSkill else { return }
         store.approve(id: id)
         VoiceSkillStore.shared.save(VoiceSkill(id: UUID().uuidString,
                                                trigger: item.draft.trigger.lowercased(),
@@ -101,4 +110,15 @@ final class SkillEvolutionService: ObservableObject {
     }
 
     func dismiss(id: String) { store.dismiss(id: id) }
+
+    /// The wearer tapped Build it on an add-on idea: the idea leaves the inbox and an ordinary
+    /// building session starts (with every gate it has). Returns what to tell the wearer, or nil
+    /// when `id` isn't a pending idea.
+    func buildAddOn(id: String, with service: AddOnAuthoringService?) -> String? {
+        guard let item = store.pending().first(where: { $0.id == id }), let goal = item.addOnGoal else { return nil }
+        guard let service else { return String(localized: "Building add-ons isn't available right now.") }
+        let outcome = service.start(goal: goal)
+        if case .started = outcome { store.approve(id: id) }
+        return outcome.text
+    }
 }

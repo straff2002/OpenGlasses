@@ -79,6 +79,9 @@ enum ActivityTitler {
     static let templates: [String: Template] = [
         // Notes, memory and the assistant's own stores
         "save_note": .init("Saved a note for you"),
+        "build_addon": .init("Started building an add-on for you", actions: [
+            "improve": "Started improving an add-on for you", "cancel": "Stopped building an add-on",
+        ], reads: ["status"]),
         "notes_vault": .init("Added a note to your vault", reads: ["query", "recall"]),
         "health_vault": .init("Logged a health entry for you", reads: ["query"]),
         "contextual_note": .init("Saved a note about where you are"),

@@ -59,6 +59,19 @@ enum SkillEvolutionPrompt {
     If there is no clear recurring pattern, reply with the single word: none
     """
 
+    /// The variant used when the batch is mostly "no tool could get X": the answer may instead be
+    /// one line suggesting an add-on, which only ever becomes a suggestion in the inbox.
+    static let systemAllowingAddOnIdea = system + """
+
+    If the failures are mostly the assistant having no way to look something up from the web     (live data such as tide times, a transport timetable or a public service's status), you may     instead reply with exactly one line:
+    addon-idea: <what an add-on should look up, in a few plain words>
+    """
+
+    /// The system prompt for this batch.
+    static func systemPrompt(for samples: [FailureSample]) -> String {
+        AddOnIdeaClassifier.isDominatedByMissingCapability(samples) ? systemAllowingAddOnIdea : system
+    }
+
     static func build(_ samples: [FailureSample]) -> String {
         var out = "Failed interactions:\n"
         for (i, s) in samples.enumerated() {

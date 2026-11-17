@@ -167,6 +167,22 @@ struct BoundedHTTPClient {
             idleTimeout: 5
         )
 
+        /// A documentation page the assistant reads while it builds an add-on the wearer asked
+        /// for (the self-built add-on flow): one public HTML, JSON or text page, at most 256 KB,
+        /// at most three per building session (`AddOnAuthoringSession`). The text is shown to the
+        /// authoring model only as untrusted data.
+        static let addOnAuthoring = Profile(
+            name: "addOnAuthoring",
+            maximumBytes: 256 * 1024,
+            acceptedMIMETypes: ["text/html", "application/json", "text/plain"],
+            maximumRedirects: 3,
+            allowsPrivateHTTP: false,
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5,
+            acceptsTextAndJSONFamilies: true
+        )
+
         /// One `http` step of a running recipe add-on, sent with `send` (one hop: the add-on's
         /// sandbox follows each redirect itself, after checking it against the add-on's own
         /// allowlist). JSON or text of any kind; an error answer arrives as its status alone, so
