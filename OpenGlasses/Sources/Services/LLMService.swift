@@ -1312,9 +1312,11 @@ class LLMService: ObservableObject {
             return "I can't look at photos with the current on-device model. Switch to a vision-capable local model like SmolVLM2, or a cloud model, and try again."
         }
 
-        // The ChatGPT subscription integration cannot currently analyze images. Its photo
-        // requests use another vision-capable provider through the cascade below.
-        if case .declineVision(let message) = ChatGPTVisionGate.decide(provider: provider, hasImage: imageData != nil) {
+        // A ChatGPT model takes a photo only when the account's catalog says it accepts images;
+        // otherwise the photo is refused out loud before a byte is sent.
+        if case .declineVision(let message) = ChatGPTVisionGate.decide(
+            provider: provider, hasImage: imageData != nil,
+            acceptsImages: ChatGPTImageInput.accepts(modelConfig.model)) {
             return message
         }
         if imageData != nil, !isOnDevice, !modelConfig.visionEnabled {

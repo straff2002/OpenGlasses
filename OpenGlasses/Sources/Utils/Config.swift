@@ -713,6 +713,7 @@ struct Config {
                 needsSave = true
             }
         }
+        if ChatGPTVisionOverrideReset.apply(to: &models, defaults: .standard) { needsSave = true }
         if needsSave { setSavedModels(models) }
         // A migration above wrote, so this copy is already stale and the next read decodes once
         // more; nothing is kept for the legacy path, which has no stored list to be a copy of.
