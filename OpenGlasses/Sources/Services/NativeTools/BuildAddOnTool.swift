@@ -78,7 +78,9 @@ struct BuildAddOnTool: NativeTool, ConditionallyOfferedTool {
         case "improve":
             return service.improve(addOnNamed: (args["addon"] as? String) ?? "", goal: goal).text
         default:
-            return String(localized: "Use start, improve, status or cancel.")
+            // Read only by the model, and the four words are the tool's literal action values:
+            // kept in English, not localized.
+            return "Use start, improve, status or cancel."
         }
     }
 
