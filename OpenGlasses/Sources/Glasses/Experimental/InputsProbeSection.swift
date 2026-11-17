@@ -4,8 +4,8 @@ import SwiftUI
 // Plan JV P2. Compiled only in a project generated with AVENKIN_DAT_EXPERIMENTAL=1 (TestFlight
 // only, never submitted for review); `DATExperimentalGuardTests` keeps it that way.
 
-/// Settings › Advanced › Developer, in a flagged build only: Start and Stop for the Inputs probe,
-/// with a live count. What it recorded goes in the support report.
+/// Settings › Advanced & Support › Advanced › Developer, in a flagged build only: Start and Stop for
+/// the Inputs probe, with a live count. What it recorded goes in the support report.
 struct InputsProbeSection: View {
     var body: some View {
         if GlassesSupportPolicy.isSupported, let probe = DATExperimentalFeatures.inputsProbe {
