@@ -259,13 +259,15 @@ struct StatusIndicator: View {
     /// The session's mark: the Avenkin logo while it is ready, the state's own glyph otherwise, on a
     /// wash of the state's hue with a ring of it — the card's connection indicator at a glance.
     /// Capped at half again its size, so at accessibility text sizes the text keeps the width.
+    /// While glasses are connected and report a level, the ring is the glasses' battery instead
+    /// (`StatusMarkRing`): the level, coloured by the charge. The state stays on the wash and glyph.
     private var statusMark: some View {
         let side = min(statusTile, 52 * 1.5)
         return ZStack {
             Circle()
                 .fill(ringColor.opacity(OGTheme.Opacity.accentPillFill))
-            Circle()
-                .strokeBorder(ringColor.opacity(0.55), lineWidth: 2)
+                .accessibilityHidden(true)
+            StatusMarkRing(glasses: appState.glassesService, color: ringColor)
             Group {
                 if iconName == "AvenkinMark" {
                     LogoIcon(size: min(statusGlyph, 28 * 1.5))
@@ -279,9 +281,9 @@ struct StatusIndicator: View {
             // the nearest value that clears AA on its own tint, against
             // the *stronger* wash, so the 0.12 pill fill is covered too.
             .foregroundStyle(OGTheme.tintedAccentLabel(ringColor))
+            .accessibilityHidden(true)
         }
         .frame(width: side, height: side)
-        .accessibilityHidden(true)
     }
 
     /// The status row's text: the state in the headline face, then the model in the caption face,
@@ -634,7 +636,7 @@ struct StatusIndicator: View {
             case .ready: return accent
             case .connecting, .settingUp: return OGTheme.warn
             case .error: return OGTheme.error
-            case .disconnected: return OGTheme.inactive
+            case .disconnected: return restingColor
             }
         } else if isOpenAI {
             switch openAISession.connectionState {
@@ -642,13 +644,18 @@ struct StatusIndicator: View {
             case .ready: return accent
             case .connecting, .settingUp: return OGTheme.warn
             case .error: return OGTheme.error
-            case .disconnected: return OGTheme.inactive
+            case .disconnected: return restingColor
             }
         } else {
             if appState.isListening { return accent }
             if appState.speechService.isSpeaking { return OGTheme.warn }
-            return OGTheme.inactive
+            return restingColor
         }
+    }
+
+    /// The mark at rest: green while glasses are connected, grey otherwise (`StatusMarkRestTint`).
+    private var restingColor: Color {
+        StatusMarkRestTint.tint(glassesConnected: appState.isConnected).color
     }
 
     private var statusLabel: String {
