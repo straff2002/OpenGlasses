@@ -228,6 +228,29 @@ final class BoundedHTTPClientTests: XCTestCase {
         }
     }
 
+    /// Plan LR: a company vault's list and files answer an error page with its status, so the pass
+    /// can log a 404 or a proxy's 502 rather than the error page's content type.
+    func testCompanyVaultProfilesReadOnlyTheStatusOfAnError() throws {
+        let url = URL(string: "https://licence.example/c/opaque/m/abc")!
+        for profile in [BoundedHTTPClient.Profile.companyVaultCatalog, .companyVaultFile(maximumBytes: 1_000)] {
+            XCTAssertTrue(profile.readsOnlyTheStatusOfAnError, profile.name)
+            for (head, status) in [
+                ("HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/html\r\nContent-Length: 999999\r\n\r\n<html>", 502),
+                ("HTTP/1.1 404 Not Found\r\nCache-Control: no-store\r\n\r\n", 404),
+            ] {
+                let parser = HTTPResponseParser(url: url, profile: profile, sink: { _ in XCTFail("an error body is never read") })
+                XCTAssertTrue(try parser.feed(Data(head.utf8)), head)
+                XCTAssertEqual(try parser.response().statusCode, status)
+            }
+        }
+    }
+
+    func testAClientRefusalSummarisesAsItsCase() {
+        XCTAssertEqual(SafeErrorSummary(BoundedHTTPClient.ClientError.idleTimeout).description, "timedOut(idleTimeout)")
+        XCTAssertEqual(SafeErrorSummary(BoundedHTTPClient.ClientError.transport).description, "cannotConnect(transport)")
+        XCTAssertEqual(SafeErrorSummary(BoundedHTTPClient.ClientError.disallowedAddress).description, "refused(disallowedAddress)")
+    }
+
     func testHTTPResponseParserStreamsChunkedBodyAndRejectsOverflow() throws {
         let url = URL(string: "https://example.test/context")!
         let tiny = BoundedHTTPClient.Profile(

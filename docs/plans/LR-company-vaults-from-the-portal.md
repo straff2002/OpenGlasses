@@ -5,7 +5,11 @@
 [As built](#as-built); the strings synced in PR 1048. The service's first phase is built and deployed (private
 repository); its go-live on the host is owed, then the P3 device pass. 2026-11-14: a newly bound phone starts
 the vaults the moment the profile is applied, and every foreground re-reads the vault list, so an upload
-arrives without waiting for the daily profile renewal. All five
+arrives without waiting for the daily profile renewal. 2026-11-18, from a tester's first device run (a
+company's manuals never arrived on an iPad, and the report could not say why): the pass now writes its steps to
+the app's event log (`[transfer] channel=companyVault`, names fingerprinted, failures by case and HTTP status),
+and an answer says why a listed manual is not on the phone — held for the open job, waiting for Wi-Fi or space,
+or a failed download — instead of always "still downloading". All five
 [decisions](#decisions-for-greig) taken 2026-11-13: decision 1 (manuals may be uploaded, with size limits) while
 drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.
@@ -223,7 +227,8 @@ written up for the service in [Contracts/company-vaults.md](../../Contracts/comp
 record, `OrgEnrolmentRecord.companyVaults.highWater`; a lower generation is a replay, one below the profile's
 is "not caught up"; rows over a cap are left out and named); `CompanyManualSeal`; `CompanyVaultLimits`; and the
 pure `CompanyVaultPlan` with every case listed above, plus `CompanyVaultRow` (the rows' wording) and
-`CompanyVaultDownloads` (the still-downloading prompt line).
+`CompanyVaultDownloads` (the prompt line for a listed manual not on the phone yet, worded by why: downloading,
+held for the job, Wi-Fi, space, a newer app, or a failed download).
 
 **P1 (phone):** `CompanyVaultService` runs after every renewal attempt (`OrgProfileManager.renewIfDue`, which
 already runs at launch, foreground and daily), on *Check for Updates* (`OrgProfileManager.checkForUpdates`) and

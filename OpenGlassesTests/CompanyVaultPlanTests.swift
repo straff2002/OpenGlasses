@@ -191,6 +191,42 @@ final class CompanyVaultPlanTests: XCTestCase {
         XCTAssertTrue(note?.contains("still downloading") ?? false)
     }
 
+    func testAnAnswerSaysWhyAManualIsNotHere() {
+        typealias Reason = CompanyVaultDownloads.Reason
+        XCTAssertEqual(Reason.of(wait: .job(version: nil, removal: false), failed: false), .afterJob)
+        XCTAssertEqual(Reason.of(wait: .job(version: nil, removal: false), failed: true), .afterJob,
+                       "a pass under an open job plans the hold, so the hold is what is true now")
+        XCTAssertEqual(Reason.of(wait: .wifi(bytes: 1), failed: false), .onWiFi)
+        XCTAssertEqual(Reason.of(wait: .space(shortfall: 1), failed: false), .noSpace)
+        XCTAssertEqual(Reason.of(wait: .newerApp(build: 900), failed: false), .newerApp)
+        XCTAssertEqual(Reason.of(wait: nil, failed: true), .failed)
+        XCTAssertEqual(Reason.of(wait: nil, failed: false), .downloading)
+
+        let expected: [(Reason, String)] = [
+            (.afterJob, "after this job"), (.onWiFi, "Wi-Fi"), (.noSpace, "space"),
+            (.newerApp, "updated"), (.failed, "hasn't downloaded"),
+        ]
+        for (reason, phrase) in expected {
+            let note = CompanyVaultDownloads.promptNote(titles: ["SLP99 Wiring"], reason: reason) ?? ""
+            XCTAssertTrue(note.contains("SLP99 Wiring"), "\(reason)")
+            XCTAssertTrue(note.contains(phrase), "\(reason): \(note)")
+            XCTAssertFalse(note.contains("downloading now"), "only a download in progress is called one: \(reason)")
+        }
+        XCTAssertNil(CompanyVaultDownloads.promptNote(titles: [], reason: .failed))
+    }
+
+    func testAPassLogsItsFailuresByCaseAndStatus() {
+        XCTAssertEqual(CompanyVaultService.logSummary(HTTPStatusError(status: 404)).description, "notFound(http)#404")
+        XCTAssertEqual(CompanyVaultService.logSummary(HTTPStatusError(status: 502)).description, "serverError(http)#502")
+        XCTAssertEqual(CompanyVaultService.logSummary(BoundedHTTPClient.ClientError.firstByteTimeout).description,
+                       "timedOut(firstByteTimeout)")
+        XCTAssertEqual(CompanyVaultService.logSummary(BoundedHTTPClient.ClientError.unacceptableMIMEType).description,
+                       "badServerResponse(unacceptableMIMEType)")
+        XCTAssertEqual(CompanyVaultService.logSummary(VaultLinkStagingError.writeFailed).detail?.description, "writeFailed")
+        XCTAssertEqual(CompanyVaultService.logSummary(CompanyManualSeal.Failure.io).detail?.description, "io")
+        XCTAssertEqual(CompanyVaultSyncReason.checkForUpdates.logToken, "checkForUpdates")
+    }
+
     func testAStateFromBeforeCompanyVaultsReadsAsNone() throws {
         let json = #"{"document":"d","source":"link","enrolmentId":"e","enrolledAt":"2027-01-15T08:00:00Z","priorStartingValues":{},"wroteStartingKeys":[],"activatedLicence":false}"#
         let record = try ProfileVerification.decoder.decode(OrgEnrolmentRecord.self, from: Data(json.utf8))

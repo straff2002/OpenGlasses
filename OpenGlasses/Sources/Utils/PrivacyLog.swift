@@ -2112,6 +2112,11 @@ enum PrivacyLog {
         /// An expert's time reply to a handover (Plan KM P2), by its lease. The reply names a job
         /// and an organisation; only the lifecycle is logged.
         case assistingReply
+        /// The company vault pass (Plan LR): why it ran, the list it read, what each vault and
+        /// manual waited for, and how each download ended. A vault id and a manual's file name are
+        /// the company's own words, so both are fingerprinted; the reason, the hold and the error
+        /// are closed vocabularies, and sizes are byte counts.
+        case companyVault
     }
 
     enum TransferEvent: String {
@@ -2122,6 +2127,16 @@ enum PrivacyLog {
         case attemptsExhausted, permanentlyFailed
         case sessionResumed, sessionCompleted
         case shareStarted, shareEnded, released, scavenged
+        /// A company vault pass began (`operation` is why) and ended (`count` failures, `total`
+        /// holds).
+        case passStarted, passEnded
+        /// The company's vault list was read (`count` vaults, `total` manuals), or could not be
+        /// (`operation` says which step).
+        case listRead, listFailed
+        /// A vault's changes wait (`operation`: job, wifi, space or newerApp).
+        case held
+        /// One manual downloaded, checked and opened, or not (`error` says why).
+        case manualArrived, manualFailed
     }
 
     /// `operation` is a queued op's kind — `OfflineQueue.OpKind`, a fixed enum — and never its
@@ -2133,11 +2148,12 @@ enum PrivacyLog {
                          operation: PrivacyToken? = nil, signed: Bool? = nil,
                          count: Int? = nil, total: Int? = nil, attempt: Int? = nil,
                          bytes: Int? = nil,
-                         error: SafeErrorSummary? = nil) -> PrivacyEvent {
+                         error: SafeErrorSummary? = nil, durationMs: Int? = nil) -> PrivacyEvent {
         var fields: [PrivacyEvent.Field] = [
             .init(.channel, .token(PrivacyToken(channel.rawValue))),
             .init(.event, .token(PrivacyToken(event.rawValue))),
         ]
+        if let durationMs { fields.append(.init(.duration, .milliseconds(durationMs))) }
         if let item { fields.append(.init(.item, .identifier(item))) }
         if let version { fields.append(.init(.version, .token(version))) }
         if let operation { fields.append(.init(.operation, .token(operation))) }
