@@ -153,7 +153,9 @@ unflagged app runs.
     `requestLiveSession(_, source: .voiceInvocation)`.
   - While Avenkin is already listening it is a no-op that still answers success. While Avenkin is
     speaking it interrupts and listens.
-  - With the mic muted it answers failure, with a short reason Meta can say.
+  - With the wake word muted it still listens, as a temple tap and the Action Button do (owner,
+    2026-11-17: asking by name is as deliberate). In a live session whose mic is muted it answers
+    failure, with a short reason Meta can say.
   - In a session another person is part of (`liveTranslation`, `expertCall`) it is ignored, the
     same as `ownerBlocksClaim`.
   - The reply goes back through `sendSuccess` / `sendFailure` with an `actionOutput` of at most a

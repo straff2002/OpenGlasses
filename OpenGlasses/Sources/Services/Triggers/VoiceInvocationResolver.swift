@@ -28,7 +28,7 @@ enum VoiceInvocationAction: Equatable {
 /// Why a request was answered with a failure. Each carries the short sentence Meta's assistant may
 /// say back to the wearer.
 enum VoiceInvocationRefusal: String, Equatable, CaseIterable {
-    /// The wake-word mic, or the running live session's mic, is muted.
+    /// The running live session's mic is muted. (A muted wake word is not a refusal.)
     case micMuted
     /// Another person is on the line.
     case otherParty
@@ -87,15 +87,17 @@ struct VoiceInvocationAnswer: Equatable {
 /// A launch request means what "start talking" means everywhere else, so the activity table is the
 /// temple taps' (`TempleActionResolver`, `.startTalking`); this adds only what a request from
 /// another assistant needs on top: it must always be answered, it stays out of a call another
-/// person is on, and a muted mic is a reason to say no rather than to listen anyway.
+/// person is on, and a live session whose mic is muted says no rather than claiming to listen.
 enum VoiceInvocationResolver {
 
     static func resolve(_ context: VoiceInvocationContext, enabled: Bool = true) -> VoiceInvocationOutcome {
         guard enabled else { return .refuse(.switchedOff) }
         if context.otherPartyOnLine { return .refuse(.otherParty) }
         let temple = context.temple
-        let muted = temple.activity == .liveSession ? temple.liveMicMuted : temple.micMuted
-        if muted, temple.activity != .busy { return .refuse(.micMuted) }
+        // A muted wake word doesn't stop it: asking by name is as deliberate as a temple tap or the
+        // Action Button, which listen anyway (owner, 2026-11-17). A live session's own mute does —
+        // the session is already up, so "listening" would be a session that can't hear.
+        if temple.activity == .liveSession, temple.liveMicMuted { return .refuse(.micMuted) }
         switch TempleActionResolver.resolve(action: .startTalking, context: temple) {
         case .run(.startListening): return .run(.startListening)
         case .run(.interruptAndListen): return .run(.interruptAndListen)

@@ -40,12 +40,15 @@ final class VoiceInvocationResolverTests: XCTestCase {
         }
     }
 
-    func testAMutedMicIsAFailureWithAReason() {
-        XCTAssertEqual(VoiceInvocationResolver.resolve(context(.standby, micMuted: true)), .refuse(.micMuted))
-        XCTAssertEqual(VoiceInvocationResolver.resolve(context(.speaking, micMuted: true)), .refuse(.micMuted))
-        XCTAssertEqual(VoiceInvocationResolver.resolve(context(.liveSession, liveMicMuted: true)), .refuse(.micMuted))
-        // A live session's own mute is what counts in a live session, and the wake word's elsewhere.
+    func testAMutedWakeWordStillListensLikeATempleTap() {
+        // Asking by name is as deliberate as a temple tap, which listens with the wake word muted.
+        XCTAssertEqual(VoiceInvocationResolver.resolve(context(.standby, micMuted: true)), .run(.startListening))
+        XCTAssertEqual(VoiceInvocationResolver.resolve(context(.speaking, micMuted: true)), .run(.interruptAndListen))
         XCTAssertEqual(VoiceInvocationResolver.resolve(context(.liveSession, micMuted: true)), .alreadyListening)
+    }
+
+    func testAMutedLiveSessionIsAFailureWithAReason() {
+        XCTAssertEqual(VoiceInvocationResolver.resolve(context(.liveSession, liveMicMuted: true)), .refuse(.micMuted))
         XCTAssertEqual(VoiceInvocationResolver.resolve(context(.standby, liveMicMuted: true)), .run(.startListening))
     }
 

@@ -208,8 +208,9 @@ final class GlassesVoiceInvocationServiceTests: XCTestCase {
         XCTAssertEqual(answers.all.first?.0, true)
     }
 
-    func testAMutedMicIsAFailureWithItsSentence() async {
-        performer.context.temple.micMuted = true
+    func testAMutedLiveSessionIsAFailureWithItsSentence() async {
+        performer.context.temple.activity = .liveSession
+        performer.context.temple.liveMicMuted = true
         let service = makeService()
         service.update(connectedDeviceIds: ["a"])
         let answers = await ask("a")
