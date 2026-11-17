@@ -10,7 +10,7 @@ edit with live validation, export, remove), `AddOnToolWrapper` + `ToolDispatchSe
 POST over one hop and the `.recipeAddOn` profiles with the production `BoundedAddOnHTTPTransport`, and the
 gates: Medical Compliance (and so Local Only) hides network add-ons, coverage, and the three organisation
 ceilings as profile keys. **Owed:** device checks (install from a scanned code, AirDrop and Mail; a real run
-on cellular; both sheets with VoiceOver); a catalog sync for the new strings; organisation add-ons by
+on cellular; both sheets with VoiceOver); organisation add-ons by
 reference installed at enrolment (needs a profile field), the `credentials` Keychain store and the reserved
 capabilities' step types; P3 and P4. Drafted 2026-10-01; revised 2026-10-02 (organisation add-ons and
 signed-only capabilities, below).
