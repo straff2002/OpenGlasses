@@ -391,6 +391,37 @@ struct BoundedHTTPClient {
             case .transport: return "the secure connection failed"
             }
         }
+
+        /// The case for a log line. `description` is a sentence, which `SafeErrorSummary` never
+        /// reads, so without this every refusal logged as the type name and the case's ordinal.
+        var summary: SafeErrorSummary {
+            let category: SafeErrorSummary.Category
+            let name: String
+            switch self {
+            case .invalidURL: (category, name) = (.badURL, "invalidURL")
+            case .credentialsOrFragment: (category, name) = (.badURL, "credentialsOrFragment")
+            case .disallowedScheme: (category, name) = (.refused, "disallowedScheme")
+            case .disallowedPort: (category, name) = (.refused, "disallowedPort")
+            case .resolutionFailed: (category, name) = (.cannotConnect, "resolutionFailed")
+            case .disallowedAddress: (category, name) = (.refused, "disallowedAddress")
+            case .mixedAddressPolicy: (category, name) = (.refused, "mixedAddressPolicy")
+            case .redirectMissingLocation: (category, name) = (.badServerResponse, "redirectMissingLocation")
+            case .redirectLoop: (category, name) = (.badServerResponse, "redirectLoop")
+            case .tooManyRedirects: (category, name) = (.badServerResponse, "tooManyRedirects")
+            case .insecureRedirect: (category, name) = (.refused, "insecureRedirect")
+            case .badResponse: (category, name) = (.badServerResponse, "badResponse")
+            case .unsupportedTransferEncoding: (category, name) = (.badServerResponse, "unsupportedTransferEncoding")
+            case .unsupportedContentEncoding: (category, name) = (.badServerResponse, "unsupportedContentEncoding")
+            case .unacceptableMIMEType: (category, name) = (.badServerResponse, "unacceptableMIMEType")
+            case .responseTooLarge: (category, name) = (.badServerResponse, "responseTooLarge")
+            case .truncatedResponse: (category, name) = (.badServerResponse, "truncatedResponse")
+            case .timeout: (category, name) = (.timedOut, "timeout")
+            case .firstByteTimeout: (category, name) = (.timedOut, "firstByteTimeout")
+            case .idleTimeout: (category, name) = (.timedOut, "idleTimeout")
+            case .transport: (category, name) = (.cannotConnect, "transport")
+            }
+            return SafeErrorSummary(category: category, detail: PrivacyToken(name))
+        }
     }
 
     typealias Resolver = (String) async throws -> [String]

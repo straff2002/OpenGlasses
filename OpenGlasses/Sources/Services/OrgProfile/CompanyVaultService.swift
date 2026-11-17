@@ -184,15 +184,18 @@ final class CompanyVaultService: ObservableObject {
         let verifiedBefore = state.highWater ?? 0
         let moved = generation > verifiedBefore
         func save() { manager.saveCompanyVaults(state, enrolmentId: enrolmentId) }
+        PassLog.event(.passStarted, operation: reason.logToken, version: generation)
 
         guard let url = pointer.catalogURL, generation >= 1 else {
             state.failures[CompanyVaultState.catalogFailureKey] = String(localized: "Your organisation's vault list can't be read by this phone.")
+            PassLog.event(.listFailed, operation: "noAddress")
             return save()
         }
         let build = seams.currentBuild()
         if let minimum = pointer.minAppBuild, build < minimum {
             state.failures[CompanyVaultState.catalogFailureKey] =
                 String(localized: "Your organisation's vaults need a newer version of the app (build \(minimum) or later).")
+            PassLog.event(.listFailed, operation: "newerApp", version: minimum)
             return save()
         }
 
@@ -207,6 +210,8 @@ final class CompanyVaultService: ObservableObject {
                 envelope = try await seams.fetchCatalog(url)
                 state.lastCheckedAt = seams.now()
             } catch {
+                // Logged either way: what the row keeps quiet about, a report still shows.
+                PassLog.event(.listFailed, operation: "fetch", error: Self.logSummary(error))
                 // A foreground's re-read that fails (no signal, the host down) is not news: the
                 // profile names nothing newer, so the verified list carries on, and any work it
                 // still owes continues. Only a missing or behind list is named.
@@ -225,8 +230,11 @@ final class CompanyVaultService: ObservableObject {
             catalog = verified
         case .failure(let refusal):
             state.failures[CompanyVaultState.catalogFailureKey] = refusal.explanation
+            PassLog.event(.listFailed, operation: "verify", error: Self.logSummary(refusal))
             return save()
         }
+        PassLog.event(.listRead, version: catalog.generation, count: catalog.vaults.count,
+                      total: catalog.vaults.reduce(0) { $0 + catalog.manuals(in: $1.vaultId).count })
         // The phone may have left or re-enrolled while the list was on its way.
         guard manager.record?.enrolmentId == enrolmentId else { return }
         state.catalog = envelope
@@ -265,16 +273,21 @@ final class CompanyVaultService: ObservableObject {
                     String(localized: "Your organisation's vaults need a newer version of the app (build \(minimum) or later).")
             case .needsNewerApp(let vaultId?, let minimum):
                 state.waits[vaultId] = .newerApp(build: minimum)
+                PassLog.event(.held, vault: vaultId, operation: "newerApp", version: minimum)
             case .waitForJob(let vaultId, let version, let removal):
                 state.waits[vaultId] = .job(version: version, removal: removal)
+                PassLog.event(.held, vault: vaultId, operation: "job")
             case .waitForWiFi(let vaultId, let bytes):
                 state.waits[vaultId] = .wifi(bytes: bytes)
+                PassLog.event(.held, vault: vaultId, operation: "wifi", bytes: Int(bytes))
             case .notEnoughSpace(let vaultId, let shortfall):
                 state.waits[vaultId] = .space(shortfall: shortfall)
+                PassLog.event(.held, vault: vaultId, operation: "space", bytes: Int(shortfall))
             case .remove(let vaultId):
                 let removed = state.vaults[vaultId]
                 let name = removed?.name ?? vaultId
                 await installer.uninstall(vaultId: vaultId)
+                PassLog.event(.removed, vault: vaultId)
                 state.vaults[vaultId] = nil
                 state.manuals[vaultId] = nil
                 state.downloading[vaultId] = nil
@@ -289,6 +302,7 @@ final class CompanyVaultService: ObservableObject {
             case .install(let vault), .update(let vault, _):
                 let staging = seams.staging()
                 let download = seams.download
+                let fetchFailure = FetchFailure()
                 let fetch: (URL) async throws -> Data
                 if vault.isSealedCore {
                     // Plan LV: the core is sealed for this company. Opened here, before the
@@ -298,23 +312,35 @@ final class CompanyVaultService: ObservableObject {
                         pack = try await openSealedCore(vault, profileId: profile.profileId, staging: staging)
                     } catch {
                         state.failures[vault.vaultId] = Self.reason(error, vault: vault)
+                        PassLog.event(.fileFailed, vault: vault.vaultId, operation: "sealedCore",
+                                      bytes: vault.sizeBytes, error: Self.logSummary(error))
                         save()
                         continue
                     }
                     fetch = { _ in pack }
                 } else {
                     fetch = { url in
-                        let staged = try await download(url, vault.sizeBytes, staging)
-                        defer { staging.remove(staged) }
-                        // Mapped, then unlinked: the mapping outlives the file, and the pack is never
-                        // held twice in memory.
-                        return try staging.load(staged)
+                        do {
+                            let staged = try await download(url, vault.sizeBytes, staging)
+                            defer { staging.remove(staged) }
+                            // Mapped, then unlinked: the mapping outlives the file, and the pack is
+                            // never held twice in memory.
+                            return try staging.load(staged)
+                        } catch {
+                            fetchFailure.record(Self.logSummary(error))
+                            throw error
+                        }
                     }
                 }
                 if let failure = await installer.install(vault, fetch: fetch, publicKeyBase64: seams.publicKeyBase64,
                                                          currentBuild: build) {
                     state.failures[vault.vaultId] = String(localized: "Couldn't install \(vault.name): \(failure).")
+                    // The installer's reason is a sentence, so the row has it and the log does not;
+                    // a download that failed is logged by its cause.
+                    PassLog.event(.fileFailed, vault: vault.vaultId, operation: "core", bytes: vault.sizeBytes,
+                                  error: fetchFailure.summary)
                 } else {
+                    PassLog.event(.installed, vault: vault.vaultId, operation: "core", bytes: vault.sizeBytes)
                     state.vaults[vault.vaultId] = .init(packId: vault.id, name: vault.name, version: vault.version,
                                                         updatedAt: seams.now(), publisherName: vault.publisher?.name,
                                                         publisherVersion: vault.publisher?.version, extends: vault.extends)
@@ -340,6 +366,7 @@ final class CompanyVaultService: ObservableObject {
         noteDownloading(&state, catalog: catalog)
         if state.waits.isEmpty, state.failures.isEmpty { state.appliedGeneration = catalog.generation }
         save()
+        PassLog.event(.passEnded, operation: reason.logToken, count: state.failures.count, total: state.waits.count)
     }
 
     /// Download, check and open each file, then lay the ones that arrived into the vault together.
@@ -355,10 +382,16 @@ final class CompanyVaultService: ObservableObject {
                 return
             }
             for manual in work.adding {
+                let started = seams.now()
                 do {
                     staged.append(try await stage(manual, profileId: profileId, secret: secret, staging: staging))
+                    PassLog.event(.manualArrived, vault: vaultId, manual: manual.fileName, bytes: manual.sizeBytes,
+                                  milliseconds: Self.milliseconds(since: started, now: seams.now()))
                 } catch {
                     failures.append(Self.reason(error, manual: manual))
+                    PassLog.event(.manualFailed, vault: vaultId, manual: manual.fileName, bytes: manual.sizeBytes,
+                                  milliseconds: Self.milliseconds(since: started, now: seams.now()),
+                                  error: Self.logSummary(error))
                 }
             }
         }
@@ -368,6 +401,7 @@ final class CompanyVaultService: ObservableObject {
         }
         do {
             try await installer.applyManuals(vaultId: vaultId, adding: staged, removing: work.removing)
+            PassLog.event(.imported, vault: vaultId, count: staged.count, total: work.removing.count)
             var installed = state.manuals[vaultId] ?? [:]
             for name in work.removing { installed[name] = nil }
             for item in staged { installed[item.manual.fileName] = item.manual.revision }
@@ -377,6 +411,7 @@ final class CompanyVaultService: ObservableObject {
         } catch {
             let name = state.vaults[vaultId]?.name ?? vaultId
             state.failures[vaultId] = String(localized: "Couldn't add the new manuals to \(name). It tries again when the app opens.")
+            PassLog.event(.copyFailed, vault: vaultId, count: staged.count, error: Self.logSummary(error))
         }
     }
 
@@ -522,7 +557,7 @@ final class CompanyVaultService: ObservableObject {
     /// profile fetch is under Medical Local Only: it carries nothing of the phone's.
     nonisolated static func boundedCatalogFetch(_ url: URL) async throws -> Data {
         let (data, response) = try await BoundedHTTPClient().fetchData(url, profile: .companyVaultCatalog)
-        guard (200...299).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+        guard (200...299).contains(response.statusCode) else { throw HTTPStatusError(status: response.statusCode) }
         return data
     }
 
@@ -536,7 +571,7 @@ final class CompanyVaultService: ObservableObject {
                 guard received <= bytes else { throw VaultLinkStagingError.tooLarge }
                 try staging.append(chunk, to: archive)
             }
-            guard (200...299).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+            guard (200...299).contains(response.statusCode) else { throw HTTPStatusError(status: response.statusCode) }
             return archive
         } catch {
             staging.remove(archive)
@@ -561,7 +596,9 @@ extension BoundedHTTPClient.Profile {
         allowsPrivateHTTP: false,
         totalTimeout: 20,
         firstByteTimeout: 8,
-        idleTimeout: 5)
+        idleTimeout: 5,
+        // A 404 or 502 is the answer, so the log can say which; its body is never read.
+        readsOnlyTheStatusOfAnError: true)
 
     /// A company vault pack or a sealed manual (Plan LR): up to a few hundred megabytes from the
     /// licence service's storage, sized for a long transfer on a phone connection.
@@ -575,7 +612,66 @@ extension BoundedHTTPClient.Profile {
             allowsPrivateHTTP: false,
             totalTimeout: 1_800,
             firstByteTimeout: 15,
-            idleTimeout: 30)
+            idleTimeout: 30,
+            // An error page (a 404, a proxy's 502) used to fail on its content type before its
+            // status was read; now the status is what comes back and what is logged.
+            readsOnlyTheStatusOfAnError: true)
+    }
+}
+
+/// Why a core's download failed, kept for the log line after the installer reports the failure in
+/// words. Written by the fetch the installer calls, read once it returns.
+final class FetchFailure: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: SafeErrorSummary?
+    func record(_ summary: SafeErrorSummary) { lock.lock(); stored = summary; lock.unlock() }
+    var summary: SafeErrorSummary? { lock.lock(); defer { lock.unlock() }; return stored }
+}
+
+/// A vault list or file request the server answered with a status other than 2xx.
+struct HTTPStatusError: Error, Equatable {
+    let status: Int
+}
+
+extension CompanyVaultSyncReason {
+    /// The reason as a log token: a closed vocabulary.
+    var logToken: String {
+        switch self {
+        case .routine: return "routine"
+        case .enrolled: return "enrolled"
+        case .checkForUpdates: return "checkForUpdates"
+        case .jobClosed: return "jobClosed"
+        case .downloadNow: return "downloadNow"
+        }
+    }
+}
+
+extension CompanyVaultService {
+    /// What went wrong, for the event log: the HTTP status a server answered with, the hardened
+    /// client's refusal by case, a seal or staging failure by case. Never a description.
+    nonisolated static func logSummary(_ error: Error) -> SafeErrorSummary {
+        if let status = error as? HTTPStatusError { return .http(status: status.status) }
+        return SafeErrorSummary(error)
+    }
+
+    nonisolated static func milliseconds(since start: Date, now: Date) -> Int {
+        max(0, Int((now.timeIntervalSince(start) * 1_000).rounded()))
+    }
+
+    /// Plan LR — the vault pass in the app's event log, so a support report shows why a vault or a
+    /// manual did not arrive. Ids and file names are the company's words and are fingerprinted;
+    /// `operation` is always one of this file's literals.
+    enum PassLog {
+        static func event(_ event: PrivacyLog.TransferEvent, vault: String? = nil, manual: String? = nil,
+                          operation: String? = nil, version: Int? = nil, count: Int? = nil, total: Int? = nil,
+                          bytes: Int? = nil, milliseconds: Int? = nil, error: SafeErrorSummary? = nil) {
+            let item = vault.map { vaultId in
+                PrivateIdentifier(manual.map { "\(vaultId)/\($0)" } ?? vaultId)
+            }
+            PrivacyLog.transfer(.companyVault, event, item: item, version: version.map { PrivacyToken(String($0)) },
+                                operation: operation.map { PrivacyToken($0) }, count: count, total: total,
+                                bytes: bytes, error: error, durationMs: milliseconds)
+        }
     }
 }
 

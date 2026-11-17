@@ -97,6 +97,12 @@ struct SafeErrorSummary: Equatable, CustomStringConvertible {
                       code: urlError.errorCode)
             return
         }
+        // The hardened client's own refusals carry a sentence as their description; the case is
+        // what a reader needs ("firstByteTimeout", "unacceptableMIMEType").
+        if let client = error as? BoundedHTTPClient.ClientError {
+            self = client.summary
+            return
+        }
         if let decoding = error as? DecodingError {
             self.init(category: .decoding,
                       detail: PrivacyToken.caseName(of: decoding) ?? PrivacyToken("DecodingError"),

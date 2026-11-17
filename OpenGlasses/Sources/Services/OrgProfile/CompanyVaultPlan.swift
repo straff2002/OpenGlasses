@@ -447,19 +447,59 @@ struct CompanyVaultRow: Equatable, Identifiable, Sendable {
     }
 }
 
-/// Plan LR P1 — the line an answer carries while a vault's manual is still on its way, so an
-/// answer that would have cited it says it is still downloading instead of answering without it.
+/// Plan LR P1 — the line an answer carries while a vault's manual is not on this phone yet, so an
+/// answer that would have cited it says so instead of answering without it, and says why: a
+/// manual held for the open job, or one whose download failed, is not "still downloading".
 enum CompanyVaultDownloads {
-    static func promptNote(titles: [String]) -> String? {
-        guard !titles.isEmpty else { return nil }
-        return "STILL DOWNLOADING: these manuals belong to this vault but have not reached this phone yet, so nothing from them can be quoted: "
-            + titles.joined(separator: "; ")
-            + ". If a question needs one of them, say that manual is still downloading to this phone rather than answering as if it were here."
+    /// Why listed manuals are not here, as the vault's row has it.
+    enum Reason: Equatable, Sendable {
+        case downloading
+        /// Held: the app changes no vault the open job uses until it ends.
+        case afterJob
+        case onWiFi
+        case noSpace
+        case newerApp
+        /// The last pass could not download them; the next launch or foreground tries again.
+        case failed
+
+        static func of(wait: CompanyVaultState.Wait?, failed: Bool) -> Reason {
+            switch wait {
+            case .job?: return .afterJob
+            case .wifi?: return .onWiFi
+            case .space?: return .noSpace
+            case .newerApp?: return .newerApp
+            case nil: return failed ? .failed : .downloading
+            }
+        }
     }
 
-    /// The note for the vault a job is on, from what the enrolment record says is still to come.
+    static func promptNote(titles: [String], reason: Reason = .downloading) -> String? {
+        guard !titles.isEmpty else { return nil }
+        let say: String
+        switch reason {
+        case .downloading:
+            say = "They are downloading now. If a question needs one of them, say that manual is still downloading to this phone rather than answering as if it were here."
+        case .afterJob:
+            say = "They are held until this job ends, because the app does not change a vault during a job, and they download once it is finished. If a question needs one of them, say that manual reaches this phone after this job; do not say it is downloading."
+        case .onWiFi:
+            say = "They wait for Wi-Fi. If a question needs one of them, say that manual downloads when this phone is on Wi-Fi, or straight away with Download now in Settings, Organisation; do not say it is downloading."
+        case .noSpace:
+            say = "This phone does not have enough free space for them. If a question needs one of them, say that manual can't download until space is freed on this phone; do not say it is downloading."
+        case .newerApp:
+            say = "They need a newer version of the app. If a question needs one of them, say that manual needs the app to be updated first; do not say it is downloading."
+        case .failed:
+            say = "The last try to download them failed, and the app tries again each time it is opened. If a question needs one of them, say that manual hasn't downloaded to this phone and that Settings, Organisation shows why; do not say it is still downloading."
+        }
+        return "NOT ON THIS PHONE YET: these manuals belong to this vault but have not reached this phone, so nothing from them can be quoted: "
+            + titles.joined(separator: "; ") + ". " + say
+    }
+
+    /// The note for the vault a job is on, from what the enrolment record says is still to come
+    /// and what the vault's row says it waits for.
     @MainActor
     static func promptNote(vaultId: String, manager: OrgProfileManager? = nil) -> String? {
-        promptNote(titles: (manager ?? .shared).record?.companyVaults?.downloading[vaultId] ?? [])
+        let state = (manager ?? .shared).record?.companyVaults
+        return promptNote(titles: state?.downloading[vaultId] ?? [],
+                          reason: .of(wait: state?.waits[vaultId], failed: state?.failures[vaultId] != nil))
     }
 }

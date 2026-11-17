@@ -64,6 +64,8 @@ final class CompanyVaultServiceTests: XCTestCase {
     private var catalogResponse = Data()
     private var served: [String: Data] = [:]
     private var downloads: [String] = []
+    /// A file's address the transport fails on, with what it throws.
+    private var failingDownloads: [String: Error] = [:]
     private var catalogFetches = 0
     /// The vault list's host can't be reached (no signal, the host down).
     private var catalogUnreachable = false
@@ -158,6 +160,7 @@ final class CompanyVaultServiceTests: XCTestCase {
         }
         vs.download = { url, bytes, staging in
             self.downloads.append(url.absoluteString)
+            if let failure = self.failingDownloads[url.absoluteString] { throw failure }
             let data = try XCTUnwrap(self.served[url.absoluteString])
             guard data.count <= bytes else { throw VaultLinkStagingError.tooLarge }
             let archive = try staging.create()
@@ -305,6 +308,66 @@ final class CompanyVaultServiceTests: XCTestCase {
         XCTAssertEqual(state?.appliedGeneration, 2)
         XCTAssertNil(state?.waits["lennox"])
         XCTAssertFalse(phone.changedUnderJob)
+    }
+
+    /// A field report: a manual held back for the open job was described by the assistant as
+    /// "still downloading" when nothing was downloading.
+    func testAManualHeldForTheOpenJobIsNotSaidToBeDownloading() async throws {
+        let lennox = pack("lennox", "1")
+        try publish(generation: 1, vaults: [lennox.row], manuals: [])
+        let m = manager()
+        try await enrol(m)
+
+        activeJob = "lennox"
+        let wiring = try manual("Wiring.md", text: "Invented wiring.")
+        try publish(generation: 2, vaults: [lennox.row], manuals: [wiring])
+        await renew(m)
+        XCTAssertEqual(state?.waits["lennox"], .job(version: nil, removal: false))
+        let note = try XCTUnwrap(CompanyVaultDownloads.promptNote(vaultId: "lennox", manager: m))
+        XCTAssertTrue(note.contains("Wiring"))
+        XCTAssertTrue(note.contains("after this job"), note)
+        XCTAssertFalse(note.contains("downloading now"), note)
+
+        activeJob = nil
+        await service.sync(.jobClosed)
+        XCTAssertNotNil(phone.manuals["lennox"]?["Wiring.md"])
+        XCTAssertNil(CompanyVaultDownloads.promptNote(vaultId: "lennox", manager: m))
+    }
+
+    /// A field report: a manual that would not download left nothing in the support report but
+    /// "Couldn't download" on its row. The pass now logs why, with the names fingerprinted.
+    func testAManualThatFailsToDownloadIsLoggedWithItsCause() async throws {
+        let lennox = pack("lennox", "1")
+        let wiring = try manual("Wiring.md", text: "Invented wiring.")
+        try publish(generation: 1, vaults: [lennox.row], manuals: [wiring])
+        failingDownloads[wiring.downloadURL] = HTTPStatusError(status: 502)
+        let sink = PassLines()
+        let tap = PrivacyLog.addTap { _, line in sink.record(line) }
+        defer { PrivacyLog.removeTap(tap) }
+        let m = manager()
+        try await enrol(m)
+
+        XCTAssertEqual(phone.installs, ["lennox@1"])
+        XCTAssertEqual(service.rows().first?.status, "Couldn't download Wiring. It tries again when the app opens.")
+        let lines = sink.lines
+        XCTAssertTrue(lines.contains { $0.contains("event=passStarted") && $0.contains("operation=enrolled") }, "\(lines)")
+        XCTAssertTrue(lines.contains { $0.contains("event=listRead") && $0.contains("count=1") && $0.contains("total=1") }, "\(lines)")
+        XCTAssertTrue(lines.contains { $0.contains("event=installed") && $0.contains("operation=core") }, "\(lines)")
+        let failed = try XCTUnwrap(lines.first { $0.contains("event=manualFailed") }, "\(lines)")
+        XCTAssertTrue(failed.contains("serverError(http)#502"), failed)
+        XCTAssertTrue(failed.contains("item=#\(PrivateIdentifier("lennox/Wiring.md"))"), failed)
+        XCTAssertTrue(lines.contains { $0.contains("event=passEnded") && $0.contains("count=1") }, "\(lines)")
+        XCTAssertFalse(lines.contains { $0.contains("Wiring") || $0.contains("lennox") || $0.contains("licence.example") },
+                       "a vault id, a file name or an address never reaches a log line: \(lines)")
+
+        let note = try XCTUnwrap(CompanyVaultDownloads.promptNote(vaultId: "lennox", manager: m))
+        XCTAssertTrue(note.contains("hasn't downloaded"), note)
+        XCTAssertFalse(note.contains("downloading now"), note)
+
+        failingDownloads = [:]
+        await foreground(m)
+        XCTAssertNotNil(phone.manuals["lennox"]?["Wiring.md"], "tried again on the next foreground")
+        XCTAssertTrue(sink.lines.contains { $0.contains("event=manualArrived") })
     }
 
     func testAManualAddedMovesOnlyThatFileAndAReplacedOneMovesOnlyItself() async throws {
@@ -591,4 +654,15 @@ final class CompanyVaultDepartureTests: XCTestCase {
         let departure = try ProfileVerification.decoder.decode(OrgDeparture.self, from: Data(json.utf8))
         XCTAssertNil(departure.companyVaultIds)
     }
+}
+
+/// The company vault pass's lines, from the event log's tap (which may call from any thread).
+private final class PassLines: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+    func record(_ line: String) {
+        guard line.contains("channel=companyVault") else { return }
+        lock.lock(); stored.append(line); lock.unlock()
+    }
+    var lines: [String] { lock.lock(); defer { lock.unlock() }; return stored }
 }

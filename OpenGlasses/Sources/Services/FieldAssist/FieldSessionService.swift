@@ -2090,7 +2090,8 @@ final class FieldSessionService: ObservableObject {
             context = (context.map { $0 + "\n\n" } ?? "") + note
         }
         // Plan LR: a company manual listed for this vault that has not arrived yet is named, so an
-        // answer that would have cited it says it is still downloading.
+        // answer that would have cited it says why it isn't here: downloading, held for this job,
+        // waiting for Wi-Fi or space, or a download that failed.
         if let note = CompanyVaultDownloads.promptNote(vaultId: store.manifest.id) {
             context = (context.map { $0 + "\n\n" } ?? "") + note
         }
