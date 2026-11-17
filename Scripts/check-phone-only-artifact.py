@@ -36,6 +36,8 @@ def metadata_errors(info):
     errors = []
     if info.get("AvenkinBuildVariant") != "phone-only":
         errors.append("AvenkinBuildVariant is not phone-only")
+    if info.get("AvenkinDATExperimental", "NO") != "NO":
+        errors.append("AvenkinDATExperimental is not NO")
     for key in ("MWDAT", "UISupportedExternalAccessoryProtocols", "NSBluetoothAlwaysUsageDescription",
                 "NSBluetoothPeripheralUsageDescription"):
         if key in info:

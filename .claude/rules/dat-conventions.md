@@ -25,8 +25,12 @@ experimental modules are linked only by `project.experimental.yml`, which is add
 `AVENKIN_DAT_EXPERIMENTAL=1`, and experimental APIs are called only from files under
 `Sources/Glasses/Experimental/` wrapped in `#if DAT_EXPERIMENTAL`. A flagged build is never
 submitted for review. Never link or call them anywhere else. The Core/Camera ones ship inside
-modules we already link, so until JV P0's guard tests land nothing but review stops them. The
-package stays pinned exact in `project.base.yml` so a 1.y is read and adopted deliberately.
+modules we already link, so the compiler cannot stop them; `DATExperimentalGuardTests` does: it
+fails the ordinary suite on any of them named outside that folder or its `#if`, on any other spec
+naming an experimental module, and on a `DAT_EXPERIMENTAL` call site missing from its roster. Check
+an archive with `Scripts/check-archive-dat-experimental.sh` (`STORE-SAFE` / `TESTFLIGHT ONLY — DO
+NOT SUBMIT`) before uploading it. The package stays pinned exact in `project.glasses-sdk.yml` so a
+1.y is read and adopted deliberately.
 
 ## Swift Patterns
 

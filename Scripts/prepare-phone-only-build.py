@@ -35,6 +35,9 @@ def phone_info(info):
             url_types.append(entry)
     info["CFBundleURLTypes"] = url_types
     info["AvenkinBuildVariant"] = "phone-only"
+    # The store product never carries Meta's experimental glasses APIs (Plan JV): stamped as such
+    # literally, not left to a build setting.
+    info["AvenkinDATExperimental"] = "NO"
     return info
 
 

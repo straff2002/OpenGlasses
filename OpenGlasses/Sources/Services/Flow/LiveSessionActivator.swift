@@ -14,6 +14,9 @@ enum LiveActivationSource: String, Equatable, CaseIterable {
     case appUI
     /// A glasses temple tap (Plan GJ).
     case templeTap
+    /// "Hey Meta, open Avenkin": the glasses' own assistant asked for the app (Plan JV P1; only a
+    /// flagged TestFlight build receives one).
+    case voiceInvocation
     /// The wearer said goodbye to the session.
     case voice
     /// Plan GE P3: the signal came back after a live session was handed to the phone, and the
@@ -24,7 +27,7 @@ enum LiveActivationSource: String, Equatable, CaseIterable {
     var isExplicit: Bool {
         switch self {
         case .launch, .foreground, .offlineReturn: return false
-        case .actionButton, .siriShortcut, .wakeWord, .appUI, .templeTap, .voice: return true
+        case .actionButton, .siriShortcut, .wakeWord, .appUI, .templeTap, .voiceInvocation, .voice: return true
         }
     }
 }

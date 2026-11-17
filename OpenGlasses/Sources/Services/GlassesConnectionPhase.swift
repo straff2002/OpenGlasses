@@ -198,6 +198,12 @@ struct GlassesConnectionSnapshot: Equatable, Sendable {
         deviceIds.first { state(of: $0).link == .connected }
     }
 
+    /// Every listed device whose link is connected, in the SDK's order. What a per-device
+    /// subscription that must follow the link, not registration, starts and stops on (Plan JV P1).
+    var connectedDeviceIds: [String] {
+        deviceIds.filter { state(of: $0).link == .connected }
+    }
+
     var activeDeviceName: String? {
         activeDeviceId.flatMap { deviceNames[$0] }
     }

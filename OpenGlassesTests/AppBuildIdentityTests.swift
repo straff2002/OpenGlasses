@@ -47,6 +47,21 @@ final class AppBuildIdentityTests: XCTestCase {
         XCTAssertEqual(identity.summary, "2026.10 (460) · TestFlight · \(AppBuildVariant.current.rawValue) · com.example.app")
     }
 
+    /// Plan JV: a flagged TestFlight build says so on the report's first line.
+    func testAFlaggedBuildSaysDATExperimentalAfterTheChannel() {
+        let identity = Identity(version: "2026.10", build: "570", commit: "1a2b3c4d5",
+                                channel: .testFlight, bundleID: "com.example.app", datExperimental: true)
+        XCTAssertEqual(identity.summary,
+                       "2026.10 (570) · 1a2b3c4d5 · TestFlight · DAT experimental · \(AppBuildVariant.current.rawValue) · com.example.app")
+    }
+
+    func testOnlyTheLiteralYesIsTheExperimentalStamp() {
+        XCTAssertTrue(Identity.datExperimental(fromInfoValue: "YES"))
+        for value in [nil, "", "NO", "yes", "1", "$(AVENKIN_DAT_EXPERIMENTAL)"] {
+            XCTAssertFalse(Identity.datExperimental(fromInfoValue: value), String(describing: value))
+        }
+    }
+
     func testTheRunningTestHostDescribesItself() {
         let current = Identity.current
         XCTAssertFalse(current.version.isEmpty)
