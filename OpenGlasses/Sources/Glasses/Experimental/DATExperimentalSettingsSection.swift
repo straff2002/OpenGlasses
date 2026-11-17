@@ -4,7 +4,7 @@ import SwiftUI
 // Plan JV P1. Compiled only in a project generated with AVENKIN_DAT_EXPERIMENTAL=1 (TestFlight
 // only, never submitted for review); `DATExperimentalGuardTests` keeps it that way.
 
-/// Devices & Privacy › Glasses, in a flagged build only: the wearer's switches for Meta's beta
+/// Devices & Privacy › Glasses, in a flagged build only: the wearer's switches for Meta's experimental
 /// glasses features.
 struct DATExperimentalSettingsSection: View {
     @State private var voiceInvocationOn = DATExperimentalPolicy.isSwitchOn(.voiceInvocation)
@@ -30,10 +30,8 @@ struct DATExperimentalSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        } header: {
-            Text("Beta")
         } footer: {
-            Text("Say “Hey Meta, open Avenkin” to the glasses to start talking to Avenkin, with your phone in your pocket. Meta's beta feature, only in this test build.")
+            Text("Say “Hey Meta, open Avenkin” to the glasses to start talking to Avenkin, with your phone in your pocket.")
         }
     }
 }
