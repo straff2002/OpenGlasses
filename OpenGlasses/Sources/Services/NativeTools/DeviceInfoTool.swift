@@ -1,3 +1,6 @@
+import Foundation
+import UIKit
+
 /// Reports device battery level, low power mode, and storage info — and, outside the phone-only
 /// build, the in-lens Display's state (`DisplayStatusWording`): connected, switched on, whose the
 /// lens is, and how the last send ended. State only, never what was shown.
