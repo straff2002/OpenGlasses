@@ -72,7 +72,8 @@ struct ModelEditorView: View {
                             apiKey: apiKey,
                             model: model.trimmingCharacters(in: .whitespacesAndNewlines),
                             baseURL: baseURL,
-                            supportsVision: supportsVision,
+                            supportsVision: ChatGPTVisionOverrideReset.storedOverride(
+                                provider: selectedProvider, model: model.trimmingCharacters(in: .whitespacesAndNewlines), chosen: supportsVision),
                             smallContext: smallContext,
                             reasoningEffort: reasoningEffort
                         )

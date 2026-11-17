@@ -30,7 +30,10 @@ final class ChatGPTOAuthService: ObservableObject {
     private var devicePollingTask: Task<Void, Never>?
 
     private var credentials: ChatGPTOAuth.Credentials? {
-        didSet { isConnected = credentials != nil }
+        didSet {
+            isConnected = credentials != nil
+            ChatGPTContextCatalog.hydrateImageInput(accountID: credentials?.accountID)
+        }
     }
 
     /// Account id claim from the connected account's id_token — rides every API request.
@@ -48,6 +51,8 @@ final class ChatGPTOAuthService: ObservableObject {
             credentials = stored
             isConnected = true
         }
+        // Property observers don't run in an initialiser.
+        ChatGPTContextCatalog.hydrateImageInput(accountID: credentials?.accountID)
     }
 
     // MARK: - Sign-in flow

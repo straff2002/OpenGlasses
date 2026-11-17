@@ -94,7 +94,8 @@ struct AddModelView: View {
                             apiKey: apiKey,
                             model: model,
                             baseURL: baseURL,
-                            supportsVision: supportsVision,
+                            supportsVision: ChatGPTVisionOverrideReset.storedOverride(
+                                provider: selectedProvider, model: model, chosen: supportsVision),
                             smallContext: smallContext,
                             providerTemplateID: providerTemplateID
                         )

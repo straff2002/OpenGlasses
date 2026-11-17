@@ -275,6 +275,7 @@ enum ChatGPTContextCatalog {
         guard let accountID, !accountID.isEmpty else {
             store.removeObject(forKey: storeKey)
             markedStale = false
+            ChatGPTImageInput.record(nil)
             return
         }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
@@ -292,6 +293,14 @@ enum ChatGPTContextCatalog {
             store.set(encoded, forKey: storeKey)
         }
         markedStale = false
+        ChatGPTImageInput.record(snapshot.offered?.imageInput)
+    }
+
+    /// Load which models take images from this account's stored catalog into `ChatGPTImageInput`,
+    /// so the camera button and photo routing know at launch, before the first turn fetches.
+    /// No usable snapshot (none, another account's, too old) leaves image input unknown — refused.
+    static func hydrateImageInput(accountID: String?, now: Date = Date()) {
+        ChatGPTImageInput.record(offered(accountID: accountID, now: now)?.imageInput)
     }
 
     /// The models this account's stored catalog offers, or nil when there is no usable snapshot

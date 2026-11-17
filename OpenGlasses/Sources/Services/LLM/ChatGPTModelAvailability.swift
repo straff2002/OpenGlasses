@@ -27,11 +27,16 @@ enum ChatGPTModelAvailability {
         let pickable: [String]
         /// The model the catalog marks as its default, when it marks one.
         let defaultID: String?
+        /// The ids whose catalog row accepts image input (`ChatGPTImageInput.rowAcceptsImages`).
+        /// Optional so a snapshot stored before it existed still decodes; such a snapshot says
+        /// nothing about images, and photo turns stay refused until a fresh catalog arrives.
+        var imageInput: [String]?
 
-        init(ids: [String], pickable: [String], defaultID: String?) {
+        init(ids: [String], pickable: [String], defaultID: String?, imageInput: [String]? = nil) {
             self.ids = ids
             self.pickable = pickable
             self.defaultID = defaultID
+            self.imageInput = imageInput
         }
 
         /// Read from the `/codex/models` payload — the same rows `ModelFetcher` parses for the
@@ -46,8 +51,15 @@ enum ChatGPTModelAvailability {
                 return id
             }
             let pickable = ModelFetcher.parseChatGPTModels(data)
+            var seenImage = Set<String>()
+            let imageInput = rows.compactMap { row -> String? in
+                guard let id = row["slug"] as? String ?? row["id"] as? String ?? row["model"] as? String,
+                      !id.isEmpty, ChatGPTImageInput.rowAcceptsImages(row),
+                      seenImage.insert(id).inserted else { return nil }
+                return id
+            }
             self.init(ids: ids, pickable: pickable.map(\.id),
-                      defaultID: pickable.first(where: \.isDefault)?.id)
+                      defaultID: pickable.first(where: \.isDefault)?.id, imageInput: imageInput)
         }
     }
 

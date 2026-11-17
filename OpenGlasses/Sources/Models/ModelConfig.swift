@@ -80,11 +80,11 @@ struct ModelConfig: Codable, Identifiable, Equatable {
         case .anthropic, .gemini, .geminiVertex, .openai:
             return true
         case .chatgpt:
-            // The subscription catalog is coding-tuned, and image acceptance on it was never
-            // actually confirmed on device. Claiming vision here is what put a camera button in
-            // front of a model that cannot use it, so the honest answer is no until a photo turn
-            // is confirmed working against that backend. `ChatGPTVisionGate` is the backstop.
-            return false
+            // Per model, from the signed-in account's own catalog (`ChatGPTImageInput`): yes only
+            // when the catalog says the model takes images. No catalog yet is no, so a camera
+            // button never sits in front of a model that can't use it. `ChatGPTVisionGate` is the
+            // backstop at send time.
+            return ChatGPTImageInput.accepts(model)
         case .groq:
             return groqVisionModels.contains(model.lowercased().trimmingCharacters(in: .whitespaces))
         case .local, .appleOnDevice:

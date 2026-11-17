@@ -242,7 +242,10 @@ enum ModelFallbackChain {
         return Candidate(
             id: config.id,
             isLocalMLX: isLocalMLX,
-            supportsVision: provider != .chatgpt && provider != .appleOnDevice && config.visionEnabled,
+            // A ChatGPT model sees only when its account's catalog says so, whatever the saved
+            // override: the backend refuses images to a model that doesn't take them.
+            supportsVision: provider != .appleOnDevice && config.visionEnabled
+                && (provider != .chatgpt || ChatGPTImageInput.accepts(config.model)),
             contextTokens: window
         )
     }
