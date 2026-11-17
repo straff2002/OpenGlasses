@@ -3,8 +3,8 @@
 **Status:** 🚧 P0–P3 built 2026-11-18, device checks owed — the pure core, the building service
 with its consent gate, dry-run mode, drafts and the Tested panel, the `build_addon` tool with update
 mode, and add-on ideas in the suggestions inbox. Owed: three real builds against keyless public APIs
-on cellular, one approval and one rejection on the sheet, VoiceOver on the Tested panel, and the
-catalog sync of the new strings. Drafted 2026-10-01.
+on cellular, one approval and one rejection on the sheet, VoiceOver on the Tested panel. The new strings were
+translated into the 13 complete languages on 2026-11-18. Drafted 2026-10-01.
 **Depends on:** Plan [GF](GF-recipe-add-ons.md) P0–P2 (the `avenkin.addon/1` format, `RecipeAddOnValidator`,
 `RecipeRunner`/`RecipeSandbox`, `AddOnStore`, the install and update-diff sheets). GO writes GF
 add-ons; it adds no new runtime.
