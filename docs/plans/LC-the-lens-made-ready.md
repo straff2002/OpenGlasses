@@ -374,7 +374,11 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
   `Display.start()`, while the capability was still `starting`; it now waits for `started` first
   (`DisplayStartWait`, up to 10 s, logged as `displayCapabilityRead`), and a timed-out send no longer
   tears the session down: only the third in a row does (`HUDSendDeadline.rebuildAfterTimeouts`), as
-  Meta's own sample keeps one session and display across frames. Device confirmation owed.
+  Meta's own sample keeps one session and display across frames. The same report showed the
+  camera and the lens refusing each other (`sessionAlreadyExists`): each made its own session for
+  the pair. Both now borrow one from `DeviceSessionCoordinator`, and a Display stopped by a photo
+  under the live session is redrawn. Device confirmation owed: photo with the lens up, lens with
+  the camera streaming, Back gesture with the camera warm.
 
 ## Acceptance
 

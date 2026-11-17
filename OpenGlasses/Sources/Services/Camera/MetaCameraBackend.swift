@@ -27,8 +27,6 @@ final class MetaCameraBackend: GlassesCameraBackend {
     let capabilities = CameraCapabilities.meta
     let events = PassthroughSubject<CameraBackendEvent, Never>()
 
-    /// Lazily initialized after Wearables.configure() has been called.
-    private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
     private var deviceSession: DeviceSession?
     /// DAT 0.9.0: the `Camera` owns the camera hardware resource; the `Stream` hangs off it.
     /// Detaching the capability is `camera.stop()` (cascades to the stream) — `stream.stop()`
@@ -508,11 +506,15 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 PrivacyLog.camera(.glasses, .sessionBound, device: PrivateIdentifier(id),
                                   detail: PrivacyToken.caseName(of: binding),
                                   count: knownDeviceIds.count)
-                deviceSession = try Wearables.shared.createSession(
-                    deviceSelector: SpecificDeviceSelector(device: id))
-            } else {
-                deviceSession = try Wearables.shared.createSession(deviceSelector: deviceSelector)
             }
+            // One session per pair, lent by the coordinator and shared with the lens. A session of
+            // the camera's own was refused (`sessionAlreadyExists`) while the lens held the glasses,
+            // and refused the lens while the camera held them (build 705).
+            guard let shared = try DeviceSessionCoordinator.shared.acquire(
+                .camera, deviceId: binding.deviceId) as? DeviceSession else {
+                throw CameraError.captureFailed
+            }
+            deviceSession = shared
         }
 
         guard let deviceSession else { throw CameraError.captureFailed }
@@ -525,7 +527,9 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         if deviceSession.state != .started {
             do {
-                try deviceSession.start()
+                // The lens may have started the shared session a moment ago; it is waited for
+                // below, never started twice.
+                if deviceSession.state != .starting { try deviceSession.start() }
             } catch {
                 // BR P2: an update-required refusal must read as "go update", not a
                 // generic failure.
@@ -1936,8 +1940,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
             // retry loop's next `ensureSession` doesn't collide with the dying camera.
             await awaitCameraStopped(camera)
         }
-        if let session = deviceSession {
-            session.stop()
+        // Handed back, not stopped: the lens may still be using the shared session, which stops
+        // only when no one holds it. Released even when this backend has already let go of a
+        // session that died, so a hold is never left behind to keep the next one alive.
+        let stoppedShared = DeviceSessionCoordinator.shared.release(.camera)
+        if let session = deviceSession, stoppedShared {
             // The replacement boundary, at the session level: a new session may not be created
             // until this one is observably finished.
             await awaitSessionStopped(session)

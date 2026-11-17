@@ -43,19 +43,61 @@ final class DeviceSessionCoordinatorTests: XCTestCase {
     // MARK: - DeviceSessionCoordinator (fake session)
 
     private final class FakeSession: DeviceSessionHandle {
+        let deviceId: String?
         private(set) var stopCount = 0
+        var hasEnded = false
+        init(deviceId: String?) { self.deviceId = deviceId }
         func stop() { stopCount += 1 }
     }
 
     private func makeCoordinator() -> (DeviceSessionCoordinator, () -> [FakeSession]) {
         final class Box { var created: [FakeSession] = [] }
         let box = Box()
-        let coordinator = DeviceSessionCoordinator(makeSession: {
-            let session = FakeSession()
+        let coordinator = DeviceSessionCoordinator(makeSession: { deviceId in
+            let session = FakeSession(deviceId: deviceId)
             box.created.append(session)
             return session
         })
         return (coordinator, { box.created })
+    }
+
+    func testTheNamedPairWinsThenTheConnectedOne() throws {
+        let (coordinator, created) = makeCoordinator()
+        coordinator.readConnectedDevice = { "connected-pair" }
+        try coordinator.acquire(.camera, deviceId: "named-pair")
+        XCTAssertEqual(created().last?.deviceId, "named-pair")
+        coordinator.release(.camera)
+        try coordinator.acquire(.display)
+        XCTAssertEqual(created().last?.deviceId, "connected-pair", "the lens names none: the connected pair")
+    }
+
+    func testTheSecondCapabilitySharesWhateverPairItNames() throws {
+        let (coordinator, created) = makeCoordinator()
+        let display = try coordinator.acquire(.display, deviceId: "a")
+        let camera = try coordinator.acquire(.camera, deviceId: "b")
+        XCTAssertTrue(display === camera, "one session per pair; never a second that would be refused")
+        XCTAssertEqual(created().count, 1)
+    }
+
+    func testAnEndedSessionIsReplacedForItsHolders() throws {
+        let (coordinator, created) = makeCoordinator()
+        try coordinator.acquire(.camera)
+        try coordinator.acquire(.display)
+        created().first?.hasEnded = true                // the glasses ended it
+        let next = try coordinator.acquire(.camera)
+        XCTAssertFalse(next === created().first)
+        XCTAssertEqual(coordinator.createCount, 2)
+        XCTAssertEqual(coordinator.holders, [.camera, .display])
+    }
+
+    func testReleaseSaysWhetherItStoppedTheSession() throws {
+        let (coordinator, created) = makeCoordinator()
+        try coordinator.acquire(.camera)
+        try coordinator.acquire(.display)
+        XCTAssertFalse(coordinator.release(.camera), "the lens still holds it")
+        XCTAssertFalse(coordinator.release(.camera), "already released")
+        XCTAssertTrue(coordinator.release(.display))
+        XCTAssertEqual(created().first?.stopCount, 1)
     }
 
     func testFirstAcquireCreatesSession() throws {
@@ -119,7 +161,7 @@ final class DeviceSessionCoordinatorTests: XCTestCase {
 
     func testAcquirePropagatesFactoryErrorAndLeavesStateClean() {
         struct Boom: Error {}
-        let coordinator = DeviceSessionCoordinator(makeSession: { throw Boom() })
+        let coordinator = DeviceSessionCoordinator(makeSession: { _ in throw Boom() })
         XCTAssertThrowsError(try coordinator.acquire(.camera))
         XCTAssertFalse(coordinator.isHeld)              // holder not recorded on a failed create
         XCTAssertEqual(coordinator.createCount, 0)
