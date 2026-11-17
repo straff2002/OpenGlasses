@@ -684,6 +684,7 @@ final class GlassesDisplayService: ObservableObject {
     static func retriesWithoutPicture(after error: Error) -> Bool {
         if case GlassesDisplayError.noDisplay = error { return false }
         if case GlassesDisplayError.displayInUse = error { return false }
+        if case GlassesDisplayError.displayDidNotStart = error { return false }
         return true
     }
 
@@ -1315,6 +1316,9 @@ enum GlassesDisplayError: LocalizedError {
     case displayInUse
     /// Plan LC §2.4: a send did not come back within `HUDSendDeadline.seconds`.
     case sendTimedOut
+    /// The Display capability did not reach `started` after `start()` (`DisplayStartWait`), so
+    /// nothing was sent to it.
+    case displayDidNotStart
 
     var errorDescription: String? {
         switch self {
@@ -1326,6 +1330,7 @@ enum GlassesDisplayError: LocalizedError {
         case .sessionUnavailable: return "Display session unavailable"
         case .displayInUse: return "Another app is using the display"
         case .sendTimedOut: return "The display did not answer in time"
+        case .displayDidNotStart: return "The display did not start"
         }
     }
 }
