@@ -1240,6 +1240,10 @@ struct GlassesSettingsView: View {
 
             // Instant Replay rides the glasses camera's stream, so its switch lives here too.
             InstantReplaySettingsSection(replay: appState.instantReplay)
+            // Meta's beta glasses features, in a flagged TestFlight build only (Plan JV).
+            #if DAT_EXPERIMENTAL
+            DATExperimentalSettingsSection()
+            #endif
         }
         .navigationTitle("Glasses")
         // Opening this screen is when the line above is read, so the permission it is built on

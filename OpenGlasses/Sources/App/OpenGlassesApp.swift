@@ -4565,6 +4565,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 DispatchQueue.main.async { self?.powerPolicy.update() }
             }
         cancellables.append(thermalToken)
+        // Plan JV: Meta's experimental glasses features, in a flagged TestFlight build only. The one
+        // call site; everything it starts lives in Sources/Glasses/Experimental/.
+        #if DAT_EXPERIMENTAL
+        DATExperimentalFeatures.start(appState: self)
+        #endif
 
         // BS P2 / Plan CZ: broadcast and recording mic audio both come from the capture router,
         // which picks its own source. Turning listening off mid-stream hands the capture over to a

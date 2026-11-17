@@ -190,6 +190,19 @@ final class GlassesConnectionPhaseTests: XCTestCase {
         XCTAssertEqual(s.connectedDeviceId, "b")
     }
 
+    /// Every connected pair, for what follows each one separately (Plan JV P1) — never one that
+    /// is connecting, away or unreported, and never one that left the list.
+    func testConnectedDevicesAreEveryPairWhoseLinkIsUp() {
+        var s = snapshot(devices: ["a", "b", "c", "d"],
+                         states: ["a": linked(.connected), "b": linked(.connecting), "c": linked(.connected)])
+        XCTAssertEqual(s.connectedDeviceIds, ["a", "c"])
+        s.apply(.deviceState(id: "a", linked(.disconnected)))
+        XCTAssertEqual(s.connectedDeviceIds, ["c"])
+        s.apply(.devices(["a", "b", "d"]))
+        XCTAssertEqual(s.connectedDeviceIds, [])
+        XCTAssertEqual(snapshot().connectedDeviceIds, [])
+    }
+
     func testDuplicateIdsInTheDeviceListCollapse() {
         var s = snapshot(devices: ["a", "a", "b"])
         XCTAssertEqual(s.deviceIds, ["a", "b"])

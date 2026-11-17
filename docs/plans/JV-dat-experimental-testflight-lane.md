@@ -1,6 +1,9 @@
 # Plan JV — Meta's Experimental Glasses Features, TestFlight Only ("Hey Meta, open Avenkin" and glasses gestures)
 
-**Status:** 📝 Drafted 2026-10-26 — nothing built. Owner decision taken the same day (below).
+**Status:** 🚧 P0 + P1 built 2026-11-17 (headless; one branch). Owed: P1's device questions (P3),
+the flagged builds' own TestFlight group, a catalog sync for the new strings (the resolver's six
+failure sentences in every build, the Settings toggle and its footer only in a flagged one), then
+P2 (Inputs probe) and P3. Drafted 2026-10-26; owner decision taken the same day (below).
 **Origin:** issue 857 (2026-10-26). A tester with Ray-Ban Meta Gen 2 glasses, using Qwen in mainland
 China, asked for a low-power way to start Avenkin from the glasses with the iPhone locked in a
 pocket: "Hey Meta, open Avenkin" through Meta's voice invocations, or a gesture of the app's own that
@@ -54,6 +57,41 @@ store release needs **its own unflagged upload** from the same commit. That cost
 and one more build number per release. The unflagged build also differs from what the experimental
 testers ran by exactly the flagged code, which is why P0 keeps that code off every path the
 unflagged app runs.
+
+## What was built (2026-11-17)
+
+- **P0.** `project.experimental.yml` links `MWDATInputs`, sets `AVENKIN_DAT_EXPERIMENTAL: "YES"` and
+  defines the condition in `SWIFT_ACTIVE_COMPILATION_CONDITIONS`, per configuration at the project
+  level (`DEBUG DAT_EXPERIMENTAL` / `DAT_EXPERIMENTAL`, as the phone-only overlay does), not `-D` in
+  `OTHER_SWIFT_FLAGS` (which an overlay would have to restate in full) and not on the app target
+  alone (the unit-test target must compile the flagged-only tests too); `-showBuildSettings` shows
+  it on the app and test targets in Debug and Release. A build
+  phase prints a "TESTFLIGHT ONLY" warning on every flagged build. `generate-xcodeproj.sh` adds the
+  spec only under `AVENKIN_DAT_EXPERIMENTAL=1`, refuses it when any CI / Xcode Cloud marker is set or
+  with `OPENGLASSES_PHONE_ONLY=1` (the store product has no glasses SDK since `project.glasses-sdk.yml`),
+  and prints a loud banner. The stamp is `AvenkinDATExperimental` in the authored `Info.plist`
+  (`"NO"` in base; the phone-only derivation writes `"NO"` literally and its artifact check fails
+  anything else). `AppBuildIdentity.datExperimental` reads it and the report's first line reads
+  `… · TestFlight · DAT experimental · glasses-beta · com.…`. `DATExperimentalPolicy` (pure) is the
+  verdict above, with its line beside `Build variant: … · Glasses:` in the report. `DATExperimentalGuardTests`
+  holds the four checks, plus the generator's refusals and a roster of the three `DAT_EXPERIMENTAL`
+  call sites outside `Glasses/Experimental/` (the start-up call, the Settings section, the policy's
+  own `isCompiledIn`). `Scripts/check-archive-dat-experimental.sh` (tested by
+  `Scripts/tests/test_check_archive_dat_experimental.py`) also accepts a `.app`, looks for Motion and
+  Speech too, and reads load commands as well as `Frameworks/`.
+- **P1.** Outside the lane, compiled and tested in every build: `VoiceInvocationResolver` (over
+  `TempleContext` plus "another person is on the line"), `VoiceInvocationLedger` (the support report's
+  per-glasses record: each request with the app's run state and lock state, how and how fast it was
+  answered and whether the SDK took the answer, a result that came after the deadline, stream errors
+  and link drops with the seconds since the last request — for the HFP field report), a
+  `.voiceInvocation` live-activation source (explicit), and `GlassesConnectionService.connectedDeviceIds`.
+  Inside `Glasses/Experimental/`: the `VoiceInvocationSource` seam, `MetaVoiceInvocationSource`
+  (one `VoiceInvocationsStream` per device on `Wearables.shared`, listeners in a `ListenerTokenBag`),
+  `GlassesVoiceInvocationService` (streams follow `connectedDeviceIds`; one answer per request, the
+  first of the action's result and a 5 s deadline), `DATExperimentalFeatures.start(appState:)` and
+  the Settings section **Hey Meta, open Avenkin (beta)** (default on). The service is tested with a
+  fake source in a flagged project only; no `MockDeviceTestClient` UI test yet (the UI-test target
+  does not link the mock client).
 
 ## P0 — The lane (no feature yet)
 
