@@ -1,9 +1,11 @@
 # Plan JV — Meta's Experimental Glasses Features, TestFlight Only ("Hey Meta, open Avenkin" and glasses gestures)
 
-**Status:** 🚧 P0 + P1 built 2026-11-17 (headless; one branch). Owed: P1's device questions (P3),
-the flagged builds' own TestFlight group, a catalog sync for the new strings (the resolver's six
-failure sentences in every build, the Settings toggle and its footer only in a flagged one), then
-P2 (Inputs probe) and P3. Drafted 2026-10-26; owner decision taken the same day (below).
+**Status:** 🚧 P0 + P1 built 2026-11-17 (headless; one branch). P2's Inputs probe built 2026-11-17
+(headless; stacked on it); its device run is owed with P3, and the gesture map waits for it. Owed:
+P1's device questions and the probe run (P3), the flagged builds' own TestFlight group, a catalog
+sync for the new strings (the resolver's six failure sentences in every build; the Settings toggle
+and its footer, and the probe's section, only in a flagged one), then P2's map. Drafted 2026-10-26;
+owner decision taken the same day (below).
 **Origin:** issue 857 (2026-10-26). A tester with Ray-Ban Meta Gen 2 glasses, using Qwen in mainland
 China, asked for a low-power way to start Avenkin from the glasses with the iPhone locked in a
 pocket: "Hey Meta, open Avenkin" through Meta's voice invocations, or a gesture of the app's own that
@@ -92,6 +94,29 @@ unflagged app runs.
   the Settings section **Hey Meta, open Avenkin** (default on). The service is tested with a
   fake source in a flagged project only; no `MockDeviceTestClient` UI test yet (the UI-test target
   does not link the mock client).
+- **P2, the Inputs probe only (no map).** Compiled and tested in every build:
+  `InputsProbeRecord.swift` (`Services/Triggers/`): the app's own words for an input
+  (`GlassesInputKind` with direction, press type or drag phase, never coordinates;
+  `GlassesInputOrigin`), the capability's states and errors, the stop reasons and refusals;
+  `InputsProbePolicy` (five minutes, the touchpad only, Back left to Meta, and the start refusals:
+  not in this build / channel / no glasses, a run already going, no connected link); and `InputsProbeLedger`, the support report's record
+  while it has a run — each input with its source, milliseconds since the run started and whether
+  another app's audio was playing (`isOtherAudioPlaying`, the media trigger's reading), state
+  changes and errors, how the run ended, after how long, and the glasses' battery at each end with
+  a coarse points-per-hour figure. 500 inputs and 100 states/errors per run, saying when it
+  truncated; the last three runs. `DATExperimentalPolicy.currentForDiagnostics()` is the verdict
+  with the switch on: the probe has no switch of its own, the press is the switch.
+  `DeviceSessionOwnership.Capability` gained `.inputs`; nothing else in `DeviceSessionCoordinator`
+  changed (its device-bound `acquire(_:deviceId:)` came with the camera and lens sharing one
+  session). Inside `Glasses/Experimental/`: the `InputsSource` seam, `MetaInputsSource` (acquires `.inputs`
+  on `DeviceSessionCoordinator.shared` for the connected device, beside the camera and the lens
+  when they are on; starts the session unless it is started or starting, waits for `started`, then `addInputs(configuration: InputsProbeConfiguration.sdk)`, which is
+  `InputsConfiguration(sources: [.captouch], consumeBack: false)`), `InputsProbe` (one run at a
+  time; stops at five minutes, a link drop, the session ending under it, or Stop) and the
+  Developer panel's **Glasses Inputs** section — the fourth roster call site. Handing the hold
+  back stops the session only when the probe was its last holder. `DATExperimentalGuardTests`
+  pins the configuration line and the one `addInputs` call, bans the Inputs type names outside the
+  folder, and checks the pure policy.
 
 ## P0 — The lane (no feature yet)
 
@@ -161,7 +186,7 @@ unflagged app runs.
   - The reply goes back through `sendSuccess` / `sendFailure` with an `actionOutput` of at most a
     sentence. A request is never left unanswered: on a timeout of a few seconds the service answers
     failure.
-- **Setting.** It lives under Devices & Privacy › Glasses, labelled as a beta, and appears only in a
+- **Setting.** It lives under Devices & Privacy › Glasses, with no beta label (owner, 2026-11-17), and appears only in a
   flagged build. It defaults **on**, because it fires only when the wearer says the phrase.
 - **Tests.** The resolver's table runs headless. The service is tested with a fake stream behind a
   `VoiceInvocationSource` seam. One UI test drives `MockDeviceTestClient.sendLaunchAppAction`. It is
@@ -184,7 +209,7 @@ unflagged app runs.
     subscribed;
   - what holding a session in standby costs the glasses' battery per hour.
 - **Then a small map, off by default.** Only after the probe shows events Meta does not also act
-  on: a "Glasses gestures (beta)" list in Devices & Privacy › Glasses, where each of those events
+  on: a "Glasses gestures" list in Devices & Privacy › Glasses, where each of those events
   (likely `select`, `back` and the swipes) can be set to a `TempleAction`. The list reuses
   `TempleActionResolver`, so the actions, earcons and Agent Mode rule are GJ's. Every gesture
   defaults to *nothing*.

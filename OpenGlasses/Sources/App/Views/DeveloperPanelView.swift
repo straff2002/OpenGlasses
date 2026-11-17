@@ -55,6 +55,10 @@ struct DeveloperPanelView: View {
                     }
             }
 
+            #if DAT_EXPERIMENTAL
+            InputsProbeSection()
+            #endif
+
             if GlassesSupportPolicy.isSupported {
                 OGSection(
                     header: "Temple Taps",

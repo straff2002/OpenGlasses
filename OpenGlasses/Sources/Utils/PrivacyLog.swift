@@ -2248,6 +2248,17 @@ enum PrivacyLog {
         /// is the stream's own error (`reason`: its case). Case names and numbers only; the device
         /// is never named and nothing the wearer said is known to the app.
         case voiceInvocationStream, voiceInvocationReceived, voiceInvocationAnswered, voiceInvocationError
+        /// Plan JV P2, the Inputs probe (flagged TestFlight builds only). `inputsProbeStarted` is
+        /// a run beginning (`count`: the glasses' battery, absent when not known);
+        /// `inputsProbeRefused` a Start that did nothing (`reason`: its case); `inputsProbeInput`
+        /// one input (`state`: its kind with direction or press type, `detail`: its source,
+        /// `count`: milliseconds since the run started, `success`: the wearer's audio playing);
+        /// `inputsProbeState` and `inputsProbeError` the capability's state and errors (`state`
+        /// / `reason`: the case); `inputsProbeStopped` the end (`reason`: why, `count`: seconds,
+        /// `detail`: the battery). Case names and numbers only; no coordinates, and the device is
+        /// never named.
+        case inputsProbeStarted, inputsProbeRefused, inputsProbeInput, inputsProbeState, inputsProbeError
+        case inputsProbeStopped
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

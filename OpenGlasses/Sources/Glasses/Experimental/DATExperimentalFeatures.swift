@@ -1,4 +1,5 @@
 #if DAT_EXPERIMENTAL
+import AVFoundation
 import Combine
 import Foundation
 import UIKit
@@ -11,6 +12,8 @@ import UIKit
 @MainActor
 enum DATExperimentalFeatures {
     private(set) static var voiceInvocations: GlassesVoiceInvocationService?
+    /// The Developer panel's Inputs probe (P2). Idle until the wearer presses Start.
+    private(set) static var inputsProbe: InputsProbe?
     private static var cancellables: [AnyCancellable] = []
 
     /// Starts following the connected glasses. Idempotent. Nothing reaches the SDK until a pair's
@@ -34,12 +37,23 @@ enum DATExperimentalFeatures {
             })
         service.performer = appState
         voiceInvocations = service
+        let probe = InputsProbe(
+            source: MetaInputsSource(),
+            ledger: .shared,
+            verdict: { DATExperimentalPolicy.currentForDiagnostics() },
+            battery: { [weak appState] in appState?.glassesService.batteryLevel },
+            // The media trigger's reading: another app's audio is audible.
+            userAudioPlaying: { AVAudioSession.sharedInstance().isOtherAudioPlaying })
+        inputsProbe = probe
         // `@Published` fires in willSet, so the value is handed over; the hop lets the connection
         // service finish publishing first.
         cancellables.append(appState.glassesService.$connectedDeviceIds
             .removeDuplicates()
             .sink { ids in
-                DispatchQueue.main.async { service.update(connectedDeviceIds: ids) }
+                DispatchQueue.main.async {
+                    service.update(connectedDeviceIds: ids)
+                    probe.update(connectedDeviceIds: ids)
+                }
             })
     }
 

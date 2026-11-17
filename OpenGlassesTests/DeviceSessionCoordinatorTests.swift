@@ -159,6 +159,22 @@ final class DeviceSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(created().last?.stopCount, 0)
     }
 
+    /// The Inputs probe (Plan JV P2) joins the one session the camera and the lens share; it
+    /// never makes a second, and handing it back stops the session only when it was the last.
+    func testTheInputsProbeSharesTheSessionAndNeverStopsItUnderOthers() throws {
+        let (coordinator, created) = makeCoordinator()
+        let camera = try coordinator.acquire(.camera, deviceId: "pair")
+        let inputs = try coordinator.acquire(.inputs, deviceId: "pair")
+        XCTAssertTrue(camera === inputs)
+        XCTAssertEqual(coordinator.createCount, 1)
+        XCTAssertFalse(coordinator.release(.inputs), "the camera still holds it")
+        XCTAssertEqual(created().first?.stopCount, 0)
+        try coordinator.acquire(.inputs, deviceId: "pair")
+        XCTAssertFalse(coordinator.release(.camera))
+        XCTAssertTrue(coordinator.release(.inputs), "the probe was last out")
+        XCTAssertEqual(created().first?.stopCount, 1)
+    }
+
     func testAcquirePropagatesFactoryErrorAndLeavesStateClean() {
         struct Boom: Error {}
         let coordinator = DeviceSessionCoordinator(makeSession: { _ in throw Boom() })

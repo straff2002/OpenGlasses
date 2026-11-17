@@ -244,6 +244,11 @@ extension AppState {
         // arrived in, how it was answered, and stream errors or a link drop after it, with times.
         // Empty in a build without the feature. Case names and numbers; no device is named.
         phone += VoiceInvocationLedger.shared.reportLines
+        // Plan JV P2: each Inputs probe run — every input's kind and source with its time since
+        // the run started and whether the wearer's audio was playing, state changes and errors,
+        // how it ended and the battery at each end. Empty in a build without the probe. Case
+        // names and numbers; no coordinates, and no device is named.
+        phone += InputsProbeLedger.shared.reportLines
         #endif
         // Plan JY P1: each document's detected language and the model it is searched with, and
         // where each script's search model stands. Counts and labels only — no names or text.
