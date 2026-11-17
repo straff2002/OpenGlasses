@@ -2229,7 +2229,7 @@ enum PrivacyLog {
         /// Plan KV §4, the page on the lens. `lensPageOpened` carries why the view opened in
         /// `state` (`requested`, `automatic`, `answer_card`) and the display backend's token in
         /// `detail`; `lensPageRefused` why a page didn't reach the lens (`reason`: `inUse`, `lens`,
-        /// `render`); `lensPageClosed` the route in `state`. Case names only — never the page, its
+        /// `render`, `send` — handed over but the glasses never took it); `lensPageClosed` the route in `state`. Case names only — never the page, its
         /// text or its pixels.
         case lensPageOpened, lensPageRefused, lensPageClosed
     }

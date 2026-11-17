@@ -152,11 +152,22 @@ final class LensPageSession: ObservableObject {
     private var timerGeneration = 0
     private var work: [Task<Void, Never>] = []
     private var heldWatch: AnyCancellable?
+    /// Audit lines waiting for their frame to reach the glasses, by the frame's render key. The
+    /// trail says "shown on the glasses", so a line is written only once the glasses took the
+    /// frame (`GlassesDisplayService.onScreenDelivered`). Build 705 wrote it at the hand-off, and a
+    /// Ray-Ban Display report showed pages "shown" while every send to the lens failed.
+    private var awaitingDelivery: [String: (event: LensPageAuditLine.Event, page: Page, state: HUDPageViewState?)] = [:]
+    /// Whether any frame of the open view reached the glasses, so a close is recorded only for a
+    /// view that was on the lens.
+    private var viewReachedLens = false
 
     init(display: GlassesDisplayService, router: HUDRouter, cache: LensPageRenderCache? = nil) {
         self.display = display
         self.router = router
         self.cache = cache ?? LensPageRenderCache()
+        display.onScreenDelivered = { [weak self] renderKey, delivered in
+            self?.frameDelivered(renderKey: renderKey, delivered: delivered)
+        }
         heldWatch = display.$heldPage.sink { [weak self] page in
             // Something else took the lens (a task card, a menu, an answer replacing the cue).
             guard let self, page == nil, self.held != nil else { return }
@@ -270,7 +281,7 @@ final class LensPageSession: ObservableObject {
         shownScreen = screen
         shownState = nil
         stats.update(backend()) { $0.cuesShown += 1 }
-        record(.cueShown, page: page, state: nil)
+        recordWhenDelivered(.cueShown, screen: screen, page: page, state: nil)
         armTimer(cueLifetime)
     }
 
@@ -309,7 +320,7 @@ final class LensPageSession: ObservableObject {
             }
             PrivacyLog.device(.hud, .lensPageOpened, state: PrivacyToken(route.rawValue),
                               detail: PrivacyToken(self.backend()))
-            self.record(.opened, page: page, state: state)
+            self.recordWhenDelivered(.opened, screen: screen, page: page, state: state)
             self.armTimer(self.viewLifetime)
         }
     }
@@ -579,7 +590,7 @@ final class LensPageSession: ObservableObject {
             case .readPage?: self.stats.update(self.backend()) { $0.readingPages += 1 }
             default: break
             }
-            if let event { self.record(event, page: page, state: next) }
+            if let event { self.recordWhenDelivered(event, screen: screen, page: page, state: next) }
         }
     }
 
@@ -610,7 +621,7 @@ final class LensPageSession: ObservableObject {
                 entry.nextPages += 1
                 if state.isReading { entry.readingViews += 1 }
             }
-            self.record(.nextPage, page: page, state: state)
+            self.recordWhenDelivered(.nextPage, screen: screen, page: page, state: state)
         }
     }
 
@@ -621,9 +632,10 @@ final class LensPageSession: ObservableObject {
         guard let held else { return }
         let page = currentPage
         let state = shownState
+        let wasOnLens = viewReachedLens
         reset()
         router.closePage()
-        if held == .view, let page {
+        if held == .view, let page, wasOnLens {
             PrivacyLog.device(.hud, .lensPageClosed, state: PrivacyToken(route.rawValue))
             record(.closed, page: page, state: state)
         }
@@ -652,6 +664,8 @@ final class LensPageSession: ObservableObject {
         held = nil
         shownState = nil
         shownScreen = nil
+        awaitingDelivery = [:]
+        viewReachedLens = false
         generation += 1
         timerGeneration += 1
     }
@@ -754,6 +768,23 @@ final class LensPageSession: ObservableObject {
             if let bytes { entry.sentBytes.append(bytes) }
             entry.sendMs.append(milliseconds)
         }
+    }
+
+    private func recordWhenDelivered(_ event: LensPageAuditLine.Event, screen: HUDScreen, page: Page,
+                                     state: HUDPageViewState?) {
+        awaitingDelivery[screen.renderKey] = (event, page, state)
+    }
+
+    /// The display service's word on a frame. Taken: the audit line is written. Not taken: no
+    /// line, and the support report counts it as refused (`lensPageRefused reason=send`).
+    func frameDelivered(renderKey: String, delivered: Bool) {
+        guard let waiting = awaitingDelivery.removeValue(forKey: renderKey) else { return }
+        guard delivered else {
+            refuse("send")
+            return
+        }
+        if waiting.event != .cueShown { viewReachedLens = true }
+        record(waiting.event, page: waiting.page, state: waiting.state)
     }
 
     /// The support report's **Page on the lens** lines.
