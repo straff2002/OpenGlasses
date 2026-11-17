@@ -167,7 +167,12 @@ final class DATExperimentalGuardTests: XCTestCase {
 
     func testExperimentalAPIsAreUsedOnlyInsideTheFolder() throws {
         var offenders: [String] = []
+        // One precompiled pass per file first: matching every pattern on every line of every
+        // source file took minutes on CI, past the per-test allowance.
+        let any = try NSRegularExpression(pattern: Self.experimentalAPIs.joined(separator: "|"))
         for (path, text) in try swiftSources() where !path.hasPrefix(Self.folder) {
+            let whole = NSRange(text.startIndex..., in: text)
+            guard any.firstMatch(in: text, range: whole) != nil else { continue }
             for line in text.components(separatedBy: .newlines) {
                 for pattern in Self.experimentalAPIs where matches(pattern, line) {
                     offenders.append("\(path): \(line.trimmingCharacters(in: .whitespaces))")
