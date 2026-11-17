@@ -89,7 +89,7 @@ unflagged app runs.
   (one `VoiceInvocationsStream` per device on `Wearables.shared`, listeners in a `ListenerTokenBag`),
   `GlassesVoiceInvocationService` (streams follow `connectedDeviceIds`; one answer per request, the
   first of the action's result and a 5 s deadline), `DATExperimentalFeatures.start(appState:)` and
-  the Settings section **Hey Meta, open Avenkin (beta)** (default on). The service is tested with a
+  the Settings section **Hey Meta, open Avenkin** (default on). The service is tested with a
   fake source in a flagged project only; no `MockDeviceTestClient` UI test yet (the UI-test target
   does not link the mock client).
 

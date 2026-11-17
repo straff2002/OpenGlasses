@@ -20,7 +20,7 @@ struct DATExperimentalSettingsSection: View {
 
     var body: some View {
         Section {
-            Toggle("Hey Meta, open Avenkin (beta)", isOn: $voiceInvocationOn)
+            Toggle("Hey Meta, open Avenkin", isOn: $voiceInvocationOn)
                 .onChange(of: voiceInvocationOn) { _, on in
                     DATExperimentalPolicy.setSwitch(.voiceInvocation, on: on)
                     DATExperimentalFeatures.settingChanged()
