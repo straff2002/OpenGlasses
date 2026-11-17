@@ -2,7 +2,7 @@
 
 **Status: ✅ Shipped through P4's code half; account-scoped models + advanced device-code
 fallback added 2026-08-29 — on-device verification checklist still owed (wire-format fixes
-2026-08-31–09-04 show partial live exercise against a real ChatGPT account). 2026-10-21: an xAI (SuperGrok) account sign-in added on the same scaffolding — see the amendment at the end; its live sign-in check is owed.** P1 (`ChatGPTOAuth` + shared `PKCE`/`OAuthCodeInput`), P2 (`ResponsesTranslator` +
+2026-08-31–09-04 show partial live exercise against a real ChatGPT account). 2026-10-21: an xAI (SuperGrok) account sign-in added on the same scaffolding — see the amendment at the end; its live sign-in check is owed. 2026-11-18: photos reopened per model — a ChatGPT model sees when the account's catalog says it takes images (P4's image turn, below); the live photo turn is owed.** P1 (`ChatGPTOAuth` + shared `PKCE`/`OAuthCodeInput`), P2 (`ResponsesTranslator` +
 stream accumulator), P3 (`ChatGPTOAuthService`, `LLMProvider.chatgpt`, `sendChatGPT`, shared
 `OAuthSignInRows` in the model editor), and P4's codeable half — stateless helpers
 (summarization, `analyzeFrame`, structured vision/completion via forced function-call), the
@@ -111,6 +111,19 @@ confirmed covered. **Live half: pending, needs the phone + a real ChatGPT accoun
       `ChatGPTVisionGate` declines a photo turn out loud (pointing at an API key, Gemini, or the
       on-device model) before an image byte is sent. If a live turn ever *does* prove acceptance,
       the gate is the one place to reopen, per model.
+      **Reopened per model (2026-11-18).** Each `/codex/models` row names its
+      `input_modalities`, and the upstream client treats a row that names none as text and
+      image. `ChatGPTModelAvailability.Catalog` now keeps `imageInput` (the ids whose row takes
+      images), `ChatGPTContextCatalog` mirrors it into `ChatGPTImageInput` on every stored catalog
+      and at sign-in/launch from the stored copy (account-checked, 7-day ceiling), and every reader
+      follows it: the send-time gate, `ModelConfig.inferredSupportsVision`, and the fallback
+      chain, which no longer excludes `.chatgpt` outright but still refuses a model the catalog
+      lists as text-only, whatever the saved override. Unknown (signed out, no catalog yet, or a
+      snapshot stored before the field) is still no, and the decline now points at choosing
+      another model in Settings first. The `false` the model editor used to save for every
+      ChatGPT model is cleared once (`ChatGPTVisionOverrideReset`), and the editor now stores only
+      a real "off". **Still owed:** one photo question on the phone with a real account, watching
+      for an `input_image` refusal from the backend.
 - [ ] Token refresh across an expiry (leave the app overnight, ask again).
 - [ ] Verify the endpoint constants against the live service (the P1 constants block is
       captured-at-implementation and unverified until this runs).
