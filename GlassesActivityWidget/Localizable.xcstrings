@@ -1872,6 +1872,88 @@
         }
       }
     },
+    "Open Avenkin and turn on wake-word listening." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "افتح Avenkin وشغّل الاستماع بكلمة التنبيه."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre Avenkin y activa la escucha de la palabra de activación."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrez Avenkin et activez l'écoute du mot d'activation."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nyissa meg az Avenkin alkalmazást, és kapcsolja be az ébresztő szóra való hallgatást."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri Avenkin e attiva l'ascolto della parola di attivazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkinを開いて、ウェイクワードのリスニングをオンにします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin을 열고 웨이크 워드 듣기를 켭니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Avenkin en zet luisteren naar het wake-woord aan."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abra o Avenkin e ative a escuta da palavra de ativação."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыть Avenkin и включить прослушивание слова активации."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avenkin کھولیں اور ویک ورڈ سننا آن کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 Avenkin 并开启唤醒词聆听。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開 Avenkin 並開啟喚醒詞聆聽。"
+          }
+        }
+      }
+    },
     "Photo" : {
       "localizations" : {
         "ar" : {
@@ -2748,6 +2830,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開啟或關閉喚醒詞聆聽。Avenkin 保持在背景運行。"
+          }
+        }
+      }
+    },
+    "Turn wake-word listening on or off. Turning it on opens Avenkin." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "شغّل الاستماع بكلمة التنبيه أو أوقفه. يؤدي تشغيله إلى فتح Avenkin."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa o desactiva la escucha de la palabra de activación. Al activarla, se abre Avenkin."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activez ou désactivez l'écoute du mot d'activation. L'activer ouvre Avenkin."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapcsolja be vagy ki az ébresztő szóra való hallgatást. Bekapcsoláskor megnyílik az Avenkin."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva o disattiva l'ascolto della parola di attivazione. Attivandolo si apre Avenkin."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ウェイクワードのリスニングをオン/オフにします。オンにするとAvenkinが開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "웨이크 워드 듣기를 켜거나 끕니다. 켜면 Avenkin이 열립니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zet luisteren naar het wake-woord aan of uit. Aanzetten opent Avenkin."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ative ou desative a escuta da palavra de ativação. Ao ativar, o Avenkin é aberto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Включить или выключить прослушивание слова активации. При включении откроется Avenkin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ویک ورڈ سننا آن یا آف کریں۔ آن کرنے پر Avenkin کھل جاتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启或关闭唤醒词聆听。开启时会打开 Avenkin。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟或關閉喚醒詞聆聽。開啟時會打開 Avenkin。"
           }
         }
       }
