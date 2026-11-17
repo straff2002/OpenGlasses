@@ -163,9 +163,9 @@ final class NetworkRouteRegistryTests: XCTestCase {
     func testEveryRouteDescribesItself() {
         for route in NetworkRoute.allCases {
             XCTAssertTrue(!route.owningTypes.isEmpty || route.transportDelegatedTo != nil
-                              || route.officeEngineSender != nil,
+                              || route.officeEngineSender != nil || route.boundedClientSender != nil,
                           "\(route.rawValue) names neither an owning type, a borrowed transport, "
-                              + "nor a sender over the office engine")
+                              + "a sender over the office engine, nor a sender over the hardened client")
             XCTAssertFalse(route.dataClasses.isEmpty, "\(route.rawValue) declares no data classes")
             XCTAssertGreaterThan(route.purpose.count, 20, "\(route.rawValue) needs a real purpose line")
             XCTAssertTrue(route.purpose.hasSuffix("."), "\(route.rawValue)'s purpose should read as a sentence")
@@ -198,6 +198,48 @@ final class NetworkRouteRegistryTests: XCTestCase {
         }
         XCTAssertEqual(NetworkRoute.jobRecordingOfficeSync.medicalPolicy, .blockedWhenLocalOnly)
         XCTAssertEqual(NetworkRoute.jobRecordingOfficeSync.dataClasses, [.frame, .audio, .transcript])
+    }
+
+    /// A route that rides the shared hardened client has no `URLSession` of its own for the scrape
+    /// to find, so it is held to the office-engine rule: one named sender, no other transport, the
+    /// type exists once, uses the hardened client, and asks the medical guard for this very route.
+    func testARouteOverTheHardenedClientNamesASenderThatGuardsIt() throws {
+        let overClient = NetworkRoute.allCases.filter { $0.boundedClientSender != nil }
+        XCTAssertEqual(overClient, [.recipeAddOn])
+        for route in overClient {
+            let sender = try XCTUnwrap(route.boundedClientSender)
+            XCTAssertTrue(route.owningTypes.isEmpty && route.transportDelegatedTo == nil
+                              && route.officeEngineSender == nil,
+                          "\(route.rawValue) names a sender over the hardened client and another transport")
+            guard let walker = FileManager.default.enumerator(at: Self.appSourcesDirectory,
+                                                              includingPropertiesForKeys: nil) else {
+                return XCTFail("Could not enumerate the sources")
+            }
+            var declaring: [String] = []
+            for case let url as URL in walker where url.pathExtension == "swift" {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                if text.contains("struct \(sender)") || text.contains("final class \(sender)") {
+                    declaring.append(text)
+                }
+            }
+            XCTAssertEqual(declaring.count, 1, "\(sender) should be declared exactly once")
+            XCTAssertTrue(declaring.first?.contains("MedicalEgressGuard.check(.\(route.rawValue))") == true,
+                          "\(sender) sends on \(route.rawValue) without asking the medical guard")
+            XCTAssertTrue(declaring.first?.contains("BoundedHTTPClient") == true,
+                          "\(sender) claims the hardened client but does not use it")
+        }
+    }
+
+    /// Plan GF P2: an add-on's step carries model-written parameters and, with its permission,
+    /// coarse location, to the public hosts its sheet named — and Local Only refuses it.
+    func testRecipeAddOnRouteIsPublicWebAndBlockedWhenLocalOnly() {
+        let route = NetworkRoute.recipeAddOn
+        XCTAssertEqual(route.dataClasses, [.promptText, .location])
+        XCTAssertEqual(route.endpointClass, .publicWeb)
+        XCTAssertFalse(route.endpointClass.permitsPrivateNetwork)
+        XCTAssertTrue(route.medicalPolicy.blocksLocalOnly)
+        XCTAssertEqual(MedicalEgressGuard.decide(route, mode: .localOnly), .refuse(MedicalEgressRefusal(route: route)))
+        XCTAssertEqual(MedicalEgressGuard.decide(route, mode: .off), .allow)
     }
 
     func testEveryMedicalExceptionCarriesAJustification() {

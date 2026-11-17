@@ -117,7 +117,10 @@ enum ToolAuthorizationPolicy {
 
         // 0. Composition floor. A binding is authored once and replayed by a machine, so the
         //    structural limits apply before any argument is looked at.
-        if context.depth > 0, name.hasPrefix(SkillPackToolWrapper.namePrefix) {
+        if context.depth > 0, name.hasPrefix(SkillPackToolWrapper.namePrefix)
+            || name.hasPrefix(AddOnToolWrapper.namePrefix) {
+            // A pack action or an add-on skill is never a composition target: neither may chain
+            // into another installed capability (Plan GF joins the BX floor).
             return .refuse(reason: .packChaining, message: ComposedToolPolicy.chainingRefusal(target: name))
         }
         if context.depth > 0, context.wouldCycle(name) {

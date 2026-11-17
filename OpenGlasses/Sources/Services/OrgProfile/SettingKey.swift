@@ -72,6 +72,14 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case organizationForbidsJobRecording
     /// The technician's own van stock (Plan IH) is off: no `van_stock`, no Van Stock screen.
     case organizationForbidsVanStock
+    /// Add-ons (Plan GF) are off on this organisation's phones: none installs and none runs.
+    case organizationForbidsAddOns
+    /// Only signed add-ons — the vendor's or the organisation's — install and run: no add-on from
+    /// a link, a file or the assistant that nobody signed.
+    case organizationForbidsCommunityAddOns
+    /// Only add-ons the organisation signed itself install and run: nothing from the vendor's
+    /// public catalogue either.
+    case organizationAllowsOnlyOrganisationAddOns
     /// A recorded job's faces must be blurred before it goes to the office. Until the app can
     /// blur a recording, this means no job is recorded at all — never one sent unblurred.
     case organizationRequiresBlurBeforeOfficeSync
@@ -174,6 +182,8 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .organizationRequiresSignedJobFiles, .organizationRequiresCustomerSignOff,
              .organizationForbidsCustomerTranscript, .organizationForbidsJobRecording,
              .organizationForbidsVanStock,
+             .organizationForbidsAddOns, .organizationForbidsCommunityAddOns,
+             .organizationAllowsOnlyOrganisationAddOns,
              .organizationRequiresBlurBeforeOfficeSync, .organizationForbidsRecordingSyncOnCellular,
              .organizationRequiresTableChecks,
              .privacyFilterEnabled, .aiConnectionCueEnabled:

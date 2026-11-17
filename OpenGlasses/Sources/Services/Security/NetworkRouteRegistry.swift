@@ -191,6 +191,9 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case clawHubCatalog
     case vaultPackCatalog
     case playbookHTTPStep
+    /// An installed recipe add-on's `http` step (Plan GF): a public HTTPS host the add-on names in
+    /// its permissions, called with what the model filled into the add-on's parameters.
+    case recipeAddOn
     case localizationCatalogDownload
 
     // MARK: On-device model acquisition
@@ -279,6 +282,7 @@ extension NetworkRoute {
         case .clawHubCatalog: return "Fetch the published skill-pack catalog."
         case .vaultPackCatalog: return "Fetch the published vault-pack catalog."
         case .playbookHTTPStep: return "Call the URL an active playbook step names, with variables the run has filled in."
+        case .recipeAddOn: return "Call a public HTTPS host an installed add-on lists in its permissions, with the values the model filled into its parameters and, for an add-on allowed it, the approximate location."
         case .localizationCatalogDownload: return "Download an updated localization catalog."
         case .localModelRepositoryMetadata: return "Read a model repository's file listing before downloading weights."
         case .localModelDownload: return "Download on-device model weights in the background."
@@ -333,6 +337,10 @@ extension NetworkRoute {
             return [.telemetryFree]
         case .playbookHTTPStep:
             return [.promptText]
+        case .recipeAddOn:
+            // Coarse only (two decimal places, about 1 km), and only for an add-on whose sheet
+            // said so; the parameters are model-written and pass the egress screen first.
+            return [.promptText, .location]
         case .homeAssistantCommand, .homeAssistantEntityCache:
             return [.promptText, .credential]
         case .openClawSkillCatalog:
@@ -397,7 +405,7 @@ extension NetworkRoute {
              .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark, .licenceSeatLease:
             return .firstPartyCloud
         case .webSearch, .newsHeadlines, .podcastDirectory, .currencyRates,
-             .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep:
+             .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep, .recipeAddOn:
             return .publicWeb
         case .homeAssistantCommand, .homeAssistantEntityCache, .hermesBridgeSession, .hermesAgentAPI,
              .mcpHTTPTransport, .webHUDMirrorListener, .mcpGlassesListener, .jobRecordingOfficeSync,
@@ -458,10 +466,23 @@ extension NetworkRoute {
         }
     }
 
+    /// The type that sends on this route through the shared ``BoundedHTTPClient`` rather than a
+    /// `URLSession` of its own. The hardened client is a shared transport the scrape deliberately
+    /// does not attribute (it carries whatever its caller declares), so a route that rides it
+    /// names its sender here, and `NetworkRouteRegistryTests` checks that the type exists and calls
+    /// the medical guard for this route. Nil for every route the scrape can see.
+    var boundedClientSender: String? {
+        switch self {
+        case .recipeAddOn: return "BoundedAddOnHTTPTransport"
+        default: return nil
+        }
+    }
+
     /// The types that actually own the transport for this route. `NetworkRouteRegistryTests`
     /// checks this against a scrape of the source tree, so the mapping cannot silently rot.
-    /// Empty exactly when ``transportDelegatedTo`` names the route whose transport is borrowed, or
-    /// ``officeEngineSender`` names the type that sends over the embedded office engine.
+    /// Empty exactly when ``transportDelegatedTo`` names the route whose transport is borrowed,
+    /// ``officeEngineSender`` names the type that sends over the embedded office engine, or
+    /// ``boundedClientSender`` names the type that sends through the shared hardened client.
     var owningTypes: [String] {
         switch self {
         case .deepgramLiveTranscription: return ["DeepgramSTTService"]
@@ -511,6 +532,7 @@ extension NetworkRoute {
         case .clawHubCatalog: return ["ClawHubService"]
         case .vaultPackCatalog: return ["VaultPackCatalogService"]
         case .playbookHTTPStep: return ["PlaybookStore"]
+        case .recipeAddOn: return []
         case .localizationCatalogDownload: return ["LocalizationManager"]
         case .localModelRepositoryMetadata: return ["LocalModelRepositoryClient"]
         case .localModelDownload: return ["LocalModelBackgroundTransfer"]

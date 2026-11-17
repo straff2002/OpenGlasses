@@ -20,6 +20,8 @@ enum UntrustedNetworkFeaturePolicy {
     enum Feature: CaseIterable {
         case qrContextFetch
         case skillPackDeepLinkFetch
+        /// `install-addon` (Plan GF): one small add-on file, fetched only after the wearer says yes.
+        case addOnDeepLinkFetch
     }
 
     enum Decision: Equatable {

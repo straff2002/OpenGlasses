@@ -129,6 +129,10 @@ struct RecipeSandbox: Sendable {
             let response: AddOnHTTPResponse
             do {
                 response = try await transport.send(request)
+            } catch let error as AddOnTransportError {
+                // A failure the real transport can name (too large, wrong type, a deadline, a
+                // private address) keeps its name; anything else is a network failure.
+                return .failed(error.recipeCode)
             } catch {
                 return .failed("network")
             }

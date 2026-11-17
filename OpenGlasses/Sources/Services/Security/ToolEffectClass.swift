@@ -18,6 +18,10 @@ enum ToolDispatchSeam: Sendable, Equatable {
     case gateway
     /// A user-authored HTTP tool (`CustomToolWrapper`), identified by its own id.
     case custom(id: String)
+    /// A skill of an installed recipe add-on (`AddOnToolWrapper`, Plan GF), identified by the
+    /// add-on's id. Its steps are data the app interprets inside a sandbox, but what they ask of
+    /// the hosts they name was written outside this repository.
+    case addOn(id: String)
 
     /// The stable identity an approval binds to. Namespaced so an id from one seam can never
     /// collide with an id from another.
@@ -27,6 +31,7 @@ enum ToolDispatchSeam: Sendable, Equatable {
         case .mcpServer(let id):   return "mcp:\(id)"
         case .gateway:             return "gateway"
         case .custom(let id):      return "custom:\(id)"
+        case .addOn(let id):       return "addon:\(id)"
         }
     }
 
@@ -270,6 +275,7 @@ enum ToolEffectClassifier {
         case .native: return nil
         case .mcpServer: return ActionDataSummary.serverLabel(fromQualifiedName: tool)
         case .custom: return tool
+        case .addOn(let id): return id
         case .gateway: return "gateway"
         }
     }

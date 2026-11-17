@@ -998,6 +998,8 @@ enum PrivacyLog {
     enum DeepLinkRoute: String {
         case shortcutCallback, skillPack, persona, connect, capture, listen, quickAction
         case wearablesCallback, enrol, other
+        /// `install-addon` (Plan GF): offers an add-on file for review. Never the link's address.
+        case addOn
     }
 
     enum DeepLinkVerdict: String {
@@ -1987,6 +1989,8 @@ enum PrivacyLog {
         case conversationIndex, conversationRecall
         case evolvedSkills, usage, playbooks, operationJournal
         case readingSessions, studyDecks, recordedSessions, skillPacks, skillHub
+        /// Installed recipe add-ons (Plan GF): failures only, never an id or a file.
+        case addOns
         case offlineQueue, homeGrid
         /// The parking spot file and its sign photos. Failures only — a spot is a place the wearer
         /// was, and it never reaches a log line.
@@ -2089,6 +2093,9 @@ enum PrivacyLog {
 
     enum TransferChannel: String {
         case skillPack, skillHub, agentExport, recordingFile, spotlightIndex, offlineSync
+        /// A recipe add-on installed, edited, removed or run (Plan GF). Its id is community-authored,
+        /// so it is fingerprinted like a pack's; the version is published metadata.
+        case addOn
         /// The out-of-process `URLSession` the model hub downloads through. Its session
         /// identifier is app-chosen and its file is a model weight, so neither is named.
         case backgroundDownload

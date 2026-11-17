@@ -61,6 +61,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | Store | Owner | Data class | Subject | Protection | Backup excluded | Retention | Delete all | Delete subject |
 |---|---|---|---|---|---|---|---|---|
 | activityTrail | `ActivityStore` | operationalAudit | wearer | completeUntilFirstUserAuthentication | yes | 14 days, at most 1000 entries, or a shorter HIPAA retention | `ActivityStore.deleteAll()` | `ActivityStore.forget(matching:)` |
+| addOns | `AddOnStore` | skillDefinition | wearer | platformDefault | no | none | `AddOnStore.removeAll()` | none — add-ons are removed one by one; a self-built add-on's goal is the wearer's own request, not about another person |
 | agentDocuments | `AgentDocumentStore` | personalMemory | wearer | platformDefault | no | none | `AgentDocumentStore.save(_:content:) to default content` | `AgentDocumentStore.removeLines(containing:)` |
 | agentNotificationQueue | `AgentNotificationQueue` | personalMemory | wearer | platformDefault | no | none | none — entries are consumed as the agent triages them | n/a — no subject linkage |
 | agentSchedule | `AgentScheduler` | personalMemory | wearer | platformDefault | no | none | none — tasks are cancelled individually | n/a — no subject linkage |

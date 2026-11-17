@@ -2831,6 +2831,32 @@ struct Config {
                             stored: UserDefaults.standard.bool(forKey: "organizationForbidsVanStock"))
     }
 
+    /// The organisation's add-on ceiling (Plan GF): the strictest of its three add-on keys, each a
+    /// ceiling pinned on and written only by a profile. No ceiling on a phone without one.
+    static var addOnCeiling: AddOnPolicy.Ceiling {
+        var ceiling = AddOnPolicy.Ceiling.noCeiling
+        if PolicyEnvelope.bool(.organizationForbidsCommunityAddOns,
+                               stored: UserDefaults.standard.bool(forKey: "organizationForbidsCommunityAddOns")) {
+            ceiling = AddOnPolicy.strictest(ceiling, .signedOnly)
+        }
+        if PolicyEnvelope.bool(.organizationAllowsOnlyOrganisationAddOns,
+                               stored: UserDefaults.standard.bool(forKey: "organizationAllowsOnlyOrganisationAddOns")) {
+            ceiling = AddOnPolicy.strictest(ceiling, .organisationSignedOnly)
+        }
+        if PolicyEnvelope.bool(.organizationForbidsAddOns,
+                               stored: UserDefaults.standard.bool(forKey: "organizationForbidsAddOns")) {
+            ceiling = AddOnPolicy.strictest(ceiling, .addOnsDisabled)
+        }
+        return ceiling
+    }
+
+    /// The wearer's own switch for every add-on at once (Plan GF): off, no add-on skill is offered
+    /// to the model and none runs; each add-on keeps its own switch underneath. On by default.
+    static var addOnsEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: "addOnsEnabled") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "addOnsEnabled") }
+    }
+
     /// Whether the organisation requires a recorded job's faces blurred before it goes to the
     /// office. A ceiling pinned on. While the app cannot blur a recording, this makes recording a
     /// job unavailable and holds any unblurred recording already on the phone.

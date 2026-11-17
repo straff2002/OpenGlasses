@@ -143,6 +143,9 @@ enum SensitiveStore: String, CaseIterable {
     case evolvedSkills
     case installedSkills
     case skillPacks
+    /// Installed recipe add-ons (Plan GF P2), with where each came from — for a self-built one,
+    /// the goal the wearer asked for, in their own words.
+    case addOns
 
     // Exports
     case medicalExports
@@ -1309,6 +1312,19 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "SkillPackStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/SkillPacks/SkillPackStore.swift"],
                           location: "Documents/skillpacks")
+
+        // The files are definitions anybody may read and share. The records add where each came
+        // from, and a self-built add-on's provenance carries the goal the wearer asked for in their
+        // own words — about the wearer, never about anyone else, so it is the wearer's linkage with
+        // no per-person erasure to run.
+        case .addOns:
+            return Record(store: self, dataClass: .skillDefinition, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          deleteAll: .api("AddOnStore.removeAll()"),
+                          deleteSubject: .unavailable("add-ons are removed one by one; a self-built add-on's goal is the wearer's own request, not about another person"),
+                          owner: "AddOnStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/AddOns/AddOnStore.swift"],
+                          location: "Documents/addons")
 
         case .medicalExports:
             return Record(store: self, dataClass: .exportArtifact, subjectLinkage: .thirdPartySubject,

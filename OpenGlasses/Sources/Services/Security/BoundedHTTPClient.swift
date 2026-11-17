@@ -4,9 +4,13 @@ import Security
 import Darwin
 import os.lock
 
-/// A narrow HTTP GET client for attacker-selected URLs. Each hop is resolved once, every returned
+/// A narrow HTTP client for attacker-selected URLs. Each hop is resolved once, every returned
 /// address is classified, and the socket connects to one approved numeric address while TLS still
 /// verifies the original hostname. Redirects are parsed by this client rather than URLSession.
+///
+/// `fetch` is a GET that follows redirects itself. `send` is one request — GET or POST, with the
+/// caller's headers and body — over exactly one hop: a redirect comes back as itself, `location`
+/// header and all, so a caller with its own allowlist (a recipe add-on's sandbox) judges every hop.
 struct BoundedHTTPClient {
     struct Profile: Equatable {
         let name: String
@@ -26,6 +30,10 @@ struct BoundedHTTPClient {
         /// tells "the host looked and found nothing" (404, 410) from "the host could not look"
         /// (5xx), which an edge's own HTML error page would otherwise blur (Plan LS).
         let readsOnlyTheStatusOfAnError: Bool
+        /// Whether, beyond `acceptedMIMETypes`, any `text/…` type and any `…+json` type is accepted.
+        /// Off by default; on for a recipe add-on's step, which reads whatever public JSON or text
+        /// API the add-on names.
+        let acceptsTextAndJSONFamilies: Bool
 
         /// Three deadlines rather than one, because a single total budget lets a hostile peer
         /// accept the connection and then hold a socket, a task and a staging file open for the
@@ -43,7 +51,8 @@ struct BoundedHTTPClient {
             totalTimeout: TimeInterval,
             firstByteTimeout: TimeInterval = 8,
             idleTimeout: TimeInterval = 5,
-            readsOnlyTheStatusOfAnError: Bool = false
+            readsOnlyTheStatusOfAnError: Bool = false,
+            acceptsTextAndJSONFamilies: Bool = false
         ) {
             self.name = name
             self.maximumBytes = maximumBytes
@@ -54,6 +63,14 @@ struct BoundedHTTPClient {
             self.firstByteTimeout = firstByteTimeout
             self.idleTimeout = idleTimeout
             self.readsOnlyTheStatusOfAnError = readsOnlyTheStatusOfAnError
+            self.acceptsTextAndJSONFamilies = acceptsTextAndJSONFamilies
+        }
+
+        /// Whether a response's MIME type (lowercased, without parameters) is one this profile reads.
+        func accepts(mimeType mime: String) -> Bool {
+            if acceptedMIMETypes.contains(mime) { return true }
+            guard acceptsTextAndJSONFamilies else { return false }
+            return mime.hasPrefix("text/") || mime.hasSuffix("+json")
         }
 
         static let qrContext = Profile(
@@ -135,6 +152,40 @@ struct BoundedHTTPClient {
             readsOnlyTheStatusOfAnError: true
         )
 
+        /// A recipe add-on file from a link (Plan GF): one small JSON document — the bare file or
+        /// its signed envelope, which wraps the file's bytes in base64 and so is the larger of the
+        /// two. Static hosting often labels JSON `text/plain`; the bytes are decoded and validated
+        /// whatever the label says.
+        static let recipeAddOn = Profile(
+            name: "recipeAddOn",
+            maximumBytes: AddOnSignature.maxEnvelopeBytes,
+            acceptedMIMETypes: ["application/json", "text/plain"],
+            maximumRedirects: 3,
+            allowsPrivateHTTP: false,
+            totalTimeout: 20,
+            firstByteTimeout: 8,
+            idleTimeout: 5
+        )
+
+        /// One `http` step of a running recipe add-on, sent with `send` (one hop: the add-on's
+        /// sandbox follows each redirect itself, after checking it against the add-on's own
+        /// allowlist). JSON or text of any kind; an error answer arrives as its status alone, so
+        /// a host's HTML error page reads as "the host said no" rather than as a transport fault.
+        static func recipeAddOnStep(timeout: TimeInterval, maximumBytes: Int) -> Profile {
+            Profile(
+                name: "recipeAddOnStep",
+                maximumBytes: maximumBytes,
+                acceptedMIMETypes: ["application/json"],
+                maximumRedirects: 0,
+                allowsPrivateHTTP: false,
+                totalTimeout: max(1, timeout),
+                firstByteTimeout: min(10, max(1, timeout)),
+                idleTimeout: 5,
+                readsOnlyTheStatusOfAnError: true,
+                acceptsTextAndJSONFamilies: true
+            )
+        }
+
         #if DEBUG
         static let internalSkillPack = Profile(
             name: "internalSkillPack",
@@ -155,6 +206,79 @@ struct BoundedHTTPClient {
         let host: String
         let port: UInt16
         let usesTLS: Bool
+        /// `GET` unless `send` was asked for a `POST`.
+        var method: String = "GET"
+        /// The caller's own header fields, already sanitised (`sanitisedRequestHeaders`).
+        var headerFields: [String: String] = [:]
+        /// A `POST` body; nil for a `GET`.
+        var body: Data? = nil
+    }
+
+    /// One request for `send`: the method, the URL, the caller's headers and an optional body.
+    struct OutboundRequest: Equatable {
+        let method: String
+        let url: URL
+        let headers: [String: String]
+        let body: Data?
+
+        init(method: String = "GET", url: URL, headers: [String: String] = [:], body: Data? = nil) {
+            self.method = method
+            self.url = url
+            self.headers = headers
+            self.body = body
+        }
+    }
+
+    /// The methods `send` will put on the wire.
+    static let sendableMethods: Set<String> = ["GET", "POST"]
+    /// The most body bytes `send` will send.
+    static let maximumRequestBodyBytes = 64 * 1024
+
+    /// Header names the client sets itself, or that would change how the connection is framed or
+    /// whom it talks to. A caller's value for any of them is dropped, never sent.
+    static let reservedRequestHeaders: Set<String> = [
+        "host", "content-length", "connection", "transfer-encoding", "te", "upgrade", "expect",
+        "keep-alive", "accept-encoding", "user-agent", "cookie", "cookie2",
+    ]
+
+    /// A caller's header fields made safe to write: names must be RFC 7230 tokens and not reserved
+    /// (`reservedRequestHeaders`, any `proxy-…`), values lose every control character, so no
+    /// value can end a line and start another.
+    static func sanitisedRequestHeaders(_ headers: [String: String]) -> [String: String] {
+        let token = CharacterSet(charactersIn: "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        var out: [String: String] = [:]
+        for (name, value) in headers {
+            let lower = name.lowercased()
+            guard !name.isEmpty, name.unicodeScalars.allSatisfy({ token.contains($0) }),
+                  !reservedRequestHeaders.contains(lower), !lower.hasPrefix("proxy-") else { continue }
+            let cleaned = String(String.UnicodeScalarView(value.unicodeScalars.filter {
+                !CharacterSet.controlCharacters.contains($0)
+            })).trimmingCharacters(in: .whitespaces)
+            out[name] = cleaned
+        }
+        return out
+    }
+
+    /// The bytes written for one request: the request line, `Host`, `Accept` (the caller's when it
+    /// set one, else the profile's types), the fixed framing headers, the caller's sanitised
+    /// headers in name order, `Content-Length` for a body, then the body. Pure, so the wire shape
+    /// is asserted without a socket.
+    static func requestBytes(plan: PinnedConnectionPlan, request: PinnedRequest, profile: Profile) -> Data {
+        var extra = request.headerFields
+        let callerAccept = extra.first { $0.key.lowercased() == "accept" }
+        extra = extra.filter { $0.key.lowercased() != "accept" }
+        let accept = callerAccept?.value ?? profile.acceptedMIMETypes.sorted().joined(separator: ", ")
+        var head = "\(request.method) \(plan.requestTarget) HTTP/1.1\r\nHost: \(plan.hostHeader)\r\nAccept: \(accept)\r\nAccept-Encoding: identity\r\nConnection: close\r\nUser-Agent: OpenGlasses/BoundedFetch\r\n"
+        for name in extra.keys.sorted() {
+            head += "\(name): \(extra[name] ?? "")\r\n"
+        }
+        if let body = request.body {
+            head += "Content-Length: \(body.count)\r\n"
+        }
+        head += "\r\n"
+        var bytes = Data(head.utf8)
+        if let body = request.body { bytes.append(body) }
+        return bytes
     }
 
     /// Where the socket goes versus which name the peer must prove it owns.
@@ -291,6 +415,37 @@ struct BoundedHTTPClient {
         var body = Data()
         let response = try await fetch(url, profile: profile) { body.append($0) }
         return (body, response)
+    }
+
+    /// One request over one hop. The address checks, deadlines, byte cap and MIME rules are the
+    /// profile's, exactly as for `fetch`; the difference is that a 3xx is returned (its body never
+    /// read) rather than followed, and the method may be `POST` with a body of at most
+    /// `maximumRequestBodyBytes`. Caller headers are sanitised first (`sanitisedRequestHeaders`).
+    func send(_ outbound: OutboundRequest, profile: Profile,
+              bodySink: @escaping BodySink) async throws -> Response {
+        let method = outbound.method.uppercased()
+        guard Self.sendableMethods.contains(method) else { throw ClientError.invalidURL }
+        if let body = outbound.body {
+            guard method == "POST", body.count <= Self.maximumRequestBodyBytes else {
+                throw ClientError.invalidURL
+            }
+        }
+        return try await withThrowingTaskGroup(of: Response.self) { group in
+            group.addTask {
+                var request = try await pinnedRequest(for: outbound.url, profile: profile)
+                request.method = method
+                request.headerFields = Self.sanitisedRequestHeaders(outbound.headers)
+                request.body = outbound.body
+                return try await transport(request, profile, bodySink)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(profile.totalTimeout * 1_000_000_000))
+                throw ClientError.timeout
+            }
+            guard let first = try await group.next() else { throw ClientError.transport }
+            group.cancelAll()
+            return first
+        }
     }
 
     private func fetchWithoutTimeout(
@@ -533,8 +688,7 @@ struct BoundedHTTPClient {
         return try await withoutActuallyEscaping(sink) { escapingSink in
             try await withTaskCancellationHandler(operation: {
                 try await waitUntilReady(connection)
-                let wire = "GET \(plan.requestTarget) HTTP/1.1\r\nHost: \(plan.hostHeader)\r\nAccept: \(profile.acceptedMIMETypes.sorted().joined(separator: ", "))\r\nAccept-Encoding: identity\r\nConnection: close\r\nUser-Agent: OpenGlasses/BoundedFetch\r\n\r\n"
-                try await send(Data(wire.utf8), on: connection)
+                try await send(requestBytes(plan: plan, request: request, profile: profile), on: connection)
 
                 let parser = HTTPResponseParser(url: request.url, profile: profile, sink: escapingSink)
                 return try await readResponse(
@@ -766,7 +920,7 @@ final class HTTPResponseParser {
         }
         let mime = headers["content-type"]?.split(separator: ";", maxSplits: 1).first?
             .trimmingCharacters(in: .whitespaces).lowercased()
-        guard let mime, profile.acceptedMIMETypes.contains(mime) else {
+        guard let mime, profile.accepts(mimeType: mime) else {
             throw BoundedHTTPClient.ClientError.unacceptableMIMEType
         }
         if let transfer = headers["transfer-encoding"]?.lowercased() {
