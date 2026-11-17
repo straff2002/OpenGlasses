@@ -75,7 +75,9 @@ final class MedicalComplianceTests: XCTestCase {
         // team_learning: a clinical site's "learning" is a patient note (Plan FP P1).
         // manual_capture: photographed pages must not become clinical capture records (Plan IF).
         let expected: Set<String> = ["web_search", "send_message", "send_via", "openclaw_skills",
-                                     "reading_session", "team_learning", "manual_capture"]
+                                     "reading_session", "team_learning", "manual_capture",
+                                     // build_addon: research, documentation pages and a test call are egress.
+                                     "build_addon"]
         XCTAssertEqual(Config.hipaaDisabledTools, expected)
     }
 

@@ -341,6 +341,10 @@ final class NativeToolRegistry {
         #endif
         // Always registered — tool checks agentModeEnabled at execution time
         register(YieldToHumanTool())
+        // "Build yourself a skill for that": offered only while building add-ons is allowed (Agent
+        // Mode, not Medical Compliance, the organisation's policy). AppState re-registers it with
+        // the running service; without one every call is refused.
+        register(BuildAddOnTool())
         var discoveryTool = DiscoverCapabilitiesTool()
         discoveryTool.toolRegistry = self
         register(discoveryTool)

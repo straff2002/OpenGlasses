@@ -146,6 +146,9 @@ enum SensitiveStore: String, CaseIterable {
     /// Installed recipe add-ons (Plan GF P2), with where each came from — for a self-built one,
     /// the goal the wearer asked for, in their own words.
     case addOns
+    /// Add-ons the assistant built and tested that the wearer hasn't approved yet, each with its
+    /// test trace and the goal in the wearer's words, plus when building sessions started.
+    case addOnDrafts
 
     // Exports
     case medicalExports
@@ -1325,6 +1328,19 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "AddOnStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/AddOns/AddOnStore.swift"],
                           location: "Documents/addons")
+
+        // A draft is the wearer's own request and a test against a public service, kept at most a
+        // day after its test (swept on every start and when Settings opens) and deleted as soon
+        // as the wearer approves or turns it down.
+        case .addOnDrafts:
+            return Record(store: self, dataClass: .skillDefinition, subjectLinkage: .wearer,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .ttl,
+                          deleteAll: .api("AddOnDraftStore.deleteAll()"),
+                          deleteSubject: .unavailable("a draft holds the wearer's own request and a public service's answer, not anything about another person"),
+                          owner: "AddOnDraftStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/AddOns/Authoring/AddOnDraftStore.swift"],
+                          location: "Documents/addon-drafts")
 
         case .medicalExports:
             return Record(store: self, dataClass: .exportArtifact, subjectLinkage: .thirdPartySubject,

@@ -194,6 +194,9 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     /// An installed recipe add-on's `http` step (Plan GF): a public HTTPS host the add-on names in
     /// its permissions, called with what the model filled into the add-on's parameters.
     case recipeAddOn
+    /// A documentation page the assistant reads while building an add-on the wearer asked for:
+    /// a public HTTPS address the authoring model chose from a web search.
+    case addOnAuthoringDocs
     case localizationCatalogDownload
 
     // MARK: On-device model acquisition
@@ -283,6 +286,7 @@ extension NetworkRoute {
         case .vaultPackCatalog: return "Fetch the published vault-pack catalog."
         case .playbookHTTPStep: return "Call the URL an active playbook step names, with variables the run has filled in."
         case .recipeAddOn: return "Call a public HTTPS host an installed add-on lists in its permissions, with the values the model filled into its parameters and, for an add-on allowed it, the approximate location."
+        case .addOnAuthoringDocs: return "Read one public documentation page, at an address the model chose, while the assistant builds an add-on the wearer asked for."
         case .localizationCatalogDownload: return "Download an updated localization catalog."
         case .localModelRepositoryMetadata: return "Read a model repository's file listing before downloading weights."
         case .localModelDownload: return "Download on-device model weights in the background."
@@ -341,6 +345,9 @@ extension NetworkRoute {
             // Coarse only (two decimal places, about 1 km), and only for an add-on whose sheet
             // said so; the parameters are model-written and pass the egress screen first.
             return [.promptText, .location]
+        case .addOnAuthoringDocs:
+            // The address is model-written; nothing else of the wearer's goes with it.
+            return [.promptText]
         case .homeAssistantCommand, .homeAssistantEntityCache:
             return [.promptText, .credential]
         case .openClawSkillCatalog:
@@ -405,7 +412,8 @@ extension NetworkRoute {
              .clawHubCatalog, .vaultPackCatalog, .weatherAttributionMark, .licenceSeatLease:
             return .firstPartyCloud
         case .webSearch, .newsHeadlines, .podcastDirectory, .currencyRates,
-             .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep, .recipeAddOn:
+             .aircraftOverhead, .aedDirectory, .twitchChatSocket, .playbookHTTPStep, .recipeAddOn,
+             .addOnAuthoringDocs:
             return .publicWeb
         case .homeAssistantCommand, .homeAssistantEntityCache, .hermesBridgeSession, .hermesAgentAPI,
              .mcpHTTPTransport, .webHUDMirrorListener, .mcpGlassesListener, .jobRecordingOfficeSync,
@@ -474,6 +482,7 @@ extension NetworkRoute {
     var boundedClientSender: String? {
         switch self {
         case .recipeAddOn: return "BoundedAddOnHTTPTransport"
+        case .addOnAuthoringDocs: return "BoundedAddOnDocsFetcher"
         default: return nil
         }
     }
@@ -533,6 +542,7 @@ extension NetworkRoute {
         case .vaultPackCatalog: return ["VaultPackCatalogService"]
         case .playbookHTTPStep: return ["PlaybookStore"]
         case .recipeAddOn: return []
+        case .addOnAuthoringDocs: return []
         case .localizationCatalogDownload: return ["LocalizationManager"]
         case .localModelRepositoryMetadata: return ["LocalModelRepositoryClient"]
         case .localModelDownload: return ["LocalModelBackgroundTransfer"]

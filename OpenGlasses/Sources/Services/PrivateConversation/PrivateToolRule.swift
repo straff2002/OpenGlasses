@@ -79,6 +79,8 @@ enum PrivateToolRule {
         "golf_mode": .wearerDirected,
         // A conversation reset; in a private conversation P1 treats it as `startFresh`.
         "new_topic": .wearerDirected,
+        // An add-on the wearer asked the assistant to build, kept only if they approve it.
+        "build_addon": .wearerDirected,
         // The camera, the glasses and the phone doing what was asked.
         "capture_photo": .wearerDirected,
         "scan_document": .wearerDirected,

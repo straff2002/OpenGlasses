@@ -101,12 +101,63 @@ struct RecipeRunner: Sendable {
 
     func run(_ manifest: RecipeAddOnManifest, skill skillName: String, arguments: [String: Any],
              context: RecipeRunContext) async -> RecipeRunResult {
+        await perform(manifest, skill: skillName, arguments: arguments, context: context,
+                      screen: RecipeArguments.screen, tracing: false).result
+    }
+
+    /// One test run of a drafted add-on, the way the assistant tests one it built before the
+    /// wearer approves it. The same engine, sandbox and transport as `run`, with three differences:
+    /// - the sample values are screened strictly: any `EgressScreen` hit, a credential or personal
+    ///   data, blocks the test, and so does a value that contains something the wearer has told the
+    ///   assistant (`wearerFacts`), so a test never carries the wearer's own details anywhere;
+    /// - `remember` steps are recorded in the trace and never handed to anything that writes, and
+    ///   `display` steps are a preview in the trace only;
+    /// - every step is traced (`DryRunTrace`).
+    /// Location, when the add-on uses it, is the coarse value as in every run.
+    func dryRun(_ manifest: RecipeAddOnManifest, skill skillName: String, arguments: [String: Any],
+                context: RecipeRunContext, wearerFacts: [String] = []) async -> DryRunTrace {
+        let started = clock.now()
+        let facts = wearerFacts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { $0.count >= Self.minimumFactLength }
+        let strict: ([String: String]) -> RecipeArguments.ScreenOutcome = { values in
+            let verdict = EgressScreen.evaluate(values, policy: .block)
+            if !verdict.hits.isEmpty { return .blocked(verdict.hits) }
+            let matchesFact = values.values.contains { value in
+                let lowered = value.lowercased()
+                return facts.contains { lowered.contains($0) }
+            }
+            return matchesFact ? .blocked(["wearer_fact"]) : .passed(values)
+        }
+        let (result, steps, hosts) = await perform(manifest, skill: skillName, arguments: arguments,
+                                                   context: context, screen: strict, tracing: true)
+        let outcome: DryRunTrace.Outcome
+        switch result.outcome {
+        case .completed: outcome = .completed
+        case .timedOut: outcome = .timedOut
+        case .unknownSkill: outcome = .unknownSkill
+        case .invalidArguments(let why): outcome = .invalidArguments(why)
+        case .blockedCredential(let hits): outcome = .blockedSample(hits)
+        }
+        return DryRunTrace(skill: skillName, outcome: outcome, steps: steps, spoken: result.spokenText,
+                           requestsMade: result.requestsMade, hostsContacted: hosts,
+                           elapsed: max(0, clock.now().timeIntervalSince(started)))
+    }
+
+    /// A stored fact shorter than this is too common a string to mean anything in a sample.
+    static let minimumFactLength = 4
+
+    private func perform(_ manifest: RecipeAddOnManifest, skill skillName: String, arguments: [String: Any],
+                         context: RecipeRunContext,
+                         screen: ([String: String]) -> RecipeArguments.ScreenOutcome,
+                         tracing: Bool) async -> (result: RecipeRunResult, steps: [DryRunTrace.Step], hosts: [String]) {
         let toolName = Self.toolName(addOnID: manifest.id, skill: skillName)
-        func finish(_ outcome: RecipeRunResult.Outcome, _ state: State? = nil) -> RecipeRunResult {
-            RecipeRunResult(toolName: toolName, outcome: outcome,
-                            spokenText: state.map { String($0.said.joined(separator: " ").prefix(Self.maxSpokenLength)) } ?? "",
-                            memoryWrites: state?.memory ?? [], display: state?.display,
-                            requestsMade: state?.sandbox.requestsMade ?? 0)
+        func finish(_ outcome: RecipeRunResult.Outcome, _ state: State? = nil)
+            -> (result: RecipeRunResult, steps: [DryRunTrace.Step], hosts: [String]) {
+            let result = RecipeRunResult(toolName: toolName, outcome: outcome,
+                                         spokenText: state.map { String($0.said.joined(separator: " ").prefix(Self.maxSpokenLength)) } ?? "",
+                                         memoryWrites: state?.memory ?? [], display: state?.display,
+                                         requestsMade: state?.sandbox.requestsMade ?? 0)
+            return (result, state?.trace ?? [], state?.hosts ?? [])
         }
 
         guard let skill = manifest.skills.first(where: { $0.name == skillName }) else { return finish(.unknownSkill) }
@@ -119,7 +170,7 @@ struct RecipeRunner: Sendable {
 
         // Parameter values pass the egress screen before anything is substituted anywhere.
         let screened: [String: String]
-        switch RecipeArguments.screen(values) {
+        switch screen(values) {
         case .blocked(let hits): return finish(.blockedCredential(hits))
         case .passed(let safe): screened = safe
         }
@@ -129,8 +180,9 @@ struct RecipeRunner: Sendable {
             transport: transport, clock: clock))
         state.vars = screened.merging(Self.builtIns(context, permissions: manifest.permissions)) { _, builtIn in builtIn }
         state.permissions = manifest.permissions
+        state.tracing = tracing
 
-        await execute(skill.steps, state: &state, depth: 0)
+        await execute(skill.steps, state: &state, depth: 0, path: "steps")
         return finish(state.timedOut ? .timedOut : .completed, state)
     }
 
@@ -176,10 +228,20 @@ struct RecipeRunner: Sendable {
         var display: RecipeDisplayPayload?
         var timedOut = false
         var stepsRun = 0
+        /// Only for a test run (`dryRun`).
+        var tracing = false
+        var trace: [DryRunTrace.Step] = []
+        var hosts: [String] = []
+
+        mutating func record(_ step: DryRunTrace.Step) {
+            guard tracing else { return }
+            trace.append(step)
+        }
     }
 
-    private func execute(_ steps: [RecipeAddOnManifest.Step], state: inout State, depth: Int) async {
-        for step in steps {
+    private func execute(_ steps: [RecipeAddOnManifest.Step], state: inout State, depth: Int, path: String) async {
+        for (index, step) in steps.enumerated() {
+            let stepPath = "\(path)[\(index)]"
             if state.timedOut { return }
             if state.sandbox.isOutOfTime { state.timedOut = true; return }
             // Belt and braces for an unvalidated file: the same caps the validator applies.
@@ -188,28 +250,42 @@ struct RecipeRunner: Sendable {
 
             switch step {
             case .http(let h):
-                await runHTTP(h, state: &state)
+                await runHTTP(h, state: &state, path: stepPath)
             case .extract(let e):
-                runExtract(e, state: &state)
+                runExtract(e, state: &state, path: stepPath)
             case .say(let text):
                 let spoken = String(render(text, state.vars, .plain).prefix(RecipeAddOnValidator.maxSayLength))
                 if !spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { state.said.append(spoken) }
+                state.record(.init(path: stepPath, kind: .say, status: .ok, value: DryRunTrace.truncated(spoken)))
             case .remember(let r):
                 guard state.permissions.memory, state.memory.count < RecipeAddOnValidator.maxRemembersPerRun else { break }
                 let value = String(render(r.value, state.vars, .plain).prefix(RecipeAddOnValidator.maxSayLength))
-                state.memory.append(RecipeMemoryWrite(key: r.key, value: value))
+                // A test run's writes stay in its trace: `dryRun` never returns them to a writer.
+                if state.tracing {
+                    state.record(.init(path: stepPath, kind: .remember, status: .simulated, value: r.key))
+                } else {
+                    state.memory.append(RecipeMemoryWrite(key: r.key, value: value))
+                }
             case .display(let d):
                 guard state.permissions.display else { break }
-                state.display = displayPayload(d, state.vars) ?? state.display
+                let payload = displayPayload(d, state.vars)
+                if state.tracing {
+                    state.record(.init(path: stepPath, kind: .display, status: .previewOnly,
+                                       value: payload.map { DryRunTrace.truncated($0.title) }))
+                } else {
+                    state.display = payload ?? state.display
+                }
             case .when(let w):
                 guard depth < RecipeAddOnValidator.maxIfDepth else { return }
-                let branch = Self.evaluate(w, vars: state.vars) ? w.then : w.else
-                await execute(branch, state: &state, depth: depth + 1)
+                let takesThen = Self.evaluate(w, vars: state.vars)
+                state.record(.init(path: stepPath, kind: .branch, status: .ok, value: takesThen ? "then" : "else"))
+                await execute(takesThen ? w.then : w.else, state: &state, depth: depth + 1,
+                              path: "\(stepPath).\(takesThen ? "then" : "else")")
             }
         }
     }
 
-    private func runHTTP(_ h: RecipeAddOnManifest.HTTPStep, state: inout State) async {
+    private func runHTTP(_ h: RecipeAddOnManifest.HTTPStep, state: inout State, path: String) async {
         let url: String
         switch RecipeTemplate.parse(h.url) {
         case .success(let t): url = t.renderURL(state.vars)
@@ -236,9 +312,15 @@ struct RecipeRunner: Sendable {
         state.vars["\(h.as).ok"] = result.ok ? "true" : "false"
         state.vars["\(h.as).error"] = result.error
         if result.error == "run_timeout" { state.timedOut = true }
+        if state.tracing {
+            if let host = result.host, !state.hosts.contains(host) { state.hosts.append(host) }
+            state.record(.init(path: path, kind: .http, status: result.ok ? .ok : .failed, host: result.host,
+                               httpStatus: result.status == 0 ? nil : result.status, bytes: result.bytes,
+                               redirectHops: result.hops, error: result.error.isEmpty ? nil : result.error))
+        }
     }
 
-    private func runExtract(_ e: RecipeAddOnManifest.ExtractStep, state: inout State) {
+    private func runExtract(_ e: RecipeAddOnManifest.ExtractStep, state: inout State, path: String) {
         let input = state.vars[e.from] ?? ""
         var found: String?
         if input.utf8.count <= RecipeRegex.maxInputBytes, !input.isEmpty {
@@ -256,8 +338,11 @@ struct RecipeRunner: Sendable {
                 }
             }
         }
-        let value = found.flatMap { $0.isEmpty ? nil : $0 } ?? render(e.fallback ?? "", state.vars, .plain)
+        let hit = found.flatMap { $0.isEmpty ? nil : $0 }
+        let value = hit ?? render(e.fallback ?? "", state.vars, .plain)
         state.vars[e.as] = String(value.prefix(Self.maxExtractedLength))
+        state.record(.init(path: path, kind: .extract, status: hit == nil ? .missed : .ok,
+                           value: DryRunTrace.truncated(value)))
     }
 
     private func displayPayload(_ d: RecipeAddOnManifest.DisplayStep, _ vars: [String: String]) -> RecipeDisplayPayload? {

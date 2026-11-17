@@ -77,9 +77,15 @@ struct RecipeSandbox: Sendable {
         /// `too_large`, `unsupported_type`, `not_text`, `status` (a non-2xx answer; the body
         /// is still set when it is text).
         let error: String
+        /// Redirects followed before the answer (a test's trace reports them).
+        var hops: Int = 0
+        /// Body bytes received.
+        var bytes: Int = 0
+        /// The host that answered, after any redirects; nil when nothing was reached.
+        var host: String?
 
-        static func failed(_ error: String) -> FetchResult {
-            FetchResult(body: "", status: 0, ok: false, error: error)
+        static func failed(_ error: String, hops: Int = 0, host: String? = nil) -> FetchResult {
+            FetchResult(body: "", status: 0, ok: false, error: error, hops: hops, host: host)
         }
     }
 
@@ -132,19 +138,22 @@ struct RecipeSandbox: Sendable {
             } catch let error as AddOnTransportError {
                 // A failure the real transport can name (too large, wrong type, a deadline, a
                 // private address) keeps its name; anything else is a network failure.
-                return .failed(error.recipeCode)
+                return .failed(error.recipeCode, hops: hops, host: url.host?.lowercased())
             } catch {
-                return .failed("network")
+                return .failed("network", hops: hops, host: url.host?.lowercased())
             }
+            let answeredBy = url.host?.lowercased()
             if clock.now().timeIntervalSince(sentAt) > timeout {
-                return .failed(elapsed >= Self.runTimeout ? "run_timeout" : "timeout")
+                return .failed(elapsed >= Self.runTimeout ? "run_timeout" : "timeout", hops: hops, host: answeredBy)
             }
 
             if (300...399).contains(response.status), response.status != 304, let location = response.location {
                 hops += 1
-                guard hops <= Self.maxRedirects else { return .failed("too_many_redirects") }
+                guard hops <= Self.maxRedirects else { return .failed("too_many_redirects", hops: hops, host: answeredBy) }
                 guard let next = URL(string: location, relativeTo: url)?.absoluteURL,
-                      Self.refusal(for: next, rules: rules) == nil else { return .failed("redirect_refused") }
+                      Self.refusal(for: next, rules: rules) == nil else {
+                    return .failed("redirect_refused", hops: hops, host: answeredBy)
+                }
                 // 303 always, and 301/302 after a POST, continue as a GET without the body.
                 if response.status == 303 || ((response.status == 301 || response.status == 302) && method == "POST") {
                     method = "GET"
@@ -159,18 +168,23 @@ struct RecipeSandbox: Sendable {
                 continue
             }
 
-            guard response.body.count <= Self.maxResponseBytes else { return .failed("too_large") }
+            let bytes = response.body.count
+            guard bytes <= Self.maxResponseBytes else { return .failed("too_large", hops: hops, host: answeredBy) }
             let ok = (200...299).contains(response.status)
             if response.body.isEmpty {
-                return FetchResult(body: "", status: response.status, ok: ok, error: ok ? "" : "status")
+                return FetchResult(body: "", status: response.status, ok: ok, error: ok ? "" : "status",
+                                   hops: hops, bytes: 0, host: answeredBy)
             }
             guard Self.isAcceptableMIME(response.mimeType) else {
-                return FetchResult(body: "", status: response.status, ok: false, error: "unsupported_type")
+                return FetchResult(body: "", status: response.status, ok: false, error: "unsupported_type",
+                                   hops: hops, bytes: bytes, host: answeredBy)
             }
             guard let text = String(data: response.body, encoding: .utf8) else {
-                return FetchResult(body: "", status: response.status, ok: false, error: "not_text")
+                return FetchResult(body: "", status: response.status, ok: false, error: "not_text",
+                                   hops: hops, bytes: bytes, host: answeredBy)
             }
-            return FetchResult(body: text, status: response.status, ok: ok, error: ok ? "" : "status")
+            return FetchResult(body: text, status: response.status, ok: ok, error: ok ? "" : "status",
+                               hops: hops, bytes: bytes, host: answeredBy)
         }
     }
 }

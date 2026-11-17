@@ -136,6 +136,7 @@ enum OfflineToolPolicy {
 
         // Needs the network.
         "aircraft_overhead": .needsNetwork,
+        "build_addon": .needsNetwork,         // research, documentation and a test call to the service
         "analyze_food": .needsNetwork,     // needs a photo and a vision model
         "asian_messaging": .needsNetwork,
         "chinese_app": .needsNetwork,

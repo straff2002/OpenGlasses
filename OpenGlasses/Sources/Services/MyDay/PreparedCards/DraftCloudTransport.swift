@@ -122,11 +122,14 @@ enum DraftCloudTransport {
     /// One call. Refused under Medical Compliance's Local Only by the egress guard, and without
     /// Cloud AI Sharing's approval for the host.
     @MainActor
+    /// `timeout` is the request's own deadline: a card's draft has `requestTimeout`; a longer
+    /// answer (an add-on the assistant is building, a JSON file) may be given more.
     static func send(_ config: ModelConfig, instructions: String, prompt: String,
-                     maxOutputTokens: Int) async throws -> String {
+                     maxOutputTokens: Int, timeout: TimeInterval = requestTimeout) async throws -> String {
         try MedicalEgressGuard.check(.llmCompletion)
-        let request = try urlRequest(for: config, instructions: instructions, prompt: prompt,
+        var request = try urlRequest(for: config, instructions: instructions, prompt: prompt,
                                      maxOutputTokens: maxOutputTokens)
+        request.timeoutInterval = timeout
         let (data, response) = try await URLSession.shared.consentedData(for: request, scope: .conversation)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else { throw DraftCloudTransportError.httpStatus(status) }

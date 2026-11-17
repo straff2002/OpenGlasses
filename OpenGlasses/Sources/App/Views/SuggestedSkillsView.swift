@@ -6,7 +6,9 @@ import SwiftUI
 /// an explicit approval here — this view is the human-in-the-loop boundary.
 @MainActor
 struct SuggestedSkillsView: View {
+    @EnvironmentObject private var appState: AppState
     @State private var pending: [EvolvedSkillStore.EvolvedSkill] = EvolvedSkillStore.shared.pending()
+    @State private var buildMessage: String?
 
     var body: some View {
         Form {
@@ -20,6 +22,52 @@ struct SuggestedSkillsView: View {
                 }
             } else {
                 ForEach(pending) { item in
+                    if let goal = item.addOnGoal {
+                        addOnIdeaRow(item, goal: goal)
+                    } else {
+                        voiceSkillRow(item)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Suggested Skills")
+        .navigationBarTitleDisplayMode(.inline)
+        .ogFormStyle()
+        .onAppear(perform: reload)
+        .alert("Add-on", isPresented: Binding(get: { buildMessage != nil }, set: { if !$0 { buildMessage = nil } })) {
+            Button("OK") { buildMessage = nil }
+        } message: {
+            Text(buildMessage ?? "")
+        }
+    }
+
+    /// "Build an add-on for: …?" — nothing is looked up or fetched until Build it.
+    @ViewBuilder private func addOnIdeaRow(_ item: EvolvedSkillStore.EvolvedSkill, goal: String) -> some View {
+        Section {
+            Text("Build an add-on for: \(goal)?").font(.body.weight(.medium))
+            Text("Your assistant would look for a free public service, ask you before testing it, and show it to you before anything is installed.")
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Button {
+                    buildMessage = SkillEvolutionService.shared.buildAddOn(id: item.id, with: appState.addOnAuthoring)
+                    reload()
+                } label: {
+                    Label("Build It", systemImage: "hammer")
+                }
+                .tint(OGTheme.okLabel)
+                Spacer()
+                Button(role: .destructive) {
+                    SkillEvolutionService.shared.dismiss(id: item.id)
+                    reload()
+                } label: {
+                    Label("Dismiss", systemImage: "xmark.circle")
+                }
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    @ViewBuilder private func voiceSkillRow(_ item: EvolvedSkillStore.EvolvedSkill) -> some View {
                     Section {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("“\(item.draft.trigger)”").font(.body.weight(.medium))
@@ -44,13 +92,6 @@ struct SuggestedSkillsView: View {
                         }
                         .buttonStyle(.borderless)
                     }
-                }
-            }
-        }
-        .navigationTitle("Suggested Skills")
-        .navigationBarTitleDisplayMode(.inline)
-        .ogFormStyle()
-        .onAppear(perform: reload)
     }
 
     private func reload() { pending = EvolvedSkillStore.shared.pending() }

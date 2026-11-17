@@ -205,7 +205,7 @@ final class NetworkRouteRegistryTests: XCTestCase {
     /// type exists once, uses the hardened client, and asks the medical guard for this very route.
     func testARouteOverTheHardenedClientNamesASenderThatGuardsIt() throws {
         let overClient = NetworkRoute.allCases.filter { $0.boundedClientSender != nil }
-        XCTAssertEqual(overClient, [.recipeAddOn])
+        XCTAssertEqual(overClient, [.recipeAddOn, .addOnAuthoringDocs])
         for route in overClient {
             let sender = try XCTUnwrap(route.boundedClientSender)
             XCTAssertTrue(route.owningTypes.isEmpty && route.transportDelegatedTo == nil
@@ -240,6 +240,23 @@ final class NetworkRouteRegistryTests: XCTestCase {
         XCTAssertTrue(route.medicalPolicy.blocksLocalOnly)
         XCTAssertEqual(MedicalEgressGuard.decide(route, mode: .localOnly), .refuse(MedicalEgressRefusal(route: route)))
         XCTAssertEqual(MedicalEgressGuard.decide(route, mode: .off), .allow)
+    }
+
+    /// The assistant reading an API's documentation while it builds an add-on: a public page at a
+    /// model-chosen address, over the hardened client, refused by Local Only.
+    func testAddOnAuthoringDocsRouteIsPublicWebAndBlockedWhenLocalOnly() {
+        let route = NetworkRoute.addOnAuthoringDocs
+        XCTAssertEqual(route.dataClasses, [.promptText])
+        XCTAssertEqual(route.endpointClass, .publicWeb)
+        XCTAssertFalse(route.endpointClass.permitsPrivateNetwork)
+        XCTAssertTrue(route.medicalPolicy.blocksLocalOnly)
+        XCTAssertEqual(MedicalEgressGuard.decide(route, mode: .localOnly), .refuse(MedicalEgressRefusal(route: route)))
+        let profile = BoundedHTTPClient.Profile.addOnAuthoring
+        XCTAssertEqual(profile.maximumBytes, 256 * 1024)
+        XCTAssertFalse(profile.allowsPrivateHTTP)
+        XCTAssertTrue(profile.accepts(mimeType: "text/html"))
+        XCTAssertTrue(profile.accepts(mimeType: "application/json"))
+        XCTAssertFalse(profile.accepts(mimeType: "application/zip"))
     }
 
     func testEveryMedicalExceptionCarriesAJustification() {

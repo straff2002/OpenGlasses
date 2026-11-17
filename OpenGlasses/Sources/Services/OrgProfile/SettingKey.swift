@@ -80,6 +80,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// Only add-ons the organisation signed itself install and run: nothing from the vendor's
     /// public catalogue either.
     case organizationAllowsOnlyOrganisationAddOns
+    /// The assistant may not build add-ons on this organisation's phones ("build yourself a skill
+    /// for that"). Add-ons it already built follow `organizationForbidsCommunityAddOns`.
+    case organizationForbidsSelfBuiltAddOns
     /// A recorded job's faces must be blurred before it goes to the office. Until the app can
     /// blur a recording, this means no job is recorded at all — never one sent unblurred.
     case organizationRequiresBlurBeforeOfficeSync
@@ -183,7 +186,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .organizationForbidsCustomerTranscript, .organizationForbidsJobRecording,
              .organizationForbidsVanStock,
              .organizationForbidsAddOns, .organizationForbidsCommunityAddOns,
-             .organizationAllowsOnlyOrganisationAddOns,
+             .organizationAllowsOnlyOrganisationAddOns, .organizationForbidsSelfBuiltAddOns,
              .organizationRequiresBlurBeforeOfficeSync, .organizationForbidsRecordingSyncOnCellular,
              .organizationRequiresTableChecks,
              .privacyFilterEnabled, .aiConnectionCueEnabled:
