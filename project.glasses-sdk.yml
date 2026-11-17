@@ -8,8 +8,9 @@ packages:
     # `Wearables.deviceStateStream` and — unannounced — `RegistrationError.timeout`. 1.x is
     # semver, but only for the stable surface: Meta ships [Experimental] modules and APIs (Inputs,
     # Motion, Speech, voice invocations, `Camera.photo`, camera audio) that may change in any minor
-    # and that published apps may not use. We link none of them; staying exact means a 1.y is read
-    # and adopted deliberately, never picked up by a resolve.
+    # and that published apps may not use. This spec links none of them; only
+    # project.experimental.yml (AVENKIN_DAT_EXPERIMENTAL=1, TestFlight only, Plan JV) adds one.
+    # Staying exact means a 1.y is read and adopted deliberately, never picked up by a resolve.
     version: "1.0.1"
 
 targets:

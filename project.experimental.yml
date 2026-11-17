@@ -1,0 +1,42 @@
+# Meta's [Experimental] glasses APIs, for TestFlight builds only (Plan JV, owner decision 2026-10-26).
+#
+# Added by `AVENKIN_DAT_EXPERIMENTAL=1 ./Scripts/generate-xcodeproj.sh` and never otherwise. The
+# script refuses the flag under CI or Xcode Cloud (flagged archives are made by hand, from the
+# owner's checkout) and with OPENGLASSES_PHONE_ONLY=1 (the store product has no glasses SDK).
+#
+# Meta's rule: apps that use experimental features cannot be published. So a build made from this
+# project is NEVER submitted for review. Each store release is its own unflagged upload from the
+# same commit; check the archive with Scripts/check-archive-dat-experimental.sh before uploading.
+#
+# What it changes, and nothing else:
+# - links the Inputs product (P2's module; also the archive check's marker that the binary is
+#   flagged — `Frameworks/MWDATInputs.framework`);
+# - defines `DAT_EXPERIMENTAL`, which compiles `OpenGlasses/Sources/Glasses/Experimental/` and the
+#   call sites `DATExperimentalGuardTests` lists;
+# - stamps the build: `AVENKIN_DAT_EXPERIMENTAL` reaches the Info.plist as `AvenkinDATExperimental`,
+#   and every support report's first line says "DAT experimental".
+# `DATExperimentalGuardTests` fails the ordinary suite on any other spec naming the experimental
+# modules, and on experimental API used outside that folder or its `#if`.
+#
+# The condition is set per configuration at the project level, as the phone-only overlay sets its
+# own, so the unit-test target compiles the flagged-only tests too. A project-level `base` would
+# replace XcodeGen's Debug preset and lose `DEBUG`.
+settings:
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG DAT_EXPERIMENTAL"
+    Release:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DAT_EXPERIMENTAL"
+targets:
+  OpenGlasses:
+    dependencies:
+      - package: meta-wearables-dat-ios
+        product: MWDATInputs
+    settings:
+      base:
+        AVENKIN_DAT_EXPERIMENTAL: "YES"
+    preBuildScripts:
+      - name: DAT experimental build is TestFlight only
+        basedOnDependencyAnalysis: false
+        script: |
+          echo "warning: this project was generated with AVENKIN_DAT_EXPERIMENTAL=1. TESTFLIGHT ONLY — never submit this build for review. Regenerate without the flag for a store candidate: ./Scripts/generate-xcodeproj.sh"

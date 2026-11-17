@@ -19,6 +19,9 @@ struct AppBuildIdentity: Equatable {
     /// The Info.plist key the generated project fills with the commit (see
     /// `Scripts/generate-xcodeproj.sh`).
     static let commitKey = "AvenkinSourceCommit"
+    /// The Info.plist key that says whether the build carries Meta's experimental glasses APIs
+    /// (Plan JV): `YES` only in a project generated with `AVENKIN_DAT_EXPERIMENTAL=1`.
+    static let datExperimentalKey = "AvenkinDATExperimental"
 
     var version: String
     var build: String
@@ -28,6 +31,9 @@ struct AppBuildIdentity: Equatable {
     var commit: String?
     var channel: Channel
     var bundleID: String
+    /// Stamped as a TestFlight-only build with Meta's experimental glasses APIs (Plan JV). Such a
+    /// build is never submitted for review, so every report from one says so on its first line.
+    var datExperimental: Bool = false
 
     /// How this copy was installed, from what the bundle carries. A store or TestFlight build has
     /// its provisioning profile stripped. Sandbox receipts also occur during App Review, so
@@ -46,9 +52,17 @@ struct AppBuildIdentity: Equatable {
         return String(value.prefix(9))
     }
 
-    /// One line, for a report's header: `2026.10 (460) · 1a2b3c4d5 · TestFlight · com.example.app`.
+    /// Only the literal `YES` the experimental spec sets; an unexpanded placeholder is not a stamp.
+    static func datExperimental(fromInfoValue value: String?) -> Bool {
+        value?.trimmingCharacters(in: .whitespaces) == "YES"
+    }
+
+    /// One line, for a report's header: `2026.10 (460) · 1a2b3c4d5 · TestFlight · com.example.app`,
+    /// with `· DAT experimental` after the channel for a flagged build.
     var summary: String {
-        (["\(version) (\(build))"] + [commit, channel.rawValue, AppBuildVariant.current.rawValue, bundleID].compactMap { $0 })
+        let flagged: String? = datExperimental ? "DAT experimental" : nil
+        return (["\(version) (\(build))"]
+                + [commit, channel.rawValue, flagged, AppBuildVariant.current.rawValue, bundleID].compactMap { $0 })
             .joined(separator: " · ")
     }
 
@@ -68,7 +82,8 @@ struct AppBuildIdentity: Equatable {
                 isSimulator: isSimulator,
                 hasEmbeddedProfile: bundle.url(forResource: "embedded", withExtension: "mobileprovision") != nil,
                 receiptName: receiptName(in: bundle)),
-            bundleID: bundle.bundleIdentifier ?? "–")
+            bundleID: bundle.bundleIdentifier ?? "–",
+            datExperimental: datExperimental(fromInfoValue: info(datExperimentalKey)))
     }
 
     /// The receipt's file name: `receipt` for a store install, `sandboxReceipt` for TestFlight.

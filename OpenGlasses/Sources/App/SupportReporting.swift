@@ -190,6 +190,9 @@ extension AppState {
             "Source: " + (app.commit.map { "\($0) when the Xcode project was generated" } ?? "not stamped"),
             "Installed from: \(app.channel.rawValue) (\(app.bundleID))",
             GlassesSupportPolicy.reportLine,
+            // Plan JV: whether this binary carries Meta's experimental glasses features (TestFlight
+            // only), whether its stamp agrees, and each feature's verdict. Case names only.
+            DATExperimentalPolicy.currentReportLine(identity: app),
             "System: \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
             "Device: \(Self.hardwareIdentifier)",
             // The app's language and region, then the phone's own list: `en_MX` alone cannot say
@@ -237,6 +240,10 @@ extension AppState {
         // says, and what the stream delivered. Always present: "not known" is an answer too.
         // A level and three numbers; no device is named.
         phone.append(GlassesVideoLinkReport.line(for: GlassesTransportProbe.shared.snapshot))
+        // Plan JV P1: each "Hey Meta, open Avenkin" request per glasses — the circumstances it
+        // arrived in, how it was answered, and stream errors or a link drop after it, with times.
+        // Empty in a build without the feature. Case names and numbers; no device is named.
+        phone += VoiceInvocationLedger.shared.reportLines
         #endif
         // Plan JY P1: each document's detected language and the model it is searched with, and
         // where each script's search model stands. Counts and labels only — no names or text.

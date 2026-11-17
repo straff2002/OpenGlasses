@@ -48,6 +48,9 @@ class GlassesConnectionService: ObservableObject {
     /// from them (`GlassesReachabilityDiagnosis`). Published whenever any of them changes, which a
     /// phase alone would not show: a device being listed leaves the phase where it was.
     @Published private(set) var reachability = GlassesReachability()
+    /// The listed devices whose link is connected (`GlassesConnectionSnapshot.connectedDeviceIds`),
+    /// for what has to follow each connected pair separately. Derived like the rest.
+    @Published private(set) var connectedDeviceIds: [String] = []
 
     private(set) var snapshot = GlassesConnectionSnapshot()
 
@@ -201,6 +204,8 @@ class GlassesConnectionService: ObservableObject {
                                   count: newReachability.links.count)
             }
         }
+        let newConnectedIds = snapshot.connectedDeviceIds
+        if connectedDeviceIds != newConnectedIds { connectedDeviceIds = newConnectedIds }
         let newPhase = snapshot.phase
         if isConnected != newPhase.isConnected { isConnected = newPhase.isConnected }
         let newStatus = newDiagnosis.statusLine(deviceName: newName)
