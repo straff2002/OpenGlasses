@@ -104,7 +104,8 @@ final class AddOnRunService {
         case .invalidArguments(let reason):
             return String(localized: "\(addOnName) couldn't run: \(reason).")
         case .blockedCredential:
-            return String(localized: "Nothing was sent: one of the values looked like a password or a key. Do not retry; tell the user it was blocked.")
+            // An instruction to the model, never shown to the wearer: kept in English, not localized.
+            return "Nothing was sent: one of the values looked like a password or a key. Do not retry; tell the user it was blocked."
         }
     }
 }
