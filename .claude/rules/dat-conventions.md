@@ -2,7 +2,7 @@
 description: Swift patterns, async/await, naming conventions, key types for DAT SDK iOS development
 ---
 
-# DAT SDK Conventions (iOS) — v1.0.0
+# DAT SDK Conventions (iOS) — v1.0.1 (API as 1.0.0; 1.0.1 had no developer-facing changes)
 
 ## Architecture
 
@@ -26,7 +26,7 @@ experimental modules are linked only by `project.experimental.yml`, which is add
 `Sources/Glasses/Experimental/` wrapped in `#if DAT_EXPERIMENTAL`. A flagged build is never
 submitted for review. Never link or call them anywhere else. The Core/Camera ones ship inside
 modules we already link, so until JV P0's guard tests land nothing but review stops them. The
-package stays pinned exact in `project.base.yml` so a 1.y is read and adopted deliberately.
+package stays pinned exact in `project.glasses-sdk.yml` so a 1.y is read and adopted deliberately.
 
 ## Swift Patterns
 
