@@ -87,7 +87,9 @@ trusted organisation. Tests: `AddOnStoreTests`, `AddOnUpdateDiffTests`, `AddOnRe
 **For Plan GO.** Install a self-built add-on with `AddOnInstallService.receive(_:origin: .selfBuilt(…))`
 (the same admission and sheet) or, after its own sheet, `AddOnStore.install(_:origin:)`; read it back with
 `InstalledAddOn.isBuiltByAssistant` / `selfBuiltProvenance` or `AddOnStore.provenance(id:)`. Drafts and
-their test traces are GO's to store; nothing in `AddOnStore` is a draft.
+their test traces are GO's to store; nothing in `AddOnStore` is a draft. *GO P0–P3 (2026-11-18) uses
+exactly this: `receive(_:origin:tested:)` carries the test for the sheet's Tested panel, and
+`onSelfBuiltResolved` tells the builder to delete its draft whichever way the wearer answers.*
 
 **Extends:** Plan [BX](BX-skill-packs.md) (signed skill packs; its P4 "JS handlers" is deferred).
 **Related:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (egress screen, definition scanner),

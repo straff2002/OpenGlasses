@@ -1,6 +1,10 @@
 # Plan GO — Self-Built Skills ("Build yourself a skill for that")
 
-**Status:** 📝 Drafted (not scheduled), 2026-10-01 — nothing built.
+**Status:** 🚧 P0–P3 built 2026-11-18, device checks owed — the pure core, the building service
+with its consent gate, dry-run mode, drafts and the Tested panel, the `build_addon` tool with update
+mode, and add-on ideas in the suggestions inbox. Owed: three real builds against keyless public APIs
+on cellular, one approval and one rejection on the sheet, VoiceOver on the Tested panel, and the
+catalog sync of the new strings. Drafted 2026-10-01.
 **Depends on:** Plan [GF](GF-recipe-add-ons.md) P0–P2 (the `avenkin.addon/1` format, `RecipeAddOnValidator`,
 `RecipeRunner`/`RecipeSandbox`, `AddOnStore`, the install and update-diff sheets). GO writes GF
 add-ons; it adds no new runtime.
@@ -150,6 +154,54 @@ cellular, an approval and a rejection, VoiceOver on the Tested panel.
 
 **P3 — Evolution-originated ideas.** `EvolvedSkillStore.kind` migration, analyzer prompt variant,
 inbox row with Build it. Tests: `SkillEvolutionAddOnIdeaTests`, store migration test.
+
+### What P0–P3 built (2026-11-18)
+
+- **Pure core** (`Services/AddOns/Authoring/`): `AddOnAuthoringSession` (the phases above; 10 model
+  calls, 3 documentation pages, 1 test per revision, 2 repairs shared between validation and testing,
+  10 minutes of building, a tested draft waits 24 hours), `AddOnAuthoringPreflight` (injected matcher,
+  default lexical with a name-subsumption rule, so `convert_currency` covers "fifty euros in dollars";
+  private-data and arithmetic/loop phrases refuse first), `PermissionMinimizer` (literal hosts only,
+  templated hosts and ports refused, extras stripped, location variables found in any template, memory
+  and display only with their steps, an add-on that calls nothing refused), `DryRunTrace` and
+  `DryRunAssessor`, `SelfBuiltIdentity` (`local.assistant.<slug>`, `-2`… on collision, `1.0.0` then
+  minor + 1, `author.web` only a page actually read or the service's own address).
+- **Service** (`AddOnAuthoringService`): the authoring model answers one JSON action per call
+  (`AddOnAuthoringPrompt`: search, fetch, draft with a sample, needs-key, give-up); search results,
+  fetched pages and the checker's report are framed with `PromptInjectionPolicy.wrap`;
+  `AddOnDraftPreparation` writes the app's fields, recomputes permissions and runs the GF validator;
+  the consent request names exactly the minimised `network` set before every test, including after a
+  repair; the test is `RecipeRunner.dryRun` over the add-on transport (strict sample screen: any
+  `EgressScreen` hit or a value containing a stored fact blocks it; `remember` simulated, `display`
+  previewed, coarse location); a passing draft is saved in `AddOnDraftStore` and offered through
+  `AddOnInstallService.receive(_:origin:tested:)`; accepting or cancelling the sheet deletes the draft
+  and its trace either way. Documentation pages come over `BoundedAddOnDocsFetcher` on the new
+  `BoundedHTTPClient.Profile.addOnAuthoring` (GET, HTML/JSON/text, 256 KB, 3 redirects) and its own
+  route, `NetworkRoute.addOnAuthoringDocs` (public web, prompt text, blocked under Local Only); the
+  test run reuses `NetworkRoute.recipeAddOn` through `BoundedAddOnHTTPTransport`, since it is exactly
+  an add-on step. Web search goes through the router as an internal `web_search` call.
+- **Model calls**: the wearer's cloud model over the isolated one-request route
+  (`DraftCloudTransport`, now with a longer deadline for this caller), recorded in Usage as an
+  estimate; a sign-in provider that route doesn't support falls back to `completeStateless`, as the
+  suggested-skills analyser does; on-device models are refused.
+- **Sheet**: the Tested panel (asked, answered, contacted, time, View Source; one VoiceOver element),
+  "Built by your assistant · data from <domain>", never "Reviewed"; a self-built-shaped file received
+  from someone else shows "Built by an assistant on another phone" (a note, not trust). Settings →
+  Add-ons lists drafts waiting ("Built for You") to reopen or delete.
+- **Tool** `build_addon` (`start`, `improve`, `status`, `cancel`): offered only with Agent Mode on, not
+  under Medical Compliance or Local Only, add-ons on, a policy that allows unsigned add-ons, and no
+  `organizationForbidsSelfBuiltAddOns` (the new ceiling key); `needsNetwork` offline; in
+  `hipaaDisabledTools`; three sessions a calendar day. Progress is spoken and posted as a notice at
+  three points only. Improve works only on add-ons the assistant built: same id, minor + 1, re-tested
+  with its own consent, shown on GF's update-diff sheet.
+- **Ideas** (P3): `EvolvedSkillStore.kind` (`voiceSkill` default, migrated with `ALTER TABLE`),
+  `AddOnIdeaClassifier` (≥ 60 % of a batch of at least three is "no tool could get it"), a prompt
+  variant offered only for such a batch, an `addon-idea:` answer accepted only when the classifier
+  agrees, and the inbox row "Build an add-on for: …?" with Build It / Dismiss.
+- Tests: `AddOnAuthoringSessionTests`, `PermissionMinimizerTests`, `DryRunAssessorTests`,
+  `AddOnAuthoringPreflightTests`, `SelfBuiltIdentityTests`, `AddOnAuthoringServiceTests` (with
+  `AddOnSelfBuiltSheetTests`), `RecipeRunnerDryRunTests`, `BuildAddOnToolTests`,
+  `SkillEvolutionAddOnIdeaTests` (with the migration test), `NetworkRouteRegistryTests` update.
 
 ## Risks
 
