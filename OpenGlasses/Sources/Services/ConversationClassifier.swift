@@ -147,8 +147,11 @@ struct ConversationClassifier {
         }
 
         // Device info / battery
+        // A battery question is answered aloud as the tool words it, so it asks for the phone part
+        // only: the in-lens display's state is not read out with every "how much battery".
         if let matched = matchedPattern(text, patterns: batteryPatterns), isBareQuery(text, matched: matched) {
-            return DirectToolCall(toolName: "device_info", arguments: [:])
+            let arguments: [String: Any] = matched == "device info" ? [:] : ["about": "phone"]
+            return DirectToolCall(toolName: "device_info", arguments: arguments)
         }
 
         // Weather — get_weather defaults to the current location (and now awaits a GPS fix),
