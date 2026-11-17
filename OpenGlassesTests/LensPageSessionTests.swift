@@ -192,6 +192,48 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertEqual(rig.session.stats["metaRayBan"].viewsOpened, 1)
     }
 
+    /// The trail says "shown on the glasses", so a page is recorded only once the glasses take its
+    /// frame. A Ray-Ban Display report (build 705) showed pages recorded as shown while every send
+    /// to the lens failed: the line was written at the hand-off.
+    func testAPageTheGlassesNeverTookIsNotRecordedAsShown() async throws {
+        let rig = makeRig()
+        var outcomes: [String] = []
+        let forward = try XCTUnwrap(rig.display.onScreenDelivered)
+        // The glasses answer nothing: hold every frame's outcome back from the session.
+        rig.display.onScreenDelivered = { key, _ in outcomes.append(key) }
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+
+        XCTAssertEqual(rig.session.held, .view, "the view is up on the phone's side")
+        XCTAssertEqual(rig.audit.lines, [], "nothing is recorded before the glasses take the frame")
+        let key = try XCTUnwrap(outcomes.last)
+
+        forward(key, false)                              // the send failed
+        XCTAssertEqual(rig.audit.lines, [])
+        XCTAssertEqual(rig.session.stats["metaRayBan"].refused, 1)
+
+        rig.session.close()
+        XCTAssertEqual(rig.audit.lines, [], "a view that never reached the lens records no close either")
+    }
+
+    func testAPageIsRecordedWhenTheGlassesTakeIt() async throws {
+        let rig = makeRig()
+        var outcomes: [String] = []
+        let forward = try XCTUnwrap(rig.display.onScreenDelivered)
+        rig.display.onScreenDelivered = { key, _ in outcomes.append(key) }
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+        XCTAssertEqual(rig.audit.lines, [])
+
+        forward(try XCTUnwrap(outcomes.last), true)
+        XCTAssertEqual(rig.audit.lines.map(\.event), [.opened])
+        forward(try XCTUnwrap(outcomes.last), true)     // a second word on the same frame is ignored
+        XCTAssertEqual(rig.audit.lines.map(\.event), [.opened])
+
+        rig.session.close()
+        XCTAssertEqual(rig.audit.lines.map(\.event), [.opened, .closed])
+    }
+
     func testAnAutomaticPageGetsOnlyTheCueAndShowHereOpensIt() async throws {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .automatic)])

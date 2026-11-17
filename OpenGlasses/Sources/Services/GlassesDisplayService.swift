@@ -675,6 +675,13 @@ final class GlassesDisplayService: ObservableObject {
     private var sendPacer = HUDSendPacer()
     /// The last send to the backend, for the support report and the Developer panel.
     @Published private(set) var lastSend: HUDSendRecord?
+    /// Whether a screen frame reached the glasses (`true`) or did not (`false`), by the render key
+    /// it was enqueued with. A frame replaced before its turn reports nothing: it was never sent.
+    /// The page view writes its audit line from this, not from the hand-off (`LensPageSession`).
+    var onScreenDelivered: ((_ renderKey: String, _ delivered: Bool) -> Void)?
+    /// A picture frame resent as its text lines: the resent screen's key, and the key it was
+    /// enqueued with, so its outcome is reported against the frame the caller knows.
+    private var retriedScreen: (resent: String, enqueued: String)?
     /// Sends in a row that went unanswered past `HUDSendDeadline`; a sent frame sets it back to 0.
     /// Only the `HUDSendDeadline.rebuildAfterTimeouts`th tears the session down.
     private var consecutiveSendTimeouts = 0
@@ -1151,6 +1158,12 @@ final class GlassesDisplayService: ObservableObject {
                 self.pending = nil
                 var sentKind: HUDSendRecord.Kind?
                 let started = ContinuousClock.now
+                var screenKey: String?
+                if case .screen(let screen) = frame {
+                    let retried = self.retriedScreen
+                    self.retriedScreen = nil
+                    screenKey = retried?.resent == screen.renderKey ? retried?.enqueued : screen.renderKey
+                }
                 do {
                     switch frame {
                     case .op(let op):
@@ -1188,11 +1201,14 @@ final class GlassesDisplayService: ObservableObject {
                             // readable pages may have grown behind it; the web mirror turns pages
                             // by itself, so it still gets them.
                             if screen.pageSet != nil { self.mirrorScreen = screen }
+                            // Already on the lens.
+                            if let screenKey { self.onScreenDelivered?(screenKey, true) }
                             continue
                         }
                         self.mirrorScreen = screen
                         if let sink = self.testRenderSink {
                             sink(.screen(renderKey: screen.renderKey))
+                            if let screenKey { self.onScreenDelivered?(screenKey, true) }
                         } else if self.deviceSupportsDisplay() {
                             let backend = self.activeBackend
                             let sent = Self.screen(screen, forBackendDrawingPictures: backend.drawsPictures)
@@ -1203,6 +1219,9 @@ final class GlassesDisplayService: ObservableObject {
                                 self.onPictureSent?(backend.lastPictureBytes, Self.milliseconds(since: started))
                             }
                             self.recordSend(sentKind, started: started, outcome: .sent)
+                            if let screenKey { self.onScreenDelivered?(screenKey, true) }
+                        } else if let screenKey {
+                            self.onScreenDelivered?(screenKey, false)
                         }
                         self.lastScreenKey = screen.renderKey
                         self.lastRendered = nil
@@ -1233,10 +1252,12 @@ final class GlassesDisplayService: ObservableObject {
                        Self.retriesWithoutPicture(after: error) {
                         self.recordSend(.picture, started: started, outcome: .retriedWithoutPicture)
                         screen.picture = nil
+                        if let screenKey { self.retriedScreen = (screen.renderKey, screenKey) }
                         self.pending = .screen(screen)
                         continue
                     }
                     self.recordSend(sentKind, started: started, outcome: timedOut ? .timedOut : .failed)
+                    if let screenKey { self.onScreenDelivered?(screenKey, false) }
                     // Plan LC §6: a clip the glasses would not take ends as a failure; the card returns.
                     if case .video = frame, self.showsVideo { self.clipEnded(.failed) }
                     break
