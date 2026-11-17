@@ -6,7 +6,7 @@ import Foundation
 /// Platform constraints baked in:
 /// - Additive display: **black = transparent**, so the page is pure-black with
 ///   high-contrast light-on-black text only. No photos, no gradients.
-/// - Focus indicator is amber weight+outline — high contrast, deliberately NOT cyan
+/// - Focus indicator is amber weight+outline (or the wearer's highlight colour, `LensHighlightColour`) — high contrast, deliberately NOT cyan
 ///   (house rule).
 /// - D-pad arrives as plain keyboard events (▲▼/Enter) — focus model is ordinary DOM nav.
 /// - Plan KP P1: an answer card carries all its readable pages; ◀▶ turn them and Escape hides
@@ -27,6 +27,15 @@ enum WebHUDRenderer {
 
     /// The one render function. Both modes share the same client-side `render(payload)`,
     /// so the poll path adds no second layout implementation.
+    /// Display & HUD › Highlight colour: the phone sends `#RRGGBB`, or nothing for Standard. Any
+    /// other value falls back, so a payload can never put more than a colour into the page's CSS.
+    /// Pure, kept apart so a test can run it in JavaScriptCore.
+    static let colourScript = """
+    function colour(value, fallback) {
+      return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : fallback;
+    }
+    """
+
     /// Plan KP P1: the pure paging rule the page runs on ◀/▶, kept apart so a test can run it
     /// in JavaScriptCore without a DOM. Right turns forward, left back, both clamped; any other key
     /// leaves the page where it is.
@@ -67,7 +76,8 @@ enum WebHUDRenderer {
         <title>Avenkin HUD</title>
         <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 600px; height: 600px; background: #000; color: #fff;
+        :root { --text: #fff; --focus: #ffb000; }
+        html, body { width: 600px; height: 600px; background: #000; color: var(--text);
           font-family: -apple-system, 'Helvetica Neue', sans-serif; overflow: hidden; }
         #hud { padding: 28px; height: 100%; overflow-y: auto; }
         .title { font-size: 34px; font-weight: 700; margin-bottom: 18px; }
@@ -76,8 +86,8 @@ enum WebHUDRenderer {
         .line.meta { font-size: 22px; color: #a0a0a0; }
         .item { font-size: 28px; padding: 10px 14px; margin-top: 10px;
           border: 2px solid #666; border-radius: 10px; outline: none; }
-        .item.primary { border-color: #fff; font-weight: 600; }
-        .item:focus { border-color: #ffb000; color: #ffb000; border-width: 3px; }
+        .item.primary { border-color: var(--text); font-weight: 600; }
+        .item:focus { border-color: var(--focus); color: var(--focus); border-width: 3px; }
         .glyph { display: inline-block; min-width: 1.4em; }
         #empty { color: #808080; font-size: 26px; padding-top: 240px; text-align: center; }
         </style>
@@ -123,7 +133,16 @@ enum WebHUDRenderer {
           return { title: current.title, lines: page.lines, items: page.items };
         }
 
+        \(colourScript)
+
+        function applyColours() {
+          const root = document.documentElement.style;
+          root.setProperty("--text", colour(current && current.textColour, "#fff"));
+          root.setProperty("--focus", colour(current && current.focusColour, "#ffb000"));
+        }
+
         function draw() {
+          applyColours();
           const payload = view();
           const hud = document.getElementById("hud");
           hud.textContent = "";

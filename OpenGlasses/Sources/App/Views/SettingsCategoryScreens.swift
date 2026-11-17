@@ -161,6 +161,7 @@ struct DisplayHUDSettingsScreen: View {
 struct DisplayHUDSections: View {
     @ObservedObject var appState: AppState
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
+    @AppStorage(LensHighlightColour.storageKey) private var highlightColour: LensHighlightColour = .standard
 
     var body: some View {
         #if !AVENKIN_PHONE_ONLY
@@ -212,6 +213,23 @@ struct DisplayHUDSections: View {
                 ),
                 info: "Up to three short next questions appear as buttons under an answer on the in-lens display. Press one to ask it. The assistant writes them with the answer, so they cost no extra request; they are never spoken and never saved in the conversation."
             )
+            Picker(selection: $highlightColour) {
+                ForEach(LensHighlightColour.allCases) { colour in
+                    Label {
+                        Text(colour.settingsTitle)
+                    } icon: {
+                        // A thin ring keeps the white swatch visible on a light list.
+                        Image(systemName: "circle.fill")
+                            .foregroundStyle(colour.swatch)
+                            .overlay(Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 0.5))
+                            .accessibilityHidden(true)
+                    }
+                    .tag(colour)
+                }
+            } label: {
+                Text("Highlight colour")
+            }
+            .pickerStyle(.navigationLink)
             // Plan KP §5: the band check, also on the lens launcher.
             NavigationLink {
                 BandPracticeView(session: appState.bandPractice)
@@ -220,6 +238,8 @@ struct DisplayHUDSections: View {
             }
         } header: {
             Text("In-Lens Display")
+        } footer: {
+            Text("Highlight colour is used for the marks on a manual page, the walking turn arrow, and the text on the Web HUD Mirror. Answers, captions and buttons on the display stay white and grey: the glasses set those colours.")
         }
         #endif
 
@@ -267,5 +287,27 @@ struct DisplayHUDSections: View {
             Text("Preview the lens on your phone, mirror the HUD to a browser, or read a script hands-free. Which glasses draw the lens is chosen on the Glasses page.")
             #endif
         }
+    }
+}
+
+// MARK: - Highlight colour
+
+private extension LensHighlightColour {
+    var settingsTitle: LocalizedStringKey {
+        switch self {
+        case .standard: return "Standard"
+        case .coral: return "Coral"
+        case .amber: return "Amber"
+        case .yellow: return "Yellow"
+        case .green: return "Green"
+        case .white: return "White"
+        }
+    }
+
+    /// The swatch beside each choice. Standard shows the page marks' coral, its most visible use.
+    var swatch: Color {
+        let hex = markHex
+        return Color(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,
+                     blue: Double(hex & 0xFF) / 255)
     }
 }

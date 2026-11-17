@@ -35,10 +35,31 @@ struct WebHUDPayload: Codable, Equatable {
     /// Which answer card the pages belong to: the same while one answer grows, so the page keeps
     /// the place it turned to; a new one for a new answer.
     var card: Int?
+    /// Display & HUD › Highlight colour: the page's text and focus-ring colours as `#RRGGBB`.
+    /// Absent for Standard, which keeps the page's own white and amber.
+    var textColour: String?
+    var focusColour: String?
 
     static let empty = WebHUDPayload(title: nil, lines: [], items: [], renderKey: "")
 
-    static func from(screen: HUDScreen) -> WebHUDPayload {
+    static func from(screen: HUDScreen,
+                     highlight: LensHighlightColour = Config.lensHighlightColour) -> WebHUDPayload {
+        coloured(uncoloured(screen: screen), highlight)
+    }
+
+    /// The payload in the highlight colour: the colours ride on it, and the key the page
+    /// re-renders on carries them, so a new choice is drawn on the next poll. Standard changes
+    /// nothing.
+    static func coloured(_ payload: WebHUDPayload, _ highlight: LensHighlightColour) -> WebHUDPayload {
+        guard highlight != .standard else { return payload }
+        return WebHUDPayload(title: payload.title, lines: payload.lines, items: payload.items,
+                             renderKey: payload.renderKey + highlight.keySuffix,
+                             pages: payload.pages, pageIndex: payload.pageIndex, card: payload.card,
+                             textColour: LensHighlightColour.css(highlight.webTextHex),
+                             focusColour: LensHighlightColour.css(highlight.webFocusHex))
+    }
+
+    private static func uncoloured(screen: HUDScreen) -> WebHUDPayload {
         // Plan KT §6.6: a screen that says what the mirror may show is shown that way, without
         // its pages.
         switch screen.mirror {
