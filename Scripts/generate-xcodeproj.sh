@@ -80,6 +80,27 @@ if [[ "$mock_display" == "1" ]]; then
   fi
 fi
 
+# Plan JV: Meta's [Experimental] glasses APIs, for TestFlight builds only. Meta does not allow an
+# app that uses them to be published, so a flagged build is never submitted for review, and it is
+# made by hand only: refused under CI and Xcode Cloud, and with the phone-only store product.
+dat_experimental="${AVENKIN_DAT_EXPERIMENTAL:-0}"
+if [[ "$dat_experimental" != "0" && "$dat_experimental" != "1" ]]; then
+  echo "AVENKIN_DAT_EXPERIMENTAL must be 0 or 1" >&2
+  exit 1
+fi
+if [[ "$dat_experimental" == "1" ]]; then
+  for marker in CI CI_XCODE_CLOUD CI_WORKFLOW CI_BUILD_ID CI_XCODEBUILD_ACTION CI_PRODUCT CI_PRIMARY_REPOSITORY_PATH GITHUB_ACTIONS; do
+    if [[ -n "${!marker:-}" ]]; then
+      echo "AVENKIN_DAT_EXPERIMENTAL=1 makes a TestFlight-only build by hand; it is refused here ($marker is set)." >&2
+      exit 1
+    fi
+  done
+  if [[ "$phone_only" == "1" ]]; then
+    echo "AVENKIN_DAT_EXPERIMENTAL=1 needs the glasses SDK; it can't be combined with OPENGLASSES_PHONE_ONLY=1." >&2
+    exit 1
+  fi
+fi
+
 if [[ "$phone_only" == "1" ]]; then
   python3 Scripts/prepare-phone-only-build.py
 fi
@@ -109,6 +130,9 @@ spec_file=.xcodegen-spec.yml
   if [[ "$mock_display" == "1" ]]; then
     echo "  - project.mock-display.yml"
   fi
+  if [[ "$dat_experimental" == "1" ]]; then
+    echo "  - project.experimental.yml"
+  fi
   if [[ -f project.local.yml ]]; then
     echo "  - project.local.yml"
   fi
@@ -126,3 +150,10 @@ if [[ "${OPENGLASSES_SKIP_WATCH:-}" != "1" ]] && [[ -f xcshareddata/xcschemes/Op
 fi
 
 echo "Generated OpenGlasses.xcodeproj"
+if [[ "$dat_experimental" == "1" ]]; then
+  echo "************************************************************************************" >&2
+  echo "  DAT EXPERIMENTAL (AVENKIN_DAT_EXPERIMENTAL=1): TESTFLIGHT ONLY — never submit for review." >&2
+  echo "  Check the archive: Scripts/check-archive-dat-experimental.sh <path.xcarchive>" >&2
+  echo "  Store candidate: regenerate without the flag and archive again from this commit." >&2
+  echo "************************************************************************************" >&2
+fi

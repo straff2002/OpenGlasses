@@ -239,6 +239,8 @@
 	<string>$(AVENKIN_BUILD_VARIANT)</string>
 	<key>AvenkinSourceCommit</key>
 	<string>$(AVENKIN_SOURCE_COMMIT)</string>
+	<key>AvenkinDATExperimental</key>
+	<string>$(AVENKIN_DAT_EXPERIMENTAL)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fb-viewapp</string>

@@ -2232,6 +2232,15 @@ enum PrivacyLog {
         /// `render`, `send` — handed over but the glasses never took it); `lensPageClosed` the route in `state`. Case names only — never the page, its
         /// text or its pixels.
         case lensPageOpened, lensPageRefused, lensPageClosed
+        /// Plan JV P1, voice invocations (flagged TestFlight builds only). `voiceInvocationStream`
+        /// is a per-device stream starting, failing to start or stopping (`state`: `started`,
+        /// `startFailed`, `stopped`; `reason`: why it stopped or the failure's case). A request is
+        /// `voiceInvocationReceived` (`state`: the app's run state, `detail`: `locked`/`unlocked`)
+        /// and then `voiceInvocationAnswered` (`state`: the outcome's case, `reason`: the refusal,
+        /// `success`: how it was answered, `count`: milliseconds to the answer). `voiceInvocationError`
+        /// is the stream's own error (`reason`: its case). Case names and numbers only; the device
+        /// is never named and nothing the wearer said is known to the app.
+        case voiceInvocationStream, voiceInvocationReceived, voiceInvocationAnswered, voiceInvocationError
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is
