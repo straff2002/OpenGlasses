@@ -12,6 +12,9 @@ struct DeviceSessionOwnership: Equatable {
     enum Capability: String, CaseIterable, Hashable {
         case camera
         case display
+        /// The glasses' touch inputs (Plan JV P2: the flagged build's Inputs probe only). The SDK
+        /// call that adds them lives in `Glasses/Experimental/`.
+        case inputs
     }
 
     private(set) var holders: Set<Capability> = []

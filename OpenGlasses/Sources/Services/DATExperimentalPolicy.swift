@@ -88,6 +88,14 @@ enum DATExperimentalPolicy {
                 switchOn: isSwitchOn(feature, defaults: defaults))
     }
 
+    /// A diagnostics tool's verdict (the Developer panel's Inputs probe, P2). It has no switch of
+    /// its own: it runs only while the wearer has pressed Start, so the press is the switch, and
+    /// the rest of the conditions hold as for any feature.
+    static func currentForDiagnostics(identity: AppBuildIdentity = .current) -> Verdict {
+        verdict(flagged: isCompiledIn, channel: identity.channel,
+                glassesSupported: GlassesSupportPolicy.isSupported, switchOn: true)
+    }
+
     // MARK: - Support report
 
     /// One line for the support report, beside the `Glasses:` line: whether the binary carries the

@@ -37,13 +37,19 @@ final class DATExperimentalGuardTests: XCTestCase {
         #"\bimport\s+MWDATInputs\b"#, #"\bimport\s+MWDATMotion\b"#, #"\bimport\s+MWDATSpeech\b"#,
         #"\baddInputs\b"#, #"\bInputEvent\b"#, #"\bCamera\.photo\b"#, #"\baudioCodec\b"#,
         #"\baudioFramePublisher\b"#,
+        // Inputs (P2): its types and calls, which only the probe's lane files may name.
+        #"\bremoveInputs\b"#, #"\bInputsConfiguration\b"#, #"\bInputsState\b"#, #"\bInputsError\b"#,
+        #"\bInputSource\b"#, #"\bNavDirection\b"#, #"\bCapturePressType\b"#, #"\bDragAction\b"#,
+        #"\bconsumeBack\b"#,
     ]
 
     /// Every `DAT_EXPERIMENTAL` conditional outside the folder, with exactly what it may contain.
-    /// Keep it minimal: one start-up call, one Settings section, and the policy's own answer.
+    /// Keep it minimal: one start-up call, one Settings section, the Developer panel's Inputs probe
+    /// (P2), and the policy's own answer.
     private static let callSites: [(path: String, body: [String])] = [
         ("OpenGlasses/Sources/App/OpenGlassesApp.swift", ["DATExperimentalFeatures.start(appState: self)"]),
         ("OpenGlasses/Sources/App/Views/SettingsView.swift", ["DATExperimentalSettingsSection()"]),
+        ("OpenGlasses/Sources/App/Views/DeveloperPanelView.swift", ["InputsProbeSection()"]),
         ("OpenGlasses/Sources/Services/DATExperimentalPolicy.swift", ["return true", "#else", "return false"]),
     ]
 
@@ -161,7 +167,12 @@ final class DATExperimentalGuardTests: XCTestCase {
 
     func testExperimentalAPIsAreUsedOnlyInsideTheFolder() throws {
         var offenders: [String] = []
+        // One precompiled pass per file first: matching every pattern on every line of every
+        // source file took minutes on CI, past the per-test allowance.
+        let any = try NSRegularExpression(pattern: Self.experimentalAPIs.joined(separator: "|"))
         for (path, text) in try swiftSources() where !path.hasPrefix(Self.folder) {
+            let whole = NSRange(text.startIndex..., in: text)
+            guard any.firstMatch(in: text, range: whole) != nil else { continue }
             for line in text.components(separatedBy: .newlines) {
                 for pattern in Self.experimentalAPIs where matches(pattern, line) {
                     offenders.append("\(path): \(line.trimmingCharacters(in: .whitespaces))")
@@ -206,6 +217,36 @@ final class DATExperimentalGuardTests: XCTestCase {
         for site in Self.callSites {
             XCTAssertEqual(found[site.path], [site.body], "\(site.path): the call site holds only its roster line")
         }
+    }
+
+    // MARK: - 3b. The Inputs probe's configuration (P2)
+
+    /// The probe asks for the touchpad only and leaves Back to Meta: never the capture button
+    /// (Meta's camera), never `consumeBack: true`, and never the SDK's default configuration, which
+    /// is every source with Back consumed. One configuration, written once, used by every add.
+    func testTheInputsProbeAsksForTheTouchpadOnlyAndLeavesBackToMeta() throws {
+        XCTAssertEqual(InputsProbePolicy.origins, [.captouch])
+        XCTAssertFalse(InputsProbePolicy.consumesBack)
+        XCTAssertEqual(InputsProbePolicy.timeLimit, .seconds(300))
+
+        let inFolder = try swiftSources().filter { $0.path.hasPrefix(Self.folder) }
+        var configurations: [String] = []
+        var adds: [String] = []
+        for (path, text) in inFolder {
+            for raw in text.components(separatedBy: .newlines) {
+                let line = raw.trimmingCharacters(in: .whitespaces)
+                guard !Self.isComment(line) else { continue }
+                if line.contains("InputsConfiguration(") { configurations.append("\(path): \(line)") }
+                if matches(#"\baddInputs\("#, line) { adds.append("\(path): \(line)") }
+                XCTAssertFalse(matches(#"consumeBack:\s*true"#, line), "\(path): \(line)")
+            }
+        }
+        XCTAssertEqual(configurations, [
+            "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.captouch], consumeBack: false)",
+        ], "the probe's one configuration is the touchpad only with Back left to Meta")
+        XCTAssertEqual(adds, [
+            "\(Self.folder)MetaInputsSource.swift: added = try session.addInputs(configuration: InputsProbeConfiguration.sdk)",
+        ], "Inputs is added once, with the probe's configuration, never the SDK's default")
     }
 
     // MARK: - 4. The stamp
