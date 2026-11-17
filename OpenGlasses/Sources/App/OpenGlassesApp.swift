@@ -5644,8 +5644,13 @@ class AppState: ObservableObject, AppStateProtocol {
 
     /// Master listening toggle — stops/starts wake word detection and Live Activity.
     func setListeningEnabled(_ enabled: Bool) {
+        let changed = listeningEnabled != enabled
         listeningEnabled = enabled
         Config.setListeningEnabled(enabled)
+        // The widget and the listening control draw the shared flag; tell them it moved. Only on
+        // a change: WidgetKit budgets reloads, and this is called again with the same value on
+        // every foreground sync.
+        if changed { WidgetCenterReloader().reloadListeningSurfaces() }
 
         if enabled {
             // Restart wake word detection and Live Activity

@@ -19,6 +19,10 @@ struct OpenGlassesHomeWidget: Widget {
         .description("A quick Listen toggle, and your glasses' connection and battery when you use them.")
         #endif
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // No `disfavoredLocations`: the small widget is meant for CarPlay and Apple HomeView as
+        // well as the Home Screen. WidgetKit has no HomeView location, so disfavouring `.carPlay`
+        // would likely drop it from HomeView too. Both show the small family with the background
+        // removed and the tinted, clear and night renderings — see `HomeWidgetView.listenFace`.
     }
 }
 
@@ -81,6 +85,9 @@ struct HomeWidgetProvider: TimelineProvider {
 struct HomeWidgetView: View {
     let entry: HomeWidgetEntry
     @Environment(\.widgetFamily) private var family
+    /// Full colour on a default Home Screen; accented on tinted and clear Home Screens and on
+    /// HomeView; vibrant in StandBy and HomeView's night mode. Only full colour keeps our colours.
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     /// The brand orange. Filled controls paint it solid and label it with
     /// `AccentColors.onAiCoral` — the same rule as the app's primary button.
@@ -108,6 +115,7 @@ struct HomeWidgetView: View {
             HStack {
                 LogoIcon(size: 24)
                     .foregroundStyle(accent)
+                    .widgetAccentable()
                 Spacer()
                 statusDot
             }
@@ -116,18 +124,15 @@ struct HomeWidgetView: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
             glassesLine(font: .caption)
-            Button(intent: ToggleListeningIntent()) {
+            listenButton(in: AnyShape(Capsule())) {
                 HStack {
                     Image(systemName: entry.isListening ? "mic.slash.fill" : "mic.fill")
                     Text(entry.isListening ? "Stop" : "Listen")
                         .font(.caption.weight(.semibold))
                 }
-                .foregroundStyle(AccentColors.onAiCoral)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
-                .background(accent, in: Capsule())
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -137,6 +142,7 @@ struct HomeWidgetView: View {
                 HStack(spacing: 6) {
                     LogoIcon(size: 20)
                         .foregroundStyle(accent)
+                        .widgetAccentable()
                     Text("Avenkin")
                         .font(.headline)
                         .foregroundStyle(.primary)
@@ -149,18 +155,15 @@ struct HomeWidgetView: View {
             }
             Spacer()
             VStack(spacing: 8) {
-                Button(intent: ToggleListeningIntent()) {
+                listenButton(in: AnyShape(RoundedRectangle(cornerRadius: 16))) {
                     VStack(spacing: 4) {
                         Image(systemName: entry.isListening ? "mic.slash.fill" : "mic.fill")
                             .font(.title3)
                         Text(entry.isListening ? "Stop" : "Listen")
                             .font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(AccentColors.onAiCoral)
                     .frame(width: 96, height: 70)
-                    .background(accent, in: RoundedRectangle(cornerRadius: 16))
                 }
-                .buttonStyle(.plain)
                 // Dimmed, not hidden, without glasses in use: the link still opens the app, which
                 // says why there is no photo.
                 Link(destination: DeepLinkTrust.signedURL("openglasses://action/photo")!) {
@@ -183,6 +186,7 @@ struct HomeWidgetView: View {
             HStack(spacing: 8) {
                 LogoIcon(size: 28)
                     .foregroundStyle(accent)
+                    .widgetAccentable()
                 Text("Avenkin")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.primary)
@@ -193,6 +197,7 @@ struct HomeWidgetView: View {
                     Image(systemName: glasses.symbol)
                         .font(.title3)
                         .foregroundStyle(glasses.tone == .connected ? accent : Color.secondary)
+                        .widgetAccentable(glasses.tone == .connected)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(glasses.deviceName ?? "Glasses")
                             .font(.subheadline.weight(.semibold))
@@ -218,19 +223,16 @@ struct HomeWidgetView: View {
                 }
             }
             Spacer()
-            Button(intent: ToggleListeningIntent()) {
+            listenButton(in: AnyShape(RoundedRectangle(cornerRadius: 18))) {
                 HStack {
                     Image(systemName: entry.isListening ? "mic.slash.fill" : "mic.fill")
                         .font(.title3)
                     Text(entry.isListening ? "Stop Listening" : "Start Listening")
                         .font(.headline)
                 }
-                .foregroundStyle(AccentColors.onAiCoral)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(accent, in: RoundedRectangle(cornerRadius: 18))
             }
-            .buttonStyle(.plain)
             HStack(spacing: 8) {
                 quickActionLink(url: "openglasses://action/ask", icon: "questionmark.circle.fill", label: "Ask")
                 quickActionLink(url: "openglasses://action/photo", icon: "camera.fill", label: "Photo")
@@ -291,12 +293,46 @@ struct HomeWidgetView: View {
         }
     }
 
+    /// The Listen / Stop button. Starting runs in the app (`StartListeningFromWidgetIntent` opens
+    /// it: iOS refuses a background microphone start); stopping runs here, since a listening app is
+    /// alive to hear the shared flag change. (The app has a `DisableListeningIntent` too — the
+    /// Live Activity's — and may run its copy; it writes the same shared flag.)
+    @ViewBuilder
+    private func listenButton<Content: View>(in shape: AnyShape,
+                                             @ViewBuilder label: () -> Content) -> some View {
+        if entry.isListening {
+            Button(intent: DisableListeningIntent()) { listenFace(label(), in: shape) }
+                .buttonStyle(.plain)
+        } else {
+            Button(intent: StartListeningFromWidgetIntent()) { listenFace(label(), in: shape) }
+                .buttonStyle(.plain)
+        }
+    }
+
+    /// Full colour: the solid brand orange with `AccentColors.onAiCoral` on it, as the app's
+    /// primary button. Every other rendering (tinted and clear Home Screens, HomeView, StandBy,
+    /// night mode) flattens colour to one tint by alpha, so a solid fill under an opaque label
+    /// drew one blank shape with the label gone. There the label is primary on a translucent plate.
+    @ViewBuilder
+    private func listenFace<Content: View>(_ label: Content, in shape: AnyShape) -> some View {
+        if renderingMode == .fullColor {
+            label
+                .foregroundStyle(AccentColors.onAiCoral)
+                .background(accent, in: shape)
+        } else {
+            label
+                .foregroundStyle(.primary)
+                .background(Color.primary.opacity(0.18), in: shape)
+        }
+    }
+
     /// Follows the glasses: the accent while connected and in use, neutral otherwise. Listening
     /// is shown by the Listen button's own state.
     private var statusDot: some View {
         Circle()
             .fill(glasses?.tone == .connected ? accent : Color.secondary)
             .frame(width: 8, height: 8)
+            .widgetAccentable(glasses?.tone == .connected)
             .overlay(
                 Circle()
                     .stroke(Color.primary.opacity(0.3), lineWidth: 1)

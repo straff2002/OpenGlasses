@@ -31,6 +31,8 @@ final class ControlWidgetGuardTests: XCTestCase {
         let source = try text(Self.controls)
         XCTAssertTrue(source.contains("\"com.openglasses.app.ListeningControl\""))
         XCTAssertTrue(source.contains("\"com.openglasses.app.AskControl\""))
+        // The app reloads the listening control by this kind when listening changes.
+        XCTAssertEqual(WidgetCenterReloader.listeningControlKind, "com.openglasses.app.ListeningControl")
     }
 
     func testTheControlsAreNamedForWhatTheyDo() throws {
