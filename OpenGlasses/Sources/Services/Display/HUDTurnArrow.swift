@@ -5,7 +5,7 @@ import UIKit
 /// Plan LC §6 (Plan CA on the lens): the turn arrow, drawn on the phone and sent with the walking
 /// route's guidance line through KV's `HUDPicture` path.
 ///
-/// **What it draws.** A white arrow on black — black is clear on the additive lens, so the wearer
+/// **What it draws.** A white arrow (or one in the wearer's highlight colour) on black — black is clear on the additive lens, so the wearer
 /// sees only the arrow — pointing the way the maneuver turns: straight up for ahead (and for the
 /// walk's start, whose own words say which way to head), 45° for a bear left or right, 90° for a
 /// turn, straight down for a U-turn. A roundabout (which exit is in the words, not the geometry)
@@ -39,18 +39,21 @@ enum HUDTurnArrow {
         }
     }
 
-    static func contentKey(angle: Double) -> String {
-        "lc.nav.arrow:\(Int(angle.rounded()))"
+    /// The angle, and the colour when it isn't Standard's white (Display & HUD › Highlight colour).
+    static func contentKey(angle: Double, highlight: LensHighlightColour = .standard) -> String {
+        "lc.nav.arrow:\(Int(angle.rounded()))" + highlight.keySuffix
     }
 
-    /// The arrow for `maneuver` as a lens picture, or nil when it has no direction.
+    /// The arrow for `maneuver` as a lens picture, or nil when it has no direction. Drawn in the
+    /// wearer's highlight colour.
     @MainActor
-    static func picture(for maneuver: Maneuver) -> HUDPicture? {
+    static func picture(for maneuver: Maneuver,
+                        highlight: LensHighlightColour = Config.lensHighlightColour) -> HUDPicture? {
         guard let angle = angle(for: maneuver) else { return nil }
-        let key = contentKey(angle: angle)
+        let key = contentKey(angle: angle, highlight: highlight)
         if let cached = cache[key] { return cached }
-        let picture = HUDPicture(image: draw(angle: angle), pixelSize: canvas, contentKey: key,
-                                 placement: .aboveLines)
+        let picture = HUDPicture(image: draw(angle: angle, highlight: highlight), pixelSize: canvas,
+                                 contentKey: key, placement: .aboveLines)
         cache[key] = picture
         return picture
     }
@@ -80,8 +83,9 @@ enum HUDTurnArrow {
         }
     }
 
-    /// Draw the strip: black, with the white arrow at `angle`. One pixel per point.
-    static func draw(angle: Double) -> UIImage {
+    /// Draw the strip: black, with the arrow at `angle` in the highlight colour (white for
+    /// Standard). One pixel per point.
+    static func draw(angle: Double, highlight: LensHighlightColour = .standard) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
@@ -95,7 +99,7 @@ enum HUDTurnArrow {
             cg.move(to: first)
             for point in points.dropFirst() { cg.addLine(to: point) }
             cg.closePath()
-            cg.setFillColor(UIColor.white.cgColor)
+            cg.setFillColor(LensHighlightColour.cgColor(highlight.arrowHex))
             cg.fillPath()
         }
     }

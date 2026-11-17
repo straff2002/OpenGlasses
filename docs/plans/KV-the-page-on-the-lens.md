@@ -481,6 +481,8 @@ updated.
   report's send timings).
 - The real readable floor on the lens (P5), which replaces the 22 px estimate.
 - Whether the Display's colour makes an accent outline readable over inverted line art, or white reads
-  better (P5).
+  better (P5). Since 2026-11-17 the wearer can choose: Display & HUD › Highlight colour
+  (`LensHighlightColour`) draws the marks, the position frame, the turn arrow and the Web App's text
+  in coral, amber, yellow, green or white; Standard keeps coral. P5 still decides the default.
 - Whether stable DAT sends the band's back gesture to the app (KP's open question, JV's probe); until then
   **Close** and **Done** are on-screen buttons.

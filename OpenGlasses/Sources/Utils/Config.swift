@@ -4136,6 +4136,14 @@ struct Config {
 
     static func setFollowUpsOnDisplayEnabled(_ enabled: Bool) { followUpsOnDisplayEnabled = enabled }
 
+    /// Display & HUD › Highlight colour: what the app draws itself on the lens (manual-page marks,
+    /// the turn arrow, the Web App's text and focus ring). Native lens text keeps the Display's own
+    /// white and grey. Standard by default (`LensHighlightColour`).
+    static var lensHighlightColour: LensHighlightColour {
+        get { LensHighlightColour.stored() }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: LensHighlightColour.storageKey) }
+    }
+
     /// Plan KP §4: the same follow-ups when only the web mirror shows answers (no display). Off by
     /// default (decision 5): the mirror is read-only, so its buttons can't be pressed there.
     @UserDefaultsBacked("followUpsOnMirrorEnabled", default: false) static var followUpsOnMirrorEnabled: Bool

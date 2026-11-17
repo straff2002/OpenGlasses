@@ -22,6 +22,9 @@ struct LensPageRequest: Equatable {
     /// The page's key in `PageFigureCache` (document, page, revision, file); nil analyses the page
     /// every time it is laid out.
     let figureKey: String?
+    /// The colour the marks and the position frame are drawn in. `LensPageSession` sets it from
+    /// the wearer's choice just before drawing, so the cache key and the picture agree.
+    var highlight: LensHighlightColour = .standard
 
     var pageIndex: Int { page - 1 }
 
@@ -205,21 +208,21 @@ enum LensPageRenderer {
         await Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let document = PDFDocument(url: request.source),
                   let page = pdfPage(document, index: request.pageIndex) else { return nil }
-            return draw(page, plan: plan)
+            return draw(page, plan: plan, highlight: request.highlight)
         }.value
     }
 
-    /// The accent the marks are drawn in: the AI accent's value for a dark ground, since the lens
-    /// is one (`AccentColors.aiAccentDarkHex`, #E77F47).
-    static var accent: CGColor {
-        let hex = AccentColors.aiAccentDarkHex
-        return CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                       blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+    /// The colour the marks are drawn in: the wearer's highlight colour, or for Standard the AI
+    /// accent's value for a dark ground, since the lens is one (`AccentColors.aiAccentDarkHex`,
+    /// #E77F47).
+    static func accent(_ highlight: LensHighlightColour) -> CGColor {
+        LensHighlightColour.cgColor(highlight.markHex)
     }
 
     /// Rasterise the crop at the plan's size, turn its tones for the lens, and draw the marks and
     /// the position frame. Synchronous; the caller is off the main actor.
-    static func draw(_ page: PDFPage, plan: LensPageRenderPlan) -> UIImage? {
+    static func draw(_ page: PDFPage, plan: LensPageRenderPlan,
+                     highlight: LensHighlightColour = .standard) -> UIImage? {
         let width = Int(plan.outputSize.width.rounded())
         let height = Int(plan.outputSize.height.rounded())
         guard width > 0, height > 0, plan.scale > 0,
@@ -255,7 +258,7 @@ enum LensPageRenderer {
         context.restoreGState()
 
         applyTone(plan.tone, to: context, width: width, height: height, page: plan.pageInOutput)
-        drawOverlays(plan, in: context, height: height)
+        drawOverlays(plan, in: context, height: height, accent: accent(highlight))
 
         guard let image = context.makeImage() else { return nil }
         return UIImage(cgImage: image, scale: 1, orientation: .up)
@@ -302,7 +305,8 @@ enum LensPageRenderer {
     }
 
     /// The marks and the position frame, in the plan's top-down output pixels.
-    private static func drawOverlays(_ plan: LensPageRenderPlan, in context: CGContext, height: Int) {
+    private static func drawOverlays(_ plan: LensPageRenderPlan, in context: CGContext, height: Int,
+                                     accent: CGColor) {
         guard !plan.marks.isEmpty || plan.positionFrame != nil else { return }
         context.saveGState()
         context.translateBy(x: 0, y: CGFloat(height))
@@ -313,7 +317,6 @@ enum LensPageRenderer {
             context.restoreGState()
         }
 
-        let accent = Self.accent
         context.setStrokeColor(accent)
         context.setLineWidth(3)
         for mark in plan.marks {

@@ -118,6 +118,8 @@ final class LensPageSession: ObservableObject {
         ManualFigureCue.show(staged, on: self.display)
     }
     var backend: () -> String = BandPracticeSession.activeBackendToken
+    /// The colour the marks are drawn in (Display & HUD › Highlight colour). A seam for tests.
+    var highlight: () -> LensHighlightColour = { Config.lensHighlightColour }
     var viewLifetime: TimeInterval = LensPageSession.defaultViewLifetime
     var cueLifetime: TimeInterval = LensPageSession.defaultCueLifetime
     var scheduleTimer: (_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> Void = { delay, fire in
@@ -716,7 +718,10 @@ final class LensPageSession: ObservableObject {
     }
 
     private func picture(for plan: LensPageRenderPlan, page: Page, request: LensPageRequest) async -> HUDPicture? {
-        let key = LensPageRenderCache.key(identity: page.identity, plan: plan)
+        var drawn = request
+        drawn.highlight = highlight()
+        let request = drawn
+        let key = LensPageRenderCache.key(identity: page.identity, plan: plan) + request.highlight.keySuffix
         if let cached = cache.picture(for: key) { return cached }
         if let running = renderTasks[key] { return await running.value }
         let rendering = renderPicture
