@@ -368,6 +368,13 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
 - **P6** — device pass (owed, with KP P6 / KV P5): wake-on-send, native scroll, characters per line,
   focus reach in a six-button group, what the session reports for Back / two-finger tap / a call / the
   HFP mic, and measured send times.
+  **First field report (build 705, 2026-11-16):** on a real Ray-Ban Display the session started but
+  every send went unanswered past the 4 s deadline (now and then `deviceDisconnected`), and each
+  failure rebuilt the session, so the lens stayed black. The backend sent straight after
+  `Display.start()`, while the capability was still `starting`; it now waits for `started` first
+  (`DisplayStartWait`, up to 10 s, logged as `displayCapabilityRead`), and a timed-out send no longer
+  tears the session down: only the third in a row does (`HUDSendDeadline.rebuildAfterTimeouts`), as
+  Meta's own sample keeps one session and display across frames. Device confirmation owed.
 
 ## Acceptance
 

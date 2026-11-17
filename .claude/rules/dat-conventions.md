@@ -2,7 +2,7 @@
 description: Swift patterns, async/await, naming conventions, key types for DAT SDK iOS development
 ---
 
-# DAT SDK Conventions (iOS) — v1.0.0
+# DAT SDK Conventions (iOS) — v1.0.1 (API as 1.0.0; 1.0.1 had no developer-facing changes)
 
 ## Architecture
 
@@ -142,7 +142,10 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   `capturePhoto(format:) -> Bool`.
 - `StreamConfiguration` — video codec, resolution, frame rate.
 - `Display` — in-lens HUD; `send(_:)` replaces content (async), `clearDisplay()` blanks it (async),
-  `start()/stop()` are sync. `ButtonGroup` (+ `ButtonGroupBuilder`/`ButtonGroupAlignment`) lays out
+  `start()/stop()` are sync — but **send only once `display.state` is `.started`** (Meta's display
+  guide; `start()` returns while it is still `.starting`, until the glasses accept the request).
+  `MetaDisplayBackend.awaitStarted` waits up to 10 s (`DisplayStartWait`) after every `start()`;
+  build 705 sent at once, and on a real Ray-Ban Display every first send went unanswered. `ButtonGroup` (+ `ButtonGroupBuilder`/`ButtonGroupAlignment`) lays out
   button rows (0.9.0); the component result builder supports full if/else.
 - `Device.supportsDisplay()` / `DeviceType.supportsDisplay` — capability gate; `AutoDeviceSelector(wearables:filter:)`
   can constrain selection (e.g. `filter: { $0.supportsDisplay() }`).

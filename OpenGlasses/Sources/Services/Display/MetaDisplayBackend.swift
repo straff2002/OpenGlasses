@@ -113,6 +113,17 @@ final class DATDisplaySession: DisplaySessionControl {
     }
 }
 
+extension DisplayCapabilityPhase {
+    init(_ state: DisplayState) {
+        switch state {   // `DisplayState` is @frozen
+        case .starting: self = .starting
+        case .started: self = .started
+        case .stopping: self = .stopping
+        case .stopped: self = .stopped
+        }
+    }
+}
+
 extension DisplaySessionState {
     init(_ state: DeviceSessionState) {
         switch state {   // `DeviceSessionState` is @frozen
@@ -450,6 +461,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             // Reuse the live display. After a pause the capability may have stopped with the
             // session; start it again only then (`Display.start()` is synchronous).
             if display.state == .stopped { display.start() }
+            if display.state != .started { try await awaitStarted(display) }
             return display
         }
         // We exclusively own this session, so the display capability can't already be active.
@@ -457,10 +469,26 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // (which tears down and rebuilds a fresh session).
         let display = try session.addDisplay()
         self.display = display
-        display.start()  // DAT 0.8.0: Display.start() is synchronous
+        display.start()  // DAT 0.8.0: Display.start() is synchronous; the state follows
+        try await awaitStarted(display)
         isDisplayActive = true
         onDebugEvent?("HUD display started")
         return display
+    }
+
+    /// Hold the first send until the capability is `started` (`DisplayStartWait`). A display that
+    /// stops or never gets there throws `displayDidNotStart`, which the render-error path reads as
+    /// a failure and rebuilds from — never a send into a display that is not ready.
+    private func awaitStarted(_ display: Display) async throws {
+        let (outcome, waited) = try await DisplayStartWait.wait {
+            DisplayCapabilityPhase(display.state)
+        }
+        PrivacyLog.device(.hud, .displayCapabilityRead, state: PrivacyToken(outcome.rawValue),
+                          count: Int((waited * 1000).rounded()))
+        guard outcome == .started else {
+            onDebugEvent?("HUD display did not start (\(outcome.rawValue))")
+            throw GlassesDisplayError.displayDidNotStart
+        }
     }
 
     /// The session, started, or `GlassesDisplayError.displayInUse` when the Display is not ours.
