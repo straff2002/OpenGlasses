@@ -8,12 +8,7 @@ struct DisableListeningIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        // Write to UserDefaults (works from both app and widget)
-        UserDefaults.standard.set(false, forKey: "listeningEnabled")
-        // If app is running, update observable state immediately
-        if let appState = AppStateProvider.shared {
-            appState.setListeningEnabled(false)
-        }
+        ListeningIntentWrite.apply(false)
         return .result()
     }
 }
@@ -25,10 +20,25 @@ struct EnableListeningIntent: LiveActivityIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        UserDefaults.standard.set(true, forKey: "listeningEnabled")
-        if let appState = AppStateProvider.shared {
-            appState.setListeningEnabled(true)
-        }
+        ListeningIntentWrite.apply(true)
         return .result()
+    }
+}
+
+/// What both listening intents do with the new value.
+enum ListeningIntentWrite {
+    /// Both stores: the App Group copy is the one the widget, the control and a later launch read
+    /// (`Config.listeningEnabled` prefers it). Writing only the app's own defaults let a press that
+    /// launched the app in the background — before any `AppState` — leave the shared flag where it
+    /// was, so the widget kept saying "Stop" and the next launch switched listening back on.
+    @MainActor
+    static func apply(_ enabled: Bool) {
+        Config.setListeningEnabled(enabled)
+        if let appState = AppStateProvider.shared {
+            // Updates observable state immediately and redraws the widget on a change.
+            appState.setListeningEnabled(enabled)
+        } else {
+            WidgetCenterReloader().reloadListeningSurfaces()
+        }
     }
 }

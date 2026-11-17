@@ -18,8 +18,21 @@ final class AppGroupWidgetGlassesStore: WidgetGlassesSnapshotStoring {
 }
 
 final class WidgetCenterReloader: WidgetTimelineReloading {
+    /// **Stored identifier**, owned by `ListeningControlWidget.kind` in the widget extension (which
+    /// the app does not compile). `ControlWidgetGuardTests` holds the two together.
+    static let listeningControlKind = "com.openglasses.app.ListeningControl"
+
     func reloadHomeWidget() {
         WidgetCenter.shared.reloadTimelines(ofKind: WidgetGlassesSnapshot.homeWidgetKind)
+    }
+
+    /// Redraws everything that shows whether Avenkin is listening: the Home Screen widget's Listen
+    /// button and the Control Center / Action button toggle. The app writes the shared flag when
+    /// listening changes in the app, Settings, Siri or the session card; without this the widget
+    /// kept its old button until its next scheduled refresh.
+    func reloadListeningSurfaces() {
+        reloadHomeWidget()
+        ControlCenter.shared.reloadControls(ofKind: Self.listeningControlKind)
     }
 }
 

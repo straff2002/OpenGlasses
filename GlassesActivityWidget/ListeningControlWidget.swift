@@ -9,7 +9,8 @@ import AppIntents
 // by `ControlWidgetGuardTests`).
 
 /// Control for the iPhone Action Button and Control Center: turns wake-word listening on or off
-/// via shared App Group state, without opening the app.
+/// via shared App Group state. Turning it off stays in the background; turning it on opens Avenkin,
+/// since iOS will not start the microphone from the background (`SetListeningIntent`).
 ///
 /// The kind string is a stored identifier — a wearer's Action button assignment points at it — so
 /// it never changes, whatever the control is called.
@@ -30,7 +31,7 @@ struct ListeningControlWidget: ControlWidget {
             .tint(AccentColors.aiCoral)
         }
         .displayName("Avenkin Listening")
-        .description("Turn wake-word listening on or off. Avenkin stays in the background.")
+        .description("Turn wake-word listening on or off. Turning it on opens Avenkin.")
     }
 }
 
