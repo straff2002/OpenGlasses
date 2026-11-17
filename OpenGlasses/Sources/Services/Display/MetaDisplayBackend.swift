@@ -85,6 +85,13 @@ protocol DisplaySessionControl: AnyObject {
     /// (`DeviceSession.stateStream()`'s contract since DAT 0.9.0).
     func stateUpdates() -> AsyncStream<DisplaySessionState>
     func addDisplay() throws -> Display
+    /// Let go of a session that ended under us without stopping anything (`stop()` is the
+    /// deliberate end). The shared session's hold is handed back either way.
+    func relinquish()
+}
+
+extension DisplaySessionControl {
+    func relinquish() {}
 }
 
 /// A real `DeviceSession` behind `DisplaySessionControl`.
@@ -98,7 +105,10 @@ final class DATDisplaySession: DisplaySessionControl {
 
     var sessionState: DisplaySessionState { DisplaySessionState(session.state) }
     func start() throws { try session.start() }   // synchronous; the state follows
-    func stop() { session.stop() }
+    /// The session is shared with the camera (`DeviceSessionCoordinator`): ending the lens hands it
+    /// back, and it stops only once the camera has let go too.
+    func stop() { DeviceSessionCoordinator.shared.release(.display) }
+    func relinquish() { DeviceSessionCoordinator.shared.release(.display) }
     func addDisplay() throws -> Display { try session.addDisplay() }
 
     func stateUpdates() -> AsyncStream<DisplaySessionState> {
@@ -141,9 +151,10 @@ extension DisplaySessionState {
 /// `GlassesDisplayService` did directly; no behavior change, existing HUD tests stay green
 /// (they capture above the backend via `testRenderSink`).
 ///
-/// Session ownership: this backend manages its own `DeviceSession` (via `AutoDeviceSelector`),
-/// separate from `CameraService`. The SDK allows a single session per device, so while the HUD
-/// session is held the camera falls back to its existing iPhone-camera path.
+/// Session ownership: the `DeviceSession` is borrowed from `DeviceSessionCoordinator` and shared
+/// with the camera — the SDK allows one per device, and two of our own locked each other out. A
+/// photo crossing from the glasses can stop the Display under the live session (Meta known issue);
+/// that is heard here and the service draws the lens again (`onDisplayStoppedUnderSession`).
 @MainActor
 final class MetaDisplayBackend: GlassesDisplayBackend {
 
@@ -180,6 +191,14 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     /// Back gesture or two-finger tap, or the glasses' hands-free mic coming up (iOS #342, #349). The
     /// service reads it as a dismissal and does not reopen the lens for an ambient frame.
     var onSessionEndedByDevice: (() -> Void)?
+
+    /// The Display capability stopped while the session carried on: a photo crossing from the
+    /// glasses, which Meta lists as stopping the Display. Not a dismissal; the service draws the
+    /// lens again, and the next send restarts the Display and waits for it.
+    var onDisplayStoppedUnderSession: (() -> Void)?
+    /// Follows the live display's own states (`statePublisher`).
+    private var displayStateToken: (any AnyListenerToken)?
+    private var displayReachedStarted = false
 
     /// A refused start reads as `.inUse` for this long, then the next frame may try once more. A
     /// refusal is not an interruption: the session never had the Display, so trying again later
@@ -469,11 +488,45 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // (which tears down and rebuilds a fresh session).
         let display = try session.addDisplay()
         self.display = display
+        watchDisplay(display)
         display.start()  // DAT 0.8.0: Display.start() is synchronous; the state follows
         try await awaitStarted(display)
         isDisplayActive = true
         onDebugEvent?("HUD display started")
         return display
+    }
+
+    /// Listen to the display's own states before it is started, as Meta's sample does.
+    private func watchDisplay(_ display: Display) {
+        cancelDisplayWatch()
+        displayReachedStarted = false
+        displayStateToken = display.statePublisher.listen { [weak self] state in
+            Task { @MainActor in self?.displayStateChanged(display, to: DisplayCapabilityPhase(state)) }
+        }
+    }
+
+    private func displayStateChanged(_ display: Display, to phase: DisplayCapabilityPhase) {
+        guard self.display === display else { return }   // a display we have let go of
+        switch phase {
+        case .started:
+            displayReachedStarted = true
+        case .stopped:
+            guard displayReachedStarted, session?.sessionState == .started else { return }
+            displayReachedStarted = false
+            isDisplayActive = false
+            PrivacyLog.device(.hud, .displayCapabilityRead, state: PrivacyToken("stoppedUnderSession"))
+            onDebugEvent?("HUD display stopped under a live session")
+            onDisplayStoppedUnderSession?()
+        case .starting, .stopping:
+            break
+        }
+    }
+
+    private func cancelDisplayWatch() {
+        if let token = displayStateToken {
+            displayStateToken = nil
+            Task { await token.cancel() }
+        }
     }
 
     /// Hold the first send until the capability is `started` (`DisplayStartWait`). A display that
@@ -529,7 +582,8 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
         if session.sessionState != .started {
             do {
-                try session.start()
+                // The camera may have started the shared session a moment ago: wait, don't restart.
+                if session.sessionState != .starting { try session.start() }
             } catch {
                 if DATCompatibilityMessage.isSDKRefusal(error) { throw error }
                 refuseStart()
@@ -557,7 +611,11 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     private func makeSession() throws -> DisplaySessionControl {
         if let testMakeSession { return try testMakeSession() }
-        return DATDisplaySession(try Wearables.shared.createSession(deviceSelector: deviceSelector))
+        // Borrowed, and shared with the camera: one session per pair (`DeviceSessionCoordinator`).
+        guard let shared = try DeviceSessionCoordinator.shared.acquire(.display) as? DeviceSession else {
+            throw GlassesDisplayError.sessionUnavailable
+        }
+        return DATDisplaySession(shared)
     }
 
     /// Follow the session's own states for as long as we hold it. A pause that happens while
@@ -613,7 +671,8 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     private func dropSession(stopping: Bool = true) {
         sessionWatch?.cancel()
         sessionWatch = nil
-        if stopping { session?.stop() }
+        cancelDisplayWatch()
+        if stopping { session?.stop() } else { session?.relinquish() }
         session = nil
         display = nil
         isDisplayActive = false

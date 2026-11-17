@@ -4518,6 +4518,10 @@ class AppState: ObservableObject, AppStateProtocol {
         cameraService.connectedGlassesDeviceId = { [weak self] in
             self?.glassesService.snapshot.connectedDeviceId
         }
+        // The shared session the camera and the lens borrow binds to the same pair.
+        DeviceSessionCoordinator.shared.readConnectedDevice = { [weak self] in
+            self?.glassesService.snapshot.connectedDeviceId
+        }
         wirePhonePhotos()
         // Worn or not drives the automatic stand-down (`GlassesSleepPolicy`). `$isWorn` fires in willSet, so the
         // value is handed over rather than read back; the hop lets the service finish publishing.

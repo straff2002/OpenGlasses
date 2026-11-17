@@ -95,6 +95,7 @@ final class GlassesDisplayService: ObservableObject {
             meta.onDebugEvent = { [weak self] message in self?.onDebugEvent?(message) }
             meta.onSessionReading = { [weak self] reading in self?.applySessionReading(reading) }
             meta.onSessionEndedByDevice = { [weak self] in self?.lensEndedByDevice() }
+            meta.onDisplayStoppedUnderSession = { [weak self] in self?.lensInterrupted() }
         }
         #endif
     }
@@ -621,6 +622,14 @@ final class GlassesDisplayService: ObservableObject {
         case .ours: if lensMissedFrames { resumeLens() }
         case .off: break
         }
+    }
+
+    /// The Display stopped under a live session — a photo crossing from the glasses, not the
+    /// wearer. Draw the lens again from what is held; the send restarts the Display first.
+    func lensInterrupted() {
+        guard !lensDismissed else { return }
+        isDisplayActive = false
+        resumeLens()
     }
 
     /// The lens is ours again after another app had it: draw it once from what is held now. No

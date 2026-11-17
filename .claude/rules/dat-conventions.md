@@ -134,6 +134,13 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   `requestTimeout`, `internalError`; not frozen); it describes itself, so summarise it with
   `MetaCameraBackend.permissionSummary(of:)`, which keeps the case name.
 - `DeviceSession` — owns the connection; create with a device selector, then `addCamera`/`addDisplay`.
+  **One per pair, and only `DeviceSessionCoordinator` creates it.** The camera (`acquire(.camera)`)
+  and the lens (`acquire(.display)`) borrow the same session, bound to the connected pair, and hand
+  it back (`release`) rather than stopping it; it stops when neither holds it. Two sessions of our
+  own refused each other (`sessionAlreadyExists`, build 705). Neither starts a session the other is
+  already `starting`. A photo can stop the Display under the live session (Meta known issue): the
+  backend hears it and the service redraws (`lensInterrupted`). `SharedDeviceSessionTests` fails
+  on any other `createSession(deviceSelector:)`.
   `DeviceSession.device` (1.0.0) is the live `Device?` snapshot for the session's device.
 - `Camera` — owns the camera hardware resource (0.9.0); `camera.stream` is the streaming session,
   `camera.state`/`statePublisher` report the capability lifecycle (`CameraState`), `stop()` is sync

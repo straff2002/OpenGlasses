@@ -2216,8 +2216,9 @@ enum PrivacyLog {
         /// Case names only; nothing about what was, or was not, shown.
         case displaySessionRead, availabilityRead
         /// How the Display capability's start ended before the first send (`DisplayStartWait`):
-        /// `state` = `started`, `stopped` or `timedOut`; `count` = milliseconds waited. Case names
-        /// and a duration only.
+        /// `state` = `started`, `stopped` or `timedOut`; `count` = milliseconds waited. Also
+        /// `state` = `stoppedUnderSession` when the Display stopped while its session carried on
+        /// (a photo crossing). Case names and a duration only.
         case displayCapabilityRead
         /// Plan KP §5, the band check. `bandCheckStarted` carries the display backend's token in
         /// `state`; `bandCheckRefused` why it didn't start (`reason`: `hudOff`, `displayOff`,
