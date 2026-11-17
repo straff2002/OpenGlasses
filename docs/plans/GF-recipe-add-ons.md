@@ -1,10 +1,19 @@
 # Plan GF — Recipe Add-ons (declarative, no-code skills with per-add-on permissions)
 
-**Status:** 🚧 P0 + P1 + P1b built 2026-11-07 — the format, validator, runner, signatures, trust
-classes, reserved capabilities, organisation ceilings and the reference shape as a headless, tested
-library under `Services/AddOns/`, **not wired into the app** (no store, tool wrapper, registry entry,
-deep link, sheet, Settings screen or profile field yet). P2, P3 and P4 are owed. Drafted 2026-10-01;
-revised 2026-10-02 (organisation add-ons and signed-only capabilities, below).
+**Status:** 🚧 P0 + P1 + P1b built 2026-11-07; **P2 built 2026-11-17, device checks owed** — add-ons
+install and run in the app: `AddOnStore` (`Documents/addons/`, JSONStore salvage semantics, exact
+bytes kept, trust re-resolved from the stored envelope, provenance as store metadata), the
+`install-addon` link (asks before fetching, HTTPS only), `.addon` and add-on `.json` files, the install,
+update-diff and edit sheets, Settings → Add-ons (the add-ons switch, per-add-on switch, source view and
+edit with live validation, export, remove), `AddOnToolWrapper` + `ToolDispatchSeam.addOn(id:)` with
+`addon_` names (≤ 64 characters) and the composition floor, `NetworkRoute.recipeAddOn`, `BoundedHTTPClient`
+POST over one hop and the `.recipeAddOn` profiles with the production `BoundedAddOnHTTPTransport`, and the
+gates: Medical Compliance (and so Local Only) hides network add-ons, coverage, and the three organisation
+ceilings as profile keys. **Owed:** device checks (install from a scanned code, AirDrop and Mail; a real run
+on cellular; both sheets with VoiceOver); a catalog sync for the new strings; organisation add-ons by
+reference installed at enrolment (needs a profile field), the `credentials` Keychain store and the reserved
+capabilities' step types; P3 and P4. Drafted 2026-10-01; revised 2026-10-02 (organisation add-ons and
+signed-only capabilities, below).
 
 **Decisions taken (2026-11-07):**
 1. Format tag `avenkin.addon/1` (decision 3).
@@ -49,6 +58,37 @@ optional `sha256` of the file bytes, strict-decoded, with a check that a fetched
 is the add-on referenced. **The trusted-organisation table and the policy value are injected until
 P2 wires them to the enrolled profile** (its `officeAuthority.administratorPublicKey`); no field is
 added to the signed profile format here.
+**What P2 built (2026-11-17).** `AddOnStore` (`@MainActor`): `<id>/addon.json` holds the exact bytes,
+`<id>/signed.json` the envelope while unedited, `state.json` the `InstalledAddOn` records through
+`JSONStore` (one bad record drops that record; an undecodable blob is backed up; an unreadable one refuses
+every change). Trust is never read from the record: `loaded(id:)` resolves the stored envelope against the
+keys trusted now and validates under that class, so an organisation add-on holding a reserved capability
+stops loading when its profile leaves. `AddOnOrigin` (`installed(via:)` link/file/gallery/organisation, or
+`selfBuilt(SelfBuiltAddOnProvenance: sessionID, goal, builtAt)`) is store metadata, never a file field.
+`AddOnAdmission` (pure) resolves, validates, applies `AddOnPolicy` and `minAppBuild`, refuses MCP entries
+until P4, and says install / update (with `AddOnUpdateDiff`) / refused; `AddOnSourceEdit` (pure) validates an
+edit as a community file with the same id and sends one that grew back through the sheet. `AddOnAvailability`
+(pure) decides, live, whether a skill is offered: the add-ons switch, the add-on's switch, the policy,
+Medical Compliance for any add-on with `network` (decision 5; Local Only binds only inside it, and the
+request edge refuses `NetworkRoute.recipeAddOn` too), and coverage against the phone's region (an unknown
+region hides nothing). `AddOnToolWrapper` names skills `AddOnToolNaming.toolName` (`addon_<id>_<skill>`,
+hashed to fit 64 characters), declares read semantics (local mutation with `memory`) and an egress profile
+over its text parameters; the registry vends it only while `isOfferedNow`, and a withheld `addon_` name
+never falls through to an MCP server or the gateway. The router dispatches it on `.addOn(id:)` (external;
+`readOnly`, or `write` with `memory`, which the external-write rule holds for a bound approval).
+`AddOnRunService` checks every gate again at run time, runs one at a time per add-on, writes memory under
+`addon.<id>.<key>` attributed `fromAddOn`, shows a card through the notice centre and the glasses display,
+and frames the answer as untrusted data. The organisation ceilings are three profile keys
+(`organizationForbidsAddOns`, `organizationForbidsCommunityAddOns`,
+`organizationAllowsOnlyOrganisationAddOns`), and the enrolled profile's `officeAuthority` is the one
+trusted organisation. Tests: `AddOnStoreTests`, `AddOnUpdateDiffTests`, `AddOnRegistryTests`,
+`AddOnDeepLinkTests`, `AddOnRunServiceTests`, `BoundedHTTPClientSendTests`, `NetworkRouteRegistryTests`.
+
+**For Plan GO.** Install a self-built add-on with `AddOnInstallService.receive(_:origin: .selfBuilt(…))`
+(the same admission and sheet) or, after its own sheet, `AddOnStore.install(_:origin:)`; read it back with
+`InstalledAddOn.isBuiltByAssistant` / `selfBuiltProvenance` or `AddOnStore.provenance(id:)`. Drafts and
+their test traces are GO's to store; nothing in `AddOnStore` is a draft.
+
 **Extends:** Plan [BX](BX-skill-packs.md) (signed skill packs; its P4 "JS handlers" is deferred).
 **Related:** Plan [R](R-mcp-egress-and-tool-poisoning-screen.md) (egress screen, definition scanner),
 Plan V (`MCPCatalog`), Plan DJ (composition floor, `OperationJournal`), Plan CT (org policy),
