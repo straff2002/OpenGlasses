@@ -228,6 +228,12 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 return DispatchProfile(seam: .custom(id: tool.name), effectClass: .unknown,
                                        definitionDigest: digest)
             }
+            // An add-on's skill runs inside the app's sandbox, but what it asks of the hosts it
+            // names was written outside this repository (Plan GF).
+            if let addOn = tool as? AddOnToolWrapper {
+                return DispatchProfile(seam: .addOn(id: addOn.addOnID), effectClass: addOn.effectClass,
+                                       definitionDigest: digest)
+            }
             return DispatchProfile(
                 seam: .native,
                 effectClass: ToolEffectClassifier.nativeClass(name: name, args: args,
@@ -238,6 +244,10 @@ final class NativeToolRouter: ToolExecutionAuthority {
         // A composition binds a native tool by name and nothing else, so it never reaches the
         // seams below and must not be classified as if it might.
         guard !call.context.origin.isComposition else { return .unrouted }
+
+        // An add-on name the registry did not vend (switched off, or withheld under Medical
+        // Compliance) is not anybody else's tool: it never falls through to a server or the gateway.
+        guard !name.hasPrefix(AddOnToolWrapper.namePrefix) else { return .unrouted }
 
         if let mcp = mcpClient, let tool = mcp.offeredTool(matching: name),
            let server = mcp.server(id: tool.serverId), server.enabled {
@@ -537,6 +547,13 @@ final class NativeToolRouter: ToolExecutionAuthority {
                 reason: "This skill's underlying tool '\(name)' isn't available on this device.")
         }
 
+        // An add-on skill the registry did not vend is withheld, not unknown: handing its name and
+        // arguments to an MCP server or the gateway would send them somewhere the add-on's sheet
+        // never named (Plan GF).
+        guard !name.hasPrefix(AddOnToolWrapper.namePrefix) else {
+            return .failedBeforeExecution(reason: "That add-on isn't available right now.")
+        }
+
         // 2. Check MCP servers for the tool (matched on its fully-qualified, namespace-isolated
         //    name so a server can't shadow a native tool). Blocked (tool-poisoned) tools are
         //    never matched here, so the model can't reach them.
@@ -699,6 +716,11 @@ final class NativeToolRouter: ToolExecutionAuthority {
         case .custom:
             outbound = NativeEgressProfile.strings(in: outboundArgs)
             destination = .customTool(name: call.name)
+        case .addOn:
+            guard let addOn = registry.tool(named: call.name) as? AddOnToolWrapper,
+                  let egress = addOn.egressProfile else { return nil }
+            outbound = egress.outboundText(from: outboundArgs)
+            destination = .customTool(name: addOn.addOnName)
         }
         guard let finding = PrivateSpanCheck.check(outbound: outbound,
                                                    reads: ledger.privateSpanReads) else { return nil }

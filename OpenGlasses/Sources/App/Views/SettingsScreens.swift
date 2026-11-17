@@ -851,6 +851,20 @@ struct ToolsActionsSections: View {
             }
 
             NavigationLink {
+                AddOnsSettingsView(store: appState.addOnStore)
+                    .environmentObject(appState)
+            } label: {
+                HStack {
+                    Label("Add-ons", systemImage: "puzzlepiece.extension")
+                    Spacer()
+                    if !appState.addOnStore.installed.isEmpty {
+                        Text("\(appState.addOnStore.installed.count) installed")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            NavigationLink {
                 SiriExposureView()
             } label: {
                 Label("Siri & Search", systemImage: "mic.badge.plus")

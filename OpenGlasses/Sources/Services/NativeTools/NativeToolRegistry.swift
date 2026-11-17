@@ -425,11 +425,25 @@ final class NativeToolRegistry {
         }
     }
 
+    /// Remove every registered add-on skill (Plan GF). The add-on merge calls this first, so a
+    /// removal or a switch turned off is a rebuild rather than a leak.
+    func removeAddOnTools() {
+        for (name, tool) in tools where tool is AddOnToolWrapper {
+            tools.removeValue(forKey: name)
+        }
+    }
+
+    /// Whether a name is registered at all, offered or not — for a merge that must not overwrite.
+    func hasTool(named name: String) -> Bool { tools[name] != nil }
+
     func tool(named name: String) -> (any NativeTool)? {
         guard !fieldToolNames.contains(name) || Config.fieldAssistActive else { return nil }
         guard Config.isToolEnabled(name) else { return nil }
         // HIPAA mode disables tools that could leak PHI
         if Config.hipaaMode, Config.hipaaDisabledTools.contains(name) { return nil }
+        // An add-on skill that is withheld right now (Medical Compliance, policy, region, the
+        // add-ons switch) is not vended either, so a call to it cannot reach the runner.
+        if let gated = tools[name] as? ConditionallyOfferedTool, !gated.isOfferedNow { return nil }
         return tools[name]
     }
 
@@ -447,6 +461,7 @@ final class NativeToolRegistry {
             guard name != ToolLookupTool.toolName else { return false }
             guard Config.isToolEnabled(name) else { return false }
             if Config.hipaaMode, Config.hipaaDisabledTools.contains(name) { return false }
+            if let gated = tools[name] as? ConditionallyOfferedTool, !gated.isOfferedNow { return false }
             return true
         }.sorted()
     }
@@ -458,6 +473,7 @@ final class NativeToolRegistry {
         names.compactMap { name in
             guard !fieldToolNames.contains(name) || Config.fieldAssistActive else { return nil }
             guard let tool = tools[name] else { return nil }
+            if let gated = tool as? ConditionallyOfferedTool, !gated.isOfferedNow { return nil }
             return (name, tool.description)
         }
     }

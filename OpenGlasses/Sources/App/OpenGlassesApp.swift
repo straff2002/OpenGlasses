@@ -31,6 +31,7 @@ func privacyRoute(for url: URL) -> PrivacyLog.DeepLinkRoute {
     case "listen": return .listen
     case "quickaction": return .quickAction
     case "enrol": return .enrol
+    case "install-addon": return .addOn
     default: return .other
     }
 }
@@ -346,6 +347,9 @@ struct OpenGlassesApp: App {
                 // Sideload install confirmations (Plan BX P3) — invisible until a link arrives.
                 SkillPackSideloadPromptOverlay(sideload: appState.skillPackSideload)
 
+                // Add-on sheets (Plan GF P2) — invisible until a link, a file or an edit raises one.
+                AddOnInstallOverlay(service: appState.addOnInstall)
+
                 // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
                 OrgEnrolmentOverlay(service: appState.orgEnrolment)
                     .environmentObject(appState)
@@ -558,6 +562,17 @@ struct OpenGlassesApp: App {
                         Task { @MainActor in appState.orgEnrolment.openOfficePackageFile(at: url) }
                         return
                     }
+                    // An add-on file (Plan GF P2): `.addon`, or JSON whose format tag says it is
+                    // one. Opened as a copy; the sheet decides, and nothing installs before it.
+                    if AddOnIngest.isAddOnFile(url) {
+                        Task { @MainActor in appState.addOnInstall.openFile(url) }
+                        return
+                    }
+                    if url.isFileURL, url.pathExtension.lowercased() == "json",
+                       let data = AddOnIngest.readFile(url), AddOnIngest.looksLikeAddOn(data) {
+                        Task { @MainActor in appState.addOnInstall.receive(data, origin: .installed(via: .file)) }
+                        return
+                    }
                     // A team-learning bundle (Plan FP P3), opened as a copy like a job file. Any
                     // JSON file reaches here; the intake refuses whatever is not a bundle, by name,
                     // and applies nothing from one that is until it is accepted.
@@ -599,6 +614,22 @@ struct OpenGlassesApp: App {
                             }
                         case .failure(let error):
                             PrivacyLog.deepLink(route: .skillPack, source: PrivacyToken("SwiftUI"),
+                                                verdict: .malformed, error: .refused(error))
+                        }
+                        return
+                    }
+
+                    // An add-on offered by a link or a scanned code (Plan GF P2). Outside the
+                    // DeepLinkTrust token gate for the skill-pack route's reason, with the same
+                    // control: the link never acts. It asks before fetching, names the host, and
+                    // only the sheet's button installs.
+                    if DeepLinkScheme.isApp(url), url.host == AddOnIngest.linkHost {
+                        switch AddOnIngest.parse(url) {
+                        case .success(let request):
+                            PrivacyLog.deepLink(route: .addOn, source: PrivacyToken("SwiftUI"), verdict: .received)
+                            Task { @MainActor in appState.addOnInstall.open(request) }
+                        case .failure(let error):
+                            PrivacyLog.deepLink(route: .addOn, source: PrivacyToken("SwiftUI"),
                                                 verdict: .malformed, error: .refused(error))
                         }
                         return
@@ -2401,6 +2432,12 @@ class AppState: ObservableObject, AppStateProtocol {
     let skillPackStore: SkillPackStore
     /// QR/LAN sideload path (Plan BX P3) — fetch + preview + human-confirmed install.
     let skillPackSideload: SkillPackSideloadService
+    /// Installed recipe add-ons (Plan GF). Skills merge into the registry via `refreshAddOnTools()`.
+    let addOnStore: AddOnStore
+    /// The add-on link, file and edit sheets (Plan GF P2) — nothing installs without the sheet.
+    let addOnInstall: AddOnInstallService
+    /// Runs add-on skills for the model; wired once the app's stores exist.
+    private(set) var addOnRunService: AddOnRunService?
 
     /// Receiving a vault from a publisher's link or QR code (Plan FS PR2). This instance serves
     /// the `openglasses://vault?src=…` route — the one a code scanned with the phone's own Camera
@@ -2907,6 +2944,14 @@ class AppState: ObservableObject, AppStateProtocol {
             Set(registryForPacks.allTools.compactMap { $0 is SkillPackToolWrapper ? nil : $0.name })
         })
         nativeToolRegistry.registerSkillPackTools(from: skillPackStore, authority: nativeToolRouter)
+        // Add-ons (Plan GF): validated against the native names only — never a pack's or another
+        // add-on's — and judged against the enrolled organisation's key and policy, read live.
+        let storeForAddOns = AddOnStore(trustKeys: { AddOnLiveContext.trustKeys() },
+                                        nativeToolNames: { AppState.addOnNativeToolNames(registryForPacks) })
+        addOnStore = storeForAddOns
+        addOnInstall = AddOnInstallService(
+            store: storeForAddOns,
+            context: { AddOnLiveContext.admission(nativeToolNames: AppState.addOnNativeToolNames(registryForPacks)) })
         let storeForSideload = skillPackStore
         skillPackSideload = SkillPackSideloadService(
             store: storeForSideload,
@@ -2923,6 +2968,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan CG: dwell capture speaks its confirmation through the shared TTS, and its
         // frame tap rides the existing camera publisher.
         dwellCapture.announce = { [weak self] text in await self?.speechService.speak(text, source: .acknowledgement) }
+        wireAddOns()
         dwellCapture.start(cameraService: cameraService, privacyFilter: privacyFilter)
 
         nativeToolRouter.onLongRunningUpdate = { [weak self] elapsed in
@@ -7783,6 +7829,76 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Rebuild the registry's skill-pack tools after an install/remove/enable change (Plan BX).
     func refreshSkillPackTools() {
         nativeToolRegistry.registerSkillPackTools(from: skillPackStore, authority: nativeToolRouter)
+    }
+
+    // MARK: - Add-ons (Plan GF P2)
+
+    /// The app's own tool names, which an add-on's definitions are screened against: never a
+    /// pack action or another add-on's skill, so an installed one can't launder a name.
+    static func addOnNativeToolNames(_ registry: NativeToolRegistry) -> Set<String> {
+        Set(registry.allTools.compactMap { ($0 is SkillPackToolWrapper || $0 is AddOnToolWrapper) ? nil : $0.name })
+    }
+
+    /// What admission judges an add-on against right now.
+    func addOnAdmissionContext() -> AddOnAdmission.Context {
+        AddOnLiveContext.admission(nativeToolNames: Self.addOnNativeToolNames(nativeToolRegistry))
+    }
+
+    /// Build the runner and its sinks, then merge the installed add-ons. Called once from init.
+    private func wireAddOns() {
+        let store = addOnStore
+        let location = locationService
+        addOnRunService = AddOnRunService(
+            runner: RecipeRunner(transport: BoundedAddOnHTTPTransport()),
+            lookup: { id in try? store.loaded(id: id).get() },
+            conditions: { AddOnLiveContext.conditions() },
+            context: { permissions in
+                let fix = permissions.location ? location.currentLocation?.coordinate : nil
+                return AddOnRunContextSource.context(permissions: permissions,
+                                                     latitude: fix?.latitude, longitude: fix?.longitude)
+            },
+            sinks: AddOnRunService.Sinks(
+                remember: { [weak self] addOnID, key, value in
+                    guard let self else { return false }
+                    // The add-on's own namespace, attributed to it; it can never read any of it back.
+                    let kept = self.userMemory.remember("addon.\(addOnID).\(key)", value: value,
+                                                        origin: .fromAddOn(addOnID), sourceRef: addOnID)
+                    BrainStore.shared.ingest(text: "\(key): \(value)", sourceRef: addOnID,
+                                             sourceKind: "addon", origin: .fromAddOn(addOnID))
+                    return kept
+                },
+                display: { [weak self] addOnName, payload in
+                    let lines = payload.items + payload.markers.map(\.label)
+                    let body = lines.isEmpty ? payload.title : lines.joined(separator: "\n")
+                    NoticeCenter.shared.post("\(addOnName): \(payload.title)" + (lines.isEmpty ? "" : "\n" + body),
+                                             severity: .advisory, source: .app)
+                    self?.glassesDisplay.showNotification(title: payload.title, body: body, icon: .info, duration: 6)
+                },
+                announce: { [weak self] text in
+                    await self?.speechService.speak(text, source: .acknowledgement)
+                }))
+        addOnInstall.onChange = { [weak self] in self?.refreshAddOnTools() }
+        // An organisation profile arriving or leaving changes which signatures the phone trusts.
+        NotificationCenter.default.addObserver(forName: .orgPolicyDidChange, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.refreshAddOnTools() }
+        }
+        refreshAddOnTools()
+    }
+
+    /// Rebuild the registry's add-on skills after an install, edit, removal or switch (Plan GF).
+    func refreshAddOnTools() {
+        guard let runService = addOnRunService else { return }
+        addOnStore.refreshTrust()
+        let report = nativeToolRegistry.registerAddOnTools(
+            addOnStore.loadedAddOns(),
+            conditions: { AddOnLiveContext.conditions() },
+            run: { [weak runService] addOnID, skill, arguments in
+                guard let runService else { return String(localized: "That add-on isn't available right now.") }
+                return await runService.run(addOnID: addOnID, skill: skill, arguments: arguments)
+            })
+        if !report.collisions.isEmpty {
+            PrivacyLog.transfer(.addOn, .quarantined, count: report.collisions.count)
+        }
     }
 
     /// Resolve a command candidate, logging any demotion so a field miss is traceable to the clause
