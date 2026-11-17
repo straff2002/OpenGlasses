@@ -49,6 +49,12 @@ class PhoneOnlyBuildTests(unittest.TestCase):
             phone[key] = value
             self.assertTrue(check.metadata_errors(phone), key)
 
+    def test_the_phone_product_is_stamped_without_experimental_glasses_apis(self):
+        phone = prepare.phone_info(self.common)
+        self.assertEqual(phone["AvenkinDATExperimental"], "NO")
+        phone["AvenkinDATExperimental"] = "YES"
+        self.assertTrue(any("AvenkinDATExperimental" in error for error in check.metadata_errors(phone)))
+
     def test_derivation_is_idempotent(self):
         phone = prepare.phone_info(self.common)
         self.assertEqual(prepare.phone_info(phone), phone)

@@ -184,6 +184,11 @@ targets:
         # Scripts/generate-xcodeproj.sh exports it; the Info.plist reads it as $(...). Stamped at
         # generation, not by a build phase: script sandboxing keeps a phase out of .git.
         AVENKIN_SOURCE_COMMIT: "${AVENKIN_SOURCE_COMMIT}"
+        # Whether this build carries Meta's experimental glasses APIs (Plan JV). Always "NO" here;
+        # only project.experimental.yml, added by AVENKIN_DAT_EXPERIMENTAL=1, sets "YES". The
+        # Info.plist carries it as AvenkinDATExperimental, so a support report and
+        # Scripts/check-archive-dat-experimental.sh can tell a flagged binary from a store candidate.
+        AVENKIN_DAT_EXPERIMENTAL: "NO"
         SWIFT_VERSION: "5.9"
         CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION: "YES"
         CODE_SIGN_STYLE: Automatic
