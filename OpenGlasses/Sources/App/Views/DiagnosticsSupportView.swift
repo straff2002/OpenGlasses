@@ -16,8 +16,10 @@ struct DiagnosticsSupportView: View {
     @StateObject private var runner: SubsystemTestRunner
     @Environment(\.appAccent) private var accent
 
-    @State private var report: DiagnosticsReport?
-    @State private var showingReport = false
+    /// The report on screen. The sheet is driven by this value, never by a flag beside it: a
+    /// `sheet(isPresented:)` that unwraps an optional can draw its content before the optional
+    /// reaches it, and the wearer gets an empty black sheet.
+    @State private var presentedReport: PresentedReport?
     @State private var copied = false
     @State private var turnRecordsCleared = false
     /// Where support reports go. Empty means the developer's support address.
@@ -197,11 +199,16 @@ struct DiagnosticsSupportView: View {
         }
         .navigationTitle(showsAdvancedLink ? String(localized: "Advanced & Support") : String(localized: "Diagnostics & Support"))
         .tint(accent)
-        .sheet(isPresented: $showingReport) {
-            if let report {
-                DiagnosticsReportSheet(report: report)
-            }
+        .sheet(item: $presentedReport) { presented in
+            DiagnosticsReportSheet(report: presented.report)
         }
+    }
+
+    /// One presentation of the report sheet. Its own identity, so building the same report twice
+    /// still presents it.
+    private struct PresentedReport: Identifiable {
+        let id = UUID()
+        let report: DiagnosticsReport
     }
 
     /// "Send Last Conversation": the narrow report, for the person who wants to show one exchange
@@ -307,13 +314,11 @@ struct DiagnosticsSupportView: View {
     private static let discordURL = URL(string: "https://discord.gg/8W2qaXJzz9")!
 
     private func presentReport() {
-        report = makeReport()
-        showingReport = true
+        presentedReport = PresentedReport(report: makeReport())
     }
 
     private func copyReport() {
         let made = makeReport()
-        report = made
         UIPasteboard.general.string = made.body
         copied = true
         Task {
