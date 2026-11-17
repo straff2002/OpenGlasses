@@ -61,6 +61,15 @@ enum HUDSendDeadline {
     /// The longest a single send may take.
     static let seconds: TimeInterval = 4
 
+    /// How many unanswered sends in a row tear the display session down. Fewer keep it: the next
+    /// frame goes to the same display, as Meta's sample does, rather than to a fresh one that is
+    /// only starting. Any frame that is sent starts the count again.
+    static let rebuildAfterTimeouts = 3
+
+    static func rebuildsSession(afterConsecutiveTimeouts count: Int) -> Bool {
+        count >= rebuildAfterTimeouts
+    }
+
     /// Run `operation`, or throw `GlassesDisplayError.sendTimedOut` once `seconds` pass first. The
     /// operation is cancelled on timeout and its late result ignored. It runs unstructured so a
     /// send that ignores cancellation cannot hold the caller past the deadline.

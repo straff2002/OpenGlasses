@@ -65,6 +65,30 @@ final class DisplayStartWaitTests: XCTestCase {
         XCTAssertGreaterThan(DisplayStartWait.timeout, HUDSendDeadline.seconds)
     }
 
+    /// A timed-out send keeps the session; only the third in a row rebuilds it.
+    func testOnlyRepeatedTimeoutsRebuildTheSession() {
+        XCTAssertFalse(HUDSendDeadline.rebuildsSession(afterConsecutiveTimeouts: 1))
+        XCTAssertFalse(HUDSendDeadline.rebuildsSession(afterConsecutiveTimeouts: 2))
+        XCTAssertTrue(HUDSendDeadline.rebuildsSession(afterConsecutiveTimeouts: 3))
+        XCTAssertTrue(HUDSendDeadline.rebuildsSession(afterConsecutiveTimeouts: 4))
+    }
+
+    /// The service counts timeouts, a sent frame clears the count, and a timeout short of the limit
+    /// returns before the backend is reset. Read from the source: the render queue needs a backend.
+    func testTheServiceKeepsTheSessionThroughATimeout() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("OpenGlasses/Sources/Services/GlassesDisplayService.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(source.contains("if outcome == .sent { consecutiveSendTimeouts = 0 }"))
+        guard let start = source.range(of: "private func handleRenderError"),
+              let keep = source.range(of: "HUDSendDeadline.rebuildsSession(afterConsecutiveTimeouts:", range: start.upperBound..<source.endIndex),
+              let reset = source.range(of: "activeBackend.resetAfterError()", range: start.upperBound..<source.endIndex) else {
+            return XCTFail("handleRenderError's timeout rule not found")
+        }
+        XCTAssertLessThan(keep.lowerBound, reset.lowerBound, "the timeout rule is decided before the reset")
+    }
+
     /// A display that did not start is a failure to rebuild from, never a picture to resend as text.
     func testADisplayThatDidNotStartIsNotRetriedAsText() {
         XCTAssertFalse(GlassesDisplayService.retriesWithoutPicture(after: GlassesDisplayError.displayDidNotStart))

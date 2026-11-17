@@ -666,6 +666,9 @@ final class GlassesDisplayService: ObservableObject {
     private var sendPacer = HUDSendPacer()
     /// The last send to the backend, for the support report and the Developer panel.
     @Published private(set) var lastSend: HUDSendRecord?
+    /// Sends in a row that went unanswered past `HUDSendDeadline`; a sent frame sets it back to 0.
+    /// Only the `HUDSendDeadline.rebuildAfterTimeouts`th tears the session down.
+    private var consecutiveSendTimeouts = 0
     /// Test seam: the pacer's sleep (production sleeps on the main actor).
     var paceSleep: (TimeInterval) async -> Void = { seconds in
         try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
@@ -675,6 +678,7 @@ final class GlassesDisplayService: ObservableObject {
     private func recordSend(_ kind: HUDSendRecord.Kind?, started: ContinuousClock.Instant,
                             outcome: HUDSendRecord.Outcome) {
         guard let kind else { return }
+        if outcome == .sent { consecutiveSendTimeouts = 0 }
         sendPacer.sent(endingAt: Date(), hadPicture: kind == .picture || kind == .video)
         lastSend = HUDSendRecord(kind: kind, milliseconds: Self.milliseconds(since: started), outcome: outcome)
     }
@@ -1298,6 +1302,20 @@ final class GlassesDisplayService: ObservableObject {
         // The on-screen diagnostics panel is a different sink with a different audience — the
         // wearer chose to open it — so it keeps the readable text the device log does not.
         onDebugEvent?("HUD error: \(String(describing: error))")
+        // A slow send is not a dead session. Meta's own sample keeps one session and one display
+        // across frames; tearing ours down on every timeout sent each next frame to a display
+        // that was only starting (build 705). The frame is redrawn on the next change; the
+        // session goes only once several sends in a row have gone unanswered.
+        if case GlassesDisplayError.sendTimedOut = error {
+            consecutiveSendTimeouts += 1
+            if !HUDSendDeadline.rebuildsSession(afterConsecutiveTimeouts: consecutiveSendTimeouts) {
+                lastRendered = nil
+                lastScreenKey = nil
+                flashingOverInteractive = false
+                return
+            }
+        }
+        consecutiveSendTimeouts = 0
         // Drop references so the next render rebuilds the transport from scratch.
         activeBackend.resetAfterError()
         isDisplayActive = false
