@@ -33,6 +33,7 @@ targets:
       - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
       - path: GlassesActivityWidget/PendingAskRequest.swift
       - path: GlassesActivityWidget/StartListeningFromWidgetIntent.swift
+      - path: GlassesActivityWidget/SetListeningIntent.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/TradeTemplate.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultStarter.swift

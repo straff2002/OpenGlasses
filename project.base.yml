@@ -145,6 +145,8 @@ targets:
       # Shared with widget target — the Home Screen widget's Listen button opens the app and
       # runs there, because iOS refuses a background microphone start.
       - path: GlassesActivityWidget/StartListeningFromWidgetIntent.swift
+      # The Action button / Control Center listening toggle: an "on" press opens the app, same reason.
+      - path: GlassesActivityWidget/SetListeningIntent.swift
       # The licence-core files the app compiles. Plan LR: the vault pack rules the licence
       # service also holds a company vault to. Foundation only; it verifies no key or signature.
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift

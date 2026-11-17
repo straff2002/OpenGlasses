@@ -14,17 +14,3 @@ struct DisableListeningIntent: AppIntent {
         return .result()
     }
 }
-
-/// SetValueIntent variant for Control Widget toggles (iOS 18+ Action Button / Control Center).
-@available(iOS 18.0, *)
-struct SetListeningIntent: SetValueIntent {
-    static var title: LocalizedStringResource = "Set Listening State"
-
-    @Parameter(title: "Listening")
-    var value: Bool
-
-    func perform() async throws -> some IntentResult {
-        SharedAppState.isListening = value
-        return .result()
-    }
-}

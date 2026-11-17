@@ -43,6 +43,27 @@ final class ControlWidgetGuardTests: XCTestCase {
         XCTAssertFalse(source.contains("\"Avenkin Listen\""), "the old ambiguous name is back")
     }
 
+    /// The listening toggle turns off from the background but opens the app to turn on: iOS refuses
+    /// a background microphone start, so an "on" that stayed in the background read "On" while
+    /// nothing listened.
+    func testTheListeningToggleOpensTheAppOnlyToTurnOn() throws {
+        XCTAssertTrue(SetListeningIntent.supportedModes.contains(.background), "turning off must not open the app")
+        XCTAssertTrue(SetListeningIntent.supportedModes.contains(.foreground(.dynamic)))
+        XCTAssertFalse(SetListeningIntent.supportedModes.contains(.foreground(.immediate)),
+                       "an immediate foreground would open the app to turn listening off too")
+        XCTAssertFalse(SetListeningIntent.isDiscoverable, "Shortcuts and Siri already have Enable/Disable Listening")
+
+        let source = try text("GlassesActivityWidget/SetListeningIntent.swift")
+        XCTAssertTrue(source.contains("if value {\n            // The press is the wearer's confirmation; no extra prompt.\n            try await continueInForeground(nil, alwaysConfirm: false)\n        }"),
+                      "only an \"on\" press continues in the foreground, without a prompt")
+        for spec in ["project.base.yml", "project.phone-only.yml"] {
+            XCTAssertTrue(try text(spec).contains("- path: GlassesActivityWidget/SetListeningIntent.swift"),
+                          "\(spec) does not compile the listening toggle's intent into the app")
+        }
+        XCTAssertFalse(try text("GlassesActivityWidget/ListeningToggleIntent.swift").contains("SetListeningIntent"),
+                       "an extension-only copy of the toggle intent is back")
+    }
+
     /// Icons a control can render: a system symbol or a symbol image. Never a SwiftUI view.
     func testTheControlIconsAreSymbolsTheExtensionShips() throws {
         let source = try text(Self.controls)
