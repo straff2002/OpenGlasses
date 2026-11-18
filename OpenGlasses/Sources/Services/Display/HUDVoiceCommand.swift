@@ -68,3 +68,35 @@ enum HUDAnswerVoiceCommand: Equatable {
         }
     }
 }
+
+/// The words that bring the last answer back to the lens (Plan MG §7): after the glasses' Back
+/// gesture, the card's lifetime or **Close**, "show that again" puts the card up again, on the page
+/// the wearer was reading. Consulted anywhere, not only while a card is up — that is the point —
+/// so the match is the strictest of the lens's words: the whole utterance, a leading filler and a
+/// trailing "please" only. "Show me the page" stays the page view's, "repeat" stays a request to
+/// say it again, and "show that again on the phone" is a sentence for the model.
+///
+/// Spoken words only: text typed on the phone never reaches the lens's voice commands, so a typed
+/// "show that again" is a message to the assistant like any other.
+enum HUDReopenCommand {
+    static let phrases: Set<String> = [
+        "show that again", "show it again", "show me that again", "show me it again", "show me again",
+        "show the answer", "show the answer again", "show me the answer", "show me the answer again",
+        "show the last answer", "show me the last answer",
+        "back to the answer", "go back to the answer",
+        "show the conversation", "show me the conversation",
+        "bring it back", "bring that back", "bring the answer back",
+    ]
+
+    static func matches(_ text: String) -> Bool {
+        let stripped = text.lowercased()
+            .replacingOccurrences(of: "’", with: "'")
+            .components(separatedBy: CharacterSet.alphanumerics.union(.whitespaces).inverted)
+            .joined()
+        let words = stripped.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        let filler: Set<String> = ["ok", "okay", "hey", "please", "uh", "um", "yeah", "yep", "now"]
+        var core = Array(words.drop(while: { filler.contains($0) }))
+        if core.last == "please" { core.removeLast() }
+        return phrases.contains(core.joined(separator: " "))
+    }
+}

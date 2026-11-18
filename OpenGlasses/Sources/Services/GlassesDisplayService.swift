@@ -558,6 +558,12 @@ final class GlassesDisplayService: ObservableObject {
         wearerLed()
     }
 
+    /// The wearer asked by voice for the last answer card again (Plan MG §7, "show that again"):
+    /// the card they dismissed may open the lens, as any frame they asked for.
+    func wearerAskedForAnswerCard() {
+        wearerLed()
+    }
+
     /// A wearer-led frame is about to be enqueued: the lens may open again.
     private func wearerLed() {
         guard lensDismissed else { return }

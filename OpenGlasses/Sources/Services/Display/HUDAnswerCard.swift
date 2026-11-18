@@ -425,6 +425,8 @@ final class HUDAnswerCard {
             hasPage = turnStagedPage
             picture = firstPagePicture
             stagedPicture = nil      // taken once
+            closedCard = nil         // a new answer is the one to bring back now
+            forgetOnClose = false
             cardSerial += 1
             let screen = currentScreen()
             guard display.presentAnswerCard(screen, wearerLed: turnWearerLed,
@@ -510,10 +512,17 @@ final class HUDAnswerCard {
         }
     }
 
-    /// Clear the card and leave interactive mode so ambient producers resume.
-    func close() {
+    /// Clear the card and leave interactive mode so ambient producers resume. The card is kept,
+    /// in memory, for `reopen()` (Plan MG §7) unless `remember` is false.
+    func close(remember: Bool = true) {
         idleGeneration += 1
         let wasShowing = isShowing
+        let keep = remember && !forgetOnClose && !answer.isEmpty && !pages.isEmpty
+        forgetOnClose = false
+        closedCard = keep
+            ? ClosedCard(answer: answer, pages: pages, pageIndex: pageIndex, followUps: followUps,
+                         question: question, picture: picture, closedAt: now())
+            : nil
         if !wasShowing, display.holdsAnswerCardUnderPage { display.dropAnswerCardUnderPage() }
         answer = ""
         pages = []
@@ -528,6 +537,75 @@ final class HUDAnswerCard {
         answerMadeAt = nil
         if wasShowing { display.endInteractive() }
     }
+
+    // MARK: - Bringing the card back (Plan MG §7)
+
+    /// How long after it closed a card can still be brought back by voice. The card is in memory
+    /// only, and a new answer replaces it.
+    static let reopenLifetime: TimeInterval = 10 * 60
+
+    /// The last card closed (**Close**, its lifetime), for `reopen()`.
+    private struct ClosedCard {
+        let answer: String
+        let pages: [HUDAnswerPage]
+        let pageIndex: Int
+        let followUps: [String]
+        let question: String?
+        let picture: HUDPicture?
+        let closedAt: Date
+    }
+    private var closedCard: ClosedCard?
+
+    /// Whether there is an answer `reopen()` could put back on the lens: the card it holds (the
+    /// glasses' Back gesture leaves it held but off the lens), or the last one closed inside
+    /// `reopenLifetime`.
+    var canReopen: Bool {
+        if !answer.isEmpty, !pages.isEmpty { return true }
+        guard let closedCard else { return false }
+        return now().timeIntervalSince(closedCard.closedAt) < Self.reopenLifetime
+    }
+
+    /// The wearer asked, hands-free, to see the last answer again ("show that again",
+    /// `HUDReopenCommand`). The card goes up on the page they were reading, as a frame they asked
+    /// for: a lens they dismissed with the glasses' Back gesture opens again. A card already on
+    /// the lens is drawn again. False — and nothing changes — when there is no answer to bring
+    /// back or the lens cannot take the card now (the HUD off, a task card or a menu up); the
+    /// caller then lets the words go on as an ordinary request.
+    ///
+    /// Only ever on the wearer's word: nothing calls this on a timer to keep the lens awake.
+    @discardableResult
+    func reopen() -> Bool {
+        guard canReopen, display.acceptsAnswerCard else { return false }
+        if answer.isEmpty || pages.isEmpty, let closed = closedCard {
+            answer = closed.answer
+            pages = closed.pages
+            pageIndex = min(closed.pageIndex, closed.pages.count - 1)
+            followUps = closed.followUps
+            question = closed.question
+            picture = closed.picture
+            answerIsComplete = true
+            hasPage = false
+            cardSerial += 1
+        }
+        closedCard = nil
+        isOnActions = false
+        answerMadeAt = now()
+        display.wearerAskedForAnswerCard()
+        let screen = currentScreen()
+        guard display.presentAnswerCard(screen, wearerLed: true, onSelect: selectionHandler) else { return false }
+        shownScreen = screen
+        armIdleTimer()
+        return true
+    }
+
+    /// Forget the card, held or closed, so no word brings it back: the private conversation ended
+    /// (Plan LU), and its words must not reappear on the lens. A card on the lens now stays until
+    /// it closes, and is not kept when it does.
+    func forgetForReopen() {
+        closedCard = nil
+        if !isHeld { close(remember: false) } else { forgetOnClose = true }
+    }
+    private var forgetOnClose = false
 
     /// Plan KP §8 rule 4: the Display is ours again after another app had it. The held card shows
     /// again, on the page the wearer left, if it is inside its lifetime counted from when the answer
