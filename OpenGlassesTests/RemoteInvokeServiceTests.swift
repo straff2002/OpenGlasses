@@ -18,7 +18,7 @@ final class RemoteInvokeServiceTests: XCTestCase {
     /// exercises matter, the rest fail loudly if reached.
     private func recorderExecutor(
         log: Box<[String]>,
-        confirmCapture: @escaping @MainActor (String) async -> Bool = { _ in true }
+        confirmCapture: @escaping @MainActor (String) async -> ConfirmationOutcome = { _ in .approved }
     ) -> RemoteCommandExecutor {
         RemoteCommandExecutor(deps: .init(
             confirmCapture: { summary in log.value.append("confirm(\(summary))"); return await confirmCapture(summary) },
@@ -47,7 +47,7 @@ final class RemoteInvokeServiceTests: XCTestCase {
         agentMode: Bool = true,
         toggles: RemoteCommandPolicy.Toggles = .init(observe: true, output: true, capture: true),
         log: Box<[String]> = Box([]),
-        confirmCapture: @escaping @MainActor (String) async -> Bool = { _ in true }
+        confirmCapture: @escaping @MainActor (String) async -> ConfirmationOutcome = { _ in .approved }
     ) -> RemoteInvokeService {
         RemoteInvokeService(
             environment: .init(
@@ -148,9 +148,21 @@ final class RemoteInvokeServiceTests: XCTestCase {
         ], "capture must confirm, then announce, then act — nothing remote is silent")
     }
 
+    func testABusyConfirmationIsNotReportedAsADeclineAndSkipsTheSensor() async {
+        let log = Box<[String]>([])
+        let svc = service(log: log, confirmCapture: { _ in .busy })
+        let reply = await svc.handleFrame(invoke("start_audio_recording"))
+
+        let message = (reply?["error"] as? [String: String])?["message"] ?? ""
+        XCTAssertEqual(message, ConfirmationOutcome.busyToolResult)
+        XCTAssertFalse(message.localizedCaseInsensitiveContains("declined"))
+        XCTAssertFalse(log.value.contains("startAudio"), "a busy surface is never an approval")
+        XCTAssertFalse(log.value.contains(where: { $0.hasPrefix("announce") }))
+    }
+
     func testUserDeclineFailsTheRequestAndSkipsTheSensor() async {
         let log = Box<[String]>([])
-        let svc = service(log: log, confirmCapture: { _ in false })
+        let svc = service(log: log, confirmCapture: { _ in .declined })
         let reply = await svc.handleFrame(invoke("start_audio_recording"))
 
         XCTAssertEqual((reply?["error"] as? [String: String])?["code"], "execution_failed")

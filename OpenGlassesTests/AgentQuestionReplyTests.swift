@@ -246,7 +246,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         var shown: String?
         service.requestUserText = { request, draft in
             shown = request.attributedSummary
-            return draft                       // the wearer sends it as heard
+            return .answered(draft)                       // the wearer sends it as heard
         }
 
         let line = await service.answerPendingQuestionViaUserPrompt(text: "only change the tests")
@@ -277,7 +277,7 @@ final class AgentQuestionReplyTests: XCTestCase {
                                      prompt: "Which files?", runID: "r1")
         let service = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
-        service.requestUserText = { _, _ in "only the tests, not the README" }
+        service.requestUserText = { _, _ in .answered("only the tests, not the README") }
 
         _ = await service.answerPendingQuestionViaUserPrompt(text: "change everything")
         XCTAssertEqual(try body(of: 0)["reply"] as? String, "only the tests, not the README")
@@ -288,7 +288,7 @@ final class AgentQuestionReplyTests: XCTestCase {
                                      prompt: "Which files?", runID: "r1")
         let service = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
-        service.requestUserText = { _, _ in nil }
+        service.requestUserText = { _, _ in .declined }
 
         let line = await service.answerPendingQuestionViaUserPrompt(text: "whatever you like")
         XCTAssertEqual(line, "Okay, I didn't send an answer.")
@@ -304,7 +304,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         let service = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
         var asked = false
-        service.requestUserText = { _, _ in asked = true; return "go on then" }
+        service.requestUserText = { _, _ in asked = true; return .answered("go on then") }
 
         let line = await service.answerPendingQuestionViaUserPrompt(text: "go on then")
         XCTAssertEqual(line, "That one's a confirmation, not a question — say confirm or deny.")
@@ -332,7 +332,7 @@ final class AgentQuestionReplyTests: XCTestCase {
 
         let approving = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
-        approving.requestUserConsent = { _ in true }
+        approving.requestUserConsent = { _ in .approved }
         let approvedLine = await approving.confirmPendingActionViaUserPrompt()
         XCTAssertEqual(approvedLine, "Okay, proceeding.")
         XCTAssertEqual(try body(of: 0)["decision"] as? String, "approve")
@@ -341,7 +341,7 @@ final class AgentQuestionReplyTests: XCTestCase {
 
         let denying = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
-        denying.requestUserConsent = { _ in false }
+        denying.requestUserConsent = { _ in .declined }
         let deniedLine = await denying.confirmPendingActionViaUserPrompt()
         XCTAssertEqual(deniedLine, "I've told the agent not to proceed.")
         XCTAssertEqual(try body(of: 0)["decision"] as? String, "deny")
@@ -370,7 +370,7 @@ final class AgentQuestionReplyTests: XCTestCase {
                                      prompt: "Which files?", runID: "r1")
         let service = waitingSession(legacyConfig(), question: question)
         MockURLProtocol.reset()
-        service.requestUserText = { _, draft in draft }
+        service.requestUserText = { _, draft in .answered(draft) }
 
         let line = await service.answerPendingQuestionViaUserPrompt(text: "only the tests")
         XCTAssertEqual(line, "This agent can't take a typed answer, so I didn't send it.")
@@ -386,7 +386,7 @@ final class AgentQuestionReplyTests: XCTestCase {
                                      prompt: "Push?", runID: "r1")
         let service = waitingSession(legacyConfig(), question: question)
         MockURLProtocol.reset()
-        service.requestUserConsent = { _ in false }
+        service.requestUserConsent = { _ in .declined }
 
         let line = await service.confirmPendingActionViaUserPrompt()
         XCTAssertEqual(line, "This agent has no way to relay a decline, so I couldn't tell it to stop.")
@@ -438,7 +438,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         let service = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
         MockURLProtocol.script = [.http(503)]
-        service.requestUserConsent = { _ in true }
+        service.requestUserConsent = { _ in .approved }
 
         let failed = await service.confirmPendingActionViaUserPrompt()
         XCTAssertEqual(failed, "The agent endpoint refused your answer (HTTP 503) — say retry to try again.")
@@ -466,7 +466,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         MockURLProtocol.reset()
         // The POST times out; the status GET that follows shows the run has moved on.
         MockURLProtocol.script = [.timeout, .json(#"{"status":"running"}"#)]
-        service.requestUserConsent = { _ in true }
+        service.requestUserConsent = { _ in .approved }
 
         let line = await service.confirmPendingActionViaUserPrompt()
 
@@ -487,7 +487,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         let service = waitingSession(askingConfig(), question: question)
         MockURLProtocol.reset()
         MockURLProtocol.script = [.timeout, .json(#"{"status":"awaiting_input"}"#)]
-        service.requestUserConsent = { _ in true }
+        service.requestUserConsent = { _ in .approved }
 
         let line = await service.confirmPendingActionViaUserPrompt()
 
@@ -536,7 +536,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         service.handle(.completed(AgentRunResult()))
         MockURLProtocol.reset()
 
-        service.requestUserConsent = { _ in true }
+        service.requestUserConsent = { _ in .approved }
         let line = await service.confirmPendingActionViaUserPrompt()
         XCTAssertEqual(line, "There's nothing waiting for confirmation.")
         XCTAssertEqual(MockURLProtocol.requests.count, 0)
@@ -600,7 +600,7 @@ final class AgentQuestionReplyTests: XCTestCase {
 
         service.handle(.awaitingInput(AgentQuestion(id: "q1", revision: 0, kind: .freeText,
                                                     prompt: "Which files?", runID: "r1")))
-        service.requestUserText = { _, draft in draft }
+        service.requestUserText = { _, draft in .answered(draft) }
         _ = await service.answerPendingQuestionViaUserPrompt(text: "the tests")
 
         let replies = MockURLProtocol.requests.filter { $0.request.httpMethod == "POST"
@@ -724,7 +724,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         shared.handle(.awaitingInput(AgentQuestion(id: "q9", revision: 1, kind: .freeText,
                                                    prompt: "Which files?", runID: "r1")))
         var prompted = false
-        shared.requestUserText = { _, draft in prompted = true; return draft }
+        shared.requestUserText = { _, draft in prompted = true; return .answered(draft) }
 
         let out = try await AgentControlTool().execute(
             args: ["action": "answer", "text": "only change the tests"])
@@ -755,7 +755,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         var askedSummary: String?
         shared.requestUserConsent = { request in
             askedSummary = request.attributedSummary
-            return false                                  // the wearer says no at the card
+            return .declined                                  // the wearer says no at the card
         }
 
         let out = try await AgentControlTool().execute(args: ["action": "confirm"])
@@ -779,7 +779,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         shared.handle(.awaitingInput(AgentQuestion(id: "q1", revision: 0,
                                                    kind: .approval(actionSummary: "push"),
                                                    prompt: "Push?", runID: "r1")))
-        shared.requestUserConsent = { _ in true }
+        shared.requestUserConsent = { _ in .approved }
 
         let failed = try await AgentControlTool().execute(args: ["action": "confirm"])
         XCTAssertTrue(failed.contains("retry"), "got: \(failed)")
@@ -831,7 +831,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         coordinator.resolveText("only the tests")
 
         let result = await answer
-        XCTAssertEqual(result, "only the tests")
+        XCTAssertEqual(result, .answered("only the tests"))
         XCTAssertNil(coordinator.pending)
     }
 
@@ -842,7 +842,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         await waitForPending(coordinator)
         coordinator.resolve(false)
         let result = await answer
-        XCTAssertNil(result)
+        XCTAssertEqual(result, .declined)
     }
 
     /// The approve/deny card is unchanged: a typed string cannot stand in for a yes.
@@ -856,7 +856,7 @@ final class AgentQuestionReplyTests: XCTestCase {
         XCTAssertNotNil(coordinator.pending, "a text resolution must not answer an approval")
         coordinator.resolve(true)
         let result = await approved
-        XCTAssertTrue(result)
+        XCTAssertEqual(result, .approved)
     }
 
     private func waitForPending(_ coordinator: ToolConfirmationCoordinator) async {

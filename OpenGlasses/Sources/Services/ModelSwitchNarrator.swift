@@ -94,6 +94,9 @@ enum ModelSwitchNarrator {
     static func failureLine(_ error: Error, narrate: Bool, gap: CredentialGap? = nil,
                             perMinute: PerMinuteNotice? = nil) -> String {
         if let refusal = permissionLine(error) { return refusal }
+        // A model server on the wearer's own network that iOS may have kept the app from reaching:
+        // the fix is a switch in Settings, so it is said whether or not narration is on.
+        if let hint = LocalNetworkAccessHint.line(for: error, target: .aiServer) { return hint }
         return narrate ? exhaustionPhrase(lastError: error, gap: gap, perMinute: perMinute) : "Sorry, I encountered an error."
     }
 

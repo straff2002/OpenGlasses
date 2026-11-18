@@ -52,6 +52,11 @@ NOT SUBMIT`) before uploading it. The package stays pinned exact in `project.gla
 - All SDK errors conform to **`DatError`** (`LocalizedError`) with a consistent `description`.
   `capturePhoto(format:)` returns `Bool` (request accepted); the photo arrives on
   `photoDataPublisher` and stream errors on `errorPublisher` (`StreamError`).
+  **A photo carries no request id, and the glasses queue requests:** one can land 10–13 s after it
+  was asked for, long after its capture fell back to a frame. `PhotoCaptureLedger` matches photos to
+  requests oldest first, lets a timer resolve only its own capture, drains a late photo instead of
+  handing it to the next capture, and holds a new request (up to 5 s, then a fresh frame) while a
+  photo is still owed. Never resume a photo continuation without the ledger's token.
 
 ## Naming Conventions
 
@@ -156,7 +161,10 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   guide; `start()` returns while it is still `.starting`, until the glasses accept the request).
   `MetaDisplayBackend.awaitStarted` waits up to 10 s (`DisplayStartWait`) after every `start()`;
   build 705 sent at once, and on a real Ray-Ban Display every first send went unanswered. `ButtonGroup` (+ `ButtonGroupBuilder`/`ButtonGroupAlignment`) lays out
-  button rows (0.9.0); the component result builder supports full if/else.
+  button rows (0.9.0); the component result builder supports full if/else. **Only a `.primary`
+  button is sent with its icon** (`LensButtonIconPolicy`): in Meta's simulated preview on 1.0.1 a
+  `.secondary` button with an icon draws as the icon alone and loses its label. Not yet checked on
+  real glasses.
 - `Device.supportsDisplay()` / `DeviceType.supportsDisplay` — capability gate; `AutoDeviceSelector(wearables:filter:)`
   can constrain selection (e.g. `filter: { $0.supportsDisplay() }`).
 - `DeviceType` — `.rayBanMeta`, `.oakleyMetaHSTN`, `.oakleyMetaVanguard`, `.rayBanMetaOptics`, `.metaGlasses`.

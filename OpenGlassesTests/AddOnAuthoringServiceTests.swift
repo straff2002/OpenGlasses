@@ -63,7 +63,7 @@ final class AddOnAuthoringServiceTests: XCTestCase {
             consent: { [unowned self] request in
                 self.consents.append(request)
                 self.requestsAtConsent.append(self.transport.requests.count)
-                return self.consentAnswer
+                return self.consentAnswer ? .approved : .declined
             },
             announce: { [unowned self] line in self.announced.append(line) },
             conditions: { [unowned self] in self.conditions },

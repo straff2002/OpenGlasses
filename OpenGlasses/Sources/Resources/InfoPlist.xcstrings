@@ -998,85 +998,85 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يستخدم Avenkin شبكتك المحلية للعثور على خوادم الذكاء الاصطناعي المستضافة ذاتيًا (Ollama، LM Studio، vLLM، LocalAI) دون الحاجة إلى كتابة عنوان، ولبث الفيديو إلى خادم على شبكتك الخاصة."
+            "value" : "يستخدم Avenkin شبكتك المحلية للاتصال ببوابة الوكيل وخوادم الذكاء الاصطناعي وأدوات MCP الخاصة بك، وللعثور على خوادم الذكاء الاصطناعي المستضافة ذاتيًا (Ollama، LM Studio، vLLM، LocalAI) دون الحاجة إلى كتابة عنوان، ولبث الفيديو إلى خادم على شبكتك الخاصة."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Avenkin uses your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network."
+            "value" : "Avenkin uses your local network to connect to your own agent gateway, AI servers and MCP tools, to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin usa tu red local para encontrar servidores de IA autoalojados (Ollama, LM Studio, vLLM, LocalAI) sin que tengas que escribir una dirección, y para transmitir video a un servidor en tu propia red."
+            "value" : "Avenkin usa tu red local para conectarse a tu propio gateway de agentes, tus servidores de IA y tus herramientas MCP, para encontrar servidores de IA autoalojados (Ollama, LM Studio, vLLM, LocalAI) sin que tengas que escribir una dirección, y para transmitir video a un servidor en tu propia red."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin utilise votre réseau local pour trouver des serveurs d'IA auto-hébergés (Ollama, LM Studio, vLLM, LocalAI) sans que vous ayez à saisir d'adresse, et pour diffuser de la vidéo vers un serveur de votre propre réseau."
+            "value" : "Avenkin utilise votre réseau local pour se connecter à votre propre passerelle d'agent, à vos serveurs d'IA et à vos outils MCP, pour trouver des serveurs d'IA auto-hébergés (Ollama, LM Studio, vLLM, LocalAI) sans que vous ayez à saisir d'adresse, et pour diffuser de la vidéo vers un serveur de votre propre réseau."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Avenkin a helyi hálózatot használja, hogy cím beírása nélkül megtalálja a saját üzemeltetésű AI-szervereket (Ollama, LM Studio, vLLM, LocalAI), és hogy videót streameljen a saját hálózatán lévő szerverre."
+            "value" : "Az Avenkin a helyi hálózatot használja, hogy csatlakozzon a saját ügynökátjárójához, AI-szervereihez és MCP-eszközeihez, hogy cím beírása nélkül megtalálja a saját üzemeltetésű AI-szervereket (Ollama, LM Studio, vLLM, LocalAI), és hogy videót streameljen a saját hálózatán lévő szerverre."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin usa la rete locale per trovare server AI self-hosted (Ollama, LM Studio, vLLM, LocalAI) senza dover digitare un indirizzo e per trasmettere video in streaming a un server sulla tua rete."
+            "value" : "Avenkin usa la rete locale per connettersi al tuo gateway per agenti, ai tuoi server AI e ai tuoi strumenti MCP, per trovare server AI self-hosted (Ollama, LM Studio, vLLM, LocalAI) senza dover digitare un indirizzo e per trasmettere video in streaming a un server sulla tua rete."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinは、アドレスを入力せずにセルフホスト型AIサーバ（Ollama、LM Studio、vLLM、LocalAI）を見つけたり、ご自身のネットワーク上のサーバにビデオをストリーミングしたりするために、ローカルネットワークを使用します。"
+            "value" : "Avenkinは、ご自身のエージェントゲートウェイ、AIサーバ、MCPツールに接続したり、アドレスを入力せずにセルフホスト型AIサーバ（Ollama、LM Studio、vLLM、LocalAI）を見つけたり、ご自身のネットワーク上のサーバにビデオをストリーミングしたりするために、ローカルネットワークを使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin은 주소를 입력하지 않고도 자체 호스팅 AI 서버(Ollama, LM Studio, vLLM, LocalAI)를 찾고, 사용자 네트워크의 서버로 동영상을 스트리밍하기 위해 로컬 네트워크를 사용합니다."
+            "value" : "Avenkin은 사용자의 에이전트 게이트웨이, AI 서버 및 MCP 도구에 연결하고, 주소를 입력하지 않고도 자체 호스팅 AI 서버(Ollama, LM Studio, vLLM, LocalAI)를 찾고, 사용자 네트워크의 서버로 동영상을 스트리밍하기 위해 로컬 네트워크를 사용합니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin gebruikt uw lokale netwerk om zelfgehoste AI-servers (Ollama, LM Studio, vLLM, LocalAI) te vinden zonder dat u een adres hoeft in te typen, en om video te streamen naar een server op uw eigen netwerk."
+            "value" : "Avenkin gebruikt uw lokale netwerk om verbinding te maken met uw eigen agent-gateway, AI-servers en MCP-tools, om zelfgehoste AI-servers (Ollama, LM Studio, vLLM, LocalAI) te vinden zonder dat u een adres hoeft in te typen, en om video te streamen naar een server op uw eigen netwerk."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Avenkin usa sua rede local para encontrar servidores de IA auto-hospedados (Ollama, LM Studio, vLLM, LocalAI) sem que você precise digitar um endereço e para transmitir vídeo para um servidor na sua própria rede."
+            "value" : "O Avenkin usa sua rede local para se conectar ao seu próprio gateway de agentes, aos seus servidores de IA e às suas ferramentas MCP, para encontrar servidores de IA auto-hospedados (Ollama, LM Studio, vLLM, LocalAI) sem que você precise digitar um endereço e para transmitir vídeo para um servidor na sua própria rede."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin использует локальную сеть, чтобы находить ваши собственные серверы ИИ (Ollama, LM Studio, vLLM, LocalAI) без ввода адреса и транслировать видео на сервер в вашей сети."
+            "value" : "Avenkin использует локальную сеть, чтобы подключаться к вашему шлюзу агентов, серверам ИИ и инструментам MCP, находить ваши собственные серверы ИИ (Ollama, LM Studio, vLLM, LocalAI) без ввода адреса и транслировать видео на сервер в вашей сети."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin آپ کا مقامی نیٹ ورک استعمال کرتا ہے تاکہ ایڈریس لکھے بغیر سیلف ہوسٹڈ AI سرورز (Ollama، LM Studio، vLLM، LocalAI) تلاش کرے، اور آپ کے اپنے نیٹ ورک کے کسی سرور پر ویڈیو اسٹریم کرے۔"
+            "value" : "Avenkin آپ کا مقامی نیٹ ورک استعمال کرتا ہے تاکہ آپ کے اپنے ایجنٹ گیٹ وے، AI سرورز اور MCP ٹولز سے جڑ سکے، ایڈریس لکھے بغیر سیلف ہوسٹڈ AI سرورز (Ollama، LM Studio، vLLM، LocalAI) تلاش کرے، اور آپ کے اپنے نیٹ ورک کے کسی سرور پر ویڈیو اسٹریم کرے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 使用你的本地网络查找自托管的 AI 服务器（Ollama、LM Studio、vLLM、LocalAI），无需输入地址，还可将视频流式传输到你自己网络上的服务器。"
+            "value" : "Avenkin 使用你的本地网络连接你自己的智能体网关、AI 服务器和 MCP 工具，查找自托管的 AI 服务器（Ollama、LM Studio、vLLM、LocalAI），无需输入地址，还可将视频流式传输到你自己网络上的服务器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 使用你的區域網路尋找自行架設的 AI 伺服器（Ollama、LM Studio、vLLM、LocalAI），不必輸入位址，還能將影片串流到你自己網路上的伺服器。"
+            "value" : "Avenkin 使用你的區域網路連線到你自己的代理程式閘道、AI 伺服器和 MCP 工具，尋找自行架設的 AI 伺服器（Ollama、LM Studio、vLLM、LocalAI），不必輸入位址，還能將影片串流到你自己網路上的伺服器。"
           }
         }
       }

@@ -96,13 +96,16 @@ final class AgentSessionService: ObservableObject {
     /// (`ToolConfirmationCoordinator`); tests inject grants/denials. When nil, a tool-called
     /// confirm fails CLOSED — approval must come from a real user prompt, never from tool-call
     /// output (the prompt-injection → self-approved-push hole).
-    var requestUserConsent: ((RemoteActionConsentRequest) async -> Bool)?
+    /// Only `.approved` is a yes; `.busy` (another prompt was on screen) is neither a yes nor a no,
+    /// and nothing is sent to the agent for it.
+    var requestUserConsent: ((RemoteActionConsentRequest) async -> ConfirmationOutcome)?
 
     /// The free-text half of the same user-originated boundary (Plan FE P1): shows the answer the
     /// wearer is about to send and hands back what they confirmed — edited if they edited it, or
-    /// `nil` if they decided not to send. Wired by AppState to the consent card's text field.
+    /// `.declined` if they decided not to send, `.busy` if another prompt was on screen and they
+    /// were not asked. Wired by AppState to the consent card's text field.
     /// Nil seam ⇒ nothing is sent, and the wearer is told why.
-    var requestUserText: ((RemoteActionConsentRequest, String) async -> String?)?
+    var requestUserText: ((RemoteActionConsentRequest, String) async -> TextAnswerOutcome)?
 
     /// The harness a run was dispatched to, held for the life of that run (Plan FE P1).
     ///
@@ -256,6 +259,8 @@ final class AgentSessionService: ObservableObject {
         case couldNotStop
         /// There was no way to ask the wearer, so nothing changed.
         case couldNotAsk
+        /// Another confirmation was on screen, so the wearer wasn't asked and nothing changed.
+        case confirmationBusy
         case failed(AgentHarnessError)
     }
 
@@ -291,9 +296,14 @@ final class AgentSessionService: ObservableObject {
         let request = RemoteActionConsentRequest(source: .codingAgent,
                                                  summary: AgentFollowUpRouting.replaceSummary,
                                                  spokenOverride: AgentFollowUpRouting.replacePrompt)
-        guard await requestUserConsent(request) else {
+        switch await requestUserConsent(request) {
+        case .approved:
+            break
+        case .declined:
             PrivacyLog.agent(.session, .replaceDeclined)
             return .keptRunning
+        case .busy:
+            return .confirmationBusy
         }
         // It may have finished while the wearer was being asked; then there is nothing to stop.
         if runPhase != .idle, let harness = runHarness, let run = activeRun {
@@ -426,8 +436,14 @@ final class AgentSessionService: ObservableObject {
                                                  summary: RecurringBlocker.stopSummary(kind),
                                                  spokenOverride: RecurringBlocker.stopPrompt(kind, text: text))
         stopAskTask = Task { @MainActor [weak self] in
-            let stop = await requestUserConsent(request)
-            guard let self, stop, let runID, self.activeRun?.id == runID,
+            let answer = await requestUserConsent(request)
+            guard let self else { return }
+            if answer == .busy {
+                // Not asked: say it, as when there is no way to ask, rather than nothing.
+                self.emit(AgentSummarizer.cap(text))
+                return
+            }
+            guard answer.isApproved, let runID, self.activeRun?.id == runID,
                   self.activeRun?.status.isTerminal == false else { return }
             await self.cancel()
         }
@@ -707,8 +723,15 @@ final class AgentSessionService: ObservableObject {
             return "Approval needs the on-screen confirm prompt, which isn't available right now — nothing was approved."
         }
         let request = RemoteActionConsentRequest(source: .codingAgent, summary: question.actionSummary)
-        let granted = await requestUserConsent(request)
-        return await answer(granted ? .approve : .deny, to: question)
+        switch await requestUserConsent(request) {
+        case .approved:
+            return await answer(.approve, to: question)
+        case .declined:
+            return await answer(.deny, to: question)
+        case .busy:
+            // Neither a yes nor a no: the agent is told nothing, and the question stays open.
+            return ConfirmationOutcome.busyToolResult
+        }
     }
 
     /// Entry for the `code_agent answer` tool call: the wearer's words, for a question that wants
@@ -734,11 +757,16 @@ final class AgentSessionService: ObservableObject {
         let request = RemoteActionConsentRequest(
             source: .codingAgent,
             summary: "send this answer to the agent: “\(AgentSummarizer.cap(trimmed))”")
-        guard let confirmed = await requestUserText(request, trimmed)?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !confirmed.isEmpty else {
+        switch await requestUserText(request, trimmed) {
+        case .busy:
+            return ConfirmationOutcome.busyToolResult
+        case .declined:
             return "Okay, I didn't send an answer."
+        case .answered(let text):
+            let confirmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !confirmed.isEmpty else { return "Okay, I didn't send an answer." }
+            return await answer(.text(confirmed), to: question)
         }
-        return await answer(.text(confirmed), to: question)
     }
 
     /// Re-send the reply the wearer already authorised, after a failed or unconfirmed delivery.

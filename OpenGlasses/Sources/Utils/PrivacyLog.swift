@@ -589,6 +589,12 @@ enum PrivacyLog {
         case frameReceived, frameStale, frameRejected, framePinned, framePinReleased
         case captureRequested, captureRejected, captureTimedOut, captureFallbackUsed
         case photoReceived, photoUnexpected, photoCaptured, photoNotSaved
+        /// `PhotoCaptureLedger`. `photoDrainedLate` is a photo that arrived after its capture had
+        /// timed out, discarded rather than handed to a later capture (`bytes` its size).
+        /// `captureHeld` is a capture waiting for an earlier capture's photo before asking for its
+        /// own (`count` the late photos owed); `captureHoldFallback` is that wait running out, so
+        /// no photo was requested and a fresh video frame stood in.
+        case photoDrainedLate, captureHeld, captureHoldFallback
         case stallDetected, stallRecovery, stallRecovered, stallRecoveryFailed
         /// `StallRecoveryBackoff`: `stallRecoveryNoFrame` is a rebuilt stream that reached
         /// `.streaming` but never delivered a fresh picture. `stallRecoveryBackoff` is the wait

@@ -71,6 +71,7 @@ final class RemoteActionConsentTests: XCTestCase {
 
         let task = Task {
             await coordinator.requestConfirmation(toolName: "code_agent", summary: "push to main", source: .codingAgent)
+                .isApproved
         }
         // Let the request suspend and publish.
         while coordinator.pending == nil { await Task.yield() }
@@ -88,6 +89,7 @@ final class RemoteActionConsentTests: XCTestCase {
         let coordinator = ToolConfirmationCoordinator()
         let task = Task {
             await coordinator.requestConfirmation(toolName: "t", summary: "s", source: .gateway)
+                .isApproved
         }
         while coordinator.pending == nil { await Task.yield() }
 
@@ -135,7 +137,7 @@ final class RemoteActionConsentTests: XCTestCase {
         var requests: [RemoteActionConsentRequest] = []
         service.requestUserConsent = { request in
             requests.append(request)
-            return true   // the wearer approves at the real prompt
+            return .approved   // the wearer approves at the real prompt
         }
 
         let reply = await service.confirmPendingActionViaUserPrompt()
@@ -151,7 +153,7 @@ final class RemoteActionConsentTests: XCTestCase {
     func testConfirmToolCallDeniedAtPromptCancelsRun() async {
         let mock = ConsentStubHarness()
         let service = await awaitingService(mock)
-        service.requestUserConsent = { _ in false }   // the wearer denies
+        service.requestUserConsent = { _ in .declined }   // the wearer denies
 
         let reply = await service.confirmPendingActionViaUserPrompt()
         // Plan FE P1 changed this assertion because it encoded the unconfirmed-decline bug: the
@@ -163,11 +165,23 @@ final class RemoteActionConsentTests: XCTestCase {
         XCTAssertTrue(service.declineAwaitingEndpoint)
     }
 
+    func testConfirmToolCallWithABusySurfaceTellsTheAgentNothing() async {
+        let mock = ConsentStubHarness()
+        let service = await awaitingService(mock)
+        service.requestUserConsent = { _ in .busy }   // another prompt is on screen
+
+        let reply = await service.confirmPendingActionViaUserPrompt()
+        XCTAssertEqual(reply, ConfirmationOutcome.busyToolResult)
+        XCTAssertNil(mock.respondedBody, "neither a yes nor a no reaches the agent")
+        XCTAssertFalse(service.declineAwaitingEndpoint)
+        XCTAssertNotNil(service.pendingQuestion, "the question stays open for a retry")
+    }
+
     func testConfirmToolCallWithNothingPendingIsRefused() async {
         let service = AgentSessionService()
         service.requestUserConsent = { _ in
             XCTFail("no prompt should be shown when nothing is awaiting input")
-            return true
+            return .approved
         }
         let reply = await service.confirmPendingActionViaUserPrompt()
         XCTAssertEqual(reply, "There's nothing waiting for confirmation.")

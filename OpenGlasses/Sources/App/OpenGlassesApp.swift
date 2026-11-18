@@ -3073,7 +3073,7 @@ class AppState: ObservableObject, AppStateProtocol {
         myMemory.forgetter = memoryFacts.forgetter
         myMemory.corrector = memoryFacts.corrector
         myMemory.confirm = { [weak self] summary in
-            guard let self else { return false }
+            guard let self else { return .declined }
             return await self.toolConfirmationCoordinator.requestConfirmation(toolName: "my_memory",
                                                                              summary: summary)
         }
@@ -3702,7 +3702,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // BN P1: a `code_agent confirm` tool call only raises the user-distinct consent prompt —
         // it can never approve itself (the prompt-injection → self-approved-push hole).
         AgentSessionService.shared.requestUserConsent = { [weak self] request in
-            guard let self else { return false }
+            guard let self else { return .declined }
             return await self.toolConfirmationCoordinator.requestConfirmation(
                 toolName: "code_agent", summary: request.summary, source: request.source,
                 spokenPrompt: request.spokenOverride)
@@ -3710,7 +3710,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan FE P1: the free-text half of the same boundary — the card shows the answer, the
         // wearer can edit it, and only what they confirm is forwarded to the agent.
         AgentSessionService.shared.requestUserText = { [weak self] request, draft in
-            guard let self else { return nil }
+            guard let self else { return .declined }
             return await self.toolConfirmationCoordinator.requestTextAnswer(
                 toolName: "code_agent", summary: request.summary, source: request.source,
                 prefill: draft)
@@ -7923,7 +7923,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 docs: BoundedAddOnDocsFetcher(),
                 transport: BoundedAddOnHTTPTransport(),
                 consent: { [weak self] request in
-                    guard let self else { return false }
+                    guard let self else { return .declined }
                     return await self.toolConfirmationCoordinator.requestConfirmation(
                         toolName: BuildAddOnTool.toolName, summary: request.line, spokenPrompt: request.line)
                 },
@@ -10211,7 +10211,7 @@ class AppState: ObservableObject, AppStateProtocol {
     private func makeRemoteInvokeService() -> RemoteInvokeService {
         let executor = RemoteCommandExecutor(deps: .init(
             confirmCapture: { [weak self] summary in
-                guard let self else { return false }
+                guard let self else { return .declined }
                 return await self.toolConfirmationCoordinator.requestConfirmation(
                     toolName: "remote_invoke", summary: summary)
             },

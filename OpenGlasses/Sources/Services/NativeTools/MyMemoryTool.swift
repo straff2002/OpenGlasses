@@ -52,7 +52,8 @@ struct MyMemoryTool: NativeTool {
     var forgetter: MemoryFactForgetter?
     var corrector: MemoryFactCorrector?
     /// Ask the wearer to approve a forget, in words naming the resolved fact. Absent → fail closed.
-    var confirm: (@MainActor (String) async -> Bool)?
+    /// Only `.approved` forgets; `.busy` means they were not asked, and the reply says so.
+    var confirm: (@MainActor (String) async -> ConfirmationOutcome)?
     /// Put several candidates on the phone, filtered by the phrase the wearer used.
     var handOff: (@MainActor (String) -> Void)?
 
@@ -117,8 +118,13 @@ struct MyMemoryTool: NativeTool {
             guard let confirm else {
                 return "Forgetting needs your confirmation, which isn't available right now. Try again with the app open, or use Memory on your phone."
             }
-            guard await confirm(Self.confirmationSummary(fact)) else {
+            switch await confirm(Self.confirmationSummary(fact)) {
+            case .approved:
+                break
+            case .declined:
                 return "Okay, I've kept it."
+            case .busy:
+                return "I couldn't ask you to confirm that, because another confirmation is already on screen, so nothing was forgotten. Try again once that one is answered."
             }
             let plan = forgetter.plan(for: fact)
             // By voice the assistant's notes are left alone: the matching lines are prose the

@@ -176,6 +176,9 @@ final class HermesAgentAPIClient {
             if error is CloudProcessingRefusal { throw error }
             // Cancelled from here, which only the medical teardown does.
             if task.isCancelled { throw MedicalEgressRefusal(route: .hermesAgentAPI) }
+            if LocalNetworkAccessHint.isLikelyDenied(error, host: request.url?.host) {
+                throw HermesAgentAPIError.localNetworkMayBeOff
+            }
             throw HermesAgentAPI.error(forTransport: error)
         }
     }
@@ -205,6 +208,7 @@ final class HermesAgentAPIClient {
                 return .policy(error)
             }
             let outcome = await fetch(HermesAgentAPI.healthRequest(url: url))
+            if outcome.localNetworkMayBeOff { return .localNetworkMayBeOff }
             guard let problem = HermesConnectionDiagnosis.apiHealth(
                 status: outcome.status, body: outcome.body, urlErrorCode: outcome.urlErrorCode) else { break }
             // A profile prefix may not serve health; the server root gets the next try.
@@ -220,6 +224,7 @@ final class HermesAgentAPIClient {
             return .policy(error)
         }
         let outcome = await fetch(models)
+        if outcome.localNetworkMayBeOff { return .localNetworkMayBeOff }
         return HermesConnectionDiagnosis.apiModels(status: outcome.status, body: outcome.body,
                                                    urlErrorCode: outcome.urlErrorCode, redacting: key)
     }
@@ -228,6 +233,8 @@ final class HermesAgentAPIClient {
         var status: Int?
         var body: Data?
         var urlErrorCode: Int?
+        /// The failure looked like a refused Local Network permission (`LocalNetworkAccessHint`).
+        var localNetworkMayBeOff = false
     }
 
     private func fetch(_ request: URLRequest) async -> FetchOutcome {
@@ -236,7 +243,9 @@ final class HermesAgentAPIClient {
             return FetchOutcome(status: response.statusCode, body: data)
         } catch {
             return FetchOutcome(urlErrorCode: HermesAgentAPI.urlErrorCode(of: error)
-                                ?? URLError.cannotConnectToHost.rawValue)
+                                ?? URLError.cannotConnectToHost.rawValue,
+                                localNetworkMayBeOff: LocalNetworkAccessHint.isLikelyDenied(
+                                    error, host: request.url?.host))
         }
     }
 }

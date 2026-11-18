@@ -67,7 +67,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         let service = AgentSessionService()
         let harness = FollowUpHarness(support: .unsupported)
         var asked: [RemoteActionConsentRequest] = []
-        service.requestUserConsent = { asked.append($0); return true }
+        service.requestUserConsent = { asked.append($0); return .approved }
         await running(service, harness: harness)
 
         let outcome = await service.startOrSteer(prompt: "second", project: nil)
@@ -83,7 +83,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
     func testANoLeavesTheRunningJobAlone() async {
         let service = AgentSessionService()
         let harness = FollowUpHarness(support: .unknown)
-        service.requestUserConsent = { _ in false }
+        service.requestUserConsent = { _ in .declined }
         await running(service, harness: harness)
         let outcome = await service.startOrSteer(prompt: "second", project: nil)
         XCTAssertEqual(outcome, .keptRunning)
@@ -106,7 +106,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         let service = AgentSessionService()
         let harness = FollowUpHarness(support: .unknown)
         harness.cancelError = .unsupported("Cancel")
-        service.requestUserConsent = { _ in true }
+        service.requestUserConsent = { _ in .approved }
         await running(service, harness: harness)
         let outcome = await service.startOrSteer(prompt: "second", project: nil)
         XCTAssertEqual(outcome, .couldNotStop)
@@ -118,7 +118,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         let service = AgentSessionService()
         let harness = FollowUpHarness(support: .accepts)
         var asked = 0
-        service.requestUserConsent = { _ in asked += 1; return true }
+        service.requestUserConsent = { _ in asked += 1; return .approved }
         await running(service, harness: harness)
         let outcome = await service.startOrSteer(prompt: "also make the button blue", project: nil)
         XCTAssertEqual(outcome, .steered)
@@ -132,7 +132,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         let service = AgentSessionService()
         let harness = FollowUpHarness(support: .accepts)
         harness.followUpError = .transport("down")
-        service.requestUserConsent = { _ in false }
+        service.requestUserConsent = { _ in .declined }
         await running(service, harness: harness)
         let outcome = await service.startOrSteer(prompt: "more", project: nil)
         XCTAssertEqual(outcome, .keptRunning)
@@ -143,7 +143,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         let service = AgentSessionService()
         service.setHarness(FollowUpHarness(support: .unknown))
         var asked = 0
-        service.requestUserConsent = { _ in asked += 1; return true }
+        service.requestUserConsent = { _ in asked += 1; return .approved }
         guard case .started = await service.startOrSteer(prompt: "first", project: nil) else { return XCTFail() }
         XCTAssertEqual(asked, 0)
     }
@@ -183,7 +183,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         var spoken: [String] = []
         service.speak = { spoken.append($0) }
         var asked: [RemoteActionConsentRequest] = []
-        service.requestUserConsent = { asked.append($0); return true }
+        service.requestUserConsent = { asked.append($0); return .approved }
         await running(service, harness: harness)
 
         for round in 1...3 {
@@ -205,7 +205,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
     func testANoToStoppingLeavesTheQuestionPending() async {
         let service = AgentSessionService()
         let harness = FollowUpHarness(support: .unknown)
-        service.requestUserConsent = { _ in false }
+        service.requestUserConsent = { _ in .declined }
         await running(service, harness: harness)
         for round in 1...3 {
             service.handle(.awaitingInput(Self.question("Which branch?", id: "q\(round)")))
@@ -221,7 +221,7 @@ final class AgentFollowUpRoutingTests: XCTestCase {
         var spoken: [String] = []
         service.speak = { spoken.append($0) }
         var asked = 0
-        service.requestUserConsent = { _ in asked += 1; return false }
+        service.requestUserConsent = { _ in asked += 1; return .declined }
         await running(service, harness: harness)
         for _ in 1...3 { service.handle(.commandRun(command: "swift test", ok: false)) }
         await service.awaitStopAsk()

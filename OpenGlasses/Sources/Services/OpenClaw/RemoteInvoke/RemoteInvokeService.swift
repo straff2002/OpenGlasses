@@ -110,6 +110,9 @@ final class RemoteInvokeService: ObservableObject {
                 case .declined:
                     audit(origin: origin, action: command.canonicalAction, disposition: "declined")
                     return RemoteInvokeReply.failure(id: request.id, message: "User declined the request")
+                case .busy:
+                    audit(origin: origin, action: command.canonicalAction, disposition: "not asked: busy")
+                    return RemoteInvokeReply.failure(id: request.id, message: ConfirmationOutcome.busyToolResult)
                 case .failed(let message):
                     audit(origin: origin, action: command.canonicalAction, disposition: "failed: \(message)")
                     return RemoteInvokeReply.failure(id: request.id, message: message)

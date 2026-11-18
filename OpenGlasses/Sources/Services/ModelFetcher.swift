@@ -63,9 +63,11 @@ enum ModelFetcher {
             return classify(statusCode: http.statusCode, modelCount: modelCount(in: data), latencyMs: latencyMs)
         } catch let error as URLError {
             if error.code == .appTransportSecurityRequiresSecureConnection { return .insecure }
-            return .unreachable(error.localizedDescription)
+            return .unreachable(LocalNetworkAccessHint.line(for: error, host: url.host, target: .aiServer)
+                                ?? error.localizedDescription)
         } catch {
-            return .unreachable(error.localizedDescription)
+            return .unreachable(LocalNetworkAccessHint.line(for: error, host: url.host, target: .aiServer)
+                                ?? error.localizedDescription)
         }
     }
 

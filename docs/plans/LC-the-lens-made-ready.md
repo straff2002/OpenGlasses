@@ -388,6 +388,12 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
   back, and the next `addDisplay()` waits for the old one to reach `stopped` (`DisplayStopWait`, up
   to 3 s, logged as `displayCapabilityRead` with `detail=retired`). Device confirmation owed: a
   failed draw with the camera warm, then "menu", draws the menu.
+  **Button icons (2026-11-19):** a `.secondary` button sent with an icon was seen drawn as the icon
+  alone in Meta's simulated preview (1.0.1), which would leave the launcher's Quick Actions,
+  Workflows, Navigate, SOPs, Now Playing and Home rows as bare glyphs. Only primary buttons now
+  carry their icon (`LensButtonIconPolicy`); every other button is sent as its label. Device
+  confirmation owed: the launcher on a real Ray-Ban Display shows every row's label; if the
+  hardware keeps labels beside icons, the rule can be relaxed.
 
 ## Acceptance
 
