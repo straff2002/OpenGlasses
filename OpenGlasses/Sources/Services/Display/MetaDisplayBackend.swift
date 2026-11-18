@@ -298,8 +298,19 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     #endif
 
     /// The encoded size of the picture in a built tree: DAT carries an `Image` as its `uri`.
+    /// Plan MG §4: a page's tiles and a strip's slices are pictures inside blocks, so every image
+    /// in the tree counts; nil when the tree has none.
     static func pictureBytes(in view: FlexBox) -> Int? {
-        view.children.lazy.compactMap { $0 as? Image }.first.map { $0.uri.utf8.count }
+        let found = images(in: view)
+        return found.isEmpty ? nil : found.reduce(0) { $0 + $1.uri.utf8.count }
+    }
+
+    private static func images(in view: FlexBox) -> [Image] {
+        view.children.flatMap { child -> [Image] in
+            if let image = child as? Image { return [image] }
+            if let box = child as? FlexBox { return images(in: box) }
+            return []
+        }
     }
 
     // MARK: - Captions and clips (Plan LC §6)
@@ -422,7 +433,16 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         let pictureLeads = screen.picture?.placement == .aboveLines
         // Under a button row, room for the focused button's glow (`LensPageFrame`): with the 12 px
         // margin the glow reached past the lens, and the lens scrolled every frame up by 20 px.
-        let bottomPadding = LensPageFrame.bottomPadding(hasButtons: !buttonModels.isEmpty)
+        let bottomPadding = LensPageFrame.bottomPadding(hasButtons: !buttonModels.isEmpty && screen.trailingFlow.isEmpty)
+        // Plan MG §2: the blocks before and after the button row, built here so the builder closure
+        // captures only Sendable components. A press on one routes back by its id, as a button's.
+        let route: @Sendable (String) -> Void = { [weak self] id in
+            Task { @MainActor in
+                if let onSelect { onSelect(id) } else { self?.onItemSelected?(id) }
+            }
+        }
+        let flowComponents = Self.flowComponents(screen.flow, route: route)
+        let trailingComponents = Self.flowComponents(screen.trailingFlow, route: route)
 
         return FlexBox(
             direction: .column,
@@ -445,6 +465,9 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 } else {
                     Text(line.text, style: line.style, color: line.color)
                 }
+            }
+            for component in flowComponents {
+                component
             }
             if !pictureLeads, let picture {
                 picture
@@ -472,7 +495,61 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                     }
                 }
             }
+            for component in trailingComponents {
+                component
+            }
         }
+    }
+
+    /// Plan MG §2: a screen's flow as DAT components: a line as `Text`, a row of blocks as tappable
+    /// `FlexBox`es — on a card (`.background(.card)`, the only way the lens shows focus on a box) or
+    /// plain (a strip's seamless slices). One block takes the column's width; several sit in a row
+    /// 8 px apart, each at its picture's own size (`.fill` draws one image pixel per lens pixel).
+    private static func flowComponents(_ flow: [HUDFlowElement],
+                                       route: @escaping @Sendable (String) -> Void) -> [any ViewComponent] {
+        flow.map { element -> any ViewComponent in
+            switch element {
+            case .line(let line):
+                return Text(HUDTextShaper.condense(line.text), style: line.emphasis.textStyle,
+                            color: line.emphasis.textColor)
+            case .blocks(let blocks):
+                let boxes = blocks.map { blockComponent($0, stretch: blocks.count == 1, route: route) }
+                if boxes.count == 1, let only = boxes.first { return only }
+                return FlexBox(direction: .row, spacing: LensPageFrame.tileGapPixels, alignment: .start) {
+                    for box in boxes { box }
+                }
+            }
+        }
+    }
+
+    private static func blockComponent(_ block: HUDBlock, stretch: Bool,
+                                       route: @escaping @Sendable (String) -> Void) -> FlexBox {
+        let texts = block.lines.map {
+            Text(HUDTextShaper.condense($0.text), style: $0.emphasis.textStyle, color: $0.emphasis.textColor)
+        }
+        let image = block.picture.map { Image(image: $0.image, sizePreset: .fill) }
+        let card = block.style == .card
+        // A text block sits inside the card's padding; a picture tile fills its card, at the size
+        // it was drawn for.
+        let padding = card && block.picture == nil ? LensPageFrame.cardPaddingPixels : 0
+        var box = FlexBox(direction: .column, spacing: 0, alignment: .start, padding: EdgeInsets(all: padding)) {
+            for text in texts { text }
+            if let image { image }
+        }
+        if stretch { box = box.alignSelf(.stretch) }
+        if card { box = box.background(.card) }
+        let id = block.id
+        return box.onTap { route(id) }
+    }
+
+    /// Test helper (Plan MG §2): the `onTap` actions of the tappable blocks in `screen`'s rendered
+    /// tree, in column order.
+    func testBlockActions(for screen: HUDScreen) -> [() -> Void] {
+        func taps(_ component: any ViewComponent) -> [@Sendable () -> Void] {
+            guard let box = component as? FlexBox else { return [] }
+            return (box.onClick.map { [$0] } ?? []) + box.children.flatMap(taps)
+        }
+        return makeScreenView(screen).children.flatMap(taps).map { onClick in { onClick() } }
     }
 
     /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s

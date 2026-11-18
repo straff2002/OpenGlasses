@@ -162,6 +162,8 @@ struct DisplayHUDSections: View {
     @ObservedObject var appState: AppState
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
     @AppStorage(LensHighlightColour.storageKey) private var highlightColour: LensHighlightColour = .standard
+    @AppStorage(LensAnswerStyle.storageKey) private var answerStyle: LensAnswerStyle = .scroll
+    @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
 
     var body: some View {
         #if !AVENKIN_PHONE_ONLY
@@ -213,6 +215,16 @@ struct DisplayHUDSections: View {
                 ),
                 info: "Up to three short next questions appear as buttons under an answer on the in-lens display. Press one to ask it. The assistant writes them with the answer, so they cost no extra request; they are never spoken and never saved in the conversation."
             )
+            // Plan MG decision 5: the Meta Display's answers scroll by default; Even always pages.
+            if displayBackendRaw == DisplayBackendChoice.metaRayBan.rawValue {
+                Picker(selection: $answerStyle) {
+                    Text("Scroll").tag(LensAnswerStyle.scroll)
+                    Text("Pages").tag(LensAnswerStyle.pages)
+                } label: {
+                    Text("Answers on the lens")
+                }
+                .accessibilityHint(Text("Scroll shows an answer and the earlier ones in one view you move through with the band. Pages shows it a page at a time."))
+            }
             Picker(selection: $highlightColour) {
                 ForEach(LensHighlightColour.allCases) { colour in
                     Label {

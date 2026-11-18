@@ -100,3 +100,41 @@ enum HUDReopenCommand {
         return phrases.contains(core.joined(separator: " "))
     }
 }
+
+/// The reading view's words (Plan MG §2): "earlier" or "previous answer" opens the turn before the
+/// one at the top, "latest" goes back to the newest, and "say that again" says the top answer
+/// again. Consulted only while an answer is on the lens, and only whole utterances, with a leading
+/// filler and a trailing "please" allowed, so "what was the earlier reading" goes to the model.
+/// "Show the conversation" is `HUDReopenCommand`'s, which brings the view back; none of these is a
+/// page, paging, task or reopen word, and a test keeps it that way.
+///
+/// Spoken words only: text typed on the phone never reaches the lens's voice commands.
+enum HUDReadingCommand: Equatable {
+    case earlier
+    case latest
+    case sayAgain
+
+    static let phrases: [String: HUDReadingCommand] = [
+        "earlier": .earlier, "earlier answer": .earlier, "the earlier answer": .earlier,
+        "previous answer": .earlier, "the previous answer": .earlier,
+        "show the previous answer": .earlier, "show me the previous answer": .earlier,
+        "go to the previous answer": .earlier, "the answer before": .earlier, "answer before that": .earlier,
+        "latest": .latest, "the latest": .latest, "latest answer": .latest, "the latest answer": .latest,
+        "show the latest answer": .latest, "show me the latest answer": .latest,
+        "back to the latest": .latest, "back to the latest answer": .latest,
+        "newest": .latest, "the newest answer": .latest,
+        "say that again": .sayAgain, "say it again": .sayAgain, "say again": .sayAgain,
+    ]
+
+    static func parse(_ text: String) -> HUDReadingCommand? {
+        let stripped = text.lowercased()
+            .replacingOccurrences(of: "’", with: "'")
+            .components(separatedBy: CharacterSet.alphanumerics.union(.whitespaces).inverted)
+            .joined()
+        let words = stripped.split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        let filler: Set<String> = ["ok", "okay", "hey", "please", "uh", "um", "yeah", "yep", "now"]
+        var core = Array(words.drop(while: { filler.contains($0) }))
+        if core.last == "please" { core.removeLast() }
+        return phrases[core.joined(separator: " ")]
+    }
+}

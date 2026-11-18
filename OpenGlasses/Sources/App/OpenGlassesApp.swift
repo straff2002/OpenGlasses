@@ -2356,7 +2356,11 @@ class AppState: ObservableObject, AppStateProtocol {
                 // starts afresh is the stored conversation. Said by the reset's own line.
                 self.notePrivateEvent(.conversationReset, announce: false)
             },
-            clearLocalHistory: { [weak self] in self?.llmService.requestHistoryClear() },
+            clearLocalHistory: { [weak self] in
+                self?.llmService.requestHistoryClear()
+                // Plan MG §3: the lens forgets the conversation that ended.
+                self?.hudAnswerCard.conversationEnded()
+            },
             startSavedThread: { [weak self] in
                 guard let self, self.persistsConversation else { return }
                 self.conversationStore.startThread(mode: self.currentMode.rawValue,
@@ -8128,6 +8132,17 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
+            // Plan MG §2: while an answer is on the lens, "earlier" / "previous answer" opens the
+            // answer before the one at the top, "latest" goes back to the newest. With nothing to
+            // do, the words go on as a request. ("Say that again" is taken below, after the quiet
+            // turn's own replay has had its chance.)
+            VoiceCommandHandler(label: "hud-answer-reading") { [weak self] text in
+                guard let self, let command = HUDReadingCommand.parse(text), command != .sayAgain,
+                      self.hudAnswerCard.handleReadingCommand(command) else { return false }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudAnswerReading"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
             // Notification digest (Plan BZ): "what's new" / "catch me up" pulls up the glance.
             // Global — works with or without a task card; strict whole-phrase match only.
             VoiceCommandHandler(label: "digest-briefing") { [weak self] text in
@@ -8164,6 +8179,15 @@ class AppState: ObservableObject, AppStateProtocol {
                 let outcome = await self.speechService.speakReporting(reply, source: .reply)
                 self.stopStopListener()
                 self.noteReplySpoken(.reported(outcome))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // Plan MG §2: "say that again" with the reading view on the lens says its top answer
+            // again — after the quiet turn's replay, which owns those words for its 30 seconds.
+            VoiceCommandHandler(label: "hud-answer-say-again") { [weak self] text in
+                guard let self, HUDReadingCommand.parse(text) == .sayAgain, self.hudAnswerCard.showsReadingView,
+                      self.hudAnswerCard.handleReadingCommand(.sayAgain) else { return false }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudAnswerSayAgain"))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
@@ -8689,6 +8713,9 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudAnswerCard.pageCanOpen = { [weak self] in self?.lensPage.canOpenStaged ?? false }
         hudAnswerCard.openPage = { [weak self] in self?.lensPage.openStaged() }
+        // Plan MG §4: the whole page as tiles to point at, and a zoomed view as a strip the lens
+        // scrolls.
+        lensPage.tilesAndStrips = true
     }
 
     private func wireAnswerCard() {
@@ -8699,6 +8726,8 @@ class AppState: ObservableObject, AppStateProtocol {
         FollowUpPrompt.currentSurface = { [weak display = glassesDisplay] in display?.answerSurface ?? .none }
         hudAnswerCard.submitTurn = { [weak self] text in self?.submitAnswerCardTurn(text) }
         hudAnswerCard.speakAgain = { [weak self] text in self?.repeatAnswerCard(text) }
+        // Plan MG §2: the reading view on the Meta Display unless Display & HUD says Pages.
+        hudAnswerCard.usesReadingView = { HUDAnswerCard.activeUsesReadingView() }
         // Plan LC §5: the live modes' turns reach the card through one adapter, from the shared
         // coordinator both managers are.
         geminiLiveSession.onAnswerEvent = { [weak self] event in self?.liveAnswerFeed.handle(event) }

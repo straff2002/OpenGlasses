@@ -24,6 +24,14 @@ enum HUDPageCommand: Equatable {
     case showPage
     /// "Read it" — from the picture to reading mode.
     case readIt
+    /// Plan MG §4: a zoom and a place in one utterance — "zoom in on the bottom right", "closer at
+    /// the top": two rungs into that ninth of the page from the whole page (as its tile would), one
+    /// more rung from a zoomed view.
+    case zoomInto(LensPageViewport.Area)
+    /// "Zoom into the table": the page's table area.
+    case zoomIntoTable
+    /// "Zoom in on the diagram": the page's drawing.
+    case zoomIntoDiagram
 
     static func parse(_ text: String) -> HUDPageCommand? {
         let stripped = text.lowercased()
@@ -35,6 +43,7 @@ enum HUDPageCommand: Equatable {
         if core.last == "please" { core.removeLast() }
 
         if let position = diagramPosition(core) { return .diagram(position) }
+        if let zoom = zoomInto(core) { return zoom }
 
         switch core.joined(separator: " ") {
         case "zoom in", "closer", "zoom closer", "get closer":
@@ -77,6 +86,35 @@ enum HUDPageCommand: Equatable {
             return .close
         default:
             return nil
+        }
+    }
+
+    /// Plan MG §4: "zoom in on the bottom right", "zoom into the table", "closer at the top",
+    /// "get closer to the left". A zoom word, then a place; the whole utterance, so "zoom in on the
+    /// wiring" stays a request.
+    private static func zoomInto(_ words: [String]) -> HUDPageCommand? {
+        let leads: [[String]] = [
+            ["zoom", "in", "on"], ["zoom", "into"], ["zoom", "in", "to"], ["zoom", "in", "at"],
+            ["closer", "at"], ["closer", "on"], ["closer", "to"], ["get", "closer", "to"],
+            ["get", "closer", "at"], ["go", "closer", "to"],
+        ]
+        guard let lead = leads.first(where: { words.starts(with: $0) }) else { return nil }
+        var place = Array(words.dropFirst(lead.count))
+        if place.first == "the" { place.removeFirst() }
+        if place.last == "corner", place.count == 3 { place.removeLast() }
+        switch place.joined(separator: " ") {
+        case "table": return .zoomIntoTable
+        case "diagram", "drawing", "figure": return .zoomIntoDiagram
+        case "top left": return .zoomInto(.topLeft)
+        case "top", "top middle": return .zoomInto(.top)
+        case "top right": return .zoomInto(.topRight)
+        case "left", "left side": return .zoomInto(.left)
+        case "middle", "centre", "center": return .zoomInto(.centre)
+        case "right", "right side": return .zoomInto(.right)
+        case "bottom left": return .zoomInto(.bottomLeft)
+        case "bottom", "bottom middle": return .zoomInto(.bottom)
+        case "bottom right": return .zoomInto(.bottomRight)
+        default: return nil
         }
     }
 

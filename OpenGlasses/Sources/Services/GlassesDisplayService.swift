@@ -516,6 +516,10 @@ final class GlassesDisplayService: ObservableObject {
     /// Set by `HUDAnswerCard`: the lens is ours again and an answer card is held. The card shows
     /// itself again if it is still inside its lifetime, or closes.
     var onLensReturnedToAnswerCard: (() -> Void)?
+    /// Set by `HUDAnswerCard` (Plan MG §3): the glasses' link came up (`true`) or went down.
+    var onGlassesLinkChanged: ((Bool) -> Void)?
+    /// Set by `HUDAnswerCard` (Plan MG §3): the HUD was turned off.
+    var onHUDTurnedOff: (() -> Void)?
 
     /// While another app has the Display, nothing is enqueued for the lens.
     private var holdsLens: Bool { displayAvailability == .inUse }
@@ -584,7 +588,9 @@ final class GlassesDisplayService: ObservableObject {
         guard connected != glassesConnected || worn != glassesWorn else { return }
         // Plan LC §2.2: a link coming up is a fresh start; a dismissal does not outlive it.
         if connected && !glassesConnected { wearerLed() }
+        let linkChanged = connected != glassesConnected
         glassesConnected = connected
+        if linkChanged { onGlassesLinkChanged?(connected) }
         glassesWorn = worn
         refreshAvailability()
     }
@@ -1067,6 +1073,8 @@ final class GlassesDisplayService: ObservableObject {
     /// Fully tear down the display transport. Call on feature disable / mode switch /
     /// app teardown.
     func shutdown() async {
+        // Plan MG §3: the HUD turned off ends what the lens remembers of the conversation.
+        if !isEnabled { onHUDTurnedOff?() }
         pending = nil
         await activeBackend.shutdown()
         isDisplayActive = false
@@ -1224,10 +1232,10 @@ final class GlassesDisplayService: ObservableObject {
                         } else if self.deviceSupportsDisplay() {
                             let backend = self.activeBackend
                             let sent = Self.screen(screen, forBackendDrawingPictures: backend.drawsPictures)
-                            sentKind = sent.picture != nil ? .picture : .screen
+                            sentKind = sent.hasPictures ? .picture : .screen
                             try await backend.send(screen: sent)
                             self.isDisplayActive = true
-                            if sent.picture != nil {
+                            if sent.hasPictures {
                                 self.onPictureSent?(backend.lastPictureBytes, Self.milliseconds(since: started))
                             }
                             self.recordSend(sentKind, started: started, outcome: .sent)
@@ -1263,7 +1271,7 @@ final class GlassesDisplayService: ObservableObject {
                     if sentKind == .picture, case .screen(var screen) = frame, self.pending == nil,
                        Self.retriesWithoutPicture(after: error) {
                         self.recordSend(.picture, started: started, outcome: .retriedWithoutPicture)
-                        screen.picture = nil
+                        screen = screen.withoutPictures()
                         if let screenKey { self.retriedScreen = (screen.renderKey, screenKey) }
                         self.pending = .screen(screen)
                         continue
@@ -1287,10 +1295,8 @@ final class GlassesDisplayService: ObservableObject {
     /// Plan KV §6: the screen as a backend gets it. One that does not draw pictures is never handed
     /// one: it gets the same screen without it, and renders the text lines as before.
     static func screen(_ screen: HUDScreen, forBackendDrawingPictures drawsPictures: Bool) -> HUDScreen {
-        guard !drawsPictures, screen.picture != nil else { return screen }
-        var stripped = screen
-        stripped.picture = nil
-        return stripped
+        guard !drawsPictures, screen.hasPictures else { return screen }
+        return screen.withoutPictures()
     }
 
     private func updateMirror(for op: RenderOp) {
@@ -1315,6 +1321,16 @@ final class GlassesDisplayService: ObservableObject {
 
     // `previewFlexBox(for:)` — the on-phone FlexBox mirror — lives in
     // MetaDisplayBackend.swift (the SDK-importing file) as an extension of this class.
+
+    /// Test helper (Plan MG §2): the `onTap` actions of `screen`'s tappable blocks in the rendered
+    /// tree, in column order, as a band press on each would fire them.
+    func testInteractiveBlockActions(for screen: HUDScreen) -> [() -> Void] {
+        #if !AVENKIN_PHONE_ONLY
+        return metaBackend.testBlockActions(for: screen)
+        #else
+        return screen.allBlocks.map { block in { [weak self] in self?.screenSelectionHandler?(block.id) } }
+        #endif
+    }
 
     /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
     /// rendered tree, in order, so a test can simulate Neural-Band selections without

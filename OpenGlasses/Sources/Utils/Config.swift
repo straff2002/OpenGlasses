@@ -4180,6 +4180,13 @@ struct Config {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: LensHighlightColour.storageKey) }
     }
 
+    /// Display & HUD › Answers on the lens (Plan MG decision 5): on the Meta Display, an answer is
+    /// one view the band scrolls (Scroll, the default) or pages turned with Next (Pages).
+    static var lensAnswerStyle: LensAnswerStyle {
+        get { LensAnswerStyle.stored() }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: LensAnswerStyle.storageKey) }
+    }
+
     /// Plan KP §4: the same follow-ups when only the web mirror shows answers (no display). Off by
     /// default (decision 5): the mirror is read-only, so its buttons can't be pressed there.
     @UserDefaultsBacked("followUpsOnMirrorEnabled", default: false) static var followUpsOnMirrorEnabled: Bool

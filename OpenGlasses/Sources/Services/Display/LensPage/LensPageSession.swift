@@ -130,6 +130,13 @@ final class LensPageSession: ObservableObject {
     }
     /// Test seam: what "now" is for the render timings.
     var clock: () -> ContinuousClock.Instant = { ContinuousClock.now }
+    /// Plan MG §4: the whole page as tiles to point at (they replace **Zoom in**), and a zoomed
+    /// view as a strip of slices the lens scrolls (so **Move** keeps only ← · → · Done). AppState
+    /// turns it on; off, every view is one picture, as before.
+    var tilesAndStrips = false
+    /// Plan MG §4: how many of the views one press away (`LensPageViewport.neighbours()`) are drawn
+    /// ahead after each frame, most likely first. The cache holds `LensPageRenderCache.capacity`.
+    static let renderAheadLimit = 4
 
     // MARK: State
 
@@ -302,7 +309,7 @@ final class LensPageSession: ObservableObject {
                 return
             }
             let state = Self.openingState(layout, page: page, hasNextPage: self.pageIndex + 1 < self.pages.count,
-                                          geometry: self.readingGeometry())
+                                          geometry: self.readingGeometry(), tilesAndStrips: self.tilesAndStrips)
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request) else {
                 guard opening == self.generation else { return }
                 self.renderFailed(page)
@@ -324,6 +331,7 @@ final class LensPageSession: ObservableObject {
                               detail: PrivacyToken(self.backend()))
             self.recordWhenDelivered(.opened, screen: screen, page: page, state: state)
             self.armTimer(self.viewLifetime)
+            self.renderAhead(state, page: page, layout: layout, request: request)
         }
     }
 
@@ -332,8 +340,12 @@ final class LensPageSession: ObservableObject {
     /// A band press acts on the buttons of the frame last drawn.
     private var selectionHandler: (String) -> Void {
         { [weak self] id in
-            guard let item = self?.shownScreen?.items.first(where: { $0.id == id }) else { return }
-            item.action()
+            guard let shown = self?.shownScreen else { return }
+            if let item = shown.items.first(where: { $0.id == id }) {
+                item.action()
+            } else {
+                shown.block(id: id)?.action?()   // Plan MG §4: a tile or a slice
+            }
         }
     }
 
@@ -349,8 +361,13 @@ final class LensPageSession: ObservableObject {
     /// nothing is held or the frame has no such button.
     @discardableResult
     func press(itemID id: String) -> Bool {
-        guard held != nil, let item = shownScreen?.items.first(where: { $0.id == id }) else { return false }
-        item.action()
+        guard held != nil, let shown = shownScreen else { return false }
+        if let item = shown.items.first(where: { $0.id == id }) {
+            item.action()
+            return true
+        }
+        guard let action = shown.block(id: id)?.action else { return false }
+        action()
         return true
     }
 
@@ -413,6 +430,19 @@ final class LensPageSession: ObservableObject {
             next.isReading = true
             next.isMoving = false
             event = .reading
+        case .tile(let area):
+            guard shown.showsTiles else { return }
+            let tile = LensPageTileGrid.tiles(pageSize: shown.viewport.pageSize, box: shown.viewport.box)
+                .first { $0.area == area }
+            guard let tile else { return }
+            next.viewport.zoom(rungs: LensPageViewport.pointZoomRungs, around: tile.center)
+            event = .zoomed
+        case .slice(let index):
+            guard shown.showsStrip, shown.viewport.canZoomIn,
+                  let center = LensPageStrip(viewport: shown.viewport).center(ofSlice: index) else { return }
+            next.viewport.zoom(rungs: 1, around: center)
+            next.isMoving = false
+            event = .zoomed
         }
         next.isFirstFrame = false
         next = next.framed()
@@ -482,6 +512,30 @@ final class LensPageSession: ObservableObject {
         case .next, .showPage:
             // Picture words only in reading mode: "next" here is left to whatever is under the view.
             return false
+        case .zoomInto(let area):
+            var next = shown
+            next.viewport.zoom(into: area)
+            next.isMoving = false
+            next.isFirstFrame = false
+            next = next.framed()
+            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
+            draw(next, event: .zoomed, issuedAgainst: revision)
+        case .zoomIntoTable, .zoomIntoDiagram:
+            guard let layout = currentLayout else { return false }
+            var next = shown
+            if command == .zoomIntoTable {
+                guard let viewport = layout.viewportOnTable() else { return false }
+                next.viewport = viewport
+            } else {
+                guard let target = layout.figureIndex ?? (layout.drawings.isEmpty ? nil : 0),
+                      let viewport = layout.viewport(onDrawing: target) else { return false }
+                next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
+            }
+            next.isMoving = false
+            next.isFirstFrame = false
+            next = next.framed()
+            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
+            draw(next, event: .zoomed, issuedAgainst: revision)
         }
         return true
     }
@@ -510,7 +564,7 @@ final class LensPageSession: ObservableObject {
             handle(.nextPage, issuedAgainst: revision)
         case .close:
             close()
-        case .zoomIn, .zoomOut, .move, .corner, .nextDiagram, .diagram:
+        case .zoomIn, .zoomOut, .move, .corner, .nextDiagram, .diagram, .zoomInto, .zoomIntoTable, .zoomIntoDiagram:
             return false
         }
         return true
@@ -522,10 +576,12 @@ final class LensPageSession: ObservableObject {
     /// The view's first state on a page: its opening viewport, and its drawings for **Next
     /// diagram ›**.
     static func openingState(_ layout: LensPageLayout, page: Page, hasNextPage: Bool,
-                             geometry: TeleprompterPaginator.Geometry = .raybanDisplay) -> HUDPageViewState {
+                             geometry: TeleprompterPaginator.Geometry = .raybanDisplay,
+                             tilesAndStrips: Bool = false) -> HUDPageViewState {
         var state = HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
                                      citation: citation(for: page.staged), hasNextPage: hasNextPage,
                                      diagramCount: layout.drawings.count, diagramIndex: layout.openingDrawing)
+        state.tilesAndStrips = tilesAndStrips
         if let reading = layout.reading {
             state.readingPages = reading.pages(geometry: geometry)
             state.isReading = !state.readingPages.isEmpty
@@ -593,7 +649,37 @@ final class LensPageSession: ObservableObject {
             default: break
             }
             if let event { self.recordWhenDelivered(event, screen: screen, page: page, state: next) }
+            self.renderAhead(next, page: page, layout: layout, request: request)
         }
+    }
+
+    /// Plan MG §4: draw the pictures of the views one press away while the wearer looks, so the
+    /// press only sends. Off the main actor (the renderer and the slicer run detached); timed into
+    /// the report's render times like any picture.
+    private func renderAhead(_ state: HUDPageViewState, page: Page, layout: LensPageLayout,
+                             request: LensPageRequest) {
+        guard tilesAndStrips, !state.isReading else { return }
+        let neighbours = state.viewport.neighbours().prefix(Self.renderAheadLimit)
+        track { [weak self] in
+            guard let self else { return }
+            for viewport in neighbours {
+                var ahead = state
+                ahead.viewport = viewport
+                ahead.isFirstFrame = false
+                ahead.isMoving = false
+                _ = await self.picture(for: Self.renderPlan(ahead.framed(), layout: layout), page: page, request: request)
+            }
+        }
+    }
+
+    /// The picture a state draws from: the crop at its box, or for a zoomed view in a strip, the
+    /// crop's column of the page from its top down (`LensPageStrip`).
+    static func renderPlan(_ state: HUDPageViewState, layout: LensPageLayout) -> LensPageRenderPlan {
+        guard state.showsStrip else { return LensPageRenderPlan(layout: layout, viewport: state.viewport) }
+        let strip = LensPageStrip(viewport: state.viewport)
+        return LensPageRenderPlan(pageSize: layout.pageSize, crop: strip.rect, tone: layout.tone,
+                                  passageMarks: layout.marks, pictureAreas: layout.pictureAreas,
+                                  showsPosition: false, outputSize: strip.outputSize)
     }
 
     private func goToNextPage(issuedAgainst revision: UInt64) {
@@ -609,7 +695,7 @@ final class LensPageSession: ObservableObject {
             guard let self else { return }
             guard let layout = await self.layout(for: page, request: request) else { return }
             let state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count,
-                                          geometry: self.readingGeometry())
+                                          geometry: self.readingGeometry(), tilesAndStrips: self.tilesAndStrips)
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request),
                   drawing == self.generation else { return }
             guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
@@ -690,7 +776,8 @@ final class LensPageSession: ObservableObject {
             guard let self, let layout = await self.layout(for: page, request: request) else { return }
             // The pictures the first presses want: the opening view (or, opening on the words, the
             // picture **Page** shows) and the whole page, each in the box its frame leaves.
-            let opening = Self.openingState(layout, page: page, hasNextPage: false, geometry: self.readingGeometry())
+            let opening = Self.openingState(layout, page: page, hasNextPage: false, geometry: self.readingGeometry(),
+                                            tilesAndStrips: self.tilesAndStrips)
             var first = opening.isReading ? Self.pictureState(opening, layout: layout) : opening
             var whole = first
             whole.isFirstFrame = false
@@ -698,8 +785,7 @@ final class LensPageSession: ObservableObject {
             whole = whole.framed()
             first = first.framed()
             for state in [first, whole] {
-                _ = await self.picture(for: LensPageRenderPlan(layout: layout, viewport: state.viewport),
-                                       page: page, request: request)
+                _ = await self.picture(for: Self.renderPlan(state, layout: layout), page: page, request: request)
             }
         }
     }
@@ -747,11 +833,43 @@ final class LensPageSession: ObservableObject {
                         request: LensPageRequest) async -> HUDScreen? {
         // Reading mode is text: nothing to draw.
         if state.isReading { return HUDPageScreenBuilder.screen(state, onAction: onAction) }
-        guard let picture = await picture(for: LensPageRenderPlan(layout: layout, viewport: state.viewport),
-                                          page: page, request: request) else { return nil }
+        let plan = Self.renderPlan(state, layout: layout)
+        guard let picture = await picture(for: plan, page: page, request: request) else { return nil }
         var screen = HUDPageScreenBuilder.screen(state, onAction: onAction)
-        screen.picture = picture
+        if state.showsTiles {
+            // Plan MG §4: the whole page as nine tiles, each cut from the whole page's picture at the
+            // size it is drawn on the lens.
+            let tiles = LensPageTileGrid.tiles(pageSize: layout.pageSize, box: state.viewport.box)
+            let pieces = tiles.map { (source: plan.toOutput($0.crop), size: $0.drawnSize) }
+            let images = await Self.slice(picture.image, plannedSize: plan.outputSize, pieces: pieces)
+            guard images.count == tiles.count else { return nil }
+            let entries = zip(tiles, images).enumerated().map { index, pair in
+                (tile: pair.0, picture: HUDPicture(image: pair.1, pixelSize: pair.0.drawnSize,
+                                                   contentKey: picture.contentKey + "#t\(index)"))
+            }
+            screen.flow = HUDPageScreenBuilder.tileRows(entries, onAction: onAction)
+        } else if state.showsStrip {
+            // Plan MG §4: a zoomed view as the crop's column of the page, in slices under the row.
+            let strip = LensPageStrip(viewport: state.viewport)
+            let pieces = strip.slices.map { (source: $0, size: $0.size) }
+            let images = await Self.slice(picture.image, plannedSize: plan.outputSize, pieces: pieces)
+            guard images.count == strip.slices.count else { return nil }
+            let slices = zip(strip.slices, images).enumerated().map { index, pair in
+                HUDPicture(image: pair.1, pixelSize: pair.0.size, contentKey: picture.contentKey + "#s\(index)")
+            }
+            screen.trailingFlow = HUDPageScreenBuilder.stripSlices(slices, onAction: onAction)
+        } else {
+            screen.picture = picture
+        }
         return screen
+    }
+
+    /// Cut a drawn picture into pieces, off the main actor.
+    private static func slice(_ image: UIImage, plannedSize: CGSize,
+                              pieces: [(source: CGRect, size: CGSize)]) async -> [UIImage] {
+        await Task.detached(priority: .userInitiated) {
+            LensPageSlicer.slice(image, plannedSize: plannedSize, pieces: pieces)
+        }.value
     }
 
     private func renderFailed(_ page: Page) {

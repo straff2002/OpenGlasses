@@ -114,6 +114,14 @@ struct LensPageLayout: Equatable {
                              legibility: Self.legibility(of: drawings[index]), citation: false)
     }
 
+    /// Plan MG §4: the view opened on the page's table area ("zoom into the table"), on a later
+    /// frame; nil on a page with none.
+    func viewportOnTable() -> LensPageViewport? {
+        guard let area = pictureAreas.first else { return nil }
+        return Self.viewport(opening: LensPageFocus.pick(pageSize: pageSize, pictureAreas: [area]),
+                             legibility: legibility, citation: false)
+    }
+
     /// The picture opened on passage `number`'s mark (reading mode's **Page**), on a later frame;
     /// all the marks when that one isn't on the page.
     func viewport(onPassage number: Int?) -> LensPageViewport {

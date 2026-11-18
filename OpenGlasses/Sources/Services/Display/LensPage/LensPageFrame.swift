@@ -53,6 +53,12 @@ enum LensPageFrame {
     static let metaLinePixels: CGFloat = 30
     /// A body line ("Zoom in for labels", a reading page's text).
     static let bodyLinePixels: CGFloat = 38
+    /// Plan MG §2: the padding inside a tappable block drawn on a card (a reading-view row, a
+    /// collapsed earlier turn), each side.
+    static let cardPaddingPixels: CGFloat = 8
+    /// Plan MG §4: the gap between a page's tiles across a row (measured on the simulated Display:
+    /// three tiles 186 px wide with 8 px gaps fill the column).
+    static let tileGapPixels: CGFloat = 8
 
     /// The column's width: the canvas less the padding either side. The picture is this wide.
     static var contentWidthPixels: CGFloat { CGFloat(canvas.widthPixels) - 2 * paddingPixels }

@@ -94,8 +94,10 @@ struct WebHUDPayload: Codable, Equatable {
         return payload
     }
 
+    /// Plan MG §2: the column, top to bottom — the screen's lines, its blocks' lines, and what
+    /// follows its button row. The mirror's page scrolls, and its buttons stay under the column.
     private static func lines(_ screen: HUDScreen) -> [Line] {
-        screen.lines.map {
+        (screen.linesBeforeItems + screen.linesAfterItems).map {
             Line(text: $0.text, icon: Self.iconName($0.icon), emphasis: Self.emphasisName($0.emphasis))
         }
     }

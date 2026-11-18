@@ -144,6 +144,69 @@ enum HUDVideoEnding: String, Equatable {
     case ended, stopped, failed
 }
 
+/// Plan MG §2: a tappable block on the lens — a few lines of text (a reading-view row, a collapsed
+/// earlier turn) or a picture (a page tile, a slice of a zoomed strip) — with an id a press routes
+/// back by, as a button's does. On the Meta Display it is a `FlexBox` with `.onTap`; with `.card`
+/// it is drawn on a card, which is the only way the lens shows focus on a box (measured on the
+/// simulated Display). `.plain` draws no card, so a stack of picture slices stays seamless and the
+/// lens still steps focus (and so its scroll) from one to the next. Text backends draw its lines.
+struct HUDBlock: Identifiable {
+    enum Style: Equatable {
+        case card
+        case plain
+    }
+
+    let id: String
+    var lines: [HUDLine]
+    var picture: HUDPicture?
+    var style: Style
+    /// What a press on it does; nil for a block that only takes focus.
+    var action: (() -> Void)?
+
+    init(id: String, lines: [HUDLine] = [], picture: HUDPicture? = nil, style: Style = .card,
+         action: (() -> Void)? = nil) {
+        self.id = id
+        self.lines = lines
+        self.picture = picture
+        self.style = style
+        self.action = action
+    }
+
+    var renderKey: String {
+        var key = "\(id)#\(style == .card ? "c" : "p")#"
+            + lines.map { "\($0.emphasis):\($0.icon):\($0.text)" }.joined(separator: "¦")
+        if let picture { key += "#pic:\(picture.contentKey)" }
+        return key
+    }
+}
+
+/// Plan MG §2: one element of a screen's column beyond its own lines: a line, or a row of blocks
+/// (one block takes the column's width; several sit side by side, as a page's tiles do).
+enum HUDFlowElement {
+    case line(HUDLine)
+    case blocks([HUDBlock])
+
+    var renderKey: String {
+        switch self {
+        case .line(let line): return "L:\(line.emphasis):\(line.icon):\(line.text)"
+        case .blocks(let blocks): return "B[" + blocks.map(\.renderKey).joined(separator: ",") + "]"
+        }
+    }
+
+    /// The element's text lines, in order (a block's lines after one another).
+    var lines: [HUDLine] {
+        switch self {
+        case .line(let line): return [line]
+        case .blocks(let blocks): return blocks.flatMap(\.lines)
+        }
+    }
+
+    var blocks: [HUDBlock] {
+        if case .blocks(let blocks) = self { return blocks }
+        return []
+    }
+}
+
 /// One renderable interactive screen.
 struct HUDScreen {
     let title: String?
@@ -171,6 +234,17 @@ struct HUDScreen {
     /// part of `renderKey`: the key is what the lens shows.
     var mirror: HUDMirrorRedaction?
 
+    /// Plan MG §2: the column after the screen's lines and before its picture and button row: the
+    /// reading view's rows, a page's tiles.
+    var flow: [HUDFlowElement] = []
+    /// Plan MG §2: the column after the button row: the reading view's earlier turns, a zoomed
+    /// page's strip of slices.
+    var trailingFlow: [HUDFlowElement] = []
+    /// Plan MG §2: no button takes focus when the screen renders, so the first tappable block does
+    /// and the lens opens at the top (measured on the simulated Display: a primary button anywhere
+    /// in a tall column opens the lens scrolled to it). Part of `renderKey` only when set.
+    var focusesFirstBlock = false
+
     init(title: String? = nil, lines: [HUDLine] = [], items: [HUDItem] = [], focusItemID: String? = nil) {
         self.title = title
         self.lines = lines
@@ -184,6 +258,7 @@ struct HUDScreen {
     /// is ever marked, so focus never depends on which of several "primary" buttons the firmware
     /// happens to take.
     var resolvedFocusItemID: String? {
+        if focusesFirstBlock, !allBlocks.isEmpty { return nil }
         if let focusItemID, items.contains(where: { $0.id == focusItemID }) { return focusItemID }
         return items.first(where: { $0.style == .primary })?.id
             ?? items.first(where: { $0.style == .secondary })?.id
@@ -202,7 +277,49 @@ struct HUDScreen {
             if picture.placement == .aboveLines { key += "^" }
         }
         if let focusItemID { key += "|focus:\(focusItemID)" }
+        if !flow.isEmpty { key += "|flow:" + flow.map(\.renderKey).joined(separator: "¦") }
+        if !trailingFlow.isEmpty { key += "|after:" + trailingFlow.map(\.renderKey).joined(separator: "¦") }
+        if focusesFirstBlock { key += "|focus:first-block" }
         return key
+    }
+
+    /// Every block on the screen, in column order.
+    var allBlocks: [HUDBlock] { (flow + trailingFlow).flatMap(\.blocks) }
+
+    /// The block `id` names, if the screen has one.
+    func block(id: String) -> HUDBlock? { allBlocks.first { $0.id == id } }
+
+    /// Every text line in column order — the screen's own, then the flow's, then (after the
+    /// buttons) the trailing flow's — for a backend that draws text only (Even, the web mirror).
+    var linesBeforeItems: [HUDLine] { lines + flow.flatMap(\.lines) }
+    var linesAfterItems: [HUDLine] { trailingFlow.flatMap(\.lines) }
+
+    /// Whether anything on the screen is a picture: its own, or a block's.
+    var hasPictures: Bool { picture != nil || allBlocks.contains { $0.picture != nil } }
+
+    /// The screen with no pictures at all: the one a backend that draws none gets, and the one a
+    /// picture frame that failed is sent again as. Blocks keep their lines; a block that was only a
+    /// picture goes.
+    func withoutPictures() -> HUDScreen {
+        var copy = self
+        copy.picture = nil
+        func strip(_ elements: [HUDFlowElement]) -> [HUDFlowElement] {
+            elements.compactMap { element in
+                switch element {
+                case .line: return element
+                case .blocks(let blocks):
+                    let kept = blocks.compactMap { block -> HUDBlock? in
+                        var plain = block
+                        plain.picture = nil
+                        return plain.lines.isEmpty ? nil : plain
+                    }
+                    return kept.isEmpty ? nil : .blocks(kept)
+                }
+            }
+        }
+        copy.flow = strip(flow)
+        copy.trailingFlow = strip(trailingFlow)
+        return copy
     }
 }
 

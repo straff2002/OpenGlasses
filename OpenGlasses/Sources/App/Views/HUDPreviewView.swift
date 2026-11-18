@@ -360,9 +360,26 @@ private struct ComponentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .layoutPriority(-1)
                 .accessibilityLabel(SwiftUI.Text("Manual page", comment: "HUD preview: the manual page picture shown on the lens."))
+        } else if image.sizePreset == .fill, let inline = Self.inlineImage(image.uri) {
+            // Plan MG §4: a page's tile or a strip's slice — each block carries its own picture,
+            // drawn as on the lens, one image pixel to one lens pixel.
+            SwiftUI.Image(uiImage: inline)
+                .resizable()
+                .interpolation(.medium)
+                .frame(width: fit.points(inline.size.width * inline.scale),
+                       height: fit.points(inline.size.height * inline.scale))
+                .accessibilityLabel(SwiftUI.Text("Manual page", comment: "HUD preview: the manual page picture shown on the lens."))
         } else {
             uriImageView(image)
         }
+    }
+
+    /// The picture a `data:` URI carries, decoded on the spot (a tile is a few kilobytes).
+    private static func inlineImage(_ uri: String) -> UIImage? {
+        guard uri.hasPrefix("data:"), let comma = uri.firstIndex(of: ","),
+              uri[..<comma].hasSuffix(";base64"),
+              let data = Data(base64Encoded: String(uri[uri.index(after: comma)...])) else { return nil }
+        return UIImage(data: data, scale: 1)
     }
 
     @ViewBuilder

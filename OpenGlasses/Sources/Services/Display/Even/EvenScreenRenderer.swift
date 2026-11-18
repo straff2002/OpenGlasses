@@ -57,7 +57,8 @@ enum EvenScreenRenderer {
         if let title = screen.title, !title.isEmpty {
             lines.append(HUDTextShaper.condense(title, max: charBudget))
         }
-        for line in screen.lines {
+        // Plan MG §2: a screen's blocks are drawn as their lines, in column order.
+        func append(_ line: HUDLine) {
             let condensed = HUDTextShaper.condense(line.text, max: charBudget - 4)
             let glyphed = prefixed(iconGlyph(line.icon), condensed)
             switch line.emphasis {
@@ -66,10 +67,12 @@ enum EvenScreenRenderer {
             case .meta: lines.append("· " + glyphed)
             }
         }
+        screen.linesBeforeItems.forEach(append)
         for (index, item) in screen.items.enumerated() {
             let label = HUDTextShaper.condense(item.label, max: charBudget - 4)
             lines.append("\(index + 1). \(label)")
         }
+        screen.linesAfterItems.forEach(append)
         return .lines(Array(lines.prefix(maxLines)))
     }
 

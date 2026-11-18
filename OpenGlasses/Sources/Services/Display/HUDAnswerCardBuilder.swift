@@ -17,6 +17,12 @@ enum HUDAnswerAction: Equatable {
     case followUp(index: Int, text: String)
     /// Plan KV §4: open the page the turn staged, on the lens.
     case page
+    /// Plan MG §2: a press on a reading-view row — say the answer again from that row (decision 3).
+    case repeatFrom(row: Int, text: String)
+    /// Plan MG §2: open an earlier turn at the top of the reading view.
+    case openTurn(id: Int)
+    /// Plan MG §2: back from an earlier turn to the newest (**‹ Latest**).
+    case latest
 }
 
 /// Builds the answer card's `HUDScreen`s from the pager's pages and the answer's follow-ups
