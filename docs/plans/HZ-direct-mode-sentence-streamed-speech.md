@@ -2,7 +2,8 @@
 
 **Status:** 🚧 P0 + P1 built 2026-10-21 (one PR), behind `Config.directSentenceStreamingEnabled`,
 **default off**; P2's device measurement through Plan [CU](CU-voice-turn-latency.md)'s `ttsLeadIn`
-is owed and decides the default. Drafted 2026-10-10. What shipped and where it differs from the
+is owed and decides the default. **2026-11-18:** a finished reply is now said in parts whatever the
+switch says ([below](#finished-replies-said-in-parts-2026-11-18)). Drafted 2026-10-10. What shipped and where it differs from the
 design below: [Built 2026-10-21](#built-2026-10-21).
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3 row
 "Direct-mode replies are not sentence-streamed"; section 5; Appendix B claim 4).
@@ -234,6 +235,27 @@ P0 and P1 in one PR. The flag is off, so nothing changes for a wearer until P2.
 supersede, the switched-off path, and the real service with a scripted synthesizer: `stopSpeaking`
 mid-reply, and the gateway's `speakStreaming`), and a recorder-driven streamed turn in
 `TurnTimelineTests`.
+
+## Finished replies said in parts (2026-11-18)
+
+A b705 tester: "even when there is already an answer in the chat box, it still waits 10 seconds to
+read it out." With the switch off (the default), a reply goes to the cloud voice as one request and
+nothing plays until the whole file is back, which for a few paragraphs is many seconds after the
+text is on screen. Now `speakReporting` says a finished `.reply` in parts through the same
+`StreamedReplyQueue` (`WholeReplyParts`): the first sentence alone, then the rest packed to 280
+characters, with up to two parts synthesising while one plays. The first sentence is heard after one
+short request, and the words are the same. This does not depend on the switch. It also covers the
+replies this plan cannot stream (Gemini Direct, the on-device agent, Apple's model) and the rest of
+a reply the switch streamed.
+
+Unchanged: a one-sentence reply, a chain that starts with the system voice (which speaks live),
+withheld speech, urgent lines and anything that is not a reply still go out whole. The reply goes
+to the lens once, whole, as before (the queue's `mirrorsSentences` is off), and the outcome is
+`completed` only when every part played. Unlike `speak`, an utterance already playing finishes
+before the reply starts rather than being cut off. That is how a streamed reply always treated a
+model-switch notice. The `wholeReplyInParts` log line names the first engine and how many parts.
+A device check is owed: time from the bubble to the first word with ElevenLabs on a
+long answer, and no audible gap between parts.
 
 ## Open questions
 

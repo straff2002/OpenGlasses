@@ -139,7 +139,10 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   it back (`release`) rather than stopping it; it stops when neither holds it. Two sessions of our
   own refused each other (`sessionAlreadyExists`, build 705). Neither starts a session the other is
   already `starting`. A photo can stop the Display under the live session (Meta known issue): the
-  backend hears it and the service redraws (`lensInterrupted`). `SharedDeviceSessionTests` fails
+  backend hears it and the service redraws (`lensInterrupted`). Handing the session back does not
+  stop a capability on it, so the lens **stops its Display first** and the next `addDisplay()`
+  waits for it to reach `stopped` (`DisplayStopWait`); one left running made every later
+  `addDisplay()` fail `capabilityAlreadyActive` (build 717). `SharedDeviceSessionTests` fails
   on any other `createSession(deviceSelector:)`.
   `DeviceSession.device` (1.0.0) is the live `Device?` snapshot for the session's device.
 - `Camera` — owns the camera hardware resource (0.9.0); `camera.stream` is the streaming session,

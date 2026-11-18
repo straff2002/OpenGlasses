@@ -176,6 +176,11 @@ struct MedicalCompliancePaywallView: View {
                         Text(product.displayPrice + (isAnnual ? "/year" : "/month"))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        if let terms = storeKit.offerTerms(for: product) {
+                            Text(terms.line())
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.primary)
+                        }
                         if isAnnual, let monthly = storeKit.monthlyProduct {
                             let monthlyAnnualized = monthly.price * 12
                             let savings = monthlyAnnualized - product.price

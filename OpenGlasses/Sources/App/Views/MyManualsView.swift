@@ -318,6 +318,11 @@ private struct MyManualsPlanButtons: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(store.isPurchasing || store.isRestoring)
+            if let terms = store.offerTerms(for: product) {
+                Text(terms.line())
+                    .font(.footnote.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
         }
         if let error = store.myManualsCatalogError { Text(error).font(.caption).foregroundStyle(.secondary) }
         if !store.isLoadingProducts, store.myManualsProducts.count < StoreKitService.myManualsCatalogProductIds.count {

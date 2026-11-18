@@ -41,9 +41,10 @@ protocol StreamedSpeechBackend: AnyObject {
     /// playing, stop the thinking sound, hold other audio).
     func beginStreamedPlayback() async
     /// Play one prepared sentence to its end, or until it is stopped, and say how it ended.
-    /// `source` is the reply's own (Plan KL P4), for the `speaking` log line.
+    /// `source` is the reply's own (Plan KL P4), for the `speaking` log line. `mirror` is false for
+    /// a finished reply said in parts, which went to the lens whole before its first part played.
     func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
-                              source: SpeechSource) async -> SpeechDeliveryOutcome
+                              source: SpeechSource, mirror: Bool) async -> SpeechDeliveryOutcome
     /// The reply is over, however it ended.
     func streamedReplyDidEnd(_ queue: StreamedReplyQueue, record: StreamedReplyRecord,
                              playbackBegan: Bool) async
@@ -78,6 +79,9 @@ final class StreamedReplyQueue {
     private(set) var interruption: SpeechDeliveryOutcome.Interruption?
     /// Called once, when the first sentence is about to play.
     var onPlaybackBegan: (() -> Void)?
+    /// Each sentence is mirrored to the lens as it plays. Off for a finished reply said in parts
+    /// (`WholeReplyParts`), which the lens already has whole.
+    var mirrorsSentences = true
 
     init(backend: any StreamedSpeechBackend, source: SpeechSource,
          prefetchDepth: Int = StreamedReplySchedule.defaultPrefetchDepth,
@@ -218,7 +222,7 @@ final class StreamedReplyQueue {
         }
         let text = schedule.items[index].text
         let outcome = await backend.playStreamedSentence(text, audio: prepared, engine: engine,
-                                                     source: source)
+                                                     source: source, mirror: mirrorsSentences)
         guard !schedule.isCancelled else { return }
         switch outcome {
         case .interrupted(let by):

@@ -505,6 +505,12 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         guard !SpokenSymbolExpander.spokenForm(of: unlinked).isEmpty else {
             return .failed(reason: "nothing to say")
         }
+        // A finished reply long enough to take a cloud voice a while is said in parts, so its first
+        // sentence is heard while the rest is synthesised (`WholeReplyParts`).
+        if source == .reply, urgency == .low, mirrorToHUD, !onDeviceOnly,
+           let outcome = await speakFinishedReplyInParts(unlinked) {
+            return outcome
+        }
         lastSpokenText = unlinked
         activeRateMultiplier = urgency.rateMultiplier
         let text = urgency.prefix + unlinked
@@ -600,6 +606,35 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         if outcome == .completed, gen == speechGeneration {
             await speakDisplayBusyHintIfOwed(afterLineFrom: source)
         }
+        return outcome
+    }
+
+    /// Say a finished reply in parts through a streamed-reply queue: the first sentence is
+    /// synthesised alone and plays while the next parts are prepared. Nil when there is nothing to
+    /// gain or the whole-utterance path must decide — one part, speech withheld, or a chain that
+    /// starts with the system voice (it speaks live, with no synthesis to wait for) — and the
+    /// caller says the reply whole, as before.
+    ///
+    /// The reply goes to the lens whole first, exactly as `speakReporting` mirrors it; the parts are
+    /// not mirrored again. An utterance already playing finishes first (`beginStreamedPlayback`).
+    private func speakFinishedReplyInParts(_ reply: String) async -> SpeechDeliveryOutcome? {
+        guard currentSuppression() == nil,
+              let firstEngine = engineChain(urgency: .low, onDeviceOnly: false).first,
+              firstEngine != .system else { return nil }
+        let parts = WholeReplyParts.parts(of: reply)
+        guard parts.count > 1 else { return nil }
+        PrivacyLog.tts(.wholeReplyInParts, engine: PrivacyToken(firstEngine.rawValue),
+                       characters: reply.count, count: parts.count)
+        lastSpokenText = reply
+        mirrorToGlasses(reply, source: .reply, streamed: false)
+        let queue = beginStreamedReply(source: .reply)
+        queue.mirrorsSentences = false
+        for part in parts { queue.enqueue(part) }
+        let record = await queue.finish()
+        // Playback stops the thinking sound as it begins; a reply cut off before then stops it here.
+        stopThinkingSound()
+        let outcome = WholeReplyParts.outcome(of: record)
+        PrivacyLog.tts(.playbackReported, detail: PrivacyToken(outcome.token))
         return outcome
     }
 
@@ -1999,9 +2034,9 @@ extension TextToSpeechService: StreamedSpeechBackend, StreamedReplySpeaking {
     }
 
     func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
-                              source: SpeechSource) async -> SpeechDeliveryOutcome {
+                              source: SpeechSource, mirror: Bool) async -> SpeechDeliveryOutcome {
         lastSpokenText = text
-        mirrorToGlasses(text, source: source, streamed: true)
+        if mirror { mirrorToGlasses(text, source: source, streamed: true) }
         if let reason = currentSuppression() {
             PrivacyLog.tts(.suppressed, detail: PrivacyToken(reason.rawValue))
             return SpeechDeliveryLedger.outcome(for: .withheld(reason), teardownCause: nil)
