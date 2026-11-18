@@ -8389,6 +8389,28 @@ class AppState: ObservableObject, AppStateProtocol {
     /// Timestamp of the last smart camera activation (for cooldown window).
     private var lastSmartCameraActivation: Date?
 
+    /// Smart camera's claim on the glasses stream, handed back once the follow-up window passes.
+    /// A hold left behind by a stream someone else stopped (the glasses went away, the wearer's
+    /// Stop) is given back before a new one is taken, or the claim would block the restart.
+    private lazy var smartCameraHold = SmartCameraStreamHold(
+        claim: { [weak self] in
+            guard let camera = self?.cameraService else { return }
+            if camera.holdsStreamClaim(.smartCamera), !camera.isStreaming {
+                await camera.releaseStream(for: .smartCamera)
+            }
+            try await camera.claimStream(for: .smartCamera)
+        },
+        release: { [weak self] in
+            await self?.cameraService.releaseStream(for: .smartCamera)
+        })
+
+    /// Re-arm smart camera's release after a use of the stream it holds (no-op when it holds none).
+    private func keepSmartCameraStream() {
+        smartCameraHold.keep(for: SmartCameraStreamHold.releaseDelay(
+            cameraBehavior: Config.activePresetCameraBehavior,
+            cooldown: Config.smartCameraCooldown))
+    }
+
     /// Decide routing before an automatic capture suspends the turn. Every path that may
     /// attach a camera image must keep the model shown in the picker.
     private func expectsCameraImage(for query: String) -> Bool {
@@ -8448,6 +8470,7 @@ class AppState: ObservableObject, AppStateProtocol {
         if let existing = currentVisionFrameDataIfAvailable(scope: scope,
                                                             requiresVisionModel: requiresVisionModel) {
             lastSmartCameraActivation = Date()
+            keepSmartCameraStream()
             return existing
         }
 
@@ -8483,6 +8506,9 @@ class AppState: ObservableObject, AppStateProtocol {
     private func smartCameraCapture(reason: String,
                                     scope: PrivacyFilterScope = .directModelTurn) async -> Data? {
         PrivacyLog.camera(.glasses, .captureRequested)
+        // Whatever this capture comes to, a stream smart camera holds is given back once the
+        // follow-up window has passed with no further use.
+        defer { keepSmartCameraStream() }
 
         // If camera is already streaming, just grab the frame — but never a degenerate
         // placeholder (don't restart a running stream over a bad frame; just send no image).
@@ -8524,8 +8550,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // camera permission missing it fails with the notice instead of leaving for Meta AI
         // mid-turn (`CameraPermissionRequestPolicy`).
         do {
-            _ = try await CameraPermissionRequestPolicy.startedByApp {
-                try await self.cameraService.startStreaming()
+            // Claimed, not started outright: a bare start was never stopped, and one vision
+            // question left the glasses camera streaming until they disconnected.
+            try await CameraPermissionRequestPolicy.startedByApp {
+                try await self.smartCameraHold.take()
             }
             // Brief wait for first frame
             try await Task.sleep(nanoseconds: 500_000_000)

@@ -49,6 +49,10 @@ struct CameraStreamClaims: Equatable {
         /// Plan KH: a live stream that had to bring the glasses camera up itself, because the
         /// wearer was not in the preview: Siri, a Shortcut, or a move off the phone camera.
         static let broadcast = Owner("broadcast")
+        /// Smart camera: a turn that needed a picture. Given back once the follow-up window has
+        /// passed (`SmartCameraStreamHold`), so one vision question no longer leaves the glasses
+        /// camera streaming for good.
+        static let smartCamera = Owner("smartCamera")
     }
 
     /// What the service should do about a `claim`.
