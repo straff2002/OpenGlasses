@@ -236,6 +236,10 @@ extension AppState {
         // Show here cues, render and send timings and bytes sent, by backend. Counts and timings
         // only; never a page, its text or its pixels.
         phone += lensPage.reportLines
+        // Plan MG §3: the answers on the lens — scroll or pages, how many earlier answers the lens
+        // holds now, reading views drawn, row presses, earlier answers opened, rows and characters
+        // per view. Counts and sizes only; never a question, an answer or a row.
+        phone += hudAnswerCard.reportLines
         // Which radio link carried the glasses video, as far as the glasses software's own log
         // says, and what the stream delivered. Always present: "not known" is an answer too.
         // A level and three numbers; no device is named.
