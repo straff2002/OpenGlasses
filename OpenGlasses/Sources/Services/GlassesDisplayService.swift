@@ -1322,9 +1322,6 @@ final class GlassesDisplayService: ObservableObject {
     // `previewFlexBox(for:)` — the on-phone FlexBox mirror — lives in
     // MetaDisplayBackend.swift (the SDK-importing file) as an extension of this class.
 
-    /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
-    /// rendered tree, in order, so a test can simulate Neural-Band selections without
-    /// importing the SDK. Each fires exactly the routing the real button would.
     /// Test helper (Plan MG §2): the `onTap` actions of `screen`'s tappable blocks in the rendered
     /// tree, in column order, as a band press on each would fire them.
     func testInteractiveBlockActions(for screen: HUDScreen) -> [() -> Void] {
@@ -1335,6 +1332,9 @@ final class GlassesDisplayService: ObservableObject {
         #endif
     }
 
+    /// Test helper: the `onClick` actions of the interactive buttons in `screen`'s
+    /// rendered tree, in order, so a test can simulate Neural-Band selections without
+    /// importing the SDK. Each fires exactly the routing the real button would.
     func testInteractiveButtonActions(for screen: HUDScreen) -> [() -> Void] {
         #if !AVENKIN_PHONE_ONLY
         return metaBackend.testButtonActions(for: screen)
