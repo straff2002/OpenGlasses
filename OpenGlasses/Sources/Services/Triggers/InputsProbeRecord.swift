@@ -104,10 +104,12 @@ enum InputsProbePolicy {
     /// How long a run lasts at most.
     static let timeLimit: Duration = .seconds(300)
 
-    /// What the probe asks the glasses for: the touchpad only. Never the capture button (Meta's
-    /// camera), the action button or the Neural Band. The SDK-side configuration is built from the
-    /// same two answers, and `DATExperimentalGuardTests` pins both.
-    static let origins: Set<GlassesInputOrigin> = [.captouch]
+    /// What the probe asks the glasses for: the touchpad and the Neural Band, its presses and
+    /// swipes (`neuralBand`) and its continuous drag (`neuralBandDrag`), so one device run answers
+    /// both which touches reach the app and what a band drag sends. Never the capture button
+    /// (Meta's camera) or the action button. The SDK-side configuration is built from the same two
+    /// answers, and `DATExperimentalGuardTests` pins both.
+    static let origins: Set<GlassesInputOrigin> = [.captouch, .neuralBand, .neuralBandDrag]
     /// Back stays with Meta: the probe never consumes it. (A Back is reported to end a Display
     /// session, which is one more reason the app must not take it.)
     static let consumesBack = false
@@ -140,6 +142,11 @@ final class InputsProbeLedger: ObservableObject {
 
     enum Entry: Equatable {
         case input(GlassesInput, milliseconds: Int, userAudioPlaying: Bool)
+        /// Drag moves in a row from one source, kept as one entry: a band drag streams moves, and
+        /// one at a time they would fill the run's cap in seconds and crowd out every press after
+        /// it. The count and the first and last times give the rate; no position is kept.
+        case moves(GlassesInputOrigin, count: Int, firstMilliseconds: Int, lastMilliseconds: Int,
+                   userAudioPlaying: Bool)
         case state(InputsProbeState, milliseconds: Int)
         case error(InputsProbeFailure, milliseconds: Int)
     }
@@ -161,13 +168,30 @@ final class InputsProbeLedger: ObservableObject {
         var droppedOther = 0
         var stop: Stop?
 
+        /// The inputs the kept entries stand for (a run of moves counts each move).
         var keptInputs: Int {
-            entries.reduce(0) { if case .input = $1 { return $0 + 1 }; return $0 }
+            entries.reduce(0) {
+                switch $1 {
+                case .input: return $0 + 1
+                case .moves(_, let count, _, _, _): return $0 + count
+                case .state, .error: return $0
+                }
+            }
+        }
+        /// The kept entries that hold inputs, which is what the cap counts.
+        var inputEntries: Int {
+            entries.reduce(0) {
+                switch $1 {
+                case .input, .moves: return $0 + 1
+                case .state, .error: return $0
+                }
+            }
         }
         var isTruncated: Bool { inputCount > keptInputs || droppedOther > 0 }
     }
 
-    /// Inputs kept per run; the first ones are kept, and the report says how many more came.
+    /// Input entries kept per run (a run of drag moves is one); the first ones are kept, and the
+    /// report says how many more inputs came.
     static let inputCapacity = 500
     /// State changes and errors kept per run.
     static let otherCapacity = 100
@@ -204,8 +228,19 @@ final class InputsProbeLedger: ObservableObject {
     func recordInput(_ input: GlassesInput, userAudioPlaying: Bool) {
         mutateCurrent { run, ms in
             run.inputCount += 1
-            guard run.keptInputs < Self.inputCapacity else { return }
-            run.entries.append(.input(input, milliseconds: ms, userAudioPlaying: userAudioPlaying))
+            let isMove = input.kind == .drag(.move)
+            if isMove, let last = run.entries.indices.last,
+               case .moves(let origin, let count, let first, _, let audio) = run.entries[last],
+               origin == input.origin {
+                run.entries[last] = .moves(origin, count: count + 1, firstMilliseconds: first,
+                                           lastMilliseconds: ms, userAudioPlaying: audio)
+                return
+            }
+            guard run.inputEntries < Self.inputCapacity else { return }
+            run.entries.append(isMove
+                ? .moves(input.origin, count: 1, firstMilliseconds: ms, lastMilliseconds: ms,
+                         userAudioPlaying: userAudioPlaying)
+                : .input(input, milliseconds: ms, userAudioPlaying: userAudioPlaying))
         }
     }
 
@@ -228,7 +263,7 @@ final class InputsProbeLedger: ObservableObject {
     }
 
     private func appendOther(_ entry: Entry, to run: inout Run) {
-        let others = run.entries.count - run.keptInputs
+        let others = run.entries.count - run.inputEntries
         guard others < Self.otherCapacity else { run.droppedOther += 1; return }
         run.entries.append(entry)
     }
@@ -288,6 +323,10 @@ final class InputsProbeLedger: ObservableObject {
         switch entry {
         case .input(let input, let ms, let audio):
             return "+\(ms) ms · \(input.kind.reportToken) (\(input.origin.rawValue))\(audio ? ", audio playing" : "")"
+        case .moves(let origin, let count, let first, let last, let audio):
+            let span = count == 1 ? "" : " \(count) times over \(last - first) ms"
+            return "+\(first) ms · \(GlassesInputKind.drag(.move).reportToken)\(span) (\(origin.rawValue))"
+                + (audio ? ", audio playing" : "")
         case .state(let state, let ms):
             return "+\(ms) ms · state \(state.rawValue)"
         case .error(let failure, let ms):
@@ -300,9 +339,16 @@ final class InputsProbeLedger: ObservableObject {
         var counts: [String: Int] = [:]
         var audio = 0
         for entry in run.entries {
-            guard case .input(let input, _, let playing) = entry else { continue }
-            counts["\(input.kind.reportToken) (\(input.origin.rawValue))", default: 0] += 1
-            if playing { audio += 1 }
+            switch entry {
+            case .input(let input, _, let playing):
+                counts["\(input.kind.reportToken) (\(input.origin.rawValue))", default: 0] += 1
+                if playing { audio += 1 }
+            case .moves(let origin, let count, _, _, let playing):
+                counts["\(GlassesInputKind.drag(.move).reportToken) (\(origin.rawValue))", default: 0] += count
+                if playing { audio += count }
+            case .state, .error:
+                continue
+            }
         }
         guard run.inputCount > 0 else { return "0 inputs" }
         let parts = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }

@@ -21,7 +21,7 @@ private struct InputsProbeRows: View {
     var body: some View {
         OGSection(
             header: "Glasses Inputs",
-            footer: "Records each touch the glasses send for up to five minutes, for the support report. Only the touchpad is asked for: the capture button and Back stay with Meta."
+            footer: "Records each touch and Neural Band gesture the glasses send for up to five minutes, for the support report. Only the touchpad and the band are asked for: the capture button and Back stay with Meta."
         ) {
             Button {
                 if probe.isRunning {

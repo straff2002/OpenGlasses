@@ -6,11 +6,12 @@ import MWDATInputs
 // Plan JV P2: the only code that touches the SDK's [Experimental] Inputs. Compiled only in a
 // project generated with AVENKIN_DAT_EXPERIMENTAL=1 (TestFlight only, never submitted for review).
 
-/// The one configuration the probe ever asks for: the touchpad only, Back left to Meta. Never the
-/// capture button (Meta's camera) and never `consumeBack`. Built from `InputsProbePolicy`, and
+/// The one configuration the probe ever asks for: the touchpad and the Neural Band (presses,
+/// swipes and drag), Back left to Meta. Never the capture button (Meta's camera), never the action
+/// button and never `consumeBack`. Built from `InputsProbePolicy`, and
 /// `DATExperimentalGuardTests` pins this line as written.
 enum InputsProbeConfiguration {
-    static let sdk = InputsConfiguration(sources: [.captouch], consumeBack: false)
+    static let sdk = InputsConfiguration(sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: false)
 
     /// What `sdk` asks for, in the app's own words (for the flagged tests).
     static var origins: Set<GlassesInputOrigin> { Set(sdk.sources.map(MetaInputsSource.origin)) }

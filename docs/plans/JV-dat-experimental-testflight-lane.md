@@ -1,7 +1,8 @@
 # Plan JV — Meta's Experimental Glasses Features, TestFlight Only ("Hey Meta, open Avenkin" and glasses gestures)
 
 **Status:** 🚧 P0 + P1 built 2026-11-17 (headless; one branch). P2's Inputs probe built 2026-11-17
-(headless; stacked on it); its device run is owed with P3, and the gesture map waits for it. Owed:
+(headless; stacked on it); its device run is owed with P3, and the gesture map waits for it. The
+probe also listens to the Neural Band (2026-11-19), so the same run answers Plan MG P5. Owed:
 P1's device questions and the probe run (P3), the flagged builds' own TestFlight group, a catalog
 sync for the new strings (the resolver's six failure sentences in every build; the Settings toggle
 and its footer, and the probe's section, only in a flagged one), then P2's map. Drafted 2026-10-26;
@@ -98,7 +99,7 @@ unflagged app runs.
   `InputsProbeRecord.swift` (`Services/Triggers/`): the app's own words for an input
   (`GlassesInputKind` with direction, press type or drag phase, never coordinates;
   `GlassesInputOrigin`), the capability's states and errors, the stop reasons and refusals;
-  `InputsProbePolicy` (five minutes, the touchpad only, Back left to Meta, and the start refusals:
+  `InputsProbePolicy` (five minutes, the touchpad and the Neural Band, Back left to Meta, and the start refusals:
   not in this build / channel / no glasses, a run already going, no connected link); and `InputsProbeLedger`, the support report's record
   while it has a run — each input with its source, milliseconds since the run started and whether
   another app's audio was playing (`isOtherAudioPlaying`, the media trigger's reading), state
@@ -111,12 +112,20 @@ unflagged app runs.
   session). Inside `Glasses/Experimental/`: the `InputsSource` seam, `MetaInputsSource` (acquires `.inputs`
   on `DeviceSessionCoordinator.shared` for the connected device, beside the camera and the lens
   when they are on; starts the session unless it is started or starting, waits for `started`, then `addInputs(configuration: InputsProbeConfiguration.sdk)`, which is
-  `InputsConfiguration(sources: [.captouch], consumeBack: false)`), `InputsProbe` (one run at a
+  `InputsConfiguration(sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: false)`), `InputsProbe` (one run at a
   time; stops at five minutes, a link drop, the session ending under it, or Stop) and the
   Developer panel's **Glasses Inputs** section — the fourth roster call site. Handing the hold
   back stops the session only when the probe was its last holder. `DATExperimentalGuardTests`
   pins the configuration line and the one `addInputs` call, bans the Inputs type names outside the
   folder, and checks the pure policy.
+- **The Neural Band joins the probe (2026-11-19).** The sources are now the touchpad, the band's
+  presses and swipes (`neuralBand`) and its continuous drag (`neuralBandDrag`), so a run on a Ray-Ban
+  Display answers Plan [MG](MG-reading-the-conversation-on-the-lens.md) P5's question (what a band
+  drag and a band swipe send, and whether Meta also acts on them) as well as this plan's. The capture
+  button and the action button stay out, and Back stays Meta's. A drag streams moves, so moves in a
+  row from one source are kept as one ledger entry with a count and the first and last times
+  (`drag-move 600 times over 5990 ms`): the rate is in the report, no position is, and a long drag
+  can no longer fill the 500-entry cap and crowd out the presses after it.
 
 ## P0 — The lane (no feature yet)
 
@@ -202,7 +211,8 @@ unflagged app runs.
 
 - **Measure before mapping anything.** A diagnostics-only `InputsProbe` in the Developer panel adds
   `Inputs` on the shared `DeviceSessionCoordinator` session (a new `.inputs` capability) with
-  `sources: [.captouch]` and `consumeBack: false`. It logs every event with its source and time, and
+  `sources: [.captouch, .neuralBand, .neuralBandDrag]` (the band added 2026-11-19) and
+  `consumeBack: false`. It logs every event with its source and time, and
   stops itself after five minutes. P3 answers what it finds:
   - which events a Gen 2 actually sends;
   - whether Meta still plays and pauses music, and still takes the long press, while the app is
@@ -214,8 +224,9 @@ unflagged app runs.
   `TempleActionResolver`, so the actions, earcons and Agent Mode rule are GJ's. Every gesture
   defaults to *nothing*.
 - **Never:** `captureButton` (Meta's camera), `consumeBack: true`, or any gesture the probe saw
-  Meta also handle. The Neural Band and the action button are out of scope until someone has the
-  hardware.
+  Meta also handle. The probe now records the Neural Band too (2026-11-19, for a Ray-Ban
+  Display run), but this plan's map stays the Gen 2's touchpad; mapping the band is Plan MG P5's.
+  The action button is out of scope until someone has the hardware.
 - **Battery rule.** If P3 measures a standby session as costly, gestures run only while a
   conversation is open (hang up, mute), and starting a conversation stays with "Hey Meta", the
   temple taps, the Watch and the Action Button.
@@ -227,6 +238,9 @@ Run together with GJ P2, which needs the same person and glasses:
 - GJ's tap calibration (which tap arrives as which media command);
 - P1's device questions;
 - P2's probe log and battery reading.
+- On a Ray-Ban Display with its Neural Band, the same probe for Plan MG P5: band swipes, presses and
+  a slow and a fast drag across the lens, with the HUD showing and with it off, and whether Meta's
+  own lens view moves as well.
 
 The tester reports through a support report from a flagged build; its first line identifies the
 build. Nothing ships to the store from this phase.

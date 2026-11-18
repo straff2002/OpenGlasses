@@ -54,8 +54,8 @@ final class InputsProbeTests: XCTestCase {
 
     // MARK: - The configuration
 
-    func testTheSDKConfigurationIsTheTouchpadOnlyWithBackLeftToMeta() {
-        XCTAssertEqual(InputsProbeConfiguration.origins, [.captouch])
+    func testTheSDKConfigurationIsTheTouchpadAndBandWithBackLeftToMeta() {
+        XCTAssertEqual(InputsProbeConfiguration.origins, [.captouch, .neuralBand, .neuralBandDrag])
         XCTAssertEqual(InputsProbeConfiguration.origins, InputsProbePolicy.origins)
         XCTAssertFalse(InputsProbeConfiguration.consumesBack)
         XCTAssertEqual(InputsProbeConfiguration.consumesBack, InputsProbePolicy.consumesBack)
@@ -126,6 +126,7 @@ final class InputsProbeTests: XCTestCase {
         let kinds: [String] = run.entries.map {
             switch $0 {
             case .input(let input, _, let playing): return "\(input.kind.reportToken)\(playing ? "+audio" : "")"
+            case .moves(_, let count, _, _, _): return "drag-move×\(count)"
             case .state(let state, _): return "state-\(state.rawValue)"
             case .error(let failure, _): return "error-\(failure.rawValue)"
             }

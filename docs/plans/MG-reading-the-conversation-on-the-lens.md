@@ -249,7 +249,10 @@ follow-up, which moves to Actions). P6's script starts with "show me the page".
 
 ### 6 · The experimental lane (P5, flagged TestFlight builds only)
 
-Only after JV P3's probe shows which events reach the app without Meta also acting on them:
+Only after JV P3's probe shows which events reach the app without Meta also acting on them. The
+probe listens to the Neural Band as well as the touchpad (`neuralBand` and `neuralBandDrag`, added
+2026-11-19), and keeps a drag's moves as a count with first and last times, so its run on a Ray-Ban
+Display gives the drag rate this needs:
 
 - `drag` pans the page view continuously, limited to about 4 frames a second, with the zoom kept;
 - `nav(.left/.right)` steps the page view without the arrow row;
@@ -724,7 +727,8 @@ from the button row into the grid; the 31-character row line on a real lens.
 
 ### P5 — drag and nav in flagged builds (TestFlight only; after JV P3)
 
-§6. Owed to JV's probe results.
+§6. Owed to JV's probe results; the probe asks for the band since 2026-11-19, so one run on the
+tester's Display answers it.
 
 ### P6 — device pass (the tester's Display; folded in with KP P6, KV P5 and LC)
 
