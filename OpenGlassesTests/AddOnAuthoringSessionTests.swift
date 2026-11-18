@@ -62,6 +62,15 @@ final class AddOnAuthoringSessionTests: XCTestCase {
         XCTAssertEqual(s.ending, .consentDeclined)
     }
 
+    @MainActor func testAConsentThatCouldNotBeAskedIsNotADecline() {
+        var s = session(at: .awaitingTestConsent)
+        XCTAssertTrue(s.handle(.consentNotAsked, now: t0))
+        XCTAssertEqual(s.phase, .discarded)
+        XCTAssertEqual(s.ending, .consentNotAsked)
+        XCTAssertNotEqual(AddOnAuthoringService.message(for: .consentNotAsked),
+                          AddOnAuthoringService.message(for: .consentDeclined))
+    }
+
     func testRejectionAndCancel() {
         var s = session(at: .awaitingApproval)
         XCTAssertTrue(s.handle(.rejected, now: t0))

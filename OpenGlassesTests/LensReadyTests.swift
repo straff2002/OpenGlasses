@@ -172,7 +172,7 @@ final class LensReadyTests: XCTestCase {
     /// Ask, and wait for the ask to be pending.
     private func ask(_ coordinator: ToolConfirmationCoordinator,
                      _ summary: String = "Send a message to Sam: “hi”") async -> Task<Bool, Never> {
-        let task = Task { await coordinator.requestConfirmation(toolName: "send_message", summary: summary) }
+        let task = Task { await coordinator.requestConfirmation(toolName: "send_message", summary: summary).isApproved }
         for _ in 0..<50 where coordinator.pending == nil { await Task.yield() }
         XCTAssertNotNil(coordinator.pending)
         return task

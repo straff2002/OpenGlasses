@@ -131,7 +131,7 @@ final class SkillEvolutionAddOnIdeaTests: XCTestCase {
             install: AddOnInstallService(store: addOns, context: { .init() }, fetch: { _ in Data() },
                                          networkDecision: .allowHardenedFetch),
             dependencies: .init(model: model, search: { _ in "" }, docs: docs,
-                                transport: FakeAddOnHTTPTransport(json: "{}"), consent: { _ in false },
+                                transport: FakeAddOnHTTPTransport(json: "{}"), consent: { _ in .declined },
                                 conditions: { .init(agentModeEnabled: true) },
                                 runContext: { _ in RecipeRunContext(now: Date(), timeZone: .current, locale: .current,
                                                                     units: .metric, location: nil) }))

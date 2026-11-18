@@ -40,7 +40,8 @@ final class AddOnAuthoringService: ObservableObject {
         var transport: any AddOnHTTPTransport
         var clock: any AddOnClock = SystemAddOnClock()
         /// Ask the wearer before a test, on the phone and by voice. Only a yes tests.
-        var consent: @MainActor (AddOnTestConsentRequest) async -> Bool
+        /// Only `.approved` tests; `.busy` means the wearer was not asked.
+        var consent: @MainActor (AddOnTestConsentRequest) async -> ConfirmationOutcome
         /// Say a short progress line, sparingly.
         var announce: @MainActor (String) async -> Void = { _ in }
         var conditions: @MainActor () -> AddOnAuthoringAvailability.Conditions
@@ -255,8 +256,14 @@ final class AddOnAuthoringService: ObservableObject {
                                                   domains: prepared.manifest.permissions.network)
             let agreed = await deps.consent(request)
             guard isLive(sessionID, in: .awaitingTestConsent) else { return conclude(sessionID) }
-            guard agreed else {
+            switch agreed {
+            case .approved:
+                break
+            case .declined:
                 apply(.consentDeclined, sessionID)
+                return conclude(sessionID)
+            case .busy:
+                apply(.consentNotAsked, sessionID)
                 return conclude(sessionID)
             }
             guard apply(.consentGiven, sessionID), spend(.test, sessionID) else { return conclude(sessionID) }
@@ -503,6 +510,8 @@ final class AddOnAuthoringService: ObservableObject {
             return String(localized: "Building that took too long, so I've stopped and deleted the draft.")
         case .consentDeclined:
             return String(localized: "OK, I won't test it. The draft is deleted.")
+        case .consentNotAsked:
+            return String(localized: "I couldn't ask you about testing it, because another confirmation is already on screen. The draft is deleted; ask me again once that one is answered.")
         case .rejected:
             return String(localized: "Deleted the add-on draft.")
         case .expired:

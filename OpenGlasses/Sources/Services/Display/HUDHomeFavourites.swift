@@ -68,6 +68,8 @@ enum HUDHomeFavouritesBuilder {
             return String(localized: "Couldn't run \(label)", comment: "Glasses: a Home Assistant action failed. The argument is its name.")
         case .declined:
             return String(localized: "Not run: \(label)", comment: "Glasses: a Home Assistant action was not approved. The argument is its name.")
+        case .busy:
+            return String(localized: "Not run: \(label). Answer the open confirmation first.", comment: "Glasses: a Home Assistant action that needs approval was not asked about, because another confirmation is already showing. The argument is its name.")
         }
     }
 }
@@ -75,6 +77,8 @@ enum HUDHomeFavouritesBuilder {
 /// How a favourite's run went.
 enum HomeFavouriteOutcome: Equatable {
     case done, failed, declined
+    /// It needed approval, and another confirmation was on screen, so nothing was asked or run.
+    case busy
 }
 
 /// Plan LC §6: runs one Home Assistant quick action pressed on the lens.
@@ -130,15 +134,19 @@ enum HomeFavouriteRunner {
         return object
     }
 
-    /// Run `action`: confirm first when owed, then call. `confirm` asks the wearer (true: approved);
-    /// `perform` makes the call (true: Home Assistant accepted it).
+    /// Run `action`: confirm first when owed, then call. `confirm` asks the wearer (only
+    /// `.approved` runs it); `perform` makes the call (true: Home Assistant accepted it).
     @MainActor
     static func run(_ action: QuickAction,
-                    confirm: (String) async -> Bool,
+                    confirm: (String) async -> ConfirmationOutcome,
                     perform: (Call, [String: Any]) async -> Bool) async -> HomeFavouriteOutcome {
         guard let call = call(for: action), let data = data(for: call) else { return .failed }
         if let summary = confirmationSummary(for: call) {
-            guard await confirm(summary) else { return .declined }
+            switch await confirm(summary) {
+            case .approved: break
+            case .declined: return .declined
+            case .busy: return .busy
+            }
         }
         return await perform(call, data) ? .done : .failed
     }

@@ -51,6 +51,8 @@ struct AddOnAuthoringSession: Equatable, Sendable {
         case tookTooLong
         /// The wearer said no to the test.
         case consentDeclined
+        /// The wearer wasn't asked about the test: another confirmation was on screen.
+        case consentNotAsked
         /// The wearer turned it down on the sheet.
         case rejected
         case expired
@@ -73,6 +75,8 @@ struct AddOnAuthoringSession: Equatable, Sendable {
         case validationPassed
         case consentGiven
         case consentDeclined
+        /// The consent prompt could not be shown: another confirmation was on screen.
+        case consentNotAsked
         case testFinished
         case assessmentPassed
         case assessmentFailed
@@ -155,6 +159,8 @@ struct AddOnAuthoringSession: Equatable, Sendable {
             phase = .testing
         case (.awaitingTestConsent, .consentDeclined):
             finish(.discarded, .consentDeclined)
+        case (.awaitingTestConsent, .consentNotAsked):
+            finish(.discarded, .consentNotAsked)
         case (.testing, .testFinished):
             phase = .assessing
         case (.assessing, .assessmentPassed):

@@ -91,6 +91,8 @@ struct AgentControlTool: NativeTool {
                 return "The running job couldn't be stopped, so the new one wasn't started. It's still running."
             case .couldNotAsk:
                 return "A job is already running, and there's no way to ask the user about replacing it right now, so no new job was started."
+            case .confirmationBusy:
+                return "A job is already running. The user wasn't asked about replacing it because another confirmation was already on screen, so no new job was started. Try again once that one is answered."
             case .failed(let error):
                 return "Couldn't start the agent: \(error.localizedDescription)"
             }

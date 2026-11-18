@@ -48,7 +48,7 @@ final class MyMemoryToolTests: XCTestCase {
         if let approve {
             tool.confirm = { [weak self] summary in
                 self?.confirmations.append(summary)
-                return approve
+                return approve ? .approved : .declined
             }
         }
         tool.handOff = { [weak self] query in self?.handOffs.append(query) }

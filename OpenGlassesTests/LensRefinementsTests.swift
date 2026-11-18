@@ -459,12 +459,23 @@ final class LensRefinementsTests: XCTestCase {
             for: HomeFavouriteRunner.call(for: favourite(1, service: "cover.open_cover", entity: "cover.garage"))!))
     }
 
+    func testABusyConfirmationRunsNothingAndSaysSo() async {
+        var performed = 0
+        let outcome = await HomeFavouriteRunner.run(
+            favourite(1, service: "lock.unlock", entity: "lock.front_door"),
+            confirm: { _ in .busy }, perform: { _, _ in performed += 1; return true })
+        XCTAssertEqual(outcome, .busy)
+        XCTAssertEqual(performed, 0, "a busy surface is never an approval")
+        XCTAssertNotEqual(HUDHomeFavouritesBuilder.line(for: .busy, label: "Front door"),
+                          HUDHomeFavouritesBuilder.line(for: .declined, label: "Front door"))
+    }
+
     func testASecurityFavouriteAsksFirstAndAPlainOneRunsOnOnePress() async {
         var asked: [String] = []
         var performed: [HomeFavouriteRunner.Call] = []
         let declined = await HomeFavouriteRunner.run(
             favourite(1, service: "lock.unlock", entity: "lock.front_door"),
-            confirm: { asked.append($0); return false },
+            confirm: { asked.append($0); return .declined },
             perform: { call, _ in performed.append(call); return true })
         XCTAssertEqual(declined, .declined)
         XCTAssertEqual(asked.count, 1)
@@ -472,15 +483,15 @@ final class LensRefinementsTests: XCTestCase {
 
         let approved = await HomeFavouriteRunner.run(
             favourite(1, service: "lock.unlock", entity: "lock.front_door"),
-            confirm: { _ in true }, perform: { call, _ in performed.append(call); return true })
+            confirm: { _ in .approved }, perform: { call, _ in performed.append(call); return true })
         XCTAssertEqual(approved, .done)
 
         asked = []
-        let plain = await HomeFavouriteRunner.run(favourite(2), confirm: { asked.append($0); return false },
+        let plain = await HomeFavouriteRunner.run(favourite(2), confirm: { asked.append($0); return .declined },
                                                   perform: { _, _ in false })
         XCTAssertEqual(plain, .failed)
         XCTAssertTrue(asked.isEmpty)
-        let badData = await HomeFavouriteRunner.run(favourite(3, data: "not json"), confirm: { _ in true },
+        let badData = await HomeFavouriteRunner.run(favourite(3, data: "not json"), confirm: { _ in .approved },
                                                     perform: { _, _ in true })
         XCTAssertEqual(badData, .failed)
     }

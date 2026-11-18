@@ -19,12 +19,15 @@ final class RemoteCommandExecutor {
     enum Outcome: Equatable {
         case success([String: String])
         case declined            // user rejected the capture confirmation
+        /// Another confirmation was on screen, so the user was not asked and nothing was captured.
+        case busy
         case failed(String)
 
         static func == (lhs: Outcome, rhs: Outcome) -> Bool {
             switch (lhs, rhs) {
             case (.success(let a), .success(let b)): return a == b
             case (.declined, .declined): return true
+            case (.busy, .busy): return true
             case (.failed(let a), .failed(let b)): return a == b
             default: return false
             }
@@ -32,8 +35,9 @@ final class RemoteCommandExecutor {
     }
 
     struct Deps {
-        /// Ask the user to approve a remote capture ("Remote agent wants to …"). Returns approval.
-        var confirmCapture: @MainActor (String) async -> Bool
+        /// Ask the user to approve a remote capture ("Remote agent wants to …"). Only `.approved`
+        /// captures.
+        var confirmCapture: @MainActor (String) async -> ConfirmationOutcome
         /// Speak the pre-capture announcement. Runs after approval, before the sensor starts.
         var announce: @MainActor (String) async -> Void
 
@@ -69,7 +73,11 @@ final class RemoteCommandExecutor {
     func execute(_ command: RemoteGlassesCommand, origin: RemoteCommandOrigin = .gateway) async -> Outcome {
         // Capture-class commands: confirm, then announce, then act — in that order.
         if command.commandClass == .capture {
-            guard await deps.confirmCapture(captureSummary(for: command)) else { return .declined }
+            switch await deps.confirmCapture(captureSummary(for: command)) {
+            case .approved: break
+            case .declined: return .declined
+            case .busy: return .busy
+            }
             await deps.announce(captureAnnouncement(for: command))
         }
 

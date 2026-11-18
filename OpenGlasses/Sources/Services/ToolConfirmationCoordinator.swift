@@ -23,6 +23,33 @@ enum ConfirmationAnswer: Equatable {
     case text(String)
 }
 
+/// How an approve/deny request came back.
+///
+/// `busy` is kept apart from `declined` so that nobody is told the wearer said no to something they
+/// were never shown. It is never an approval: every caller treats it as "nothing was done".
+enum ConfirmationOutcome: Equatable {
+    case approved
+    case declined
+    /// Another confirmation was already on screen, so nothing was asked.
+    case busy
+
+    var isApproved: Bool { self == .approved }
+
+    /// The tool result for a busy surface: the wearer was not asked, and a retry once the other
+    /// prompt is answered may succeed. For the model, never spoken as it stands.
+    static let busyToolResult = "The user wasn't asked: another confirmation was already on screen. Nothing was done. Try again once that one is answered."
+}
+
+/// How a request for the wearer's words came back.
+enum TextAnswerOutcome: Equatable {
+    /// What the wearer confirmed, edited or not.
+    case answered(String)
+    /// They chose not to send anything.
+    case declined
+    /// Another confirmation was already on screen, so nothing was asked.
+    case busy
+}
+
 /// A high-impact tool action waiting for the user to approve or deny it.
 struct PendingToolConfirmation: Identifiable {
     let id = UUID()
@@ -95,41 +122,57 @@ final class ToolConfirmationCoordinator: ObservableObject {
         self.consentStore = consentStore
     }
 
-    /// Suspend until the user approves or denies `toolName`. Returns `true` to proceed.
-    /// If another confirmation is already outstanding, the new request is denied to avoid stacking
-    /// prompts (the model can retry after the user has dealt with the first one). `source`
-    /// attributes the ask on the card and in the spoken prompt (BN P1).
+    /// Suspend until the user approves or denies `toolName`. Only `.approved` means proceed.
+    /// If another confirmation is already outstanding, nothing is asked and the result is `.busy`
+    /// rather than stacking prompts; the caller says so, and the model can retry after the user
+    /// has dealt with the first one. `source` attributes the ask on the card and in the spoken
+    /// prompt (BN P1).
     func requestConfirmation(toolName: String, summary: String, source: RemoteActionSource = .assistant,
-                             spokenPrompt: String? = nil) async -> Bool {
-        await ask(toolName: toolName, summary: summary, source: source, reply: .approval,
-                  spokenPrompt: spokenPrompt) == .approved
+                             spokenPrompt: String? = nil) async -> ConfirmationOutcome {
+        switch await ask(toolName: toolName, summary: summary, source: source, reply: .approval,
+                         spokenPrompt: spokenPrompt) {
+        case .busy: return .busy
+        case .answered(.approved): return .approved
+        case .answered(.denied), .answered(.text): return .declined
+        }
     }
 
     /// Ask the wearer to confirm — and, if they like, edit — an answer before it is sent (Plan FE
-    /// P1). Returns what they confirmed, or `nil` if they chose not to send anything.
+    /// P1). Returns what they confirmed, `.declined` if they chose not to send anything, or
+    /// `.busy` when another confirmation was on screen and nothing was asked.
     ///
     /// This is the free-text half of the same user-originated boundary: the model can propose the
     /// words, but only what comes back from this prompt leaves the device.
     func requestTextAnswer(toolName: String, summary: String,
                            source: RemoteActionSource = .assistant,
-                           prefill: String) async -> String? {
-        guard case .text(let confirmed) = await ask(toolName: toolName, summary: summary,
-                                                    source: source,
-                                                    reply: .text(prefill: prefill)) else { return nil }
-        return confirmed
+                           prefill: String) async -> TextAnswerOutcome {
+        switch await ask(toolName: toolName, summary: summary, source: source,
+                         reply: .text(prefill: prefill)) {
+        case .busy: return .busy
+        case .answered(.text(let confirmed)): return .answered(confirmed)
+        case .answered(.approved), .answered(.denied): return .declined
+        }
+    }
+
+    /// What `ask` came back with: the wearer's answer, or nothing asked because the surface was busy.
+    private enum AskResult {
+        case answered(ConfirmationAnswer)
+        case busy
     }
 
     /// `spokenPrompt`, when given, is said instead of the attributed "… wants: …. Approve?" line —
     /// for an ask whose sentence is already a question in its own words (a plan's one ask, Plan LP).
     /// The card still shows the source and `summary`.
     private func ask(toolName: String, summary: String, source: RemoteActionSource,
-                     reply: ConfirmationReplyKind, spokenPrompt: String? = nil) async -> ConfirmationAnswer {
-        if pending != nil { return .denied }
+                     reply: ConfirmationReplyKind, spokenPrompt: String? = nil) async -> AskResult {
+        // Never stack prompts, and never report this as the wearer's no: they were not asked.
+        if pending != nil { return .busy }
         onSpeakPrompt?(spokenPrompt ?? RemoteActionConsentRequest(source: source, summary: summary).spokenPrompt)
-        return await withCheckedContinuation { (continuation: CheckedContinuation<ConfirmationAnswer, Never>) in
+        let answer = await withCheckedContinuation { (continuation: CheckedContinuation<ConfirmationAnswer, Never>) in
             pending = PendingToolConfirmation(toolName: toolName, summary: summary, source: source,
                                               reply: reply, continuation: continuation)
         }
+        return .answered(answer)
     }
 
     /// Ask for an approval that is *bound* to one call, and hand back a single-use nonce for it.
@@ -151,8 +194,11 @@ final class ToolConfirmationCoordinator: ObservableObject {
         }
         guard pending == nil else { return .busy }
         let asked = consent.promptPrefix.map { "\($0) \(summary)" } ?? summary
-        let approved = await requestConfirmation(toolName: toolName, summary: asked, source: source)
-        guard approved else { return .denied }
+        switch await requestConfirmation(toolName: toolName, summary: asked, source: source) {
+        case .approved: break
+        case .declined: return .denied
+        case .busy: return .busy
+        }
         record(consent, for: source, at: now)
         return .approved(nonce: approvalGrants.issue(for: binding, at: now, ttl: ttl).nonce)
     }
@@ -177,9 +223,12 @@ final class ToolConfirmationCoordinator: ObservableObject {
         guard pending == nil else { return .busy }
         let card = consent.promptPrefix.map { "\($0)\n\(approval.cardSummary)" } ?? approval.cardSummary
         let spoken = consent.promptPrefix.map { "\($0) \(approval.spokenPrompt)" } ?? approval.spokenPrompt
-        let approved = await requestConfirmation(toolName: Self.planToolName, summary: card,
-                                                 source: source, spokenPrompt: spoken)
-        guard approved else { return .declined }
+        switch await requestConfirmation(toolName: Self.planToolName, summary: card,
+                                         source: source, spokenPrompt: spoken) {
+        case .approved: break
+        case .declined: return .declined
+        case .busy: return .busy
+        }
         record(consent, for: source, at: now)
         var grants: [Int: PlanStepGrant] = [:]
         for item in approval.items {
