@@ -1,7 +1,10 @@
 # Plan MG — Reading the Conversation on the Lens (bigger pages now, then the answer and the ones before it in one view you scroll, and a page you zoom by pointing)
 
 **Status:** 🚧 P0 built 2026-11-18 (headless): the answer card takes the lens's measured budget, so a
-600-character answer is 3 pages instead of 7, and **Page** sits on the last page. P1, a measurement on
+600-character answer is 3 pages instead of 7, and **Page** sits on the last page. "Show that again"
+brings the last answer back to the lens by voice after the glasses' Back gesture, Close or its lifetime
+(§7). §8 records what a send does to a dimmed or sleeping lens as a device check, with no keep-awake
+loop. P1, a measurement on
 the simulated Display, is next, and it decides how P2–P4 are built.
 All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
@@ -245,6 +248,53 @@ Only after JV P3's probe shows which events reach the app without Meta also acti
 The code goes under `Sources/Glasses/Experimental/` inside `#if DAT_EXPERIMENTAL` and is listed in
 `DATExperimentalGuardTests`' roster. A store build has the stable view and nothing more.
 
+### 7 · Bringing the lens back hands-free (P0)
+
+Reopening is the tester's top ask. Today the glasses' Back gesture (a two-finger temple tap) ends the
+display session, and nothing brings the answer back but a new question or the HUD switch on the phone.
+A gloved technician needs the way back to be by voice.
+
+- **The words.** "Show that again", "show it again", "show me the answer", "back to the answer", "show
+  the conversation", "bring it back", and a few close variants (`HUDReopenCommand`). They match the whole
+  utterance only, with a leading filler ("ok", "hey") and a trailing "please" allowed, so a real
+  question is never taken: "can you show that again on the phone" goes to the model. None of them is a
+  page-view, paging or task word, and a test keeps it that way.
+- **What comes back.** The last answer card, on the page the wearer was reading (not its Actions
+  screen), with its question and follow-ups. It is a frame the wearer asked for, so it opens a lens they
+  dismissed with Back. The card the Back gesture left held comes back as it is. A card that **Close** or
+  its 60-second lifetime cleared is kept in memory for 10 minutes and comes back from there. A new
+  answer replaces it.
+- **When the words go on.** With no answer to bring back, the HUD off, or a task card or a menu on the
+  lens, nothing is taken and the words reach the model as an ordinary request. With the page view open
+  over the answer, "back to the answer" closes the view back to the card.
+- **The private conversation (Plan LU).** When it ends, the kept card is forgotten, and a card on the
+  lens is not kept when it closes, so these words never bring a private answer back.
+- **Once the reading view exists (P3),** the same words open it at the wearer's last position instead of
+  the paged card.
+- **Spoken words only.** Text typed on the phone never reaches the lens's voice commands, so a typed
+  "show that again" is a message to the assistant, as a typed "menu" is today. Bringing the lens back is
+  a hands-free action. The phone already has the HUD switch.
+- **Not changed.** The launcher's own words and the router are untouched, and the green mark at the top
+  of an empty chat on the lens stays as it is.
+
+### 8 · When the lens dims and sleeps
+
+Meta's docs say the lens dims after 20 s without input and sleeps at 25 s. Sleep does not end the display
+session, and on wake the app may show what was there or send something new. No API reports dimming or
+sleep, or controls them. Two things are unknown and decide how §7 behaves after sleep:
+
+1. Does a `send()` to a dimmed or sleeping lens wake it?
+2. After the wearer wakes the lens by touch or pinch, is our last frame still on it?
+
+Until P6 answers them, "show that again" draws the card again when it is already the frame on the lens.
+That is harmless if the content survived sleep, and it is the only redraw that can wake a lens that
+keeps nothing. If P6 shows the frame survives and a send does not wake the lens, the redraw stays: the
+wearer's next input shows it. If a send does wake the lens, the redraw is the wake.
+
+**No keep-awake loop.** Nothing sends to the lens on a timer to keep it from dimming or sleeping. A send
+happens only when the wearer asks, an answer arrives, or a press changes the screen. Dimming is Meta's
+power and privacy behaviour, and a timer that defeats it would also cost battery and heat.
+
 ## What MG leaves out
 
 - **The web app surface.** It would scroll and take drag, but the glasses load only public HTTPS URLs.
@@ -347,6 +397,21 @@ build. The new **Page** placement adds no strings.
   finds Page on the card's page, not under Actions. The focused classes ran 316 tests and the full suite
   17,935 (16 skipped), all passing; the Release build succeeded.
 
+**As built (P0, bringing the lens back, §7).** `HUDReopenCommand` (in `HUDVoiceCommand.swift`) is the
+strict whole-utterance parse. `HUDAnswerCard.reopen()` puts the held card back on its page, or the last
+closed one within `reopenLifetime` (10 minutes, in memory only). It calls
+`GlassesDisplayService.wearerAskedForAnswerCard()` so a lens dismissed by Back opens again, presents the
+card as wearer-led, and restarts its lifetime. `canReopen` says whether there is a card to bring back.
+`forgetForReopen()` runs when the private conversation ends. A `hud-answer-reopen` handler in the voice
+chain, after the launcher's, takes the words only when the card came back (or, with the page view
+over it, closes the view back to the card), so otherwise they go on to the model. `HUDLauncher` and
+`HUDRouter` are not changed. `HUDAnswerReopenTests` (15) covers the words and the sentences they must
+not take; that none of them is a page, paging or task word; the card back after Back, Close, its
+lifetime and from Actions, on its page with its question; the 10 minutes; nothing taken with no
+answer, the HUD off or a task card up; a new answer replacing the kept one; a card on the lens drawn
+again; and the private conversation's end forgetting a closed, dismissed or showing card while the next
+answer is kept again.
+
 ### P1 — measure on the simulated Display (development only, iOS Simulator)
 
 A **Tall views** set in Developer › Simulated Display (KV's P4 lane, `#if DAT_MOCK_DISPLAY`, never
@@ -359,7 +424,10 @@ archived). It measures:
 3. send time against size, at 10, 30 and 60 rows and 1, 3 and 6 thousand characters;
 4. a 3 × 3 grid of tappable image tiles: does focus move across rows as well as down them, does the
    glow show on an image, and how does `.fill` size an image in a row;
-5. a stack of image slices up to three lens heights: the drawn size and the send time.
+5. a stack of image slices up to three lens heights: the drawn size and the send time;
+6. dimming and sleep (§8) are not measured here: the 1.0.1 Mock Device Kit has no dim or sleep
+   control (its glasses fold, unfold, don and doff, and take input and clicks), so what a `send()`
+   does to a dimmed or sleeping lens, and what a wake keeps, is P6's.
 
 The results are written into this plan as **Measured (P1)** and fix §2's and §4's numbers, decision 1's
 premise and decision 7's premise. The simulator is not the glasses: P6 checks every result again.
@@ -400,7 +468,12 @@ two-rung zoom clamped at the cap), the strip slices, the neighbour list, and the
 Script: "show me the page" on a manual with a diagram and a table; a long answer read by scrolling; two
 earlier answers reread; point to zoom into a table's corner; gloves on; daylight; the lens left to dim
 and sleep mid-read, then woken; Back pressed mid-read, then the view brought back by voice; a private
-conversation, checking its answers are gone from Earlier afterwards. The tester reports what Meta's
+conversation, checking its answers are gone from Earlier afterwards. For §7 and §8: "show that again"
+after Back, after Close, after the card's lifetime, and while it is on the lens; the words said inside a
+real question ("can you show that again on the phone"), which must reach the model; and, with the card
+up, the lens left to dim (20 s) and to sleep (25 s), then (a) "show that again" said, noting whether the
+send wakes the lens, and (b) the lens woken by touch and by pinch, noting whether the card is still
+there. Those two answers settle §8. The tester reports what Meta's
 assistant does that this still doesn't.
 
 **Gates for each PR:** the full suite and a Release build green; `SWIFT_EMIT_LOC_STRINGS=NO` for
@@ -415,12 +488,16 @@ throwaway builds; strings synced to the catalog; no plan letters or beta wording
 - From the whole page, reaching the bottom right of a table takes at most three band actions.
 - Nothing new leaves the phone, and the lens history is gone when the conversation ends.
 - The store build calls no experimental API.
+- After Back, Close or the card's lifetime, "show that again" brings the last answer back to the lens
+  on the page the wearer was reading, and inside a sentence the same words reach the model.
+- Nothing sends to the lens on a timer to keep it awake.
 
 ## Open
 
 - What drives the native scroll, and where focus lands after a send (P1, then P6).
 - The real character advance on the lens (KV P5), which could widen lines past 32.
-- Whether a new `send()` wakes a sleeping lens (unconfirmed; dat-conventions). If it doesn't, a redraw
+- Whether a new `send()` wakes a dimmed or sleeping lens, and whether our frame survives a wake by touch
+  or pinch (unconfirmed; dat-conventions; §8; the simulator can't show it, so P6). If a send doesn't wake it, a redraw
   after sleep waits for the wearer's next input.
 - Whether the Display session survives the wake word holding the glasses mic (a known Meta field
   report). A reading view that ends while the mic is open is that, until shown otherwise.
