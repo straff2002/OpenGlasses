@@ -363,6 +363,10 @@ class OpenClawBridge: ObservableObject {
             }
         } catch {
             PrivacyLog.gatewayFailed(.health, SafeErrorSummary(error))
+            if let hint = LocalNetworkAccessHint.line(for: error, host: url.host, target: .agentGateway) {
+                connectionState = .unreachable(hint)
+                return
+            }
         }
         connectionState = .unreachable("Gateway not responding")
     }
@@ -393,6 +397,10 @@ class OpenClawBridge: ObservableObject {
 
     // MARK: - WebSocket Chat
 
+    /// The host the socket was last opened to, for reading a failure on it
+    /// (`LocalNetworkAccessHint`). A socket error does not always carry the URL it failed on.
+    private var socketHost: String?
+
     /// Ensure the socket is connected and authenticated: challenge → connect → hello-ok.
     private func ensureWebSocket() async throws {
         if wsConnected, socket != nil { return }
@@ -417,6 +425,7 @@ class OpenClawBridge: ObservableObject {
         }
 
         PrivacyLog.gatewayConnection(.connecting, transport: currentTransport)
+        socketHost = url.host
         var request = URLRequest(url: url)
         // The gateway reads this header on its HTTP routes only; on the socket it is inert.
         // Kept so an HTTP-side session listing still classes these as "glass" if that changes.
@@ -890,6 +899,10 @@ class OpenClawBridge: ObservableObject {
             PrivacyLog.gatewayFailed(.request, SafeErrorSummary(error))
             // Reconnect on next attempt
             disconnectWebSocket()
+            if let hint = LocalNetworkAccessHint.line(for: error, host: socketHost, target: .agentGateway) {
+                lastToolCallStatus = .failed(toolName, hint)
+                return .failure(hint)
+            }
             lastToolCallStatus = .failed(toolName, error.localizedDescription)
             return .failure("Gateway error: \(error.localizedDescription)")
         }

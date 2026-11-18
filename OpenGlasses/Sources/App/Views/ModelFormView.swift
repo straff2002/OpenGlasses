@@ -511,8 +511,13 @@ struct ModelFormView: View {
         scanMessage = nil
         discoveredServers = []
         defer { isScanning = false }
-        let servers = await LocalServerScanner().scan()
+        let scanner = LocalServerScanner()
+        let servers = await scanner.scan()
         discoveredServers = servers
+        if servers.isEmpty, scanner.lastBrowseLocalNetworkDenied {
+            scanMessage = LocalNetworkAccessHint.message(for: .aiServer)
+            return
+        }
         scanMessage = servers.isEmpty
             ? String(localized: "No servers found. Many local servers don't advertise on the network — enter the Base URL manually or pick a preset above.")
             : (servers.count == 1

@@ -158,8 +158,17 @@ final class MCPClient: ObservableObject {
         let payload = Self.callPayload(toolName: tool.name, arguments: arguments,
                                        idempotencyKey: idempotencyKey)
 
-        guard let data = try? await mcpRequest(server: server, payload: payload),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        let data: Data
+        do {
+            data = try await mcpRequest(server: server, payload: payload)
+        } catch {
+            if let hint = LocalNetworkAccessHint.line(for: error, host: URL(string: server.url)?.host,
+                                                      target: .mcpServer) {
+                return hint
+            }
+            return "MCP server '\(server.label)' returned an error for tool '\(tool.name)'."
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let result = json["result"] as? [String: Any] else {
             return "MCP server '\(server.label)' returned an error for tool '\(tool.name)'."
         }

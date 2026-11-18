@@ -25,10 +25,16 @@ final class LocalServerScanner {
 
     private var browser: NWBrowser?
 
+    /// Whether the last browse was refused by the Local Network permission
+    /// (`LocalNetworkAccessHint`), so an empty result can say why.
+    private(set) var lastBrowseLocalNetworkDenied = false
+
     /// Browse Bonjour `_http._tcp` for up to `discoverySeconds`, then probe each
     /// discovered host's preset candidates. Returns reachable servers, fastest first.
     func scan(discoverySeconds: TimeInterval = 3) async -> [DiscoveredServer] {
-        let hosts = await browseHosts(for: discoverySeconds)
+        let browse = await browseHosts(for: discoverySeconds)
+        lastBrowseLocalNetworkDenied = browse.denied
+        let hosts = browse.hosts
         guard !hosts.isEmpty else { return [] }
 
         var found: [DiscoveredServer] = []
@@ -59,8 +65,8 @@ final class LocalServerScanner {
     /// Collect candidate hostnames from Bonjour `_http._tcp` service results. Maps each
     /// discovered service instance to its `<name>.local` host (best-effort — exact
     /// endpoint resolution is device-validated).
-    private func browseHosts(for seconds: TimeInterval) async -> [String] {
-        await withCheckedContinuation { (continuation: CheckedContinuation<[String], Never>) in
+    private func browseHosts(for seconds: TimeInterval) async -> (hosts: [String], denied: Bool) {
+        await withCheckedContinuation { (continuation: CheckedContinuation<(hosts: [String], denied: Bool), Never>) in
             // The NWBrowser handlers are `@Sendable` and the timeout closure is passed to
             // `asyncAfter`, so the shared browse state must be data-race-free (a hard error under
             // the Swift 6 language mode). A lock-guarded collector confines `hosts` + the
@@ -84,10 +90,16 @@ final class LocalServerScanner {
                     self?.browser?.cancel()
                     self?.browser = nil
                 }
-                continuation.resume(returning: collector.snapshot())
+                continuation.resume(returning: (hosts: collector.snapshot(), denied: collector.denied))
             }
 
             browser.stateUpdateHandler = { state in
+                switch state {
+                case .waiting(let error), .failed(let error):
+                    if LocalNetworkAccessHint.isLikelyDenied(error) { collector.markDenied() }
+                default:
+                    break
+                }
                 if case .failed = state { finish() }
             }
             browser.start(queue: .main)
@@ -112,6 +124,18 @@ private final class HostCollector: @unchecked Sendable {
     func snapshot() -> [String] {
         lock.lock(); defer { lock.unlock() }
         return Array(hosts)
+    }
+
+    private var deniedFlag = false
+
+    var denied: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return deniedFlag
+    }
+
+    func markDenied() {
+        lock.lock(); defer { lock.unlock() }
+        deniedFlag = true
     }
 
     /// Returns `true` for the first caller only — the winner performs the single continuation resume.

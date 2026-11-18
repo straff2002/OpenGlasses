@@ -82,6 +82,8 @@ enum HermesAgentAPIError: Error, Equatable, LocalizedError {
     case emptyReply
     case malformedReply
     case unreachable
+    /// A host on the wearer's network failed the way a refused Local Network permission fails.
+    case localNetworkMayBeOff
     case timedOut
     case transport(code: Int)
 
@@ -111,6 +113,8 @@ enum HermesAgentAPIError: Error, Equatable, LocalizedError {
             return String(localized: "Hermes's answer couldn't be read.")
         case .unreachable:
             return String(localized: "Hermes's API server couldn't be reached.")
+        case .localNetworkMayBeOff:
+            return LocalNetworkAccessHint.message(for: .hermesAgent)
         case .timedOut:
             return String(localized: "Hermes didn't answer in time.")
         case .transport(let code):
@@ -402,6 +406,9 @@ enum HermesConnectionDiagnosis: Equatable, Sendable {
     /// `EndpointPolicy` refused the address — in a release build, cleartext to a public host.
     case refusedByPolicy
     case unreachable(HermesConnectionKind)
+    /// The address is on the wearer's network and failed the way a refused Local Network
+    /// permission fails.
+    case localNetworkMayBeOff
     case secureConnectionFailed
     /// Something answered over HTTP, but not like Hermes's API server.
     case notHermesAPIServer
@@ -445,6 +452,7 @@ enum HermesConnectionDiagnosis: Equatable, Sendable {
         case .medicalLocalOnly: return "medicalLocalOnly"
         case .refusedByPolicy: return "refusedByPolicy"
         case .unreachable: return "unreachable"
+        case .localNetworkMayBeOff: return "localNetworkMayBeOff"
         case .secureConnectionFailed: return "secureConnectionFailed"
         case .notHermesAPIServer: return "notHermesAPIServer"
         case .looksLikeBridgeScript: return "looksLikeBridgeScript"
@@ -485,6 +493,8 @@ enum HermesConnectionDiagnosis: Equatable, Sendable {
             return String(localized: "Couldn't reach Hermes's API server. By default it only listens on the Hermes machine itself: set API_SERVER_HOST=0.0.0.0 there and restart Hermes. Also check the IP address, the port (8642 by default) and the machine's firewall.")
         case .unreachable(.bridgeScript):
             return String(localized: "Couldn't reach the bridge script. Check that it's running, the IP address, the port (8765 by default) and the machine's firewall.")
+        case .localNetworkMayBeOff:
+            return LocalNetworkAccessHint.message(for: .hermesAgent)
         case .secureConnectionFailed:
             return String(localized: "Couldn't make a secure connection. If Hermes is on your own network, enter the address without https:// so the app uses plain http there.")
         case .notHermesAPIServer:
