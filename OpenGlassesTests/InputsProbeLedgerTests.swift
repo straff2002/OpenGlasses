@@ -82,7 +82,7 @@ final class InputsProbeLedgerTests: XCTestCase {
         XCTAssertNil(ledger.current)
         XCTAssertEqual(ledger.runs.count, 1)
         XCTAssertEqual(ledger.reportLines, [
-            "Glasses inputs probe: 1 run since launch (sources captouch, Back left to Meta)",
+            "Glasses inputs probe: 1 run since launch (sources captouch+neuralBand+neuralBandDrag, Back left to Meta)",
             "  run 1 · \(time(of: Date(timeIntervalSince1970: 1_800_000_000))) · started, battery 80 %",
             "  run 1 · +1200 ms · state activating",
             "  run 1 · +2000 ms · state active",
@@ -127,6 +127,64 @@ final class InputsProbeLedgerTests: XCTestCase {
         XCTAssertTrue(lines.last?.hasPrefix("  run 1 · stopped (wearerStopped) after 0 s, battery not known") == true)
     }
 
+    /// A band drag streams moves: moves in a row from one source are one entry with a count and a
+    /// span, so a long drag cannot fill the cap and crowd out the presses after it.
+    func testDragMovesInARowAreKeptAsOneEntry() throws {
+        let ledger = ledger()
+        ledger.begin(battery: 70)
+        advance(1000)
+        ledger.recordInput(GlassesInput(kind: .drag(.down), origin: .neuralBandDrag), userAudioPlaying: false)
+        for _ in 0..<(InputsProbeLedger.inputCapacity + 100) {
+            advance(10)
+            ledger.recordInput(GlassesInput(kind: .drag(.move), origin: .neuralBandDrag), userAudioPlaying: false)
+        }
+        ledger.recordInput(GlassesInput(kind: .drag(.up), origin: .neuralBandDrag), userAudioPlaying: false)
+        advance(500)
+        ledger.recordInput(GlassesInput(kind: .select, origin: .neuralBand), userAudioPlaying: true)
+        let run = try XCTUnwrap(ledger.current)
+        XCTAssertEqual(run.inputCount, InputsProbeLedger.inputCapacity + 103)
+        XCTAssertEqual(run.keptInputs, run.inputCount)
+        XCTAssertEqual(run.inputEntries, 4)
+        XCTAssertFalse(run.isTruncated)
+        ledger.end(.wearerStopped, battery: 70)
+        let lines = ledger.reportLines
+        XCTAssertEqual(Array(lines.dropFirst(2).prefix(4)), [
+            "  run 1 · +1000 ms · drag-down (neuralBandDrag)",
+            "  run 1 · +1010 ms · drag-move 600 times over 5990 ms (neuralBandDrag)",
+            "  run 1 · +7000 ms · drag-up (neuralBandDrag)",
+            "  run 1 · +7500 ms · select (neuralBand), audio playing",
+        ], lines.joined(separator: "\n"))
+        XCTAssertTrue(lines.contains(
+            "  run 1 · 603 inputs: drag-move (neuralBandDrag) 600, drag-down (neuralBandDrag) 1, "
+                + "drag-up (neuralBandDrag) 1, select (neuralBand) 1 · 1 with audio playing"),
+            lines.joined(separator: "\n"))
+    }
+
+    /// Moves are joined only when nothing came between them from another source or kind.
+    func testMovesAreJoinedOnlyInAnUnbrokenRun() throws {
+        let ledger = ledger()
+        ledger.begin(battery: nil)
+        let move = GlassesInput(kind: .drag(.move), origin: .neuralBandDrag)
+        ledger.recordInput(move, userAudioPlaying: false)
+        ledger.recordInput(move, userAudioPlaying: false)
+        ledger.recordInput(GlassesInput(kind: .drag(.move), origin: .captouch), userAudioPlaying: false)
+        ledger.recordState(.active)
+        ledger.recordInput(move, userAudioPlaying: false)
+        let run = try XCTUnwrap(ledger.current)
+        XCTAssertEqual(run.inputCount, 4)
+        XCTAssertEqual(run.keptInputs, 4)
+        XCTAssertEqual(run.inputEntries, 3)
+        let shapes: [String] = run.entries.map {
+            switch $0 {
+            case .input(let input, _, _): return input.kind.reportToken
+            case .moves(let origin, let count, _, _, _): return "moves \(origin.rawValue) \(count)"
+            case .state(let state, _): return "state \(state.rawValue)"
+            case .error(let failure, _): return "error \(failure.rawValue)"
+            }
+        }
+        XCTAssertEqual(shapes, ["moves neuralBandDrag 2", "moves captouch 1", "state active", "moves neuralBandDrag 1"])
+    }
+
     func testStatesAndErrorsAreCappedToo() {
         let ledger = ledger()
         ledger.begin(battery: 50)
@@ -143,7 +201,7 @@ final class InputsProbeLedgerTests: XCTestCase {
         }
         XCTAssertEqual(ledger.runs.count, InputsProbeLedger.runCapacity)
         let lines = ledger.reportLines
-        XCTAssertEqual(lines.first, "Glasses inputs probe: 4 runs since launch (sources captouch, Back left to Meta)")
+        XCTAssertEqual(lines.first, "Glasses inputs probe: 4 runs since launch (sources captouch+neuralBand+neuralBandDrag, Back left to Meta)")
         XCTAssertFalse(lines.contains { $0.hasPrefix("  run 1 ") })
         XCTAssertTrue(lines.contains { $0.hasPrefix("  run 4 ") })
     }

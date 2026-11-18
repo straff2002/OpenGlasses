@@ -221,11 +221,13 @@ final class DATExperimentalGuardTests: XCTestCase {
 
     // MARK: - 3b. The Inputs probe's configuration (P2)
 
-    /// The probe asks for the touchpad only and leaves Back to Meta: never the capture button
-    /// (Meta's camera), never `consumeBack: true`, and never the SDK's default configuration, which
+    /// The probe asks for the touchpad and the Neural Band and leaves Back to Meta: never the
+    /// capture button (Meta's camera), never the action button, never `consumeBack: true`, and never the SDK's default configuration, which
     /// is every source with Back consumed. One configuration, written once, used by every add.
-    func testTheInputsProbeAsksForTheTouchpadOnlyAndLeavesBackToMeta() throws {
-        XCTAssertEqual(InputsProbePolicy.origins, [.captouch])
+    func testTheInputsProbeAsksForTheTouchpadAndBandAndLeavesBackToMeta() throws {
+        XCTAssertEqual(InputsProbePolicy.origins, [.captouch, .neuralBand, .neuralBandDrag])
+        XCTAssertFalse(InputsProbePolicy.origins.contains(.captureButton))
+        XCTAssertFalse(InputsProbePolicy.origins.contains(.actionButton))
         XCTAssertFalse(InputsProbePolicy.consumesBack)
         XCTAssertEqual(InputsProbePolicy.timeLimit, .seconds(300))
 
@@ -242,8 +244,8 @@ final class DATExperimentalGuardTests: XCTestCase {
             }
         }
         XCTAssertEqual(configurations, [
-            "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.captouch], consumeBack: false)",
-        ], "the probe's one configuration is the touchpad only with Back left to Meta")
+            "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: false)",
+        ], "the probe's one configuration is the touchpad and the band with Back left to Meta")
         XCTAssertEqual(adds, [
             "\(Self.folder)MetaInputsSource.swift: added = try session.addInputs(configuration: InputsProbeConfiguration.sdk)",
         ], "Inputs is added once, with the probe's configuration, never the SDK's default")
