@@ -129,10 +129,11 @@ confirmed covered. **Live half: pending, needs the phone + a real ChatGPT accoun
       exposed a leak older than this plan: smart camera called a bare `startStreaming()` that
       nothing ever stopped, so one vision question left the camera streaming (and every later turn
       carrying a frame) until the glasses disconnected. A Ray-Ban Display wearer reported a
-      permanent green dot on the lens right after. Smart camera now takes a `.smartCamera`
+      picture attached to every message. Smart camera now takes a `.smartCamera`
       stream claim through `SmartCameraStreamHold` and gives it back `smartCameraCooldown` after
       its last use (kept for good only under the "always" camera preset); a claim stops only a
-      stream it started. **Owed:** confirm on the Display that the dot goes when the camera does.
+      stream it started. **Owed:** on the glasses, one vision question, then a plain one about 5 s
+      later: the camera stops and the plain question carries no picture.
 - [ ] Token refresh across an expiry (leave the app overnight, ask again).
 - [ ] Verify the endpoint constants against the live service (the P1 constants block is
       captured-at-implementation and unverified until this runs).
