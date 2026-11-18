@@ -173,6 +173,10 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
     private var session: DisplaySessionControl?
     private var display: Display?
+    /// A Display we let go of while its session may live on (the camera still holding the shared
+    /// session). It was stopped when dropped; the next `addDisplay()` waits for it to reach
+    /// `stopped`, because the SDK refuses a second Display on a session while one is active.
+    private var retiringDisplay: Display?
     /// Follows the session's own states (`stateStream()`) for as long as we hold it.
     private var sessionWatch: Task<Void, Never>?
     /// Bumped whenever a refusal is set or cleared, so an older expiry never clears a newer one.
@@ -483,7 +487,15 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
             if display.state != .started { try await awaitStarted(display) }
             return display
         }
-        // We exclusively own this session, so the display capability can't already be active.
+        // The session is shared with the camera (`DeviceSessionCoordinator`), so a Display we
+        // dropped may still be winding down on it: wait for it, or `addDisplay()` is refused with
+        // `capabilityAlreadyActive` (build 717: every frame after one failed draw).
+        if let retiring = retiringDisplay {
+            let (outcome, waited) = try await DisplayStopWait.wait { DisplayCapabilityPhase(retiring.state) }
+            PrivacyLog.device(.hud, .displayCapabilityRead, state: PrivacyToken(outcome.rawValue),
+                              detail: PrivacyToken("retired"), count: Int((waited * 1000).rounded()))
+            retiringDisplay = nil
+        }
         // `addDisplay()` throws DeviceSessionError; surface failures via the render-error path
         // (which tears down and rebuilds a fresh session).
         let display = try session.addDisplay()
@@ -672,11 +684,23 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         sessionWatch?.cancel()
         sessionWatch = nil
         cancelDisplayWatch()
+        // Stop the Display before handing the session back. The session is shared with the
+        // camera, so handing it back no longer stops it, and a Display left running on it made
+        // every later `addDisplay()` fail with `capabilityAlreadyActive` until the camera let go.
+        retireDisplay()
         if stopping { session?.stop() } else { session?.relinquish() }
         session = nil
         display = nil
         isDisplayActive = false
         noteSessionState(nil)
+    }
+
+    /// Stop the held Display (synchronous; its state follows) and keep it until the next
+    /// `addDisplay()` has seen it reach `stopped`. One already stopping or stopped is only kept.
+    private func retireDisplay() {
+        guard let display else { return }
+        if DisplayCapabilityPhase.needsStop(DisplayCapabilityPhase(display.state)) { display.stop() }
+        retiringDisplay = display
     }
 }
 
