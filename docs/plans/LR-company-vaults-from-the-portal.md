@@ -9,7 +9,12 @@ arrives without waiting for the daily profile renewal. 2026-11-18, from a tester
 company's manuals never arrived on an iPad, and the report could not say why): the pass now writes its steps to
 the app's event log (`[transfer] channel=companyVault`, names fingerprinted, failures by case and HTTP status),
 and an answer says why a listed manual is not on the phone — held for the open job, waiting for Wi-Fi or space,
-or a failed download — instead of always "still downloading". All five
+or a failed download — instead of always "still downloading". 2026-11-18, from that log: no company manual
+could be laid into its vault on any phone or iPad. The containment check standardised the re-lay folder under
+`/private/var/…/tmp` as `/var/…` and the manual not yet copied into it as `/private/var/…`, so every manual was
+refused as `missingFile`; it is now decided from the path's own components. And the hardened HTTP client
+refused any response whose first read brought the headers with more than 32 KB of body as `badResponse`; only
+the headers count against that limit now. All five
 [decisions](#decisions-for-greig) taken 2026-11-13: decision 1 (manuals may be uploaded, with size limits) while
 drafting, decisions 2–5 as recommended.
 **Track:** Field Assist — fleet. The organisation profile, vault packs, manuals.

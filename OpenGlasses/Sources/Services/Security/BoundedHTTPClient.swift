@@ -853,15 +853,22 @@ final class HTTPResponseParser {
         self.sink = sink
     }
 
+    /// The most a response's status line and headers may take.
+    static let maximumHeaderBytes = 32 * 1024
+
     func feed(_ data: Data) throws -> Bool {
         buffer.append(data)
-        if case .headers = mode, buffer.count > 32 * 1024 {
-            throw BoundedHTTPClient.ClientError.badResponse
-        }
         while true {
             switch mode {
             case .headers:
-                guard let range = buffer.range(of: Data("\r\n\r\n".utf8)) else { return false }
+                // The limit is on the headers, not on what arrived with them: one read can carry
+                // the headers and the first 64 KB of the body, and counting the body as headers
+                // refused a sound download as `badResponse` whenever the network delivered that way.
+                let window = buffer.startIndex..<min(buffer.endIndex, buffer.startIndex + Self.maximumHeaderBytes + 4)
+                guard let range = buffer.range(of: Data("\r\n\r\n".utf8), in: window) else {
+                    if buffer.count > Self.maximumHeaderBytes { throw BoundedHTTPClient.ClientError.badResponse }
+                    return false
+                }
                 let head = buffer[..<range.lowerBound]
                 buffer.removeSubrange(..<range.upperBound)
                 try parseHeaders(Data(head))

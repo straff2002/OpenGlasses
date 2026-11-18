@@ -245,6 +245,46 @@ final class BoundedHTTPClientTests: XCTestCase {
         }
     }
 
+    /// One read can carry the headers and up to 64 KB of the body. Only the headers count against
+    /// their limit: a company manual whose first read brought 60 KB of it was refused as
+    /// `badResponse` (build 717), on whichever download the network happened to deliver that way.
+    func testHeadersArrivingWithMoreThan32KBOfBodyAreRead() throws {
+        let url = URL(string: "https://licence.example/c/opaque/m/abc")!
+        let body = Data((0..<60_000).map { UInt8($0 % 251) })
+        let head = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: \(body.count)\r\n\r\n"
+        var received = Data()
+        let parser = HTTPResponseParser(url: url, profile: .companyVaultFile(maximumBytes: 100_000),
+                                        sink: { received.append($0) })
+        XCTAssertTrue(try parser.feed(Data(head.utf8) + body))
+        XCTAssertEqual(try parser.response().statusCode, 200)
+        XCTAssertEqual(received, body)
+
+        // A chunked body in the same read.
+        var chunked = Data()
+        let chunkedParser = HTTPResponseParser(url: url, profile: .companyVaultFile(maximumBytes: 100_000),
+                                               sink: { chunked.append($0) })
+        let chunkedHead = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+        let wire = Data(chunkedHead.utf8) + Data(String(body.count, radix: 16).utf8) + Data("\r\n".utf8) + body
+            + Data("\r\n0\r\n\r\n".utf8)
+        XCTAssertTrue(try chunkedParser.feed(wire))
+        XCTAssertEqual(chunked, body)
+    }
+
+    /// Headers themselves past the limit are still refused, however they arrive.
+    func testHeadersLongerThanTheLimitAreRefused() throws {
+        let url = URL(string: "https://example.test/x")!
+        let long = "HTTP/1.1 200 OK\r\nX-Filler: " + String(repeating: "a", count: HTTPResponseParser.maximumHeaderBytes)
+        let whole = HTTPResponseParser(url: url, profile: .qrContext, sink: { _ in })
+        XCTAssertThrowsError(try whole.feed(Data((long + "\r\nContent-Length: 0\r\n\r\n").utf8))) { error in
+            XCTAssertEqual(error as? BoundedHTTPClient.ClientError, .badResponse)
+        }
+        let piecewise = HTTPResponseParser(url: url, profile: .qrContext, sink: { _ in })
+        XCTAssertFalse(try piecewise.feed(Data(long.prefix(20_000).utf8)))
+        XCTAssertThrowsError(try piecewise.feed(Data(long.dropFirst(20_000).utf8))) { error in
+            XCTAssertEqual(error as? BoundedHTTPClient.ClientError, .badResponse)
+        }
+    }
+
     func testAClientRefusalSummarisesAsItsCase() {
         XCTAssertEqual(SafeErrorSummary(BoundedHTTPClient.ClientError.idleTimeout).description, "timedOut(idleTimeout)")
         XCTAssertEqual(SafeErrorSummary(BoundedHTTPClient.ClientError.transport).description, "cannotConnect(transport)")
