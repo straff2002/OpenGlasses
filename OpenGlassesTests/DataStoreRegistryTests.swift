@@ -108,6 +108,10 @@ final class DataStoreRegistryTests: XCTestCase {
         "OpenGlasses/Sources/Glasses/MockDisplay/SimulatedDisplayWalkthrough.swift":
             "Development-only simulated-Display walkthrough (DAT_MOCK_DISPLAY, Debug Simulator builds): "
                 + "screenshots of invented test pages, never in a store or TestFlight build",
+        "OpenGlasses/Sources/Glasses/MockDisplay/SimulatedDisplayTallViews.swift":
+            "Development-only tall-views measurement (DAT_MOCK_DISPLAY, Debug Simulator builds): "
+                + "scroll offsets, focus, sizes and send times of invented test views, and snapshots "
+                + "of them; never in a store or TestFlight build",
     ]
 
     // MARK: - Exhaustiveness
