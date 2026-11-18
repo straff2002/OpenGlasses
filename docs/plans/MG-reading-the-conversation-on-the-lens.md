@@ -1,7 +1,8 @@
 # Plan MG — Reading the Conversation on the Lens (bigger pages now, then the answer and the ones before it in one view you scroll, and a page you zoom by pointing)
 
-**Status:** 📝 Drafted 2026-11-18. Nothing is implemented. P0, bigger pages, is small and headless and can
-ship on its own. P1 is a measurement on the simulated Display, and it decides how P2–P4 are built.
+**Status:** 🚧 P0 built 2026-11-18 (headless): the answer card takes the lens's measured budget, so a
+600-character answer is 3 pages instead of 7, and **Page** sits on the last page. P1, a measurement on
+the simulated Display, is next, and it decides how P2–P4 are built.
 All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
 live answer on the lens, and the manual-page view. P0, P2 and P3 are headless. P1 and P4 run on the
@@ -292,6 +293,59 @@ Tests: the page counts and line counts for single, paged, questioned and picture
 geometry; Even unchanged; prefix stability while streaming kept; the fullest first page with a picture
 still fits (`fits` passes); the 600-character fixture is 3 pages. Then the full suite and a Release
 build. The new **Page** placement adds no strings.
+
+**As built (P0).**
+
+- **The geometry.** `LensPageFrame.answerGeometry` is a property, not `answerGeometry(question:picture:)`:
+  the question and the picture stay first-page reservations, as the question already was. It shares
+  reading mode's budget function (the two frames are the same shape: a meta line over page 1, body
+  lines, a meta footer, the button row), so it is 10 × 32, derived and not written down: a paged page
+  holds 9 lines of text and the footer, 8 under the question; a single page 10, 9 under the question
+  (`HUDTextShaper.maxBodyLength`, 120 characters, keeps a real single page far shorter).
+  `HUDAnswerCard.activeGeometry()` returns it on the Meta Display and in the phone-only build (the web
+  mirror); Even keeps `.evenG2`. `TeleprompterPaginator.Geometry.raybanDisplay` is untouched.
+- **Who stays on 4 × 32.** A new `HUDAnswerCard.activeTeleprompterGeometry()` is the old behaviour, and
+  the three other callers of `activeGeometry()` now read it: `HUDRouter.cardGeometry` (the prepared-card
+  stack), `PreparedCardGlances.geometry` (the glance) and `HUDTurnState.geometry` (the Thinking card,
+  which reads only its 32 characters).
+- **The picture's lines.** `LensPageFrame.pictureBodyLines(drawnHeight:)` is a picture's drawn height and
+  its gap in body lines and their gaps, rounded up; `HUDAnswerThumbnail.firstPageLines(of:)` applies it,
+  5 for the 552 × 200 strip (209 px drawn), 3 for a 552 × 100 panorama.
+  `HUDAnswerCard.firstPageReservedLines(hasQuestion:picture:geometry:)` is the question's line plus the
+  picture's lines beyond the room the geometry already leaves (10 less its `maxLines`): so 5 at the
+  lens's 10 lines and none at the teleprompter's 4, which left the strip room of its own (every card
+  test that injects 4 × 32 is unchanged). A picture so tall it would leave no line of text beside the
+  question and the footer reserves nothing, because `fits` leaves it off. Even draws no pictures, so
+  nothing is staged there.
+- **When it reserves.** `update()` reads the first page's picture once per layout: before the card is
+  first shown, the staged picture if it is still fresh and the backend draws pictures
+  (`freshStagedPicture()`, which replaced `takeStagedPicture()`); once shown, the card's own `picture`.
+  The card takes exactly the picture it laid out for, so the reservation is constant for the card's
+  life and settled pages keep their lines as an answer streams. The fullest first page with the strip —
+  the question, 3 lines and the footer; 4 lines and the footer; a single page of 4 or 5 lines — is at
+  most 567 px of the 600.
+- **One thing the plan didn't name.** A page the pager makes in its paged path that turns out to be the
+  only one (no footer) can now hold up to 9 lines, past the 120 characters a backend keeps of one body
+  line. `HUDAnswerCardBuilder.page` draws such a page line by line, as a paged page is, so nothing is
+  cut; a page within 120 characters is still today's one line.
+- **Page on the last page.** `HUDAnswerCardBuilder.page(…, hasPage:)` takes the same
+  `hasPage && pageCanOpen()` the Actions screen gets. With a page: first follow-up (if any) · **Page** ·
+  Actions · ‹ Back (paged only); the second follow-up moves to the Actions screen ahead of the third,
+  and the Actions screen no longer offers Page. Without one, both are exactly as before. A page staged
+  while the card is up redraws it on the last page as well as on Actions. The existing `ItemID.page`,
+  `HUDAnswerAction.page` and the existing "Page" string and comment are reused: no new strings.
+- **The simulated-Display walkthrough's** answer card, three pages at 4 × 32, would have been one page at
+  10 × 32; its reply is now about 600 characters, three pages again.
+- **Tests.** 20 new, in `LensPageFrameTests` (2), `HUDAnswerPagerTests` (4), `HUDAnswerCardBuilderTests`
+  (5), `HUDAnswerFollowUpTests` (3), `LensLiveAndVisionTests` (3) and `LensLiveAndVisionDisplayTests` (3):
+  the geometry from the budget, the 600-character fixture (`"word " × 120`, 20 lines: 7 pages at 4 × 32,
+  3 at 10 × 32 as 9 · 9 · 2, and 8 · 9 · 3 under the question), every first page at every length fitting
+  with the picture, the reservation by question, picture and geometry, prefix stability with the first
+  page reserved, a streamed vision answer keeping its picture and its 3-line first page end to end, the
+  active geometries by backend, and the last-page and Actions buttons with and without a page for 0–3
+  follow-ups. One changed: `LensPageSessionTests.testTheAnswerCardOffersPageWhenItsTurnStagedOne` now
+  finds Page on the card's page, not under Actions. The focused classes ran 316 tests and the full suite
+  17,935 (16 skipped), all passing; the Release build succeeded.
 
 ### P1 — measure on the simulated Display (development only, iOS Simulator)
 
