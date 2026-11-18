@@ -64,6 +64,12 @@ final class GlassesDisplayService: ObservableObject {
         return backend
     }()
 
+    #if DAT_MOCK_DISPLAY
+    /// Development only (the simulated Display's Tall views measurement): the Meta backend the HUD
+    /// sends through, so a measurement view uses the lens session the HUD already holds.
+    var simulatedDisplayMetaBackend: MetaDisplayBackend { metaBackend }
+    #endif
+
     private lazy var evenBackend: EvenDisplayBackend = {
         let backend = EvenDisplayBackend()
         wire(backend)

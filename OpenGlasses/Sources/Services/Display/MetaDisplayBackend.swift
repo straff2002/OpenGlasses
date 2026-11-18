@@ -284,6 +284,19 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         try await HUDSendDeadline.run { try await display.send(view) }
     }
 
+    #if DAT_MOCK_DISPLAY
+    /// Development only: Developer › Simulated Display › Tall views sends views the HUD's
+    /// SDK-free DSL can't express (columns and grids of tappable `FlexBox`es) to measure how the
+    /// simulated lens scrolls and focuses them. It goes through this backend's own session and
+    /// display (`ensureDisplay()`), the ones `DeviceSessionCoordinator` lends the HUD, so no
+    /// second session is made. Compiled only into the mock lane, a Debug build for the Simulator.
+    func sendMeasurementView(_ view: FlexBox, deadline: TimeInterval) async throws {
+        let display = try await ensureDisplay()
+        videoEnded = nil
+        try await HUDSendDeadline.run(seconds: deadline) { try await display.send(view) }
+    }
+    #endif
+
     /// The encoded size of the picture in a built tree: DAT carries an `Image` as its `uri`.
     static func pictureBytes(in view: FlexBox) -> Int? {
         view.children.lazy.compactMap { $0 as? Image }.first.map { $0.uri.utf8.count }

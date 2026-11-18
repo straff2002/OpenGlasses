@@ -4,8 +4,12 @@
 600-character answer is 3 pages instead of 7, and **Page** sits on the last page. "Show that again"
 brings the last answer back to the lens by voice after the glasses' Back gesture, Close or its lifetime
 (§7). §8 records what a send does to a dimmed or sleeping lens as a device check, with no keep-awake
-loop. P1, a measurement on
-the simulated Display, is next, and it decides how P2–P4 are built.
+loop. **P1 measured 2026-11-18 on the simulated Display:** a tall column of tappable rows scrolls with
+focus one row per move, and a press reaches the focused row, so the reading view (C) is buildable. Rows
+and tiles must be `.background(.card)` (the only way focus shows), and a row must stay inside the lens.
+A send opens scrolled to a primary button anywhere in the column. Focus moves across a tile grid as well
+as down it. The mock's input kit moves nothing, and send times over the radio, dimming and sleep stay
+P6's. P2 is next.
 All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
 live answer on the lens, and the manual-page view. P0, P2 and P3 are headless. P1 and P4 run on the
@@ -431,6 +435,122 @@ archived). It measures:
 
 The results are written into this plan as **Measured (P1)** and fix §2's and §4's numbers, decision 1's
 premise and decision 7's premise. The simulator is not the glasses: P6 checks every result again.
+
+**Measured (P1), 2026-11-18.** iOS Simulator (iPhone 17 Pro, iOS 26), the 1.0.1 Mock Device Kit's
+simulated Ray-Ban Display, a Debug build of the mock lane. Developer › Simulated Display › **Measure tall
+views**, or the launch argument `-AvenkinSimulatedDisplayTallViews`, runs `SimulatedDisplayTallViews`
+unattended. It sends `MWDATDisplay` views the HUD's DSL can't express through the HUD's own lens session
+(`MetaDisplayBackend.sendMeasurementView`, compiled only under `DAT_MOCK_DISPLAY`, so no second
+`DeviceSession`), reads the preview's web view after every move (scroll offsets, the focused element,
+what changed, each image's drawn and natural size), and presses the focused element to see whose
+handler fires. Results go to the app's Documents/tall-views/ (`results.json`, `tall-views.log`, 53 PNG
+snapshots of the preview) and the debug event log.
+
+*The input path.* The Mock Device Kit's input kit moved nothing. Three band and three touchpad
+`navDown`s and seven band `select`s left focus, scroll and every handler as they were. The preview's
+focus engine listens for the arrow keys and Enter, so every move below is an arrow key sent to the
+preview's focused element, and every press is Enter. Enter on a focused box reached the app's `.onTap`
+handler through the SDK. So did `sendClick(identifier:)`: the frame gives every tappable `FlexBox` an
+identifier (`c<n>_…`, type `flexBox`), as it gives buttons. Whether the band's swipes move focus the way
+the preview's arrow keys do is a question only the glasses answer (P6).
+
+1. **A column of 30 tappable rows** (1,560 px; rows 44 px tall at a 50 px pitch).
+   - **Focus steps row by row.** Each down move focused the next row: 29 moves reached row 30, and
+     further moves stayed there. Up moves stepped back. After every move, Enter fired exactly the
+     focused row's handler.
+   - **The lens scrolls with focus.** It doesn't scroll for the first 8 moves. From the 9th it scrolls
+     one row (50 px) per move and holds the focused row with its bottom 64 px above the lens's bottom
+     edge, so the top of the next row shows below it. It stops at the end of the content
+     (960 = 1,560 − 600). Going up, it holds until focus nears the top, then scrolls a row per move.
+   - **Focus shows only on a card.** A plain tappable `FlexBox` is drawn as an unstyled focusable box:
+     in every snapshot the focused row looks like the others. With `.background(.card)` (stable 1.0.1)
+     each row is drawn as a rounded dark card, and the focused one is lifted with a light rim, plainly
+     visible in every snapshot.
+   - **A row taller than the lens loses its top.** With four rows of about 900 characters (728 px
+     each), focus jumped a whole row per move, and the lens settled with the focused row's bottom on its
+     bottom edge. The row's first 128 px, about three lines, were never on the lens. The view opened
+     scrolled to 174. This happened with plain rows and with cards.
+2. **Focus and scroll on a send.** Every send replaced focus and scroll with:
+   - no primary button: the first tappable row is focused, scroll 0;
+   - a primary `Button` at the top: the button is focused, scroll 0; one down move goes to row 1;
+   - a primary `Button` in the middle (after row 15 of 30): **the lens opens scrolled to 340** with the
+     button in view and focused (rows 7–16 showing); Enter presses it; one down move goes to row 16;
+   - a primary `Button` at the bottom: the lens opens scrolled to the end (1,066 of 1,666), with the
+     button focused.
+3. **Send time against size.** The median of three sends, timed around the `send` await; "frame" is the
+   size of the JSON the test server serves to the preview.
+
+   | View | Characters | `send` | Frame |
+   |---|---|---|---|
+   | 10 one-line rows | 311 | 2.0 ms | 3.4 KB |
+   | 30 one-line rows | 951 | 4.0 ms | 9.8 KB |
+   | 60 one-line rows | 1,911 | 7.8 ms | 19.3 KB |
+   | 10 rows of 100 characters | 1,000 | 2.1 ms | 4.1 KB |
+   | 10 rows of 300 characters | 3,000 | 2.2 ms | 6.1 KB |
+   | 10 rows of 600 characters | 6,000 | 2.4 ms | 9.1 KB |
+
+   The test server served each new frame 5–43 ms after the call (polled every 20 ms), and the preview
+   drew it 22–29 ms after the call. The session's first send, which starts the session and the
+   display, took 354 ms. **On the simulator a send is an in-process hand-off with no radio, so these
+   times say nothing about the glasses.** What carries over is the frame size: about 300 bytes per
+   row on top of the text, so the number of boxes costs more than the characters (60 short rows are
+   19 KB, and 6,000 characters in 10 rows are 9 KB).
+4. **A 3 × 3 grid of tappable image tiles.**
+   - **Focus moves across as well as down.** The moves right, right, down, down, left, left, up, right,
+     down focused G12, G13, G23, G33, G32, G31, G21, G22 and G32. Enter fired that tile's handler each
+     time.
+   - **The glow on an image shows only on a card.** A plain tappable tile shows no focus. On
+     `.background(.card)` the focused tile is drawn full size with a light rim and rounded corners, and
+     the others shrink to 91% (a 180 × 140 tile drew at 164 × 128).
+   - **How `.fill` sizes an image.** It draws the image at its own pixel size, one image pixel to one
+     lens pixel. It never scales up (100 × 60 stayed 100 × 60), and it doesn't shrink images to share a
+     row: three 400 × 300 tiles made a row 1,228 px wide, clipped at the lens's right edge, with no
+     horizontal scroll. Alone in a row, a 900 × 200 image drew at 600 × 133, scaled to the lens's width,
+     with its right 12 px past the edge. Tiles must therefore be rendered at their drawn size: three
+     across with 8 px gaps is 186 px each.
+5. **A stack of image slices** (576 × 200 each, plain tappable boxes).
+
+   | Lens heights | Slices | Drawn height | Frame | `send` (median) |
+   |---|---|---|---|---|
+   | 1 | 3 | 678 px | 55.7 KB | 6.7 ms |
+   | 2 | 6 | 1,296 px | 112.6 KB | 9.0 ms |
+   | 3 | 9 | 1,914 px | 166.5 KB | 13.3 ms |
+
+   Every slice drew at 576 × 200. Down moves stepped slice to slice and scrolled about 206 px per move
+   (a slice and its gap), with no send. Nine slices reached the bottom in 8 moves. Plain slices show no
+   focus mark, as in item 1.
+6. **Dimming and sleep: not measured.** The mock has no control for either (§8, P6).
+
+**Not measurable on the simulator:** send times over the glasses' radio, so the size caps; whether the
+band moves focus the way the preview's arrow keys do; whether the card's lift and rim read on the real
+waveguide in daylight; and whether the wearer's swipe-direction setting reverses the moves.
+
+**What it means.**
+
+- **§2: the reading view (option C) is buildable, with two conditions; B stays the fallback.** A column
+  of tappable rows taller than the lens scrolls with focus, one row per move, and a press reaches the
+  focused row's handler. First condition: each row is a `FlexBox` with `.background(.card)` and
+  `.onTap`. That is the only way the focus shows, so `HUDBlock` (P2) maps to a card on the Meta Display.
+  Second condition: a row stays well inside the lens's height. A row taller than the lens loses its top
+  lines, so `rowMaxLines` stays at 4 (about 160 px). The first 10 rows read without scrolling,
+  and after that each move brings in one row. B's **‹ Earlier** list is built only if P6 shows the band
+  doesn't move focus this way on the glasses.
+- **§2's size cap: P1 can't set it.** The simulator's send times don't carry over. Until P6 measures the
+  radio, P2 starts with a provisional cap of 40 rows and 4,000 characters, about 13 KB a frame, below the
+  60-row test's 19 KB. Rows are the costlier dimension, so the oldest earlier turns drop first, as
+  planned.
+- **Decision 1's premise: met on the simulator.** The view opens scrolled to a primary `Button` in the
+  middle or at the bottom of a column, with that button focused. So chat order (newest at the bottom,
+  opening on the newest answer's buttons) is possible. The decision taken (newest at the top) doesn't
+  depend on it and stands. Switching is now a real option to weigh after P6, not a guess.
+- **Decision 7's premise: met, if the tiles are cards.** Focus moves across a row as well as down a
+  column, and a focused tile shows its glow, but only on `.background(.card)`. On a card the unfocused
+  tiles shrink to 91% with rounded corners, so the grid reads as nine cards and not one seamless page.
+  The grid replaces **Zoom in** on the whole page as decided, with each tile rendered at its drawn size.
+- **§4's vertical pan: works without a send.** A stack of slices scrolls about one slice per move.
+  Plain slices keep the strip seamless and show no focus mark; the scroll itself shows where the wearer
+  is. A three-lens strip is 166 KB a frame. `maxStripHeight` starts at two lens heights (about 113 KB)
+  until P6 times a send on the glasses.
 
 ### P2 — the reading view's core (headless)
 
