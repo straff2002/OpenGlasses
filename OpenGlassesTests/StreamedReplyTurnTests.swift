@@ -9,6 +9,8 @@ import XCTest
 final class RecordingStreamedSpeech: StreamedSpeechBackend, StreamedReplySpeaking {
     var chain: [TTSEngine] = [.system]
     private(set) var played: [String] = []
+    /// Whether each played sentence was to be mirrored to the lens.
+    private(set) var mirrored: [Bool] = []
     private(set) var wholeReplies: [String] = []
     private(set) var records: [StreamedReplyRecord] = []
     private(set) var active: StreamedReplyQueue?
@@ -33,8 +35,9 @@ final class RecordingStreamedSpeech: StreamedSpeechBackend, StreamedReplySpeakin
     func beginStreamedPlayback() async {}
 
     func playStreamedSentence(_ text: String, audio: StreamedSpeechAudio, engine: TTSEngine,
-                              source: SpeechSource) async -> SpeechDeliveryOutcome {
+                              source: SpeechSource, mirror: Bool) async -> SpeechDeliveryOutcome {
         played.append(text)
+        mirrored.append(mirror)
         onPlay?(played.count, text)
         await Task.yield()
         if let active, active.isCancelled { return .interrupted(by: active.interruption ?? .stop) }

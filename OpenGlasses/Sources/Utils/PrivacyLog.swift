@@ -1473,6 +1473,9 @@ enum PrivacyLog {
         // case names only.
         case streamedReplyStarted, streamedReplyFinished, streamedReplyInterrupted
         case streamedCloudDemoted, streamedReplyReconciled
+        // A finished reply said in parts so its first sentence is heard while the rest is
+        // synthesised (`WholeReplyParts`): the first engine, its length and how many parts.
+        case wholeReplyInParts
     }
 
     /// The spoken text is the assistant answering the wearer — the other half of the transcript,
