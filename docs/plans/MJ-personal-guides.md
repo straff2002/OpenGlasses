@@ -1,6 +1,7 @@
 # Plan MJ — Personal Guides (step-by-step guides of your own, from a manual's pages, your photos or a recipe you share, followed hands-free)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented.
+**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All seven decisions taken 2026-11-19 as
+recommended** (owner: "Take all seven"); P0 waits on Plan MI P0's shared figure and need types.
 **Track:** consumer. Phone first; the glasses, the watch and AirPods are surfaces, not requirements.
 **Builds on:**
 - Plan [MI](MI-steps-you-can-see.md): the step `figure`, `needs` and `group` format,
@@ -54,7 +55,7 @@ nothing is written twice.
 
 ### 1 · Who gets guides
 
-**Recommended (decision 1):** guides are part of the app itself, for anyone who has bought it.
+**Decided (decision 1, 2026-11-19):** guides are part of the app itself, for anyone who has bought it.
 A guide made from your own photos and words, or from a recipe you share, needs no subscription. A
 step whose picture is a region of a manual needs that manual on your shelf, which means My Manuals
 (`personalManuals`) or Field Assist (`ownVaults`). So drafting a guide from a manual's step pages
@@ -156,7 +157,7 @@ lower end and says so) and shown in the review for the person to keep or drop.
 - A photo taken to make a guide is a new camera-pixel consumer: `OutboundFrameConsumer` gains
   `personalGuideCapture`, with its scope, tap and mechanism, so `OutboundFrameConsumerTests` keeps
   covering it.
-- **Recommended (decision 3):** the photo is taken through
+- **Decided (decision 3, 2026-11-19):** the photo is taken through
   `CameraService.filteredStill(for:source: .photoOnly)`, so a bystander's face in someone's kitchen
   is blurred before it is stored. It differs from the wearer's framed shutter photo, which stays
   unfiltered, because a guide is something made to be followed and, later, maybe shared. The
@@ -170,7 +171,7 @@ lower end and says so) and shown in the review for the person to keep or drop.
 ### 6 · Limits
 
 50 guides, 80 steps a guide, photos downscaled to 1,600 px on the long side and kept under 2 MB
-(decision 7 asks to confirm the figures). A full library is refused with the counts, never by
+(decision 7, taken 2026-11-19). A full library is refused with the counts, never by
 dropping old guides.
 
 ### 7 · What stays out
@@ -213,23 +214,25 @@ P0–P1 are one PR, P2–P3 another, P4 a device report.
 
 ## Decisions for Greig
 
+All seven taken 2026-11-19 as recommended; the recommended option in each is now the plan.
+
 1. **Guides come with the app; a picture from a manual needs the manual on your shelf**
-   (recommended). Photo and text guides then cost nothing on top of the app, and drafting from a
+   (**taken 2026-11-19**). Photo and text guides then cost nothing on top of the app, and drafting from a
    manual's pages is a reason to take My Manuals. The alternative is guides for My Manuals
    subscribers only.
-2. **A guide is its own linear type, never a procedure** (recommended), so the personal tier still
+2. **A guide is its own linear type, never a procedure** (**taken 2026-11-19**), so the personal tier still
    cannot reach procedures, as Plan JK requires. The alternative, letting the personal tier run
    procedures with their branches removed, blurs the line between the two subscriptions.
-3. **Photos taken for a guide go through the bystander blur** (recommended). The alternative is to
+3. **Photos taken for a guide go through the bystander blur** (**taken 2026-11-19**). The alternative is to
    keep them unfiltered, like the shutter photo.
-4. **Sharing guides in a later plan** (recommended). The format is ready; the questions of what a
+4. **Sharing guides in a later plan** (**taken 2026-11-19**). The format is ready; the questions of what a
    shared guide may carry and how it is received are their own.
-5. **Words only from a web page; its pictures are not kept** (recommended). The alternative is to
+5. **Words only from a web page; its pictures are not kept** (**taken 2026-11-19**). The alternative is to
    keep the page's step pictures for the person's own use, never exported.
-6. **Timers offered and started on the person's word** (recommended). The alternative starts them
+6. **Timers offered and started on the person's word** (**taken 2026-11-19**). The alternative starts them
    when the step is reached, which surprises anyone who reads ahead.
 7. **This device only, no sync, and limits of 50 guides × 80 steps with photos under 2 MB**
-   (recommended). The alternative syncs through iCloud, which would carry photos between devices but
+   (**taken 2026-11-19**). The alternative syncs through iCloud, which would carry photos between devices but
    not the manuals a manual-picture step points at.
 
 ---
