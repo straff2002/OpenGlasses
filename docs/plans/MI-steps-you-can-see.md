@@ -1,8 +1,8 @@
 # Plan MI — Steps You Can See (a picture and the parts on every procedure step, and steps drafted from a manual's own step pages)
 
 **Status:** 📝 Drafted 2026-11-19 — nothing implemented.
-**Track:** Field Assist procedures first; the same step format is what a later personal "guides"
-lane would use (decision 5).
+**Track:** Field Assist procedures first; the same step format is what personal guides use
+([Plan MJ](MJ-personal-guides.md), decision 5).
 **Builds on:**
 - Plan [F](F-field-assist.md): `Procedure` / `Procedure.Step`, `ProcedureRunner`, the `procedure`
   tool, and Plan [H](H-custom-vault-import.md)'s `VaultValidator`, which checks the graph at import.
@@ -243,9 +243,9 @@ P0–P2 are one PR per the house rhythm; P3–P4 another; P5 is a device report.
    GX, whose reference photo already is that. The alternative is a before/after pair from the start.
 4. **Spoken parts list at the start: once, at most five items, the rest on the phone** (recommended).
    Alternatives: never spoken (phone only), or every item.
-5. **Personal guides** (recipes, flat-pack, a home appliance's own step pages for My Manuals
-   subscribers) **in a later plan** (recommended). The format here is what it would use; the store,
-   tier and screens are their own question.
+5. **Personal guides** (recipes, flat-pack, a home appliance's own step pages) **in their own
+   plan** (recommended): [Plan MJ](MJ-personal-guides.md), which reuses this plan's step format and
+   adds an optional free-text `amount` to a need ("500 g") beside `count`.
 6. **No outside agent writing procedures over a live connection** in this plan (recommended).
    Copy and paste (P4) keeps the author in the loop and the manual on the phone. If a live
    connection comes later, it starts with reading on and saving, publishing and deleting off until
