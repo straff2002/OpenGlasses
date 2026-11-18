@@ -115,10 +115,56 @@ final class PrivacyManifestReconciliationTests: XCTestCase {
         XCTAssertTrue(categories.contains("NSPrivacyAccessedAPICategoryUserDefaults"))
         XCTAssertTrue(categories.contains("NSPrivacyAccessedAPICategoryFileTimestamp"))
         XCTAssertTrue(categories.contains("NSPrivacyAccessedAPICategoryDiskSpace"))
+        XCTAssertTrue(categories.contains("NSPrivacyAccessedAPICategorySystemBootTime"))
         for entry in entries {
             let reasons = entry["NSPrivacyAccessedAPITypeReasons"] as? [String] ?? []
             XCTAssertFalse(reasons.isEmpty,
                            "\(entry["NSPrivacyAccessedAPIType"] ?? "?") declares no reason code")
+        }
+    }
+
+    /// A required-reason API used in the sources must be declared, or App Store Connect answers the
+    /// upload with ITMS-91053. The System Boot Time entry was missing for months while
+    /// `ProcessInfo.systemUptime` was the monotonic clock in ten files, so this test reads the
+    /// sources rather than trusting the list above to be kept up to date. Each manifest is checked
+    /// against the directory whose sources its target compiles.
+    func testEveryRequiredReasonAPIInTheSourcesIsDeclared() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let symbols: [String: [String]] = [
+            "NSPrivacyAccessedAPICategorySystemBootTime": ["systemUptime", "mach_absolute_time("],
+            "NSPrivacyAccessedAPICategoryDiskSpace": ["volumeAvailableCapacity", "systemFreeSize", "statfs("],
+            "NSPrivacyAccessedAPICategoryActiveKeyboards": ["activeInputModes"],
+        ]
+        let targets: [(manifest: String, sources: String)] = [
+            ("OpenGlasses/Sources/Resources/PrivacyInfo.xcprivacy", "OpenGlasses/Sources"),
+            ("GlassesActivityWidget/PrivacyInfo.xcprivacy", "GlassesActivityWidget"),
+            ("OpenGlassesWatch/PrivacyInfo.xcprivacy", "OpenGlassesWatch"),
+            ("OpenGlassesWatchWidget/PrivacyInfo.xcprivacy", "OpenGlassesWatchWidget"),
+        ]
+        for target in targets {
+            let data = try Data(contentsOf: root.appendingPathComponent(target.manifest))
+            let plist = try XCTUnwrap(PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil) as? [String: Any])
+            let entries = plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]] ?? []
+            let declared = Set(entries.compactMap { $0["NSPrivacyAccessedAPIType"] as? String })
+
+            let directory = root.appendingPathComponent(target.sources)
+            let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil)?
+                .compactMap { $0 as? URL }
+                .filter { $0.pathExtension == "swift" } ?? []
+            XCTAssertFalse(files.isEmpty, "No Swift sources found under \(target.sources)")
+            for file in files {
+                let code = try String(contentsOf: file, encoding: .utf8)
+                    .components(separatedBy: "\n")
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                    .joined(separator: "\n")
+                for (category, names) in symbols {
+                    guard let name = names.first(where: { code.contains($0) }) else { continue }
+                    XCTAssertTrue(declared.contains(category),
+                                  "\(file.lastPathComponent) uses \(name), but \(target.manifest) does not declare \(category).")
+                }
+            }
         }
     }
 
