@@ -8851,6 +8851,94 @@
         }
       }
     },
+    "%@ every %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ كل %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ every %2$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ cada %2$@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ tous les %2$@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ / %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ogni %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ごとに%1$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@마다 %1$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ per %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ a cada %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ каждые %2$@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ہر %2$@ میں %1$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每%2$@ %1$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每%2$@ %1$@"
+          }
+        }
+      }
+    },
     "%@ file" : {
       "localizations" : {
         "ar" : {
@@ -9022,6 +9110,94 @@
         }
       }
     },
+    "%@ for %@, then %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ لمدة %2$@، ثم %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ for %2$@, then %3$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ durante %2$@, después %3$@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ pendant %2$@, puis %3$@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@ időtartamra, utána %3$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ per %2$@, poi %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@は%1$@、その後は%3$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ 동안 %1$@, 이후 %3$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ gedurende %2$@, daarna %3$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ por %2$@, depois %3$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (срок: %2$@), затем %3$@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$@ کے لیے %1$@، پھر %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前%2$@ %1$@，之后 %3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前%2$@ %1$@，之後 %3$@"
+          }
+        }
+      }
+    },
     "%@ for photos" : {
       "localizations" : {
         "ar" : {
@@ -9100,6 +9276,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用於照片的 %@"
+          }
+        }
+      }
+    },
+    "%@ for the first %@, then %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ لأول %2$@، ثم %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ for the first %2$@, then %3$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ por un periodo inicial de %2$@, después %3$@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ pour une période initiale de %2$@, puis %3$@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ az első %2$@ időtartamra, utána %3$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ per un periodo iniziale di %2$@, poi %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最初の%2$@は%1$@、その後は%3$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "처음 %2$@ 동안 %1$@, 이후 %3$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ voor de eerste %2$@, daarna %3$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ por um período inicial de %2$@, depois %3$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ за первый период (%2$@), затем %3$@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پہلے %2$@ کے لیے %1$@، پھر %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前%2$@共 %1$@，之后 %3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前%2$@共 %1$@，之後 %3$@"
+          }
+        }
+      }
+    },
+    "%@ free, then %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ مجانًا، ثم %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ free, then %2$@"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ gratis, después %2$@"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gratuit pendant %1$@, puis %2$@"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ingyen, utána %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ gratis, poi %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@無料、その後は%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 무료, 이후 %2$@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ gratis, daarna %2$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ grátis, depois %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ бесплатно, затем %2$@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ مفت، پھر %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免费 %1$@，之后 %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "免費 %1$@，之後 %2$@"
           }
         }
       }
@@ -20073,6 +20425,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ 在 %2$@ 上的時間已記入工作：%3$@。"
+          }
+        }
+      }
+    },
+    "%@/day" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/يوميًا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/día"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/jour"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/nap"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/giorno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/日"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/일"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/dag"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/dia"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/день"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/روزانہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/天"
+          }
+        }
+      }
+    },
+    "%@/month" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/شهريًا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/mes"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/mois"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/hónap"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/mese"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/月"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/월"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/maand"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/mês"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/мес."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/ماہانہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/月"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/月"
+          }
+        }
+      }
+    },
+    "%@/week" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/أسبوعيًا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/semana"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/semaine"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/hét"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/settimana"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/週"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/주"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/week"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/semana"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/нед."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/ہفتہ وار"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/周"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/週"
+          }
+        }
+      }
+    },
+    "%@/year" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/سنويًا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/año"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/an"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/év"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/anno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/年"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/년"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/jaar"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/ano"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/год"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/سالانہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/年"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/年"
           }
         }
       }
@@ -153882,6 +154562,89 @@
         }
       }
     },
+    "Couldn't reach Hermes on your local network. If Local Network access is off for Avenkin, turn it on in Settings › Privacy & Security › Local Network." : {
+      "comment" : "A request to the wearer's own Hermes agent failed in the way iOS fails requests when the app's Local Network permission is off.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر الوصول إلى Hermes على شبكتك المحلية. إذا كان وصول Avenkin إلى الشبكة المحلية متوقفًا، فشغّله من «الإعدادات › الخصوصية والأمن › الشبكة المحلية»."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con Hermes en tu red local. Si el acceso a Red local está desactivado para Avenkin, actívalo en Configuración › Privacidad y seguridad › Red local."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre Hermes sur votre réseau local. Si l’accès au réseau local est désactivé pour Avenkin, activez-le dans Réglages › Confidentialité et sécurité › Réseau local."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem sikerült elérni a Hermest a helyi hálózaton. Ha az Avenkin számára ki van kapcsolva a helyi hálózati hozzáférés, kapcsolja be a Beállítások › Adatvédelem és biztonság › Helyi hálózat alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere Hermes sulla tua rete locale. Se l'accesso alla rete locale è disattivato per Avenkin, attivalo in Impostazioni › Privacy e sicurezza › Rete locale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルネットワーク上のHermesに接続できませんでした。Avenkin のローカルネットワークへのアクセスがオフになっている場合は、設定 › プライバシーとセキュリティ › ローカルネットワークでオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로컬 네트워크에서 Hermes에 연결할 수 없습니다. Avenkin의 로컬 네트워크 접근이 꺼져 있다면 설정 › 개인정보 보호 및 보안 › 로컬 네트워크에서 켜세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kon Hermes op uw lokale netwerk niet bereiken. Als toegang tot het lokale netwerk voor Avenkin uit staat, zet die dan aan in Instellingen › Privacy en beveiliging › Lokaal netwerk."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar o Hermes na sua rede local. Se o acesso à Rede Local estiver desativado para o Avenkin, ative-o em Ajustes › Privacidade e Segurança › Rede Local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с Hermes в вашей локальной сети. Если для Avenkin выключен доступ к локальной сети, включите его в разделе «Настройки › Конфиденциальность и безопасность › Локальная сеть»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے لوکل نیٹ ورک پر Hermes تک رسائی نہیں ہو سکی۔ اگر Avenkin کے لیے لوکل نیٹ ورک تک رسائی بند ہے تو اسے ترتیبات › رازداری اور سیکیورٹی › لوکل نیٹ ورک میں آن کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到你本地网络上的 Hermes。如果 Avenkin 的本地网络访问已关闭，请在“设置 › 隐私与安全性 › 本地网络”中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到你區域網路上的 Hermes。如果 Avenkin 的區域網路存取權已關閉，請在「設定 › 隱私權與安全性 › 區域網路」中開啟。"
+          }
+        }
+      }
+    },
     "Couldn't reach Hermes's API server. By default it only listens on the Hermes machine itself: set API_SERVER_HOST=0.0.0.0 there and restart Hermes. Also check the IP address, the port (8642 by default) and the machine's firewall." : {
       "localizations" : {
         "ar" : {
@@ -154292,6 +155055,89 @@
         }
       }
     },
+    "Couldn't reach the MCP server on your local network. If Local Network access is off for Avenkin, turn it on in Settings › Privacy & Security › Local Network." : {
+      "comment" : "A request to an MCP tool server on the wearer's own network failed in the way iOS fails requests when the app's Local Network permission is off.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر الوصول إلى خادم MCP على شبكتك المحلية. إذا كان وصول Avenkin إلى الشبكة المحلية متوقفًا، فشغّله من «الإعدادات › الخصوصية والأمن › الشبكة المحلية»."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con el servidor MCP en tu red local. Si el acceso a Red local está desactivado para Avenkin, actívalo en Configuración › Privacidad y seguridad › Red local."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre le serveur MCP sur votre réseau local. Si l’accès au réseau local est désactivé pour Avenkin, activez-le dans Réglages › Confidentialité et sécurité › Réseau local."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem sikerült elérni az MCP-kiszolgálót a helyi hálózaton. Ha az Avenkin számára ki van kapcsolva a helyi hálózati hozzáférés, kapcsolja be a Beállítások › Adatvédelem és biztonság › Helyi hálózat alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere il server MCP sulla tua rete locale. Se l'accesso alla rete locale è disattivato per Avenkin, attivalo in Impostazioni › Privacy e sicurezza › Rete locale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルネットワーク上のMCPサーバーに接続できませんでした。Avenkin のローカルネットワークへのアクセスがオフになっている場合は、設定 › プライバシーとセキュリティ › ローカルネットワークでオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로컬 네트워크에서 MCP 서버에 연결할 수 없습니다. Avenkin의 로컬 네트워크 접근이 꺼져 있다면 설정 › 개인정보 보호 및 보안 › 로컬 네트워크에서 켜세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kon de MCP-server op uw lokale netwerk niet bereiken. Als toegang tot het lokale netwerk voor Avenkin uit staat, zet die dan aan in Instellingen › Privacy en beveiliging › Lokaal netwerk."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar o servidor MCP na sua rede local. Se o acesso à Rede Local estiver desativado para o Avenkin, ative-o em Ajustes › Privacidade e Segurança › Rede Local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с MCP-сервером в вашей локальной сети. Если для Avenkin выключен доступ к локальной сети, включите его в разделе «Настройки › Конфиденциальность и безопасность › Локальная сеть»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے لوکل نیٹ ورک پر MCP سرور تک رسائی نہیں ہو سکی۔ اگر Avenkin کے لیے لوکل نیٹ ورک تک رسائی بند ہے تو اسے ترتیبات › رازداری اور سیکیورٹی › لوکل نیٹ ورک میں آن کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到你本地网络上的 MCP 服务器。如果 Avenkin 的本地网络访问已关闭，请在“设置 › 隐私与安全性 › 本地网络”中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到你區域網路上的 MCP 伺服器。如果 Avenkin 的區域網路存取權已關閉，請在「設定 › 隱私權與安全性 › 區域網路」中開啟。"
+          }
+        }
+      }
+    },
     "Couldn't reach the office" : {
       "comment" : "A title for a notification that the office couldn't be reached.",
       "isCommentAutoGenerated" : true,
@@ -154372,6 +155218,172 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法連線至辦公室"
+          }
+        }
+      }
+    },
+    "Couldn't reach your agent gateway on your local network. If Local Network access is off for Avenkin, turn it on in Settings › Privacy & Security › Local Network." : {
+      "comment" : "A request to the wearer's own agent gateway failed in the way iOS fails requests when the app's Local Network permission is off.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر الوصول إلى بوابة الوكيل الخاصة بك على شبكتك المحلية. إذا كان وصول Avenkin إلى الشبكة المحلية متوقفًا، فشغّله من «الإعدادات › الخصوصية والأمن › الشبكة المحلية»."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con tu puerta de enlace del agente en tu red local. Si el acceso a Red local está desactivado para Avenkin, actívalo en Configuración › Privacidad y seguridad › Red local."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre votre passerelle d’agent sur votre réseau local. Si l’accès au réseau local est désactivé pour Avenkin, activez-le dans Réglages › Confidentialité et sécurité › Réseau local."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem sikerült elérni az ügynökátjárót a helyi hálózaton. Ha az Avenkin számára ki van kapcsolva a helyi hálózati hozzáférés, kapcsolja be a Beállítások › Adatvédelem és biztonság › Helyi hálózat alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere il tuo gateway dell'agente sulla tua rete locale. Se l'accesso alla rete locale è disattivato per Avenkin, attivalo in Impostazioni › Privacy e sicurezza › Rete locale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルネットワーク上のエージェントゲートウェイに接続できませんでした。Avenkin のローカルネットワークへのアクセスがオフになっている場合は、設定 › プライバシーとセキュリティ › ローカルネットワークでオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로컬 네트워크에서 에이전트 게이트웨이에 연결할 수 없습니다. Avenkin의 로컬 네트워크 접근이 꺼져 있다면 설정 › 개인정보 보호 및 보안 › 로컬 네트워크에서 켜세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kon uw agent-gateway op uw lokale netwerk niet bereiken. Als toegang tot het lokale netwerk voor Avenkin uit staat, zet die dan aan in Instellingen › Privacy en beveiliging › Lokaal netwerk."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar seu gateway de agentes na sua rede local. Se o acesso à Rede Local estiver desativado para o Avenkin, ative-o em Ajustes › Privacidade e Segurança › Rede Local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с вашим шлюзом агента в вашей локальной сети. Если для Avenkin выключен доступ к локальной сети, включите его в разделе «Настройки › Конфиденциальность и безопасность › Локальная сеть»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے لوکل نیٹ ورک پر آپ کے ایجنٹ گیٹ وے تک رسائی نہیں ہو سکی۔ اگر Avenkin کے لیے لوکل نیٹ ورک تک رسائی بند ہے تو اسے ترتیبات › رازداری اور سیکیورٹی › لوکل نیٹ ورک میں آن کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到你本地网络上的智能体网关。如果 Avenkin 的本地网络访问已关闭，请在“设置 › 隐私与安全性 › 本地网络”中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到你區域網路上的代理閘道。如果 Avenkin 的區域網路存取權已關閉，請在「設定 › 隱私權與安全性 › 區域網路」中開啟。"
+          }
+        }
+      }
+    },
+    "Couldn't reach your AI server on your local network. If Local Network access is off for Avenkin, turn it on in Settings › Privacy & Security › Local Network." : {
+      "comment" : "A request to the wearer's own AI model server (Ollama, LM Studio and the like) failed in the way iOS fails requests when the app's Local Network permission is off.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر الوصول إلى خادم الذكاء الاصطناعي الخاص بك على شبكتك المحلية. إذا كان وصول Avenkin إلى الشبكة المحلية متوقفًا، فشغّله من «الإعدادات › الخصوصية والأمن › الشبكة المحلية»."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con tu servidor de IA en tu red local. Si el acceso a Red local está desactivado para Avenkin, actívalo en Configuración › Privacidad y seguridad › Red local."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de joindre votre serveur d’IA sur votre réseau local. Si l’accès au réseau local est désactivé pour Avenkin, activez-le dans Réglages › Confidentialité et sécurité › Réseau local."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem sikerült elérni az AI-kiszolgálóját a helyi hálózaton. Ha az Avenkin számára ki van kapcsolva a helyi hálózati hozzáférés, kapcsolja be a Beállítások › Adatvédelem és biztonság › Helyi hálózat alatt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile raggiungere il tuo server di IA sulla tua rete locale. Se l'accesso alla rete locale è disattivato per Avenkin, attivalo in Impostazioni › Privacy e sicurezza › Rete locale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルネットワーク上のAIサーバーに接続できませんでした。Avenkin のローカルネットワークへのアクセスがオフになっている場合は、設定 › プライバシーとセキュリティ › ローカルネットワークでオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로컬 네트워크에서 AI 서버에 연결할 수 없습니다. Avenkin의 로컬 네트워크 접근이 꺼져 있다면 설정 › 개인정보 보호 및 보안 › 로컬 네트워크에서 켜세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kon uw AI-server op uw lokale netwerk niet bereiken. Als toegang tot het lokale netwerk voor Avenkin uit staat, zet die dan aan in Instellingen › Privacy en beveiliging › Lokaal netwerk."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível acessar seu servidor de IA na sua rede local. Se o acesso à Rede Local estiver desativado para o Avenkin, ative-o em Ajustes › Privacidade e Segurança › Rede Local."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось связаться с вашим ИИ-сервером в вашей локальной сети. Если для Avenkin выключен доступ к локальной сети, включите его в разделе «Настройки › Конфиденциальность и безопасность › Локальная сеть»."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ کے لوکل نیٹ ورک پر آپ کے AI سرور تک رسائی نہیں ہو سکی۔ اگر Avenkin کے لیے لوکل نیٹ ورک تک رسائی بند ہے تو اسے ترتیبات › رازداری اور سیکیورٹی › لوکل نیٹ ورک میں آن کریں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到你本地网络上的 AI 服务器。如果 Avenkin 的本地网络访问已关闭，请在“设置 › 隐私与安全性 › 本地网络”中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到你區域網路上的 AI 伺服器。如果 Avenkin 的區域網路存取權已關閉，請在「設定 › 隱私權與安全性 › 區域網路」中開啟。"
           }
         }
       }
@@ -255929,6 +256941,88 @@
         }
       }
     },
+    "I couldn't ask you about testing it, because another confirmation is already on screen. The draft is deleted; ask me again once that one is answered." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم أتمكن من سؤالك عن اختبارها، لأن تأكيدًا آخر معروض بالفعل على الشاشة. حُذفت المسودة؛ اطلب مني ذلك مرة أخرى بعد الرد على ذلك التأكيد."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No pude preguntarte si querías probarlo, porque ya hay otra confirmación en pantalla. El borrador se eliminó; vuelve a pedírmelo cuando hayas respondido esa."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Je n’ai pas pu vous demander si vous vouliez le tester, car une autre confirmation est déjà affichée. Le brouillon est supprimé; redemandez-le-moi une fois que vous y aurez répondu."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem tudtam megkérdezni, hogy teszteljem-e, mert már egy másik megerősítés van a képernyőn. A piszkozat törölve; kérje újra, miután arra válaszolt."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ho potuto chiederti se testarlo, perché c'è già un'altra conferma sullo schermo. La bozza è stata eliminata; chiedimelo di nuovo quando avrai risposto a quella."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別の確認がすでに画面に表示されているため、テストするかどうかをお尋ねできませんでした。下書きは削除しました。そちらに回答してから、もう一度お申し付けください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 확인 요청이 이미 화면에 표시되어 있어 테스트할지 여쭤볼 수 없었습니다. 초안은 삭제되었습니다. 그 확인에 답한 후 다시 요청하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ik kon u niet vragen of ik hem moest testen, omdat er al een andere bevestiging op het scherm staat. Het concept is verwijderd; vraag het me opnieuw zodra die is beantwoord."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não consegui perguntar se você queria testar, porque outra confirmação já está na tela. O rascunho foi excluído; peça de novo quando ela for respondida."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось спросить вас о тестировании: на экране уже другое подтверждение. Черновик удалён; попросите ещё раз, когда ответите на него."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "میں آپ سے اسے ٹیسٹ کرنے کے بارے میں نہیں پوچھ سکا، کیونکہ اسکرین پر پہلے سے ایک اور تصدیق موجود ہے۔ مسودہ حذف کر دیا گیا ہے؛ اس کا جواب دینے کے بعد مجھ سے دوبارہ کہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏幕上已有另一个确认，所以我没能问你是否要测试。草稿已删除；回答那个确认后，请再跟我说一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "螢幕上已有另一個確認，所以我沒能問你是否要測試。草稿已刪除；回答那個確認後，請再跟我說一次。"
+          }
+        }
+      }
+    },
     "I couldn't build a working add-on for that, so nothing was kept." : {
       "localizations" : {
         "ar" : {
@@ -353559,6 +354653,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未執行：%@"
+          }
+        }
+      }
+    },
+    "Not run: %@. Answer the open confirmation first." : {
+      "comment" : "Glasses: a Home Assistant action that needs approval was not asked about, because another confirmation is already showing. The argument is its name.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يُشغَّل: %@. أجب عن التأكيد المفتوح أولًا."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No ejecutada: %@. Responde primero la confirmación abierta."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non exécutée : %@. Répondez d’abord à la confirmation ouverte."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nem futott: %@. Előbb válaszoljon a nyitott megerősítésre."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non eseguita: %@. Rispondi prima alla conferma aperta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未実行：%@。先に表示中の確認に回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행 안 함: %@. 열려 있는 확인에 먼저 답하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niet uitgevoerd: %@. Beantwoord eerst de openstaande bevestiging."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não executada: %@. Responda primeiro à confirmação aberta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не выполнено: %@. Сначала ответьте на открытое подтверждение."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نہیں چلایا گیا: %@۔ پہلے کھلی ہوئی تصدیق کا جواب دیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未运行：%@。请先回答当前的确认。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未執行：%@。請先回答目前的確認。"
           }
         }
       }
