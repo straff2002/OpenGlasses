@@ -2,7 +2,7 @@
 
 **Status:** 📝 Drafted 2026-11-18. Nothing is implemented. P0, bigger pages, is small and headless and can
 ship on its own. P1 is a measurement on the simulated Display, and it decides how P2–P4 are built.
-8 decisions are open.
+All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
 live answer on the lens, and the manual-page view. P0, P2 and P3 are headless. P1 and P4 run on the
 iOS Simulator against Meta's simulated Display (Plan KV's P4 lane). P5 is TestFlight only, and P6 needs
@@ -258,7 +258,7 @@ The code goes under `Sources/Glasses/Experimental/` inside `#if DAT_EXPERIMENTAL
   not a picture. That is a plan of its own once tables have been tried on the glasses.
 - **Keeping the lens history after the conversation ends.** The phone's conversation view keeps it.
 
-## Decisions (open)
+## Decisions (taken 2026-11-18: every recommendation below, "take all eight recommendations")
 
 1. **Order in the reading view.** *Recommended:* newest answer at the top, earlier ones under it. The
    alternative is chat order (newest at the bottom), and only if P1 shows the lens opens scrolled to a
