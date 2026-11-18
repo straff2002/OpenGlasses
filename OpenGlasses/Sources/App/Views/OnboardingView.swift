@@ -1545,10 +1545,10 @@ struct OnboardingView: View {
     /// This iPhone, already in use — stated as ready in words, not only by the check mark.
     private var thisPhoneRow: some View {
         HStack(spacing: OGMetrics.rowSpacing) {
-            OGIconTile(systemName: "iphone")
+            OGIconTile(systemName: ThisDeviceLabel.symbol)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("This iPhone")
+                Text(ThisDeviceLabel.title)
                     .font(.body)
                 Text("Voice, chat and the phone's camera, with nothing more to set up.")
                     .font(.footnote)

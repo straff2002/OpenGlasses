@@ -449,11 +449,24 @@ enum VaultManualRemoval {
 
     /// Whether a manifest-supplied relative path stays inside the vault. The manifest is a file a
     /// customer wrote, so `../../Documents/conversations.json` is a path it can contain.
+    ///
+    /// Decided from the path's own components, never the file system. `standardizedFileURL` drops
+    /// a leading `/private` only from a path that exists: on a phone the temporary directory is
+    /// `/private/var/…`, so a folder there came back as `/var/…` and a file not yet copied into it
+    /// as `/private/var/…`, and every company manual laid into a vault was refused as outside it.
     static func isContained(_ relative: String, in root: URL) -> Bool {
         guard !relative.isEmpty, !relative.hasPrefix("/") else { return false }
-        let resolved = root.appendingPathComponent(relative).standardizedFileURL.path
-        let base = root.standardizedFileURL.path
-        return resolved != base && resolved.hasPrefix(base + "/")
+        var depth = 0
+        for component in relative.split(separator: "/", omittingEmptySubsequences: true) {
+            switch component {
+            case ".": continue
+            case "..":
+                depth -= 1
+                guard depth >= 0 else { return false }
+            default: depth += 1
+            }
+        }
+        return depth > 0
     }
 }
 

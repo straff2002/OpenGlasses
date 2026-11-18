@@ -481,6 +481,25 @@ final class VaultManualRemovalTests: XCTestCase {
         XCTAssertFalse(VaultManualRemoval.isContained("/etc/hosts", in: root))
         XCTAssertFalse(VaultManualRemoval.isContained("", in: root))
         XCTAssertFalse(VaultManualRemoval.isContained(".", in: root))
+        XCTAssertFalse(VaultManualRemoval.isContained("documents/..", in: root))
+        XCTAssertTrue(VaultManualRemoval.isContained("documents/../manual.pdf", in: root))
+        XCTAssertTrue(VaultManualRemoval.isContained("./documents//manual.pdf", in: root))
+    }
+
+    /// On a phone the temporary directory is `/private/var/…`. A file not yet copied into a folder
+    /// there is inside it all the same: the re-lay that adds a company manual asked this before
+    /// copying, and refused every manual as `missingFile` (build 717).
+    func testAFileNotYetInAFolderUnderPrivateIsInsideIt() throws {
+        let tmp = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path
+        // The simulator's temporary directory resolves to a path with no `/private`; take one that
+        // has it, as the phone's does: macOS's own `/private/var/tmp`, a real folder.
+        let base = tmp.hasPrefix("/private/") ? tmp : "/private/var/tmp"
+        let root = URL(fileURLWithPath: base).appendingPathComponent("VaultRelay-\(UUID().uuidString.prefix(8))", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertTrue(VaultManualRemoval.isContained("Wiring Manual.pdf", in: root))
+        XCTAssertTrue(VaultManualRemoval.isContained("documents/Wiring Manual.pdf", in: root))
+        XCTAssertFalse(VaultManualRemoval.isContained("../Wiring Manual.pdf", in: root))
     }
 
     func testRemovalRefusesAnEscapingDocumentPath() async throws {
