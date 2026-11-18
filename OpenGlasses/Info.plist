@@ -395,7 +395,7 @@
 	<key>NSHomeKitUsageDescription</key>
 	<string>Avenkin controls your smart home devices hands-free, by voice.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-		<string>Avenkin uses your local network to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network.</string>
+		<string>Avenkin uses your local network to connect to your own agent gateway, AI servers and MCP tools, to find self-hosted AI servers (Ollama, LM Studio, vLLM, LocalAI) without typing an address, and to stream video to a server on your own network.</string>
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_http._tcp</string>
