@@ -9,7 +9,13 @@ focus one row per move, and a press reaches the focused row, so the reading view
 and tiles must be `.background(.card)` (the only way focus shows), and a row must stay inside the lens.
 A send opens scrolled to a primary button anywhere in the column. Focus moves across a tile grid as well
 as down it. The mock's input kit moves nothing, and send times over the radio, dimming and sleep stay
-P6's. P2 is next.
+P6's. **P2–P4 built 2026-11-18** (headless, with the simulated-Display walkthrough): on the Meta
+Display an answer is one view the band scrolls — its rows, its buttons, and this conversation's last
+10 answers under them, in memory only — with **Pages** in Display & HUD; a press on a row says it
+again from there, a press on an earlier answer opens it with **‹ Latest**, and "earlier", "latest"
+and "say that again" work by voice. The page view draws the whole page as nine tiles to point at,
+a zoomed view as a strip the lens scrolls, the next views ahead, and takes "zoom in on the bottom
+right". P5 waits on JV's probe; P6 is the device pass.
 All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
 live answer on the lens, and the manual-page view. P0, P2 and P3 are headless. P1 and P4 run on the
@@ -564,6 +570,100 @@ order; collapsed and opened earlier turns; the four-button rule; redraws only at
 end and on a press; clearing on every §3 event; the parser's whole-utterance rule; a private
 conversation leaves nothing in the log.
 
+**As built (P2).** In `Services/Display/ReadingView/`, all pure:
+
+- **`LensConversationLog`** is a ring of the last 10 finished turns (`LensConversationTurn`: the
+  card's turn id, the question line as drawn, the answer, its follow-ups, whether it staged a page,
+  when it was made), oldest first; `record` replaces a turn it already holds in place (its
+  follow-ups arriving), `earlier(than:)` lists the older turns newest first. The answer card holds
+  it, in memory only; the report reads `count`.
+- **`HUDBlock`** (in `HUDScreen.swift`) is a tappable block with an id, lines and an optional
+  picture, drawn on a card (`.card`) or plain (`.plain`), with an action as `HUDItem` has. A screen
+  carries blocks in two new columns: `flow` (after its lines, before its picture and buttons) and
+  `trailingFlow` (after its buttons), each a list of lines and rows of blocks
+  (`HUDFlowElement`). `focusesFirstBlock` marks no button as the focused one, so the first
+  tappable block takes focus and the lens opens at the top (P1 item 2). All three are in
+  `renderKey`; `hasPictures` and `withoutPictures()` replace the single-picture checks in the
+  render queue, so a picture-less backend and the text retry handle block pictures too.
+- **`HUDReadingRows`** cuts each paragraph into rows through `HUDAnswerPager` itself (a page of
+  `rowMaxLines` + 1 lines, footer line unused), so the wrap and sentence rule are the pager's and
+  rows are prefix-stable as it is; a single page that wraps to five lines is cut on its lines.
+  A row's line is 31 characters, not 32: the card's 8 px padding either side
+  (`LensPageFrame.cardPaddingPixels`) at the card's 18 px advance.
+- **`HUDReadingViewBuilder`** builds the view: the question (meta), the rows (cards), the buttons
+  (**Page** first when staged, then follow-ups — two, or one beside **Page**, only once the answer is
+  final — **Actions**, **Close**; for an opened earlier turn **‹ Latest** and **Close**), then
+  **Earlier** and the earlier turns collapsed to their question and first two lines, newest first.
+  Caps: 40 blocks and 4,000 characters; the oldest earlier turns go first, then the answer is cut
+  and ends in "… more on phone". A press on a row reports `HUDAnswerAction.repeatFrom` with the
+  answer from that row to its end; on an earlier turn, `.openTurn`; **‹ Latest**, `.latest`.
+- **`ReadingRedrawPolicy`**: the first draw at the first settled row (or a whole answer), more while
+  streaming only when a paragraph settles, the final draw at completion, then never for the text.
+  One deviation in what counts as a settle point: a streamed answer reaches the card as sentences
+  joined by spaces (`HUDAnswerTurn`), so it has no paragraphs until the reply is final. A streamed
+  reply is therefore drawn twice: once its first row settles, and when it is complete.
+- **`HUDReadingCommand`** (in `HUDVoiceCommand.swift`): "earlier", "previous answer" and close
+  variants; "latest", "back to the latest"; "say that again", "say it again". Whole utterances, a
+  leading filler and a trailing "please". "Show the conversation" stays `HUDReopenCommand`'s. A test
+  holds that none of the phrases is a reopen, page, paging, task or launcher word, and the reopen
+  words aren't reading words.
+- **Tests.** `LensReadingViewTests` (19): the ring, re-recording, earlier; rows by paragraph and
+  sentence, rows inside the card, settled rows stable through 24 streamed sentences, settled
+  paragraphs, what a row says again; the view's order, collapsed and opened turns, the buttons and
+  the four-button rule, the presses, both caps and their drop order, the render key; the redraw
+  rule; the words and their overlap with every other lens command.
+
+**As built (P3).**
+
+- **The backends.** `MetaDisplayBackend` draws a text block as a `FlexBox` with 8 px padding,
+  `.alignSelf(.stretch)`, `.background(.card)` and `.onTap`, and a picture block (a tile, a slice)
+  with no padding at its picture's size; a row of blocks is a `FlexBox` row 8 px apart. A press
+  routes by the block's id through `onItemSelected`, as a button's does (and the preview's
+  `onSelect`). `pictureBytes` counts every image in the tree. Even draws a screen's lines, its block
+  lines, its numbered buttons, then what follows them. The web mirror's payload carries the whole
+  column as lines (its buttons stay under it, so **Earlier** comes before them there: the mirror is
+  read-only). The phone preview draws the same tree (cards and taps it already drew).
+- **The card.** `HUDAnswerCard.usesReadingView` (AppState wires `activeUsesReadingView`: the Meta
+  Display with **Scroll**) is read when a card goes up and when it is brought back. The paged card
+  stays as it was underneath: the pages are still laid out (the Actions screen's first line, a switch
+  to Pages), and a card left unwired keeps its pages, so every existing card test is unchanged. The
+  reading view lasts `readingIdleLifetime` (180 s, decision 4); the paged card keeps 60 s. A finished
+  turn is recorded in the log at its completion and again when its follow-ups or a page arrive.
+  After the final draw, only a change to the answer's own buttons (follow-ups, **Page**) redraws it;
+  an earlier turn open at the top is never redrawn for the newest. A press on a row speaks through
+  `speakAgain` (the card's Repeat path, live modes included); a press on an earlier turn opens it,
+  press-gated like a page turn. "Back" on the reading view leaves an opened earlier turn or the
+  Actions screen; "next" does nothing there, so the router's paging words go on to the model.
+- **Forgetting.** `forgetForReopen()` (the private conversation's end) also clears the log, and a
+  card still on the lens is not recorded again. `conversationEnded()` (wired into the conversation
+  reset's local-history step) does the same. `GlassesDisplayService` gained `onHUDTurnedOff`
+  (from `shutdown()` with the HUD off) and `onGlassesLinkChanged`; the card clears the log (and the
+  card kept for reopening) when the link stays down for its lifetime.
+- **Bringing it back.** `reopen()` ("show that again", "show the conversation") brings the reading
+  view back, with an earlier answer that was open at its top still there.
+- **Voice.** Two handlers in AppState's voice chain, after the reopen handler: `hud-answer-reading`
+  takes "earlier" and "latest" (nothing to do: the words go on), and `hud-answer-say-again` takes
+  "say that again" only while the reading view is on the lens, after the quiet turn's replay, which
+  owns those words for its 30 seconds. Typed text never reaches the chain. `HUDLauncher` and
+  `HUDRouter` are not changed. On pages (Even, or **Pages**), "previous answer" puts an earlier answer
+  up as the paged card and "latest" the newest, when no turn is answering.
+- **The setting.** Display & HUD › In-Lens Display › **Answers on the lens: Scroll / Pages**
+  (`Config.lensAnswerStyle`, `LensAnswerStyle`, Scroll by default), shown only with the Meta Display
+  chosen.
+- **The report.** `HUDAnswerCard.reportLines` (`LensReadingReport`) after the page view's lines: the
+  style, how many earlier answers the lens holds now, reading views drawn, row presses, earlier
+  answers opened, and rows and characters per view. Counts and sizes only. Send times stay in the
+  display's own send record; a per-view send time needs the delivery callback the page view owns
+  (one subscriber), so it is left for P6's timings.
+- **Not done.** Prepared cards don't enter the log (they don't pass through the answer card).
+- **Tests.** `HUDReadingCardTests` (17): the reading view goes up, Pages keeps the paged card, the
+  setting by backend and its default, draws only at settle points while streaming, a row press says
+  the answer again from that row (through the real tree), an earlier answer opened and ‹ Latest
+  back, the words, previous answer on the paged card, the 3-minute lifetime, forgetting on
+  conversation end, HUD off and a long disconnect but not a short one, a private conversation
+  leaving nothing, show that again, the Meta tree (cards with taps, no focused button, earlier after
+  the row), Even and the web mirror, and the report's counts.
+
 ### P3 — the reading view on the lens (headless, wired; simulated-Display walkthrough)
 
 `MetaDisplayBackend` maps `HUDBlock` to a `FlexBox` with `.onTap`; Even draws its lines; the web mirror
@@ -578,6 +678,49 @@ in this PR or right after it.
 §4, as far as P1's results allow: the tile grid, vertical pan by native scroll, frames rendered ahead,
 and combined words. Tests cover the tile geometry (every tile maps to a crop inside the page, with
 two-rung zoom clamped at the cap), the strip slices, the neighbour list, and the new words.
+
+**As built (P4).**
+
+- **The tiles.** With `LensPageSession.tilesAndStrips` on (AppState turns it on), the whole page is
+  drawn as nine card tiles in three rows (`LensPageTileGrid`): each a ninth of the page, a crop
+  inside it, drawn at a size three across with 8 px gaps (186 px at most) and three down fit the
+  picture box, keeping the ninth's shape. The tiles are cut from the whole page's picture
+  (`LensPageSlicer`, off the main actor), so the grid costs no more PDF rendering than the picture.
+  A press on a tile zooms `pointZoomRungs` (2) rungs into its centre
+  (`LensPageViewport.zoom(rungs:around:)`, stopped at the cap). The grid replaces **Zoom in** on the
+  whole page (decision 7). A button still takes the opening focus there; whether the band's first
+  move up from it lands on a tile beside the bottom right, which the three-action acceptance needs,
+  is P6's.
+- **The strip.** A zoomed view is drawn as `LensPageStrip`: the crop's column of the page from the
+  crop's top down at the view's zoom, up to two lens heights (1,200 px), cut into slices of about
+  200 px, plain tappable boxes after the button row. One deviation: the strip goes *after* the
+  buttons. A primary button takes the opening focus, and the lens opens scrolled to it (P1), so with
+  the buttons first the lens opens at the top with the crop the wearer zoomed into just under them,
+  and each down move brings in more of the page. **Move** keeps ← · → · Done; "up" and "down" by
+  voice still move the crop (a new frame). A press on a slice zooms one rung in there. The strip
+  draws no position frame (it would sit at the strip's bottom).
+- **Ahead of the press.** `LensPageViewport.neighbours()` lists the views one press away, most
+  likely first (in, left, right, down, up, out, the whole page, the opening), each once. After each
+  frame the session draws the first four into the render cache (`renderAheadLimit`), off the main
+  actor; their render times go into the report's render line, as every picture's do.
+- **The words.** `HUDPageCommand.zoomInto(Area)` for "zoom in on / zoom into / closer at / get
+  closer to" + a ninth ("the bottom right", "the top", "the middle", "the left side"; "corner"
+  allowed), two rungs from the whole page and one more from a zoomed view; `.zoomIntoTable` (the
+  page's table area, `LensPageLayout.viewportOnTable()`) and `.zoomIntoDiagram` (its drawing).
+  Whole utterances only: "zoom in on the wiring" is still a request.
+- **Not done.** The grid is drawn on the whole page only, not "any view short of the cap". The
+  tiles and the strip are off where `tilesAndStrips` is (every existing page-view test).
+- **Tests.** `LensPageQuickZoomTests` (13): every tile a ninth inside the page, tile sizes for three
+  page shapes, a tile press two rungs into its corner, two rungs stopped at the cap, areas and cells,
+  the strip's column and seamless slices, a strip stopping at the page's bottom, the neighbours, the
+  combined words, the builder's rows, and the session: tiles on the whole page and a band press on
+  one zooming into a strip, Move on a strip, neighbours drawn ahead, and "zoom in on the bottom
+  right" by voice.
+
+**Left for P6.** Everything here is measured on the simulator only: whether the band's swipes move
+focus row to row and tile to tile as the preview's arrow keys did; send times over the radio (and so
+the 40-row, 4,000-character and two-lens-height caps); the card's rim in daylight; where focus goes
+from the button row into the grid; the 31-character row line on a real lens.
 
 ### P5 — drag and nav in flagged builds (TestFlight only; after JV P3)
 
