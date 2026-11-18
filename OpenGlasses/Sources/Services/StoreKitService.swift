@@ -64,6 +64,9 @@ class StoreKitService: ObservableObject {
     @Published private(set) var catalogError: String?
     @Published private(set) var medicalCatalogError: String?
     @Published private(set) var myManualsCatalogError: String?
+    /// Products whose introductory offer this Apple Account can still take. A paywall states the
+    /// offer (`SubscriptionOfferTerms`) only for these; empty until StoreKit has answered.
+    @Published private(set) var introOfferEligibleIds: Set<String> = []
     @Published private(set) var isRestoring = false
     /// False means unknown, not an absent purchase. Set only after recording verified evidence.
     @Published private(set) var hasCheckedEntitlements = false
@@ -174,12 +177,32 @@ class StoreKitService: ObservableObject {
             PrivacyLog.purchase(.catalogLoaded, count: loaded.count)
             let generation = entitlementGeneration
             Task { await refreshRenewalInformation(generation: generation) }
+            Task { await refreshIntroOfferEligibility() }
         } catch {
             catalogError = String(localized: "Unable to load purchases: \(error.localizedDescription)")
             medicalCatalogError = catalogError
             myManualsCatalogError = String(localized: "Unable to load My Manuals plans. Check your connection and App Store sign-in, then retry.")
             PrivacyLog.purchase(.catalogFailed, error: SafeErrorSummary(error))
         }
+    }
+
+    /// The introductory offer a paywall should state for `product`: nil when it has none, or when
+    /// this account has already used the offer in that subscription group.
+    func offerTerms(for product: Product) -> SubscriptionOfferTerms? {
+        guard introOfferEligibleIds.contains(product.id) else { return nil }
+        return SubscriptionOfferTerms(product: product)
+    }
+
+    /// Asks StoreKit which loaded subscriptions still offer their introductory price to this
+    /// account. A product that cannot be checked is treated as ineligible, so the paywall never
+    /// promises a trial StoreKit would not give.
+    private func refreshIntroOfferEligibility() async {
+        var eligible: Set<String> = []
+        for product in products {
+            guard let subscription = product.subscription, subscription.introductoryOffer != nil else { continue }
+            if await subscription.isEligibleForIntroOffer { eligible.insert(product.id) }
+        }
+        introOfferEligibleIds = eligible
     }
 
     var myManualsProducts: [Product] {
@@ -206,6 +229,7 @@ class StoreKitService: ObservableObject {
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
                 await checkSubscriptionStatus()
+                await refreshIntroOfferEligibility()
                 PrivacyLog.purchase(.activated, product: PrivacyToken(product.id))
 
             case .userCancelled:

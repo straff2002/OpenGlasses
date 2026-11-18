@@ -1371,6 +1371,9 @@ struct FieldAssistSettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
                         Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                        if let terms = store.offerTerms(for: product) {
+                            Text(terms.line()).font(.caption.weight(.semibold))
+                        }
                     }
                     Spacer()
                     Text(product.displayPrice + period).foregroundStyle(.secondary)
