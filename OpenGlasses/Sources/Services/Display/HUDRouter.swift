@@ -320,7 +320,7 @@ final class HUDRouter: ObservableObject {
     /// What the stack reads and does. Wired by AppState; nil offers nothing.
     var cardHooks: PreparedCardLensHooks?
     /// The page shape, from the active backend.
-    var cardGeometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeGeometry
+    var cardGeometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeTeleprompterGeometry
 
     private var cardIndex = 0
     private var cardShownID: PreparedCardID?

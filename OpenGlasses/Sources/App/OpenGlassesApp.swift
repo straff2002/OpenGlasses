@@ -8113,6 +8113,21 @@ class AppState: ObservableObject, AppStateProtocol {
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
+            // Plan MG §7: "show that again" brings the last answer back to the lens, on the page
+            // the wearer was reading — after the glasses' Back gesture, Close or its lifetime. With
+            // a page view up over that answer, the words close the view back to it. With no answer
+            // to bring back, or a lens that cannot take it, the words go on as a request.
+            VoiceCommandHandler(label: "hud-answer-reopen") { [weak self] text in
+                guard let self, HUDReopenCommand.matches(text) else { return false }
+                if self.lensPage.isViewOnLens, self.glassesDisplay.holdsAnswerCardUnderPage {
+                    self.lensPage.close()
+                } else {
+                    guard self.hudAnswerCard.reopen() else { return false }
+                }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("hudAnswerReopen"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
             // Notification digest (Plan BZ): "what's new" / "catch me up" pulls up the glance.
             // Global — works with or without a task card; strict whole-phrase match only.
             VoiceCommandHandler(label: "digest-briefing") { [weak self] text in

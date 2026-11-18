@@ -179,5 +179,63 @@ final class HUDAnswerFollowUpTests: XCTestCase {
         card.absorb(shortAnswer, streamed: false)
         XCTAssertEqual(card.followUps, [])
     }
+
+    // MARK: - Page on the last page (Plan MG §5)
+
+    /// A turn that staged a page the lens can show: **Page** on the last page in the second
+    /// follow-up's place, the second follow-up on the Actions screen ahead of the third, and no Page
+    /// there. Staged after the card is up on its last page, the page is redrawn with it.
+    func testAStagedPageGoesOnTheLastPageAndItsFollowUpMovesToActions() {
+        let (_, card) = makeCard()
+        var opened = 0
+        card.pageCanOpen = { true }
+        card.openPage = { opened += 1 }
+        card.beginTurn()
+        card.offerFollowUps(questions)
+        card.absorb(shortAnswer, streamed: false)
+        XCTAssertEqual(ids(card.screenOnLens), [ID.followUp(0), ID.followUp(1), ID.actions], "no page yet")
+
+        card.notePageStaged()
+        XCTAssertEqual(ids(card.screenOnLens), [ID.followUp(0), ID.page, ID.actions], "redrawn with Page")
+        card.press(.actions)
+        XCTAssertEqual(Array(ids(card.screenOnLens).prefix(2)), [ID.followUp(1), ID.followUp(2)])
+        XCTAssertFalse(ids(card.screenOnLens).contains(ID.page))
+        card.press(.answer)
+        card.press(.page)
+        XCTAssertEqual(opened, 1)
+        card.endTurn()
+    }
+
+    /// A page the lens cannot show now (the HUD off, a backend without pictures) leaves the card as
+    /// it was without one.
+    func testAPageTheLensCannotShowChangesNothing() {
+        let (_, card) = makeCard()
+        card.pageCanOpen = { false }
+        card.beginTurn()
+        card.offerFollowUps(questions)
+        card.notePageStaged()
+        card.absorb(longAnswer, streamed: false)
+        card.endTurn()
+        for _ in 0..<10 where card.canTurn(.next) { card.press(.next) }
+        XCTAssertEqual(ids(card.screenOnLens), [ID.followUp(0), ID.followUp(1), ID.actions, ID.back])
+        card.press(.actions)
+        XCTAssertEqual(ids(card.screenOnLens).first, ID.followUp(2))
+        XCTAssertFalse(ids(card.screenOnLens).contains(ID.page))
+    }
+
+    /// On a paged answer Page is on the last page only, beside ‹ Back: four buttons.
+    func testOnAPagedAnswerPageIsOnTheLastPageOnly() {
+        let (_, card) = makeCard()
+        card.pageCanOpen = { true }
+        card.beginTurn()
+        card.offerFollowUps(questions)
+        card.notePageStaged()
+        card.absorb(longAnswer, streamed: false)
+        card.endTurn()
+        XCTAssertGreaterThan(card.pages.count, 1)
+        XCTAssertFalse(ids(card.screenOnLens).contains(ID.page), "page 1")
+        for _ in 0..<10 where card.canTurn(.next) { card.press(.next) }
+        XCTAssertEqual(ids(card.screenOnLens), [ID.followUp(0), ID.page, ID.actions, ID.back])
+    }
 }
 #endif

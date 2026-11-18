@@ -138,6 +138,8 @@ extension AppState {
         lastResponse = ""
         currentTranscription = ""
         updateLiveActivity()
+        // Plan MG §7: "show that again" must not bring a private answer back to the lens.
+        hudAnswerCard.forgetForReopen()
     }
 
     /// The quiet gap, by timer: 30 minutes without a private turn ends it, said to nobody. The

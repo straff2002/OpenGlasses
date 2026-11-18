@@ -1,4 +1,5 @@
 import CoreGraphics
+import UIKit
 import XCTest
 @testable import OpenGlasses
 
@@ -79,7 +80,7 @@ final class LensPageFrameTests: XCTestCase {
         let even = LensPageFrame.readingGeometry(for: .evenG2)
         XCTAssertEqual(even.maxLines, TeleprompterPaginator.Geometry.evenG2.maxLines, "Even's own, unchanged")
         XCTAssertEqual(even.maxChars, TeleprompterPaginator.Geometry.evenG2.maxChars)
-        XCTAssertEqual(TeleprompterPaginator.Geometry.raybanDisplay.maxLines, 4, "the answer card's, unchanged")
+        XCTAssertEqual(TeleprompterPaginator.Geometry.raybanDisplay.maxLines, 4, "the teleprompter's, unchanged")
         XCTAssertEqual(TeleprompterPaginator.Geometry.raybanDisplay.maxChars, 32)
     }
 
@@ -139,5 +140,49 @@ final class LensPageFrameTests: XCTestCase {
                                accuracy: 0.001)
             }
         }
+    }
+
+    // MARK: - The answer card (Plan MG P0)
+
+    /// The answer card's geometry is the same budget as reading mode's: 10 lines of 32 characters,
+    /// so a paged page holds 9 lines of text and the footer, 8 under the question; a single page 10,
+    /// 9 under the question. The teleprompter keeps its 4 × 32 and Even its 3 × 40.
+    func testTheAnswerGeometryIsTheFramesBudget() {
+        let geometry = LensPageFrame.answerGeometry
+        XCTAssertEqual(geometry.maxLines, 10)
+        XCTAssertEqual(geometry.maxChars, 32, "the answer card's 32-character estimate")
+        XCTAssertEqual(geometry.maxLines, LensPageFrame.readingBodyLines(metaLines: 1) + 1, "9 lines of text and the footer")
+        XCTAssertEqual(geometry.maxLines, LensPageFrame.readingBodyLines(metaLines: 0), "a single page")
+        // What the pager gives each page of a paged answer, and the first under the question.
+        let pagedText = geometry.maxLines - 1
+        XCTAssertEqual(pagedText, 9)
+        XCTAssertEqual(pagedText - 1, 8, "page 1 under the question")
+        XCTAssertEqual(geometry.maxLines - 1, 9, "a single page under the question")
+        XCTAssertEqual(TeleprompterPaginator.Geometry.raybanDisplay.maxLines, 4, "the teleprompter's, unchanged")
+        XCTAssertEqual(TeleprompterPaginator.Geometry.raybanDisplay.maxChars, 32)
+        XCTAssertEqual(TeleprompterPaginator.Geometry.evenG2.maxLines, 3, "Even's, unchanged")
+        XCTAssertEqual(TeleprompterPaginator.Geometry.evenG2.maxChars, 40)
+
+        // Every page shape the geometry lays out fits the lens with the row.
+        for (meta, body) in [(1, 9), (2, 8), (0, 10)] {
+            let content = LensPageFrame.Content(metaLines: meta, bodyLines: body, hasPicture: false, hasButtons: true)
+            XCTAssertLessThanOrEqual(LensPageFrame.height(content), lens, "\(meta) meta, \(body) body")
+        }
+    }
+
+    /// A picture takes its drawn height and the gap before it in body lines and their gaps,
+    /// rounded up: the tallest answer thumbnail (209 px drawn) takes 5.
+    func testAPictureTakesItsDrawnHeightInBodyLines() {
+        XCTAssertEqual(LensPageFrame.pictureBodyLines(drawnHeight: 0), 0)
+        XCTAssertEqual(LensPageFrame.pictureBodyLines(drawnHeight: 38), 1, "one body line's height")
+        XCTAssertEqual(LensPageFrame.pictureBodyLines(drawnHeight: 39), 2)
+        XCTAssertEqual(LensPageFrame.pictureBodyLines(drawnHeight: 209), 5)
+        let strip = HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
+                               contentKey: "mg.strip")
+        XCTAssertEqual(HUDAnswerThumbnail.drawnHeight(of: strip), 209)
+        XCTAssertEqual(HUDAnswerThumbnail.firstPageLines(of: strip), 5)
+        let panorama = HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 100),
+                                  contentKey: "mg.panorama")
+        XCTAssertEqual(HUDAnswerThumbnail.firstPageLines(of: panorama), 3, "105 px drawn")
     }
 }
