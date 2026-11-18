@@ -25,13 +25,19 @@ import Foundation
 ///
 /// **Follow-ups (P2).** The open turn's suggested follow-ups (`offerFollowUps`, from the reply's
 /// tail, which never reaches anything else) go on its card: two on the last page, a third on the
-/// Actions screen (`HUDAnswerCardBuilder`). Only a reply that came back whole carries them: a turn
-/// cut short (an error, a barge-in) shows none, and a new answer's card starts with none.
+/// Actions screen (`HUDAnswerCardBuilder`); with a page to show, **Page** takes the second's place
+/// on the last page and the second moves to the Actions screen. Only a reply that came back whole
+/// carries them: a turn cut short (an error, a barge-in) shows none, and a new answer's card starts
+/// with none.
 ///
 /// **The question (Plan KV §7).** A turn opened with the technician's words (`beginTurn(question:)`)
 /// shows what the app heard over its first page, "You: …", in the meta style and cut to one line;
-/// the pager gives that page one line fewer. A card for an answer outside such a turn (a proactive
-/// alert, a watcher, a photo answer) has none.
+/// the pager gives that page one line fewer (`firstPageReservedLines`). A card for an answer outside
+/// such a turn (a proactive alert, a watcher, a photo answer) has none.
+///
+/// **Page size (Plan MG §1).** On the Meta Display and the web mirror the pages take the lens's
+/// measured budget (`LensPageFrame.answerGeometry`, 10 × 32): 9 lines of text and the footer, 8
+/// under the question. Even keeps its own 3 × 40.
 ///
 /// **Lifetime.** Until Close, a new answer, or `idleLifetime` (60 s) with no press and no change to
 /// the answer — so a long answer still being spoken never clears under the wearer. In memory only.
@@ -57,7 +63,8 @@ import Foundation
 ///
 /// **The picture behind a vision answer (Plan LC §5).** A turn that sent the model a camera frame
 /// stages the frame's thumbnail (`expectPicture` / `stagePicture`); the next new card takes it onto
-/// its first page (`HUDAnswerCardBuilder.page(picture:)`) when the backend draws pictures. A staged
+/// its first page (`HUDAnswerCardBuilder.page(picture:)`) when the backend draws pictures, and that
+/// page gives the picture's lines up from the card's first layout (`firstPageReservedLines`). A staged
 /// picture belongs to the next answer only: the turn's end, a whole answer spoken outside a turn,
 /// or `stagedPictureLifetime` drops one no card took.
 @MainActor
@@ -170,14 +177,44 @@ final class HUDAnswerCard {
         source == .reply || source == .phoneAnswer
     }
 
-    /// The pager geometry for the backend that shows the HUD. The web mirror is the Meta Display's
-    /// 600 × 600 shape, so mirror-only uses the Meta geometry.
+    /// The answer card's pager geometry for the backend that shows the HUD: the lens's measured
+    /// budget on the Meta Display (`LensPageFrame.answerGeometry`, 10 × 32), Even's own 3 × 40. The
+    /// web mirror is the Meta Display's 600 × 600 shape, so mirror-only uses the Meta geometry.
     static func activeGeometry() -> TeleprompterPaginator.Geometry {
+        #if !AVENKIN_PHONE_ONLY
+        return Config.displayBackend == .evenG2 ? .evenG2 : LensPageFrame.answerGeometry
+        #else
+        return LensPageFrame.answerGeometry
+        #endif
+    }
+
+    /// The teleprompter's geometry for the backend that shows the HUD: 4 × 32 on the Meta Display
+    /// (and the web mirror), Even's 3 × 40. What the screens that are not the answer card lay out
+    /// on — the prepared-card stack and glance, and the Thinking card's question line — until their
+    /// own budgets are checked against `LensPageFrame`.
+    static func activeTeleprompterGeometry() -> TeleprompterPaginator.Geometry {
         #if !AVENKIN_PHONE_ONLY
         return Config.displayBackend == .evenG2 ? .evenG2 : .raybanDisplay
         #else
         return .raybanDisplay
         #endif
+    }
+
+    /// How many lines the first page gives up (`HUDAnswerPager.pages(firstPageReservedLines:)`):
+    /// one for the question line, and the lines the card's picture takes from the lens's budget
+    /// (`HUDAnswerThumbnail.firstPageLines(of:)`) beyond the room `geometry` already leaves it — the
+    /// teleprompter's 4 lines left the strip room of its own, the lens's 10 do not. Nothing for a
+    /// picture so tall it would leave no line of text beside the question and the footer: `fits`
+    /// leaves that picture off, so the page keeps its text.
+    static func firstPageReservedLines(hasQuestion: Bool, picture: HUDPicture?,
+                                       geometry: TeleprompterPaginator.Geometry) -> Int {
+        let questionLines = hasQuestion ? 1 : 0
+        guard let picture else { return questionLines }
+        let spare = max(0, LensPageFrame.answerGeometry.maxLines - geometry.maxLines)
+        let pictureLines = max(0, HUDAnswerThumbnail.firstPageLines(of: picture) - spare)
+        // The footer and at least one line of text stay on the page.
+        guard questionLines + pictureLines + 2 <= geometry.maxLines else { return questionLines }
+        return questionLines + pictureLines
     }
 
     /// What More sends as the next turn.
@@ -251,9 +288,10 @@ final class HUDAnswerCard {
         stagedPicture = nil
     }
 
-    /// The staged thumbnail, taken by a new card: once, and only while it is fresh.
-    private func takeStagedPicture() -> HUDPicture? {
-        defer { stagedPicture = nil }
+    /// The staged thumbnail while it is fresh and the backend draws pictures: the picture the next
+    /// new card would take. Read once per layout, so the lines the first page reserves for it and
+    /// the picture the card takes are the same.
+    private func freshStagedPicture() -> HUDPicture? {
         guard let staged = stagedPicture, display.drawsPictures,
               now().timeIntervalSince(staged.at) < Self.stagedPictureLifetime else { return nil }
         return staged.picture
@@ -265,7 +303,8 @@ final class HUDAnswerCard {
         turnStagedPage = true
         guard turnHasCard, !hasPage else { return }
         hasPage = true
-        guard isOnActions, isShowing else { return }
+        // Page goes on the last page (and the Actions screen changes with it).
+        guard isShowing, isOnActions || isOnLastPage else { return }
         let screen = currentScreen()
         if display.presentAnswerCard(screen, onSelect: selectionHandler) { shownScreen = screen }
     }
@@ -364,8 +403,14 @@ final class HUDAnswerCard {
         guard let turn, !turn.isEmpty else { return }
         let shape = geometry()
         let questionLine = HUDAnswerCardBuilder.questionLine(for: turn.question, maxChars: shape.maxChars)
+        // The first page's picture: the staged one this layout would show the card with, then the
+        // one the card took. Its lines are reserved from the first layout on, so the reservation is
+        // the same for the card's whole life and settled pages keep their lines as the answer grows.
+        let firstPagePicture = turnHasCard ? picture : freshStagedPicture()
+        let reserved = Self.firstPageReservedLines(hasQuestion: questionLine != nil, picture: firstPagePicture,
+                                                   geometry: shape)
         let laid = HUDAnswerPager.pages(for: cardText(for: turn), geometry: shape,
-                                        firstPageReservedLines: questionLine == nil ? 0 : 1)
+                                        firstPageReservedLines: reserved)
         guard !laid.isEmpty else { return }
         if !turnHasCard {
             guard turn.isFinished || HUDAnswerPager.settledPageCount(laid) > 0 else { return }
@@ -378,7 +423,8 @@ final class HUDAnswerCard {
             isOnActions = false
             followUps = turn.isFinished ? turnFollowUps : []
             hasPage = turnStagedPage
-            picture = takeStagedPicture()
+            picture = firstPagePicture
+            stagedPicture = nil      // taken once
             cardSerial += 1
             let screen = currentScreen()
             guard display.presentAnswerCard(screen, wearerLed: turnWearerLed,
@@ -505,6 +551,11 @@ final class HUDAnswerCard {
         armIdleTimer()
     }
 
+    /// The wearer is on the card's last readable page.
+    private var isOnLastPage: Bool {
+        !isOnActions && pageIndex >= max(1, min(visiblePageCount, pages.count)) - 1
+    }
+
     private func show(page: Int, actions: Bool, _ revision: UInt64) {
         let previous = (pageIndex, isOnActions)
         pageIndex = page
@@ -561,14 +612,15 @@ final class HUDAnswerCard {
     /// mirror), or the Actions screen.
     private func currentScreen() -> HUDScreen {
         let onAction = self.onAction
+        let showsPage = hasPage && pageCanOpen()
         if isOnActions {
-            return HUDAnswerCardBuilder.actions(pages, followUps: followUps,
-                                                hasPage: hasPage && pageCanOpen(), onAction: onAction)
+            return HUDAnswerCardBuilder.actions(pages, followUps: followUps, hasPage: showsPage,
+                                                onAction: onAction)
         }
         let readable = max(1, min(visiblePageCount, pages.count))
         let screens = (0..<readable).compactMap {
             HUDAnswerCardBuilder.page(pages, index: $0, followUps: followUps, question: question,
-                                      picture: picture, onAction: onAction)
+                                      picture: picture, hasPage: showsPage, onAction: onAction)
         }
         let index = min(pageIndex, readable - 1)
         var screen = screens.indices.contains(index) ? screens[index] : HUDScreen()

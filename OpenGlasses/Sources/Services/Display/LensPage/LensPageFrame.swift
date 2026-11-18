@@ -29,6 +29,12 @@ import Foundation
 /// Reading mode has no picture: its frame is the citation (first page only), the text's body lines,
 /// the "1/2" footer and the row, and `readingGeometry` is the most body lines that budget holds.
 ///
+/// The answer card's frame is the same shape — the question (first page only, a meta line), the
+/// answer's body lines, the "1/3" footer and the row — so `answerGeometry` is the same 10 × 32:
+/// 9 lines of text and the footer on a paged page, 8 under the question. A vision answer's first
+/// page also carries the analysed frame's thumbnail, which takes `pictureBodyLines(drawnHeight:)`
+/// lines of that budget (5 for the tallest strip).
+///
 /// The constants are `MetaDisplayBackend`'s own layout (its root `FlexBox` padding and spacing) and
 /// what DAT draws, as measured on the simulated Display in P4. P5 checks them on the glasses.
 enum LensPageFrame {
@@ -112,16 +118,43 @@ enum LensPageFrame {
     }
 
     /// Reading mode's pager geometry on the Display, from this frame's budget rather than the
-    /// answer card's 4 × 32 (which left a reading page two lines of text and the top of the lens
+    /// teleprompter's 4 × 32 (which left a reading page two lines of text and the top of the lens
     /// empty). `HUDAnswerPager` counts a paged page's "1/2" footer as one of `maxLines` and gives a
     /// single page no footer, so `maxLines` is whichever of the two fits fewer: 10 lines, 9 of text
     /// and the footer. The citation over the first page takes one line of that
     /// (`LensPageReading.pages`): 8 lines of text there. 32 characters a line.
-    static var readingGeometry: TeleprompterPaginator.Geometry {
+    static var readingGeometry: TeleprompterPaginator.Geometry { textFrameGeometry }
+
+    /// A text frame's pager geometry: body lines, a meta footer when paged, a meta line over the
+    /// first page and the button row, every pixel of the 600 px lens used. The most lines both a
+    /// paged page (its body lines and the footer) and a single page (body lines only) hold.
+    private static var textFrameGeometry: TeleprompterPaginator.Geometry {
         let paged = readingBodyLines(metaLines: 1) + 1
         let single = readingBodyLines(metaLines: 0)
         return TeleprompterPaginator.Geometry(maxLines: min(paged, single),
                                               maxChars: Int((contentWidthPixels / readingCharAdvancePixels).rounded(.down)))
+    }
+
+    // MARK: - The answer card
+
+    /// The answer card's pager geometry on the Display and the web mirror (which is this lens's
+    /// shape), from this frame's budget rather than the teleprompter's 4 × 32 (which, less the
+    /// footer and the question, left a paged first page two lines of text). The card's frame is
+    /// reading mode's: the question over the first page (a meta line), the answer's body lines,
+    /// the "1/3" footer and the button row. So 10 lines: a paged page holds 9 lines of text and
+    /// the footer, the first page under the question 8; a single page 10, 9 under the question
+    /// (though `HUDTextShaper.maxBodyLength` keeps a single page far shorter). 32 characters a
+    /// line: still the answer card's estimate (Plan KP) until the character advance is measured
+    /// on a real lens.
+    static var answerGeometry: TeleprompterPaginator.Geometry { textFrameGeometry }
+
+    /// How many body lines a picture `drawnHeight` px tall takes from a frame's budget: the
+    /// picture and the gap before it, in body lines and their gaps (`bodyLinePixels` +
+    /// `gapPixels`), rounded up. The tallest answer thumbnail (`HUDAnswerThumbnail`, 209 px
+    /// drawn) takes 5. Zero for no picture.
+    static func pictureBodyLines(drawnHeight: CGFloat) -> Int {
+        guard drawnHeight > 0, drawnHeight.isFinite else { return 0 }
+        return Int(((drawnHeight + gapPixels) / (bodyLinePixels + gapPixels)).rounded(.up))
     }
 
     /// Reading mode's geometry for `backend`: this frame's on the Display, the Even panel's own

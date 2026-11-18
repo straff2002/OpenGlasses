@@ -116,7 +116,7 @@ final class PreparedCardGlances {
     var noteSpoken: (PreparedCard) -> Void = { _ in }
     /// Medical Compliance withholding on the glance (`PreparedCardMedicalWithholding`).
     var withholding: () -> Bool = { false }
-    var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeGeometry
+    var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeTeleprompterGeometry
     /// Test seam: run `fire` after `delay`.
     var scheduleExpiry: (_ delay: TimeInterval, _ fire: @escaping @MainActor () -> Void) -> Void = { delay, fire in
         Task { @MainActor in

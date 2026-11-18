@@ -428,10 +428,15 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertTrue(card.isShowing, "the answer replaced the cue")
         XCTAssertNil(rig.session.held)
 
+        // Plan MG §5: Page is on the (only, so last) page, not one press deep under Actions.
+        let page = try XCTUnwrap(card.screenOnLens?.items.map(\.id))
+        XCTAssertEqual(page, [HUDAnswerCardBuilder.ItemID.page, HUDAnswerCardBuilder.ItemID.actions])
         card.press(.actions)
         await drain(rig)
         let actions = try XCTUnwrap(card.screenOnLens?.items.map(\.id))
-        XCTAssertEqual(actions.first, HUDAnswerCardBuilder.ItemID.page)
+        XCTAssertFalse(actions.contains(HUDAnswerCardBuilder.ItemID.page), "on the last page instead")
+        card.press(.answer)
+        await drain(rig)
 
         card.press(.page)
         await drain(rig)

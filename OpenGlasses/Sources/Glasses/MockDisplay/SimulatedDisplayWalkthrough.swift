@@ -133,11 +133,15 @@ struct SimulatedDisplayWalkthrough {
     // MARK: - The answer card
 
     private func answerCardWalk() async {
-        // About three pages on the lens.
+        // About three pages on the lens (about 600 characters at the card's 10 × 32).
         let reply = [
             "Start with the cover off and the board powered.",
             "Measure TP1 at the intake filter first; it should read between 0.4 and 0.9 volts.",
             "Then measure TP2 at the gain stage, which should sit between 2.1 and 2.6 volts.",
+            "If TP1 is low, check the intake filter's fuse and the ribbon cable to the sensor head.",
+            "If TP2 is high while TP1 reads normally, the gain stage is the fault: reseat its jumper.",
+            "Next, measure TP3 at the output buffer, which should read within a tenth of a volt of TP2.",
+            "Record each reading on the job sheet before you replace any part on the board.",
         ].joined(separator: " ")
         card.beginTurn(question: "how do I find a fault on the Q-7 board")
         card.finishTurn(reply: reply)

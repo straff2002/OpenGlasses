@@ -22,15 +22,18 @@ import UIKit
 /// black (the pillars stay clear) and white stays white. Modest on purpose — it is a thumbnail to
 /// recognise, not a picture to inspect.
 ///
-/// **The budget (why page 1, not a page of its own).** The answer card's Display geometry is 4 × 32
-/// (`TeleprompterPaginator.Geometry.raybanDisplay`). On `LensPageFrame`'s measured budget the
-/// fullest first page — four body lines, or the question, three body lines, or the question, two
-/// lines and the "1/3" footer — leaves at least 286 px over the button row, so the strip (≤ 209 px
-/// drawn) fits beside the text without the pager moving a word: the page count the wearer turns
-/// through, and the prefix-stable pages a streaming answer relies on, are unchanged. `fits(_:)` is
-/// the guard: a first page it does not fit (a future geometry, a second button row) is drawn without
-/// the picture rather than scrolled. The backend draws a picture after a screen's lines, so the
-/// thumbnail sits under the text and over the buttons.
+/// **The budget (why page 1, not a page of its own).** The answer card's Display geometry is
+/// `LensPageFrame.answerGeometry`, 10 × 32: the lens's measured budget, so a full page of text
+/// leaves no room for a picture by itself. The first page therefore reserves the picture's lines
+/// (`firstPageLines(of:)`: the drawn strip and its gap in body lines, 5 for the tallest strip)
+/// whenever its card will carry one (`HUDAnswerCard.firstPageReservedLines`), from the card's first
+/// layout on, so the pages a streaming answer relies on stay prefix-stable and the page count is the
+/// one the wearer turns through. The fullest first page — the question, three lines of text and the
+/// "1/3" footer, or four lines and the footer, or a single page of four or five lines — then comes to
+/// at most 567 px with the strip (≤ 209 px drawn), inside the 600 px lens. `fits(_:)` is the guard: a
+/// first page it does not fit (a future geometry, a second button row) is drawn without the picture
+/// rather than scrolled. The backend draws a picture after a screen's lines, so the thumbnail sits
+/// under the text and over the buttons.
 ///
 /// **The key.** `contentKey` names the frame without its pixels: when it was captured, how many
 /// bytes it was and its size. The render queue's de-duplication compares it; it never carries what
@@ -77,10 +80,16 @@ enum HUDAnswerThumbnail {
         return (picture.pixelSize.height * LensPageFrame.contentWidthPixels / picture.pixelSize.width).rounded(.up)
     }
 
+    /// How many body lines `picture` takes from the first page's budget: its drawn height and the
+    /// gap before it (`LensPageFrame.pictureBodyLines(drawnHeight:)`). 5 for a 552 × 200 strip.
+    static func firstPageLines(of picture: HUDPicture) -> Int {
+        LensPageFrame.pictureBodyLines(drawnHeight: drawnHeight(of: picture))
+    }
+
     /// What `screen` holds, in `LensPageFrame`'s terms, with a picture: a meta line is one line, a
     /// body line counts the display lines it wraps to at the answer card's width.
     static func frameContent(of screen: HUDScreen,
-                             maxChars: Int = TeleprompterPaginator.Geometry.raybanDisplay.maxChars) -> LensPageFrame.Content {
+                             maxChars: Int = LensPageFrame.answerGeometry.maxChars) -> LensPageFrame.Content {
         var content = LensPageFrame.Content(hasPicture: true, hasButtons: !screen.items.isEmpty)
         if let title = screen.title, !title.isEmpty { content.bodyLines += 1 }
         for line in screen.lines {

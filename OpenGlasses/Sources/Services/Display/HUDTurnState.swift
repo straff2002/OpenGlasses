@@ -54,7 +54,7 @@ final class HUDTurnState {
         }
     }
     /// The page shape, from the active backend: the Thinking card's question line is one of its lines.
-    var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeGeometry
+    var geometry: () -> TeleprompterPaginator.Geometry = HUDAnswerCard.activeTeleprompterGeometry
 
     // MARK: Wiring (AppState)
 

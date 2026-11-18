@@ -263,4 +263,63 @@ final class HUDAnswerPagerTests: XCTestCase {
         XCTAssertFalse(HUDAnswerPager.endsSentence("word,"))
         XCTAssertFalse(HUDAnswerPager.endsSentence(")"))
     }
+
+    // MARK: - The answer card's geometry on the Display (Plan MG P0)
+
+    private let lens = LensPageFrame.answerGeometry                    // 10 × 32
+
+    /// 600 characters of six-word lines: 20 display lines at 32 characters.
+    private let sixHundred = String(repeating: "word ", count: 120)
+
+    func testSixHundredCharactersIsThreePagesNotSeven() {
+        XCTAssertEqual(sixHundred.count, 600)
+        XCTAssertEqual(HUDAnswerPager.displayLines(for: sixHundred, maxChars: 32).count, 20)
+        let before = HUDAnswerPager.pages(for: sixHundred, geometry: rayban)
+        XCTAssertEqual(before.count, 7, "the teleprompter's 4 × 32: 3 lines a page")
+        let after = HUDAnswerPager.pages(for: sixHundred, geometry: lens)
+        XCTAssertEqual(after.count, 3)
+        XCTAssertEqual(after.map(\.lines.count), [9, 9, 2])
+        XCTAssertEqual(after.map(\.footer), ["1/3", "2/3", "3/3"])
+        XCTAssertEqual(pagedWords(after), words(of: sixHundred), "every word, in order")
+    }
+
+    func testUnderTheQuestionThePagesAreEightThenNine() {
+        let pages = HUDAnswerPager.pages(for: sixHundred, geometry: lens, firstPageReservedLines: 1)
+        XCTAssertEqual(pages.map(\.lines.count), [8, 9, 3])
+        let withPicture = HUDAnswerPager.pages(for: sixHundred, geometry: lens, firstPageReservedLines: 1 + 5)
+        XCTAssertEqual(withPicture.map(\.lines.count), [3, 9, 8], "the question and a picture's five lines")
+        for page in pages + withPicture { for line in page.lines { XCTAssertLessThanOrEqual(line.count, 32) } }
+    }
+
+    func testASinglePageAtTheLensGeometryIsTodaysText() {
+        let short = "The filter is behind the front grille, under the two screws on the left."
+        let pages = HUDAnswerPager.pages(for: short, geometry: lens, firstPageReservedLines: 1)
+        XCTAssertEqual(pages.count, 1)
+        XCTAssertNil(pages[0].footer)
+        XCTAssertEqual(pages[0].body, HUDTextShaper.condense(short))
+    }
+
+    /// The first page's reservation (the question and a picture) is the same at every length, so
+    /// settled pages keep their lines as the answer streams in.
+    func testPagesStayStableWhileStreamingWithTheFirstPageReserved() {
+        let sentences = (1...40).map { "This is streamed sentence \($0), with a few more words." }
+        let full = sentences.joined(separator: " ")
+        for reserved in [0, 1, 6] {
+            let final = HUDAnswerPager.pages(for: full, geometry: lens, firstPageReservedLines: reserved)
+            XCTAssertGreaterThan(final.count, 2)
+            var settledSoFar: [[String]] = []
+            for k in 1...sentences.count {
+                let prefix = sentences.prefix(k).joined(separator: " ")
+                let pages = HUDAnswerPager.pages(for: prefix, geometry: lens, firstPageReservedLines: reserved)
+                let settled = HUDAnswerPager.settledPageCount(pages)
+                for index in 0..<settled {
+                    XCTAssertEqual(pages[index].lines, final[index].lines, "reserved \(reserved) prefix \(k) page \(index)")
+                }
+                for (index, lines) in settledSoFar.enumerated() where index < settled {
+                    XCTAssertEqual(pages[index].lines, lines)
+                }
+                settledSoFar = pages.prefix(settled).map(\.lines)
+            }
+        }
+    }
 }

@@ -233,6 +233,78 @@ final class LensLiveAndVisionTests: XCTestCase {
         XCTAssertFalse(page.lines.isEmpty)
     }
 
+    // MARK: - The first page at the lens's budget (Plan MG P0)
+
+    /// The first page gives up a line for the question and, at the lens's 10 lines, the picture's
+    /// 5; the teleprompter's 4 lines already left the picture room, and Even draws none. A picture
+    /// too tall to leave a line of text is never drawn, so nothing is reserved for it.
+    func testTheFirstPageReservesTheQuestionAndThePicture() {
+        let lens = LensPageFrame.answerGeometry
+        let strip = thumbnail()
+        func reserved(_ question: Bool, _ picture: HUDPicture?, _ geometry: TeleprompterPaginator.Geometry) -> Int {
+            HUDAnswerCard.firstPageReservedLines(hasQuestion: question, picture: picture, geometry: geometry)
+        }
+        XCTAssertEqual(reserved(false, nil, lens), 0)
+        XCTAssertEqual(reserved(true, nil, lens), 1)
+        XCTAssertEqual(reserved(false, strip, lens), 5)
+        XCTAssertEqual(reserved(true, strip, lens), 6)
+        XCTAssertEqual(reserved(true, thumbnail(height: 100), lens), 1 + 3, "a shorter strip, fewer lines")
+        XCTAssertEqual(reserved(true, thumbnail(height: 400), lens), 1, "too tall to draw: the text keeps its room")
+        XCTAssertEqual(reserved(false, strip, .raybanDisplay), 0, "4 lines leave the strip its room")
+        XCTAssertEqual(reserved(true, strip, .raybanDisplay), 1)
+        XCTAssertEqual(reserved(true, strip, .evenG2), 1)
+        XCTAssertEqual(reserved(false, nil, .evenG2), 0)
+    }
+
+    /// Every first page the lens geometry lays out with its reservation — single or paged, with or
+    /// without the question, at every length — carries the picture and fits the 600 px lens with the
+    /// fullest button row: `fits` never drops it.
+    func testEveryFirstPageAtTheLensGeometryFitsWithThePicture() throws {
+        let lens = LensPageFrame.answerGeometry
+        let picture = thumbnail()
+        let sentence = "Check the breaker panel label before you reset anything here."
+        var texts = (1...140).map { String(repeating: "word ", count: $0) }
+        texts += (1...12).map { Array(repeating: sentence, count: $0).joined(separator: " ") }
+        texts.append(Array(repeating: "abcdefghijklmnopqrstuvwxyz12345", count: 4).joined(separator: " "))
+        var shapes = Set<String>()
+        for text in texts {
+            for asked in [nil, "what is this"] as [String?] {
+                let question = HUDAnswerCardBuilder.questionLine(for: asked, maxChars: lens.maxChars)
+                let reserved = HUDAnswerCard.firstPageReservedLines(hasQuestion: question != nil, picture: picture,
+                                                                    geometry: lens)
+                let pages = HUDAnswerPager.pages(for: text, geometry: lens, firstPageReservedLines: reserved)
+                let page = try XCTUnwrap(HUDAnswerCardBuilder.page(pages, index: 0, followUps: ["Why?", "How?"],
+                                                                   question: question, picture: picture,
+                                                                   hasPage: true, onAction: { _ in }))
+                XCTAssertNotNil(page.picture, "\(text.count) characters, question \(question != nil)")
+                let content = HUDAnswerThumbnail.frameContent(of: page)
+                XCTAssertLessThanOrEqual(LensPageFrame.height(content, pictureHeight: HUDAnswerThumbnail.drawnHeight(of: picture)),
+                                         600)
+                shapes.insert("\(pages.count > 1)-\(question != nil)-\(pages[0].lines.count)")
+            }
+        }
+        // The fullest shapes were all laid out: paged with the question and three lines, paged
+        // without it and four, and single pages of four lines.
+        XCTAssertTrue(shapes.contains("true-true-3"), "\(shapes)")
+        XCTAssertTrue(shapes.contains("true-false-4"), "\(shapes)")
+        XCTAssertTrue(shapes.contains("false-false-4"), "\(shapes)")
+        XCTAssertTrue(shapes.contains("false-true-4"), "\(shapes)")
+    }
+
+    /// A page longer than one shaped body line goes to the lens line by line, so no backend cuts it
+    /// at `HUDTextShaper.maxBodyLength`; a single page within it is still today's one line.
+    func testAOnePageAnswerOverTheBodyLimitGoesLineByLine() throws {
+        let lens = LensPageFrame.answerGeometry
+        let text = (1...6).map { "Invented step \($0) of the purge." }.joined(separator: " ")
+        XCTAssertGreaterThan(text.count, HUDTextShaper.maxBodyLength)
+        let pages = HUDAnswerPager.pages(for: text, geometry: lens)
+        XCTAssertEqual(pages.count, 1)
+        let screen = try XCTUnwrap(HUDAnswerCardBuilder.page(pages, index: 0, followUps: [], onAction: { _ in }))
+        XCTAssertEqual(screen.lines.map(\.text), pages[0].lines)
+        XCTAssertTrue(screen.lines.allSatisfy { $0.text.count <= lens.maxChars })
+        XCTAssertEqual(screen.lines.map(\.text).joined(separator: " "), text, "every word, uncut")
+    }
+
     // MARK: - Helpers
 
     static func frameJPEG(_ size: CGSize, grey: CGFloat) -> Data? {
@@ -441,6 +513,79 @@ final class LensLiveAndVisionDisplayTests: XCTestCase {
         XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "lc.answer.frame:10", "the card keeps its picture")
         card.close()
         XCTAssertNil(card.picture)
+    }
+
+    // MARK: - The lens's budget on the card (Plan MG P0)
+
+    /// A streamed vision answer at the lens geometry: the first page reserves the question and the
+    /// picture from its first layout, keeps the same lines as the answer grows, and keeps the
+    /// picture to the end.
+    func testAVisionAnswerAtTheLensGeometryKeepsItsPictureAndItsFirstPage() throws {
+        let (_, card, _, _) = makeRig()
+        card.geometry = { LensPageFrame.answerGeometry }
+        card.beginTurn(question: "what is this")
+        let ticket = card.expectPicture()
+        card.stagePicture(HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
+                                     contentKey: "lc.answer.frame:11"), ticket: ticket)
+        let sentences = (1...30).map { "Invented step \($0) of checking the mixing valve here." }
+        var firstLines: [String]?
+        for sentence in sentences {
+            card.absorb(sentence, streamed: true)
+            guard card.isShowing else { continue }
+            let lines = card.pages[0].lines
+            if let firstLines { XCTAssertEqual(lines, firstLines, "page 1 is settled") } else { firstLines = lines }
+            XCTAssertEqual(card.screenOnLens?.pageSet?.pages.first?.picture?.contentKey, "lc.answer.frame:11")
+        }
+        XCTAssertEqual(firstLines?.count, 3, "9 lines less the question and the picture's 5")
+        card.finishTurn(reply: sentences.joined(separator: " "))
+        card.endTurn()
+        XCTAssertEqual(card.pages[0].lines, firstLines)
+        XCTAssertTrue(card.pages.dropFirst().dropLast().allSatisfy { $0.lines.count <= 9 })
+        XCTAssertEqual(card.pages[1].lines.count, 9)
+        XCTAssertEqual(card.screenOnLens?.picture?.contentKey, "lc.answer.frame:11", "the card keeps its picture")
+        let first = try XCTUnwrap(card.screenOnLens)
+        XCTAssertTrue(HUDAnswerThumbnail.fits(first, picture: try XCTUnwrap(card.picture)))
+    }
+
+    /// Without a picture the first page holds 8 lines under the question and the rest 9; a backend
+    /// that draws none reserves nothing for a picture.
+    func testWithoutAPictureTheFirstPageHoldsEightLines() {
+        for drawsPictures in [true, false] {
+            let (_, card, _, _) = makeRig(drawsPictures: drawsPictures)
+            card.geometry = { LensPageFrame.answerGeometry }
+            card.beginTurn(question: "what is this")
+            if !drawsPictures {
+                let ticket = card.expectPicture()
+                card.stagePicture(HUDPicture(image: LensPageFixtures.picture(), pixelSize: CGSize(width: 552, height: 200),
+                                             contentKey: "lc.answer.frame:12"), ticket: ticket)
+            }
+            card.finishTurn(reply: String(repeating: "word ", count: 120))
+            card.endTurn()
+            XCTAssertEqual(card.pages.map(\.lines.count), [8, 9, 3], "draws pictures \(drawsPictures)")
+            XCTAssertNil(card.picture)
+        }
+    }
+
+    /// The answer card takes the lens's budget on the Meta Display (and the web mirror), Even keeps
+    /// its own; the teleprompter-shaped screens (prepared cards, the Thinking card) stay on 4 × 32.
+    func testTheActiveGeometriesByBackend() {
+        let display = GlassesDisplayService()
+        Config.displayBackend = .metaRayBan
+        XCTAssertEqual(HUDAnswerCard.activeGeometry().maxLines, 10)
+        XCTAssertEqual(HUDAnswerCard.activeGeometry().maxChars, 32)
+        XCTAssertEqual(HUDAnswerCard(display: display).geometry().maxLines, 10)
+        XCTAssertEqual(HUDAnswerCard.activeTeleprompterGeometry().maxLines, 4)
+        XCTAssertEqual(HUDRouter(display: display).cardGeometry().maxLines, 4, "prepared-card stack")
+        XCTAssertEqual(HUDTurnState(display: display).geometry().maxLines, 4, "the Thinking card")
+        let glances = PreparedCardGlances(display: display, router: HUDRouter(display: display),
+                                          defaults: UserDefaults(suiteName: "mg-p0-\(UUID().uuidString)")!)
+        XCTAssertEqual(glances.geometry().maxLines, 4, "prepared-card glance")
+
+        Config.displayBackend = .evenG2
+        XCTAssertEqual(HUDAnswerCard.activeGeometry().maxLines, 3)
+        XCTAssertEqual(HUDAnswerCard.activeGeometry().maxChars, 40)
+        XCTAssertEqual(HUDAnswerCard.activeTeleprompterGeometry().maxLines, 3)
+        XCTAssertEqual(HUDAnswerCard.activeTeleprompterGeometry().maxChars, 40)
     }
 }
 #endif
