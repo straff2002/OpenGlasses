@@ -61,3 +61,49 @@ enum DisplayStartWait {
         }
     }
 }
+
+extension DisplayCapabilityPhase {
+    /// Whether a Display in this phase still needs `stop()`: one already stopping or stopped
+    /// doesn't.
+    static func needsStop(_ phase: DisplayCapabilityPhase) -> Bool {
+        phase == .starting || phase == .started
+    }
+}
+
+/// Wait for a Display we let go of to reach `stopped` before another is added on the same session.
+///
+/// The session is shared with the camera (`DeviceSessionCoordinator`), so handing it back no
+/// longer stops it, and the SDK refuses a second Display on a session while one is active
+/// (`capabilityAlreadyActive`). Build 717 showed what followed when the dropped Display was left
+/// running: after one failed draw, every later frame was refused until the camera let go.
+///
+/// A wait that runs out is reported, not thrown: the `addDisplay()` after it says for itself
+/// whether the old Display is still in the way.
+enum DisplayStopWait {
+    enum Outcome: String, Equatable {
+        case stopped, timedOut
+    }
+
+    static let timeout: TimeInterval = 3
+    static let pollInterval: TimeInterval = 0.1
+
+    /// `elapsed` is counted from the sleeps taken, not a wall clock, so a test drives it exactly.
+    @MainActor
+    static func wait(
+        timeout: TimeInterval = DisplayStopWait.timeout,
+        pollInterval: TimeInterval = DisplayStopWait.pollInterval,
+        phase: () -> DisplayCapabilityPhase,
+        sleep: (TimeInterval) async throws -> Void = { seconds in
+            try await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+        }
+    ) async throws -> (outcome: Outcome, waited: TimeInterval) {
+        var polls = 0
+        var elapsed: TimeInterval { Double(polls) * pollInterval }
+        while true {
+            if phase() == .stopped { return (.stopped, elapsed) }
+            if elapsed >= timeout { return (.timedOut, elapsed) }
+            try await sleep(pollInterval)
+            polls += 1
+        }
+    }
+}

@@ -379,6 +379,15 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
   the pair. Both now borrow one from `DeviceSessionCoordinator`, and a Display stopped by a photo
   under the live session is redrawn. Device confirmation owed: photo with the lens up, lens with
   the camera streaming, Back gesture with the camera warm.
+  **Build 717 report (2026-11-18):** sharing the session left a gap. A failed draw hands the
+  session back, but with the camera still holding it the session lives on, and the Display the
+  lens let go of was never stopped. Every later `addDisplay()` was refused with
+  `capabilityAlreadyActive`, so the lens stayed blank until the camera let go. In that state, a
+  spoken "menu" was the last thing the app logged before it was closed (no crash report, so most
+  likely a hang the wearer ended). The backend now stops its Display before handing the session
+  back, and the next `addDisplay()` waits for the old one to reach `stopped` (`DisplayStopWait`, up
+  to 3 s, logged as `displayCapabilityRead` with `detail=retired`). Device confirmation owed: a
+  failed draw with the camera warm, then "menu", draws the menu.
 
 ## Acceptance
 
