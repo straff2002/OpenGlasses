@@ -60,17 +60,17 @@ struct SettingsView: View {
         // category rows, each with a live value summary.
         OGScrollPage {
             // The device in use (Plan HA C3): the glasses while they are attached — connected,
-            // paused or connecting — and this iPhone otherwise. Glasses settings stay one row away
-            // under Devices & Privacy › Glasses whichever card is showing.
+            // paused or connecting — and this iPhone or iPad otherwise. Glasses settings stay one row
+            // away under Devices & Privacy › Glasses whichever card is showing.
             switch heroDevice {
             case .phone:
                 OGHeroDeviceCard(
-                    title: String(localized: "This iPhone"),
+                    title: ThisDeviceLabel.title,
                     status: heroDevice.phoneStatus ?? String(localized: "In use"),
                     dot: OGTheme.ok,
                     chips: [(String(localized: "Voice"), true), (String(localized: "Chat"), true),
                             (String(localized: "Camera"), true)],
-                    symbol: "iphone"
+                    symbol: ThisDeviceLabel.symbol
                 )
             case .glasses:
                 #if AVENKIN_PHONE_ONLY
