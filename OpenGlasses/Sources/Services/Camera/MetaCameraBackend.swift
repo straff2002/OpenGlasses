@@ -36,7 +36,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
     /// DAT 0.9.0 `ListenerTokenBag`: the four per-stream listeners (state, video frame,
     /// photo, error) live and die together, so they're cancelled as one in teardown.
     private let streamListenerBag = ListenerTokenBag()
+    /// The capture waiting for its photo. It belongs to `photoLedger.pending`, and every path that
+    /// resumes it takes it from there first (`takePhotoContinuation(for:)`), so it is resumed once.
     private var photoContinuation: CheckedContinuation<Data, Error>?
+    /// Which photo request is whose: see `PhotoCaptureLedger`.
+    private var photoLedger = PhotoCaptureLedger()
 
     /// Whether camera permission has been granted (cached to avoid re-checking).
     var permissionGranted = false
@@ -898,9 +902,11 @@ final class MetaCameraBackend: GlassesCameraBackend {
                 self.events.send(.transientNotice(message))
 
                 // Fail a pending capture fast on a terminal error (hinges closed, thermal/battery
-                // shutdown, device gone) instead of waiting out the 5s timeout below.
-                if CameraErrorPolicy.abortsCapture(error), let cont = self.photoContinuation {
-                    self.photoContinuation = nil
+                // shutdown, device gone) instead of waiting out its timeout. No queued photo is
+                // coming after one of these, so the ledger forgets the late ones too.
+                if CameraErrorPolicy.abortsCapture(error),
+                   let token = self.photoLedger.aborted(),
+                   let cont = self.takePhotoContinuation(for: token) {
                     if let fallback = self.latestFrameAsJPEG() {
                         PrivacyLog.camera(.glasses, .captureFallbackUsed)
                         cont.resume(returning: fallback)
@@ -1116,39 +1122,21 @@ final class MetaCameraBackend: GlassesCameraBackend {
         }
         if let error = lastError { throw error }
 
-        // Capture using continuation — with video frame fallback
-        let photoData: Data = try await withCheckedThrowingContinuation { continuation in
-            self.photoContinuation = continuation
-
-            PrivacyLog.camera(.glasses, .captureRequested)
-            let success = streamSession!.capturePhoto(format: .jpeg)
-            if !success {
-                self.photoContinuation = nil
-                // capturePhoto returned false — fall back to latest video frame
-                if let fallback = self.latestFrameAsJPEG() {
-                    PrivacyLog.camera(.glasses, .captureRejected, bytes: fallback.count)
-                    continuation.resume(returning: fallback)
-                } else {
-                    continuation.resume(throwing: CameraError.captureFailed)
-                }
-                return
-            }
-
-            // Timeout after 8 seconds — fall back to latest video frame. (5s was too tight on
-            // a cold WiFi-transport capture; the photo often lands at 5-7s.)
-            Task {
-                try? await Task.sleep(nanoseconds: 8_000_000_000)
-                if let cont = self.photoContinuation {
-                    self.photoContinuation = nil
-                    if let fallback = self.latestFrameAsJPEG() {
-                        PrivacyLog.camera(.glasses, .captureTimedOut, bytes: fallback.count)
-                        cont.resume(returning: fallback)
-                    } else {
-                        PrivacyLog.camera(.glasses, .captureTimedOut)
-                        cont.resume(throwing: CameraError.timeout)
-                    }
-                }
-            }
+        // Hold the slot: an earlier capture's photo still owed would answer this one (see
+        // `PhotoCaptureLedger`). Wait a bounded time for it; if it is still owed, ask for nothing
+        // and use a fresh frame.
+        let photoData: Data
+        switch await waitForOwedPhotos() {
+        case .clear(let held):
+            // An earlier capture that finished during the wait may have parked the stream.
+            if held { try? await waitForStreaming() }
+            photoData = try await requestPhoto()
+        case .stillOwed:
+            PrivacyLog.camera(.glasses, .captureHoldFallback,
+                              count: photoLedger.latePhotosOwed(at: Date()))
+            guard let fallback = latestFrameAsJPEG() else { throw CameraError.captureFailed }
+            PrivacyLog.camera(.glasses, .captureFallbackUsed, bytes: fallback.count)
+            photoData = fallback
         }
 
         // Keep the session WARM after capture instead of tearing it down immediately
@@ -1166,6 +1154,84 @@ final class MetaCameraBackend: GlassesCameraBackend {
 
         PrivacyLog.camera(.glasses, .photoCaptured, bytes: photoData.count)
         return photoData
+    }
+
+    private enum OwedPhotoWait {
+        /// Nothing is owed: ask. `held` says whether the capture had to wait for that.
+        case clear(held: Bool)
+        /// An earlier photo is still owed after the wait: ask for nothing.
+        case stillOwed
+    }
+
+    /// Wait up to `PhotoCaptureLedger.holdWait` for every owed photo to land (or be cleared by an
+    /// SDK error).
+    private func waitForOwedPhotos() async -> OwedPhotoWait {
+        guard photoLedger.mustHold(at: Date()) else { return .clear(held: false) }
+        PrivacyLog.camera(.glasses, .captureHeld, count: photoLedger.latePhotosOwed(at: Date()))
+        let deadline = Date().addingTimeInterval(PhotoCaptureLedger.holdWait)
+        while Date() < deadline, !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if !photoLedger.mustHold(at: Date()) { return .clear(held: true) }
+        }
+        return photoLedger.mustHold(at: Date()) ? .stillOwed : .clear(held: true)
+    }
+
+    /// Ask the glasses for one photo and wait for it, with the video-frame fallback on a refusal
+    /// or a timeout. Called once `waitForOwedPhotos()` says nothing is owed; should another
+    /// capture have asked in the meantime, `issue` refuses and this falls back to a frame rather
+    /// than queue a second request behind it.
+    private func requestPhoto() async throws -> Data {
+        guard let session = streamSession else { throw CameraError.captureFailed }
+        return try await withCheckedThrowingContinuation { continuation in
+            guard let token = self.photoLedger.issue(at: Date()) else {
+                if let fallback = self.latestFrameAsJPEG() {
+                    PrivacyLog.camera(.glasses, .captureFallbackUsed, bytes: fallback.count)
+                    continuation.resume(returning: fallback)
+                } else {
+                    continuation.resume(throwing: CameraError.captureFailed)
+                }
+                return
+            }
+            self.photoContinuation = continuation
+
+            PrivacyLog.camera(.glasses, .captureRequested)
+            let success = session.capturePhoto(format: .jpeg)
+            if !success {
+                self.photoLedger.rejected(token)
+                self.photoContinuation = nil
+                // capturePhoto returned false — fall back to latest video frame
+                if let fallback = self.latestFrameAsJPEG() {
+                    PrivacyLog.camera(.glasses, .captureRejected, bytes: fallback.count)
+                    continuation.resume(returning: fallback)
+                } else {
+                    continuation.resume(throwing: CameraError.captureFailed)
+                }
+                return
+            }
+
+            // Time out — fall back to the latest video frame. The timer resolves only its own
+            // capture: a later capture that is pending when this fires is not this one.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(PhotoCaptureLedger.captureTimeout))
+                guard let self, self.photoLedger.timedOut(token),
+                      let cont = self.takePhotoContinuation(for: token) else { return }
+                if let fallback = self.latestFrameAsJPEG() {
+                    PrivacyLog.camera(.glasses, .captureTimedOut, bytes: fallback.count)
+                    cont.resume(returning: fallback)
+                } else {
+                    PrivacyLog.camera(.glasses, .captureTimedOut)
+                    cont.resume(throwing: CameraError.timeout)
+                }
+            }
+        }
+    }
+
+    /// The waiting continuation, taken out of its slot, for the capture the ledger just resolved.
+    /// The ledger has already cleared `token` as pending, so nothing else can take it.
+    private func takePhotoContinuation(for token: PhotoCaptureLedger.Token) -> CheckedContinuation<Data, Error>? {
+        let continuation = photoContinuation
+        photoContinuation = nil
+        return continuation
     }
 
     /// The SDK's one-session-per-device refusal — matched on the message because the thrown
@@ -1219,13 +1285,21 @@ final class MetaCameraBackend: GlassesCameraBackend {
     }
 
     private func handlePhotoData(_ photoData: PhotoData) {
-        guard let continuation = photoContinuation else {
+        switch photoLedger.photoArrived(at: Date()) {
+        case .answers(let token):
+            guard let continuation = takePhotoContinuation(for: token) else {
+                PrivacyLog.camera(.glasses, .photoUnexpected)
+                return
+            }
+            PrivacyLog.camera(.glasses, .photoReceived, bytes: photoData.data.count)
+            continuation.resume(returning: photoData.data)
+        case .drainedLate:
+            // Its capture already used a frame. Handing it to a later capture would describe the
+            // scene from seconds ago, so it is dropped here.
+            PrivacyLog.camera(.glasses, .photoDrainedLate, bytes: photoData.data.count)
+        case .unexpected:
             PrivacyLog.camera(.glasses, .photoUnexpected)
-            return
         }
-        photoContinuation = nil
-        PrivacyLog.camera(.glasses, .photoReceived, bytes: photoData.data.count)
-        continuation.resume(returning: photoData.data)
     }
 
     /// How old a video frame may be and still stand in for a failed photo capture. Beyond
