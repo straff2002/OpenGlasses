@@ -28,6 +28,10 @@ enum HUDPageAction: Equatable {
     case showPicture
     /// From the picture back to reading mode (**Read it**).
     case readIt
+    /// Plan MG §4: a press on one of the whole page's tiles: zoom two rungs into its centre.
+    case tile(LensPageViewport.Area)
+    /// Plan MG §4: a press on a slice of a zoomed view's strip: one rung in, centred on it.
+    case slice(Int)
 }
 
 /// The page view's state, as far as its lines and buttons depend on it.
@@ -53,6 +57,14 @@ struct HUDPageViewState: Equatable {
     var readingIndex: Int = 0
     /// Reading mode is up (rather than the picture).
     var isReading: Bool = false
+    /// Plan MG §4: the whole page is drawn as tiles to point at (which replace **Zoom in**), and a
+    /// zoomed view as a strip the lens scrolls (so **Move** keeps only ← · → · Done).
+    var tilesAndStrips: Bool = false
+
+    /// The whole page is drawn as its tiles.
+    var showsTiles: Bool { tilesAndStrips && !isReading && viewport.isWholePage }
+    /// A zoomed view is drawn as a strip.
+    var showsStrip: Bool { tilesAndStrips && !isReading && !viewport.isWholePage }
 
     /// **Next diagram ›** has somewhere to go: from a view on a drawing, the page has another;
     /// from a view on no drawing (the whole page "show me page 7" opened on, a cited passage),
@@ -143,6 +155,34 @@ enum HUDPageScreenBuilder {
         static let previousText = "kv.page.text-back"
         static let showPicture = "kv.page.picture"
         static let readIt = "kv.page.read"
+        /// Plan MG §4: a tile of the whole page, and a slice of a zoomed view's strip.
+        static func tile(_ area: LensPageViewport.Area) -> String {
+            "mg.page.tile.\(area.cell.row)\(area.cell.column)"
+        }
+        static func slice(_ index: Int) -> String { "mg.page.slice.\(index)" }
+    }
+
+    /// Plan MG §4: the whole page's tiles as three rows of tappable cards, from their pictures
+    /// (row by row, as `LensPageTileGrid.tiles` lists them).
+    static func tileRows(_ tiles: [(tile: LensPageTile, picture: HUDPicture)],
+                         onAction: @escaping (HUDPageAction) -> Void) -> [HUDFlowElement] {
+        stride(from: 0, to: tiles.count, by: LensPageTileGrid.columns).map { start in
+            let row = tiles[start..<min(start + LensPageTileGrid.columns, tiles.count)]
+            return .blocks(row.map { entry in
+                let area = entry.tile.area
+                return HUDBlock(id: ItemID.tile(area), picture: entry.picture, style: .card,
+                                action: { onAction(.tile(area)) })
+            })
+        }
+    }
+
+    /// Plan MG §4: a zoomed view's strip as plain tappable slices, top to bottom.
+    static func stripSlices(_ pictures: [HUDPicture],
+                            onAction: @escaping (HUDPageAction) -> Void) -> [HUDFlowElement] {
+        pictures.enumerated().map { index, picture in
+            .blocks([HUDBlock(id: ItemID.slice(index), picture: picture, style: .plain,
+                              action: { onAction(.slice(index)) })])
+        }
     }
 
     /// Plan KV §4: the cue for a page the app put up by itself — where the page is, and one
@@ -190,6 +230,14 @@ enum HUDPageScreenBuilder {
         if let page = state.readingPage {
             return readingItems(state, page: page, onAction)
         }
+        if state.isMoving, state.showsStrip {
+            // Plan MG §4: up and down are the lens's own scroll down the strip.
+            return [
+                item(ItemID.left, "←", .secondary, .step(.left), onAction),
+                item(ItemID.right, "→", .secondary, .step(.right), onAction),
+                item(ItemID.done, String(localized: "Done"), .outline, .doneMoving, onAction),
+            ]
+        }
         if state.isMoving {
             // The arrows are symbols, not words, so they are not localized.
             return [
@@ -203,7 +251,13 @@ enum HUDPageScreenBuilder {
 
         let viewport = state.viewport
         var items: [HUDItem] = []
-        if viewport.isWholePage {
+        if viewport.isWholePage, state.showsTiles {
+            // Plan MG decision 7: the tiles are the zoom; a press on one goes two rungs in.
+            if viewport.opensOnPart {
+                items.append(item(ItemID.backToPart, String(localized: "Back to part"), .secondary,
+                                  .backToPart, onAction))
+            }
+        } else if viewport.isWholePage {
             items.append(item(ItemID.zoomIn, String(localized: "Zoom in"), .primary, .zoomIn, onAction))
             if viewport.opensOnPart {
                 items.append(item(ItemID.backToPart, String(localized: "Back to part"), .secondary,
@@ -217,14 +271,14 @@ enum HUDPageScreenBuilder {
             items.append(item(ItemID.wholePage, String(localized: "Whole page"), .secondary, .wholePage, onAction))
             items.append(item(ItemID.move, String(localized: "Move"), .secondary, .move, onAction))
         }
-        var after = 1
-        if state.canRead, !items.isEmpty {
+        var after = min(1, items.count)
+        if state.canRead, !items.isEmpty || state.showsTiles {
             items.insert(item(ItemID.readIt, String(localized: "Read it",
                                                     comment: "Glasses: show the cited passage on the manual page as text."),
                               .secondary, .readIt, onAction), at: after)
             after += 1
         }
-        if state.hasNextDiagram, viewport.isAtOpening || viewport.isWholePage, !items.isEmpty {
+        if state.hasNextDiagram, viewport.isAtOpening || viewport.isWholePage, !items.isEmpty || state.showsTiles {
             items.insert(item(ItemID.nextDiagram, String(localized: "Next diagram ›",
                                                          comment: "Glasses: show the page's next drawing."),
                               .secondary, .nextDiagram, onAction), at: after)

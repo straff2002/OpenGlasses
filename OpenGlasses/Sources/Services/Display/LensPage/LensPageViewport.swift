@@ -47,6 +47,45 @@ struct LensPageViewport: Equatable {
         case topLeft, topRight, bottomLeft, bottomRight
     }
 
+    /// Plan MG §4: a ninth of the page, as the tile grid divides it and as the words name it ("zoom
+    /// in on the bottom right", "closer at the top").
+    enum Area: Equatable, CaseIterable {
+        case topLeft, top, topRight
+        case left, centre, right
+        case bottomLeft, bottom, bottomRight
+
+        /// The area's row and column in the 3 × 3 grid, top left (0, 0).
+        var cell: (row: Int, column: Int) {
+            switch self {
+            case .topLeft: return (0, 0)
+            case .top: return (0, 1)
+            case .topRight: return (0, 2)
+            case .left: return (1, 0)
+            case .centre: return (1, 1)
+            case .right: return (1, 2)
+            case .bottomLeft: return (2, 0)
+            case .bottom: return (2, 1)
+            case .bottomRight: return (2, 2)
+            }
+        }
+
+        init?(row: Int, column: Int) {
+            guard let area = Area.allCases.first(where: { $0.cell == (row, column) }) else { return nil }
+            self = area
+        }
+
+        /// The area's rectangle on a page of `pageSize`, in top-down page points.
+        func rect(in pageSize: CGSize) -> CGRect {
+            let width = pageSize.width / 3
+            let height = pageSize.height / 3
+            return CGRect(x: CGFloat(cell.column) * width, y: CGFloat(cell.row) * height,
+                          width: width, height: height)
+        }
+    }
+
+    /// Plan MG §4: a press on a tile zooms this many rungs into its centre.
+    static let pointZoomRungs = 2
+
     /// The page, in PDF points.
     let pageSize: CGSize
     /// The picture box the crop is drawn into, in lens pixels.
@@ -202,6 +241,56 @@ struct LensPageViewport: Equatable {
         case .bottomRight: point = CGPoint(x: far, y: far)
         }
         target = Self.clamp(point, crop: cropSize, pageSize: pageSize)
+    }
+
+    /// Plan MG §4: centre on `point` and go `rungs` rungs in on the ladder, stopped at the cap.
+    mutating func zoom(rungs: Int, around point: CGPoint) {
+        // Zoomed first: at the whole page the crop is wider than a portrait page, and clamping
+        // there would centre the point away.
+        for _ in 0..<max(0, rungs) where canZoomIn { zoomIn() }
+        target = Self.clamp(point, crop: cropSize, pageSize: pageSize)
+    }
+
+    /// Plan MG §4: "zoom in on the bottom right" — from the whole page, two rungs into that ninth
+    /// of the page (what a press on its tile does); from a zoomed view, one more rung there.
+    mutating func zoom(into area: Area) {
+        let rect = area.rect(in: pageSize)
+        zoom(rungs: isWholePage ? Self.pointZoomRungs : 1, around: CGPoint(x: rect.midX, y: rect.midY))
+    }
+
+    /// Plan MG §4: the views one press away — the next rung in and out, the whole page, the opening
+    /// view, and each move — most likely first, each once and none the same as this one. The page
+    /// view draws their pictures while the wearer looks, so a press only sends.
+    func neighbours() -> [LensPageViewport] {
+        var candidates: [LensPageViewport] = []
+        var probe = self
+        probe.zoomIn()
+        candidates.append(probe)
+        for step in [Step.left, .right, .down, .up] {
+            probe = self
+            probe.move(step)
+            candidates.append(probe)
+        }
+        probe = self
+        probe.zoomOut()
+        candidates.append(probe)
+        probe = self
+        probe.showWholePage()
+        candidates.append(probe)
+        probe = self
+        probe.reset()
+        candidates.append(probe)
+        var seen: [LensPageViewport] = []
+        for candidate in candidates where !candidate.showsSame(as: self) && !seen.contains(where: { $0.showsSame(as: candidate) }) {
+            seen.append(candidate)
+        }
+        return seen
+    }
+
+    /// Whether two viewports draw the same picture: the same crop at the same magnification.
+    func showsSame(as other: LensPageViewport) -> Bool {
+        abs(pixelsPerPoint - other.pixelsPerPoint) <= max(pixelsPerPoint, 1e-9) * Self.tolerance * 10
+            && Self.near(center, other.center) && box == other.box
     }
 
     /// Back to the opening view.

@@ -8713,6 +8713,9 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudAnswerCard.pageCanOpen = { [weak self] in self?.lensPage.canOpenStaged ?? false }
         hudAnswerCard.openPage = { [weak self] in self?.lensPage.openStaged() }
+        // Plan MG §4: the whole page as tiles to point at, and a zoomed view as a strip the lens
+        // scrolls.
+        lensPage.tilesAndStrips = true
     }
 
     private func wireAnswerCard() {
