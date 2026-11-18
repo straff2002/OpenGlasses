@@ -28,6 +28,8 @@ final class SimulatedDisplayLab: ObservableObject {
     static let walkthroughLaunchArgument = "-AvenkinSimulatedDisplayWalkthrough"
     /// Launch argument: switch the simulated Display on at launch.
     static let switchOnLaunchArgument = "-AvenkinSimulatedDisplay"
+    /// Launch argument: switch the simulated Display on at launch and run the tall-views measurement.
+    static let tallViewsLaunchArgument = "-AvenkinSimulatedDisplayTallViews"
 
     @Published private(set) var isOn = false
     @Published private(set) var status = ""
@@ -42,6 +44,8 @@ final class SimulatedDisplayLab: ObservableObject {
 
     /// The mock's display kit, once the glasses are paired.
     var displayKit: (any MockDisplayKit)? { glasses?.services.display }
+    /// The mock's input kit (the band's and the touchpad's moves and presses), once paired.
+    var inputKit: (any MockInputKit)? { glasses?.services.input }
 
     // MARK: - Launch
 
@@ -49,13 +53,17 @@ final class SimulatedDisplayLab: ObservableObject {
     func launchHook(appState: AppState) {
         let arguments = ProcessInfo.processInfo.arguments
         let walkthrough = arguments.contains(Self.walkthroughLaunchArgument)
-        guard walkthrough || arguments.contains(Self.switchOnLaunchArgument) else { return }
+        let tallViews = arguments.contains(Self.tallViewsLaunchArgument)
+        guard walkthrough || tallViews || arguments.contains(Self.switchOnLaunchArgument) else { return }
         Task { @MainActor in
             // Let the scene come up first: the preview panel needs a window scene.
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await self.switchOn(appState: appState)
             if walkthrough, self.isOn {
                 await SimulatedDisplayWalkthrough(appState: appState, lab: self).run()
+            }
+            if tallViews, self.isOn {
+                await SimulatedDisplayTallViews(appState: appState, lab: self).run()
             }
         }
     }
@@ -157,17 +165,7 @@ final class SimulatedDisplayLab: ObservableObject {
     /// the names are readable is the frame the mock serves its preview from, the test server's
     /// `POST /display/content`, so that is where they are read. Nil without the test server.
     func lensButtons() async -> [LensButton]? {
-        guard let serverAddress, let url = URL(string: serverAddress + "display/content") else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Data(#"{"afterRevision":null}"#.utf8)
-        request.timeoutInterval = 3
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let content = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let payload = content["payload"] as? String,
-              let decoded = Data(base64Encoded: payload),
-              let frame = try? JSONSerialization.jsonObject(with: decoded) else { return nil }
+        guard let frame = await lensFrame()?.frame else { return nil }
         var buttons: [LensButton] = []
         func walk(_ node: Any) {
             if let object = node as? [String: Any] {
@@ -182,6 +180,36 @@ final class SimulatedDisplayLab: ObservableObject {
         }
         walk(frame)
         return buttons
+    }
+
+    /// The frame the simulated lens holds now, as the test server serves it to the preview.
+    struct LensFrame {
+        /// The response's other fields (its revision among them), as text.
+        let fields: [String: String]
+        /// The frame as sent, base64 encoded, and its decoded size in bytes.
+        let payload: String
+        let payloadBytes: Int
+        /// The decoded frame.
+        let frame: Any
+    }
+
+    /// The test server's `POST /display/content`: the frame the preview draws. Nil without the
+    /// test server or before a frame has been sent.
+    func lensFrame() async -> LensFrame? {
+        guard let serverAddress, let url = URL(string: serverAddress + "display/content") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(#"{"afterRevision":null}"#.utf8)
+        request.timeoutInterval = 3
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let content = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = content["payload"] as? String,
+              let decoded = Data(base64Encoded: payload),
+              let frame = try? JSONSerialization.jsonObject(with: decoded) else { return nil }
+        var fields: [String: String] = [:]
+        for (key, value) in content where key != "payload" { fields[key] = "\(value)" }
+        return LensFrame(fields: fields, payload: payload, payloadBytes: decoded.count, frame: frame)
     }
 
     /// Presses the button the lens shows with `identifier`, as the band would.

@@ -7,6 +7,7 @@ struct SimulatedDisplaySection: View {
     @ObservedObject var appState: AppState
     @ObservedObject private var lab = SimulatedDisplayLab.shared
     @State private var walking = false
+    @State private var measuring = false
 
     var body: some View {
         OGSection(
@@ -50,7 +51,20 @@ struct SimulatedDisplaySection: View {
                           icon: "play.rectangle", mutedIcon: walking, showsChevron: false)
                 }
                 .buttonStyle(.plain)
-                .disabled(walking)
+                .disabled(walking || measuring)
+                OGDivider()
+                Button {
+                    measuring = true
+                    Task { @MainActor in
+                        await SimulatedDisplayTallViews(appState: appState, lab: lab).run()
+                        measuring = false
+                    }
+                } label: {
+                    OGRow(measuring ? "Measuring tall views…" : "Measure tall views",
+                          icon: "ruler", mutedIcon: measuring, showsChevron: false)
+                }
+                .buttonStyle(.plain)
+                .disabled(walking || measuring)
             }
             if !lab.status.isEmpty, lab.status != "On" {
                 Text(verbatim: lab.status)
