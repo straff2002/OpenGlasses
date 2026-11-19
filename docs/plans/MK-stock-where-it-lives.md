@@ -1,6 +1,6 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 🚧 **P0 and P2 built 2026-11-19 (headless)**; P1, P3 and P4 to come. All ten decisions taken 2026-11-19
+**Status:** 🚧 **P0, P1 and P2 built 2026-11-19 (headless)**; P3 (the catalog sync PR) and P4 (the pilot pass) owed. All ten decisions taken 2026-11-19
 as recommended, 7 in the form reworked the same day on the owner's point that a store may want its
 numbers checked against a catalogue or a particular manual (§4). P0 adds `StockPlace` (the five
 kinds, their family, a lenient read that takes an unknown kind as van and a strict one that
@@ -21,7 +21,28 @@ place with "Base" and "Office" both read as set from outside, the "Not found in 
 service's `exportFile` cannot change before P1, so the screen's Export and the handover rename its
 file for the place (`VanStockHandoverService.exportFile`), and the sheet name carries no date (the
 file name does), so an older build still finds the stock sheet first. **Amended 2026-11-19 for P1:** the job-only actions follow an
-open job for every kind of place (§5), and `van_stock` gains `list` (§8).
+open job for every kind of place (§5), and `van_stock` gains `list` (§8). **P1 built 2026-11-19
+(headless):** every model-facing sentence of the composer, the service (PR 1139's near-match
+sentences included), the handover message, the close question and `parts_request`'s stock line is
+built from `StockPlaceWording` for the place in force, which gained the members the sentences need
+(`stockName`, `log`, `person`, `aboard`, `this`, `comeFrom`/`cameFrom`/`notFrom`, `shouldHold`,
+`putNoun`, `screen`, the description's pieces and the vehicle-only extras question); a van's
+sentences are unchanged. `VanStockTool.description` and `parametersSchema` are computed from the
+place, lead with it, keep every action for every kind and add `list` with `bin`; the on-device
+(Apple) tool cache now keys on `NativeToolRegistry.definitionSignature` as well as the names, so a
+changed place reaches the next turn there too. `list` (`VanStockListing`, pure) reads all stock or
+the bins whose label holds every word said, bin then name, bin-less last, eight lines then the
+Stock screen. Numbers are looked up through `VanStockBooks` in §4's order (the job's vault, the
+list's named vault through `FieldSessionService.vanStockBook(forVault:)`, else none and no
+search), recorded as found / not found / not checked with the book's name; the composer's sentence
+and the first-load read-back follow the state. Premises ask no extras question; the export names
+its file for the place, so P2's rename went. `StockPlaceWordingGuardTests` scrapes the sources.
+Deviations: a van's composer no longer says "not verified against the manuals" for a number
+nothing was searched for (§4 narrows the sentence to `notFound`, for every kind), and the read-back
+says "has not been on this list before" in place of "this van"; at premises "the technician" is
+"the person"; `unrecorded` with no job open now says there is none; the spreadsheet import still
+records found or not checked, without the book's name; a live (realtime) voice session keeps the
+definitions it opened with until it reconnects.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the movement log, `van_stock`, the Van Stock screen, the spreadsheet
@@ -316,7 +337,7 @@ shop asks by place. `van_stock` gains `list`, for every kind of place:
   `StockPlaceWording`, `StockPlaceSetting.resolve` (profile over list over default),
   `VanIdentity.place` with older JSON decoding, the meta sheet's `place` row in and out, and
   `VanStockVerification` with the legacy decode. About 25 tests.
-- **P1 — what the model sees and hears (headless).** The composer, service, handover, close question
+- **P1 — what the model sees and hears (headless).** ✅ Built 2026-11-19. The composer, service, handover, close question
   and `parts_request` lines through `StockPlaceWording`; `VanStockTool.description` and
   `parametersSchema` computed per place, the job-only actions kept in every kind's schema (§5);
   the `list` action (§8);
