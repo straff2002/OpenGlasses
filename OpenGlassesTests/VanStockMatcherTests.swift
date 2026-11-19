@@ -91,4 +91,72 @@ final class VanStockMatcherTests: XCTestCase {
     func testTokensDropPluralsAndFiller() {
         XCTAssertEqual(VanStockMatcher.tokens("some 45/5 Capacitors for the glass"), ["45", "5", "capacitor", "glass"])
     }
+
+    // MARK: A tester's build-728 report — a brand heard as a common word, a number heard in pieces
+
+    // Invented names and numbers throughout.
+    private lazy var couplings = item("couplings", number: "71234", "Kwartz Coupling 6 x 250 mm")
+    private lazy var lookalike = item("lookalike", "Kwarts Coupling 6 x 250 mm")
+    private lazy var bracket = item("bracket", "Bracket 6250")
+    private lazy var stud = item("stud", "Stud 2 x 4")
+    private lazy var transformer = item("transformer", "Transformer 24 V")
+
+    func testANumberHeardInPiecesIsAnExactMatch() {
+        let matcher = VanStockMatcher(items: [sensor, couplings])
+        XCTAssertEqual(matcher.match(description: "kwartz coupling 6 x 2 50"), .one(couplings))
+        XCTAssertEqual(VanStockMatcher(items: [transformer]).match(description: "transformer 2 4 v"), .one(transformer))
+    }
+
+    func testAnXKeepsTheNumbersEitherSideApart() {
+        XCTAssertEqual(VanStockMatcher(items: [bracket]).match(description: "bracket 6 x 2 50"), .none,
+                       "6 is never joined to 250 across the x")
+    }
+
+    func testTheNumbersAsHeardAreAlwaysTriedToo() {
+        XCTAssertEqual(VanStockMatcher(items: [stud]).match(description: "stud 2 4"), .one(stud))
+        XCTAssertEqual(VanStockMatcher.saidTokens("6 x 2 50"), [["6", "x", "2", "50"], ["6", "x", "250"]])
+    }
+
+    func testABrandHeardAsTheWordItSoundsLikeIsANearMissNotAMatch() {
+        let matcher = VanStockMatcher(items: [sensor, couplings, dualRun])
+        XCTAssertEqual(matcher.match(description: "quartz coupling 6 x 2 50"), .near([couplings]))
+        XCTAssertEqual(matcher.match(number: "quartz coupling 6 x 250"), .near([couplings]),
+                       "words given where a number goes are near-matched the same way")
+    }
+
+    func testTwoLinesThatBothSoundLikeItAreBothGiven() {
+        let matcher = VanStockMatcher(items: [couplings, sensor, lookalike])
+        XCTAssertEqual(matcher.match(description: "quartz coupling 6 x 250"), .near([couplings, lookalike]))
+    }
+
+    func testANearMissIsNeverOnANumber() {
+        let matcher = VanStockMatcher(items: [couplings])
+        XCTAssertEqual(matcher.match(description: "kwartz coupling 6 x 251"), .none)
+        XCTAssertEqual(matcher.match(description: "kwartz coupling 8 x 250"), .none)
+    }
+
+    func testAOneWordQueryNeverNearMisses() {
+        let matcher = VanStockMatcher(items: [couplings, sensor])
+        XCTAssertEqual(matcher.match(description: "quartz"), .none)
+        XCTAssertEqual(matcher.match(description: "flame senser"), .none, "one word matched is not enough")
+    }
+
+    func testTwoWordsMisheardIsNotANearMiss() {
+        XCTAssertEqual(VanStockMatcher(items: [couplings]).match(description: "quartz bracket 6 x 250"), .none)
+    }
+
+    func testAWordForWordMatchWinsOverANearOne() {
+        let matcher = VanStockMatcher(items: [couplings, lookalike])
+        XCTAssertEqual(matcher.match(description: "kwarts coupling 6 x 250"), .one(lookalike))
+    }
+
+    func testSoundsAlike() {
+        XCTAssertEqual(VanStockMatcher.soundKey("quartz"), VanStockMatcher.soundKey("kwartz"))
+        XCTAssertEqual(VanStockMatcher.soundKey("phlint"), VanStockMatcher.soundKey("flint"))
+        XCTAssertTrue(VanStockMatcher.soundsAlike("senser", "sensor"))
+        XCTAssertTrue(VanStockMatcher.soundsAlike("thermistor", "thermostor"))
+        XCTAssertFalse(VanStockMatcher.soundsAlike("cap", "cat"), "under four letters it must sound the same")
+        XCTAssertFalse(VanStockMatcher.soundsAlike("valve", "motor"))
+        XCTAssertEqual(VanStockMatcher.distance("kitten", "sitting"), 3)
+    }
 }
