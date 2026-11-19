@@ -15,6 +15,9 @@ struct JobTranscriptView: View {
     let threadId: String
 
     @EnvironmentObject private var appState: AppState
+    /// A reply's support report, asked for from its bubble (Plan MH P1). Reporting reads the
+    /// thread and writes nothing, so a read-only transcript offers it.
+    @State private var replyReport: SupportReportRequest?
 
     private var thread: ConversationThread? {
         appState.conversationStore.threads.first { $0.id == threadId }
@@ -53,11 +56,18 @@ struct JobTranscriptView: View {
                     .padding(.top, 8)
 
                 ForEach(thread.messages) { message in
-                    MessageBubble(message: message)
+                    MessageBubble(message: message, onReport: reportAction(for: message))
                 }
             }
             .padding(.vertical, 8)
         }
         .background(OGTheme.canvas)
+        .replyReportSheet($replyReport)
+    }
+
+    /// "Report this reply" for a stored reply, or nil when the bubble should not offer it.
+    private func reportAction(for message: ConversationMessage) -> (() -> Void)? {
+        guard let request = appState.replyReportRequest(threadId: threadId, message: message) else { return nil }
+        return { replyReport = request }
     }
 }

@@ -37,6 +37,7 @@ Source changes reduce identified risks; they do not guarantee App Review approva
 
 - [ ] Supply intended use, source protocols/methodology and verification for first-aid coaching, advisory camera triage, medication tools and the clinical persona. Validate emergency wording and complete age-rating/medical-status answers for the actual capabilities. Copy edits do not replace this evidence.
 - [ ] Validate local-only routing, file protection while locked, retention/deletion and generated export formats on device. Confirm the receiving clinical system's import requirements; exported formats are not a claim of a direct Epic/Cerner integration or legal certification.
+- [ ] File a report from a reply on the exact archive: long-press an AI reply > Report this reply. Confirm the sheet holds only that question and reply, the model and the build, widens to the whole conversation only when chosen, masks keys, and emails the address on support.html. Confirm a private conversation offers no report.
 - [ ] Provide a reviewer-accessible test gateway/MCP setup if needed, with visible permissions/confirmation and representative packs. Explain pack contents and prove they do not introduce unreviewed executable app functionality.
 - [ ] Validate microphone/background recording indications, start/stop and power behavior. Document why each retained background mode serves the active feature.
 - [ ] Confirm authorisation for third-party APIs, OAuth flows, model weights and distributed content; retain evidence for Apple's 5.2.2 requests.

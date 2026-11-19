@@ -24,6 +24,9 @@ struct SupportReportRequest: Identifiable {
     var pilotDay: Date? = nil
     var pilotEnrolment: String? = nil
     var recipients: [String]? = nil
+    /// The conversation a reported reply can be widened to on the sheet (Plan MH P1). Nil
+    /// everywhere else.
+    var widerThreadId: String? = nil
 
     /// From Settings or the Job tab: the scope asked for, with the troubleshooting layer. A day
     /// carries the conversations outside its jobs unless the person turns that off on the sheet.
@@ -50,6 +53,22 @@ struct SupportReportRequest: Identifiable {
         }
         return SupportReportRequest(scope: .conversation(threadId: threadId), options: everything,
                                     reason: reason, widerDay: at)
+    }
+
+    /// "Report this reply" (Plan MH P1): the one turn that produced `message` — the question, the
+    /// reply, and which model and provider answered — with the troubleshooting layer, which carries
+    /// the build and masks keys. The rest of the conversation is one switch away on the sheet, and
+    /// off until the wearer turns it on. Nil for anything `ReportedReplyScope` does not offer: the
+    /// wearer's own message, or any message while a private conversation is open.
+    static func reportedReply(threadId: String, message: ConversationMessage,
+                              isPrivate: Bool) -> SupportReportRequest? {
+        guard ReportedReplyScope.offersReport(role: message.role, isPrivate: isPrivate) else { return nil }
+        let time = message.timestamp.formatted(date: .omitted, time: .shortened)
+        return SupportReportRequest(
+            scope: .reply(threadId: threadId, messageId: message.id),
+            options: .init(troubleshooting: true, otherConversations: false),
+            reason: String(localized: "Reporting the AI reply from \(time). Add what was wrong with it before you send."),
+            widerThreadId: threadId)
     }
 
     /// The most recent conversation on the phone, or nil when nothing has been said yet.
@@ -114,6 +133,14 @@ extension AppState {
     /// From Settings or the Job tab.
     func openSupportReport(_ scope: JobTranscriptExport.Scope) {
         supportReportRequest = .named(scope)
+    }
+
+    /// "Report this reply" for a message of a stored thread (Plan MH P1), or nil when the message
+    /// does not offer it. Never while a private conversation is open: Plan LU's row for the support
+    /// report is `.skip`, and the bubble then shows no Report action at all.
+    func replyReportRequest(threadId: String, message: ConversationMessage) -> SupportReportRequest? {
+        .reportedReply(threadId: threadId, message: message,
+                       isPrivate: privateConversation.isActive || PrivateConversationGate.isActive)
     }
 
     /// Why "Send Last Conversation" did not open the review sheet.

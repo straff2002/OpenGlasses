@@ -13,9 +13,15 @@ MY MANUALS - PERSONAL SUBSCRIPTION
 Settings > My Manuals > Upload manual > Choose PDF, Word or Markdown. File selection and preview are available before purchase; saving/indexing and cited questions require Personal access. Photograph pages is also supported. Import the original fictional Markdown manuals in the review kit, select them for a conversation, ask about their reference cards, open a citation, then delete a manual. No manufacturer workshop PDF is bundled. New purchases offer com.openglasses.my_manuals_monthly (one month). Restore purchases restores verified access. Personal does not unlock Field Assist.
 
 FIELD ASSIST
-Settings > Field Assist shows reference previews and the paywall. New solo purchases offer com.openglasses.field_assist_monthly. Verified annual and retired one-time purchases remain restorable. Organisation-only features use existing signed licence codes or activation keys; an activation key needs an online lookup. The licence field contains no consumer external-purchase link. Field Assist does not unlock Personal manuals. Prices, periods and eligible offers appear in StoreKit purchase sheets.
+Settings > Field Assist: previews and paywall; new solo purchases offer com.openglasses.field_assist_monthly; older ones restore. Organisation features use signed licence codes or activation keys; no external-purchase link.
 
 MEDICAL AND OTHER FEATURES
 Settings > Devices & Privacy > Medical Compliance offers com.openglasses.medical_compliance_monthly and com.openglasses.medical_compliance_annual. It adds clinical privacy/retention controls and export formats, not certification of legal compliance or clinical accuracy. Use fictional records for testing.
 
-The consumer app also includes first-aid coaching, advisory camera triage, medication tools and a clinical persona. AI answers require checking and must not replace emergency services or professional judgement. User-configured agent gateways, MCP servers, skill/reference packs and workflows are available under Connections and Tools & Actions. Tool actions retain permission/confirmation checks. Phone listening uses microphone audio and has stop controls. Calendar, Reminders, Contacts, Home, Music and Shortcuts use Apple frameworks; tool support varies by AI model.
+The consumer app also includes first-aid coaching, advisory camera triage, medication tools and a clinical persona. AI answers require checking and must not replace emergency services or professional judgement. Tool actions retain permission/confirmation checks. Phone listening uses microphone audio and has stop controls. Calendar, Reminders, Contacts, Home, Music and Shortcuts use Apple frameworks; tool support varies by AI model.
+
+REPORTING AND CONNECTIONS
+Long-press an AI reply > Report this reply: the user reviews the question, reply, model and app version, then emails support (also on support.html).
+Each AI provider's own content filters also apply.
+ATS exception *.ts.net (plus local networking): plain HTTP in Tailscale's WireGuard tunnel to user's own servers.
+Gateways, MCP servers, skill packs and workflows are user-configured (Connections, Tools & Actions). Packs are text/data and MCP tools run on servers the user adds; neither is executable app code.
