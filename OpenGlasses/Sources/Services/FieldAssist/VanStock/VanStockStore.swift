@@ -35,7 +35,22 @@ final class VanStockStore: ObservableObject {
         var van: VanIdentity?
     }
 
-    private static let formatVersion = 1
+    /// A format 1 file: the same, with its figures in whole units (Plan ML §2).
+    private struct Format1File: Decodable {
+        var log: VanStockLogMigration.Format1Log
+        var van: VanIdentity?
+    }
+
+    /// Just the format number, read before anything else.
+    private struct Header: Decodable {
+        var version: Int
+    }
+
+    /// Format 2 keeps every figure in thousandths of the line's unit (Plan ML §2). A format 1
+    /// file is migrated when it is read and written back as format 2 straight away. Any other
+    /// number is a shape this build does not know, and is refused rather than guessed at: an
+    /// older build refuses format 2 the same way, so it can never read 4,250 mL as 4,250 litres.
+    nonisolated static let formatVersion = 2
 
     @Published private(set) var log: VanStockLog
     /// Which vehicle the list belongs to. Nil until it has been named or taken over.
@@ -63,13 +78,15 @@ final class VanStockStore: ObservableObject {
             log = VanStockLog()
             van = nil
             isUnreadable = true
-        case .loaded(let stored, let identity):
+        case .loaded(let stored, let identity, let migrated):
             isUnreadable = false
             van = identity
             let cutoff = now.addingTimeInterval(-Double(Self.historyDays) * 86_400)
             let folded = stored.compacted(before: cutoff)
             log = folded
-            if folded != stored { save() }
+            // A migrated file is written back in format 2 at once, so it is read the new way from
+            // now on and an older build refuses it.
+            if folded != stored || migrated { save() }
         }
         protectFile()
     }
@@ -143,10 +160,11 @@ final class VanStockStore: ObservableObject {
     /// Whether there is a list from before the last takeover to go back to.
     var hasPrevious: Bool { FileManager.default.fileExists(atPath: archiveURL.path) }
 
-    /// Go back to the list from before the last takeover. False when there is none to read.
+    /// Go back to the list from before the last takeover. False when there is none to read. An
+    /// archive kept in format 1 is migrated as it is read, and saved as the list in format 2.
     @discardableResult
     func restorePrevious() -> Bool {
-        guard case .loaded(let stored, let identity) = Self.read(archiveURL) else { return false }
+        guard case .loaded(let stored, let identity, _) = Self.read(archiveURL) else { return false }
         try? FileManager.default.removeItem(at: archiveURL)
         log = stored
         van = identity
@@ -170,7 +188,8 @@ final class VanStockStore: ObservableObject {
     private enum Stored {
         case absent
         case unreadable
-        case loaded(VanStockLog, VanIdentity?)
+        /// `migrated` when the file was format 1 and is held in memory as format 2.
+        case loaded(VanStockLog, VanIdentity?, migrated: Bool)
     }
 
     private static func read(_ url: URL) -> Stored {
@@ -178,9 +197,17 @@ final class VanStockStore: ObservableObject {
         guard let data = try? Data(contentsOf: url) else { return .unreadable }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let file = try? decoder.decode(File.self, from: data),
-              file.version == formatVersion else { return .unreadable }
-        return .loaded(file.log, file.van)
+        guard let header = try? decoder.decode(Header.self, from: data) else { return .unreadable }
+        switch header.version {
+        case formatVersion:
+            guard let file = try? decoder.decode(File.self, from: data) else { return .unreadable }
+            return .loaded(file.log, file.van, migrated: false)
+        case 1:
+            guard let file = try? decoder.decode(Format1File.self, from: data) else { return .unreadable }
+            return .loaded(VanStockLogMigration.fromFormat1(file.log), file.van, migrated: true)
+        default:
+            return .unreadable
+        }
     }
 
     private func save() {

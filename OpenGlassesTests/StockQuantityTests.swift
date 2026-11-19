@@ -280,7 +280,7 @@ final class StockQuantityTests: XCTestCase {
         XCTAssertEqual(VanStockUnit.pack.spoken(q(1000), of: "Wire nuts"), "1 pack of Wire nuts")
         for whole in [0, 1, 2, 12] {
             for unit in [VanStockUnit.each, .pack] {
-                XCTAssertEqual(unit.spoken(StockQuantity(whole: whole), of: "Fuse"), unit.phrase(whole, of: "Fuse"))
+                XCTAssertEqual(unit.spoken(StockQuantity(whole: whole), of: "Fuse"), unit.phrase(StockQuantity(whole: whole), of: "Fuse"))
             }
         }
     }

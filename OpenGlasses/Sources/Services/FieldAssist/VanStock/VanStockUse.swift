@@ -6,16 +6,92 @@ import Foundation
 /// van's log changes hands with the vehicle, and the job's record stays the job's. This is the
 /// quantity the work record was missing — a part on a finished task says it was fitted, not how
 /// many, and not that it came from the van.
+///
+/// It is the one figure that leaves the phone today: the work record's `van_stock` block, which
+/// the office reads tolerantly (`Contracts/office-reports.md`, "Stock used from the van"). So the
+/// figure is written under a name that says it is scaled, with its scale beside it
+/// (`quantityScaled`, `quantityScale: 3`), and never as `quantity`: a reader that knows only the
+/// old key finds nothing, rather than reading 4,250 thousandths as 4,250 litres (Plan ML §5).
 struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
     /// The movement in the van's log that recorded it, so an undo there takes it off the job too.
     let id: String
     let number: String?
     let description: String
-    let quantity: Int
+    /// In thousandths of `unit`.
+    let quantity: StockQuantity
     let unit: VanStockUnit
     /// Whether the part number was found in the manuals.
     let verified: Bool
     let at: Date
+
+    /// The scale every line is written at: `quantityScaled` is in units of 10^−3 of `unit`.
+    static let quantityScale = StockQuantity.scale
+
+    init(id: String, number: String?, description: String, quantity: StockQuantity,
+         unit: VanStockUnit, verified: Bool, at: Date) {
+        self.id = id
+        self.number = number
+        self.description = description
+        self.quantity = quantity
+        self.unit = unit
+        self.verified = verified
+        self.at = at
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, number, description, unit, verified, at
+        case quantityScaled, quantityScale
+        /// Read only: a use saved before figures were kept in thousandths, in whole units.
+        case legacyQuantity = "quantity"
+    }
+
+    /// The scaled pair, or a legacy `quantity` in whole units (× 1,000). A scale other than 3, or
+    /// a scaled figure with no scale, is refused rather than guessed at.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        number = try container.decodeIfPresent(String.self, forKey: .number)
+        description = try container.decode(String.self, forKey: .description)
+        unit = try container.decode(VanStockUnit.self, forKey: .unit)
+        verified = try container.decode(Bool.self, forKey: .verified)
+        at = try container.decode(Date.self, forKey: .at)
+        if let scaled = try container.decodeIfPresent(Int.self, forKey: .quantityScaled) {
+            let scale = try container.decode(Int.self, forKey: .quantityScale)
+            guard scale == Self.quantityScale else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .quantityScale, in: container,
+                    debugDescription: "A stock use must be at scale \(Self.quantityScale), not \(scale)")
+            }
+            let value = StockQuantity(scaled: scaled)
+            guard value.isInRange else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .quantityScaled, in: container,
+                    debugDescription: "A stock use must be 0…\(StockQuantity.maximumScaled) thousandths")
+            }
+            quantity = value
+        } else {
+            let units = try container.decode(Int.self, forKey: .legacyQuantity)
+            guard (0...StockQuantity.maximumUnits).contains(units) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .legacyQuantity, in: container,
+                    debugDescription: "A legacy stock use must be 0…\(StockQuantity.maximumUnits) units")
+            }
+            quantity = StockQuantity(whole: units)
+        }
+    }
+
+    /// Writes `quantityScaled` and `quantityScale`, and no `quantity` key.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(number, forKey: .number)
+        try container.encode(description, forKey: .description)
+        try container.encode(quantity.scaled, forKey: .quantityScaled)
+        try container.encode(Self.quantityScale, forKey: .quantityScale)
+        try container.encode(unit, forKey: .unit)
+        try container.encode(verified, forKey: .verified)
+        try container.encode(at, forKey: .at)
+    }
 
     /// "2 × Igniter (22B22)".
     var summary: String {

@@ -15,16 +15,16 @@ final class VanStockSheetTests: XCTestCase {
 
     private var log: VanStockLog {
         var log = VanStockLog()
-        log.addItem(id: "sensor", number: "00123", description: "Flame sensor", minimum: 2, standard: 6,
+        log.addItem(id: "sensor", number: "00123", description: "Flame sensor", minimum: .whole(2), standard: .whole(6),
                     standardSetBy: .base, bin: "left shelf 2", verified: true, batch: "b0")
         log.addItem(id: "igniter", number: "14E65", description: "Igniter", batch: "b0")
-        log.addItem(id: "cable", description: "Thermostat cable", unit: .m, standard: 30, standardSetBy: .van, batch: "b0")
+        log.addItem(id: "cable", description: "Thermostat cable", unit: .m, standard: .whole(30), standardSetBy: .van, batch: "b0")
         log.addItem(id: "fuse", description: "Fuse", batch: "b0")
-        log.record(.counted, itemID: "sensor", quantity: 4, at: time(0), batch: "b0", source: .typed)
-        log.record(.loaded, itemID: "igniter", quantity: 1, at: time(0), batch: "b0", source: .spoken)
-        log.record(.used, itemID: "igniter", quantity: 2, at: time(1), batch: "b1", source: .spoken, jobReference: "job-2031")
-        log.record(.ordered, itemID: "igniter", quantity: 1, at: time(2), batch: "b2", source: .spoken, requestID: "r1")
-        log.record(.loaded, itemID: "cable", quantity: 40, at: time(3), batch: "b3", source: .spoken)
+        log.record(.counted, itemID: "sensor", quantity: .whole(4), at: time(0), batch: "b0", source: .typed)
+        log.record(.loaded, itemID: "igniter", quantity: .whole(1), at: time(0), batch: "b0", source: .spoken)
+        log.record(.used, itemID: "igniter", quantity: .whole(2), at: time(1), batch: "b1", source: .spoken, jobReference: "job-2031")
+        log.record(.ordered, itemID: "igniter", quantity: .whole(1), at: time(2), batch: "b2", source: .spoken, requestID: "r1")
+        log.record(.loaded, itemID: "cable", quantity: .whole(40), at: time(3), batch: "b3", source: .spoken)
         return log
     }
 
@@ -106,17 +106,17 @@ final class VanStockSheetTests: XCTestCase {
         let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
 
         let counts = Dictionary(uniqueKeysWithValues: proposal.counts.map { ($0.itemID, $0) })
-        XCTAssertEqual(counts["sensor"], .init(itemID: "sensor", name: "Flame sensor (00123)", from: 4, to: 5, movedSinceExport: false))
-        XCTAssertEqual(counts["fuse"], .init(itemID: "fuse", name: "Fuse", from: nil, to: 12, movedSinceExport: false))
+        XCTAssertEqual(counts["sensor"], .init(itemID: "sensor", name: "Flame sensor (00123)", from: .whole(4), to: .whole(5), movedSinceExport: false))
+        XCTAssertEqual(counts["fuse"], .init(itemID: "fuse", name: "Fuse", from: nil, to: .whole(12), movedSinceExport: false))
         let edits = Dictionary(uniqueKeysWithValues: proposal.edits.map { ($0.itemID, $0.changes) })
         XCTAssertEqual(edits["sensor"], [.minimum(nil), .bin("right shelf 1")], "an emptied cell in our own sheet clears it")
-        XCTAssertEqual(edits["fuse"], [.standard(10, setBy: .van)])
+        XCTAssertEqual(edits["fuse"], [.standard(.whole(10), setBy: .van)])
 
         var applied = log
         VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(applied.level(of: "sensor").onHand, 5)
+        XCTAssertEqual(applied.level(of: "sensor").onHand, .whole(5))
         XCTAssertEqual(applied.level(of: "sensor").provenance, .counted)
-        XCTAssertEqual(applied.level(of: "fuse").onHand, 12)
+        XCTAssertEqual(applied.level(of: "fuse").onHand, .whole(12))
         XCTAssertNil(applied.item(id: "sensor")?.minimum)
         XCTAssertEqual(applied.item(id: "sensor")?.bin, "right shelf 1")
         XCTAssertEqual(applied.item(id: "fuse")?.standardSetBy, .van)
@@ -136,14 +136,14 @@ final class VanStockSheetTests: XCTestCase {
                                                              ["", "", "", "2"]])
         let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
         XCTAssertEqual(proposal.newLines, [.init(row: 6, number: "22B22", description: "Hot surface igniter", unit: .each,
-                                                 onHand: 3, minimum: 1, standard: 4, bin: "tray")])
+                                                 onHand: .whole(3), minimum: .whole(1), standard: .whole(4), bin: "tray")])
         XCTAssertEqual(proposal.refusals, [.init(row: 7, reason: .noPartNumberOrDescription)])
 
         var applied = log
         VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
         let added = try XCTUnwrap(applied.items.first { $0.number == "22B22" })
         XCTAssertTrue(added.verified)
-        XCTAssertEqual(applied.level(of: added.id).onHand, 3)
+        XCTAssertEqual(applied.level(of: added.id).onHand, .whole(3))
         XCTAssertEqual(added.standardSetBy, .van)
     }
 
@@ -155,7 +155,7 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(proposal.missing.map(\.id), ["sensor"])
         var applied = log
         VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(applied.level(of: "sensor").onHand, 4, "a deleted row never zeroes a line")
+        XCTAssertEqual(applied.level(of: "sensor").onHand, .whole(4), "a deleted row never zeroes a line")
         XCTAssertNotNil(applied.item(id: "sensor"))
     }
 
@@ -163,20 +163,20 @@ final class VanStockSheetTests: XCTestCase {
         var sheets = try exported(log, at: time(10))
         sheets = editing(sheets, line: "Flame sensor", .onHand, to: "6")
         var later = log
-        later.record(.used, itemID: "sensor", quantity: 1, at: time(15), batch: "b9", source: .spoken)
+        later.record(.used, itemID: "sensor", quantity: .whole(1), at: time(15), batch: "b9", source: .spoken)
         let proposal = try VanStockSheet.proposal(from: sheets, log: later).get()
         let count = try XCTUnwrap(proposal.counts.first { $0.itemID == "sensor" })
-        XCTAssertEqual(count.from, 3)
-        XCTAssertEqual(count.to, 6)
+        XCTAssertEqual(count.from, .whole(3))
+        XCTAssertEqual(count.to, .whole(6))
         XCTAssertTrue(count.movedSinceExport)
 
         var sheetWins = later
         VanStockSheet.apply(proposal, to: &sheetWins, at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(sheetWins.level(of: "sensor").onHand, 6, "the sheet's figure is the default")
+        XCTAssertEqual(sheetWins.level(of: "sensor").onHand, .whole(6), "the sheet's figure is the default")
 
         var phoneWins = later
         VanStockSheet.apply(proposal, to: &phoneWins, keepingPhoneFigure: ["sensor"], at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(phoneWins.level(of: "sensor").onHand, 3)
+        XCTAssertEqual(phoneWins.level(of: "sensor").onHand, .whole(3))
     }
 
     func testBadFiguresAndUnitsAreRefusedLineByLine() throws {
@@ -228,8 +228,8 @@ final class VanStockSheetTests: XCTestCase {
         ])]
         let proposal = try VanStockSheet.proposal(from: foreign, log: log).get()
         XCTAssertEqual(proposal.counts.map(\.itemID), ["sensor", "fuse"])
-        XCTAssertEqual(proposal.counts.map(\.to), [9, 20])
-        XCTAssertEqual(proposal.edits, [.init(itemID: "fuse", name: "Fuse", changes: [.description("fuse"), .minimum(5)])])
+        XCTAssertEqual(proposal.counts.map(\.to), [.whole(9), .whole(20)])
+        XCTAssertEqual(proposal.edits, [.init(itemID: "fuse", name: "Fuse", changes: [.description("fuse"), .minimum(.whole(5))])])
         XCTAssertEqual(proposal.edits.first { $0.itemID == "sensor" }, nil, "an empty cell in a foreign sheet clears nothing")
         XCTAssertEqual(proposal.newLines.map(\.number), ["77-100"])
         XCTAssertEqual(proposal.missing, [], "a foreign sheet is not expected to list every line")

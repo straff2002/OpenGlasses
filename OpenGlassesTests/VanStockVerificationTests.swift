@@ -197,17 +197,17 @@ final class VanStockVerificationTests: XCTestCase {
         let service = service(store, books, clock: { clock })
 
         // A job is open: its vault answers, and the named one is not asked.
-        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: 1)])
+        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: .whole(1))])
         XCTAssertEqual(store.log.items.last?.verification, .notFound(in: "Furnace manual"))
         XCTAssertEqual(books.namedAsked, [])
 
         // No job: the list's named vault answers.
         books.job = nil
         clock.addTimeInterval(60)
-        _ = service.load([.init(part: "00456", description: "Igniter", quantity: 1)])
+        _ = service.load([.init(part: "00456", description: "Igniter", quantity: .whole(1))])
         XCTAssertEqual(store.log.items.last?.verification, .notFound(in: "Supplier catalogue"))
         clock.addTimeInterval(60)
-        _ = service.count([.init(part: "00123", quantity: 4)])
+        _ = service.count([.init(part: "00123", quantity: .whole(4))])
         XCTAssertEqual(store.log.items.first?.verification, .found(in: "Supplier catalogue"),
                        "a later look with a book upgrades a not-found line it holds")
 
@@ -215,7 +215,7 @@ final class VanStockVerificationTests: XCTestCase {
         store.checkNumbers(against: nil)
         let searched = books.searches.count
         clock.addTimeInterval(60)
-        _ = service.load([.init(part: "00789", description: "Fuse", quantity: 1)])
+        _ = service.load([.init(part: "00789", description: "Fuse", quantity: .whole(1))])
         XCTAssertEqual(books.searches.count, searched, "no book, no search")
         XCTAssertEqual(store.log.items.last?.verification, .notChecked)
     }
@@ -227,7 +227,7 @@ final class VanStockVerificationTests: XCTestCase {
         let books = Books()
         store.checkNumbers(against: "gone")   // named, then removed: the seam has no book for it
         let service = service(store, books)
-        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: 1)])
+        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: .whole(1))])
         XCTAssertEqual(books.namedAsked, ["gone"])
         XCTAssertEqual(store.log.items.first?.verification, .notChecked)
 
@@ -246,21 +246,21 @@ final class VanStockVerificationTests: XCTestCase {
         let books = Books()
         var clock = start
         let service = service(store, books, clock: { clock })
-        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: 1)])
+        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: .whole(1))])
         XCTAssertEqual(store.log.items.first?.verification, .notChecked, "nothing was searched, so it is not not found")
         XCTAssertFalse(VanStockRows.rows(store.log).first?.isNotFound ?? true, "and carries no mark")
 
         books.named["catalogue"] = books.book("Supplier catalogue", holds: [])
         store.checkNumbers(against: "catalogue")
         clock.addTimeInterval(60)
-        _ = service.load([.init(part: "00123", quantity: 1)])
+        _ = service.load([.init(part: "00123", quantity: .whole(1))])
         XCTAssertEqual(store.log.items.first?.verification, .notFound(in: "Supplier catalogue"),
                        "a later look that has a book records what it said")
 
         // A look that has no book never takes the answer back.
         store.checkNumbers(against: nil)
         clock.addTimeInterval(60)
-        _ = service.load([.init(part: "00123", quantity: 1)])
+        _ = service.load([.init(part: "00123", quantity: .whole(1))])
         XCTAssertEqual(store.log.items.first?.verification, .notFound(in: "Supplier catalogue"))
     }
 
@@ -275,7 +275,7 @@ final class VanStockVerificationTests: XCTestCase {
         var clock = start
         let service = service(store, books, clock: { clock })
 
-        let loaded = service.load([.init(part: "00456", description: "Gin", quantity: 2)])
+        let loaded = service.load([.init(part: "00456", description: "Gin", quantity: .whole(2))])
         XCTAssertTrue(loaded.contains("Part number 00456 is not in Supplier catalogue and has not been on this list."), loaded)
         let check = service.check(.init(part: "00456"))
         XCTAssertTrue(check.hasSuffix("The part number is not found in Supplier catalogue."), check)
@@ -284,7 +284,7 @@ final class VanStockVerificationTests: XCTestCase {
         XCTAssertEqual(row?.notFoundLabel, "Not found in Supplier catalogue")
 
         clock.addTimeInterval(60)
-        let found = service.load([.init(part: "00123", description: "Tonic", quantity: 2)])
+        let found = service.load([.init(part: "00123", description: "Tonic", quantity: .whole(2))])
         XCTAssertFalse(found.contains("Read it back"), "a number its book holds is not spelled out")
         XCTAssertFalse(service.check(.init(part: "00123")).contains("not found"))
         XCTAssertNil(VanStockRows.rows(store.log).first { $0.item.number == "00123" }?.notFoundLabel)

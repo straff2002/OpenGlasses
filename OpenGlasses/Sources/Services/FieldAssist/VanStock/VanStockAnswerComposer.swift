@@ -27,14 +27,14 @@ struct VanStockAnswerComposer {
             lines.append("The count for \(item.name) cannot be trusted: a use was recorded when the log "
                 + "showed none. The log shows \(item.phrase(level.onHand)). Ask \(w.person) to count them.")
         } else if let asOf = level.asOf {
-            let figure = level.onHand == 0 ? "No \(item.name) \(w.location)" : "\(item.phrase(level.onHand)) \(w.location)"
+            let figure = level.onHand == .zero ? "No \(item.name) \(w.location)" : "\(item.phrase(level.onHand)) \(w.location)"
             lines.append("\(figure) — \(provenance(level, asOf: asOf)).")
         } else {
             lines.append("\(item.name) is on \(w.list) with nothing recorded against it — no count yet.")
         }
         if let ordered = ordered(level) { lines.append(ordered) }
-        if !level.unreliable, level.onHand > 0, let minimum = item.minimum, level.onHand <= minimum {
-            lines.append("That is at or below the minimum of \(minimum).")
+        if !level.unreliable, level.onHand > .zero, let minimum = item.minimum, level.onHand <= minimum {
+            lines.append("That is at or below the minimum of \(minimum.decimalString).")
         }
         if item.number != nil, let notFound = notFound(item.verification) {
             lines.append(notFound)
@@ -53,7 +53,7 @@ struct VanStockAnswerComposer {
 
     func candidates(_ items: [VanStockItem], levels: [String: VanStockLevel]) -> String {
         let listed = items.enumerated().map { offset, item in
-            "\(offset + 1). \(item.name) — \(levels[item.id]?.onHand ?? 0) \(w.location)"
+            "\(offset + 1). \(item.name) — \((levels[item.id]?.onHand ?? .zero).decimalString) \(w.location)"
         }
         return "More than one line \(w.location) fits: " + listed.joined(separator: "; ")
             + ". Ask \(w.person) which one; do not choose for them. Nothing was changed."
@@ -84,7 +84,7 @@ struct VanStockAnswerComposer {
     func misheard(_ items: [VanStockItem], reference: String, levels: [String: VanStockLevel],
                   mayCreate: Bool) -> String {
         let listed = items.enumerated().map { offset, item in
-            "\(items.count == 1 ? "" : "\(offset + 1). ")\(item.name) — \(levels[item.id]?.onHand ?? 0) \(w.location)"
+            "\(items.count == 1 ? "" : "\(offset + 1). ")\(item.name) — \((levels[item.id]?.onHand ?? .zero).decimalString) \(w.location)"
         }
         var answer = "Nothing on \(w.list) matches '\(reference)' word for word, but a word may have been "
             + "misheard. Did they mean " + listed.joined(separator: "; ") + "? Ask \(w.person); do not choose for them."
@@ -118,10 +118,10 @@ struct VanStockAnswerComposer {
     func low(_ entries: [(item: VanStockItem, level: VanStockLevel)]) -> String {
         guard !entries.isEmpty else { return "Nothing \(w.location) is at or below its minimum." }
         let listed = entries.map { entry -> String in
-            var line = entry.level.onHand == 0 ? "\(entry.item.name) — none left"
-                                               : "\(entry.item.name) — \(entry.level.onHand) left"
-            if let minimum = entry.item.minimum { line += ", minimum \(minimum)" }
-            if entry.level.onOrder > 0 { line += " (\(entry.level.onOrder) asked for)" }
+            var line = entry.level.onHand == .zero ? "\(entry.item.name) — none left"
+                                                   : "\(entry.item.name) — \(entry.level.onHand.decimalString) left"
+            if let minimum = entry.item.minimum { line += ", minimum \(minimum.decimalString)" }
+            if entry.level.onOrder > .zero { line += " (\(entry.level.onOrder.decimalString) asked for)" }
             return line
         }
         let count = entries.count == 1 ? "1 line is low" : "\(entries.count) lines are low"
@@ -130,15 +130,15 @@ struct VanStockAnswerComposer {
 
     // MARK: - Read-backs
 
-    func loaded(_ item: VanStockItem, quantity: Int, before: VanStockLevel, after: VanStockLevel,
+    func loaded(_ item: VanStockItem, quantity: StockQuantity, before: VanStockLevel, after: VanStockLevel,
                 created: Bool) -> String {
         var lines = ["\(cap(w.putVerb)) \(item.phrase(quantity)). \(item.phrase(after.onHand)) \(w.location) now."]
         if created { lines.append(contentsOf: newLine(item)) }
         let covered = before.onOrder - after.onOrder
-        if covered > 0 {
+        if covered > .zero {
             let since = before.oldestOrderAt.map { " asked for \(age($0))" } ?? " asked for"
-            lines.append(after.onOrder == 0 ? "That covers the \(covered)\(since)."
-                                            : "That covers \(covered) of the \(before.onOrder)\(since).")
+            lines.append(after.onOrder == .zero ? "That covers the \(covered.decimalString)\(since)."
+                                                : "That covers \(covered.decimalString) of the \(before.onOrder.decimalString)\(since).")
         }
         if after.unreliable {
             lines.append("The count for this line is still unreliable until somebody counts it.")
@@ -146,7 +146,7 @@ struct VanStockAnswerComposer {
         return lines.joined(separator: " ")
     }
 
-    func used(_ item: VanStockItem, quantity: Int, before: VanStockLevel, after: VanStockLevel,
+    func used(_ item: VanStockItem, quantity: StockQuantity, before: VanStockLevel, after: VanStockLevel,
               jobReference: String?) -> String {
         let job = jobReference.map { " on job \($0)" } ?? ""
         var lines = ["\(cap(w.takenVerb)) \(item.phrase(quantity))\(job)."]
@@ -154,7 +154,7 @@ struct VanStockAnswerComposer {
         return lines.joined(separator: " ")
     }
 
-    func removed(_ item: VanStockItem, quantity: Int, reason: VanStockMovement.RemovalReason,
+    func removed(_ item: VanStockItem, quantity: StockQuantity, reason: VanStockMovement.RemovalReason,
                  before: VanStockLevel, after: VanStockLevel) -> String {
         var lines = ["Removed \(item.phrase(quantity)) (\(reason.rawValue))."]
         lines.append(contentsOf: remaining(item, before: before, after: after, offer: false))
@@ -233,20 +233,20 @@ struct VanStockAnswerComposer {
     private func remaining(_ item: VanStockItem, before: VanStockLevel, after: VanStockLevel,
                            offer: Bool) -> [String] {
         if after.unreliable, !before.unreliable {
-            return ["The log showed \(before.onHand), so it cannot say how many are left. "
+            return ["The log showed \(before.onHand.decimalString), so it cannot say how many are left. "
                 + "Ask \(w.person) to count them when they can."]
         }
         if after.unreliable {
             return ["The count for this line is unreliable; ask \(w.person) to count them."]
         }
-        if after.onHand == 0 {
+        if after.onHand == .zero {
             return ["That was the last \(w.location)."] + (offer ? [replacement(after)] : [])
         }
         if let minimum = item.minimum, after.onHand <= minimum {
-            return ["\(after.onHand) left, at or below the minimum of \(minimum)."]
+            return ["\(after.onHand.decimalString) left, at or below the minimum of \(minimum.decimalString)."]
                 + (offer ? [replacement(after)] : [])
         }
-        return ["\(after.onHand) left."]
+        return ["\(after.onHand.decimalString) left."]
     }
 
     /// The offer, and where it stops: nothing is requested unless the technician says so.
@@ -256,9 +256,9 @@ struct VanStockAnswerComposer {
     }
 
     private func ordered(_ level: VanStockLevel) -> String? {
-        guard level.onOrder > 0 else { return nil }
+        guard level.onOrder > .zero else { return nil }
         let since = level.oldestOrderAt.map { " \(age($0))" } ?? ""
-        return "\(level.onOrder) asked for\(since) and not yet \(w.putVerb)."
+        return "\(level.onOrder.decimalString) asked for\(since) and not yet \(w.putVerb)."
     }
 
     /// How a figure is known and as of when: "counted today at 10:40".

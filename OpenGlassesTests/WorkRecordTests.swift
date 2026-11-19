@@ -442,7 +442,7 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertTrue(notCarried.contains("It is not a line on the van list"), notCarried)
         XCTAssertTrue(store.log.isEmpty)
 
-        _ = van.load([.init(part: "14T65", quantity: 1)])
+        _ = van.load([.init(part: "14T65", quantity: .whole(1))])
         let toBeFitted = try await tool.execute(args: ["part": "14T65"])
         XCTAssertFalse(toBeFitted.contains("van list"), toBeFitted)
         XCTAssertFalse(store.log.movements.contains { $0.kind == .ordered })
@@ -476,7 +476,7 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertNil(service.activeSession.map { WorkRecord(session: $0, vaultName: "v") }?.vanStock)
 
         let use = VanStockUse(id: "m1", number: "14T65", description: "High-altitude pressure switch",
-                              quantity: 1, unit: .each, verified: true, at: Date(timeIntervalSince1970: 0))
+                              quantity: .whole(1), unit: .each, verified: true, at: Date(timeIntervalSince1970: 0))
         service.recordVanStockUse(use)
         XCTAssertEqual(service.unrecordedVanParts, [])
         let record = try XCTUnwrap(service.activeSession.map { WorkRecord(session: $0, vaultName: "v") })

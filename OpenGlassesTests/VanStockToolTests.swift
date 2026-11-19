@@ -67,7 +67,7 @@ final class VanStockToolTests: XCTestCase {
     /// One entry of `items`, typed so a mixed literal needs no annotation at each use.
     private func entry(_ fields: [String: Any]) -> [String: Any] { fields }
 
-    private func onHand(_ description: String) -> Int? {
+    private func onHand(_ description: String) -> StockQuantity? {
         store.log.items.first { $0.description == description }.map { store.log.level(of: $0.id).onHand }
     }
 
@@ -84,7 +84,7 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertNil(job)
         let answer = try await run(["action": "load", "description": "Igniter", "quantity": 2])
         XCTAssertTrue(answer.hasPrefix("Loaded 2 × Igniter."), answer)
-        XCTAssertEqual(onHand("Igniter"), 2)
+        XCTAssertEqual(onHand("Igniter"), .whole(2))
         XCTAssertNil(store.log.movements.last?.jobSessionID)
     }
 
@@ -152,7 +152,7 @@ final class VanStockToolTests: XCTestCase {
         clock.addTimeInterval(60)
         let answer = try await run(["action": "load", "description": "45/5 capacitors", "quantity": 2])
         XCTAssertEqual(store.log.items.count, 1)
-        XCTAssertEqual(onHand("45/5 capacitor"), 8)
+        XCTAssertEqual(onHand("45/5 capacitor"), .whole(8))
         XCTAssertFalse(answer.contains("new line"), answer)
     }
 
@@ -167,8 +167,8 @@ final class VanStockToolTests: XCTestCase {
         let separate = try await run(["action": "load", "description": "Capacitor, run, 5", "quantity": 3, "new_line": true])
         XCTAssertTrue(separate.contains("new line"), separate)
         XCTAssertEqual(store.log.items.count, 2)
-        XCTAssertEqual(onHand("Capacitor, dual run, 45/5"), 3)
-        XCTAssertEqual(onHand("Capacitor, run, 5"), 3)
+        XCTAssertEqual(onHand("Capacitor, dual run, 45/5"), .whole(3))
+        XCTAssertEqual(onHand("Capacitor, run, 5"), .whole(3))
     }
 
     func testARepeatedIdenticalWriteInsideTheWindowIsOneWrite() async throws {
@@ -177,11 +177,11 @@ final class VanStockToolTests: XCTestCase {
         clock.addTimeInterval(3)
         let retry = try await run(args)
         XCTAssertTrue(retry.hasPrefix("Already recorded a moment ago"), retry)
-        XCTAssertEqual(onHand("Igniter"), 4)
+        XCTAssertEqual(onHand("Igniter"), .whole(4))
 
         clock.addTimeInterval(VanStockService.duplicateWindow + 1)
         _ = try await run(args)
-        XCTAssertEqual(onHand("Igniter"), 8, "said again later, it is a second load")
+        XCTAssertEqual(onHand("Igniter"), .whole(8), "said again later, it is a second load")
     }
 
     func testAUnitIsKeptAndAMismatchChangesNothing() async throws {
@@ -190,7 +190,7 @@ final class VanStockToolTests: XCTestCase {
         clock.addTimeInterval(60)
         let mismatch = try await run(["action": "load", "description": "thermostat cable", "quantity": 5, "unit": "ft"])
         XCTAssertTrue(mismatch.contains("is counted in m, not ft"), mismatch)
-        XCTAssertEqual(onHand("Thermostat cable"), 30)
+        XCTAssertEqual(onHand("Thermostat cable"), .whole(30))
         let unknown = try await run(["action": "load", "description": "Solder", "quantity": 1, "unit": "reel"])
         XCTAssertTrue(unknown.contains("is not a unit the van list keeps"), unknown)
         XCTAssertEqual(store.log.items.count, 1)
@@ -222,7 +222,7 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertTrue(answer.contains("That was the last on the van."), answer)
         XCTAssertTrue(answer.contains("request one only if the technician says yes"), answer)
         XCTAssertFalse(store.log.movements.contains { $0.kind == .ordered })
-        XCTAssertEqual(store.log.level(of: store.log.items[0].id).onOrder, 0)
+        XCTAssertEqual(store.log.level(of: store.log.items[0].id).onOrder, .whole(0))
     }
 
     func testAUseThatMatchesNothingChangesNothing() async throws {
@@ -367,8 +367,8 @@ final class VanStockToolTests: XCTestCase {
                                       "unit": "pack", "new_line": true])
         XCTAssertTrue(separate.contains("new line"), separate)
         XCTAssertEqual(store.log.items.count, 2)
-        XCTAssertEqual(onHand("quartz coupling 6 x 250"), 4)
-        XCTAssertEqual(onHand("Kwartz Coupling 6 x 250 mm"), 22)
+        XCTAssertEqual(onHand("quartz coupling 6 x 250"), .whole(4))
+        XCTAssertEqual(onHand("Kwartz Coupling 6 x 250 mm"), .whole(22))
     }
 
     func testWhatMatchesNothingAtAllIsStillNoneOnTheVan() async throws {
@@ -445,14 +445,14 @@ final class VanStockToolTests: XCTestCase {
 
     func testQuantitiesAndNumbersArriveInWhateverShapeTheModelSent() {
         let lines = VanStockTool.lines(["items": [entry(["part": 4455, "quantity": "3"]), entry(["description": " ", "quantity": 2])]])
-        XCTAssertEqual(lines, [VanStockService.Line(part: "4455", quantity: 3)])
+        XCTAssertEqual(lines, [VanStockService.Line(part: "4455", quantity: .whole(3))])
         XCTAssertEqual(VanStockTool.lines(["description": "Igniter", "quantity": 2.0]),
-                       [VanStockService.Line(description: "Igniter", quantity: 2)])
+                       [VanStockService.Line(description: "Igniter", quantity: .whole(2))])
     }
 
     // MARK: Whole numbers only, for now
 
-    private func standard(_ description: String) -> Int? {
+    private func standard(_ description: String) -> StockQuantity? {
         store.log.items.first { $0.description == description }?.standard
     }
 
@@ -464,7 +464,7 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertTrue(answer.hasPrefix("Nothing was changed."), answer)
         XCTAssertTrue(answer.contains("4.25 for engine oil is not a whole number"), answer)
         XCTAssertEqual(store.log.movements.count, movements)
-        XCTAssertEqual(onHand("Engine oil"), 5)
+        XCTAssertEqual(onHand("Engine oil"), .whole(5))
     }
 
     func testAFractionalCountSentAsTextIsRefused() async throws {
@@ -474,24 +474,24 @@ final class VanStockToolTests: XCTestCase {
         let answer = try await run(["action": "count", "description": "igniter", "quantity": "3.5"])
         XCTAssertTrue(answer.contains("whole number"), answer)
         XCTAssertEqual(store.log.movements.count, movements)
-        XCTAssertEqual(onHand("Igniter"), 4)
+        XCTAssertEqual(onHand("Igniter"), .whole(4))
     }
 
     func testAFractionalStandardDoesNotClearTheStandard() async throws {
         _ = try await run(["action": "load", "description": "Igniter", "quantity": 4])
         clock.addTimeInterval(60)
         _ = try await run(["action": "set_standard", "description": "igniter", "quantity": 3])
-        XCTAssertEqual(standard("Igniter"), 3)
+        XCTAssertEqual(standard("Igniter"), .whole(3))
         clock.addTimeInterval(60)
         let answer = try await run(["action": "set_standard", "description": "igniter", "quantity": 0.5])
         XCTAssertTrue(answer.contains("whole number"), answer)
-        XCTAssertEqual(standard("Igniter"), 3, "0.5 used to be cut to 0, which cleared the standard")
+        XCTAssertEqual(standard("Igniter"), .whole(3), "0.5 used to be cut to 0, which cleared the standard")
     }
 
     func testAWholeNumberSentAsADecimalIsKept() async throws {
         let answer = try await run(["action": "load", "description": "Igniter", "quantity": 2.0])
         XCTAssertTrue(answer.hasPrefix("Loaded 2 × Igniter."), answer)
-        XCTAssertEqual(onHand("Igniter"), 2)
+        XCTAssertEqual(onHand("Igniter"), .whole(2))
     }
 
     func testAQuantityInWordsIsRefusedNotTakenAsOne() async throws {
@@ -536,7 +536,7 @@ final class VanStockToolTests: XCTestCase {
     func testALoadWithNoQuantityStillDefaultsToOne() async throws {
         let answer = try await run(["action": "load", "description": "Igniter"])
         XCTAssertTrue(answer.hasPrefix("Loaded 1 × Igniter."), answer)
-        XCTAssertEqual(onHand("Igniter"), 1)
+        XCTAssertEqual(onHand("Igniter"), .whole(1))
     }
 
     // MARK: Every place (Plan MK P1)

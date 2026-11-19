@@ -126,14 +126,14 @@ enum VanStockSheet {
                 case .description: return .text(item.description)
                 case .unit: return .text(item.unit.rawValue)
                 // An unknown is never a number: a line nothing was recorded against is left blank.
-                case .onHand: return level.isRecorded ? .number(level.onHand) : .empty
-                case .standard: return item.standard.map(XLSX.Cell.number) ?? .empty
+                case .onHand: return level.isRecorded ? figure(level.onHand) : .empty
+                case .standard: return item.standard.map(figure) ?? .empty
                 case .standardSetBy:
                     guard item.standard != nil, let setBy = item.standardSetBy else { return .empty }
                     return .text(standardSetByText(setBy, kind: kind))
-                case .toTopUp: return item.standard.map { .number(max($0 - level.onHand, 0)) } ?? .empty
-                case .minimum: return item.minimum.map(XLSX.Cell.number) ?? .empty
-                case .onOrder: return level.onOrder > 0 ? .number(level.onOrder) : .empty
+                case .toTopUp: return item.standard.map { figure(max($0 - level.onHand, .zero)) } ?? .empty
+                case .minimum: return item.minimum.map(figure) ?? .empty
+                case .onOrder: return level.onOrder > .zero ? figure(level.onOrder) : .empty
                 case .needsCount: return level.unreliable ? .text("Yes") : .empty
                 case .bin: return item.bin.map(XLSX.Cell.text) ?? .empty
                 case .lastChanged: return level.asOf.map { .text(stamp($0, calendar)) } ?? .empty
@@ -150,7 +150,7 @@ enum VanStockSheet {
                 .text(stamp(movement.at, calendar)),
                 .text(names[movement.itemID] ?? ""),
                 .text(movement.kind.rawValue + (reversed.contains(movement.id) ? " (taken back)" : "")),
-                movement.changesLevel || movement.kind == .ordered ? .number(movement.quantity) : .empty,
+                movement.changesLevel || movement.kind == .ordered ? figure(movement.quantity) : .empty,
                 movement.jobReference.map(XLSX.Cell.text) ?? .empty,
                 .text(movement.source.rawValue),
             ])
@@ -180,6 +180,13 @@ enum VanStockSheet {
         ])
     }
 
+    /// A figure as the workbook holds it: whole units, as every workbook has. The ledger keeps
+    /// thousandths; until the workbook takes decimals, a figure that is part of a unit is written
+    /// as its text ("4.25") so it is never cut to a whole number.
+    static func figure(_ quantity: StockQuantity) -> XLSX.Cell {
+        quantity.isWhole ? .number(quantity.scaled / StockQuantity.perUnit) : .text(quantity.decimalString)
+    }
+
     /// "2026-10-14 10:40", in the calendar's own time zone.
     private static func stamp(_ date: Date, _ calendar: Calendar) -> String {
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
@@ -196,8 +203,8 @@ enum VanStockSheet {
             let itemID: String
             let name: String
             /// What the phone shows now. Nil for a line nothing was recorded against.
-            let from: Int?
-            let to: Int
+            let from: StockQuantity?
+            let to: StockQuantity
             /// The line also moved on the phone after the workbook was written, so there are two
             /// figures and the technician chooses. The sheet's is the default.
             let movedSinceExport: Bool
@@ -209,9 +216,9 @@ enum VanStockSheet {
             let number: String?
             let description: String
             let unit: VanStockUnit
-            let onHand: Int?
-            let minimum: Int?
-            let standard: Int?
+            let onHand: StockQuantity?
+            let minimum: StockQuantity?
+            let standard: StockQuantity?
             let bin: String?
             var id: Int { row }
         }
@@ -286,18 +293,18 @@ enum VanStockSheet {
         let unit: VanStockUnit?
         /// For each figure: nil when the sheet has no such column, `.some(nil)` when the cell is
         /// empty, and the value otherwise.
-        let onHandCell: Int??
-        let minimumCell: Int??
-        let standardCell: Int??
-        let onOrder: Int?
+        let onHandCell: StockQuantity??
+        let minimumCell: StockQuantity??
+        let standardCell: StockQuantity??
+        let onOrder: StockQuantity?
         let needsCount: Bool
         let standardSetByBase: Bool
         /// Nil when the sheet has no such column; empty when the cell is.
         let binCell: String?
 
-        var onHand: Int? { onHandCell ?? nil }
-        var minimum: Int? { minimumCell ?? nil }
-        var standard: Int? { standardCell ?? nil }
+        var onHand: StockQuantity? { onHandCell ?? nil }
+        var minimum: StockQuantity? { minimumCell ?? nil }
+        var standard: StockQuantity? { standardCell ?? nil }
         var bin: String? { binCell.flatMap { $0.isEmpty ? nil : $0 } }
     }
 
@@ -351,7 +358,7 @@ enum VanStockSheet {
             }
             let normalised = number.map(VaultPartsIndex.normalise).flatMap { $0.isEmpty ? nil : $0 }
 
-            var numbers: [Column: Int?] = [:]
+            var numbers: [Column: StockQuantity?] = [:]
             var refusal: Proposal.Refusal.Reason?
             for column in [Column.onHand, .minimum, .standard, .onOrder] {
                 guard let raw = cell(column) else { continue }
@@ -518,15 +525,20 @@ enum VanStockSheet {
 
     private enum Whole {
         case absent
-        case value(Int)
+        case value(StockQuantity)
         case invalid
     }
 
-    /// "" is absent; "4" and "4.0" are 4; anything negative, fractional or not a number is invalid.
+    /// "" is absent; "4" and "4.0" are 4; anything negative, fractional, not a number or more than
+    /// a million is invalid. The workbook holds whole units; the figure comes back in thousandths.
     private static func wholeNumber(_ raw: String) -> Whole {
         guard !raw.isEmpty else { return .absent }
-        if let value = Int(raw) { return value >= 0 ? .value(value) : .invalid }
-        if let value = Double(raw), value >= 0, value == value.rounded(), value < 1_000_000 { return .value(Int(value)) }
+        if let value = Int(raw) {
+            return (0...StockQuantity.maximumUnits).contains(value) ? .value(StockQuantity(whole: value)) : .invalid
+        }
+        if let value = Double(raw), value >= 0, value == value.rounded(), value < 1_000_000 {
+            return .value(StockQuantity(whole: Int(value)))
+        }
         return .invalid
     }
 }

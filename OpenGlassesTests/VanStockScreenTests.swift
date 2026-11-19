@@ -41,7 +41,7 @@ final class VanStockScreenTests: XCTestCase {
         now: { [unowned self] in self.clock })
 
     private func loadIgniter() -> String {
-        _ = service.load([.init(part: "22B22", description: "Igniter", quantity: 4)])
+        _ = service.load([.init(part: "22B22", description: "Igniter", quantity: .whole(4))])
         clock.addTimeInterval(60)
         return store.log.items[0].id
     }
@@ -50,13 +50,13 @@ final class VanStockScreenTests: XCTestCase {
 
     func testATypedCountIsACountedMovementFromTheScreen() {
         let id = loadIgniter()
-        XCTAssertTrue(service.setCount(itemID: id, to: 3))
+        XCTAssertTrue(service.setCount(itemID: id, to: .whole(3)))
         let level = store.log.level(of: id)
-        XCTAssertEqual(level.onHand, 3)
+        XCTAssertEqual(level.onHand, .whole(3))
         XCTAssertEqual(level.provenance, .counted)
         XCTAssertEqual(store.log.movements.last?.source, .typed)
-        XCTAssertFalse(service.setCount(itemID: "nobody", to: 3))
-        XCTAssertFalse(service.setCount(itemID: id, to: -1))
+        XCTAssertFalse(service.setCount(itemID: "nobody", to: .whole(3)))
+        XCTAssertFalse(service.setCount(itemID: id, to: .whole(-1)))
     }
 
     func testUndoFromTheScreenTakesBackWhatWasSaid() {
@@ -75,12 +75,12 @@ final class VanStockScreenTests: XCTestCase {
 
     func testEditsAreOneBatchAndOneUndo() {
         let id = loadIgniter()
-        XCTAssertTrue(service.edit(itemID: id, [.description("Hot surface igniter"), .minimum(2), .bin("left shelf 2")]))
+        XCTAssertTrue(service.edit(itemID: id, [.description("Hot surface igniter"), .minimum(.whole(2)), .bin("left shelf 2")]))
         let edited = store.log.item(id: id)
         XCTAssertEqual(edited?.description, "Hot surface igniter")
-        XCTAssertEqual(edited?.minimum, 2)
+        XCTAssertEqual(edited?.minimum, .whole(2))
         XCTAssertEqual(edited?.bin, "left shelf 2")
-        XCTAssertEqual(store.log.level(of: id).onHand, 4, "details never move stock")
+        XCTAssertEqual(store.log.level(of: id).onHand, .whole(4), "details never move stock")
 
         clock.addTimeInterval(60)
         _ = service.undo(source: .typed)
@@ -88,6 +88,53 @@ final class VanStockScreenTests: XCTestCase {
         XCTAssertEqual(restored?.description, "Igniter")
         XCTAssertNil(restored?.minimum)
         XCTAssertNil(restored?.bin)
+    }
+
+    // MARK: Plan ML P1 — a unit counted whole is refused while a figure is part of one
+
+    func testAUnitCountedWholeIsRefusedWhileAFigureIsNot() {
+        store.update { log in
+            log.addItem(id: "oil", description: "Engine oil", unit: .l, batch: "b0")
+            log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: 4250), at: self.clock,
+                       batch: "b0", source: .typed)
+        }
+        clock.addTimeInterval(60)
+
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "oil", to: .pack),
+                       "4.25 l on hand is not a whole number of packs; count it first.")
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "oil", to: .each),
+                       "4.25 l on hand is not a whole number; count it first.")
+        XCTAssertNil(service.unitChangeRefusal(itemID: "oil", to: .kg), "a measured unit keeps the figure as it is")
+
+        // The refused change is left out; the rest of the batch still applies.
+        XCTAssertTrue(service.edit(itemID: "oil", [.unit(.pack), .bin("drum shelf")]))
+        XCTAssertEqual(store.log.item(id: "oil")?.unit, .l)
+        XCTAssertEqual(store.log.item(id: "oil")?.bin, "drum shelf")
+        XCTAssertFalse(service.edit(itemID: "oil", [.unit(.each)]), "nothing changed, nothing noted")
+        XCTAssertEqual(store.log.level(of: "oil").onHand, StockQuantity(scaled: 4250), "a refusal never moves stock")
+
+        // Counted whole, it can be counted in packs; the stored figure does not change with the unit.
+        XCTAssertTrue(service.setCount(itemID: "oil", to: .whole(4)))
+        XCTAssertNil(service.unitChangeRefusal(itemID: "oil", to: .pack))
+        XCTAssertTrue(service.edit(itemID: "oil", [.unit(.pack)]))
+        XCTAssertEqual(store.log.item(id: "oil")?.unit, .pack)
+        XCTAssertEqual(store.log.level(of: "oil").onHand, .whole(4))
+    }
+
+    func testAMinimumOrStandardThatIsPartOfOneAlsoHoldsTheUnit() {
+        store.update { log in
+            log.addItem(id: "cable", description: "Thermostat cable", unit: .m,
+                        minimum: StockQuantity(scaled: 2500), batch: "b0")
+            log.record(.counted, itemID: "cable", quantity: .whole(30), at: self.clock, batch: "b0", source: .typed)
+        }
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "cable", to: .each),
+                       "The minimum of 2.5 m is not a whole number; change it first.")
+        XCTAssertFalse(service.edit(itemID: "cable", [.unit(.each)]))
+
+        XCTAssertTrue(service.edit(itemID: "cable", [.minimum(.whole(2)), .standard(StockQuantity(scaled: 40_500), setBy: .van)]))
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "cable", to: .pack),
+                       "The standard of 40.5 m is not a whole number of packs; change it first.")
+        XCTAssertEqual(store.log.item(id: "cable")?.unit, .m)
     }
 
     func testANewNumberIsLookedUpAgain() {

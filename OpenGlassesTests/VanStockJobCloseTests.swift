@@ -9,7 +9,7 @@ final class VanStockJobCloseTests: XCTestCase {
         TaskPart(number: number, partDescription: description, verified: true)
     }
 
-    private func use(_ number: String?, _ description: String = "Igniter", quantity: Int = 1) -> VanStockUse {
+    private func use(_ number: String?, _ description: String = "Igniter", quantity: StockQuantity = .whole(1)) -> VanStockUse {
         VanStockUse(id: UUID().uuidString, number: number, description: description, quantity: quantity,
                     unit: .each, verified: true, at: Date(timeIntervalSince1970: 1_790_000_000))
     }
@@ -46,7 +46,7 @@ final class VanStockJobCloseTests: XCTestCase {
     }
 
     func testAUseReadsAsALineOfTheRecord() {
-        XCTAssertEqual(use("22B22", quantity: 2).summary, "2 × Igniter (22B22)")
+        XCTAssertEqual(use("22B22", quantity: .whole(2)).summary, "2 × Igniter (22B22)")
         XCTAssertEqual(use(nil, "Wire nuts").summary, "1 × Wire nuts")
         XCTAssertEqual(use("22B22", "").summary, "1 × 22B22")
     }
@@ -105,10 +105,10 @@ final class VanStockJobCloseTests: XCTestCase {
                            notFromVan: { dismissed.append($0); return job != nil },
                            unrecorded: { [TaskPart(number: "14T65", partDescription: "Pressure switch", verified: true)] }))
 
-        _ = service.load([.init(part: "22B22", description: "Igniter", quantity: 3)])
+        _ = service.load([.init(part: "22B22", description: "Igniter", quantity: .whole(3))])
         XCTAssertTrue(recorded.isEmpty, "a load is not a use")
         clock.addTimeInterval(60)
-        _ = service.use([.init(part: "22B22", quantity: 2)])
+        _ = service.use([.init(part: "22B22", quantity: .whole(2))])
         XCTAssertEqual(recorded.map(\.summary), ["2 × Igniter (22B22)"])
         XCTAssertEqual(recorded.first?.verified, true)
 
@@ -119,7 +119,7 @@ final class VanStockJobCloseTests: XCTestCase {
         // With no job open a use is still recorded on the van, and told to nobody.
         job = nil
         clock.addTimeInterval(60)
-        _ = service.use([.init(part: "22B22", quantity: 1)])
+        _ = service.use([.init(part: "22B22", quantity: .whole(1))])
         XCTAssertTrue(recorded.isEmpty)
 
         let asked = service.unrecorded()

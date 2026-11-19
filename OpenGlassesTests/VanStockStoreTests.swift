@@ -24,7 +24,7 @@ final class VanStockStoreTests: XCTestCase {
     private func loadOne(into store: VanStockStore, at date: Date) {
         store.update { log in
             let item = log.addItem(id: "item-1", number: "62-23543-01", description: "Flame sensor", batch: "b0")
-            log.record(.loaded, itemID: item.id, quantity: 4, at: date, batch: "b0", source: .spoken)
+            log.record(.loaded, itemID: item.id, quantity: .whole(4), at: date, batch: "b0", source: .spoken)
         }
     }
 
@@ -39,7 +39,7 @@ final class VanStockStoreTests: XCTestCase {
         loadOne(into: VanStockStore(directory: directory, now: start), at: start)
         let reopened = VanStockStore(directory: directory, now: start)
         XCTAssertEqual(reopened.log.items.map(\.id), ["item-1"])
-        XCTAssertEqual(reopened.log.level(of: "item-1").onHand, 4)
+        XCTAssertEqual(reopened.log.level(of: "item-1").onHand, .whole(4))
         XCTAssertFalse(reopened.isUnreadable)
     }
 
@@ -79,6 +79,69 @@ final class VanStockStoreTests: XCTestCase {
         XCTAssertTrue(VanStockStore(directory: directory, now: start).isUnreadable)
     }
 
+    // MARK: Plan ML P1 — format 2, in thousandths
+
+    private func storedVersion(_ url: URL) throws -> Int? {
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+        return object?["version"] as? Int
+    }
+
+    private var archiveURL: URL { directory.appendingPathComponent("van-stock-previous.json") }
+
+    func testAFormat1FileLoadsMigratedAndIsRewrittenAsFormat2() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(VanStockLogMigrationTests.recordedFile.utf8).write(to: fileURL)
+
+        let store = VanStockStore(directory: directory, now: VanStockLogMigrationTests.time(60))
+        XCTAssertFalse(store.isUnreadable)
+        XCTAssertEqual(store.van, VanIdentity(id: "v4", name: "Truck 4"))
+        XCTAssertEqual(store.log.level(of: "sensor").onHand.scaled, 3_000)
+        XCTAssertEqual(store.log.level(of: "sensor").onOrder.scaled, 2_000)
+        XCTAssertEqual(store.log.item(id: "sensor")?.standard?.scaled, 8_000)
+
+        // Written back at once, as format 2, with its figures in thousandths.
+        XCTAssertEqual(VanStockStore.formatVersion, 2)
+        XCTAssertEqual(try storedVersion(fileURL), 2)
+        let onDisk = try JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
+        let movements = (onDisk?["log"] as? [String: Any])?["movements"] as? [[String: Any]]
+        XCTAssertEqual(movements?.first { $0["id"] as? String == "m1" }?["quantity"] as? Int, 4_000)
+
+        // Read again, it is format 2 and is not migrated a second time.
+        let reopened = VanStockStore(directory: directory, now: VanStockLogMigrationTests.time(60))
+        XCTAssertEqual(reopened.log, store.log)
+        XCTAssertEqual(reopened.log.level(of: "sensor").onHand.scaled, 3_000)
+    }
+
+    func testAFormat3FileIsRefusedAndNeverOverwritten() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // A later format, as format 2 is to an older build: it is refused, never read as something else.
+        let later = Data(#"{"version":3,"log":{"items":[{"id":"oil","description":"Engine oil","unit":"l","codes":[],"created_batch":"b0"}],"movements":[{"id":"m1","item_id":"oil","kind":"counted","quantity":4250,"at":"2026-11-01T10:00:00Z","batch":"b1","source":"typed"}]}}"#.utf8)
+        try later.write(to: fileURL)
+
+        let store = VanStockStore(directory: directory, now: start)
+        XCTAssertTrue(store.isUnreadable)
+        XCTAssertTrue(store.log.isEmpty)
+        XCTAssertNil(store.update { $0.addItem(description: "Igniter", batch: "b1") })
+        store.nameVan("Truck 9")
+        XCTAssertEqual(try Data(contentsOf: fileURL), later, "the bytes on disk are untouched")
+    }
+
+    func testAFormat1ArchiveIsMigratedWhenItIsRestored() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(VanStockLogMigrationTests.recordedFile.utf8).write(to: archiveURL)
+
+        let store = VanStockStore(directory: directory, now: VanStockLogMigrationTests.time(60))
+        XCTAssertTrue(store.log.isEmpty)
+        XCTAssertTrue(store.hasPrevious)
+        XCTAssertTrue(store.restorePrevious())
+        XCTAssertEqual(store.van, VanIdentity(id: "v4", name: "Truck 4"))
+        XCTAssertEqual(store.log.level(of: "sensor").onHand.scaled, 3_000)
+        XCTAssertEqual(store.log.level(of: "oil").onHand.scaled, 2_000)
+        XCTAssertEqual(store.log.item(id: "fuse")?.minimum?.scaled, 5_000)
+        XCTAssertFalse(store.hasPrevious)
+        XCTAssertEqual(try storedVersion(fileURL), 2, "the restored list is kept as format 2")
+    }
+
     func testRemoveAllClearsAnUnreadableFileAndTheStoreWorksAgain() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Data("not json".utf8).write(to: fileURL)
@@ -88,19 +151,19 @@ final class VanStockStoreTests: XCTestCase {
         XCTAssertFalse(store.isUnreadable)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
         loadOne(into: store, at: start)
-        XCTAssertEqual(VanStockStore(directory: directory, now: start).log.level(of: "item-1").onHand, 4)
+        XCTAssertEqual(VanStockStore(directory: directory, now: start).log.level(of: "item-1").onHand, .whole(4))
     }
 
     func testOldHistoryIsFoldedOnLoadAndLevelsStayExact() {
         let store = VanStockStore(directory: directory, now: start)
         loadOne(into: store, at: start)
-        store.update { $0.record(.used, itemID: "item-1", quantity: 1, at: self.start.addingTimeInterval(60), batch: "b1", source: .spoken) }
+        store.update { $0.record(.used, itemID: "item-1", quantity: .whole(1), at: self.start.addingTimeInterval(60), batch: "b1", source: .spoken) }
         XCTAssertEqual(store.log.movements.count, 2)
 
         let later = start.addingTimeInterval(Double(VanStockStore.historyDays + 1) * 86_400)
         let reopened = VanStockStore(directory: directory, now: later)
         XCTAssertEqual(reopened.log.movements.map(\.kind), [.opening])
-        XCTAssertEqual(reopened.log.level(of: "item-1").onHand, 3)
+        XCTAssertEqual(reopened.log.level(of: "item-1").onHand, .whole(3))
         // And the fold was written, so the next launch does not redo it.
         XCTAssertEqual(VanStockStore(directory: directory, now: later).log, reopened.log)
     }

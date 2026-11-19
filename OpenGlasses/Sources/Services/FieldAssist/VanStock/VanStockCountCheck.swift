@@ -5,13 +5,13 @@ import Foundation
 /// Nil when there was nothing to compare with: a new line, or one nothing had set yet — that count
 /// is the opening figure. Pure, so the read-back and the "Say:" line agree.
 enum VanStockCountCheck: Equatable, Sendable {
-    case matches(expected: Int)
-    case short(expected: Int, by: Int)
-    case over(expected: Int, by: Int)
+    case matches(expected: StockQuantity)
+    case short(expected: StockQuantity, by: StockQuantity)
+    case over(expected: StockQuantity, by: StockQuantity)
     /// The log's figure was marked unreliable, so it is no yardstick.
     case unreliable
 
-    init?(before: VanStockLevel, counted: Int) {
+    init?(before: VanStockLevel, counted: StockQuantity) {
         guard before.isRecorded else { return nil }
         if before.unreliable {
             self = .unreliable
@@ -37,11 +37,12 @@ enum VanStockCountCheck: Equatable, Sendable {
 
 extension VanStockUnit {
     /// A bare quantity in this unit, for comparisons: "2", "10 m", "1 pack".
-    func amount(_ quantity: Int) -> String {
+    func amount(_ quantity: StockQuantity) -> String {
+        let number = quantity.decimalString
         switch self {
-        case .each: return "\(quantity)"
-        case .pack: return "\(quantity) \(quantity == 1 ? "pack" : "packs")"
-        case .m, .ft, .kg, .lb, .l: return "\(quantity) \(rawValue)"
+        case .each: return number
+        case .pack: return "\(number) \(quantity == StockQuantity(whole: 1) ? "pack" : "packs")"
+        case .m, .ft, .kg, .lb, .l: return "\(number) \(rawValue)"
         }
     }
 }

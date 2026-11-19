@@ -204,8 +204,8 @@ private struct VanStockRowLabel: View {
             Label("Low", systemImage: "arrow.down.circle")
                 .font(.caption)
         }
-        if row.level.onOrder > 0 {
-            Label("\(row.level.onOrder) asked for", systemImage: "shippingbox")
+        if row.level.onOrder > .zero {
+            Label("\(row.level.onOrder.wholeUnits) asked for", systemImage: "shippingbox")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -266,7 +266,7 @@ struct VanStockItemView: View {
             }
             if let asOf = level.asOf {
                 LabeledContent("On hand") {
-                    Text(item.unit == .each ? "\(level.onHand)" : "\(level.onHand) \(item.unit.rawValue)")
+                    Text(item.unit == .each ? "\(level.onHand.wholeUnits)" : "\(level.onHand.wholeUnits) \(item.unit.rawValue)")
                 }
                 LabeledContent("How it's known") {
                     if level.handedOver {
@@ -284,8 +284,8 @@ struct VanStockItemView: View {
                 Text("Nothing has been recorded for this line yet.")
                     .foregroundStyle(.secondary)
             }
-            if level.onOrder > 0 {
-                LabeledContent("Asked for, not yet loaded") { Text("\(level.onOrder)") }
+            if level.onOrder > .zero {
+                LabeledContent("Asked for, not yet loaded") { Text("\(level.onOrder.wholeUnits)") }
             }
         }
     }
@@ -296,8 +296,9 @@ struct VanStockItemView: View {
             Stepper(value: $count, in: 0...9_999) {
                 LabeledContent("Count") { Text("\(count)").monospacedDigit() }
             }
-            Button("Save count") { _ = service.setCount(itemID: itemID, to: count) }
-                .disabled(level.isRecorded && !level.unreliable && level.provenance == .counted && count == level.onHand)
+            Button("Save count") { _ = service.setCount(itemID: itemID, to: StockQuantity(whole: count)) }
+                .disabled(level.isRecorded && !level.unreliable && level.provenance == .counted
+                          && StockQuantity(whole: count) == level.onHand)
         } header: {
             Text("Set the count")
         } footer: {
@@ -362,12 +363,12 @@ struct VanStockItemView: View {
 
     private func kindText(_ movement: VanStockMovement) -> Text {
         switch movement.kind {
-        case .loaded: return Text("Loaded \(movement.quantity)")
-        case .used: return Text("Used \(movement.quantity)")
-        case .removed: return Text("Removed \(movement.quantity)")
-        case .counted: return Text("Counted \(movement.quantity)")
-        case .ordered: return Text("Asked for \(movement.quantity)")
-        case .opening: return Text("Carried forward \(movement.quantity)")
+        case .loaded: return Text("Loaded \(movement.quantity.wholeUnits)")
+        case .used: return Text("Used \(movement.quantity.wholeUnits)")
+        case .removed: return Text("Removed \(movement.quantity.wholeUnits)")
+        case .counted: return Text("Counted \(movement.quantity.wholeUnits)")
+        case .ordered: return Text("Asked for \(movement.quantity.wholeUnits)")
+        case .opening: return Text("Carried forward \(movement.quantity.wholeUnits)")
         case .edited, .reversed: return Text("Details changed")
         }
     }
@@ -375,11 +376,11 @@ struct VanStockItemView: View {
     // MARK: - Editing
 
     private func fill(from item: VanStockItem, _ level: VanStockLevel) {
-        count = level.onHand
+        count = level.onHand.wholeUnits
         description = item.description
         number = item.number ?? ""
         bin = item.bin ?? ""
-        minimum = item.minimum.map(String.init) ?? ""
+        minimum = item.minimum.map(\.decimalString) ?? ""
         unit = item.unit
     }
 
@@ -391,8 +392,10 @@ struct VanStockItemView: View {
         let newNumber = VaultPartsIndex.normalise(number)
         if newNumber != (item.number ?? "") { changes.append(.number(newNumber.isEmpty ? nil : newNumber)) }
         if unit != item.unit { changes.append(.unit(unit)) }
+        // Whole units on this screen, within what a line can hold.
         let newMinimum = Int(minimum.trimmingCharacters(in: .whitespaces))
-        if newMinimum != item.minimum { changes.append(.minimum(newMinimum.map { max($0, 0) })) }
+            .map { StockQuantity(whole: min(max($0, 0), StockQuantity.maximumUnits)) }
+        if newMinimum != item.minimum { changes.append(.minimum(newMinimum)) }
         let newBin = bin.trimmingCharacters(in: .whitespacesAndNewlines)
         if newBin != (item.bin ?? "") { changes.append(.bin(newBin.isEmpty ? nil : newBin)) }
         return changes

@@ -19,16 +19,17 @@ final class VanStockAnswerComposerTests: XCTestCase {
 
     private var composer: VanStockAnswerComposer { VanStockAnswerComposer(now: now, calendar: calendar) }
 
-    private func item(number: String? = "62-23543-01", verified: Bool = true, minimum: Int? = nil,
+    private func item(number: String? = "62-23543-01", verified: Bool = true, minimum: StockQuantity? = nil,
                       unit: VanStockUnit = .each) -> VanStockItem {
         VanStockItem(id: "i", number: number, description: "Flame sensor", unit: unit, minimum: minimum,
                      verified: verified, createdBatch: "b0")
     }
 
+    /// `onHand` in whole units.
     private func level(_ onHand: Int, _ provenance: VanStockLevel.Provenance = .counted,
-                       asOf: Date? = nil, onOrder: Int = 0, orderedAt: Date? = nil,
+                       asOf: Date? = nil, onOrder: StockQuantity = .zero, orderedAt: Date? = nil,
                        unreliable: Bool = false, handedOver: Bool = false) -> VanStockLevel {
-        VanStockLevel(itemID: "i", onHand: onHand, onOrder: onOrder, oldestOrderAt: orderedAt,
+        VanStockLevel(itemID: "i", onHand: .whole(onHand), onOrder: onOrder, oldestOrderAt: orderedAt,
                       provenance: provenance, asOf: asOf ?? date(2026, 10, 14, 10, 40),
                       unreliable: unreliable, handedOver: handedOver)
     }
@@ -94,13 +95,13 @@ final class VanStockAnswerComposerTests: XCTestCase {
     func testOnOrderMinimumAndNotFoundAreAdded() {
         // Plan MK §4: the sentence names the book that was searched, and only a number that book
         // did not hold gets one. A number nothing was searched for says nothing about it.
-        var notFound = item(verified: false, minimum: 2)
+        var notFound = item(verified: false, minimum: .whole(2))
         notFound.verification = .notFound(in: "Furnace manual")
-        let answer = composer.check(notFound, level: level(1, onOrder: 1, orderedAt: date(2026, 10, 12, 9, 0)))
+        let answer = composer.check(notFound, level: level(1, onOrder: .whole(1), orderedAt: date(2026, 10, 12, 9, 0)))
         XCTAssertTrue(answer.contains("1 asked for on Monday and not yet loaded."), answer)
         XCTAssertTrue(answer.contains("That is at or below the minimum of 2."), answer)
         XCTAssertTrue(answer.contains("The part number is not found in Furnace manual."), answer)
-        let unchecked = composer.check(item(verified: false, minimum: 2), level: level(1))
+        let unchecked = composer.check(item(verified: false, minimum: .whole(2)), level: level(1))
         XCTAssertFalse(unchecked.contains("not found"), unchecked)
         XCTAssertFalse(unchecked.contains("manuals"), unchecked)
     }
@@ -118,12 +119,12 @@ final class VanStockAnswerComposerTests: XCTestCase {
     // MARK: Read-backs
 
     func testALoadReadsBackTheLineAndTheLevel() {
-        let answer = composer.loaded(item(), quantity: 4, before: level(2), after: level(6, .inferred), created: false)
+        let answer = composer.loaded(item(), quantity: .whole(4), before: level(2), after: level(6, .inferred), created: false)
         XCTAssertEqual(answer, "Loaded 4 × Flame sensor (62-23543-01). 6 × Flame sensor (62-23543-01) on the van now.")
     }
 
     func testANewLineWithAnUnknownNumberIsSpelledOut() {
-        let answer = composer.loaded(item(verified: false), quantity: 4, before: VanStockLevel(itemID: "i"),
+        let answer = composer.loaded(item(verified: false), quantity: .whole(4), before: VanStockLevel(itemID: "i"),
                                      after: level(4, .inferred), created: true)
         XCTAssertTrue(answer.contains("That is a new line on the van list."), answer)
         XCTAssertTrue(answer.contains("six two, dash, two three five four three, dash, zero one"), answer)
@@ -131,7 +132,7 @@ final class VanStockAnswerComposerTests: XCTestCase {
     }
 
     func testANewLineWithAVerifiedNumberIsNotSpelledOut() {
-        let answer = composer.loaded(item(), quantity: 4, before: VanStockLevel(itemID: "i"),
+        let answer = composer.loaded(item(), quantity: .whole(4), before: VanStockLevel(itemID: "i"),
                                      after: level(4, .inferred), created: true)
         XCTAssertTrue(answer.contains("That is a new line on the van list."), answer)
         XCTAssertFalse(answer.contains("dash"), answer)
@@ -139,50 +140,50 @@ final class VanStockAnswerComposerTests: XCTestCase {
 
     func testALoadSaysWhatItCovered() {
         let ordered = date(2026, 10, 12, 9, 0)
-        let all = composer.loaded(item(), quantity: 1, before: level(0, onOrder: 1, orderedAt: ordered),
+        let all = composer.loaded(item(), quantity: .whole(1), before: level(0, onOrder: .whole(1), orderedAt: ordered),
                                   after: level(1, .inferred), created: false)
         XCTAssertTrue(all.contains("That covers the 1 asked for on Monday."), all)
-        let some = composer.loaded(item(), quantity: 1, before: level(0, onOrder: 3, orderedAt: ordered),
-                                   after: level(1, .inferred, onOrder: 2, orderedAt: ordered), created: false)
+        let some = composer.loaded(item(), quantity: .whole(1), before: level(0, onOrder: .whole(3), orderedAt: ordered),
+                                   after: level(1, .inferred, onOrder: .whole(2), orderedAt: ordered), created: false)
         XCTAssertTrue(some.contains("That covers 1 of the 3 asked for on Monday."), some)
     }
 
     func testAUseSaysWhatIsLeft() {
-        let answer = composer.used(item(), quantity: 1, before: level(3), after: level(2, .inferred),
+        let answer = composer.used(item(), quantity: .whole(1), before: level(3), after: level(2, .inferred),
                                    jobReference: "job-2031")
         XCTAssertEqual(answer, "Used 1 × Flame sensor (62-23543-01) on job job-2031. 2 left.")
     }
 
     func testTheLastOneOffersARequestAndStops() {
-        let answer = composer.used(item(), quantity: 1, before: level(1), after: level(0, .inferred), jobReference: nil)
+        let answer = composer.used(item(), quantity: .whole(1), before: level(1), after: level(0, .inferred), jobReference: nil)
         XCTAssertTrue(answer.contains("That was the last on the van."), answer)
         XCTAssertTrue(answer.contains("request one only if the technician says yes"), answer)
     }
 
     func testAtTheMinimumOffersARequest() {
-        let answer = composer.used(item(minimum: 2), quantity: 1, before: level(3), after: level(2, .inferred),
+        let answer = composer.used(item(minimum: .whole(2)), quantity: .whole(1), before: level(3), after: level(2, .inferred),
                                    jobReference: nil)
         XCTAssertTrue(answer.contains("2 left, at or below the minimum of 2."), answer)
         XCTAssertTrue(answer.contains("Offer to ask the office"), answer)
     }
 
     func testWithOneAlreadyAskedForNoSecondOfferIsMade() {
-        let answer = composer.used(item(), quantity: 1, before: level(1, onOrder: 1, orderedAt: date(2026, 10, 12, 9, 0)),
-                                   after: level(0, .inferred, onOrder: 1, orderedAt: date(2026, 10, 12, 9, 0)),
+        let answer = composer.used(item(), quantity: .whole(1), before: level(1, onOrder: .whole(1), orderedAt: date(2026, 10, 12, 9, 0)),
+                                   after: level(0, .inferred, onOrder: .whole(1), orderedAt: date(2026, 10, 12, 9, 0)),
                                    jobReference: nil)
         XCTAssertTrue(answer.contains("1 asked for on Monday and not yet loaded."), answer)
         XCTAssertFalse(answer.contains("Offer"), answer)
     }
 
     func testAUseTheLogCannotCoverSaysTheCountIsGone() {
-        let answer = composer.used(item(), quantity: 1, before: level(0), after: level(0, .inferred, unreliable: true),
+        let answer = composer.used(item(), quantity: .whole(1), before: level(0), after: level(0, .inferred, unreliable: true),
                                    jobReference: nil)
         XCTAssertTrue(answer.contains("The log showed 0, so it cannot say how many are left."), answer)
         XCTAssertFalse(answer.contains("Offer"), answer)
     }
 
     func testARemovalNamesTheReasonAndMakesNoOffer() {
-        let answer = composer.removed(item(), quantity: 1, reason: .returned, before: level(1), after: level(0, .inferred))
+        let answer = composer.removed(item(), quantity: .whole(1), reason: .returned, before: level(1), after: level(0, .inferred))
         XCTAssertEqual(answer, "Removed 1 × Flame sensor (62-23543-01) (returned). That was the last on the van.")
     }
 
@@ -211,8 +212,8 @@ final class VanStockAnswerComposerTests: XCTestCase {
         let cable = VanStockItem(id: "i", description: "Thermostat cable", unit: .m, createdBatch: "b0")
         XCTAssertEqual(composer.counted(cable, before: level(30), after: level(25), created: false),
                        "Counted: 25 m of Thermostat cable on the van. The log expected 30 m, so that is 5 m short.")
-        XCTAssertEqual(VanStockCountCheck(before: level(30), counted: 25)?.said(.m), ", 5 m short of the 30 m expected")
-        XCTAssertEqual(VanStockCountCheck(before: level(1), counted: 2)?.said(.pack), ", 1 pack over the 1 pack expected")
+        XCTAssertEqual(VanStockCountCheck(before: level(30), counted: .whole(25))?.said(.m), ", 5 m short of the 30 m expected")
+        XCTAssertEqual(VanStockCountCheck(before: level(1), counted: .whole(2))?.said(.pack), ", 1 pack over the 1 pack expected")
     }
 
     // MARK: Lists and misses
@@ -252,7 +253,7 @@ final class VanStockAnswerComposerTests: XCTestCase {
 
     func testLowWording() {
         XCTAssertEqual(composer.low([]), "Nothing on the van is at or below its minimum.")
-        let answer = composer.low([(item(minimum: 2), level(1, onOrder: 1)), (item(number: nil), level(0))])
+        let answer = composer.low([(item(minimum: .whole(2)), level(1, onOrder: .whole(1))), (item(number: nil), level(0))])
         XCTAssertEqual(answer, "2 lines are low: Flame sensor (62-23543-01) — 1 left, minimum 2 (1 asked for); "
             + "Flame sensor — none left.")
     }
@@ -265,10 +266,10 @@ final class VanStockAnswerComposerTests: XCTestCase {
     func testUndoSaysWhatWasTakenBack() {
         var log = VanStockLog()
         let kept = log.addItem(id: "i", number: "62-23543-01", description: "Flame sensor", batch: "b0")
-        log.record(.counted, itemID: kept.id, quantity: 1, at: now, batch: "b0", source: .typed)
+        log.record(.counted, itemID: kept.id, quantity: .whole(1), at: now, batch: "b0", source: .typed)
         let added = log.addItem(id: "j", description: "Flame rod", batch: "b1")
-        log.record(.loaded, itemID: kept.id, quantity: 4, at: now, batch: "b1", source: .spoken)
-        log.record(.loaded, itemID: added.id, quantity: 2, at: now, batch: "b1", source: .spoken)
+        log.record(.loaded, itemID: kept.id, quantity: .whole(4), at: now, batch: "b1", source: .spoken)
+        log.record(.loaded, itemID: added.id, quantity: .whole(2), at: now, batch: "b1", source: .spoken)
         let undone = log.undoLastBatch(at: now, batch: "u1", source: .spoken)!
         XCTAssertEqual(composer.undone(undone, items: log.items),
                        "Undone: the load of 4 × Flame sensor (62-23543-01); the load of 2 × Flame rod. "
@@ -288,14 +289,14 @@ final class VanStockAnswerComposerTests: XCTestCase {
         let levels = ["i": level(2)]
         var log = VanStockLog()
         log.addItem(id: "i", number: "62-23543-01", description: "Flame sensor", bin: "Shelf 1", batch: "b0")
-        log.record(.counted, itemID: "i", quantity: 2, at: date(2026, 10, 14, 10, 40), batch: "b0", source: .typed)
-        log.record(.loaded, itemID: "i", quantity: 1, at: date(2026, 10, 14, 11, 40), batch: "b1", source: .spoken)
+        log.record(.counted, itemID: "i", quantity: .whole(2), at: date(2026, 10, 14, 10, 40), batch: "b0", source: .typed)
+        log.record(.loaded, itemID: "i", quantity: .whole(1), at: date(2026, 10, 14, 11, 40), batch: "b1", source: .spoken)
         return [
             c.check(item(), level: level(2)),
             c.check(item(), level: level(0)),
             c.check(item(), level: level(2, .inferred, unreliable: true)),
             c.check(item(), level: VanStockLevel(itemID: "i")),
-            c.check(item(), level: level(3, .inferred, onOrder: 1, orderedAt: date(2026, 10, 12, 9, 0))),
+            c.check(item(), level: level(3, .inferred, onOrder: .whole(1), orderedAt: date(2026, 10, 12, 9, 0))),
             c.candidates([item(), item()], levels: levels),
             c.closest([item()], to: "flame", levels: levels),
             c.closest([item(), item()], to: "flame", levels: levels),
@@ -304,12 +305,12 @@ final class VanStockAnswerComposerTests: XCTestCase {
             c.notCarried("flame"),
             c.emptyVan(),
             c.low([]),
-            c.low([(item: item(minimum: 2), level: level(0))]),
-            c.loaded(item(verified: false), quantity: 4, before: VanStockLevel(itemID: "i"), after: level(4, .inferred), created: true),
-            c.loaded(item(), quantity: 1, before: level(0, onOrder: 1), after: level(1, .inferred), created: false),
-            c.used(item(minimum: 2), quantity: 1, before: level(2), after: level(1, .inferred), jobReference: "job-7"),
-            c.used(item(), quantity: 2, before: level(2), after: level(0, .inferred), jobReference: nil),
-            c.removed(item(), quantity: 1, reason: .returned, before: level(2), after: level(1, .inferred)),
+            c.low([(item: item(minimum: .whole(2)), level: level(0))]),
+            c.loaded(item(verified: false), quantity: .whole(4), before: VanStockLevel(itemID: "i"), after: level(4, .inferred), created: true),
+            c.loaded(item(), quantity: .whole(1), before: level(0, onOrder: .whole(1)), after: level(1, .inferred), created: false),
+            c.used(item(minimum: .whole(2)), quantity: .whole(1), before: level(2), after: level(1, .inferred), jobReference: "job-7"),
+            c.used(item(), quantity: .whole(2), before: level(2), after: level(0, .inferred), jobReference: nil),
+            c.removed(item(), quantity: .whole(1), reason: .returned, before: level(2), after: level(1, .inferred)),
             c.counted(item(), before: level(2), after: level(3), created: true),
             c.nothingToUndo(),
             c.list(log, bin: nil),
@@ -354,9 +355,9 @@ final class VanStockAnswerComposerTests: XCTestCase {
         XCTAssertEqual(store.check(item(), level: level(2, .inferred)),
                        "2 × Flame sensor (62-23543-01) in the store — worked out from what was received and sold or "
                        + "used, not counted; last changed today at 10:40.")
-        XCTAssertTrue(store.loaded(item(), quantity: 4, before: level(2), after: level(6, .inferred), created: false)
+        XCTAssertTrue(store.loaded(item(), quantity: .whole(4), before: level(2), after: level(6, .inferred), created: false)
             .hasPrefix("Received 4 × Flame sensor (62-23543-01). 6 × Flame sensor (62-23543-01) in the store now."))
-        XCTAssertTrue(store.used(item(), quantity: 1, before: level(2), after: level(1, .inferred), jobReference: nil)
+        XCTAssertTrue(store.used(item(), quantity: .whole(1), before: level(2), after: level(1, .inferred), jobReference: nil)
             .hasPrefix("Sold or used 1 × Flame sensor"))
         XCTAssertTrue(store.emptyVan().contains("the Store stock screen"))
         XCTAssertTrue(composer(.stock).check(item(), level: level(0)).hasPrefix("No Flame sensor (62-23543-01) in stock"))
@@ -365,14 +366,14 @@ final class VanStockAnswerComposerTests: XCTestCase {
     // MARK: The first-load read-back gives the reason the lookup supports (Plan MK §4)
 
     func testTheReadBackSaysWhyTheNumberIsSpelledOut() {
-        let unchecked = composer.loaded(item(verified: false), quantity: 1, before: VanStockLevel(itemID: "i"),
+        let unchecked = composer.loaded(item(verified: false), quantity: .whole(1), before: VanStockLevel(itemID: "i"),
                                         after: level(1, .inferred), created: true)
         XCTAssertTrue(unchecked.contains("Part number 62-23543-01 has not been on this list before. Read it back as:"), unchecked)
         XCTAssertFalse(unchecked.contains("manuals"), unchecked)
 
         var missing = item(verified: false)
         missing.verification = .notFound(in: "Supplier catalogue")
-        let notFound = composer.loaded(missing, quantity: 1, before: VanStockLevel(itemID: "i"),
+        let notFound = composer.loaded(missing, quantity: .whole(1), before: VanStockLevel(itemID: "i"),
                                        after: level(1, .inferred), created: true)
         XCTAssertTrue(notFound.contains("Part number 62-23543-01 is not in Supplier catalogue and has not been on this list."),
                       notFound)

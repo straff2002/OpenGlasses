@@ -223,9 +223,9 @@ final class VanStockTool: NativeTool {
     /// One entry as a line, or nil when it names no part, description or code. A quantity that is
     /// not whole reads as none here; `notWholeRefusal` stops the call before that matters.
     private static func line(_ entry: [String: Any]) -> VanStockService.Line? {
-        let quantity: Int?
+        let quantity: StockQuantity?
         if case .whole(let value) = PartsRequestTool.quantityArgument(entry["quantity"]) {
-            quantity = value
+            quantity = Self.quantity(whole: value)
         } else {
             quantity = nil
         }
@@ -236,6 +236,14 @@ final class VanStockTool: NativeTool {
                                         code: Self.text(entry["code"]),
                                         asNew: (entry["new_line"] as? Bool) ?? false)
         return line.part == nil && line.description == nil && line.code == nil ? nil : line
+    }
+
+    /// A whole figure from the model in thousandths. A sign is kept, so the service refuses a
+    /// negative in its own words; anything past a million is held just past it, so the service
+    /// refuses it as too large instead of the multiplication overflowing.
+    static func quantity(whole value: Int) -> StockQuantity {
+        let limit = StockQuantity.maximumUnits + 1
+        return StockQuantity(whole: min(max(value, -limit), limit))
     }
 
     /// A call that carries a scanned code was scanned; anything else was said.

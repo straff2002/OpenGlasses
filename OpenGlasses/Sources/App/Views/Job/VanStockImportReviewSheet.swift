@@ -189,7 +189,7 @@ struct VanStockImportReviewSheet: View {
                             })) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(change.name)
-                                Text("This list's own figure is \(current). The spreadsheet says \(change.standard).")
+                                Text("This list's own figure is \(current.wholeUnits). The spreadsheet says \(change.standard.wholeUnits).")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -208,9 +208,9 @@ struct VanStockImportReviewSheet: View {
                 ForEach(plain) { change in
                     LabeledContent(change.name) {
                         if change.kind == .newLine {
-                            Text("New, \(change.standard)")
+                            Text("New, \(change.standard.wholeUnits)")
                         } else {
-                            Text("\(change.standard)")
+                            Text("\(change.standard.wholeUnits)")
                         }
                     }
                 }
@@ -244,7 +244,7 @@ struct VanStockImportReviewSheet: View {
                             })) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(count.name)
-                                Text("Spreadsheet says \(count.to). The phone says \(count.from ?? 0).")
+                                Text("Spreadsheet says \(count.to.wholeUnits). The phone says \((count.from ?? .zero).wholeUnits).")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -263,9 +263,9 @@ struct VanStockImportReviewSheet: View {
                     ForEach(plain) { count in
                         LabeledContent(count.name) {
                             if let from = count.from {
-                                Text("\(from) → \(count.to)")
+                                Text("\(from.wholeUnits) → \(count.to.wholeUnits)")
                             } else {
-                                Text("\(count.to)")
+                                Text("\(count.to.wholeUnits)")
                             }
                         }
                     }
@@ -279,7 +279,7 @@ struct VanStockImportReviewSheet: View {
                     ForEach(proposal.newLines) { line in
                         LabeledContent(line.description.isEmpty ? (line.number ?? "") : line.description) {
                             if let onHand = line.onHand {
-                                Text("\(onHand)")
+                                Text("\(onHand.wholeUnits)")
                             } else {
                                 Text("Not counted")
                             }

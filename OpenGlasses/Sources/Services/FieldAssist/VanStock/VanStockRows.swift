@@ -27,7 +27,8 @@ struct VanStockRow: Identifiable, Equatable {
     /// shown as a number.
     var quantity: String? {
         guard level.isRecorded else { return nil }
-        return item.unit == .each ? String(level.onHand) : "\(level.onHand) \(item.unit.rawValue)"
+        let figure = level.onHand.decimalString
+        return item.unit == .each ? figure : "\(figure) \(item.unit.rawValue)"
     }
 }
 
@@ -72,4 +73,11 @@ enum VanStockRows {
             .reversed()
             .map { VanStockHistoryEntry(movement: $0, takenBack: reversed.contains($0.id)) }
     }
+}
+
+extension StockQuantity {
+    /// The figure in whole units, for the screen's whole-number labels and fields. Every figure
+    /// on a line is whole until the screen takes measured amounts, which reads them with
+    /// `formatted(locale:)` instead; until then this drops nothing.
+    var wholeUnits: Int { scaled / Self.perUnit }
 }
