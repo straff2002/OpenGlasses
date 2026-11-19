@@ -120,7 +120,7 @@ struct OrgProfileReview: Identifiable, Equatable {
 
     /// Organisation details the profile supplies (its name on the sign-off sheet, its report route).
     var organizationLines: [String] {
-        result.owned.keys.sorted { $0.rawValue < $1.rawValue }.map { $0.ownedDescription }
+        result.owned.sorted { $0.key.rawValue < $1.key.rawValue }.map { $0.key.ownedDescription($0.value) }
     }
 
     /// Entries this version of the app could not use, named.
@@ -1156,7 +1156,19 @@ extension SettingKey {
         case .expertHandoverIncludesAddress: return String(localized: "Whether a job sent to its own staff experts carries the site's address")
         case .expertHandoverRetentionDays: return String(localized: "How long an expert's app keeps a job sent to them")
         case .customerReportShowsExpertTime: return String(localized: "Whether the customer's report shows an expert's time and name")
+        case .organizationStockPlace: return String(localized: "Where stock is kept")
         default: return rawValue
+        }
+    }
+
+    /// One line for organisation details, with the value where the line says it: "Stock is kept
+    /// in the store" (Plan MK §2). Every other key reads as `ownedDescription`.
+    func ownedDescription(_ value: ProfileValue) -> String {
+        switch (self, value) {
+        case (.organizationStockPlace, .string(let raw)):
+            return StockPlace.Kind(strict: raw).map(StockPlaceScreenText.profileSummary) ?? ownedDescription
+        default:
+            return ownedDescription
         }
     }
 

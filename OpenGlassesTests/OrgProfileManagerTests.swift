@@ -280,4 +280,28 @@ final class OrgProfileManagerTests: XCTestCase {
         }
         XCTAssertNil(storedRecord)
     }
+
+    // MARK: - Where stock is kept (Plan MK P2)
+
+    func testTheReviewSaysWhereStockIsKept() throws {
+        let review = try makeManager().review(document: try document(settings: [
+            "organizationDisplayName": RawSetting(.string("Northbridge Mechanical"), .default),
+            "organizationStockPlace": RawSetting(.string("store"), .default),
+        ]), source: .link).get()
+        XCTAssertEqual(review.organizationLines, ["Its name on the customer sign-off sheet", "Stock is kept in the store"])
+        XCTAssertTrue(review.dropLines.isEmpty)
+    }
+
+    func testTheStockPlaceSummaryNamesEachKind() {
+        let key = SettingKey.organizationStockPlace
+        XCTAssertEqual(key.ownedDescription(.string("van")), "Stock is kept on the van")
+        XCTAssertEqual(key.ownedDescription(.string("truck")), "Stock is kept on the truck")
+        XCTAssertEqual(key.ownedDescription(.string("store")), "Stock is kept in the store")
+        XCTAssertEqual(key.ownedDescription(.string("warehouse")), "Stock is kept in the warehouse")
+        XCTAssertEqual(key.ownedDescription(.string("stock")), "Stock is kept on a list that names no place")
+        XCTAssertNotEqual(key.ownedDescription, key.rawValue)
+        // Every other key reads as it did.
+        XCTAssertEqual(SettingKey.organizationDisplayName.ownedDescription(.string("Northbridge")),
+                       SettingKey.organizationDisplayName.ownedDescription)
+    }
 }

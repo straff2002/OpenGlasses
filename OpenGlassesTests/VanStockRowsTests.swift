@@ -37,9 +37,34 @@ final class VanStockRowsTests: XCTestCase {
         XCTAssertEqual(rows["fuse"]?.isLow, true, "recorded at zero with no minimum")
         XCTAssertEqual(rows["cable"]?.isLow, false)
         XCTAssertEqual(rows["igniter"]?.isLow, false, "never recorded is not the same as run out")
-        XCTAssertEqual(rows["igniter"]?.isUnverified, true)
-        XCTAssertEqual(rows["sensor"]?.isUnverified, false)
-        XCTAssertEqual(rows["fuse"]?.isUnverified, false, "a line with no number has nothing to verify")
+        // Nothing was searched for the igniter's number, so it carries no mark (Plan MK §4).
+        XCTAssertEqual(rows["igniter"]?.isNotFound, false)
+        XCTAssertNil(rows["igniter"]?.notFoundLabel)
+        XCTAssertEqual(rows["sensor"]?.isNotFound, false)
+        XCTAssertEqual(rows["fuse"]?.isNotFound, false, "a line with no number has nothing to look up")
+    }
+
+    /// Plan MK P2 — the mark shows only on a number its book was searched for and did not hold,
+    /// and names that book.
+    func testTheMarkIsOnlyOnANumberItsBookDidNotHold() {
+        var log = VanStockLog()
+        log.addItem(id: "found", number: "11A11", description: "Found", verification: .found(in: "Supplier catalogue"),
+                    batch: "b0")
+        log.addItem(id: "missing", number: "22B22", description: "Missing",
+                    verification: .notFound(in: "Supplier catalogue"), batch: "b0")
+        log.addItem(id: "unnamed", number: "33C33", description: "Unnamed", verification: .notFound(in: nil),
+                    batch: "b0")
+        log.addItem(id: "unchecked", number: "44D44", description: "Unchecked", verification: .notChecked, batch: "b0")
+        log.addItem(id: "soda", description: "Soda water", verification: .notFound(in: "Supplier catalogue"),
+                    batch: "b0")
+        let rows = Dictionary(uniqueKeysWithValues: VanStockRows.rows(log).map { ($0.id, $0) })
+
+        XCTAssertEqual(rows["missing"]?.notFoundLabel, "Not found in Supplier catalogue")
+        XCTAssertEqual(rows["unnamed"]?.notFoundLabel, "Not in the manuals", "no book was recorded")
+        XCTAssertNil(rows["found"]?.notFoundLabel)
+        XCTAssertNil(rows["unchecked"]?.notFoundLabel, "nothing searched is no mark")
+        XCTAssertNil(rows["soda"]?.notFoundLabel, "a line with no number has nothing to look up")
+        XCTAssertEqual(rows.values.filter(\.isNotFound).map(\.id).sorted(), ["missing", "unnamed"])
     }
 
     func testSearchMatchesDescriptionNumberBinAndCode() {

@@ -312,4 +312,95 @@ final class VanStockSheetTests: XCTestCase {
         }
         XCTAssertNil(try VanStockSheet.rows(from: sheets).get().van?.checkVaultID)
     }
+
+    // MARK: The workbook follows the place (Plan MK P2)
+
+    private func written(_ van: VanIdentity?, kind: StockPlace.Kind) throws -> [XLSXReader.Sheet] {
+        try XLSXReader.read(VanStockSheet.data(log, van: van, exportedAt: time(10), calendar: calendar, kind: kind)).get()
+    }
+
+    func testTheSheetAndFileAreNamedForThePlace() throws {
+        let expected: [StockPlace.Kind: String] = [
+            .van: "Van stock", .truck: "Truck stock", .store: "Store stock", .warehouse: "Warehouse stock", .stock: "Stock",
+        ]
+        for (kind, title) in expected {
+            XCTAssertEqual(VanStockSheet.stockSheetName(kind), title)
+            XCTAssertLessThanOrEqual(VanStockSheet.stockSheetName(kind).count, VanStockSheet.sheetNameLimit)
+            XCTAssertEqual(try written(nil, kind: kind).map(\.name), [title, "History", "Avenkin"], "\(kind)")
+            XCTAssertEqual(VanStockSheet.fileName(exportedAt: time(10), calendar: calendar, kind: kind),
+                           "\(title) 2026-09-21.xlsx")
+        }
+        XCTAssertEqual(VanStockSheet.stockSheetNames.count, 5)
+    }
+
+    func testAFileNameIsRetitledForThePlaceAndKeepsItsDate() {
+        XCTAssertEqual(VanStockSheet.fileName(retitling: "Van stock 2026-09-21.xlsx", to: .store),
+                       "Store stock 2026-09-21.xlsx")
+        XCTAssertEqual(VanStockSheet.fileName(retitling: "Store stock 2026-09-21.xlsx", to: .stock),
+                       "Stock 2026-09-21.xlsx")
+        XCTAssertEqual(VanStockSheet.fileName(retitling: "Stock 2026-09-21.xlsx", to: .warehouse),
+                       "Warehouse stock 2026-09-21.xlsx")
+        XCTAssertEqual(VanStockSheet.fileName(retitling: "Van stock 2026-09-21.xlsx", to: .van),
+                       "Van stock 2026-09-21.xlsx")
+        XCTAssertEqual(VanStockSheet.fileName(retitling: "inventory.xlsx", to: .store), "inventory.xlsx")
+    }
+
+    func testTheStandardSetByColumnSpeaksForThePlace() throws {
+        let expected: [StockPlace.Kind: (base: String, own: String)] = [
+            .van: ("Base", "This truck"), .truck: ("Base", "This truck"), .store: ("Office", "This store"),
+            .warehouse: ("Office", "This warehouse"), .stock: ("Office", "This list"),
+        ]
+        for (kind, words) in expected {
+            let stock = try written(nil, kind: kind)[0].rows
+            // Flame sensor's standard came from outside the list; the cable's the list set itself.
+            XCTAssertEqual(stock[1][column(.standardSetBy)], words.base, "\(kind)")
+            XCTAssertEqual(stock[4][column(.standardSetBy)], words.own, "\(kind)")
+        }
+    }
+
+    func testOfficeAndBaseBothReadAsSetFromOutsideTheList() throws {
+        for word in ["Base", "base", "Office", "OFFICE", " office "] {
+            let sheets = editing(try exported(log, at: time(10)), line: "Flame sensor", .standardSetBy, to: word)
+            let row = try VanStockSheet.rows(from: sheets).get().rows.first { $0.description == "Flame sensor" }
+            XCTAssertEqual(row?.standardSetByBase, true, word)
+        }
+        for word in ["This store", "This truck", "This list", "This warehouse", ""] {
+            let sheets = editing(try exported(log, at: time(10)), line: "Flame sensor", .standardSetBy, to: word)
+            let row = try VanStockSheet.rows(from: sheets).get().rows.first { $0.description == "Flame sensor" }
+            XCTAssertEqual(row?.standardSetByBase, false, word)
+        }
+    }
+
+    func testAStoresExportImportedStraightBackChangesNothing() throws {
+        let store = VanIdentity(id: "s1", name: "Main street", place: .store)
+        let sheets = try written(store, kind: .store)
+        XCTAssertEqual(sheets[0].name, "Store stock")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
+        // As for any unedited workbook: only the unreliable igniter is offered, as a count.
+        XCTAssertEqual(proposal.counts.map(\.itemID), ["igniter"])
+        XCTAssertEqual(proposal.edits, [])
+        XCTAssertEqual(proposal.newLines, [])
+
+        // Taken over on another phone, each standard keeps who set it.
+        let takeover = try VanStockHandover.takeover(from: sheets, at: time(20), batch: "t").get()
+        XCTAssertEqual(takeover.van?.place, .store)
+        let byName = Dictionary(uniqueKeysWithValues: takeover.log.items.map { ($0.description, $0.standardSetBy) })
+        XCTAssertEqual(byName["Flame sensor"], .base, "the office's figure stays the office's")
+        XCTAssertEqual(byName["Thermostat cable"], .van, "the store's own figure stays its own")
+    }
+
+    func testAnOlderVanStockWorkbookAndAForeignOneStillImport() throws {
+        // A store's phone reading a workbook an older build wrote, named "Van stock".
+        let older = try exported(log, at: time(10))
+        XCTAssertEqual(older[0].name, "Van stock")
+        XCTAssertEqual(try VanStockSheet.rows(from: older).get().rows.count, 4)
+
+        // A sheet somebody else wrote, under a name of their own, after a hidden sheet.
+        let foreign = [
+            XLSXReader.Sheet(name: VanStockSheet.metaSheetName, isHidden: true, rows: [["key", "value"]]),
+            XLSXReader.Sheet(name: "Cellar", isHidden: false, rows: [["Description", "Qty"], ["Soda water", "6"]]),
+        ]
+        let read = try VanStockSheet.rows(from: foreign).get()
+        XCTAssertEqual(read.rows.map(\.description), ["Soda water"])
+    }
 }

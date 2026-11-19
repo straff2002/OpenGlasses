@@ -8,7 +8,11 @@ import Foundation
 /// takes the whole import back. A sheet this app did not write is read by its headers.
 enum VanStockSheet {
 
+    /// The van's stock sheet, and every older workbook's. A list kept elsewhere names its sheet
+    /// for its place (Plan MK §3): see `stockSheetName(_:)`.
     static let stockSheetName = "Van stock"
+    /// Excel refuses a sheet name longer than this.
+    static let sheetNameLimit = 31
     static let historySheetName = "History"
     /// The hidden sheet that says when the workbook was written.
     static let metaSheetName = "Avenkin"
@@ -55,21 +59,71 @@ enum VanStockSheet {
         }
     }
 
-    // MARK: - Out
+    // MARK: - The place
 
-    /// "Van stock 2026-10-14.xlsx".
-    static func fileName(exportedAt: Date, calendar: Calendar = .current) -> String {
-        let parts = calendar.dateComponents([.year, .month, .day], from: exportedAt)
-        return String(format: "Van stock %04d-%02d-%02d.xlsx", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    /// The stock sheet's name for a place: "Van stock", "Store stock", "Stock" (Plan MK §3).
+    /// Workbook text, English like the rest of the workbook, and never longer than Excel allows.
+    static func stockSheetName(_ kind: StockPlace.Kind) -> String {
+        String(StockPlaceWording(kind).title.prefix(sheetNameLimit))
     }
 
+    /// Every name a stock sheet has been written under, so a workbook is read whatever kind of
+    /// place wrote it.
+    static let stockSheetNames: Set<String> = Set(StockPlace.Kind.allCases.map(stockSheetName))
+
+    /// The place a workbook for this list is written for: the organisation's profile over the
+    /// list's own choice, over van (Plan MK §2).
+    static func kind(for van: VanIdentity?) -> StockPlace.Kind {
+        StockPlaceSetting.current(list: van?.place).kind
+    }
+
+    /// What the Standard set by column says for who set a line's standard. A vehicle keeps
+    /// "Base" and "This truck"; premises say "Office" and "This store", "This warehouse" or "This
+    /// list" (Plan MK §3). The reader takes "Base" and "Office" alike as set from outside.
+    static func standardSetByText(_ setBy: VanStockItem.StandardOrigin, kind: StockPlace.Kind) -> String {
+        switch (setBy, kind) {
+        case (.base, .van), (.base, .truck): return "Base"
+        case (.base, _): return "Office"
+        case (.van, .van), (.van, .truck): return "This truck"
+        case (.van, .store): return "This store"
+        case (.van, .warehouse): return "This warehouse"
+        case (.van, .stock): return "This list"
+        }
+    }
+
+    /// The words in the Standard set by column that mean the standard came from outside the
+    /// list: a vehicle's base or premises' office, in any case.
+    static let setByOutsideWords: Set<String> = ["base", "office"]
+
+    // MARK: - Out
+
+    /// "Van stock 2026-10-14.xlsx", or "Store stock 2026-10-14.xlsx" for a store (Plan MK §3).
+    /// With no kind given, the profile's place or van, because there is no list to ask.
+    static func fileName(exportedAt: Date, calendar: Calendar = .current, kind: StockPlace.Kind? = nil) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: exportedAt)
+        let title = StockPlaceWording(kind ?? Self.kind(for: nil)).title
+        return String(format: "%@ %04d-%02d-%02d.xlsx", title, parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    /// A file name this wrote, with its place's title changed to `kind`'s and the date kept:
+    /// "Van stock 2026-10-14.xlsx" becomes "Store stock 2026-10-14.xlsx". A name that does not
+    /// start with a place's title comes back as it was.
+    static func fileName(retitling name: String, to kind: StockPlace.Kind) -> String {
+        let titles = StockPlace.Kind.allCases.map { StockPlaceWording($0).title }.sorted { $0.count > $1.count }
+        guard let old = titles.first(where: { name.hasPrefix($0 + " ") }) else { return name }
+        return StockPlaceWording(kind).title + name.dropFirst(old.count)
+    }
+
+    /// The workbook. With no kind given, the place in force for `van` (`kind(for:)`).
     static func data(_ log: VanStockLog, van: VanIdentity? = nil, exportedAt: Date,
-                     calendar: Calendar = .current) -> Data {
-        XLSXWriter.data(for: workbook(log, van: van, exportedAt: exportedAt, calendar: calendar), modified: exportedAt)
+                     calendar: Calendar = .current, kind: StockPlace.Kind? = nil) -> Data {
+        XLSXWriter.data(for: workbook(log, van: van, exportedAt: exportedAt, calendar: calendar, kind: kind),
+                        modified: exportedAt)
     }
 
     static func workbook(_ log: VanStockLog, van: VanIdentity? = nil, exportedAt: Date,
-                         calendar: Calendar = .current) -> XLSX.Workbook {
+                         calendar: Calendar = .current, kind: StockPlace.Kind? = nil) -> XLSX.Workbook {
+        let kind = kind ?? Self.kind(for: van)
         let rows = VanStockRows.rows(log)
         var stock: [[XLSX.Cell]] = [Column.allCases.map { .text($0.rawValue) }]
         for row in rows {
@@ -84,11 +138,8 @@ enum VanStockSheet {
                 case .onHand: return level.isRecorded ? .number(level.onHand) : .empty
                 case .standard: return item.standard.map(XLSX.Cell.number) ?? .empty
                 case .standardSetBy:
-                    switch item.standard == nil ? nil : item.standardSetBy {
-                    case .base?: return .text("Base")
-                    case .van?: return .text("This truck")
-                    case nil: return .empty
-                    }
+                    guard item.standard != nil, let setBy = item.standardSetBy else { return .empty }
+                    return .text(standardSetByText(setBy, kind: kind))
                 case .toTopUp: return item.standard.map { .number(max($0 - level.onHand, 0)) } ?? .empty
                 case .minimum: return item.minimum.map(XLSX.Cell.number) ?? .empty
                 case .onOrder: return level.onOrder > 0 ? .number(level.onOrder) : .empty
@@ -127,7 +178,7 @@ enum VanStockSheet {
         }
 
         return XLSX.Workbook(sheets: [
-            XLSX.Sheet(name: stockSheetName, columns: Column.allCases.map(\.layout), rows: stock),
+            XLSX.Sheet(name: stockSheetName(kind), columns: Column.allCases.map(\.layout), rows: stock),
             XLSX.Sheet(name: historySheetName,
                        columns: [XLSX.Column(width: 18, isText: true), XLSX.Column(width: 38), XLSX.Column(width: 22),
                                  XLSX.Column(width: 10), XLSX.Column(width: 16, isText: true), XLSX.Column(width: 10)],
@@ -271,7 +322,10 @@ enum VanStockSheet {
 
     /// Read the stock sheet of a workbook into rows. Nothing is compared with the phone here.
     static func rows(from sheets: [XLSXReader.Sheet]) -> Result<Read, Failure> {
-        let sheet = sheets.first { $0.name == stockSheetName } ?? sheets.first { !$0.isHidden }
+        // By any place's name, so a store's workbook reads as a van's does; otherwise the first
+        // sheet that is not the meta sheet, as a workbook somebody else wrote is (Plan MK §3).
+        let sheet = sheets.first { stockSheetNames.contains($0.name) }
+            ?? sheets.first { !$0.isHidden && $0.name != metaSheetName }
         guard let sheet, let (headerIndex, columns) = header(in: sheet.rows) else {
             return .failure(.noRecognisableHeader)
         }
@@ -334,7 +388,7 @@ enum VanStockSheet {
                 onHandCell: numbers[.onHand], minimumCell: numbers[.minimum], standardCell: numbers[.standard],
                 onOrder: numbers[.onOrder] ?? nil,
                 needsCount: (cell(.needsCount) ?? "").lowercased() == "yes",
-                standardSetByBase: (cell(.standardSetBy) ?? "").lowercased() == "base",
+                standardSetByBase: setByOutsideWords.contains((cell(.standardSetBy) ?? "").lowercased()),
                 binCell: cell(.bin)))
         }
         return .success(read)

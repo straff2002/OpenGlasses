@@ -18,14 +18,14 @@ struct VanStockHandoverSheet: View {
                             .font(.callout)
                             .textSelection(.enabled)
                     } header: {
-                        Text("What base is told")
+                        Text("The message")
                     }
                     Section {
                         Label(staged.fileURL.lastPathComponent, systemImage: "tablecells")
                     } header: {
                         Text("Attached")
                     } footer: {
-                        Text("The whole van list as a spreadsheet. The next person to take this vehicle opens it in Avenkin to pick the list up.")
+                        Text("The whole list as a spreadsheet. The next person opens it in Avenkin to pick the list up.")
                     }
                     Section {
                         Button {
@@ -40,7 +40,7 @@ struct VanStockHandoverSheet: View {
                 }
             }
             .ogFormStyle()
-            .navigationTitle("Stock for base")
+            .navigationTitle("Send the stock list")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

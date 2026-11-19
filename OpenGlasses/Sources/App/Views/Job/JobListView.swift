@@ -190,13 +190,15 @@ struct JobListView: View {
 
     private var vanStockSection: some View {
         Section {
+            // Named for the place in force, or the list's own name (Plan MK §3).
             Button { onOpen(.vanStock) } label: {
-                Label("Van stock", systemImage: "shippingbox")
+                VanStockEntryLabel(store: .shared)
                     .frame(maxWidth: .infinity, minHeight: OGMetrics.minTouchTarget, alignment: .leading)
             }
+            .accessibilityIdentifier("van-stock-row")
             .accessibilityHint(Self.hint(.vanStock))
         } footer: {
-            Text("What you've loaded and used, kept on this phone.")
+            Text("What comes in and what is used, kept on this phone.")
         }
     }
 
@@ -270,7 +272,7 @@ struct JobListView: View {
         case .pastJob: return String(localized: "Opens the work record, its conversation, and Send report.")
         case .upcomingJob: return String(localized: "Opens the job's brief, directions and Start.")
         case .transcript: return String(localized: "Opens the conversation.")
-        case .vanStock: return String(localized: "Opens the list of what is on the van.")
+        case .vanStock: return String(localized: "Opens the stock list.")
         case .vanStockItem: return String(localized: "Opens this line: its count, details and history.")
         }
     }

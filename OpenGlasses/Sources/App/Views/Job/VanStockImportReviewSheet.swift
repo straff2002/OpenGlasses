@@ -4,7 +4,8 @@ import SwiftUI
 ///
 /// Everything the import would do is on this sheet before anything is written: counts, new lines,
 /// changed details, lines the sheet no longer has, and rows that were refused. One button applies
-/// all of it as a single batch, so one Undo on the Van Stock screen takes it back.
+/// all of it as a single batch, so one Undo on the Van Stock screen takes it back. Its sentences
+/// name no place (Plan MK §3); only the takeover choice follows the place.
 struct VanStockImportReviewSheet: View {
     @ObservedObject var service: VanStockImportService
     /// Called after the import was applied.
@@ -19,6 +20,12 @@ struct VanStockImportReviewSheet: View {
     @State private var takingBaseFigure: Set<String> = []
 
     private var mode: VanStockImportService.Mode { chosenMode ?? service.suggestedMode }
+
+    /// The place a takeover would leave this phone's list in: the profile's, or else the
+    /// workbook's, or else the list's own (Plan MK §2).
+    private var takeoverKind: StockPlace.Kind {
+        StockPlaceSetting.current(list: service.takeover?.van?.place ?? VanStockStore.shared.van?.place).kind
+    }
 
     var body: some View {
         NavigationStack {
@@ -72,7 +79,7 @@ struct VanStockImportReviewSheet: View {
                     Image(systemName: refusal == .nothingToChange ? "checkmark.circle" : "exclamationmark.triangle")
                 }
             } footer: {
-                Text("Nothing on the van list was changed.")
+                Text("Nothing on the list was changed.")
             }
         }
         .ogFormStyle()
@@ -81,11 +88,11 @@ struct VanStockImportReviewSheet: View {
     private func refusalText(_ refusal: VanStockImportService.Refusal) -> Text {
         switch refusal {
         case .fieldAssistOff:
-            return Text("Field Assist is off, so there is no van list to import into.")
+            return Text("Field Assist is off, so there is no stock list to import into.")
         case .switchedOffByOrganisation:
-            return Text("Your organisation has switched van stock off on this phone.")
+            return Text("Your organisation has switched the stock list off on this phone.")
         case .listUnreadable:
-            return Text("The van list on this phone can't be read. Start it again from the Van stock screen first.")
+            return Text("The list on this phone can't be read. Start it again from the Stock screen first.")
         case .fileUnreadable:
             return Text("That file couldn't be read.")
         case .workbook(.notAWorkbook):
@@ -99,7 +106,7 @@ struct VanStockImportReviewSheet: View {
         case .noRecognisableHeader:
             return Text("That spreadsheet has no header row this recognises. It needs Part number or Description, and On hand.")
         case .nothingToChange:
-            return Text("That spreadsheet matches the van list already. There is nothing to import.")
+            return Text("That spreadsheet matches the list already. There is nothing to import.")
         }
     }
 
@@ -111,9 +118,11 @@ struct VanStockImportReviewSheet: View {
             if service.takeover != nil || service.baseline != nil {
                 Section {
                     Picker("Use this spreadsheet as", selection: Binding(get: { mode }, set: { chosenMode = $0 })) {
-                        if service.takeover != nil { Text("This van, taken over").tag(VanStockImportService.Mode.takeover) }
+                        if service.takeover != nil {
+                            Text(StockPlaceScreenText.takeOver(takeoverKind)).tag(VanStockImportService.Mode.takeover)
+                        }
                         Text("Corrections to my list").tag(VanStockImportService.Mode.corrections)
-                        if service.baseline != nil { Text("Base's standard load").tag(VanStockImportService.Mode.baseline) }
+                        if service.baseline != nil { Text("Standards from the office").tag(VanStockImportService.Mode.baseline) }
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
@@ -149,11 +158,11 @@ struct VanStockImportReviewSheet: View {
                 LabeledContent("Need counting") { Text("\(takeover.needCounting)") }
             }
             if service.takeoverIsStale {
-                Label("This is older than the last entry on this phone for the same van.",
+                Label("This is older than the last entry on this phone for the same list.",
                       systemImage: "exclamationmark.triangle")
             }
         } footer: {
-            Text("The spreadsheet becomes this phone's van list. The list that is here now is kept once, under Previous list on the Van stock screen, and is never merged in.")
+            Text("The spreadsheet becomes this phone's list. The list that is here now is kept once, under Previous list on the Stock screen, and is never merged in.")
         }
         refusalsSection(takeover.refusals)
     }
@@ -180,7 +189,7 @@ struct VanStockImportReviewSheet: View {
                             })) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(change.name)
-                                Text("This truck carries \(current). Base says \(change.standard).")
+                                Text("This list's own figure is \(current). The spreadsheet says \(change.standard).")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -188,9 +197,9 @@ struct VanStockImportReviewSheet: View {
                     }
                 }
             } header: {
-                Text("Set by this truck")
+                Text("Set by this list")
             } footer: {
-                Text("This truck's own figure is kept unless you switch a line on to take base's.")
+                Text("This list's own figure is kept unless you switch a line on to take the spreadsheet's.")
             }
         }
         let plain = changes.filter { if case .keptOwn = $0.kind { return false } else { return true } }
@@ -206,7 +215,7 @@ struct VanStockImportReviewSheet: View {
                     }
                 }
             } header: {
-                Text("Standard load")
+                Text("Standards")
             }
         }
     }
@@ -221,7 +230,7 @@ struct VanStockImportReviewSheet: View {
                 Text("\(proposal.counts.count) counts, \(proposal.newLines.count) new lines, \(proposal.edits.count) lines with changed details.")
                     .foregroundStyle(.secondary)
             } footer: {
-                Text("Nothing is changed until you tap Apply. Undo on the Van stock screen takes the whole import back.")
+                Text("Nothing is changed until you tap Apply. Undo on the Stock screen takes the whole import back.")
             }
 
             let conflicts = proposal.counts.filter(\.movedSinceExport)

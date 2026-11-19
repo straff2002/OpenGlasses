@@ -1,11 +1,14 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// What is on the van, on the phone (Plan IH §5).
+/// What is on the van, on the phone (Plan IH §5), or in the store or wherever the list is kept
+/// (Plan MK).
 ///
 /// The ordinary way to fix one wrong figure: a searchable list, and a page per line where the
 /// count is set by hand. Every state shown here is also spoken by `van_stock`; the list and the
-/// voice read the same log through the same service, so they cannot disagree.
+/// voice read the same log through the same service, so they cannot disagree. Its sentences name
+/// no place; the title, the takeover and the empty list's hint follow the place in force
+/// (`VanStockStore.resolvedPlace`, Plan MK §3).
 struct VanStockView: View {
     @ObservedObject var store: VanStockStore
     var service: VanStockService = .shared
@@ -17,8 +20,7 @@ struct VanStockView: View {
     @State private var importing = false
     @State private var sharing: ShareItem?
     @State private var exportFailed = false
-    @State private var namingVan = false
-    @State private var vanName = ""
+    @State private var namingPlace = false
     @State private var confirmingRestore = false
 
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
@@ -36,7 +38,7 @@ struct VanStockView: View {
                             .buttonStyle(.plain)
                     }
                     if rows.isEmpty {
-                        Text("Nothing on the van matches that.")
+                        Text("Nothing on the list matches that.")
                             .foregroundStyle(.secondary)
                     }
                 } footer: {
@@ -46,7 +48,7 @@ struct VanStockView: View {
         }
         .ogFormStyle()
         .searchable(text: $search, prompt: Text("Part number or description"))
-        .navigationTitle(store.van?.name.isEmpty == false ? store.van?.name ?? "" : String(localized: "Van stock"))
+        .navigationTitle(store.screenTitle)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Undo") { _ = service.undo(source: .typed) }
@@ -71,16 +73,15 @@ struct VanStockView: View {
                 Button {
                     if !VanStockHandoverService.shared.stage() { exportFailed = true }
                 } label: {
-                    Label("Send stock to base…", systemImage: "paperplane")
+                    Label("Send the stock list…", systemImage: "paperplane")
                 }
                 .disabled(store.isUnreadable || store.log.isEmpty || Config.hipaaMode)
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button {
-                    vanName = store.van?.name ?? ""
-                    namingVan = true
+                    namingPlace = true
                 } label: {
-                    Label("Name this van…", systemImage: "pencil")
+                    Label("Name and place…", systemImage: "pencil")
                 }
                 .disabled(store.isUnreadable)
             }
@@ -94,12 +95,8 @@ struct VanStockView: View {
                 }
             }
         }
-        .alert("Name this van", isPresented: $namingVan) {
-            TextField("Truck 4", text: $vanName)
-            Button("Save") { store.nameVan(vanName) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The name goes on every spreadsheet, so base and the next shift know which vehicle it is.")
+        .sheet(isPresented: $namingPlace) {
+            VanStockPlaceSheet(store: store, books: VanStockPlaceSheet.installedBooks())
         }
         .confirmationDialog("Go back to the list from before the last takeover?",
                             isPresented: $confirmingRestore, titleVisibility: .visible) {
@@ -120,7 +117,7 @@ struct VanStockView: View {
         .alert("The spreadsheet couldn't be made", isPresented: $exportFailed) {
             Button("OK") {}
         }
-        .confirmationDialog("Start the van list again?", isPresented: $confirmingReset, titleVisibility: .visible) {
+        .confirmationDialog("Start the list again?", isPresented: $confirmingReset, titleVisibility: .visible) {
             Button("Start again", role: .destructive) { store.removeAll() }
             Button("Keep it", role: .cancel) {}
         } message: {
@@ -131,7 +128,7 @@ struct VanStockView: View {
     /// Write the workbook to a temporary file, share it, and remove the file when the share is
     /// done — sent, saved or cancelled alike.
     private func export() {
-        guard let url = service.exportFile() else {
+        guard let url = VanStockHandoverService.exportFile(service, kind: store.resolvedPlace.kind) else {
             exportFailed = true
             return
         }
@@ -142,9 +139,9 @@ struct VanStockView: View {
 
     private var emptySection: some View {
         Section {
-            Text("Nothing on the van yet.")
+            Text("Nothing on the list yet.")
                 .font(.headline)
-            Text("Tell the assistant what you've loaded — “I've loaded four flame sensors” — or count what's on the shelves.")
+            Text(StockPlaceScreenText.emptyHint(store.resolvedPlace.kind))
                 .foregroundStyle(.secondary)
             Button("Import a spreadsheet…") { importing = true }
         }
@@ -152,10 +149,10 @@ struct VanStockView: View {
 
     private var unreadableSection: some View {
         Section {
-            Label("The van list on this phone can't be read.", systemImage: "exclamationmark.triangle")
+            Label("The list on this phone can't be read.", systemImage: "exclamationmark.triangle")
             Button("Start the list again", role: .destructive) { confirmingReset = true }
         } footer: {
-            Text("Nothing has been changed. The assistant won't guess what is on the van.")
+            Text("Nothing has been changed. The assistant won't guess any figures.")
         }
     }
 }
@@ -212,15 +209,15 @@ private struct VanStockRowLabel: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        if row.isUnverified {
-            Label("Number not checked against the manuals", systemImage: "questionmark.circle")
+        if let notFound = row.notFoundLabel {
+            Label(notFound, systemImage: "questionmark.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 }
 
-/// One line of the van: its level and how it is known, a count set by hand, its details, and its
+/// One line of the list: its level and how it is known, a count set by hand, its details, and its
 /// history (Plan IH §5).
 struct VanStockItemView: View {
     @ObservedObject var store: VanStockStore
@@ -251,9 +248,9 @@ struct VanStockItemView: View {
                 .navigationTitle(item.description.isEmpty ? (item.number ?? "") : item.description)
                 .onAppear { if !loaded { fill(from: item, level); loaded = true } }
             } else {
-                Text("This line is no longer on the van list.")
+                Text("This line is no longer on the list.")
                     .foregroundStyle(.secondary)
-                    .navigationTitle("Van stock")
+                    .navigationTitle(store.screenTitle)
             }
         }
     }
@@ -268,7 +265,7 @@ struct VanStockItemView: View {
                       systemImage: "exclamationmark.triangle")
             }
             if let asOf = level.asOf {
-                LabeledContent("On the van") {
+                LabeledContent("On hand") {
                     Text(item.unit == .each ? "\(level.onHand)" : "\(level.onHand) \(item.unit.rawValue)")
                 }
                 LabeledContent("How it's known") {

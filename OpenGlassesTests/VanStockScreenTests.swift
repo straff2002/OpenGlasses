@@ -150,4 +150,53 @@ final class VanStockScreenTests: XCTestCase {
         PolicyEnvelope.clear()
         XCTAssertFalse(Config.organizationForbidsVanStock, "removing the profile lifts it")
     }
+
+    // MARK: Name and place (Plan MK P2)
+
+    func testTheProfilesPlaceLocksTheResolvedPlaceAndIsNeverWrittenIntoTheList() {
+        store.setPlace(.truck)
+        XCTAssertEqual(store.resolvedPlace, .init(kind: .truck, isLocked: false))
+        XCTAssertEqual(store.screenTitle, "Truck stock")
+
+        let key = SettingKey.organizationStockPlace
+        PolicyEnvelope.install(apply([key.rawValue: RawSetting(.string("store"), .default)]),
+                               organizationName: "Northbridge Mechanical")
+        XCTAssertEqual(Config.organizationStockPlace, "store")
+        XCTAssertEqual(store.resolvedPlace, .init(kind: .store, isLocked: true))
+        XCTAssertEqual(store.screenTitle, "Store stock")
+        XCTAssertEqual(store.van?.place, .truck, "the profile's place is resolved over the list's, not written in")
+
+        PolicyEnvelope.clear()
+        XCTAssertNil(Config.organizationStockPlace)
+        XCTAssertEqual(store.resolvedPlace, .init(kind: .truck, isLocked: false), "removing the profile gives it back")
+    }
+
+    func testAnUnknownProfilePlaceIsNoSetting() {
+        // A value the content check would drop never reaches the envelope; read strictly anyway.
+        XCTAssertEqual(StockPlaceSetting.resolve(profile: "boat", list: .store), .init(kind: .store, isLocked: false))
+        XCTAssertEqual(store.resolvedPlace, .init(kind: .van, isLocked: false), "a list nobody placed is a van")
+        XCTAssertEqual(store.screenTitle, "Van stock")
+    }
+
+    func testTheListsNameIsTheTitleWhateverThePlace() {
+        store.nameVan("Main street")
+        store.setPlace(.store)
+        XCTAssertEqual(store.screenTitle, "Main street")
+        store.setPlace(.stock)
+        XCTAssertEqual(store.screenTitle, "Main street")
+    }
+
+    func testNamingAndPlacingAndNamingABookKeepEachOther() {
+        store.nameVan("Workshop")
+        store.setPlace(.stock)
+        store.checkNumbers(against: "supplier")
+        XCTAssertEqual(store.van?.name, "Workshop")
+        XCTAssertEqual(store.van?.place, .stock)
+        XCTAssertEqual(store.van?.checkVaultID, "supplier")
+
+        let reopened = VanStockStore(directory: directory, now: clock)
+        XCTAssertEqual(reopened.van?.place, .stock)
+        XCTAssertEqual(reopened.van?.checkVaultID, "supplier")
+        XCTAssertEqual(reopened.screenTitle, "Workshop")
+    }
 }

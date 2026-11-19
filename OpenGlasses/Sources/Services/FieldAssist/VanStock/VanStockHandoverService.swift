@@ -21,9 +21,13 @@ final class VanStockHandoverService: ObservableObject {
     @Published private(set) var staged: Staged?
 
     private let service: VanStockService
+    /// The place in force for the list (Plan MK §2), which names the workbook's file.
+    private let place: @MainActor () -> StockPlace.Kind
 
-    init(service: VanStockService? = nil) {
+    init(service: VanStockService? = nil,
+         place: (@MainActor () -> StockPlace.Kind)? = nil) {
         self.service = service ?? .shared
+        self.place = place ?? { VanStockStore.shared.resolvedPlace.kind }
     }
 
     /// Build the handover and put it in front of the technician. False when there is nothing
@@ -31,10 +35,26 @@ final class VanStockHandoverService: ObservableObject {
     @discardableResult
     func stage() -> Bool {
         discard()
-        guard let url = service.exportFile() else { return false }
+        guard let url = Self.exportFile(service, kind: place()) else { return false }
         staged = Staged(id: url.deletingLastPathComponent().lastPathComponent,
                         message: service.handoverMessage(), fileURL: url)
         return true
+    }
+
+    /// The service's workbook, its file named for the place (Plan MK §3): "Store stock
+    /// 2026-11-19.xlsx" for a store. The sheet inside already follows the place; the file name is
+    /// set here, so the screen's Export and the handover name it the same way.
+    static func exportFile(_ service: VanStockService, kind: StockPlace.Kind) -> URL? {
+        guard let url = service.exportFile() else { return nil }
+        let name = VanStockSheet.fileName(retitling: url.lastPathComponent, to: kind)
+        guard name != url.lastPathComponent else { return url }
+        let renamed = url.deletingLastPathComponent().appendingPathComponent(name)
+        do {
+            try FileManager.default.moveItem(at: url, to: renamed)
+            return renamed
+        } catch {
+            return url
+        }
     }
 
     /// Finished with it — sent, or not: the temporary workbook goes.
