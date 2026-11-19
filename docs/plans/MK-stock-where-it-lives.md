@@ -1,10 +1,9 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **Decisions 1–6, 8 and 9 taken 2026-11-19 as
-recommended.** Decision 7 was reworked the same day on the owner's point that a store may want its
-numbers checked against a catalogue or a particular manual (§4), and is the one decision owed.
-The build follows as its own PR once they are taken. The build PR goes in after PR 1139 (the near-match fix), which adds
-van wording of its own to the same three files.
+**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All nine decisions taken 2026-11-19 as
+recommended**, 7 in the form reworked the same day on the owner's point that a store may want its
+numbers checked against a catalogue or a particular manual (§4). The build follows as its own PR,
+after PR 1139 (the near-match fix), which adds van wording of its own to the same three files.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the movement log, `van_stock`, the Van Stock screen, the spreadsheet
@@ -286,9 +285,10 @@ P0–P2 are one PR, under the house rhythm. P3 is the catalog PR. P4 is a report
 
 ## Decisions for Greig
 
-**1–6, 8 and 9 taken 2026-11-19 as recommended** (owner: "1. yes, 2, yes, 3, yes, 4, yes, 5, yes,
-6, yes" and "8 and 9 yes"). 7 was reworked on the owner's question ("a store could want to search
-through a catalogue or a specific manual for a part number?") and is the one decision owed.
+**All nine taken 2026-11-19 as recommended** (owner: "1. yes, 2, yes, 3, yes, 4, yes, 5, yes, 6,
+yes", "8 and 9 yes"). 7 was reworked on the owner's question ("a store could want to search
+through a catalogue or a specific manual for a part number?") and taken in that form ("Yes, take
+7").
 
 1. ✅ **Four kinds, and a custom name rides on one of them** (recommended): van, truck, store,
    warehouse, with the list's existing name as the custom part. The alternative is a free-text
@@ -312,7 +312,7 @@ through a catalogue or a specific manual for a part number?") and is the one dec
    actions. The alternative renames the tool to `stock`, which touches the classification tables,
    the offline policy, the field tool profile and every stock test, for a word the model reads
    through the description anyway.
-7. **Numbers are checked against the book the list names, and marked only when that book was
+7. ✅ **Numbers are checked against the book the list names, and marked only when that book was
    asked** (recommended, reworked 2026-11-19). The order is the open job's vault, then a vault the
    list names under "Check numbers against" (a supplier's catalogue with a parts table, or one
    manual), then none. Nothing is searched until a book is named, and the mark ("Not found in
