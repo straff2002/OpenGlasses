@@ -1,6 +1,6 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 🚧 **P0 built 2026-11-19 (headless)**; P1–P4 to come. All ten decisions taken 2026-11-19
+**Status:** 🚧 **P0 and P2 built 2026-11-19 (headless)**; P1, P3 and P4 to come. All ten decisions taken 2026-11-19
 as recommended, 7 in the form reworked the same day on the owner's point that a store may want its
 numbers checked against a catalogue or a particular manual (§4). P0 adds `StockPlace` (the five
 kinds, their family, a lenient read that takes an unknown kind as van and a strict one that
@@ -10,7 +10,17 @@ returns none), `StockPlaceWording` (§3's table, plus `putVerb` "loaded"/"receiv
 book, and `VanStockVerification` on `VanStockItem` with the legacy decode. No sentence, tool or
 screen changed: `verified` stays as a computed two-state view so the composer, service and matcher
 compile untouched, and a verification edit is recorded under the existing `verified` attribute so
-an older build still reads the log. **Amended 2026-11-19 for P1:** the job-only actions follow an
+an older build still reads the log. P2 adds `SettingKey.organizationStockPlace` (profile-owned,
+denied by default, summarised as "Stock is kept in the store"), the deployer sheet's row, the
+"Name and place…" sheet (name, kind, read-only when the profile locks it, and "Check numbers
+against" with its "has gone" state), the place-neutral screen strings, `StockPlaceScreenText` (the
+localised per-kind title, takeover, hint, placeholder, picker names and profile line) with
+`VanStockStore.resolvedPlace`, the workbook's sheet, file name and Standard set by column per
+place with "Base" and "Office" both read as set from outside, the "Not found in …" mark on
+`notFound` lines only, and the Stock screen's accessibility-audit entries. Two deviations: the
+service's `exportFile` cannot change before P1, so the screen's Export and the handover rename its
+file for the place (`VanStockHandoverService.exportFile`), and the sheet name carries no date (the
+file name does), so an older build still finds the stock sheet first. **Amended 2026-11-19 for P1:** the job-only actions follow an
 open job for every kind of place (§5), and `van_stock` gains `list` (§8).
 **Track:** Field Assist (B2B).
 **Builds on:**
@@ -313,7 +323,10 @@ shop asks by place. `van_stock` gains `list`, for every kind of place:
   §4's book order (job, then the list's named vault, then none) through a `PartsVerifier` built
   for a named vault outside a session, and `found`/`notFound`/`notChecked` naming the book; §5's
   premises `send_to_base` with no extras question. Tests pin the wording per place (below).
-- **P2 — who sets it, and the screen (headless + simulator).** The `organizationStockPlace` key, its
+- **P2 — who sets it, and the screen (headless + simulator).** ✅ Built 2026-11-19, headless.
+  The Stock list's audit entry passed locally; the AX5 and Name and place entries were blocked on
+  the local simulator by a cloud-sharing consent sheet earlier runs left over the app, so their
+  first run is CI's. Owed: the simulator screenshots below (a store, dark appearance, AX5). The `organizationStockPlace` key, its
   content check, the profile summary line and the deployer sheet row; "Name and place…" with the
   locked state and the "Check numbers against" vault picker (with its "has gone" state); the place-neutral rewrite of the screen strings; the per-kind title, row, takeover
   label, hint and placeholder; the workbook's sheet and file names; the "Not in the manuals" mark.
