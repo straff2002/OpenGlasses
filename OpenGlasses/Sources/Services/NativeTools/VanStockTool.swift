@@ -13,7 +13,7 @@ private func vanStockLineProperties() -> [String: Any] {
         ],
         "quantity": [
             "type": "integer",
-            "description": "How many. Defaults to 1 for load, use and remove; required for count."
+            "description": "How many, as a whole number; fractions are not kept yet. Defaults to 1 for load, use and remove; required for count."
         ],
         "unit": [
             "type": "string",
@@ -113,6 +113,8 @@ final class VanStockTool: NativeTool {
         let action = (args["action"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
         let lines = Self.lines(args)
 
+        if Self.quantityActions.contains(action), let refusal = Self.notWholeRefusal(args) { return refusal }
+
         switch action {
         case "check":
             guard let line = lines.first else { return "Say which part to check, by number or description." }
@@ -158,18 +160,52 @@ final class VanStockTool: NativeTool {
         }
     }
 
+    /// The actions that write a quantity. Any of them with a figure that is not whole changes nothing.
+    private static let quantityActions: Set<String> = ["load", "use", "remove", "count", "set_standard"]
+
+    /// The raw entries of one call: `items` when it is given, otherwise the single-part fields.
+    private static func entries(_ args: [String: Any]) -> [[String: Any]] {
+        (args["items"] as? [[String: Any]]).flatMap { $0.isEmpty ? nil : $0 } ?? [args]
+    }
+
+    /// A sentence refusing the whole call when any of its quantities is not a whole number, so
+    /// 4.25 litres is never recorded as 4 and a standard of 0.5 never clears the standard.
+    static func notWholeRefusal(_ args: [String: Any]) -> String? {
+        let offending: [String] = entries(args).compactMap { entry in
+            guard case .notWhole(let spelling) = PartsRequestTool.quantityArgument(entry["quantity"]),
+                  let named = Self.line(entry) else { return nil }
+            return "\(spelling) for \(named.reference)"
+        }
+        guard !offending.isEmpty else { return nil }
+        let list = offending.count == 1
+            ? offending[0]
+            : offending.dropLast().joined(separator: ", ") + " and " + offending[offending.count - 1]
+        let verdict = offending.count == 1 ? "is not a whole number" : "are not whole numbers"
+        return "Nothing was changed. Van stock keeps whole numbers only for now, and \(list) \(verdict). "
+            + "Ask the technician for a whole number."
+    }
+
     /// The lines of one call: `items` when it is given, otherwise the single-part fields.
     static func lines(_ args: [String: Any]) -> [VanStockService.Line] {
-        let raw = (args["items"] as? [[String: Any]]).flatMap { $0.isEmpty ? nil : $0 } ?? [args]
-        return raw.compactMap { entry in
-            let line = VanStockService.Line(part: Self.text(entry["part"]),
-                                            description: Self.text(entry["description"]),
-                                            quantity: PartsRequestTool.integer(entry["quantity"]),
-                                            unit: Self.text(entry["unit"]),
-                                            code: Self.text(entry["code"]),
-                                            asNew: (entry["new_line"] as? Bool) ?? false)
-            return line.part == nil && line.description == nil && line.code == nil ? nil : line
+        entries(args).compactMap { Self.line($0) }
+    }
+
+    /// One entry as a line, or nil when it names no part, description or code. A quantity that is
+    /// not whole reads as none here; `notWholeRefusal` stops the call before that matters.
+    private static func line(_ entry: [String: Any]) -> VanStockService.Line? {
+        let quantity: Int?
+        if case .whole(let value) = PartsRequestTool.quantityArgument(entry["quantity"]) {
+            quantity = value
+        } else {
+            quantity = nil
         }
+        let line = VanStockService.Line(part: Self.text(entry["part"]),
+                                        description: Self.text(entry["description"]),
+                                        quantity: quantity,
+                                        unit: Self.text(entry["unit"]),
+                                        code: Self.text(entry["code"]),
+                                        asNew: (entry["new_line"] as? Bool) ?? false)
+        return line.part == nil && line.description == nil && line.code == nil ? nil : line
     }
 
     /// A call that carries a scanned code was scanned; anything else was said.

@@ -1,7 +1,7 @@
 # Plan ML — Measured Quantities (4.25 litres of oil, kept exactly, on the phone and to the office)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All nine decisions taken 2026-11-19 as
-recommended** (owner: "1-9 yes, build it"). Decision 9's refusal ships first, as its own PR. The build follows Plan [MK](MK-stock-where-it-lives.md)'s build PR (branch
+**Status:** 📝 Drafted 2026-11-19 — only Decision 9's refusal built. **All nine decisions taken 2026-11-19 as
+recommended** (owner: "1-9 yes, build it"). Decision 9's refusal is built (headless), on its own PR ahead of the rest: `van_stock` and `parts_request` now refuse a quantity that is not a whole number with a sentence (`PartsRequestTool.quantityArgument`), so 4.25 is never cut to 4. ML's own build replaces it for stock. The build follows Plan [MK](MK-stock-where-it-lives.md)'s build PR (branch
 `feat/mk-stock-place`), which is changing the same VanStock files now. This docs PR also amends
 Plan [HF](HF-office-stock-and-capture-contracts.md)'s four contracts so that the phone and the
 office agree on one quantity form before either side is built.

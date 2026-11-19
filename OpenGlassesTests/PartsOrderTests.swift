@@ -283,6 +283,24 @@ final class PartsOrderTests: XCTestCase {
         XCTAssertTrue(reply.contains("Nothing on this job is waiting to be ordered"), reply)
     }
 
+    func testAFractionOfAPartIsRefusedAndNothingIsRequested() async throws {
+        let service = try liveSession()
+        let tool = PartsRequestTool(sessionService: service, settings: { self.settings() },
+                                    resolveEmail: { _ in [] })
+        let reply = try await tool.execute(args: ["part": "70W16", "quantity": 2.5])
+        XCTAssertEqual(reply, "Nothing was requested. A parts request is a whole number of parts, and 2.5 is not one. Ask how many.")
+        XCTAssertEqual(service.activeSession?.partsRequests.count, 0)
+    }
+
+    func testAWholeNumberSentAsADecimalIsRequestedWhole() async throws {
+        let service = try liveSession()
+        let tool = PartsRequestTool(sessionService: service, settings: { self.settings() },
+                                    resolveEmail: { _ in [] })
+        let reply = try await tool.execute(args: ["part": "70W16", "quantity": 3.0])
+        XCTAssertTrue(reply.hasPrefix("Requested 3 × 70W16"), reply)
+        XCTAssertEqual(service.activeSession?.partsRequests.map(\.quantity), [3])
+    }
+
     func testTheDescriptionsPointAnOrderAtPartsRequestNotTheReport() {
         let parts = PartsRequestTool().description
         XCTAssertTrue(parts.contains("action 'send'"), parts)
