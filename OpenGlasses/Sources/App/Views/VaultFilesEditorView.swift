@@ -17,6 +17,8 @@ struct VaultFilesEditorView: View {
     @State private var addingFile = false
     @State private var newFileName = ""
     @State private var addFileError: String?
+    /// A file being added: the vault is checked again first, off the main thread.
+    @State private var savingFile = false
     /// Bumped after a file is added, so the list re-reads the vault's manifest.
     @State private var revision = 0
 
@@ -48,7 +50,9 @@ struct VaultFilesEditorView: View {
                                 Label("Add file…", systemImage: "doc.badge.plus")
                             }
                             .accessibilityIdentifier("vaultFiles.addFile")
+                            .disabled(savingFile)
                         }
+                        if savingFile { ProgressView("Checking…") }
                         if let addFileError {
                             OGStatusLabel(addFileError, kind: .error)
                         }
@@ -82,12 +86,17 @@ struct VaultFilesEditorView: View {
     }
 
     private func addFile() {
-        do {
-            _ = try VaultAuthoring.addFile(named: newFileName, to: vaultId)
-            addFileError = nil
-            revision += 1
-        } catch {
-            addFileError = error.localizedDescription
+        let name = newFileName
+        savingFile = true
+        Task {
+            defer { savingFile = false }
+            do {
+                _ = try await VaultAuthoring.addFile(named: name, to: vaultId)
+                addFileError = nil
+                revision += 1
+            } catch {
+                addFileError = error.localizedDescription
+            }
         }
     }
 

@@ -134,6 +134,28 @@ enum VaultImporter {
                                                                result: result))
     }
 
+    /// `installReportingOffMain` for a folder that replaces the vault it names, holding that vault's
+    /// `VaultOperationLock` across the validation and the install. While the validation runs off the
+    /// main thread, an index, a manual removal or a relay of the same vault could otherwise run and
+    /// then be overwritten by this install. For a caller that does not hold the lock already: the
+    /// lock is not reentrant.
+    @MainActor
+    static func installReportingOffMainLocked(from sourceDir: URL) async throws -> InstallReport {
+        guard let id = proposedVaultId(in: sourceDir) else {
+            // No readable manifest, so no vault to lock: the validation refuses the folder.
+            return try await installReportingOffMain(from: sourceDir)
+        }
+        return try await VaultOperationLock.withLock(id) {
+            try await installReportingOffMain(from: sourceDir)
+        }
+    }
+
+    /// The id the folder's `manifest.json` gives, if it can be read.
+    static func proposedVaultId(in sourceDir: URL) -> String? {
+        guard let data = try? Data(contentsOf: sourceDir.appendingPathComponent("manifest.json")) else { return nil }
+        return (try? JSONDecoder().decode(VaultManifest.self, from: data))?.id
+    }
+
     static func installReporting(from sourceDir: URL, origin: InstallOrigin = .folder,
                                  reservation: UUID? = nil,
                                  prevalidated: Prevalidated? = nil) throws -> InstallReport {

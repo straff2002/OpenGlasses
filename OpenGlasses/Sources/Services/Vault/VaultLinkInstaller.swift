@@ -109,7 +109,9 @@ enum VaultLinkInstaller {
                     let projected = manifest.personalProjection
                     try JSONEncoder().encode(projected).write(to: staging.appendingPathComponent("manifest.json"), options: .atomic)
                 }
-                let report = try VaultImporter.installReporting(from: staging, origin: personal ? .receivedSigned : .folder)
+                // Validated off the main thread (a set of long manuals takes minutes to check), under
+                // the lock this install already holds for the vault.
+                let report = try await VaultImporter.installReportingOffMain(from: staging, origin: personal ? .receivedSigned : .folder)
                 try VaultImporter.recordReceipt(request.receipt, for: report.manifest.id)
                 VaultRegistry.shared.reloadUserManifests()
                 VaultRegistry.shared.resetCache()

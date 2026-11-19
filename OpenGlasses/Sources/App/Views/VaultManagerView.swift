@@ -11,6 +11,8 @@ struct VaultManagerView: View {
     @State private var installed: [VaultManifest] = VaultImporter.installedManifests().filter { !$0.isPersonalLibrary }
     @State private var ledgers: [String: VaultDocumentLedger] = [:]
     @State private var importing = false
+    /// The folder being checked before it is installed (the check runs off the main thread).
+    @State private var checkingImport: String?
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @State private var warnings: [String] = []
@@ -79,7 +81,11 @@ struct VaultManagerView: View {
                 } label: {
                     Label("Import Vault Folder…", systemImage: "square.and.arrow.down")
                 }
-                .disabled(indexing.isIndexingAny || removalInFlight != nil || !ownVaultsGate.allowsImport)
+                .disabled(indexing.isIndexingAny || removalInFlight != nil || checkingImport != nil
+                          || !ownVaultsGate.allowsImport)
+                if let checkingImport {
+                    ProgressView("Checking \(checkingImport)…")
+                }
                 Button {
                     addingFromLink = true
                 } label: {
@@ -197,7 +203,7 @@ struct VaultManagerView: View {
         // A run started by another copy of this screen finished: read what it indexed.
         .onChange(of: indexing.runs.count) { _, _ in reloadLedgers() }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
-            handleImport(result)
+            Task { await handleImport(result) }
         }
         .sheet(isPresented: $addingFromLink) {
             VaultLinkSheet(service: link) {
@@ -615,17 +621,22 @@ struct VaultManagerView: View {
         }
     }
 
-    private func handleImport(_ result: Swift.Result<URL, Error>) {
+    private func handleImport(_ result: Swift.Result<URL, Error>) async {
         successMessage = nil
         warnings = []
         switch result {
         case .failure(let error):
             errorMessage = error.localizedDescription
         case .success(let url):
+            // Held open across the check and the install, and the learnings read after them.
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            checkingImport = url.lastPathComponent
+            defer { checkingImport = nil }
             do {
-                let report = try VaultImporter.installReporting(from: url)
+                // Checked off the main thread (a folder of long manuals takes minutes), under the
+                // vault's lock so nothing else changes that vault before the install replaces it.
+                let report = try await VaultImporter.installReportingOffMainLocked(from: url)
                 VaultRegistry.shared.reloadUserManifests()
                 warnings = report.warnings
                 reloadLedgers()

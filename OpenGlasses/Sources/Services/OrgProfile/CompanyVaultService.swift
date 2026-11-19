@@ -708,7 +708,7 @@ final class LiveCompanyVaultInstaller: CompanyVaultInstalling {
         }
         let service = VaultPackCatalogService(catalogURL: { nil }, fetch: fetch, publicKeyBase64: publicKeyBase64,
                                               currentBuild: currentBuild)
-        await service.install(vault.entry, keeping: VaultDocumentCarry.current(vaultId: vault.vaultId),
+        await service.install(vault.entry, keepsInstalledManuals: true,
                               checksArchive: !vault.isSealedCore)
         switch service.installStates[vault.id] {
         case .installed?: return nil

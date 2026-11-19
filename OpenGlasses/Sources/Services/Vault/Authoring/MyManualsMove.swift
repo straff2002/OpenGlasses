@@ -97,7 +97,11 @@ enum MyManualsMove {
         let vault = try VaultAuthoring.createVault(name: name, template: template, models: models, taken: taken)
         let moved: VaultManifest
         do {
-            moved = try VaultDocumentCarry.relay(vaultId: vault.id, removing: [], adding: carried)
+            // Validated off the main thread: every manual of the library is checked at once. The
+            // new vault's lock is held so nothing indexes it before the manuals are in.
+            moved = try await VaultOperationLock.withLock(vault.id) {
+                try await VaultDocumentCarry.relayOffMain(vaultId: vault.id, removing: [], adding: carried)
+            }
             try verify(carried, vault.id)
         } catch {
             // Nothing of the personal library has been touched: take the half-made vault away.

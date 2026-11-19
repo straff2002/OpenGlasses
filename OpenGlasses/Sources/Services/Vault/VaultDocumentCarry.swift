@@ -6,10 +6,11 @@ import Foundation
 /// A vault pack never ships manuals, and installing one lays down a new baseline whose manifest
 /// lists none: without this, updating a company vault would drop the manuals the company delivered
 /// and the ones the technician added. So a pack update lays the vault's current manuals in beside
-/// the new core files (`VaultPackCatalogService.install(_:keeping:)`), and a manual added, replaced
-/// or removed re-lays the installed vault with its manual set changed (`relay`). Both go through
-/// `VaultImporter.installReporting`, so validation, the atomic baseline swap and the overlay rules
-/// are the importer's own, and `VaultImporter.syncDocuments` then indexes only what changed.
+/// the new core files (`VaultPackCatalogService.install(_:keepsInstalledManuals:)`), and a manual
+/// added, replaced or removed re-lays the installed vault with its manual set changed (`relay`).
+/// Both go through `VaultImporter.installReporting`, so validation, the atomic baseline swap and the
+/// overlay rules are the importer's own, and `VaultImporter.syncDocuments` then indexes only what
+/// changed.
 ///
 /// Files are copied with `FileManager.copyItem`, which clones on APFS: a re-lay of a vault holding
 /// a gigabyte of manuals does not write a gigabyte.
@@ -82,6 +83,9 @@ enum VaultDocumentCarry {
     /// Re-lay the installed vault `vaultId` with `removing` taken out and `adding` put in (a manual
     /// of the same name is replaced). Its core files, its pack record and the technician's overlay
     /// stay; the caller indexes the result with `VaultImporter.syncDocuments`.
+    ///
+    /// This validates the whole vault on the calling thread, which is the main thread. The app's
+    /// own callers use `relayOffMain`; this one stays for tests that lay a vault out directly.
     @MainActor
     static func relay(vaultId: String, removing: Set<String>, adding: [Kept]) throws -> VaultManifest {
         let laid = try lay(vaultId: vaultId, removing: removing, adding: adding)

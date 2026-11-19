@@ -39,7 +39,7 @@ enum OrgPackInstaller {
            !VaultPackRowState.isNewer(entry.version, than: installed.version) {
             return .installed(vaultId: entry.vaultId)
         }
-        await catalog.install(entry, keeping: VaultDocumentCarry.current(vaultId: entry.vaultId))
+        await catalog.install(entry, keepsInstalledManuals: true)
         switch catalog.installStates[entry.id] {
         case .installed?:
             return .installed(vaultId: entry.vaultId)
