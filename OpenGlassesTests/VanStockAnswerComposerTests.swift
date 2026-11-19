@@ -218,6 +218,32 @@ final class VanStockAnswerComposerTests: XCTestCase {
         XCTAssertTrue(answer.contains("do not choose for them"), answer)
     }
 
+    func testTheClosestLineIsGivenToBeAskedAbout() {
+        let answer = composer.closest([item()], to: "frame sensor", levels: ["i": level(2)])
+        XCTAssertEqual(answer, "No line on the van list matches 'frame sensor' word for word. The closest on the van: "
+            + "2 × Flame sensor (62-23543-01) on the van — counted today at 10:40. It may have been misheard: "
+            + "ask the technician whether that is the part; if it is, give them this figure. Do not say there is "
+            + "none on the van unless they say it is none of these. Nothing was changed.")
+        let other = VanStockItem(id: "j", description: "Flame rod", createdBatch: "b0")
+        let both = composer.closest([item(), other], to: "frame sensor", levels: ["i": level(2)])
+        XCTAssertTrue(both.contains("1. 2 × Flame sensor (62-23543-01) on the van"), both)
+        XCTAssertTrue(both.contains("2. Flame rod is on the van list with nothing recorded against it"), both)
+        XCTAssertTrue(both.contains("which, if any, is the part"), both)
+        XCTAssertFalse(both.contains("do not look it up again"), both)
+    }
+
+    func testAMisheardWriteAsksAndChangesNothing() {
+        let use = composer.misheard([item()], reference: "frame sensor", levels: ["i": level(2)], mayCreate: false)
+        XCTAssertEqual(use, "Nothing on the van list matches 'frame sensor' word for word, but a word may have been "
+            + "misheard. Did they mean Flame sensor (62-23543-01) — 2 on the van? Ask the technician; do not choose "
+            + "for them. Nothing was changed.")
+        let other = VanStockItem(id: "j", description: "Flame rod", createdBatch: "b0")
+        let load = composer.misheard([item(), other], reference: "frame sensor", levels: ["i": level(2)], mayCreate: true)
+        XCTAssertTrue(load.contains("Did they mean 1. Flame sensor (62-23543-01) — 2 on the van; 2. Flame rod — 0 on the van?"), load)
+        XCTAssertTrue(load.contains("record it again with 'new_line' true"), load)
+        XCTAssertTrue(load.hasSuffix("Nothing was changed."), load)
+    }
+
     func testLowWording() {
         XCTAssertEqual(composer.low([]), "Nothing on the van is at or below its minimum.")
         let answer = composer.low([(item(minimum: 2), level(1, onOrder: 1)), (item(number: nil), level(0))])

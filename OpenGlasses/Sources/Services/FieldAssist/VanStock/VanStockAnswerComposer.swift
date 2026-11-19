@@ -44,6 +44,41 @@ struct VanStockAnswerComposer {
             + ". Ask the technician which one; do not choose for them. Nothing was changed."
     }
 
+    /// A check that matched nothing word for word but found a line that sounds like it. The
+    /// figure is given, to be confirmed rather than asserted, and the search is not closed the way
+    /// `notCarried` closes it: a tester's brand was heard as an everyday word, the check said
+    /// none, and 22 packs were on the van.
+    func closest(_ items: [VanStockItem], to reference: String, levels: [String: VanStockLevel]) -> String {
+        let figures = items.map { check($0, level: levels[$0.id] ?? VanStockLevel(itemID: $0.id)) }
+        let ask: String
+        if figures.count == 1 {
+            ask = "The closest on the van: " + figures[0] + " It may have been misheard: ask the technician "
+                + "whether that is the part; if it is, give them this figure."
+        } else {
+            let listed = figures.enumerated().map { "\($0.offset + 1). \($0.element)" }
+            ask = "The closest on the van: " + listed.joined(separator: " ") + " It may have been misheard: ask "
+                + "the technician which, if any, is the part; give them that line's figure, and do not choose for them."
+        }
+        return "No line on the van list matches '\(reference)' word for word. " + ask
+            + " Do not say there is none on the van unless they say it is none of these. Nothing was changed."
+    }
+
+    /// A write that matched nothing word for word but sounds like a line already on the van:
+    /// nothing is recorded against it, and a load or a count does not start a near-duplicate line
+    /// beside it, until the technician says which.
+    func misheard(_ items: [VanStockItem], reference: String, levels: [String: VanStockLevel],
+                  mayCreate: Bool) -> String {
+        let listed = items.enumerated().map { offset, item in
+            "\(items.count == 1 ? "" : "\(offset + 1). ")\(item.name) — \(levels[item.id]?.onHand ?? 0) on the van"
+        }
+        var answer = "Nothing on the van list matches '\(reference)' word for word, but a word may have been "
+            + "misheard. Did they mean " + listed.joined(separator: "; ") + "? Ask the technician; do not choose for them."
+        if mayCreate {
+            answer += " If it is a different part, record it again with 'new_line' true and it goes on the van list as a new line."
+        }
+        return answer + " Nothing was changed."
+    }
+
     func notOnVan(_ reference: String) -> String {
         "Nothing on the van list matches \(reference). Nothing was changed."
     }

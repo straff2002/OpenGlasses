@@ -111,6 +111,8 @@ final class VanStockService {
         switch match(line, in: log) {
         case .one(let item): return composer.check(item, level: log.level(of: item.id))
         case .several(let items): return composer.candidates(items, levels: log.levels)
+        // Not "none on the van": the line that sounds like it is read out, to be asked about.
+        case .near(let items): return composer.closest(items, to: line.reference, levels: log.levels)
         case .none: return composer.notCarried(line.reference)
         }
     }
@@ -309,12 +311,20 @@ final class VanStockService {
         var skipped: [VanStockItem] = []
         var unmatched: [String] = []
         var filled = 0
+        // An exception that only sounds like a line is asked about before anything is loaded:
+        // leaving the wrong line short is as much a change as loading it.
+        for line in exceptions {
+            if case .near(let items) = match(line, in: store.log) {
+                return composer.misheard(items, reference: line.reference, levels: store.log.levels, mayCreate: false)
+                    + " Once they say, record the top-up again, naming the part as the van list has it."
+            }
+        }
         store.update { log in
             for line in exceptions {
                 switch self.match(line, in: log) {
                 case .one(let item): skipped.append(item)
                 case .several(let items): skipped.append(contentsOf: items)
-                case .none: unmatched.append(line.reference)
+                case .near, .none: unmatched.append(line.reference)
                 }
             }
             let left = Set(skipped.map(\.id))
@@ -351,6 +361,8 @@ final class VanStockService {
         store.update { log in
             switch self.match(line, in: log) {
             case .several(let items): answer = self.composer.candidates(items, levels: log.levels)
+            case .near(let items):
+                answer = self.composer.misheard(items, reference: line.reference, levels: log.levels, mayCreate: false)
             case .none: break
             case .one(let item):
                 log.edit(itemID: item.id, .standard(quantity == 0 ? nil : quantity, setBy: .van), at: at,
@@ -527,12 +539,17 @@ final class VanStockService {
     }
 
     /// The line a write is about. Only a load or a count may make a new one; anything else that
-    /// matches nothing changes nothing.
+    /// matches nothing changes nothing. A line that only sounds like what was said is never
+    /// written to: the technician is asked which they meant, and a load or a count starts a new
+    /// line beside it only once they have said it is a different part (`new_line`).
     private func target(_ line: Line, in log: inout VanStockLog, batch: String, at: Date,
                         source: VanStockMovement.Source, mayCreate: Bool) -> Target {
         switch match(line, in: log, byWords: !(mayCreate && line.asNew)) {
         case .several(let items):
             return .failure(composer.candidates(items, levels: log.levels))
+        case .near(let items):
+            if mayCreate, line.asNew { return create(line, in: &log, batch: batch) }
+            return .failure(composer.misheard(items, reference: line.reference, levels: log.levels, mayCreate: mayCreate))
         case .one(let item):
             if let raw = line.unit {
                 guard let unit = VanStockUnit(spoken: raw) else { return .failure(Self.unknownUnit(raw)) }

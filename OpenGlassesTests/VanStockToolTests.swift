@@ -301,6 +301,86 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertTrue(answer.hasSuffix("Nothing was changed."), answer)
     }
 
+    // MARK: A tester's build-728 report — a brand heard as the word it sounds like
+
+    /// Invented brand and number: a case of drinks loaded as a test line.
+    private func loadDrinks() async throws {
+        _ = try await run(["action": "load", "part": "71234", "description": "Qorrs Original 8 x 355 ml",
+                           "quantity": 22, "unit": "pack"])
+        clock.addTimeInterval(60)
+    }
+
+    func testANumberHeardInPiecesStillFindsTheLine() async throws {
+        try await loadDrinks()
+        let answer = try await run(["action": "check", "description": "qorrs original 8 x 3 55"])
+        XCTAssertTrue(answer.hasPrefix("22 packs of Qorrs Original 8 x 355 ml (71234) on the van — "), answer)
+    }
+
+    func testACheckThatOnlySoundsLikeALineGivesItsFigureToBeAsked() async throws {
+        try await loadDrinks()
+        let before = store.log
+        let answer = try await run(["action": "check", "description": "course original 8 x 3 55"])
+        XCTAssertTrue(answer.hasPrefix("No line on the van list matches 'course original 8 x 3 55' word for word. "
+            + "The closest on the van: 22 packs of Qorrs Original 8 x 355 ml (71234) on the van — "), answer)
+        XCTAssertTrue(answer.contains("It may have been misheard: ask the technician whether that is the part; "
+            + "if it is, give them this figure."), answer)
+        XCTAssertFalse(answer.contains("do not look it up again"), answer)
+        XCTAssertFalse(answer.contains("there is none on the van."), answer)
+        XCTAssertEqual(store.log, before)
+    }
+
+    func testAUseOrRemovalThatOnlySoundsLikeALineChangesNothingAndAsks() async throws {
+        try await loadDrinks()
+        let before = store.log
+        let used = try await run(["action": "use", "description": "course original 8 x 355", "quantity": 2])
+        XCTAssertTrue(used.contains("Did they mean Qorrs Original 8 x 355 ml (71234) — 22 on the van?"), used)
+        XCTAssertTrue(used.hasSuffix("Nothing was changed."), used)
+        XCTAssertFalse(used.contains("new_line"), "a use never starts a line")
+        XCTAssertFalse(used.contains(VanStockService.sayPrefix), used)
+        clock.addTimeInterval(60)
+        let removed = try await run(["action": "remove", "description": "course original 8 x 355", "reason": "returned"])
+        XCTAssertTrue(removed.contains("Did they mean"), removed)
+        clock.addTimeInterval(60)
+        let standard = try await run(["action": "set_standard", "description": "course original 8 x 355", "quantity": 30])
+        XCTAssertTrue(standard.contains("Did they mean"), standard)
+        clock.addTimeInterval(60)
+        let topUp = try await run(["action": "load", "to_standard": true,
+                                   "items": [entry(["description": "course original 8 x 355"])]])
+        XCTAssertTrue(topUp.contains("Did they mean"), topUp)
+        XCTAssertEqual(store.log, before)
+    }
+
+    func testALoadOrCountThatOnlySoundsLikeALineAsksBeforeStartingAnother() async throws {
+        try await loadDrinks()
+        let before = store.log
+        let loaded = try await run(["action": "load", "description": "course original 8 x 355", "quantity": 4, "unit": "pack"])
+        XCTAssertTrue(loaded.contains("Did they mean Qorrs Original 8 x 355 ml (71234) — 22 on the van?"), loaded)
+        XCTAssertTrue(loaded.contains("record it again with 'new_line' true"), loaded)
+        XCTAssertTrue(loaded.hasSuffix("Nothing was changed."), loaded)
+        clock.addTimeInterval(60)
+        let counted = try await run(["action": "count", "description": "course original 8 x 355", "quantity": 20])
+        XCTAssertTrue(counted.contains("Did they mean"), counted)
+        XCTAssertEqual(store.log, before, "no near-duplicate line beside the one it sounds like")
+
+        clock.addTimeInterval(60)
+        let separate = try await run(["action": "load", "description": "course original 8 x 355", "quantity": 4,
+                                      "unit": "pack", "new_line": true])
+        XCTAssertTrue(separate.contains("new line"), separate)
+        XCTAssertEqual(store.log.items.count, 2)
+        XCTAssertEqual(onHand("course original 8 x 355"), 4)
+        XCTAssertEqual(onHand("Qorrs Original 8 x 355 ml"), 22)
+    }
+
+    func testWhatMatchesNothingAtAllIsStillNoneOnTheVan() async throws {
+        try await loadDrinks()
+        let check = try await run(["action": "check", "description": "thermostat cable 30 m"])
+        XCTAssertTrue(check.hasPrefix("Nothing on the van list matches thermostat cable 30 m, by part number or by name"), check)
+        XCTAssertTrue(check.contains("do not look it up again"), check)
+        let used = try await run(["action": "use", "description": "qorrs original 6 x 355"])
+        XCTAssertEqual(used, "Nothing on the van list matches qorrs original 6 x 355. Nothing was changed.",
+                       "a different number is a different part, not a near miss")
+    }
+
     func testLowListsWhatHasRunOut() async throws {
         _ = try await run(["action": "load", "items": [entry(["description": "Igniter", "quantity": 1]),
                                                        entry(["description": "Fuse", "quantity": 5])]])
