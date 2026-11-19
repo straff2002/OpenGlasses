@@ -41759,6 +41759,88 @@
         }
       }
     },
+    "1 reported reply" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رد واحد مُبلَّغ عنه"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 respuesta reportada"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 réponse signalée"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 jelentett válasz"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 risposta segnalata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "報告する回答 1件"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "신고한 답변 1개"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 gemeld antwoord"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 resposta reportada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 ответ в отчёте"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 رپورٹ کردہ جواب"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 条已报告的回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 則已回報的回覆"
+          }
+        }
+      }
+    },
     "1 second" : {
       "localizations" : {
         "ar" : {
@@ -382511,6 +382593,88 @@
         }
       }
     },
+    "Opens a support report with this question and reply. Nothing is sent until you send it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يفتح تقرير دعم يتضمن هذا السؤال والرد. لا يتم إرسال أي شيء حتى تقوم بإرساله."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre un reporte de soporte con esta pregunta y respuesta. No se envía nada hasta que tú lo envíes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre un rapport de support avec cette question et cette réponse. Rien n’est envoyé tant que vous ne l’envoyez pas."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Támogatási jelentést nyit meg ezzel a kérdéssel és válasszal. Semmi nem megy el, amíg el nem küldi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre un rapporto di supporto con questa domanda e risposta. Non viene inviato nulla finché non lo invii."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この質問と回答を含むサポートレポートを開きます。送信するまでは何も送信されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 질문과 답변이 포함된 지원 보고서를 엽니다. 보내기 전까지는 아무것도 전송되지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opent een ondersteuningsrapport met deze vraag en dit antwoord. Er wordt niets verzonden totdat u het verzendt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre um relatório de suporte com esta pergunta e resposta. Nada é enviado até que você o envie."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает отчёт для поддержки с этим вопросом и ответом. Ничего не отправляется, пока вы его не отправите."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس سوال اور جواب کے ساتھ ایک سپورٹ رپورٹ کھولتا ہے۔ جب تک آپ نہ بھیجیں کچھ نہیں بھیجا جاتا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开包含此问题和回复的支持报告。在您发送之前，什么也不会被发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟包含此問題與回覆的支援報告。在您傳送之前，不會送出任何內容。"
+          }
+        }
+      }
+    },
     "Opens Assisting" : {
       "localizations" : {
         "ar" : {
@@ -452698,6 +452862,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已發送回報。謝謝。"
+          }
+        }
+      }
+    },
+    "Report this reply" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الإبلاغ عن هذا الرد"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reportar esta respuesta"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signaler cette réponse"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Válasz jelentése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Segnala questa risposta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この回答を報告"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 답변 신고"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit antwoord melden"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reportar esta resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщить об этом ответе"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس جواب کی رپورٹ کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告此回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回報此回覆"
+          }
+        }
+      }
+    },
+    "Reporting the AI reply from %@. Add what was wrong with it before you send." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تُبلغ عن رد الذكاء الاصطناعي الصادر في %@. أضف ما كان خاطئًا فيه قبل أن ترسل."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estás reportando la respuesta de la IA de las %@. Agrega qué estuvo mal antes de enviarlo."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous signalez la réponse de l’IA donnée à %@. Ajoutez ce qui n’allait pas avant de l’envoyer."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A(z) %@ időpontban kapott AI-válasz jelentése. Küldés előtt írja le, mi volt vele a hiba."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stai segnalando la risposta dell’IA delle %@. Aggiungi cosa c’era di sbagliato prima di inviare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のAIの回答を報告しています。送信する前に、何が間違っていたかを書き加えてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 AI 답변을 신고합니다. 보내기 전에 무엇이 잘못되었는지 추가하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "U meldt het AI-antwoord van %@. Voeg toe wat er mis mee was voordat u het verzendt."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você está reportando a resposta da IA das %@. Adicione o que estava errado antes de enviar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы сообщаете об ответе ИИ от %@. Перед отправкой добавьте, что с ним было не так."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آپ %@ کے AI جواب کی رپورٹ کر رہے ہیں۔ بھیجنے سے پہلے لکھیں کہ اس میں کیا غلط تھا۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在报告 %@ 的 AI 回复。发送前请补充说明它哪里有误。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在回報 %@ 的 AI 回覆。傳送前請補充說明它哪裡有誤。"
           }
         }
       }
@@ -590685,6 +591013,88 @@
         }
       }
     },
+    "The whole conversation" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المحادثة كاملة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toda la conversación"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toute la conversation"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A teljes beszélgetés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutta la conversazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会話全体"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대화 전체"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het hele gesprek"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conversa inteira"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Весь разговор"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پوری گفتگو"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整段对话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整段對話"
+          }
+        }
+      }
+    },
     "The whole day" : {
       "localizations" : {
         "ar" : {
@@ -613019,6 +613429,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這會更新已生效的設定檔。"
+          }
+        }
+      }
+    },
+    "This reply" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذا الرد"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta respuesta"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette réponse"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ez a válasz"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa risposta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この回答"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 답변"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dit antwoord"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот ответ"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "یہ جواب"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此回覆"
+          }
+        }
+      }
+    },
+    "This reply sends the question and the answer you're reporting, and nothing else from the conversation. The whole conversation adds everything else said in it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يرسل «هذا الرد» السؤال والإجابة التي تُبلغ عنها، ولا شيء غير ذلك من المحادثة. أما «المحادثة كاملة» فتضيف كل ما قيل فيها غير ذلك."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Esta respuesta” envía la pregunta y la respuesta que reportas, y nada más de la conversación. “Toda la conversación” agrega todo lo demás que se dijo en ella."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« Cette réponse » envoie la question et la réponse que vous signalez, et rien d’autre de la conversation. « Toute la conversation » ajoute tout ce qui y a été dit d’autre."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Az „Ez a válasz” a kérdést és a jelentett választ küldi el, a beszélgetésből semmi mást. „A teljes beszélgetés” minden mást is hozzáad, ami elhangzott benne."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Questa risposta» invia la domanda e la risposta che stai segnalando, e nient’altro della conversazione. «Tutta la conversazione» aggiunge tutto il resto che vi è stato detto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「この回答」は、報告する質問と回答だけを送信し、会話のそれ以外の部分は送信しません。「会話全体」は、会話で話されたそれ以外の内容もすべて追加します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "'이 답변'은 신고하는 질문과 답변만 보내며 대화의 다른 내용은 보내지 않습니다. '대화 전체'는 대화에서 나온 나머지 내용도 모두 추가합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Dit antwoord” verzendt de vraag en het antwoord dat u meldt, en verder niets uit het gesprek. “Het hele gesprek” voegt alles toe wat er verder in is gezegd."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Esta resposta” envia a pergunta e a resposta que você está reportando, e nada mais da conversa. “A conversa inteira” adiciona todo o resto que foi dito nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Этот ответ» отправляет вопрос и ответ, о котором вы сообщаете, и больше ничего из разговора. «Весь разговор» добавляет всё остальное, что в нём было сказано."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“یہ جواب” صرف وہ سوال اور جواب بھیجتا ہے جس کی آپ رپورٹ کر رہے ہیں، گفتگو سے اور کچھ نہیں۔ “پوری گفتگو” اس میں کہی گئی باقی ہر بات بھی شامل کر دیتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“此回复”只发送您报告的问题和回答，不发送对话中的其他内容。“整段对话”会加入对话中说过的其他所有内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「此回覆」只會傳送您回報的問題與回答，不會傳送對話中的其他內容。「整段對話」會加入對話中說過的其他所有內容。"
           }
         }
       }
