@@ -8,7 +8,8 @@ import XCTest
 final class DisplayStartWaitTests: XCTestCase {
 
     /// Phases read in turn; the last one repeats.
-    private func run(_ phases: [DisplayCapabilityPhase], timeout: TimeInterval = DisplayStartWait.timeout)
+    private func run(_ phases: [DisplayCapabilityPhase], timeout: TimeInterval = DisplayStartWait.timeout,
+                     currentFor polls: Int = .max)
         async throws -> (outcome: DisplayStartWait.Outcome, waited: TimeInterval, sleeps: Int) {
         var reads = 0
         var sleeps = 0
@@ -18,6 +19,7 @@ final class DisplayStartWaitTests: XCTestCase {
                 defer { reads += 1 }
                 return phases[min(reads, phases.count - 1)]
             },
+            isCurrent: { sleeps < polls },
             sleep: { _ in sleeps += 1 }
         )
         return (result.outcome, result.waited, sleeps)
@@ -49,15 +51,73 @@ final class DisplayStartWaitTests: XCTestCase {
     }
 
     /// `start()` is synchronous; the phase may still read `stopped` for a moment after it.
-    func testStoppedStraightAfterStartIsGivenAGrace() async throws {
+    func testStoppedStraightAfterStartIsNotAFailure() async throws {
         let result = try await run([.stopped, .stopped, .starting, .started])
         XCTAssertEqual(result.outcome, .started)
     }
 
-    func testStoppedThroughTheGraceIsAFailedStart() async throws {
+    /// Phases read one per poll: `seconds` of `stopped`, then `rest`.
+    private func stopped(for seconds: TimeInterval, then rest: [DisplayCapabilityPhase]) -> [DisplayCapabilityPhase] {
+        Array(repeating: .stopped, count: Int((seconds / DisplayStartWait.pollInterval).rounded())) + rest
+    }
+
+    /// Build 728: a Display waking from its idle sleep read `stopped` for over a second after
+    /// `start()`, and the old one-second grace gave up on every start. It now gets the allowance.
+    func testADisplayWakingFromSleepIsWaitedForPastOneSecond() async throws {
+        let result = try await run(stopped(for: 3, then: [.starting, .starting, .started]))
+        XCTAssertEqual(result.outcome, .started)
+        XCTAssertEqual(result.waited, 3.2, accuracy: 0.0001)
+    }
+
+    func testAStartJustInsideTheAllowanceStillArrives() async throws {
+        let result = try await run(stopped(for: 9.9, then: [.started]))
+        XCTAssertEqual(result.outcome, .started)
+        XCTAssertEqual(result.waited, 9.9, accuracy: 0.0001)
+    }
+
+    /// Seen `starting`, then stopped: the glasses refused it, and that is still known at once, even
+    /// after a long stopped stretch first.
+    func testStartingThenStoppedIsStillAFastFailure() async throws {
+        let quick = try await run([.starting, .stopped])
+        XCTAssertEqual(quick.outcome, .stopped)
+        XCTAssertEqual(quick.waited, 0.1, accuracy: 0.0001)
+
+        let afterWaking = try await run(stopped(for: 2, then: [.starting, .stopping]))
+        XCTAssertEqual(afterWaking.outcome, .stopped)
+        XCTAssertEqual(afterWaking.waited, 2.1, accuracy: 0.0001)
+    }
+
+    /// A display that never leaves `stopped` is a failed start, but only at the allowance.
+    func testStoppedThroughTheAllowanceIsAFailedStart() async throws {
         let result = try await run([.stopped])
         XCTAssertEqual(result.outcome, .stopped)
-        XCTAssertEqual(result.waited, DisplayStartWait.stoppedGrace, accuracy: 0.05)
+        XCTAssertEqual(result.waited, DisplayStartWait.timeout, accuracy: 0.0001)
+    }
+
+    /// The allowance for a display that has not begun follows the timeout it is given.
+    func testStoppedThroughAShorterTimeoutEndsAtThatTimeout() async throws {
+        let result = try await run([.stopped], timeout: 2)
+        XCTAssertEqual(result.outcome, .stopped)
+        XCTAssertEqual(result.waited, 2, accuracy: 0.0001)
+    }
+
+    /// Still `starting` at the allowance is a timeout, not a refusal.
+    func testStartingThroughTheAllowanceTimesOut() async throws {
+        let result = try await run(stopped(for: 4, then: [.starting]))
+        XCTAssertEqual(result.outcome, .timedOut)
+        XCTAssertEqual(result.waited, DisplayStartWait.timeout, accuracy: 0.0001)
+    }
+
+    /// A display the backend let go of during the wait is not waited for to the allowance.
+    func testADisplayLetGoOfEndsTheWait() async throws {
+        let result = try await run([.stopped], currentFor: 5)
+        XCTAssertEqual(result.outcome, .stopped)
+        XCTAssertEqual(result.sleeps, 5)
+        XCTAssertEqual(result.waited, 0.5, accuracy: 0.0001)
+
+        let before = try await run([.started], currentFor: 0)
+        XCTAssertEqual(before.outcome, .stopped, "one already let go of is not sent to")
+        XCTAssertEqual(before.sleeps, 0)
     }
 
     func testTheWaitIsAsLongAsTheSessionsAndLongerThanASend() {
@@ -113,5 +173,13 @@ final class DisplayStartWaitTests: XCTestCase {
         XCTAssertEqual(waits, 2, "each start is followed by the wait")
         XCTAssertTrue(body.contains("if display.state != .started { try await awaitStarted(display) }"),
                       "a reused display still starting is waited for too")
+        guard let wait = source.range(of: "private func awaitStarted"),
+              let waitEnd = source.range(of: "func prepareSession", range: wait.upperBound..<source.endIndex) else {
+            return XCTFail("awaitStarted not found")
+        }
+        let waitBody = String(source[wait.upperBound..<waitEnd.lowerBound])
+        XCTAssertTrue(waitBody.contains("isCurrent: { [weak self] in self?.display === display }"),
+                      "a display the backend let go of is not waited for")
+        XCTAssertFalse(waitBody.contains("HUDSendDeadline"), "the start wait is not cut short by a send's deadline")
     }
 }
