@@ -3,8 +3,8 @@ import MWDATDisplay
 import XCTest
 @testable import OpenGlasses
 
-/// Plan KV P1b on the glasses: **Next diagram ›** after Zoom in on the opening view of a page with
-/// two drawings or more, cycling them in reading order; "next diagram" and "the bottom one" by
+/// Plan KV P1b on the glasses: **Next diagram ›** after Zoom in on the whole page the view opens on
+/// and on the drawing **Back to part** goes to, for a page with two drawings or more, cycling them in reading order; "next diagram" and "the bottom one" by
 /// voice; the turn's words reaching the layout; and (the P1 fix) the view's opening frame waiting
 /// for a notification that is showing instead of cutting it short.
 ///
@@ -110,22 +110,28 @@ final class LensPageDiagramTests: XCTestCase {
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
 
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.nextDiagram, ID.backToPart, ID.close],
+                       "opened on the whole page, the first drawing kept for Back to part")
+        XCTAssertEqual(rig.session.shownState?.diagramIndex, 0)
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState?.viewport.isWholePage))
+
+        await press(rig, ID.backToPart)
         XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.nextDiagram, ID.wholePage, ID.close],
                        "Next diagram › right after Zoom in; Move gives way to keep the row to four (P4)")
-        XCTAssertEqual(rig.session.shownState?.diagramIndex, 0)
+        XCTAssertFalse(try XCTUnwrap(rig.session.shownState?.viewport.isWholePage))
         XCTAssertTrue(rig.session.shownState?.viewport.cropRect.contains(Self.upper.rect) == true,
-                      "opened on the whole first drawing")
+                      "on the whole first drawing")
 
         await press(rig, ID.nextDiagram)
         let second = try XCTUnwrap(rig.session.shownState)
         XCTAssertEqual(second.diagramIndex, 1)
         XCTAssertTrue(second.viewport.cropRect.contains(Self.lower.rect), "the whole next drawing")
-        XCTAssertTrue(second.viewport.isAtOpening, "Back to part returns to this drawing now")
+        XCTAssertTrue(second.viewport.isAtPart, "Back to part returns to this drawing now")
         XCTAssertTrue(itemIDs(rig).contains(ID.nextDiagram))
 
         await press(rig, ID.nextDiagram)
         XCTAssertEqual(rig.session.shownState?.diagramIndex, 0, "round to the first")
-        XCTAssertEqual(rig.box.audit.map(\.event), [.opened, .moved, .moved])
+        XCTAssertEqual(rig.box.audit.map(\.event), [.opened, .zoomed, .moved, .moved])
         XCTAssertEqual(rig.session.stats["metaRayBan"].moves, 2)
     }
 
@@ -153,7 +159,7 @@ final class LensPageDiagramTests: XCTestCase {
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
         await press(rig, ID.zoomIn)
-        XCTAssertFalse(itemIDs(rig).contains(ID.nextDiagram), "only on the opening view")
+        XCTAssertFalse(itemIDs(rig).contains(ID.nextDiagram), "only on the whole page and the drawing")
     }
 
     func testTheDeepestOpeningPutsNextDiagramAfterZoomOut() {
@@ -233,17 +239,34 @@ final class LensPageDiagramTests: XCTestCase {
         XCTAssertFalse(itemIDs(rig).contains(ID.nextDiagram), "one drawing, and the view is on it")
     }
 
-    func testTheDiagramOnPageSevenOpensOnTheDrawing() async throws {
+    /// A tester's build-728 report: a drawing asked for opens on the whole page, controls in sight,
+    /// and **Back to part** goes to the drawing fitted exactly, as the view used to open on it.
+    func testTheDiagramOnPageSevenOpensWholeAndBackToPartGoesToTheDrawing() async throws {
         let rig = makeRig(drawings: [Self.upper], said: "show me the diagram on page 7")
         rig.session.stage([LensPageFixtures.staged(page: 7, origin: .requested)])
         await drain(rig)
         let opening = try XCTUnwrap(rig.session.shownState)
         XCTAssertEqual(opening.diagramIndex, 0)
-        XCTAssertFalse(opening.viewport.isWholePage)
-        XCTAssertTrue(opening.viewport.cropRect.contains(Self.upper.rect))
+        XCTAssertTrue(opening.viewport.isWholePage)
+        XCTAssertTrue(opening.viewport.hasPart)
+        XCTAssertTrue(opening.showsCitation)
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.backToPart, ID.close])
+
+        await press(rig, ID.backToPart)
+        let part = try XCTUnwrap(rig.session.shownState)
+        XCTAssertFalse(part.viewport.isWholePage)
+        XCTAssertTrue(part.viewport.cropRect.contains(Self.upper.rect))
+        let ask = try XCTUnwrap(rig.box.requests.first?.ask)
+        let choice = PageFigureChoice.choose([Self.upper], ask: ask)
+        let layout = LensPageLayout(pageSize: LensPageFixtures.letter, marks: nil, pictureAreas: [], tone: .lineArt,
+                                    drawings: choice.drawings, figureIndex: choice.index,
+                                    drawingFocus: ask.drawingFocus)
+        XCTAssertTrue(part.viewport.showsSame(as: layout.partViewport), "the drawing, fitted exactly")
+        XCTAssertEqual(part.diagramIndex, 0)
+        XCTAssertEqual(rig.box.audit.map(\.event), [.opened, .zoomed])
     }
 
-    func testAnAutomaticPageForAFigureOpensOnTheDrawing() async throws {
+    func testAnAutomaticPageForAFigureKeepsTheDrawingForBackToPart() async throws {
         let rig = makeRig(drawings: [Self.upper], said: "what does the invented relay do")
         rig.session.stage([LensPageFixtures.staged(page: 7, figure: "Figure 9", origin: .automatic)])
         await drain(rig)
@@ -251,8 +274,12 @@ final class LensPageDiagramTests: XCTestCase {
         await press(rig, ID.showHere)
         let opening = try XCTUnwrap(rig.session.shownState)
         XCTAssertEqual(rig.box.requests.first?.ask.drawingFocus, .afterMarks)
-        XCTAssertEqual(opening.diagramIndex, 0, "opened on the figure it was put up for")
-        XCTAssertTrue(opening.viewport.cropRect.contains(Self.upper.rect))
+        XCTAssertEqual(opening.diagramIndex, 0, "the figure it was put up for is the part")
+        XCTAssertTrue(opening.viewport.isWholePage)
+        await press(rig, ID.backToPart)
+        let part = try XCTUnwrap(rig.session.shownState)
+        XCTAssertFalse(part.viewport.isWholePage)
+        XCTAssertTrue(part.viewport.cropRect.contains(Self.upper.rect))
     }
 
     // MARK: - The P1 fix: a notification that is showing is not cut short

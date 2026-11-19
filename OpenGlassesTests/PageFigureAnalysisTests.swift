@@ -81,7 +81,7 @@ final class PageFigureAnalysisTests: XCTestCase {
         assertNear(found[0].rect, F.wholeSheet)
         let laid = try await layout(url, said: "show me the wiring diagram")
         XCTAssertEqual(laid.focus.source, .figure)
-        XCTAssertTrue(laid.openingViewport.isWholePage, "a page-sized drawing opens whole, which is right")
+        XCTAssertTrue(laid.partViewport.isWholePage, "a page-sized drawing is the whole page, which is right")
     }
 
     func testATableWithOnlyItsBorderIsNotADrawing() throws {
@@ -107,7 +107,7 @@ final class PageFigureAnalysisTests: XCTestCase {
         XCTAssertEqual(thirteen.figureIndex, 1, "the drawing over Figure 13's caption, not the mention under the page")
         let twelve = try await layout(url, said: nil, caption: "Figure 12")
         XCTAssertEqual(twelve.figureIndex, 0)
-        XCTAssertTrue(twelve.openingViewport.cropRect.contains(F.captionedUpper), "the whole chosen drawing")
+        XCTAssertTrue(twelve.partViewport.cropRect.contains(F.captionedUpper), "the whole chosen drawing")
     }
 
     func testTwoUncaptionedDrawingsAreToldApartByLabelsAndPosition() async throws {
@@ -125,15 +125,15 @@ final class PageFigureAnalysisTests: XCTestCase {
         // A drawing asked for by where it is: the drawing is a focus only when one is asked for.
         let bottom = try await layout(url, said: "the bottom diagram")
         XCTAssertEqual(bottom.figureIndex, 1)
-        XCTAssertTrue(bottom.openingViewport.cropRect.contains(found[1].rect), "the opening zoom holds the whole drawing")
-        XCTAssertFalse(bottom.openingViewport.isWholePage)
+        XCTAssertTrue(bottom.partViewport.cropRect.contains(found[1].rect), "the part holds the whole drawing")
+        XCTAssertFalse(bottom.partViewport.isWholePage)
     }
 
     func testTheOpeningZoomHoldsTheWholeDiagram() async throws {
         let laid = try await layout(try F.blockDiagramPage(), said: "show me the diagram")
         XCTAssertEqual(laid.focus.source, .figure)
-        XCTAssertFalse(laid.openingViewport.isWholePage)
-        XCTAssertTrue(laid.openingViewport.cropRect.contains(F.blockDiagram))
+        XCTAssertFalse(laid.partViewport.isWholePage)
+        XCTAssertTrue(laid.partViewport.cropRect.contains(F.blockDiagram))
     }
 
     func testADrawingRequestOpensOnTheDrawingAheadOfACitedPassage() async throws {
@@ -141,7 +141,7 @@ final class PageFigureAnalysisTests: XCTestCase {
         let cited = CGRect(x: 72, y: 500, width: 380, height: 12)
         let asked = try await layout(url, said: "show me the wiring diagram", citedRect: cited)
         XCTAssertEqual(asked.focus.source, .figure)
-        XCTAssertTrue(asked.openingViewport.cropRect.contains(F.blockDiagram))
+        XCTAssertTrue(asked.partViewport.cropRect.contains(F.blockDiagram))
         let plain = try await layout(url, said: "what does the relay do", citedRect: cited)
         XCTAssertEqual(plain.focus.source, .citedPassages, "a request for no drawing keeps the passage first")
     }

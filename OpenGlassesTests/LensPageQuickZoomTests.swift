@@ -270,7 +270,10 @@ final class LensPageQuickZoomTests: XCTestCase {
         let rig = makeRig(pictureAreas: [CGRect(x: 100, y: 300, width: 300, height: 250)])
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
-        XCTAssertFalse(try XCTUnwrap(rig.session.shownState).viewport.isWholePage, "opened on the table")
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState).viewport.isWholePage, "opened on the whole page")
+        XCTAssertTrue(rig.session.press(itemID: HUDPageScreenBuilder.ItemID.backToPart))
+        await drain(rig)
+        XCTAssertFalse(try XCTUnwrap(rig.session.shownState).viewport.isWholePage, "on the table")
         let before = rig.drawn.plans.count
         XCTAssertTrue(rig.session.press(itemID: HUDPageScreenBuilder.ItemID.move))
         await drain(rig)
@@ -279,6 +282,45 @@ final class LensPageQuickZoomTests: XCTestCase {
                         HUDPageScreenBuilder.ItemID.done])
         XCTAssertGreaterThanOrEqual(rig.drawn.plans.count, before, "neighbours drawn ahead")
         XCTAssertTrue(rig.drawn.plans.contains { $0.outputSize.height > box.height }, "strips drawn taller than the box")
+    }
+
+    /// A tester's build-728 report, Scroll on: a page with a part opens on the whole page as its
+    /// tiles, with the citation, the hint and the row — Back to part · Close — inside the lens's
+    /// 600 px, so no scrolling is needed to reach the buttons; Back to part goes to the table, drawn
+    /// ahead as its strip, so the press only sends.
+    func testAPageWithAPartOpensAsTilesWithBackToPartInSight() async throws {
+        typealias ID = HUDPageScreenBuilder.ItemID
+        let table = CGRect(x: 100, y: 300, width: 300, height: 250)
+        let rig = makeRig(pictureAreas: [table])
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+        let state = try XCTUnwrap(rig.session.shownState)
+        let screen = try XCTUnwrap(rig.session.shownScreen)
+        XCTAssertTrue(state.showsTiles)
+        XCTAssertTrue(state.viewport.hasPart)
+        XCTAssertEqual(screen.items.map(\.id), [ID.backToPart, ID.close])
+        XCTAssertEqual(screen.flow.flatMap(\.blocks).count, 9)
+        XCTAssertEqual(screen.lines.map(\.text), ["Figure 9 · p. 3", "Zoom in for labels"])
+        // The frame: padding, the two lines, three rows of tiles with their gaps, the row, its glow.
+        let tile = try XCTUnwrap(screen.flow.flatMap(\.blocks).first?.picture?.pixelSize)
+        let rows = 3 * tile.height + 2 * LensPageFrame.gapPixels
+        XCTAssertLessThanOrEqual(rows, state.viewport.box.height)
+        let fixed = LensPageFrame.fixedHeight(.init(metaLines: 1, bodyLines: 1, hasPicture: true, hasButtons: true))
+        XCTAssertLessThanOrEqual(fixed + rows, CGFloat(HUDCanvas.metaDisplay.heightPixels))
+        XCTAssertLessThanOrEqual(3 * tile.width + 2 * LensPageFrame.tileGapPixels, LensPageFrame.contentWidthPixels)
+
+        let drawnBefore = rig.drawn.plans.count
+        XCTAssertTrue(rig.drawn.plans.contains { $0.outputSize.height > box.height }, "the part's strip drawn ahead")
+        XCTAssertTrue(rig.session.press(itemID: ID.backToPart))
+        await drain(rig)
+        let part = try XCTUnwrap(rig.session.shownState)
+        XCTAssertTrue(part.showsStrip)
+        XCTAssertTrue(part.viewport.isAtPart)
+        XCTAssertTrue(part.viewport.cropRect.insetBy(dx: -0.01, dy: -0.01).contains(table))
+        XCTAssertFalse(try XCTUnwrap(rig.session.shownScreen).trailingFlow.isEmpty)
+        let strip = LensPageStrip(viewport: part.viewport)
+        XCTAssertTrue(rig.drawn.plans.prefix(drawnBefore).contains { $0.crop == strip.rect && $0.outputSize == strip.outputSize },
+                      "Back to part's strip was drawn before the press")
     }
 
     func testZoomInOnTheBottomRightByVoice() async throws {

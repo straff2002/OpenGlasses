@@ -160,19 +160,19 @@ final class PageFigureChoiceTests: XCTestCase {
         let asked = LensPageLayout(pageSize: page, marks: marks, pictureAreas: [], tone: .lineArt,
                                    drawings: [upper, lower], figureIndex: 1, drawingFocus: .first)
         XCTAssertEqual(asked.focus.source, .figure)
-        XCTAssertEqual(asked.openingDrawing, 1)
-        XCTAssertTrue(asked.openingViewport.cropRect.contains(lower.rect))
+        XCTAssertEqual(asked.partDrawing, 1)
+        XCTAssertTrue(asked.partViewport.cropRect.contains(lower.rect))
         let plain = LensPageLayout(pageSize: page, marks: marks, pictureAreas: [], tone: .lineArt,
                                    drawings: [upper, lower], figureIndex: 1, drawingFocus: .afterMarks)
         XCTAssertEqual(plain.focus.source, .citedPassages)
-        XCTAssertNil(plain.openingDrawing)
+        XCTAssertNil(plain.partDrawing)
         let unmarked = LensPageLayout(pageSize: page, marks: nil, pictureAreas: [], tone: .lineArt,
                                       drawings: [upper, lower], figureIndex: 0)
         XCTAssertEqual(unmarked.focus.source, .figure, "with nothing cited, the drawing still beats the whole page")
         let page7 = LensPageLayout(pageSize: page, marks: nil, pictureAreas: [], tone: .lineArt,
                                    drawings: [upper, lower], figureIndex: 0, drawingFocus: .none)
         XCTAssertEqual(page7.focus.source, .wholePage, "a request for the page opens it whole")
-        XCTAssertNil(page7.openingDrawing)
+        XCTAssertNil(page7.partDrawing)
         XCTAssertEqual(page7.drawings.count, 2, "the drawings are kept for Next diagram")
     }
 

@@ -142,6 +142,38 @@ final class LensPageFrameTests: XCTestCase {
         }
     }
 
+    /// A tester's build-728 report: every picture opens on the whole page under the citation line,
+    /// usually with the hint, and the row in sight. Picture: 12 + 30 + 6 + 38 + 6 + 382 + 6 + 88 +
+    /// 32 = 600. Scroll's tiles: three rows of tiles and their gaps in the same 382 px.
+    func testTheWholePageOpeningFitsTheLensInBothModes() {
+        let page = CGSize(width: 612, height: 792)
+        let part = LensPageViewport(pageSize: page, center: CGPoint(x: 300, y: 300), pixelsPerPoint: 2)
+        for tiles in [false, true] {
+            var state = HUDPageViewState(viewport: part.startingOnWholePage(), legibility: LensLegibility(),
+                                         citation: "Figure 9 · p. 3", hasNextPage: true, diagramCount: 2,
+                                         diagramIndex: 0)
+            state.tilesAndStrips = tiles
+            state = state.framed()
+            XCTAssertTrue(state.showsCitation)
+            XCTAssertTrue(state.showsZoomHint)
+            XCTAssertEqual(state.viewport.box, CGSize(width: 576, height: 382))
+            let content = LensPageFrame.Content(metaLines: 1, bodyLines: 1, hasPicture: true, hasButtons: true)
+            XCTAssertEqual(LensPageFrame.height(content, pictureHeight: state.viewport.box.height), lens, accuracy: 0.001)
+            let row = HUDPageScreenBuilder.items(state, { _ in })
+            XCTAssertLessThanOrEqual(row.count, HUDPageScreenBuilder.maxButtons)
+            XCTAssertTrue(row.contains { $0.id == HUDPageScreenBuilder.ItemID.backToPart })
+            XCTAssertEqual(row.last?.id, HUDPageScreenBuilder.ItemID.close)
+            if tiles {
+                for size in [page, CGSize(width: 792, height: 612), CGSize(width: 400, height: 1200)] {
+                    let grid = LensPageTileGrid.tiles(pageSize: size, box: state.viewport.box)
+                    let height = 3 * grid[0].drawnSize.height + 2 * LensPageFrame.gapPixels
+                    XCTAssertLessThanOrEqual(height, state.viewport.box.height, "\(size)")
+                    XCTAssertLessThanOrEqual(LensPageFrame.fixedHeight(content) + height, lens, "\(size)")
+                }
+            }
+        }
+    }
+
     // MARK: - The answer card (Plan MG P0)
 
     /// The answer card's geometry is the same budget as reading mode's: 10 lines of 32 characters,

@@ -68,10 +68,12 @@ struct SimulatedDisplayWalkthrough {
     // MARK: - The page view
 
     private func pageViewWalk() async {
-        // "Show me the diagram on page 2": the page with two drawings and no captions.
+        // "Show me the diagram on page 2": the page with two drawings and no captions. It opens on
+        // the whole page; Back to part goes to the chosen drawing.
         await stage(SimulatedDisplayTestManual.staged(page: 2), words: "show me the diagram on page 2")
         await capture("page2-opening")
         dumpPreview()
+        await pressPage(HUDPageScreenBuilder.ItemID.backToPart, "back-to-part")
         await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "zoom-in-1")
         await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "zoom-in-2")
         await pressPage(HUDPageScreenBuilder.ItemID.move, "move")
@@ -113,9 +115,11 @@ struct SimulatedDisplayWalkthrough {
         }
         await pressPage(HUDPageScreenBuilder.ItemID.showPicture, "page4-two-picture")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page4-two-close")
-        // The table, outlined as a pictured table: it keeps the picture and fills the width.
+        // The table, outlined as a pictured table: it keeps the picture, opens on the whole page,
+        // and Back to part fills the width with the table.
         await stage(SimulatedDisplayTestManual.staged(page: 3, figure: "Table 1", pictured: true), words: "show me table 1")
         await capture("page3-table")
+        await pressPage(HUDPageScreenBuilder.ItemID.backToPart, "page3-back-to-part")
         await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page3-zoom-in")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page3-close")
     }

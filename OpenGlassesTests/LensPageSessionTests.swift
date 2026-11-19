@@ -75,7 +75,7 @@ final class LensPageSessionTests: XCTestCase {
         var lines: [LensPageAuditLine] = []
     }
 
-    /// A table outline that opens the view on a part of the page, with Zoom in still to go.
+    /// A table outline: the part of the page **Back to part** goes to, with Zoom in still to go.
     private static let tableArea = CGRect(x: 100, y: 300, width: 300, height: 250)
 
     private var savedDisplayEnabled = false
@@ -174,10 +174,12 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertEqual(rig.display.heldPage, .view)
         let key = try XCTUnwrap(rig.frames.lastScreenKey)
         XCTAssertTrue(key.contains("|pic:"), "the frame on the lens carries the page's picture")
-        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.wholePage, ID.move, ID.close], "opened on the table, zoomed")
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.backToPart, ID.close],
+                       "opened on the whole page, the controls in sight, the table kept for Back to part")
         let viewport = try XCTUnwrap(rig.session.shownState?.viewport)
-        XCTAssertFalse(viewport.isWholePage)
-        XCTAssertTrue(viewport.cropRect.insetBy(dx: -0.01, dy: -0.01).contains(Self.tableArea))
+        XCTAssertTrue(viewport.isWholePage)
+        XCTAssertTrue(viewport.hasPart)
+        XCTAssertTrue(viewport.cropRect.insetBy(dx: -0.01, dy: -0.01).contains(CGRect(origin: .zero, size: LensPageFixtures.letter)))
         XCTAssertEqual(rig.session.shownScreen?.lines.map(\.text), ["Figure 9 · p. 3", "Zoom in for labels"],
                        "the citation over the first frame, and the hint")
         XCTAssertEqual(rig.session.shownScreen?.picture?.pixelSize, LensPageFrame.pictureBox(citation: true, hint: true),
@@ -187,8 +189,9 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertEqual(rig.audit.lines.first?.route, "requested")
         XCTAssertEqual(rig.audit.lines.first?.view, .picture)
         XCTAssertEqual(try XCTUnwrap(rig.audit.lines.first?.zoom), Double(viewport.scale), accuracy: 0.0001)
-        XCTAssertGreaterThan(try XCTUnwrap(rig.audit.lines.first?.zoom), 1)
-        XCTAssertEqual(rig.renderer.calls, 2, "the opening view and the whole page, drawn ahead of any press")
+        XCTAssertEqual(try XCTUnwrap(rig.audit.lines.first?.zoom), 1, accuracy: 0.0001, "the whole page")
+        XCTAssertEqual(rig.renderer.calls, 3,
+                       "the opening view, the whole page on a later frame and the part, drawn ahead of any press")
         XCTAssertEqual(rig.session.stats["metaRayBan"].viewsOpened, 1)
     }
 
@@ -299,17 +302,74 @@ final class LensPageSessionTests: XCTestCase {
 
     // MARK: - The band
 
+    /// A tester's build-728 report: the view opens on the whole page; **Back to part** goes to the
+    /// part exactly as the view used to open on it — the table fitted into the box its frame leaves
+    /// — already drawn, so the press only sends.
+    func testBackToPartFromTheWholePageOpeningGoesToThePart() async throws {
+        let rig = makeRig()
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState?.viewport.isWholePage))
+        XCTAssertEqual(rig.renderer.calls, 3)
+
+        await press(rig, ID.backToPart)
+        let state = try XCTUnwrap(rig.session.shownState)
+        XCTAssertFalse(state.viewport.isWholePage)
+        XCTAssertTrue(state.viewport.isAtPart)
+        XCTAssertFalse(state.isFirstFrame)
+        let layout = LensPageLayout(pageSize: LensPageFixtures.letter, marks: nil, pictureAreas: [Self.tableArea],
+                                    tone: .lineArt)
+        XCTAssertTrue(state.viewport.showsSame(as: layout.partViewport), "the table, fitted, as the view used to open")
+        XCTAssertEqual(state.viewport.cropRect, layout.partViewport.cropRect)
+        XCTAssertTrue(state.viewport.cropRect.insetBy(dx: -0.01, dy: -0.01).contains(Self.tableArea))
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.wholePage, ID.move, ID.close])
+        XCTAssertEqual(rig.session.shownScreen?.lines.map(\.text), ["Zoom in for labels"], "the citation has gone")
+        XCTAssertEqual(rig.renderer.calls, 3, "the part was drawn ahead of the press")
+        XCTAssertEqual(rig.audit.lines.map(\.event), [.opened, .zoomed])
+
+        await press(rig, ID.wholePage)
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState?.viewport.isWholePage))
+        XCTAssertEqual(rig.renderer.calls, 3, "the whole page on a later frame was drawn ahead too")
+    }
+
+    /// "Back" on the whole page the view opened on goes to the part, as **Back to part** does; on
+    /// the part it is left to whatever is under the view.
+    func testBackOnTheOpeningGoesToThePart() async throws {
+        let rig = makeRig()
+        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
+        await drain(rig)
+        let back = await rig.router.handleVoiceCommand("back")
+        await drain(rig)
+        XCTAssertTrue(back)
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState?.viewport.isAtPart))
+        XCTAssertFalse(try XCTUnwrap(rig.session.shownState?.viewport.isWholePage))
+        let again = await rig.router.handleVoiceCommand("back")
+        XCTAssertFalse(again, "on the part: the word goes on")
+    }
+
     func testZoomMoveAndCloseThroughTheBand() async throws {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
-        let opening = try XCTUnwrap(rig.session.shownState?.viewport)
+        let whole = try XCTUnwrap(rig.session.shownState?.viewport)
+        XCTAssertTrue(whole.isWholePage)
 
+        await press(rig, ID.zoomIn)
+        let zoomed = try XCTUnwrap(rig.session.shownState?.viewport)
+        XCTAssertGreaterThanOrEqual(zoomed.pixelsPerPoint, whole.pixelsPerPoint * 1.5 - 0.0001,
+                                    "at least a press in from the whole page")
+        XCTAssertFalse(zoomed.isWholePage, "still zoomed once the citation line has gone")
+        XCTAssertNotEqual(rig.session.shownScreen?.lines.first?.text, "Figure 9 · p. 3",
+                          "the citation goes once the technician zooms")
+        XCTAssertFalse(itemIDs(rig).contains(ID.backToPart), "Back to part is on the whole page")
+
+        await press(rig, ID.wholePage)
+        await press(rig, ID.backToPart)
+        let opening = try XCTUnwrap(rig.session.shownState?.viewport)
+        XCTAssertTrue(opening.isAtPart)
         await press(rig, ID.zoomIn)
         XCTAssertEqual(try XCTUnwrap(rig.session.shownState?.viewport.pixelsPerPoint),
                        opening.pixelsPerPoint * 1.5, accuracy: 0.0001, "one rung of the ladder")
-        XCTAssertNotEqual(rig.session.shownScreen?.lines.first?.text, "Figure 9 · p. 3",
-                          "the citation goes once the technician zooms")
 
         await press(rig, ID.move)
         XCTAssertEqual(itemIDs(rig), [ID.up, ID.down, ID.left, ID.right, ID.done])
@@ -324,7 +384,7 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.backToPart, ID.close])
         await press(rig, ID.backToPart)
         let back = try XCTUnwrap(rig.session.shownState?.viewport)
-        XCTAssertTrue(back.isAtOpening)
+        XCTAssertTrue(back.isAtPart)
         XCTAssertEqual(back.pixelsPerPoint, opening.pixelsPerPoint, accuracy: 0.0001)
         XCTAssertEqual(back.center, opening.center)
 
@@ -333,20 +393,31 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertFalse(rig.router.isPresentingPage)
         XCTAssertFalse(rig.display.isInteractive)
         XCTAssertEqual(rig.frames.last, .clear, "nothing was under it")
-        XCTAssertEqual(rig.audit.lines.map(\.event), [.opened, .zoomed, .moved, .zoomed, .zoomed, .closed])
-        XCTAssertEqual(rig.session.stats["metaRayBan"].zooms, 3)
+        XCTAssertEqual(rig.audit.lines.map(\.event),
+                       [.opened, .zoomed, .zoomed, .zoomed, .zoomed, .moved, .zoomed, .zoomed, .closed])
+        XCTAssertEqual(rig.session.stats["metaRayBan"].zooms, 6)
         XCTAssertEqual(rig.session.stats["metaRayBan"].moves, 1)
     }
 
-    func testNextPageOpensTheNextCitedPageOnItsOwnFocus() async {
+    func testNextPageOpensTheNextCitedPageOnItsOwnFocus() async throws {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(page: 3, origin: .requested),
                            LensPageFixtures.staged(page: 4, figure: nil, origin: .requested)])
         await drain(rig)
-        XCTAssertTrue(itemIDs(rig).contains(ID.nextPage))
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.backToPart, ID.nextPage, ID.close],
+                       "offered on the whole page the view opened on")
+        await press(rig, ID.backToPart)
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.wholePage, ID.nextPage, ID.close], "and on the part")
+        await press(rig, ID.zoomIn)
+        XCTAssertFalse(itemIDs(rig).contains(ID.nextPage), "not once the wearer has zoomed on")
+        await press(rig, ID.wholePage)
+        XCTAssertEqual(itemIDs(rig), [ID.zoomIn, ID.backToPart, ID.nextPage, ID.close],
+                       "the whole page again is where the view opened")
         await press(rig, ID.nextPage)
         XCTAssertEqual(rig.session.pageIndex, 1)
         XCTAssertEqual(rig.session.shownScreen?.lines.first?.text, "p. 4")
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState?.viewport.isWholePage), "the next page opens whole too")
+        XCTAssertTrue(try XCTUnwrap(rig.session.shownState?.isFirstFrame))
         XCTAssertFalse(itemIDs(rig).contains(ID.nextPage), "the last cited page")
         XCTAssertEqual(rig.audit.lines.last?.event, .nextPage)
         XCTAssertEqual(rig.audit.lines.last?.page, 4)
@@ -468,7 +539,7 @@ final class LensPageSessionTests: XCTestCase {
 
         rig.renderer.holding = true
         await press(rig, ID.zoomIn, settling: false)     // the zoomed crop isn't drawn yet
-        XCTAssertEqual(rig.renderer.calls, 3, "the zoomed render is in flight")
+        XCTAssertEqual(rig.renderer.calls, 4, "the zoomed render is in flight")
         XCTAssertEqual(rig.session.shownState, opening)
 
         rig.display.showNotification(title: nil, body: "Invented notice", icon: .info, duration: 5)
@@ -511,7 +582,8 @@ final class LensPageSessionTests: XCTestCase {
         let zoomed = await rig.router.handleVoiceCommand("zoom in")
         await drain(rig)
         XCTAssertTrue(zoomed)
-        XCTAssertEqual(rig.session.shownState?.viewport.pixelsPerPoint ?? 0, opening * 1.5, accuracy: 0.0001)
+        XCTAssertGreaterThanOrEqual(rig.session.shownState?.viewport.pixelsPerPoint ?? 0, opening * 1.5 - 0.0001)
+        XCTAssertFalse(rig.session.shownState?.viewport.isWholePage ?? true)
         let next = await rig.router.handleVoiceCommand("next")
         XCTAssertFalse(next, "\"next\" is a reading word: on the picture it goes on")
 
@@ -734,6 +806,7 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertEqual(rig.session.reportLines, ["Page on the lens: not used since the app started"])
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
+        await press(rig, ID.backToPart)
         await press(rig, ID.zoomIn)
         await press(rig, ID.move)
         await press(rig, ID.left)
@@ -744,7 +817,7 @@ final class LensPageSessionTests: XCTestCase {
         XCTAssertEqual(lines.first, "Page on the lens (since the app started):")
         let summary = lines.first { $0.hasPrefix("  metaRayBan:") } ?? ""
         XCTAssertTrue(summary.contains("views opened 1"), summary)
-        XCTAssertTrue(summary.contains("zooms 1"), summary)
+        XCTAssertTrue(summary.contains("zooms 2"), summary)
         XCTAssertTrue(summary.contains("moves 1"), summary)
         let renders = rig.renderer.calls
         XCTAssertTrue(lines.contains { $0.hasPrefix("    Render: \(renders),") }, "\(lines)")

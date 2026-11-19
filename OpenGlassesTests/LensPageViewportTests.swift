@@ -141,7 +141,7 @@ final class LensPageViewportTests: XCTestCase {
         XCTAssertEqual(viewport.pixelsPerPoint, 4.125, accuracy: 0.0001)
         XCTAssertTrue(viewport.isDeepest)
         XCTAssertFalse(viewport.canZoomIn)
-        XCTAssertTrue(viewport.opensOnPart)
+        XCTAssertTrue(viewport.hasPart)
     }
 
     // MARK: Moves
@@ -249,37 +249,93 @@ final class LensPageViewportTests: XCTestCase {
         XCTAssertEqual(viewport.cropRect.minY, 0, accuracy: 0.001)
     }
 
-    func testResetGoesBackToTheOpeningView() {
+    func testResetGoesBackToThePart() {
         var viewport = LensPageViewport(pageSize: portrait, box: box, center: CGPoint(x: 200, y: 300), pixelsPerPoint: 2.6)
-        XCTAssertTrue(viewport.isAtOpening)
-        XCTAssertTrue(viewport.opensOnPart)
+        XCTAssertTrue(viewport.isAtPart)
+        XCTAssertTrue(viewport.hasPart)
         viewport.move(.down)
         viewport.zoomOut()
-        XCTAssertFalse(viewport.isAtOpening)
+        XCTAssertFalse(viewport.isAtPart)
         viewport.reset()
-        XCTAssertTrue(viewport.isAtOpening)
+        XCTAssertTrue(viewport.isAtPart)
         XCTAssertEqual(viewport.pixelsPerPoint, 2.6, accuracy: 0.0001)
         XCTAssertEqual(viewport.center, CGPoint(x: 200, y: 300))
+    }
+
+    /// A tester's build-728 report: the page view opens on the whole page, its part kept. The
+    /// viewport starts there, still has its part, and `reset()` lands on exactly the view a viewport
+    /// opened on the part shows; the ladder stays anchored at the part.
+    func testAViewStartedOnTheWholePageKeepsItsPartForBackToPart() {
+        let part = LensPageViewport(pageSize: portrait, box: box, center: CGPoint(x: 200, y: 300), pixelsPerPoint: 2.6)
+        var viewport = part.startingOnWholePage()
+        XCTAssertTrue(viewport.isWholePage)
+        XCTAssertTrue(viewport.isAtStart)
+        XCTAssertTrue(viewport.hasPart, "the part is kept for Back to part")
+        XCTAssertFalse(viewport.isAtPart)
+        XCTAssertTrue(viewport.neighbours().contains { $0.showsSame(as: part) }, "the part is one press away")
+
+        viewport.reset()
+        XCTAssertTrue(viewport.isAtPart)
+        XCTAssertFalse(viewport.isAtStart)
+        XCTAssertTrue(viewport.showsSame(as: part))
+        XCTAssertEqual(viewport.cropRect, part.cropRect)
+
+        viewport.showWholePage()
+        XCTAssertTrue(viewport.isAtStart, "any whole page is where it started")
+        viewport.zoomIn()
+        // The part's rungs are 2.6 ÷ 1.5ⁿ; the whole page is 462 / 792 ≈ 0.583, so the first rung at
+        // least ×1.5 over it (0.875) is 2.6 ÷ 1.5² ≈ 1.156, not 2.6 ÷ 1.5³ ≈ 0.770 just over it.
+        XCTAssertEqual(viewport.pixelsPerPoint, 2.6 / pow(1.5, 2), accuracy: 0.0001, "on the part's ladder")
+        viewport.zoomIn()
+        XCTAssertEqual(viewport.pixelsPerPoint, 2.6 / 1.5, accuracy: 0.0001)
+
+        let whole = LensPageViewport(wholePage: portrait, box: box)
+        XCTAssertEqual(whole.startingOnWholePage(), whole, "no part: already the whole page")
+        XCTAssertTrue(whole.isAtStart)
+        XCTAssertTrue(whole.isAtPart)
+        XCTAssertFalse(whole.hasPart)
+    }
+
+    /// One press in from the whole page magnifies at least ×1.5, whatever rung the part's ladder
+    /// has just over the fit — so the first frame's citation line going (a taller box) can't leave
+    /// the view whole again.
+    func testZoomInFromTheWholePageMagnifiesAtLeastAPress() {
+        let fit = LensPageViewport.fitPixelsPerPoint(pageSize: portrait, box: box)
+        for part in [fit * 1.6, fit * 2.0, fit * 2.24, 2.6, 3.9] {
+            var viewport = LensPageViewport(pageSize: portrait, box: box, center: CGPoint(x: 300, y: 300),
+                                            pixelsPerPoint: part).startingOnWholePage()
+            viewport.zoomIn()
+            XCTAssertGreaterThanOrEqual(viewport.scale, 1.5 - 0.0001, "\(part)")
+            XCTAssertLessThan(viewport.scale, 2.25, "\(part): the first such rung")
+            let rung = log(Double(viewport.pixelsPerPoint / part)) / log(1.5)
+            XCTAssertEqual(rung, rung.rounded(), accuracy: 0.0001, "\(part): a rung of the part's ladder")
+            let shorter = LensPageFrame.pictureBox(citation: true, hint: true)
+            var opening = LensPageViewport(pageSize: portrait, box: shorter, center: CGPoint(x: 300, y: 300),
+                                           pixelsPerPoint: part).startingOnWholePage()
+            opening.zoomIn()
+            opening.setBox(box)
+            XCTAssertFalse(opening.isWholePage, "\(part): still zoomed once the citation line goes")
+        }
     }
 
     func testTheOpeningCentreIsClamped() {
         let viewport = LensPageViewport(pageSize: portrait, box: box, center: CGPoint(x: -50, y: 2_000), pixelsPerPoint: 2)
         XCTAssertEqual(viewport.cropRect.minX, 0, accuracy: 0.001)
         XCTAssertEqual(viewport.cropRect.maxY, 792, accuracy: 0.001)
-        XCTAssertEqual(viewport.openingCenter, viewport.center)
+        XCTAssertEqual(viewport.partCenter, viewport.center)
     }
 
     // MARK: A new box
 
     /// When a line comes or goes, the box changes: the magnification (the text's size) stays, the
-    /// whole page stays whole, and the view is still at its opening.
+    /// whole page stays whole, and the view is still on its part.
     func testANewBoxKeepsTheMagnification() {
         let tall = LensPageFrame.pictureBox(citation: true, hint: true)
         var zoomed = LensPageViewport(pageSize: portrait, box: tall, center: CGPoint(x: 300, y: 300), pixelsPerPoint: 2)
         zoomed.setBox(box)
         XCTAssertEqual(zoomed.pixelsPerPoint, 2, accuracy: 0.0001)
         XCTAssertEqual(zoomed.cropSize.height, 462.0 / 2, accuracy: 0.001)
-        XCTAssertTrue(zoomed.isAtOpening)
+        XCTAssertTrue(zoomed.isAtPart)
 
         var whole = LensPageViewport(wholePage: portrait, box: tall)
         whole.setBox(box)

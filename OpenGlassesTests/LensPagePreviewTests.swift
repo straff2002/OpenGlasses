@@ -87,7 +87,7 @@ final class LensPagePreviewTests: XCTestCase {
         XCTAssertNotNil(frame.picture, "the picture the lens got")
         XCTAssertTrue(frame.picture === shown.picture?.image)
         XCTAssertEqual(frame.itemIDs, shown.items.map(\.id), "the same buttons as the lens")
-        XCTAssertEqual(frame.itemIDs, [ID.zoomIn, ID.wholePage, ID.move, ID.close])
+        XCTAssertEqual(frame.itemIDs, [ID.zoomIn, ID.backToPart, ID.close], "the whole page, as it opens")
         XCTAssertTrue(frame.isPressable)
 
         // The tree the preview draws: the picture, and the lens's button labels in order.
@@ -101,6 +101,9 @@ final class LensPagePreviewTests: XCTestCase {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
+        XCTAssertTrue(rig.router.pressFromPreview(ID.backToPart))
+        await drain(rig)
+        XCTAssertEqual(rig.router.previewFrame?.itemIDs, [ID.zoomIn, ID.wholePage, ID.move, ID.close])
         XCTAssertTrue(rig.router.pressFromPreview(ID.move))
         await drain(rig)
         XCTAssertEqual(rig.router.previewFrame?.itemIDs, [ID.up, ID.down, ID.left, ID.right, ID.done],

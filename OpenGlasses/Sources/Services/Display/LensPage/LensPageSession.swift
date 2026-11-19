@@ -25,13 +25,21 @@ import UIKit
 /// supersedes a render still in flight.
 ///
 /// **Drawing.** Each frame's picture comes from `LensPageRenderer` off the main actor, through a
-/// cache keyed by the page's identity and the crop; the opening view and the whole page are drawn
-/// as soon as a page is staged, so the press that opens it doesn't wait for PDFKit.
+/// cache keyed by the page's identity and the crop; the opening view, the whole page and the part
+/// **Back to part** goes to are drawn as soon as a page is staged, so the press that opens it (and
+/// the first press on it) doesn't wait for PDFKit.
+///
+/// **Where it opens.** Every picture opens on the whole page, its controls in sight, with the part
+/// the turn was about — the cited passages' marks, the chosen drawing, the pictured table's area —
+/// kept for **Back to part** (`LensPageLayout.openingViewport`; a tester's build-728 report on a
+/// real Ray-Ban Display, where opening zoomed onto the part showed a corner of the page and left
+/// the buttons to be scrolled to). Reading mode still opens on the passage's words, and its
+/// **Page** still opens the picture on the passage's mark: that is an ask for the part.
 ///
 /// **Drawings (P1b).** Each page's drawings are found from its ink (`PageFigureLocator`, through
 /// `PageFigureAnalysis` and `PageFigureCache`, so a page is analysed once) and one is chosen by
 /// what the turn said (`PageFigureAsk`, read from `requestWords` at `stage`; `PageFigureChoice`).
-/// A turn that asked for a drawing opens on it ahead of any cited passage. **Next diagram ›** and
+/// A turn that asked for a drawing makes it the part, ahead of any cited passage. **Next diagram ›** and
 /// "next diagram" cycle the page's drawings in reading order; "the bottom one" goes to the one a
 /// position names. Both are audited as moves.
 ///
@@ -497,7 +505,9 @@ final class LensPageSession: ObservableObject {
         case .back:
             if shown.isMoving {
                 handle(.doneMoving, issuedAgainst: revision)
-            } else if !shown.viewport.isAtOpening {
+            } else if !shown.viewport.isAtPart {
+                // Off the part (the whole page the view opened on, or anywhere since): back to it,
+                // as **Back to part** does.
                 handle(.backToPart, issuedAgainst: revision)
             } else if shown.canRead {
                 handle(.readIt, issuedAgainst: revision)     // the picture of a passage: back to its words
@@ -573,14 +583,15 @@ final class LensPageSession: ObservableObject {
     /// The open page's layout, once laid out.
     private var currentLayout: LensPageLayout? { currentPage.flatMap { layouts[$0.layoutKey] } }
 
-    /// The view's first state on a page: its opening viewport, and its drawings for **Next
-    /// diagram ›**.
+    /// The view's first state on a page: the whole page with its part kept for **Back to part**
+    /// (`LensPageLayout.openingViewport`), or the passage's words in reading mode, and its drawings
+    /// for **Next diagram ›**.
     static func openingState(_ layout: LensPageLayout, page: Page, hasNextPage: Bool,
                              geometry: TeleprompterPaginator.Geometry = .raybanDisplay,
                              tilesAndStrips: Bool = false) -> HUDPageViewState {
         var state = HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
                                      citation: citation(for: page.staged), hasNextPage: hasNextPage,
-                                     diagramCount: layout.drawings.count, diagramIndex: layout.openingDrawing)
+                                     diagramCount: layout.drawings.count, diagramIndex: layout.partDrawing)
         state.tilesAndStrips = tilesAndStrips
         if let reading = layout.reading {
             state.readingPages = reading.pages(geometry: geometry)
@@ -611,7 +622,7 @@ final class LensPageSession: ObservableObject {
         return (current + 1) % layout.drawings.count
     }
 
-    /// `shown` moved to open on drawing `index`: that drawing is now what **Back to part** returns to.
+    /// `shown` moved onto drawing `index`: that drawing is now what **Back to part** returns to.
     static func state(_ shown: HUDPageViewState, onDrawing index: Int, viewport: LensPageViewport,
                       layout: LensPageLayout) -> HUDPageViewState {
         var next = shown
@@ -769,22 +780,30 @@ final class LensPageSession: ObservableObject {
 
     // MARK: - Drawing
 
-    /// Lay the page out (once) and draw the opening view and the whole page ahead of the press.
+    /// Lay the page out (once) and draw the opening view, the whole page and the part ahead of the
+    /// press.
     private func prepare(_ page: Page) {
         guard let request = page.request else { return }
         track { [weak self] in
             guard let self, let layout = await self.layout(for: page, request: request) else { return }
-            // The pictures the first presses want: the opening view (or, opening on the words, the
-            // picture **Page** shows) and the whole page, each in the box its frame leaves.
+            // The pictures the first presses want, each in the box its frame leaves: the opening
+            // view (the whole page under the citation; opening on the words, the picture **Page**
+            // shows), the whole page on a later frame, and the part **Back to part** goes to (in
+            // Scroll, drawn as its strip).
             let opening = Self.openingState(layout, page: page, hasNextPage: false, geometry: self.readingGeometry(),
                                             tilesAndStrips: self.tilesAndStrips)
-            var first = opening.isReading ? Self.pictureState(opening, layout: layout) : opening
+            let first = (opening.isReading ? Self.pictureState(opening, layout: layout) : opening).framed()
             var whole = first
             whole.isFirstFrame = false
             whole.viewport.showWholePage()
-            whole = whole.framed()
-            first = first.framed()
-            for state in [first, whole] {
+            var part = first
+            part.isFirstFrame = false
+            part.viewport.reset()
+            var states: [HUDPageViewState] = []
+            for state in [first, whole.framed(), part.framed()] where !states.contains(state) {
+                states.append(state)
+            }
+            for state in states {
                 _ = await self.picture(for: Self.renderPlan(state, layout: layout), page: page, request: request)
             }
         }

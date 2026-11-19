@@ -1,10 +1,11 @@
 import CoreGraphics
 import Foundation
 
-/// Where the page view opens (Plan KV §1, decision 2): the part of the page the answer is about,
-/// padded. The viewport fits the padded rectangle into the picture box exactly
-/// (`LensPageViewport.init(opening:box:)`), so a wide table row or diagram fills the box's width and
-/// a tall one its height. Pure.
+/// The part of the page the answer is about, padded (Plan KV §1, decision 2): where **Back to
+/// part** goes. The page view opens on the whole page with this part kept (a tester's build-728
+/// report; `LensPageLayout.openingViewport`). The viewport fits the padded rectangle into the
+/// picture box exactly (`LensPageViewport.init(opening:box:)`), so a wide table row or diagram
+/// fills the box's width and a tall one its height. Pure.
 ///
 /// The sources, in order — the first with any usable rectangle on the page wins:
 /// 1. the cited passages' rectangles, united (IN's marks, through `LensPageMarks`);
@@ -14,10 +15,10 @@ import Foundation
 /// 4. none: the whole page, fitted.
 ///
 /// When the request asked for a drawing (`PageFigureAsk.asksForDrawing`, passed as `figureFirst`)
-/// the drawing moves to the top, ahead of any cited passage: "show me the wiring diagram" opens on
-/// the diagram even when the answer cited a line beside it. The drawing is passed at all only when
+/// the drawing moves to the top, ahead of any cited passage: in "show me the wiring diagram" the
+/// part is the diagram even when the answer cited a line beside it. The drawing is passed at all only when
 /// it is a focus (`PageFigureAsk.drawingFocus`): a drawing asked for, or a figure page the app put
-/// up by itself. "Show me page 7" with nothing cited opens the whole page.
+/// up by itself. "Show me page 7" with nothing cited has no part: the whole page.
 ///
 /// All rectangles are in top-down page points (see `LensPageViewport`). A rectangle is clipped to
 /// the page first; one empty after clipping is not counted, so a source whose rectangles all lie
@@ -40,9 +41,9 @@ struct LensPageFocus: Equatable {
     let source: Source
     /// The united focus, before padding; nil for the whole page.
     let region: CGRect?
-    /// The padded focus the opening crop has to hold; nil for the whole page.
+    /// The padded focus the part's crop has to hold; nil for the whole page.
     let padded: CGRect?
-    /// The opening crop's centre (the viewport clamps it).
+    /// The part's crop's centre (the viewport clamps it).
     let center: CGPoint
 
     var hasFocus: Bool { region != nil }
