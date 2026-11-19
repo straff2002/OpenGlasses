@@ -449,4 +449,79 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertEqual(VanStockTool.lines(["description": "Igniter", "quantity": 2.0]),
                        [VanStockService.Line(description: "Igniter", quantity: 2)])
     }
+
+    // MARK: Whole numbers only, for now
+
+    private func standard(_ description: String) -> Int? {
+        store.log.items.first { $0.description == description }?.standard
+    }
+
+    func testAFractionalUseIsRefusedNotCut() async throws {
+        _ = try await run(["action": "load", "description": "Engine oil", "quantity": 5, "unit": "l"])
+        let movements = store.log.movements.count
+        clock.addTimeInterval(60)
+        let answer = try await run(["action": "use", "description": "engine oil", "quantity": 4.25])
+        XCTAssertTrue(answer.hasPrefix("Nothing was changed."), answer)
+        XCTAssertTrue(answer.contains("4.25 for engine oil is not a whole number"), answer)
+        XCTAssertEqual(store.log.movements.count, movements)
+        XCTAssertEqual(onHand("Engine oil"), 5)
+    }
+
+    func testAFractionalCountSentAsTextIsRefused() async throws {
+        _ = try await run(["action": "load", "description": "Igniter", "quantity": 4])
+        let movements = store.log.movements.count
+        clock.addTimeInterval(60)
+        let answer = try await run(["action": "count", "description": "igniter", "quantity": "3.5"])
+        XCTAssertTrue(answer.contains("whole number"), answer)
+        XCTAssertEqual(store.log.movements.count, movements)
+        XCTAssertEqual(onHand("Igniter"), 4)
+    }
+
+    func testAFractionalStandardDoesNotClearTheStandard() async throws {
+        _ = try await run(["action": "load", "description": "Igniter", "quantity": 4])
+        clock.addTimeInterval(60)
+        _ = try await run(["action": "set_standard", "description": "igniter", "quantity": 3])
+        XCTAssertEqual(standard("Igniter"), 3)
+        clock.addTimeInterval(60)
+        let answer = try await run(["action": "set_standard", "description": "igniter", "quantity": 0.5])
+        XCTAssertTrue(answer.contains("whole number"), answer)
+        XCTAssertEqual(standard("Igniter"), 3, "0.5 used to be cut to 0, which cleared the standard")
+    }
+
+    func testAWholeNumberSentAsADecimalIsKept() async throws {
+        let answer = try await run(["action": "load", "description": "Igniter", "quantity": 2.0])
+        XCTAssertTrue(answer.hasPrefix("Loaded 2 × Igniter."), answer)
+        XCTAssertEqual(onHand("Igniter"), 2)
+    }
+
+    func testAQuantityInWordsIsRefusedNotTakenAsOne() async throws {
+        let answer = try await run(["action": "load", "description": "Igniter", "quantity": "two"])
+        XCTAssertTrue(answer.contains("two for Igniter is not a whole number"), answer)
+        XCTAssertTrue(store.log.isEmpty)
+    }
+
+    func testOneFractionInABatchStopsTheWholeBatch() async throws {
+        let answer = try await run(["action": "load", "items": [
+            entry(["description": "Igniter", "quantity": 2]),
+            entry(["description": "Thermostat cable", "quantity": 1.5, "unit": "m"]),
+        ]])
+        XCTAssertTrue(answer.contains("1.5 for Thermostat cable is not a whole number"), answer)
+        XCTAssertTrue(store.log.isEmpty, "nothing in the batch is recorded")
+    }
+
+    func testEveryFractionInABatchIsNamed() {
+        let refusal = VanStockTool.notWholeRefusal(["items": [
+            entry(["description": "Engine oil", "quantity": 4.25]),
+            entry(["part": "70W16", "quantity": "0.5"]),
+            entry(["description": "Igniter", "quantity": 1]),
+        ]])
+        XCTAssertEqual(refusal, "Nothing was changed. Van stock keeps whole numbers only for now, and "
+            + "4.25 for Engine oil and 0.5 for 70W16 are not whole numbers. Ask the technician for a whole number.")
+    }
+
+    func testALoadWithNoQuantityStillDefaultsToOne() async throws {
+        let answer = try await run(["action": "load", "description": "Igniter"])
+        XCTAssertTrue(answer.hasPrefix("Loaded 1 × Igniter."), answer)
+        XCTAssertEqual(onHand("Igniter"), 1)
+    }
 }

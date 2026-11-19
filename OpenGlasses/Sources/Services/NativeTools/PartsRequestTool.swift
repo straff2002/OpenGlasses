@@ -56,7 +56,7 @@ final class PartsRequestTool: NativeTool {
             ],
             "quantity": [
                 "type": "integer",
-                "description": "How many. Defaults to 1."
+                "description": "How many parts, as a whole number. Defaults to 1."
             ],
             "task_id": [
                 "type": "string",
@@ -148,10 +148,18 @@ final class PartsRequestTool: NativeTool {
         let urgency = PartsRequest.Urgency(
             rawValue: (args["urgency"] as? String)?.lowercased() ?? "routine") ?? .routine
 
+        let quantity: Int
+        switch Self.quantityArgument(args["quantity"]) {
+        case .absent: quantity = 1
+        case .whole(let value): quantity = value
+        case .notWhole(let spelling):
+            return "Nothing was requested. A parts request is a whole number of parts, and \(spelling) is not one. Ask how many."
+        }
+
         let onVan = (args["on_van"] as? Bool) ?? false
         guard let request = session.requestPart(
             verified,
-            quantity: Self.integer(args["quantity"]) ?? 1,
+            quantity: quantity,
             taskId: (taskId?.isEmpty == true) ? nil : taskId,
             urgency: urgency,
             onVan: onVan) else {
@@ -227,6 +235,43 @@ final class PartsRequestTool: NativeTool {
         return "Base says, about \(updated.quantity) × \(updated.part.number): \(answer)\n"
             + "Filed against the request. It does not change the recommendation or the task — "
             + "tell the technician and let them decide."
+    }
+
+    /// A quantity as the model sent it, read without cutting it.
+    enum QuantityArgument: Equatable {
+        /// Nothing was sent, so the caller's default applies.
+        case absent
+        /// A whole number, whatever shape it arrived in ("4", 4.0, 4).
+        case whole(Int)
+        /// Something that is not a whole number, spelled as it arrived ("4.25", "two"), so the
+        /// refusal can say what it was given.
+        case notWhole(String)
+    }
+
+    /// Reads a quantity without cutting a fraction: 4.25 is `.notWhole("4.25")`, never 4. A stock
+    /// or parts figure that is not whole is refused with a sentence until measured quantities are
+    /// kept exactly. Negative whole numbers stay whole; the services refuse them in their own words.
+    static func quantityArgument(_ raw: Any?) -> QuantityArgument {
+        guard let raw, !(raw is NSNull) else { return .absent }
+        if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
+            return .notWhole(number.boolValue ? "true" : "false")
+        }
+        if let value = raw as? Int { return .whole(value) }
+        if let value = raw as? Double { return wholeOrNot(value, spelling: "\(value)") }
+        if let number = raw as? NSNumber { return wholeOrNot(number.doubleValue, spelling: "\(number.doubleValue)") }
+        if let text = raw as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return .absent }
+            if let value = Int(trimmed) { return .whole(value) }
+            if let value = Double(trimmed) { return wholeOrNot(value, spelling: trimmed) }
+            return .notWhole(trimmed)
+        }
+        return .notWhole("\(raw)")
+    }
+
+    private static func wholeOrNot(_ value: Double, spelling: String) -> QuantityArgument {
+        guard value.isFinite, value.rounded() == value, abs(value) < 1_000_000_000 else { return .notWhole(spelling) }
+        return .whole(Int(value))
     }
 
     /// Models send numbers as Int, Double or String; take all three.
