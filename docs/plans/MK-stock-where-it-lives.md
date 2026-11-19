@@ -1,9 +1,16 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All ten decisions taken 2026-11-19 as
-recommended**, 7 in the form reworked the same day on the owner's point that a store may want its
-numbers checked against a catalogue or a particular manual (§4). The build follows as its own PR,
-after PR 1139 (the near-match fix), which adds van wording of its own to the same three files.
+**Status:** 🚧 **P0 built 2026-11-19 (headless)**; P1–P4 to come. All ten decisions taken 2026-11-19
+as recommended, 7 in the form reworked the same day on the owner's point that a store may want its
+numbers checked against a catalogue or a particular manual (§4). P0 adds `StockPlace` (the five
+kinds, their family, a lenient read that takes an unknown kind as van and a strict one that
+returns none), `StockPlaceWording` (§3's table, plus `putVerb` "loaded"/"received" and `title`),
+`StockPlaceSetting.resolve`, `VanIdentity.place` and `.checkVaultID` with the store's `setPlace` and
+`checkNumbers(against:)`, the meta sheet's `place` row, a takeover that keeps the receiving phone's
+book, and `VanStockVerification` on `VanStockItem` with the legacy decode. No sentence, tool or
+screen changed: `verified` stays as a computed two-state view so the composer, service and matcher
+compile untouched, and a verification edit is recorded under the existing `verified` attribute so
+an older build still reads the log.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the movement log, `van_stock`, the Van Stock screen, the spreadsheet
@@ -250,7 +257,7 @@ phone rule (IH Decision 8), and the feature's licensing: it still needs Field As
 
 ## Phases
 
-- **P0 — the place (headless).** `StockPlace` (kinds, family, decoding an unknown kind),
+- **P0 — the place (headless).** ✅ Built 2026-11-19. `StockPlace` (kinds, family, decoding an unknown kind),
   `StockPlaceWording`, `StockPlaceSetting.resolve` (profile over list over default),
   `VanIdentity.place` with older JSON decoding, the meta sheet's `place` row in and out, and
   `VanStockVerification` with the legacy decode. About 25 tests.
