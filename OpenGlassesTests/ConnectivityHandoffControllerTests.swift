@@ -139,6 +139,21 @@ final class ConnectivityHandoffControllerTests: XCTestCase {
         XCTAssertTrue(controller.heldQuestions.isHolding(conversationId: "thread-1"))
     }
 
+    func testAMissedPhoneAnswerIsHeldForTheCloudWithItsOwnLine() async {
+        await controller.pathChanged(online: false)
+        // The on-device model answered and produced nothing usable: asking again without signal
+        // would get the same miss, so the question waits for the cloud.
+        XCTAssertEqual(controller.planTurn("why is the sky blue"), .phoneModel(configId: "local"))
+        XCTAssertEqual(controller.hold("why is the sky blue", reason: .phoneModelMissed),
+                       HandoffAnnouncer.heldAfterMissLine)
+        XCTAssertTrue(controller.heldQuestions.isHolding(conversationId: "thread-1"))
+        // The full line is said once an episode, whatever the reason; later holds are short.
+        XCTAssertEqual(controller.hold("what about at sunset", reason: .phoneModelMissed),
+                       HandoffAnnouncer.heldReplacedLine)
+        XCTAssertNotEqual(HandoffAnnouncer.heldAfterMissLine, LLMService.localMissMessage,
+                          "a held question never tells the wearer to ask again")
+    }
+
     func testTheSettingOffLeavesEveryTurnOnTheCloud() async {
         world.enabled = false
         await controller.pathChanged(online: false)

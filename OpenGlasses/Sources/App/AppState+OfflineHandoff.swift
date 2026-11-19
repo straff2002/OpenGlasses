@@ -112,6 +112,15 @@ extension AppState {
         return true
     }
 
+    /// A phone-model turn that produced no usable answer is held for the cloud rather than ending
+    /// in "please ask me again": asking again without signal would get the same miss. Any other
+    /// reply passes through unchanged.
+    func settlePhoneModelReply(_ reply: String, query: String, answeredOnPhone: Bool) -> String {
+        guard answeredOnPhone, llmService.lastLocalTurnMissed else { return reply }
+        PrivacyLog.model(.offlineTurn, detail: PrivacyToken("heldAfterMiss"))
+        return connectivityHandoff.hold(query, reason: .phoneModelMissed)
+    }
+
     /// Serve a phone turn that needs no model: run the deterministic tool, or hold the question.
     /// Returns the reply to speak and record, or nil when the tool produced nothing — the caller
     /// then falls back to ``ConnectivityHandoffController/modelPlan()``.

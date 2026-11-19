@@ -38,6 +38,8 @@ struct HandoffAnnouncer: Equatable {
 
     /// The first time a question is held because nothing on the phone can think it through.
     static let heldFirstLine = "I can't think that through without signal while the phone is locked. I'll answer when we're back online."
+    /// The first time a question is held because the on-device model couldn't answer it.
+    static let heldAfterMissLine = "I couldn't answer that on the phone. I'll answer it when we're back online."
     /// A later question in the same episode replaces the held one.
     static let heldReplacedLine = "Got it. I'll answer that one instead when we're back online."
     /// A held question older than its time-to-live is dropped on return with one line.
