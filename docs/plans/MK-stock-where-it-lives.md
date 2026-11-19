@@ -1,6 +1,6 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All nine decisions taken 2026-11-19 as
+**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All ten decisions taken 2026-11-19 as
 recommended**, 7 in the form reworked the same day on the owner's point that a store may want its
 numbers checked against a catalogue or a particular manual (§4). The build follows as its own PR,
 after PR 1139 (the near-match fix), which adds van wording of its own to the same three files.
@@ -81,8 +81,16 @@ naturally in a shop.
 | `truck` | vehicle | on the truck | Truck 4 |
 | `store` | premises | in the store | Main street store |
 | `warehouse` | premises | in the warehouse | Warehouse A |
+| `stock` (neutral) | premises | in stock | Factory 2 stores |
 
-A **custom name is a name on one of these kinds, not a fifth kind.** A sentence needs a noun whose
+**`stock` is the catch-all** (Decision 10). It names no place: "22 in stock", "the stock list".
+With no place noun it is safe in every language, so it covers a factory, a workshop, a storeroom, a
+site container, a clinic's supply cupboard or a bar, with the list's name saying which. Named
+kinds are kept for places where the noun really helps the sentence. A new named kind later costs one
+enum case, its English phrases and four screen strings in 19 languages, so the list grows only when
+a pilot asks for one.
+
+A **custom name is a name on one of these kinds, not another kind.** A sentence needs a noun whose
 grammar it knows: "on" a vehicle, "in" a building, and in the 18 translations, a gender, an article
 and a case. A free word ("the cellar", "the fridge") cannot be put into a translated sentence
 safely. So the name goes where a name works on its own: the screen's title, the Job-tab row, the
@@ -101,7 +109,7 @@ The place is resolved in one place, `StockPlaceSetting.resolve` (pure), in this 
 1. **The organisation profile**: a new `SettingKey.organizationStockPlace`, `profileOwned(.string)`,
    so it is set and locked like `organizationAccentColor`, and cleared when the profile is removed.
    The content check denies by default: a kind this build does not know is a named drop ("not one of
-   van, truck, store or warehouse"), never a guess. The profile summary says "Stock is kept in the
+   van, truck, store, warehouse or stock"), never a guess. The profile summary says "Stock is kept in the
    store". The deployer information sheet gains its row.
 2. **The list's own place**, chosen by the person keeping the list, on the Stock screen: "Name this
    van…" becomes "Name and place…", a sheet with the kind as a picker and the name as a field. When
@@ -125,15 +133,15 @@ provides.
 `StockPlaceWording` (pure) is the only code that says anything about the place. It is English, for
 the model:
 
-| Phrase | van / truck | store / warehouse |
-|---|---|---|
-| where | on the van | in the store |
-| the list | the van list | the stock list |
-| put there | loaded, put on the van | put in the store |
-| taken | used, taken off the van | sold or used, taken from the store |
-| the usual figure | standard load | par level |
-| who set it | base / this truck | the office / this store |
-| the handover | send the stock to base | send the stock list |
+| Phrase | van / truck | store / warehouse | stock |
+|---|---|---|---|
+| where | on the van | in the store | in stock |
+| the list | the van list | the stock list | the stock list |
+| put there | loaded, put on the van | put in the store | put into stock |
+| taken | used, taken off the van | sold or used, taken from the store | used or sold, taken from stock |
+| the usual figure | standard load | par level | par level |
+| who set it | base / this truck | the office / this store | the office / this list |
+| the handover | send the stock to base | send the stock list | send the stock list |
 
 `VanStockAnswerComposer`, `VanStockService`, `VanStockHandover`, `JobCloseSequence`'s stock
 question and `PartsRequestTool`'s result lines take a `StockPlaceWording` instead of literals.
@@ -151,7 +159,7 @@ ask what is in the store, or say they received, sold, used, returned or counted 
 **The screen does not name the place in its sentences** (Decision 5). Its strings are rewritten to
 read the same everywhere: "Nothing on the list matches that", "On hand", "The list on this phone
 can't be read". The place shows only where a name works alone: the title and the Job-tab row
-("Van stock", "Truck stock", "Store stock", "Warehouse stock", or the list's name). Three places
+("Van stock", "Truck stock", "Store stock", "Warehouse stock", "Stock", or the list's name). Three places
 genuinely need the kind, and get one string per kind: the takeover button ("Take over this van" /
 "…this truck" / "Take over this list"), the empty-state hint ("I've loaded four flame sensors" /
 "I've put in six cases of soda water"), and the name field's placeholder. The workbook's sheet,
@@ -204,7 +212,7 @@ With no book it is `notChecked`, and a later look that has a book still upgrades
 
 ### 5 · What each family keeps
 
-| IH step | vehicle (van, truck) | premises (store, warehouse) |
+| IH step | vehicle (van, truck) | premises (store, warehouse, stock) |
 |---|---|---|
 | `check`, `low`, `load`, `use`, `remove`, `count`, `undo` | as today | as today, in premises words: a use is "sold or used" |
 | `use` tagged to the open job; `unrecorded`, `not_from_van`; the close-of-job question | as today | no longer in the schema the model is given. A premises list has no job to tag, and the close question is asked only when a job closes, so nothing is lost |
@@ -224,6 +232,22 @@ The movement log, its file and its fields, apart from the optional `place` and `
 `DataStoreRegistry` (`vanStock`), the backup rule, the HIPAA rule on the handover, the one-list-per-
 phone rule (IH Decision 8), and the feature's licensing: it still needs Field Assist switched on.
 
+### 7 · A warehouse, a factory, a team: what the words do not fix
+
+`stock` makes the words right anywhere. Four limits stay, and they are not wording:
+
+- **One list on one phone at a time** (IH Decision 8). A warehouse or a factory usually has several
+  people taking from the same stock at once. That needs the company's stock in Avenkin Office
+  (Plan [HF](HF-office-stock-and-capture-contracts.md)), not a setting. Until then, each person
+  keeps their own list, or one phone keeps the list for the whole place.
+- **Whole quantities only** (IH §1). Resin by the kilogram or cable cut to fractions of a metre hits
+  the same limit as refrigerant by weight. Fractions change the quantity type through the ledger
+  and HF.
+- **Where the list is opened.** It is reached from the Job tab, and a factory or a shop runs no jobs
+  (Open question 2).
+- **Locations inside the building are already covered**: every line has a bin label ("Main fridge",
+  "Rack C3"), searched like the description.
+
 ## Phases
 
 - **P0 — the place (headless).** `StockPlace` (kinds, family, decoding an unknown kind),
@@ -242,8 +266,8 @@ phone rule (IH Decision 8), and the feature's licensing: it still needs Field As
   label, hint and placeholder; the workbook's sheet and file names; the "Not in the manuals" mark.
   Simulator screenshots of a van and a store in both appearances and at the largest text size, and
   the Van Stock screen's accessibility-audit entry IH P2 still owes.
-- **P3 — the catalog sync (its own PR).** The build PR adds English only. About 45 keys are changed
-  or added: about 31 rewritten to be place-neutral, 4 titles, about 9 per-kind strings, and the
+- **P3 — the catalog sync (its own PR).** The build PR adds English only. About 50 keys are changed
+  or added: about 31 rewritten to be place-neutral, 5 titles, about 12 per-kind strings, and the
   profile's summary and refusal, and the vault picker's few strings. All of them are then
   translated into the 18 other languages and the retired van keys removed, as PRs 1128, 1133 and
   1140 did for earlier features.
@@ -267,8 +291,8 @@ P0–P2 are one PR, under the house rhythm. P3 is the catalog PR. P4 is a report
 - `VanStockAnswerComposerTests`, `VanStockToolTests`, `VanStockHandoverTests` and
   `VanStockJobCloseTests`, run for every kind: each result and the tool's description contain the
   kind's own words and none of the other family's ("van", "truck", "base", "load" at a store; "store",
-  "warehouse", "par" on a van). The van run's expected strings are today's, unchanged, so the
-  default is pinned to what ships now.
+  "warehouse", "par" on a van; no place noun at all at `stock`). The van run's expected strings are
+  today's, unchanged, so the default is pinned to what ships now.
 - `VanStockToolTests` additions: a premises schema has no `unrecorded` or `not_from_van`;
   `send_to_base` at a store asks no extras question and stages the list; a store with no named
   vault makes no lookup (the injected `verify` is never called).
@@ -285,13 +309,14 @@ P0–P2 are one PR, under the house rhythm. P3 is the catalog PR. P4 is a report
 
 ## Decisions for Greig
 
-**All nine taken 2026-11-19 as recommended** (owner: "1. yes, 2, yes, 3, yes, 4, yes, 5, yes, 6,
+**All ten taken 2026-11-19 as recommended** (owner: "1. yes, 2, yes, 3, yes, 4, yes, 5, yes, 6,
 yes", "8 and 9 yes"). 7 was reworked on the owner's question ("a store could want to search
 through a catalogue or a specific manual for a part number?") and taken in that form ("Yes, take
 7").
 
-1. ✅ **Four kinds, and a custom name rides on one of them** (recommended): van, truck, store,
-   warehouse, with the list's existing name as the custom part. The alternative is a free-text
+1. ✅ **Named kinds, and a custom name rides on one of them** (recommended): van, truck, store,
+   warehouse, and the neutral `stock` of Decision 10, with the list's existing name as the custom
+   part. The alternative is a free-text
    place word, which cannot go into translated sentences and would leave the screen half in the
    person's word and half in "van".
 2. ✅ **The default stays van, with no guess from the region** (recommended), so no existing list
@@ -304,7 +329,7 @@ through a catalogue or a specific manual for a part number?") and taken in that 
 4. ✅ **The place travels with the list, in its workbook** (recommended), so a takeover keeps the
    words. The alternative is a per-phone setting, which a new phone would have to be told again.
 5. ✅ **The screen's sentences are rewritten to be place-neutral, and the place appears in the title,
-   the row and three per-kind strings** (recommended): about 45 keys, translated once. The
+   the row and three per-kind strings** (recommended): about 50 keys, translated once. The
    alternative, per-kind variants of every sentence, roughly triples the keys and every future
    string.
 6. ✅ **The tool and action names stay `van_stock`, `send_to_base`, `not_from_van`** (recommended),
@@ -326,6 +351,11 @@ through a catalogue or a specific manual for a part number?") and taken in that 
 9. ✅ **A store keeps `send_to_base` as "send the stock list", with no extras question, and keeps the
    takeover as "Take over this list"** (recommended). The alternative hides both at premises, which
    loses the opening-and-closing handover a shop with two staff phones can use.
+10. ✅ **A neutral `stock` kind is the catch-all for every other place** (owner, 2026-11-19: "stock,
+   yes"). It is said as "in stock" and "the stock list", names no place, and takes the premises
+   steps. It covers a factory, a workshop, a storeroom or a bar, with the list's name saying which
+   one. Named kinds are added only when a pilot asks. Several people sharing one stock is HF's, not
+   this plan's (§7).
 
 ## Open questions
 
@@ -343,10 +373,12 @@ through a catalogue or a specific manual for a part number?") and taken in that 
 
 ## Not in scope
 
-- More than one stock list on a phone, transfers between places, and company-wide stock (Plan HF).
+- More than one stock list on a phone, several people working one list at once, transfers between
+  places, and company-wide stock (Plan HF).
 - A point-of-sale feed, sales figures, prices or reordering from a supplier.
 - Renaming `organizationForbidsVanStock` or any tool or action identifier.
-- A free-text place word in sentences.
+- A free-text place word in sentences, and a named kind for every kind of business (`stock`
+  covers the rest).
 - The Home tile (Open question 2).
 
 ## Risks
@@ -357,5 +389,5 @@ through a catalogue or a specific manual for a part number?") and taken in that 
 - **The neutral rewrite changes text that technicians already know.** The van run of the wording
   tests keeps every model-facing sentence as it is today. Only screen sentences change, and only to
   drop the noun.
-- **Translations.** About 45 keys across 18 languages is a catalog PR the size of PR 1133's. Until
+- **Translations.** About 50 keys across 18 languages is a catalog PR the size of PR 1133's. Until
   it lands, the new strings show in English.
