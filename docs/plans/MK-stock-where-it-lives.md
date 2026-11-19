@@ -1,6 +1,6 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 🚧 **P0, P1 and P2 built 2026-11-19 (headless)**; P3 (the catalog sync PR) and P4 (the pilot pass) owed. All ten decisions taken 2026-11-19
+**Status:** 🚧 **P0, P1 and P2 built 2026-11-19 (headless); P3 catalog sync done 2026-11-20** (62 keys in the 13 complete languages, add-only); P4 (the pilot pass) owed. All ten decisions taken 2026-11-19
 as recommended, 7 in the form reworked the same day on the owner's point that a store may want its
 numbers checked against a catalogue or a particular manual (§4). P0 adds `StockPlace` (the five
 kinds, their family, a lenient read that takes an unknown kind as van and a strict one that
@@ -358,6 +358,11 @@ shop asks by place. `van_stock` gains `list`, for every kind of place:
   profile's summary and refusal, and the vault picker's few strings. All of them are then
   translated into the 18 other languages and the retired van keys removed, as PRs 1128, 1133 and
   1140 did for earlier features.
+  *Done 2026-11-20:* the build harvested 62 new keys, now translated into the 13 complete languages
+  (the other five are still the early partial slice). The sync is add-only like 1128, 1133 and 1140,
+  which removed nothing. The van wordings MK replaced (at least 16 keys) stay in the catalog unused,
+  for a later cleanup. The org-profile refusal keeps the five place values in English. The widget
+  and watch catalogs need none of the keys.
 - **P4 — the pilot pass (owed).** A shop's own spreadsheet imported into a store list, a day of
   spoken checks, receipts and counts in the shop, and a read of every spoken answer for a stray
   "van", "truck", "base" or "manuals". The same day on a technician's phone with the place left at
