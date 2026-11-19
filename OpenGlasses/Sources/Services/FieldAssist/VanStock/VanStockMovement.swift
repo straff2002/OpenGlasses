@@ -56,8 +56,8 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let itemID: String
     let kind: Kind
-    /// Zero for `edited` and `reversed`.
-    let quantity: Int
+    /// In thousandths of the line's unit (`StockQuantity`). Zero for `edited` and `reversed`.
+    let quantity: StockQuantity
     let at: Date
     /// One spoken sentence, or one imported sheet, is one batch.
     let batch: String
@@ -81,7 +81,7 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
     init(id: String = UUID().uuidString,
          itemID: String,
          kind: Kind,
-         quantity: Int = 0,
+         quantity: StockQuantity = .zero,
          at: Date,
          batch: String,
          source: Source,

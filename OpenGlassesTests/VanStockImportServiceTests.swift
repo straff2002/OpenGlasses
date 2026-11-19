@@ -58,8 +58,8 @@ final class VanStockImportServiceTests: XCTestCase {
         XCTAssertTrue(imports.apply())
         XCTAssertEqual(imports.stage, .idle)
         XCTAssertEqual(store.log.items.map(\.number), ["00123", nil])
-        XCTAssertEqual(store.log.items.map { store.log.level(of: $0.id).onHand }, [4, 50])
-        XCTAssertEqual(store.log.items.first?.minimum, 2)
+        XCTAssertEqual(store.log.items.map { store.log.level(of: $0.id).onHand }, [.whole(4), .whole(50)])
+        XCTAssertEqual(store.log.items.first?.minimum, .whole(2))
         XCTAssertEqual(Set(store.log.movements.map(\.batch)).count, 1)
 
         clock.addTimeInterval(60)
@@ -68,7 +68,7 @@ final class VanStockImportServiceTests: XCTestCase {
     }
 
     func testAnExportComesStraightBackAsNothingToChange() throws {
-        _ = stock.load([.init(description: "Igniter", quantity: 3)])
+        _ = stock.load([.init(description: "Igniter", quantity: .whole(3))])
         clock.addTimeInterval(60)
         let url = try XCTUnwrap(stock.exportFile())
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

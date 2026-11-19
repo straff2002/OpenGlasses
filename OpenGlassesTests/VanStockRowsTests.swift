@@ -8,14 +8,14 @@ final class VanStockRowsTests: XCTestCase {
 
     private var log: VanStockLog {
         var log = VanStockLog()
-        log.addItem(id: "sensor", number: "62-23543-01", description: "Flame sensor", minimum: 2,
+        log.addItem(id: "sensor", number: "62-23543-01", description: "Flame sensor", minimum: .whole(2),
                     bin: "left shelf 2", codes: ["0123456789012"], verified: true, batch: "b0")
         log.addItem(id: "cable", description: "thermostat cable", unit: .m, batch: "b0")
         log.addItem(id: "igniter", number: "14T56", description: "Igniter", batch: "b0")
         log.addItem(id: "fuse", description: "Fuse", batch: "b0")
-        log.record(.counted, itemID: "sensor", quantity: 2, at: start, batch: "b0", source: .typed)
-        log.record(.loaded, itemID: "cable", quantity: 30, at: start, batch: "b0", source: .spoken)
-        log.record(.counted, itemID: "fuse", quantity: 0, at: start, batch: "b0", source: .typed)
+        log.record(.counted, itemID: "sensor", quantity: .whole(2), at: start, batch: "b0", source: .typed)
+        log.record(.loaded, itemID: "cable", quantity: .whole(30), at: start, batch: "b0", source: .spoken)
+        log.record(.counted, itemID: "fuse", quantity: .whole(0), at: start, batch: "b0", source: .typed)
         return log
     }
 
@@ -78,7 +78,7 @@ final class VanStockRowsTests: XCTestCase {
 
     func testHistoryIsNewestFirstAndAnUndoMarksWhatItTookBack() {
         var log = self.log
-        log.record(.used, itemID: "sensor", quantity: 1, at: start.addingTimeInterval(60), batch: "b1", source: .spoken)
+        log.record(.used, itemID: "sensor", quantity: .whole(1), at: start.addingTimeInterval(60), batch: "b1", source: .spoken)
         log.undoLastBatch(at: start.addingTimeInterval(120), batch: "u1", source: .typed)
         let history = VanStockRows.history(log, itemID: "sensor")
         XCTAssertEqual(history.map(\.movement.kind), [.used, .counted])

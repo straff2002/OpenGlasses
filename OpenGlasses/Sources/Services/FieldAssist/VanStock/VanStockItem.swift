@@ -2,8 +2,8 @@ import Foundation
 
 /// How a line of van stock is counted (Plan IH §1).
 ///
-/// A closed list, and whole quantities only: a van carries six capacitors or ten metres of cable,
-/// and a fraction is out of scope until somebody needs refrigerant by weight.
+/// A closed list. Every figure is kept in thousandths of the unit (`StockQuantity`); the unit
+/// decides which steps a figure may take (`step`): whole ones for `each` and `pack`.
 enum VanStockUnit: String, Codable, CaseIterable, Sendable {
     case each
     case m
@@ -12,15 +12,6 @@ enum VanStockUnit: String, Codable, CaseIterable, Sendable {
     case lb
     case l
     case pack
-
-    /// "2 × Flame sensor", "10 m of Thermostat cable", "1 pack of Wire nuts".
-    func phrase(_ quantity: Int, of name: String) -> String {
-        switch self {
-        case .each: return "\(quantity) × \(name)"
-        case .pack: return "\(quantity) \(quantity == 1 ? "pack" : "packs") of \(name)"
-        case .m, .ft, .kg, .lb, .l: return "\(quantity) \(rawValue) of \(name)"
-        }
-    }
 
     /// What a spoken or typed unit means. Nil for anything that is not on the list, so a unit the
     /// app does not keep is refused instead of being filed as `each`.
@@ -56,10 +47,10 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
     var number: String?
     var description: String
     var unit: VanStockUnit
-    /// Warn at or below this.
-    var minimum: Int?
-    /// What the van should carry; a top-up fills to it.
-    var standard: Int?
+    /// Warn at or below this. In thousandths of `unit`.
+    var minimum: StockQuantity?
+    /// What the van should carry; a top-up fills to it. In thousandths of `unit`.
+    var standard: StockQuantity?
     var standardSetBy: StandardOrigin?
     /// A short label for where it lives on the van: "left shelf 2".
     var bin: String?
@@ -76,8 +67,8 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
          number: String? = nil,
          description: String,
          unit: VanStockUnit = .each,
-         minimum: Int? = nil,
-         standard: Int? = nil,
+         minimum: StockQuantity? = nil,
+         standard: StockQuantity? = nil,
          standardSetBy: StandardOrigin? = nil,
          bin: String? = nil,
          codes: [String] = [],
@@ -123,8 +114,8 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         number = try container.decodeIfPresent(String.self, forKey: .number)
         description = try container.decode(String.self, forKey: .description)
         unit = try container.decode(VanStockUnit.self, forKey: .unit)
-        minimum = try container.decodeIfPresent(Int.self, forKey: .minimum)
-        standard = try container.decodeIfPresent(Int.self, forKey: .standard)
+        minimum = try container.decodeIfPresent(StockQuantity.self, forKey: .minimum)
+        standard = try container.decodeIfPresent(StockQuantity.self, forKey: .standard)
         standardSetBy = try container.decodeIfPresent(StandardOrigin.self, forKey: .standardSetBy)
         bin = try container.decodeIfPresent(String.self, forKey: .bin)
         codes = try container.decode([String].self, forKey: .codes)
@@ -162,6 +153,10 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         return described.isEmpty ? number : "\(described) (\(number))"
     }
 
-    /// "2 × Flame sensor (62-23543-01)".
-    func phrase(_ quantity: Int) -> String { unit.phrase(quantity, of: name) }
+    /// "2 × Flame sensor (62-23543-01)", "4.25 litres of Engine oil": for the model, measured
+    /// amounts in words (`VanStockUnit.spoken(_:of:)`).
+    func phrase(_ quantity: StockQuantity) -> String { unit.spoken(quantity, of: name) }
+
+    /// A figure for this line in a sentence that does not name the unit: "3", "4.25 litres".
+    func figure(_ quantity: StockQuantity) -> String { unit.figure(quantity) }
 }

@@ -42,10 +42,10 @@ enum VanStockHandover {
 
     struct Shortfall: Equatable, Identifiable {
         let item: VanStockItem
-        let onHand: Int
-        /// How many it takes to reach the standard load. Nil when the line has no standard and is
+        let onHand: StockQuantity
+        /// How much it takes to reach the standard load. Nil when the line has no standard and is
         /// listed only because it has run out or is below its minimum.
-        let short: Int?
+        let short: StockQuantity?
         var id: String { item.id }
     }
 
@@ -59,11 +59,11 @@ enum VanStockHandover {
     static func topUp(_ log: VanStockLog) -> [Shortfall] {
         let levels = log.levels
         guard hasStandards(log) else {
-            return log.lowItems.map { Shortfall(item: $0, onHand: levels[$0.id]?.onHand ?? 0, short: nil) }
+            return log.lowItems.map { Shortfall(item: $0, onHand: levels[$0.id]?.onHand ?? .zero, short: nil) }
         }
         return log.items.compactMap { item in
             guard let standard = item.standard else { return nil }
-            let onHand = levels[item.id]?.onHand ?? 0
+            let onHand = levels[item.id]?.onHand ?? .zero
             return onHand < standard ? Shortfall(item: item, onHand: onHand, short: standard - onHand) : nil
         }
     }
@@ -72,9 +72,9 @@ enum VanStockHandover {
 
     struct Surplus: Equatable, Identifiable {
         let item: VanStockItem
-        let onHand: Int
-        /// How many are on board beyond the standard load, and no more than were loaded this shift.
-        let extra: Int
+        let onHand: StockQuantity
+        /// How much is on board beyond the standard load, and no more than was loaded this shift.
+        let extra: StockQuantity
         var id: String { item.id }
     }
 
@@ -87,27 +87,27 @@ enum VanStockHandover {
     /// Stock that was already above standard before the shift is not asked about again.
     static func surplus(_ log: VanStockLog, since start: Date) -> [Surplus] {
         let reversed = Set(log.movements.compactMap { $0.kind == .reversed ? $0.reverses : nil })
-        var loaded: [String: Int] = [:]
+        var loaded: [String: StockQuantity] = [:]
         for movement in log.movements
         where movement.kind == .loaded && movement.at >= start && !reversed.contains(movement.id) {
-            loaded[movement.itemID, default: 0] += movement.quantity
+            loaded[movement.itemID, default: .zero] += movement.quantity
         }
         let levels = log.levels
         return log.items.compactMap { item in
             guard let loadedNow = loaded[item.id], let level = levels[item.id], !level.unreliable else { return nil }
-            let extra = min(level.onHand - (item.standard ?? 0), loadedNow)
-            return extra > 0 ? Surplus(item: item, onHand: level.onHand, extra: extra) : nil
+            let extra = min(level.onHand - (item.standard ?? .zero), loadedNow)
+            return extra > .zero ? Surplus(item: item, onHand: level.onHand, extra: extra) : nil
         }
     }
 
     /// What was sent back to the shelves this shift, for base to see.
-    static func returned(_ log: VanStockLog, since start: Date) -> [(item: VanStockItem, quantity: Int)] {
+    static func returned(_ log: VanStockLog, since start: Date) -> [(item: VanStockItem, quantity: StockQuantity)] {
         let reversed = Set(log.movements.compactMap { $0.kind == .reversed ? $0.reverses : nil })
-        var totals: [String: Int] = [:]
+        var totals: [String: StockQuantity] = [:]
         for movement in log.movements
         where movement.kind == .removed && movement.reason == .returned && movement.at >= start
             && !reversed.contains(movement.id) {
-            totals[movement.itemID, default: 0] += movement.quantity
+            totals[movement.itemID, default: .zero] += movement.quantity
         }
         return log.items.compactMap { item in totals[item.id].map { (item, $0) } }
     }
@@ -135,15 +135,15 @@ enum VanStockHandover {
             lines.append(hasStandards(log) ? "To top up (\(shortfalls.count)):"
                                            : "Run out or below minimum (\(shortfalls.count)). No \(w.usualFigure) is set for \(w.this):")
             lines.append(contentsOf: shortfalls.map { shortfall in
-                shortfall.short.map { "  \(shortfall.item.phrase($0)) — \(shortfall.onHand) \(w.aboard)" }
-                    ?? "  \(shortfall.item.name) — \(shortfall.onHand) \(w.aboard)"
+                shortfall.short.map { "  \(shortfall.item.phrase($0)) — \(shortfall.item.figure(shortfall.onHand)) \(w.aboard)" }
+                    ?? "  \(shortfall.item.name) — \(shortfall.item.figure(shortfall.onHand)) \(w.aboard)"
             })
         }
 
-        let ordered = log.items.filter { (levels[$0.id]?.onOrder ?? 0) > 0 }
+        let ordered = log.items.filter { (levels[$0.id]?.onOrder ?? .zero) > .zero }
         if !ordered.isEmpty {
             lines.append("Asked for, not yet \(w.putVerb):")
-            lines.append(contentsOf: ordered.map { "  \($0.phrase(levels[$0.id]?.onOrder ?? 0))" })
+            lines.append(contentsOf: ordered.map { "  \($0.phrase(levels[$0.id]?.onOrder ?? .zero))" })
         }
         let uncounted = log.items.filter { levels[$0.id]?.unreliable == true }
         if !uncounted.isEmpty {
@@ -195,6 +195,11 @@ enum VanStockHandover {
             var seen = Set<String>()
             for row in read.rows {
                 let id = row.itemID.flatMap { $0.isEmpty ? nil : $0 } ?? makeID()
+                // A row that gave no unit is a line in each, and holds whole figures.
+                if let refusal = VanStockSheet.stepRefusal(row, unit: row.unit ?? .each) {
+                    refusals.append(refusal)
+                    continue
+                }
                 guard seen.insert(id).inserted else {
                     refusals.append(.init(row: row.number, reason: .repeatsRow(row.number)))
                     continue
@@ -204,13 +209,13 @@ enum VanStockHandover {
                                        standardSetBy: row.standard == nil ? nil : (row.standardSetByBase ? .base : .van),
                                        bin: row.bin, batch: batch)
                 if row.needsCount {
-                    log.appendOpening(itemID: item.id, quantity: row.onHand ?? 0, at: at, source: .handover,
+                    log.appendOpening(itemID: item.id, quantity: row.onHand ?? .zero, at: at, source: .handover,
                                       counted: false, unreliable: true)
                 } else if let onHand = row.onHand {
                     log.record(.counted, itemID: item.id, quantity: onHand, at: at, batch: batch,
                                source: .handover, id: makeID())
                 }
-                if let onOrder = row.onOrder, onOrder > 0 {
+                if let onOrder = row.onOrder, onOrder > .zero {
                     log.record(.ordered, itemID: item.id, quantity: onOrder, at: at, batch: batch,
                                source: .handover, id: makeID())
                 }
@@ -233,7 +238,7 @@ enum VanStockHandover {
             /// The van has never carried it: a new line, at nothing recorded.
             case newLine
             /// This truck set its own standard. Kept unless the technician chooses base's.
-            case keptOwn(current: Int)
+            case keptOwn(current: StockQuantity)
         }
 
         let row: Int
@@ -242,7 +247,7 @@ enum VanStockHandover {
         let number: String?
         let description: String
         let unit: VanStockUnit
-        let standard: Int
+        let standard: StockQuantity
         let kind: Kind
         var id: Int { row }
     }
@@ -265,6 +270,8 @@ enum VanStockHandover {
                 guard let standard = hasStandardColumn ? row.standard : (read.isOwn ? nil : row.onHand) else { continue }
                 let existing = VanStockSheet.match(id: row.itemID, number: row.partNumber,
                                                    description: row.description, in: log)
+                // A standard the line's unit cannot hold (2.5 packs) is no standard for it.
+                guard standard.fits(row.unit ?? existing?.unit ?? .each) else { continue }
                 if let item = existing {
                     // The same figure is no change, whoever set it.
                     guard seen.insert(item.id).inserted, item.standard != standard else { continue }

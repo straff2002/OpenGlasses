@@ -15,16 +15,16 @@ final class VanStockSheetTests: XCTestCase {
 
     private var log: VanStockLog {
         var log = VanStockLog()
-        log.addItem(id: "sensor", number: "00123", description: "Flame sensor", minimum: 2, standard: 6,
+        log.addItem(id: "sensor", number: "00123", description: "Flame sensor", minimum: .whole(2), standard: .whole(6),
                     standardSetBy: .base, bin: "left shelf 2", verified: true, batch: "b0")
         log.addItem(id: "igniter", number: "14E65", description: "Igniter", batch: "b0")
-        log.addItem(id: "cable", description: "Thermostat cable", unit: .m, standard: 30, standardSetBy: .van, batch: "b0")
+        log.addItem(id: "cable", description: "Thermostat cable", unit: .m, standard: .whole(30), standardSetBy: .van, batch: "b0")
         log.addItem(id: "fuse", description: "Fuse", batch: "b0")
-        log.record(.counted, itemID: "sensor", quantity: 4, at: time(0), batch: "b0", source: .typed)
-        log.record(.loaded, itemID: "igniter", quantity: 1, at: time(0), batch: "b0", source: .spoken)
-        log.record(.used, itemID: "igniter", quantity: 2, at: time(1), batch: "b1", source: .spoken, jobReference: "job-2031")
-        log.record(.ordered, itemID: "igniter", quantity: 1, at: time(2), batch: "b2", source: .spoken, requestID: "r1")
-        log.record(.loaded, itemID: "cable", quantity: 40, at: time(3), batch: "b3", source: .spoken)
+        log.record(.counted, itemID: "sensor", quantity: .whole(4), at: time(0), batch: "b0", source: .typed)
+        log.record(.loaded, itemID: "igniter", quantity: .whole(1), at: time(0), batch: "b0", source: .spoken)
+        log.record(.used, itemID: "igniter", quantity: .whole(2), at: time(1), batch: "b1", source: .spoken, jobReference: "job-2031")
+        log.record(.ordered, itemID: "igniter", quantity: .whole(1), at: time(2), batch: "b2", source: .spoken, requestID: "r1")
+        log.record(.loaded, itemID: "cable", quantity: .whole(40), at: time(3), batch: "b3", source: .spoken)
         return log
     }
 
@@ -106,17 +106,17 @@ final class VanStockSheetTests: XCTestCase {
         let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
 
         let counts = Dictionary(uniqueKeysWithValues: proposal.counts.map { ($0.itemID, $0) })
-        XCTAssertEqual(counts["sensor"], .init(itemID: "sensor", name: "Flame sensor (00123)", from: 4, to: 5, movedSinceExport: false))
-        XCTAssertEqual(counts["fuse"], .init(itemID: "fuse", name: "Fuse", from: nil, to: 12, movedSinceExport: false))
+        XCTAssertEqual(counts["sensor"], .init(itemID: "sensor", name: "Flame sensor (00123)", from: .whole(4), to: .whole(5), movedSinceExport: false))
+        XCTAssertEqual(counts["fuse"], .init(itemID: "fuse", name: "Fuse", from: nil, to: .whole(12), movedSinceExport: false))
         let edits = Dictionary(uniqueKeysWithValues: proposal.edits.map { ($0.itemID, $0.changes) })
         XCTAssertEqual(edits["sensor"], [.minimum(nil), .bin("right shelf 1")], "an emptied cell in our own sheet clears it")
-        XCTAssertEqual(edits["fuse"], [.standard(10, setBy: .van)])
+        XCTAssertEqual(edits["fuse"], [.standard(.whole(10), setBy: .van)])
 
         var applied = log
         VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(applied.level(of: "sensor").onHand, 5)
+        XCTAssertEqual(applied.level(of: "sensor").onHand, .whole(5))
         XCTAssertEqual(applied.level(of: "sensor").provenance, .counted)
-        XCTAssertEqual(applied.level(of: "fuse").onHand, 12)
+        XCTAssertEqual(applied.level(of: "fuse").onHand, .whole(12))
         XCTAssertNil(applied.item(id: "sensor")?.minimum)
         XCTAssertEqual(applied.item(id: "sensor")?.bin, "right shelf 1")
         XCTAssertEqual(applied.item(id: "fuse")?.standardSetBy, .van)
@@ -136,14 +136,14 @@ final class VanStockSheetTests: XCTestCase {
                                                              ["", "", "", "2"]])
         let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
         XCTAssertEqual(proposal.newLines, [.init(row: 6, number: "22B22", description: "Hot surface igniter", unit: .each,
-                                                 onHand: 3, minimum: 1, standard: 4, bin: "tray")])
+                                                 onHand: .whole(3), minimum: .whole(1), standard: .whole(4), bin: "tray")])
         XCTAssertEqual(proposal.refusals, [.init(row: 7, reason: .noPartNumberOrDescription)])
 
         var applied = log
         VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
         let added = try XCTUnwrap(applied.items.first { $0.number == "22B22" })
         XCTAssertTrue(added.verified)
-        XCTAssertEqual(applied.level(of: added.id).onHand, 3)
+        XCTAssertEqual(applied.level(of: added.id).onHand, .whole(3))
         XCTAssertEqual(added.standardSetBy, .van)
     }
 
@@ -155,7 +155,7 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(proposal.missing.map(\.id), ["sensor"])
         var applied = log
         VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(applied.level(of: "sensor").onHand, 4, "a deleted row never zeroes a line")
+        XCTAssertEqual(applied.level(of: "sensor").onHand, .whole(4), "a deleted row never zeroes a line")
         XCTAssertNotNil(applied.item(id: "sensor"))
     }
 
@@ -163,20 +163,20 @@ final class VanStockSheetTests: XCTestCase {
         var sheets = try exported(log, at: time(10))
         sheets = editing(sheets, line: "Flame sensor", .onHand, to: "6")
         var later = log
-        later.record(.used, itemID: "sensor", quantity: 1, at: time(15), batch: "b9", source: .spoken)
+        later.record(.used, itemID: "sensor", quantity: .whole(1), at: time(15), batch: "b9", source: .spoken)
         let proposal = try VanStockSheet.proposal(from: sheets, log: later).get()
         let count = try XCTUnwrap(proposal.counts.first { $0.itemID == "sensor" })
-        XCTAssertEqual(count.from, 3)
-        XCTAssertEqual(count.to, 6)
+        XCTAssertEqual(count.from, .whole(3))
+        XCTAssertEqual(count.to, .whole(6))
         XCTAssertTrue(count.movedSinceExport)
 
         var sheetWins = later
         VanStockSheet.apply(proposal, to: &sheetWins, at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(sheetWins.level(of: "sensor").onHand, 6, "the sheet's figure is the default")
+        XCTAssertEqual(sheetWins.level(of: "sensor").onHand, .whole(6), "the sheet's figure is the default")
 
         var phoneWins = later
         VanStockSheet.apply(proposal, to: &phoneWins, keepingPhoneFigure: ["sensor"], at: time(20), batch: "import", verify: verify)
-        XCTAssertEqual(phoneWins.level(of: "sensor").onHand, 3)
+        XCTAssertEqual(phoneWins.level(of: "sensor").onHand, .whole(3))
     }
 
     func testBadFiguresAndUnitsAreRefusedLineByLine() throws {
@@ -186,9 +186,11 @@ final class VanStockSheetTests: XCTestCase {
         sheets = editing(sheets, line: "Thermostat cable", .unit, to: "reel")
         let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
         XCTAssertEqual(proposal.refusals.map(\.row), [2, 3, 5])
-        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAWholeNumber(column: "On hand", value: "-1"),
-                                                         .notAWholeNumber(column: "On hand", value: "2.5"),
+        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAQuantity(column: "On hand", value: "-1", unit: .each),
+                                                         .notAQuantity(column: "On hand", value: "2.5", unit: .each),
                                                          .unknownUnit("reel")])
+        XCTAssertEqual(proposal.refusals.map(\.quantityRefusal), [.negative, .notWhole, nil])
+        XCTAssertEqual(proposal.refusals.map(\.name), ["Flame sensor", "Fuse", "Thermostat cable"])
         XCTAssertEqual(proposal.counts.map(\.itemID), ["igniter"], "the refused lines change nothing")
     }
 
@@ -228,8 +230,8 @@ final class VanStockSheetTests: XCTestCase {
         ])]
         let proposal = try VanStockSheet.proposal(from: foreign, log: log).get()
         XCTAssertEqual(proposal.counts.map(\.itemID), ["sensor", "fuse"])
-        XCTAssertEqual(proposal.counts.map(\.to), [9, 20])
-        XCTAssertEqual(proposal.edits, [.init(itemID: "fuse", name: "Fuse", changes: [.description("fuse"), .minimum(5)])])
+        XCTAssertEqual(proposal.counts.map(\.to), [.whole(9), .whole(20)])
+        XCTAssertEqual(proposal.edits, [.init(itemID: "fuse", name: "Fuse", changes: [.description("fuse"), .minimum(.whole(5))])])
         XCTAssertEqual(proposal.edits.first { $0.itemID == "sensor" }, nil, "an empty cell in a foreign sheet clears nothing")
         XCTAssertEqual(proposal.newLines.map(\.number), ["77-100"])
         XCTAssertEqual(proposal.missing, [], "a foreign sheet is not expected to list every line")
@@ -390,5 +392,143 @@ final class VanStockSheetTests: XCTestCase {
         ]
         let read = try VanStockSheet.rows(from: foreign).get()
         XCTAssertEqual(read.rows.map(\.description), ["Soda water"])
+    }
+
+    // MARK: Measured quantities (Plan ML P2)
+
+    /// Engine oil at 4.25 litres against a standard of 5 with a minimum of 2.5, and wire nuts in packs.
+    private var measured: VanStockLog {
+        var log = VanStockLog()
+        log.addItem(id: "oil", number: "OIL-5W30", description: "Engine oil", unit: .l, minimum: StockQuantity(scaled: 2500),
+                    standard: .whole(5), standardSetBy: .van, batch: "b0")
+        log.addItem(id: "nuts", description: "Wire nuts", unit: .pack, batch: "b0")
+        log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: 4250), at: time(0), batch: "b0", source: .typed)
+        log.record(.ordered, itemID: "oil", quantity: StockQuantity(scaled: 500), at: time(1), batch: "b1", source: .spoken)
+        log.record(.counted, itemID: "nuts", quantity: .whole(4), at: time(0), batch: "b0", source: .typed)
+        return log
+    }
+
+    func testAnExportWritesDecimalNumberCells() throws {
+        let data = VanStockSheet.data(measured, exportedAt: time(10), calendar: calendar)
+        // The parts are stored, not compressed, so the sheet's XML is in the bytes as written.
+        let xml = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(xml.contains("<v>4.25</v>"), "on hand")
+        XCTAssertTrue(xml.contains("<v>0.75</v>"), "to top up")
+        XCTAssertTrue(xml.contains("<v>2.5</v>"), "minimum")
+        XCTAssertTrue(xml.contains("<v>0.5</v>"), "on order")
+        XCTAssertTrue(xml.contains("<v>4</v>"), "a whole figure is written as it always was")
+        XCTAssertFalse(xml.contains("<v>4250</v>"), "never thousandths")
+        XCTAssertFalse(xml.contains(">4.25</t>"), "never as text")
+
+        let oil = try exported(measured, at: time(10))[0].rows.first { $0.count > 1 && $0[1] == "Engine oil" }
+        XCTAssertEqual(oil?[column(.onHand)], "4.25")
+        XCTAssertEqual(oil?[column(.toTopUp)], "0.75")
+    }
+
+    func testAnExportImportedStraightBackChangesNothing() throws {
+        let log = measured
+        let sheets = try exported(log, at: time(10))
+        let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
+        XCTAssertEqual(proposal.counts, [])
+        XCTAssertEqual(proposal.edits, [])
+        XCTAssertEqual(proposal.newLines, [])
+        XCTAssertEqual(proposal.refusals, [])
+        var applied = log
+        VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
+        XCTAssertEqual(applied, log)
+    }
+
+    func testDecimalsAreReadInTheRowsUnit() throws {
+        var sheets = try exported(measured, at: time(10))
+        sheets = editing(sheets, line: "Engine oil", .onHand, to: "3.125")
+        sheets = editing(sheets, line: "Wire nuts", .onHand, to: "2.5")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: measured).get()
+        XCTAssertEqual(proposal.counts.map(\.to), [StockQuantity(scaled: 3125)])
+        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAQuantity(column: "On hand", value: "2.5", unit: .pack)])
+        XCTAssertEqual(proposal.refusals.first?.name, "Wire nuts")
+        XCTAssertEqual(proposal.refusals.first?.quantityRefusal, .notWhole)
+    }
+
+    func testMoreThanThreeDecimalPlacesRefusesTheLine() throws {
+        let sheets = editing(try exported(measured, at: time(10)), line: "Engine oil", .onHand, to: "4.2513")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: measured).get()
+        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAQuantity(column: "On hand", value: "4.2513", unit: .l)])
+        XCTAssertEqual(proposal.refusals.first?.quantityRefusal, .tooManyDecimals)
+        XCTAssertEqual(proposal.counts, [])
+    }
+
+    func testHowASpreadsheetStoresANumberIsRead() {
+        XCTAssertEqual(VanStockSheet.quantity("4.2499999999999991", unit: .l), .value(StockQuantity(scaled: 4250)),
+                       "a formula's binary noise is the nearest thousandth")
+        XCTAssertEqual(VanStockSheet.quantity("4.25E-1", unit: .l), .value(StockQuantity(scaled: 425)))
+        XCTAssertEqual(VanStockSheet.quantity("2.0000000000000004", unit: .each), .value(.whole(2)))
+        XCTAssertEqual(VanStockSheet.quantity("4", unit: .l), .value(.whole(4)), "an older workbook's 4 is 4 units")
+        XCTAssertEqual(VanStockSheet.quantity("4.250", unit: .l), .value(StockQuantity(scaled: 4250)))
+        XCTAssertEqual(VanStockSheet.quantity("12.0", unit: .each), .value(.whole(12)))
+        XCTAssertEqual(VanStockSheet.quantity("", unit: .l), .absent)
+        XCTAssertEqual(VanStockSheet.quantity("4.2513", unit: .l), .refused(.tooManyDecimals))
+        XCTAssertEqual(VanStockSheet.quantity("2.5", unit: .pack), .refused(.notWhole))
+        XCTAssertEqual(VanStockSheet.quantity("-1", unit: .l), .refused(.negative))
+        XCTAssertEqual(VanStockSheet.quantity("1e7", unit: .l), .refused(.tooLarge))
+        XCTAssertEqual(VanStockSheet.quantity("four", unit: .l), .refused(.notANumber))
+        XCTAssertEqual(VanStockSheet.quantity("0x10", unit: .each), .refused(.notANumber), "not a spreadsheet's spelling")
+        XCTAssertEqual(VanStockSheet.quantity("nan", unit: .l), .refused(.notANumber))
+        XCTAssertEqual(VanStockSheet.quantity("4,25", unit: .l), .refused(.notANumber), "storage always uses a point")
+    }
+
+    func testARowsUnitIsReadBeforeItsFiguresEvenWhenThePhoneCountsItWhole() throws {
+        // On the phone the oil is counted in each; the sheet moves it to litres with a decimal count.
+        var phone = VanStockLog()
+        phone.addItem(id: "oil", description: "Engine oil", batch: "b0")
+        phone.record(.counted, itemID: "oil", quantity: .whole(4), at: time(0), batch: "b0", source: .typed)
+        var sheets = try exported(phone, at: time(10))
+        sheets = editing(sheets, line: "Engine oil", .unit, to: "l")
+        sheets = editing(sheets, line: "Engine oil", .onHand, to: "4.25")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: phone).get()
+        XCTAssertEqual(proposal.refusals, [])
+        XCTAssertEqual(proposal.edits.first?.changes, [.unit(.l)])
+        XCTAssertEqual(proposal.counts.map(\.to), [StockQuantity(scaled: 4250)])
+        VanStockSheet.apply(proposal, to: &phone, at: time(20), batch: "import", verify: verify)
+        XCTAssertEqual(phone.item(id: "oil")?.unit, .l)
+        XCTAssertEqual(phone.level(of: "oil").onHand, StockQuantity(scaled: 4250))
+    }
+
+    func testARowMovingALineToEachWithWholeFiguresIsApplied() throws {
+        // The phone holds 4.25 l with a minimum of 2.5; the row says each, 4 on hand, a minimum of 2
+        // and a standard of 5. Applied in the row's own order, the unit change finds whole figures.
+        var sheets = try exported(measured, at: time(10))
+        sheets = editing(sheets, line: "Engine oil", .unit, to: "each")
+        sheets = editing(sheets, line: "Engine oil", .onHand, to: "4")
+        sheets = editing(sheets, line: "Engine oil", .minimum, to: "2")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: measured).get()
+        XCTAssertEqual(proposal.refusals, [])
+        var applied = measured
+        VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
+        XCTAssertEqual(applied.item(id: "oil")?.unit, .each)
+        XCTAssertEqual(applied.level(of: "oil").onHand, .whole(4))
+        XCTAssertEqual(applied.item(id: "oil")?.minimum, .whole(2))
+        XCTAssertEqual(applied.item(id: "oil")?.standard, .whole(5))
+
+        // One undo takes it all back, the unit included.
+        applied.undoLastBatch(at: time(21), batch: "undo", source: .typed)
+        XCTAssertEqual(applied.items, measured.items)
+        XCTAssertEqual(applied.levels, measured.levels)
+    }
+
+    func testARowWithNoUnitHoldsItsFiguresToTheLinesOwnUnit() throws {
+        let foreign = [XLSXReader.Sheet(name: "Stock", isHidden: false, rows: [
+            ["Description", "Qty"], ["Engine oil", "3.75"], ["Wire nuts", "2.5"], ["Grease", "0.5"],
+        ])]
+        let proposal = try VanStockSheet.proposal(from: foreign, log: measured).get()
+        XCTAssertEqual(proposal.counts.map(\.to), [StockQuantity(scaled: 3750)])
+        XCTAssertEqual(proposal.refusals.map(\.reason), [
+            .notAQuantity(column: "On hand", value: "2.5", unit: .pack),
+            .notAQuantity(column: "On hand", value: "0.5", unit: .each),
+        ], "a new line with no unit is counted in each")
+        XCTAssertEqual(proposal.newLines, [])
+
+        let takeover = try VanStockHandover.takeover(from: foreign, at: time(20), batch: "t").get()
+        XCTAssertEqual(takeover.log.items.map(\.description), [], "every row is each with no unit, and 3.75 each is not one")
+        XCTAssertEqual(takeover.refusals.count, 3)
     }
 }

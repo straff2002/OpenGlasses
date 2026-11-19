@@ -21,6 +21,11 @@ struct VanStockImportReviewSheet: View {
 
     private var mode: VanStockImportService.Mode { chosenMode ?? service.suggestedMode }
 
+    @Environment(\.locale) private var locale
+
+    /// A figure in the locale's form: "4,25" in German.
+    private func figure(_ quantity: StockQuantity) -> String { quantity.formatted(locale: locale) }
+
     /// The place a takeover would leave this phone's list in: the profile's, or else the
     /// workbook's, or else the list's own (Plan MK §2).
     private var takeoverKind: StockPlace.Kind {
@@ -189,7 +194,7 @@ struct VanStockImportReviewSheet: View {
                             })) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(change.name)
-                                Text("This list's own figure is \(current). The spreadsheet says \(change.standard).")
+                                Text("This list's own figure is \(figure(current)). The spreadsheet says \(figure(change.standard)).")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -208,9 +213,9 @@ struct VanStockImportReviewSheet: View {
                 ForEach(plain) { change in
                     LabeledContent(change.name) {
                         if change.kind == .newLine {
-                            Text("New, \(change.standard)")
+                            Text("New, \(figure(change.standard))")
                         } else {
-                            Text("\(change.standard)")
+                            Text(verbatim: figure(change.standard))
                         }
                     }
                 }
@@ -244,7 +249,7 @@ struct VanStockImportReviewSheet: View {
                             })) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(count.name)
-                                Text("Spreadsheet says \(count.to). The phone says \(count.from ?? 0).")
+                                Text("Spreadsheet says \(figure(count.to)). The phone says \(figure(count.from ?? .zero)).")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -263,9 +268,9 @@ struct VanStockImportReviewSheet: View {
                     ForEach(plain) { count in
                         LabeledContent(count.name) {
                             if let from = count.from {
-                                Text("\(from) → \(count.to)")
+                                Text(verbatim: "\(figure(from)) → \(figure(count.to))")
                             } else {
-                                Text("\(count.to)")
+                                Text(verbatim: figure(count.to))
                             }
                         }
                     }
@@ -279,7 +284,7 @@ struct VanStockImportReviewSheet: View {
                     ForEach(proposal.newLines) { line in
                         LabeledContent(line.description.isEmpty ? (line.number ?? "") : line.description) {
                             if let onHand = line.onHand {
-                                Text("\(onHand)")
+                                Text(verbatim: figure(onHand))
                             } else {
                                 Text("Not counted")
                             }
@@ -319,7 +324,11 @@ struct VanStockImportReviewSheet: View {
             Section {
                 ForEach(refusals) { refusal in
                     LabeledContent {
-                        reasonText(refusal.reason)
+                        if let name = refusal.name {
+                            Text(verbatim: "\(name): ") + reasonText(refusal)
+                        } else {
+                            reasonText(refusal)
+                        }
                     } label: {
                         Text("Row \(refusal.row)")
                     }
@@ -332,10 +341,21 @@ struct VanStockImportReviewSheet: View {
         }
     }
 
-    private func reasonText(_ reason: VanStockSheet.Proposal.Refusal.Reason) -> Text {
-        switch reason {
-        case .notAWholeNumber(let column, let value):
-            return Text("\(column) “\(value)” isn't a whole number")
+    private func reasonText(_ refusal: VanStockSheet.Proposal.Refusal) -> Text {
+        switch refusal.reason {
+        case .notAQuantity(let column, let value, let unit):
+            // "On hand 4.2513 has more than 3 decimal places", "On hand 2.5 is not a whole number of packs".
+            switch refusal.quantityRefusal {
+            case .tooManyDecimals, .notWhole:
+                switch unit {
+                case .pack: return Text("\(column) \(value) is not a whole number of packs")
+                case .each: return Text("\(column) \(value) is not a whole number")
+                case .m, .ft, .kg, .lb, .l: return Text("\(column) \(value) has more than 3 decimal places")
+                }
+            case .negative: return Text("\(column) \(value) is below zero")
+            case .tooLarge: return Text("\(column) \(value) is more than a million")
+            case .notANumber, nil: return Text("\(column) “\(value)” isn't a number")
+            }
         case .unknownUnit(let unit):
             return Text("“\(unit)” isn't a unit the list keeps")
         case .noPartNumberOrDescription:

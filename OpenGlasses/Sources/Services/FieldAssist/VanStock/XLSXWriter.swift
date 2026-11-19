@@ -7,6 +7,9 @@ enum XLSX {
         case empty
         case text(String)
         case number(Int)
+        /// A stock figure, written as its exact decimal (`<v>4.25</v>`, `<v>4</v>`). OOXML always
+        /// stores a number with a `.`; the spreadsheet shows it in its own locale.
+        case decimal(StockQuantity)
     }
 
     struct Column: Equatable {
@@ -137,6 +140,8 @@ enum XLSXWriter {
                     xml += #"<c r="\#(reference)" t="inlineStr" s="\#(style)"><is><t xml:space="preserve">\#(escape(value))</t></is></c>"#
                 case .number(let value):
                     xml += #"<c r="\#(reference)"><v>\#(value)</v></c>"#
+                case .decimal(let value):
+                    xml += #"<c r="\#(reference)"><v>\#(value.decimalString)</v></c>"#
                 }
             }
             xml += "</row>"

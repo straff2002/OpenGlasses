@@ -5317,6 +5317,16 @@
         }
       }
     },
+    "%@ “%@” isn't a number" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ “%2$@” isn't a number"
+          }
+        }
+      }
+    },
     "%@ “%@” isn't a whole number" : {
       "localizations" : {
         "ar" : {
@@ -5505,6 +5515,56 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ %@ has more than 3 decimal places" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ has more than 3 decimal places"
+          }
+        }
+      }
+    },
+    "%@ %@ is below zero" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ is below zero"
+          }
+        }
+      }
+    },
+    "%@ %@ is more than a million" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ is more than a million"
+          }
+        }
+      }
+    },
+    "%@ %@ is not a whole number" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ is not a whole number"
+          }
+        }
+      }
+    },
+    "%@ %@ is not a whole number of packs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@ is not a whole number of packs"
           }
         }
       }
@@ -6341,6 +6401,9 @@
           }
         }
       }
+    },
+    "%@ asked for" : {
+
     },
     "%@ asked for your expert card" : {
       "localizations" : {
@@ -78023,6 +78086,9 @@
         }
       }
     },
+    "Amount" : {
+
+    },
     "An action named \"%@\" already exists." : {
       "localizations" : {
         "ar" : {
@@ -89120,6 +89186,9 @@
           }
         }
       }
+    },
+    "Asked for %@" : {
+
     },
     "Asked for %lld" : {
       "localizations" : {
@@ -117434,6 +117503,9 @@
         }
       }
     },
+    "Can't be below zero." : {
+
+    },
     "Can't be changed on this phone." : {
       "localizations" : {
         "ar" : {
@@ -121857,6 +121929,9 @@
           }
         }
       }
+    },
+    "Carried forward %@" : {
+
     },
     "Carried forward %lld" : {
       "localizations" : {
@@ -158190,6 +158265,9 @@
           }
         }
       }
+    },
+    "Counted %@" : {
+
     },
     "Counted %lld" : {
       "localizations" : {
@@ -301032,6 +301110,9 @@
         }
       }
     },
+    "Loaded %@" : {
+
+    },
     "Loaded %lld" : {
       "localizations" : {
         "ar" : {
@@ -332106,6 +332187,9 @@
         }
       }
     },
+    "New, %@" : {
+
+    },
     "New, %lld" : {
       "localizations" : {
         "ar" : {
@@ -343321,6 +343405,9 @@
         }
       }
     },
+    "No more than a million." : {
+
+    },
     "No named speakers yet. Tap a speaker chip on a caption to name them." : {
       "localizations" : {
         "ar" : {
@@ -350257,6 +350344,9 @@
           }
         }
       }
+    },
+    "Not a number." : {
+
     },
     "not a photographed-manual policy" : {
       "localizations" : {
@@ -393075,6 +393165,9 @@
           }
         }
       }
+    },
+    "Packs are counted whole." : {
+
     },
     "Packs are signed and verified before anything installs. The catalog itself is signed — an unverifiable index is refused outright." : {
       "localizations" : {
@@ -450881,6 +450974,9 @@
           }
         }
       }
+    },
+    "Removed %@" : {
+
     },
     "Removed %lld" : {
       "localizations" : {
@@ -517598,6 +517694,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "試算表匯入"
+          }
+        }
+      }
+    },
+    "Spreadsheet says %@. The phone says %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Spreadsheet says %1$@. The phone says %2$@."
           }
         }
       }
@@ -609339,6 +609445,16 @@
         }
       }
     },
+    "This list's own figure is %@. The spreadsheet says %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This list's own figure is %1$@. The spreadsheet says %2$@."
+          }
+        }
+      }
+    },
     "This list's own figure is %lld. The spreadsheet says %lld." : {
       "localizations" : {
         "ar" : {
@@ -644349,6 +644465,9 @@
         }
       }
     },
+    "Up to 3 decimal places." : {
+
+    },
     "Up to three short next questions appear as buttons under an answer on the in-lens display. Press one to ask it. The assistant writes them with the answer, so they cost no extra request; they are never spoken and never saved in the conversation." : {
       "localizations" : {
         "ar" : {
@@ -650351,6 +650470,9 @@
           }
         }
       }
+    },
+    "Used %@" : {
+
     },
     "Used %lld" : {
       "localizations" : {
@@ -678930,6 +679052,9 @@
           }
         }
       }
+    },
+    "Whole numbers only." : {
+
     },
     "Whole page" : {
       "localizations" : {

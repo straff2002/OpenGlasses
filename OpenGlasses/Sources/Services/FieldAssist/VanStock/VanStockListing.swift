@@ -76,15 +76,15 @@ extension VanStockAnswerComposer {
     private func figure(_ item: VanStockItem, level: VanStockLevel, provenance perLine: Bool) -> String {
         var line: String
         if level.unreliable {
-            line = "\(item.name): unreliable, the count cannot be trusted; the log shows \(level.onHand), "
+            line = "\(item.name): unreliable, the count cannot be trusted; the log shows \(item.figure(level.onHand)), "
                 + "so ask \(wording.person) to count it"
         } else if let asOf = level.asOf {
-            line = level.onHand == 0 ? "\(item.name): none" : item.phrase(level.onHand)
+            line = level.onHand == .zero ? "\(item.name): none" : item.phrase(level.onHand)
             if perLine { line += " (\(provenance(level, asOf: asOf)))" }
         } else {
             line = "\(item.name): nothing recorded yet, no count"
         }
-        if level.onOrder > 0 { line += "; \(level.onOrder) asked for" }
+        if level.onOrder > .zero { line += "; \(item.figure(level.onOrder)) asked for" }
         return line
     }
 

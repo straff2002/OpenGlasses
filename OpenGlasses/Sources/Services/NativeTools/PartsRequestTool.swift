@@ -250,9 +250,10 @@ final class PartsRequestTool: NativeTool {
         case notWhole(String)
     }
 
-    /// Reads a quantity without cutting a fraction: 4.25 is `.notWhole("4.25")`, never 4. A stock
-    /// or parts figure that is not whole is refused with a sentence until measured quantities are
-    /// kept exactly. Negative whole numbers stay whole; the services refuse them in their own words.
+    /// Reads a quantity without cutting a fraction: 4.25 is `.notWhole("4.25")`, never 4. A parts
+    /// request counts whole parts (Plan ML Decision 8), so a figure that is not whole is refused
+    /// with a sentence; van stock reads its own figures exactly (`StockQuantity.parse(json:unit:)`).
+    /// Negative whole numbers stay whole; the services refuse them in their own words.
     static func quantityArgument(_ raw: Any?) -> QuantityArgument {
         guard let raw, !(raw is NSNull) else { return .absent }
         if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {

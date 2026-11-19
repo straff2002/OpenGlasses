@@ -13,9 +13,10 @@ struct VanStockLevel: Equatable, Sendable {
     }
 
     let itemID: String
-    var onHand: Int = 0
+    /// In thousandths of the line's unit, as every figure here is.
+    var onHand: StockQuantity = .zero
     /// Asked for and not yet loaded.
-    var onOrder: Int = 0
+    var onOrder: StockQuantity = .zero
     var oldestOrderAt: Date?
     var provenance: Provenance = .inferred
     /// When the level last changed. Nil for a line nothing has ever been recorded against.
@@ -67,7 +68,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
         return items.filter { item in
             guard let level = levels[item.id] else { return false }
             if let minimum = item.minimum { return level.onHand <= minimum }
-            return level.isRecorded && level.onHand == 0
+            return level.isRecorded && level.onHand == .zero
         }
     }
 
@@ -80,8 +81,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
                           number: String? = nil,
                           description: String,
                           unit: VanStockUnit = .each,
-                          minimum: Int? = nil,
-                          standard: Int? = nil,
+                          minimum: StockQuantity? = nil,
+                          standard: StockQuantity? = nil,
                           standardSetBy: VanStockItem.StandardOrigin? = nil,
                           bin: String? = nil,
                           codes: [String] = [],
@@ -103,11 +104,13 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     /// Record a load, a use, a removal, a count or an order. Nil — and nothing recorded — for a
     /// line the van does not have, a kind this does not take, or a quantity that makes no sense
-    /// for the kind: a count may be zero, everything else is at least one.
+    /// for the kind: a count may be zero, everything else is more than zero. A figure above a
+    /// million units, or one that is not a step of the line's unit (part of a pack), is never
+    /// recorded.
     @discardableResult
     mutating func record(_ kind: VanStockMovement.Kind,
                          itemID: String,
-                         quantity: Int,
+                         quantity: StockQuantity,
                          at: Date,
                          batch: String,
                          source: VanStockMovement.Source,
@@ -116,12 +119,13 @@ struct VanStockLog: Codable, Equatable, Sendable {
                          jobReference: String? = nil,
                          reason: VanStockMovement.RemovalReason? = nil,
                          requestID: String? = nil) -> VanStockMovement? {
-        guard item(id: itemID) != nil else { return nil }
+        guard let item = item(id: itemID) else { return nil }
         switch kind {
-        case .loaded, .used, .removed, .ordered: guard quantity >= 1 else { return nil }
-        case .counted: guard quantity >= 0 else { return nil }
+        case .loaded, .used, .removed, .ordered: guard quantity > .zero else { return nil }
+        case .counted: guard quantity >= .zero else { return nil }
         case .edited, .reversed, .opening: return nil
         }
+        guard quantity.fits(item.unit) else { return nil }
         let movement = VanStockMovement(
             id: id, itemID: itemID, kind: kind, quantity: quantity, at: at, batch: batch, source: source,
             jobSessionID: kind == .used || kind == .loaded ? jobSessionID : nil,
@@ -134,9 +138,9 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     /// Carry a figure forward as an opening entry: what a folded history leaves, and how a
     /// handover brings across a line whose count cannot be trusted.
-    mutating func appendOpening(itemID: String, quantity: Int, at: Date,
+    mutating func appendOpening(itemID: String, quantity: StockQuantity, at: Date,
                                 source: VanStockMovement.Source, counted: Bool, unreliable: Bool) {
-        guard item(id: itemID) != nil, quantity >= 0 else { return }
+        guard item(id: itemID) != nil, quantity.isInRange else { return }
         movements.append(VanStockMovement(id: "opening-\(itemID)", itemID: itemID, kind: .opening,
                                           quantity: quantity, at: at, batch: Self.openingBatch, source: source,
                                           openingCounted: counted, openingUnreliable: unreliable))
@@ -157,8 +161,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case number(String?)
         case description(String)
         case unit(VanStockUnit)
-        case minimum(Int?)
-        case standard(Int?, setBy: VanStockItem.StandardOrigin?)
+        case minimum(StockQuantity?)
+        case standard(StockQuantity?, setBy: VanStockItem.StandardOrigin?)
         case bin(String?)
         case addCode(String)
         /// Today's two-state change: `true` is found in no named book, `false` is not checked.
@@ -169,7 +173,9 @@ struct VanStockLog: Codable, Equatable, Sendable {
     }
 
     /// Change one attribute of a line and note that it changed. False, and nothing noted, when the
-    /// line does not exist or the value is already what was asked for.
+    /// line does not exist, the value is already what was asked for, or the change is refused: a
+    /// unit counted whole while a figure on the line is not (`unitChangeRefusal`), or a minimum or
+    /// standard that is no figure the line's unit can hold.
     @discardableResult
     mutating func edit(itemID: String, _ change: Change, at: Date, batch: String,
                        source: VanStockMovement.Source, id: String = UUID().uuidString) -> Bool {
@@ -189,12 +195,15 @@ struct VanStockLog: Codable, Equatable, Sendable {
             (attribute, old, new) = (.description, item.description, value)
             item.description = value
         case .unit(let value):
+            guard unitChangeRefusal(itemID: itemID, to: value) == nil else { return false }
             (attribute, old, new) = (.unit, item.unit.rawValue, value.rawValue)
             item.unit = value
         case .minimum(let value):
-            (attribute, old, new) = (.minimum, item.minimum.map(String.init), value.map(String.init))
+            if let value, !value.fits(item.unit) { return false }
+            (attribute, old, new) = (.minimum, item.minimum.map(Self.encodeQuantity), value.map(Self.encodeQuantity))
             item.minimum = value
         case .standard(let value, let setBy):
+            if let value, !value.fits(item.unit) { return false }
             let origin = value == nil ? nil : setBy
             (attribute, old, new) = (.standard,
                                      Self.encodeStandard(item.standard, item.standardSetBy),
@@ -223,6 +232,25 @@ struct VanStockLog: Codable, Equatable, Sendable {
         movements.append(VanStockMovement(id: id, itemID: itemID, kind: .edited, at: at, batch: batch,
                                           source: source, attribute: attribute, oldValue: old, newValue: new))
         return true
+    }
+
+    /// Why a line cannot be changed to `unit`, or nil when it can. A unit counted whole (`each`,
+    /// `pack`) is refused while the line's on-hand, minimum or standard is part of one: "4.25 l on
+    /// hand is not a whole number of packs; count it first." The stored figures never change with
+    /// the unit, so 4 each becomes 4 l and back again. English, for the model.
+    func unitChangeRefusal(itemID: String, to unit: VanStockUnit) -> String? {
+        guard let item = item(id: itemID), unit != item.unit, !unit.allowsFraction else { return nil }
+        let whole = unit == .pack ? "a whole number of packs" : "a whole number"
+        func amount(_ quantity: StockQuantity) -> String { "\(quantity.decimalString) \(item.unit.rawValue)" }
+        let onHand = level(of: itemID).onHand
+        if !onHand.fits(unit) { return "\(amount(onHand)) on hand is not \(whole); count it first." }
+        if let minimum = item.minimum, !minimum.fits(unit) {
+            return "The minimum of \(amount(minimum)) is not \(whole); change it first."
+        }
+        if let standard = item.standard, !standard.fits(unit) {
+            return "The standard of \(amount(standard)) is not \(whole); change it first."
+        }
+        return nil
     }
 
     // MARK: - Undo
@@ -273,7 +301,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case .number: items[index].number = old
         case .description: items[index].description = old ?? ""
         case .unit: items[index].unit = old.flatMap(VanStockUnit.init(rawValue:)) ?? .each
-        case .minimum: items[index].minimum = old.flatMap(Int.init)
+        case .minimum: items[index].minimum = old.flatMap(Self.decodeQuantity)
         case .standard:
             let (value, origin) = Self.decodeStandard(old)
             items[index].standard = value
@@ -323,7 +351,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     private struct OpenOrder {
         let id: String
-        var remaining: Int
+        var remaining: StockQuantity
         let at: Date
         let batch: String
         let source: VanStockMovement.Source
@@ -355,16 +383,16 @@ struct VanStockLog: Codable, Equatable, Sendable {
                 level.asOf = movement.at
                 var left = movement.quantity
                 var open = orders[movement.itemID] ?? []
-                while left > 0, !open.isEmpty {
+                while left > .zero, !open.isEmpty {
                     let taken = min(left, open[0].remaining)
                     open[0].remaining -= taken
                     left -= taken
-                    if open[0].remaining == 0 { open.removeFirst() }
+                    if open[0].remaining == .zero { open.removeFirst() }
                 }
                 orders[movement.itemID] = open
             case .used, .removed:
                 if movement.quantity > level.onHand {
-                    level.onHand = 0
+                    level.onHand = .zero
                     level.unreliable = true
                 } else {
                     level.onHand -= movement.quantity
@@ -395,23 +423,36 @@ struct VanStockLog: Codable, Equatable, Sendable {
         }
 
         for (itemID, open) in orders {
-            levels[itemID]?.onOrder = open.reduce(0) { $0 + $1.remaining }
+            levels[itemID]?.onOrder = open.reduce(.zero) { $0 + $1.remaining }
             levels[itemID]?.oldestOrderAt = open.first?.at
         }
         return Folded(levels: levels, openOrders: orders)
     }
 
-    // MARK: - Standard, as one stored value
+    // MARK: - Minimum and standard, as stored text
 
-    private static func encodeStandard(_ value: Int?, _ origin: VanStockItem.StandardOrigin?) -> String? {
-        guard let value else { return nil }
-        return origin.map { "\(value):\($0.rawValue)" } ?? String(value)
+    /// A minimum or standard in an `edited` movement: its thousandths, "4250". Format 2 of the
+    /// store; format 1 held whole units, and `VanStockLogMigration` rescales those strings.
+    static func encodeQuantity(_ value: StockQuantity) -> String { String(value.scaled) }
+
+    /// The figure `encodeQuantity` wrote. Nil for anything else, or for a figure out of range.
+    static func decodeQuantity(_ raw: String) -> StockQuantity? {
+        guard let scaled = Int(raw) else { return nil }
+        let value = StockQuantity(scaled: scaled)
+        return value.isInRange ? value : nil
     }
 
-    private static func decodeStandard(_ raw: String?) -> (Int?, VanStockItem.StandardOrigin?) {
+    /// "5000:base", or "5000" with no origin.
+    private static func encodeStandard(_ value: StockQuantity?, _ origin: VanStockItem.StandardOrigin?) -> String? {
+        guard let value else { return nil }
+        let figure = encodeQuantity(value)
+        return origin.map { "\(figure):\($0.rawValue)" } ?? figure
+    }
+
+    private static func decodeStandard(_ raw: String?) -> (StockQuantity?, VanStockItem.StandardOrigin?) {
         guard let raw else { return (nil, nil) }
         let parts = raw.split(separator: ":", maxSplits: 1)
-        guard let first = parts.first, let value = Int(first) else { return (nil, nil) }
+        guard let first = parts.first, let value = decodeQuantity(String(first)) else { return (nil, nil) }
         let origin = parts.count > 1 ? VanStockItem.StandardOrigin(rawValue: String(parts[1])) : nil
         return (value, origin)
     }

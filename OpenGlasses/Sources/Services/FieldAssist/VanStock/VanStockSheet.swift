@@ -126,14 +126,14 @@ enum VanStockSheet {
                 case .description: return .text(item.description)
                 case .unit: return .text(item.unit.rawValue)
                 // An unknown is never a number: a line nothing was recorded against is left blank.
-                case .onHand: return level.isRecorded ? .number(level.onHand) : .empty
-                case .standard: return item.standard.map(XLSX.Cell.number) ?? .empty
+                case .onHand: return level.isRecorded ? figure(level.onHand) : .empty
+                case .standard: return item.standard.map(figure) ?? .empty
                 case .standardSetBy:
                     guard item.standard != nil, let setBy = item.standardSetBy else { return .empty }
                     return .text(standardSetByText(setBy, kind: kind))
-                case .toTopUp: return item.standard.map { .number(max($0 - level.onHand, 0)) } ?? .empty
-                case .minimum: return item.minimum.map(XLSX.Cell.number) ?? .empty
-                case .onOrder: return level.onOrder > 0 ? .number(level.onOrder) : .empty
+                case .toTopUp: return item.standard.map { figure(max($0 - level.onHand, .zero)) } ?? .empty
+                case .minimum: return item.minimum.map(figure) ?? .empty
+                case .onOrder: return level.onOrder > .zero ? figure(level.onOrder) : .empty
                 case .needsCount: return level.unreliable ? .text("Yes") : .empty
                 case .bin: return item.bin.map(XLSX.Cell.text) ?? .empty
                 case .lastChanged: return level.asOf.map { .text(stamp($0, calendar)) } ?? .empty
@@ -150,7 +150,7 @@ enum VanStockSheet {
                 .text(stamp(movement.at, calendar)),
                 .text(names[movement.itemID] ?? ""),
                 .text(movement.kind.rawValue + (reversed.contains(movement.id) ? " (taken back)" : "")),
-                movement.changesLevel || movement.kind == .ordered ? .number(movement.quantity) : .empty,
+                movement.changesLevel || movement.kind == .ordered ? figure(movement.quantity) : .empty,
                 movement.jobReference.map(XLSX.Cell.text) ?? .empty,
                 .text(movement.source.rawValue),
             ])
@@ -180,6 +180,13 @@ enum VanStockSheet {
         ])
     }
 
+    /// A figure as the workbook holds it: a number cell in units of the line, exactly
+    /// (`<v>4.25</v>`; a whole figure is `<v>4</v>`, as every workbook has had). The workbook holds
+    /// what a person reads, never thousandths, so it needs no scale marker.
+    static func figure(_ quantity: StockQuantity) -> XLSX.Cell {
+        .decimal(quantity)
+    }
+
     /// "2026-10-14 10:40", in the calendar's own time zone.
     private static func stamp(_ date: Date, _ calendar: Calendar) -> String {
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
@@ -196,8 +203,8 @@ enum VanStockSheet {
             let itemID: String
             let name: String
             /// What the phone shows now. Nil for a line nothing was recorded against.
-            let from: Int?
-            let to: Int
+            let from: StockQuantity?
+            let to: StockQuantity
             /// The line also moved on the phone after the workbook was written, so there are two
             /// figures and the technician chooses. The sheet's is the default.
             let movedSinceExport: Bool
@@ -209,9 +216,9 @@ enum VanStockSheet {
             let number: String?
             let description: String
             let unit: VanStockUnit
-            let onHand: Int?
-            let minimum: Int?
-            let standard: Int?
+            let onHand: StockQuantity?
+            let minimum: StockQuantity?
+            let standard: StockQuantity?
             let bin: String?
             var id: Int { row }
         }
@@ -225,8 +232,10 @@ enum VanStockSheet {
 
         struct Refusal: Equatable, Identifiable {
             enum Reason: Equatable {
-                /// A figure that is negative, fractional or not a number: the column and what it held.
-                case notAWholeNumber(column: String, value: String)
+                /// A figure the line's unit cannot hold: negative, not a number, over a million,
+                /// more than 3 decimal places, or part of one for `each` and `pack`. The column,
+                /// what it held, and the unit it was read in.
+                case notAQuantity(column: String, value: String, unit: VanStockUnit)
                 case unknownUnit(String)
                 case noPartNumberOrDescription
                 /// The same line appears on an earlier row.
@@ -235,7 +244,22 @@ enum VanStockSheet {
 
             let row: Int
             let reason: Reason
+            /// What the row names, for a figure refused on it: "Engine oil".
+            var name: String?
             var id: Int { row }
+
+            init(row: Int, reason: Reason, name: String? = nil) {
+                self.row = row
+                self.reason = reason
+                self.name = name
+            }
+
+            /// Why a figure was refused, read again from what the cell held in its unit.
+            var quantityRefusal: StockQuantityRefusal? {
+                guard case .notAQuantity(_, let value, let unit) = reason,
+                      case .refused(let why) = VanStockSheet.quantity(value, unit: unit) else { return nil }
+                return why
+            }
         }
 
         var counts: [Count] = []
@@ -286,18 +310,18 @@ enum VanStockSheet {
         let unit: VanStockUnit?
         /// For each figure: nil when the sheet has no such column, `.some(nil)` when the cell is
         /// empty, and the value otherwise.
-        let onHandCell: Int??
-        let minimumCell: Int??
-        let standardCell: Int??
-        let onOrder: Int?
+        let onHandCell: StockQuantity??
+        let minimumCell: StockQuantity??
+        let standardCell: StockQuantity??
+        let onOrder: StockQuantity?
         let needsCount: Bool
         let standardSetByBase: Bool
         /// Nil when the sheet has no such column; empty when the cell is.
         let binCell: String?
 
-        var onHand: Int? { onHandCell ?? nil }
-        var minimum: Int? { minimumCell ?? nil }
-        var standard: Int? { standardCell ?? nil }
+        var onHand: StockQuantity? { onHandCell ?? nil }
+        var minimum: StockQuantity? { minimumCell ?? nil }
+        var standard: StockQuantity? { standardCell ?? nil }
         var bin: String? { binCell.flatMap { $0.isEmpty ? nil : $0 } }
     }
 
@@ -351,26 +375,33 @@ enum VanStockSheet {
             }
             let normalised = number.map(VaultPartsIndex.normalise).flatMap { $0.isEmpty ? nil : $0 }
 
-            var numbers: [Column: Int?] = [:]
+            // The unit first: it decides which figures the row may hold (Plan ML §4). A row with no
+            // unit reads its figures to the finest step; they are held to the line's unit once it is
+            // known (`stepRefusal`).
             var refusal: Proposal.Refusal.Reason?
-            for column in [Column.onHand, .minimum, .standard, .onOrder] {
-                guard let raw = cell(column) else { continue }
-                switch wholeNumber(raw) {
-                case .absent: numbers[column] = .some(nil)
-                case .value(let value): numbers[column] = .some(value)
-                // On order is worked out by the phone; whatever was typed over it is not a reason
-                // to leave the row out.
-                case .invalid where column == .onOrder: numbers[column] = .some(nil)
-                case .invalid: refusal = .notAWholeNumber(column: column.rawValue, value: raw)
-                }
-            }
             var unit: VanStockUnit?
             if let raw = cell(.unit), !raw.isEmpty {
                 unit = VanStockUnit(spoken: raw)
                 if unit == nil { refusal = .unknownUnit(raw) }
             }
+            var numbers: [Column: StockQuantity?] = [:]
+            if refusal == nil {
+                let readIn = unit ?? Self.finestUnit
+                for column in [Column.onHand, .minimum, .standard, .onOrder] {
+                    guard let raw = cell(column) else { continue }
+                    switch quantity(raw, unit: readIn) {
+                    case .absent: numbers[column] = .some(nil)
+                    case .value(let value): numbers[column] = .some(value)
+                    // On order is worked out by the phone; whatever was typed over it is not a
+                    // reason to leave the row out.
+                    case .refused where column == .onOrder: numbers[column] = .some(nil)
+                    case .refused:
+                        if refusal == nil { refusal = .notAQuantity(column: column.rawValue, value: raw, unit: readIn) }
+                    }
+                }
+            }
             if let refusal {
-                read.refusals.append(.init(row: rowNumber, reason: refusal))
+                read.refusals.append(.init(row: rowNumber, reason: refusal, name: Self.refusalName(described, normalised)))
                 continue
             }
             read.rows.append(Row(
@@ -397,6 +428,11 @@ enum VanStockSheet {
 
         for row in read.rows {
             let existing = match(id: row.itemID, number: row.partNumber, description: row.description, in: log)
+            // A row that gave no unit holds its figures to the line's own, or to each for a new line.
+            if let refusal = stepRefusal(row, unit: row.unit ?? existing?.unit ?? .each) {
+                proposal.refusals.append(refusal)
+                continue
+            }
             guard let item = existing else {
                 guard row.partNumber != nil || row.description != nil else {
                     proposal.refusals.append(.init(row: row.number, reason: .noPartNumberOrDescription))
@@ -448,17 +484,36 @@ enum VanStockSheet {
 
     /// Apply a proposal as one batch. `keepingPhoneFigure` names the lines, among those that moved
     /// since the export, where the technician chose the phone's figure over the sheet's.
+    ///
+    /// A row's own figures and its unit are applied in the order that lets them all stand: a line
+    /// moved to a measured unit changes unit first, so 4.25 can then be kept; a line moved to
+    /// `each` or `pack` takes the row's count, minimum and standard first, so the unit change
+    /// finds whole figures and is not refused for the 4.25 the row is replacing.
     static func apply(_ proposal: Proposal, to log: inout VanStockLog, keepingPhoneFigure: Set<String> = [],
                       at: Date, batch: String, verify: (String) -> TaskPart,
                       makeID: () -> String = { UUID().uuidString }) {
-        for edit in proposal.edits {
-            for change in edit.changes {
-                log.edit(itemID: edit.itemID, change, at: at, batch: batch, source: .sheet, id: makeID())
-                if case .number(let number) = change {
-                    log.edit(itemID: edit.itemID, .verified(number.map { verify($0).verified } ?? false),
-                             at: at, batch: batch, source: .sheet, id: makeID())
-                }
+        let counts = proposal.counts.filter { !($0.movedSinceExport && keepingPhoneFigure.contains($0.itemID)) }
+        var countedEarly = Set<String>()
+        func apply(_ change: VanStockLog.Change, to itemID: String) {
+            log.edit(itemID: itemID, change, at: at, batch: batch, source: .sheet, id: makeID())
+            if case .number(let number) = change {
+                log.edit(itemID: itemID, .verified(number.map { verify($0).verified } ?? false),
+                         at: at, batch: batch, source: .sheet, id: makeID())
             }
+        }
+        for edit in proposal.edits {
+            let toWhole = edit.changes.contains { if case .unit(let unit) = $0 { return !unit.allowsFraction } else { return false } }
+            guard toWhole else {
+                edit.changes.forEach { apply($0, to: edit.itemID) }
+                continue
+            }
+            let isUnit: (VanStockLog.Change) -> Bool = { if case .unit = $0 { return true } else { return false } }
+            edit.changes.filter { !isUnit($0) }.forEach { apply($0, to: edit.itemID) }
+            if let count = counts.first(where: { $0.itemID == edit.itemID }) {
+                log.record(.counted, itemID: count.itemID, quantity: count.to, at: at, batch: batch, source: .sheet, id: makeID())
+                countedEarly.insert(count.itemID)
+            }
+            edit.changes.filter(isUnit).forEach { apply($0, to: edit.itemID) }
         }
         for line in proposal.newLines {
             let checked = line.number.map(verify)
@@ -474,7 +529,7 @@ enum VanStockSheet {
                 log.appendNote(itemID: item.id, at: at, batch: batch, source: .sheet, id: makeID())
             }
         }
-        for count in proposal.counts where !(count.movedSinceExport && keepingPhoneFigure.contains(count.itemID)) {
+        for count in counts where !countedEarly.contains(count.itemID) {
             log.record(.counted, itemID: count.itemID, quantity: count.to, at: at, batch: batch, source: .sheet, id: makeID())
         }
     }
@@ -516,17 +571,57 @@ enum VanStockSheet {
         return sameWords.count == 1 ? sameWords[0] : nil
     }
 
-    private enum Whole {
+    /// A figure cell, read.
+    enum Figure: Equatable {
         case absent
-        case value(Int)
-        case invalid
+        case value(StockQuantity)
+        case refused(StockQuantityRefusal)
     }
 
-    /// "" is absent; "4" and "4.0" are 4; anything negative, fractional or not a number is invalid.
-    private static func wholeNumber(_ raw: String) -> Whole {
-        guard !raw.isEmpty else { return .absent }
-        if let value = Int(raw) { return value >= 0 ? .value(value) : .invalid }
-        if let value = Double(raw), value >= 0, value == value.rounded(), value < 1_000_000 { return .value(Int(value)) }
-        return .invalid
+    /// The unit a row that names none has its figures read in: any measured unit, the finest
+    /// step. They are held to the line's own unit once the row is matched (`stepRefusal`).
+    static let finestUnit = VanStockUnit.m
+
+    /// "" is absent. Otherwise a figure in units of the line, exactly as `StockQuantity.parse`
+    /// reads it: up to 3 decimal places for a measured unit and a whole number for `each` and
+    /// `pack` ("4", "4.0" and "4.250" are fine). Two spellings come only from how a spreadsheet
+    /// stores a number, and are read through `parse(number:unit:)`: an exponent (`4.25E-1`), and
+    /// the binary noise a formula leaves (`4.2499999999999991` is 4.25), within a thousandth of a
+    /// thousandth. "4.2513", "2.5" packs, a negative, words and over a million are refused.
+    static func quantity(_ raw: String, unit: VanStockUnit) -> Figure {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .absent }
+        var result = StockQuantity.parse(trimmed, unit: unit)
+        if case .failure = result, isStoredNumber(trimmed), let stored = Double(trimmed) {
+            result = StockQuantity.parse(number: stored, unit: unit)
+        }
+        switch result {
+        case .success(let value): return .value(value)
+        case .failure(let why): return .refused(why)
+        }
+    }
+
+    /// A number as a spreadsheet stores it: digits, at most one point, and an optional exponent.
+    /// Never a sign, a hexadecimal, "inf" or "nan", which `Double(_:)` would also take.
+    private static func isStoredNumber(_ text: String) -> Bool {
+        text.range(of: #"^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$"#, options: .regularExpression) != nil
+    }
+
+    /// What a refused row is called on the review: its description, else its part number.
+    static func refusalName(_ description: String?, _ number: String?) -> String? {
+        description ?? number
+    }
+
+    /// The first of a row's figures its line's unit cannot hold, as the row's refusal. On order
+    /// is the phone's own figure and is never a reason.
+    static func stepRefusal(_ row: Row, unit: VanStockUnit) -> Proposal.Refusal? {
+        let figures: [(Column, StockQuantity?)] = [(.onHand, row.onHand), (.minimum, row.minimum), (.standard, row.standard)]
+        for (column, value) in figures {
+            guard let value, !value.fits(unit) else { continue }
+            return .init(row: row.number,
+                         reason: .notAQuantity(column: column.rawValue, value: value.decimalString, unit: unit),
+                         name: refusalName(row.description, row.partNumber))
+        }
+        return nil
     }
 }

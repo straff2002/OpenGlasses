@@ -125,6 +125,9 @@ targets:
         buildPhase: resources
       - path: Contracts/fixtures/office-report-record-identity-v1.json
         buildPhase: resources
+      # The record's van_stock block, at its stated scale (Plan ML §5).
+      - path: Contracts/fixtures/office-report-record-van-stock-v1.json
+        buildPhase: resources
       - path: Contracts/fixtures/report-identity-v1.json
         buildPhase: resources
       - path: Contracts/fixtures/office-report-manifest-v1.json

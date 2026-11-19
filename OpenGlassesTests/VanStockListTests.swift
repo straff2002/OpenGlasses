@@ -32,7 +32,7 @@ final class VanStockListTests: XCTestCase {
         log.addItem(id: "lemons", description: "Lemons", bin: "Back shelf", batch: "b0")
         log.addItem(id: "ice", description: "Ice", batch: "b0")
         for (id, quantity) in [("gin", 22), ("soda", 0), ("tonic", 6), ("lemons", 12), ("ice", 3)] {
-            log.record(.counted, itemID: id, quantity: quantity, at: counted, batch: "b0", source: .typed)
+            log.record(.counted, itemID: id, quantity: .whole(quantity), at: counted, batch: "b0", source: .typed)
         }
         return log
     }
@@ -89,7 +89,7 @@ final class VanStockListTests: XCTestCase {
 
     func testAnUnreliableLineIsSaidUnreliableBeforeItsFigure() {
         var log = shop
-        log.record(.used, itemID: "soda", quantity: 1, at: counted.addingTimeInterval(60), batch: "b1", source: .spoken)
+        log.record(.used, itemID: "soda", quantity: .whole(1), at: counted.addingTimeInterval(60), batch: "b1", source: .spoken)
         let text = lines(composer().list(log, bin: "main fridge")).first { $0.contains("Soda water") } ?? ""
         let unreliable = text.range(of: "unreliable")
         let figure = text.range(of: "the log shows")
@@ -112,7 +112,7 @@ final class VanStockListTests: XCTestCase {
         XCTAssertEqual(shared.components(separatedBy: "counted today at 10:40").count - 1, 1, shared)
 
         var mixed = shop
-        mixed.record(.loaded, itemID: "gin", quantity: 2, at: date(2026, 10, 14, 12, 0), batch: "b1", source: .spoken)
+        mixed.record(.loaded, itemID: "gin", quantity: .whole(2), at: date(2026, 10, 14, 12, 0), batch: "b1", source: .spoken)
         let answer = composer().list(mixed, bin: nil)
         XCTAssertFalse(answer.contains("all counted"), answer)
         XCTAssertTrue(answer.contains("Back shelf — 12 × Lemons (counted today at 10:40)."), answer)
@@ -126,7 +126,7 @@ final class VanStockListTests: XCTestCase {
         for index in 1...22 {
             let id = String(format: "line-%02d", index)
             log.addItem(id: id, description: "Bottle \(String(format: "%02d", index))", bin: "Shelf", batch: "b0")
-            log.record(.counted, itemID: id, quantity: index, at: counted, batch: "b0", source: .typed)
+            log.record(.counted, itemID: id, quantity: .whole(index), at: counted, batch: "b0", source: .typed)
         }
         let answer = composer(.stock).list(log, bin: nil)
         let spoken = lines(answer)

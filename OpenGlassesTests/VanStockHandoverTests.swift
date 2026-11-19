@@ -52,13 +52,13 @@ final class VanStockHandoverTests: XCTestCase {
     /// A van at the end of a shift: one line short, one at standard, one with no standard, one run out.
     private var van: VanStockLog {
         var log = VanStockLog()
-        log.addItem(id: "sensor", number: "00123", description: "Flame sensor", standard: 6, standardSetBy: .base, batch: "b0")
-        log.addItem(id: "igniter", number: "22B22", description: "Igniter", standard: 2, standardSetBy: .van, batch: "b0")
+        log.addItem(id: "sensor", number: "00123", description: "Flame sensor", standard: .whole(6), standardSetBy: .base, batch: "b0")
+        log.addItem(id: "igniter", number: "22B22", description: "Igniter", standard: .whole(2), standardSetBy: .van, batch: "b0")
         log.addItem(id: "motor", description: "Inducer motor", batch: "b0")
-        log.addItem(id: "fuse", description: "Fuse", minimum: 5, batch: "b0")
-        log.record(.counted, itemID: "sensor", quantity: 2, at: time(0), batch: "b0", source: .handover)
-        log.record(.counted, itemID: "igniter", quantity: 2, at: time(0), batch: "b0", source: .handover)
-        log.record(.counted, itemID: "fuse", quantity: 3, at: time(0), batch: "b0", source: .handover)
+        log.addItem(id: "fuse", description: "Fuse", minimum: .whole(5), batch: "b0")
+        log.record(.counted, itemID: "sensor", quantity: .whole(2), at: time(0), batch: "b0", source: .handover)
+        log.record(.counted, itemID: "igniter", quantity: .whole(2), at: time(0), batch: "b0", source: .handover)
+        log.record(.counted, itemID: "fuse", quantity: .whole(3), at: time(0), batch: "b0", source: .handover)
         return log
     }
 
@@ -66,17 +66,17 @@ final class VanStockHandoverTests: XCTestCase {
 
     func testTheTopUpIsStandardMinusOnHandAndNeverNegative() {
         var log = van
-        log.record(.loaded, itemID: "igniter", quantity: 5, at: time(1), batch: "b1", source: .spoken)
+        log.record(.loaded, itemID: "igniter", quantity: .whole(5), at: time(1), batch: "b1", source: .spoken)
         XCTAssertEqual(VanStockHandover.topUp(log).map(\.item.id), ["sensor"])
-        XCTAssertEqual(VanStockHandover.topUp(log).first?.short, 4)
+        XCTAssertEqual(VanStockHandover.topUp(log).first?.short, .whole(4))
     }
 
     func testWithNoStandardAnywhereTheListIsWhatHasRunOut() {
         var log = VanStockLog()
-        log.addItem(id: "fuse", description: "Fuse", minimum: 5, batch: "b0")
+        log.addItem(id: "fuse", description: "Fuse", minimum: .whole(5), batch: "b0")
         log.addItem(id: "nuts", description: "Wire nuts", batch: "b0")
-        log.record(.counted, itemID: "fuse", quantity: 3, at: time(0), batch: "b0", source: .typed)
-        log.record(.counted, itemID: "nuts", quantity: 40, at: time(0), batch: "b0", source: .typed)
+        log.record(.counted, itemID: "fuse", quantity: .whole(3), at: time(0), batch: "b0", source: .typed)
+        log.record(.counted, itemID: "nuts", quantity: .whole(40), at: time(0), batch: "b0", source: .typed)
         XCTAssertFalse(VanStockHandover.hasStandards(log))
         XCTAssertEqual(VanStockHandover.topUp(log).map(\.item.id), ["fuse"])
         XCTAssertNil(VanStockHandover.topUp(log).first?.short, "with nothing to measure against there is no figure to fill to")
@@ -86,29 +86,29 @@ final class VanStockHandoverTests: XCTestCase {
 
     func testALineLoadedThisShiftAboveItsStandardIsAnExtra() {
         var log = van
-        log.record(.loaded, itemID: "motor", quantity: 1, at: time(5), batch: "b1", source: .spoken)
-        log.record(.loaded, itemID: "igniter", quantity: 3, at: time(5), batch: "b1", source: .spoken)
-        log.record(.loaded, itemID: "sensor", quantity: 4, at: time(5), batch: "b1", source: .spoken)
-        log.record(.used, itemID: "igniter", quantity: 2, at: time(60), batch: "b2", source: .spoken)
+        log.record(.loaded, itemID: "motor", quantity: .whole(1), at: time(5), batch: "b1", source: .spoken)
+        log.record(.loaded, itemID: "igniter", quantity: .whole(3), at: time(5), batch: "b1", source: .spoken)
+        log.record(.loaded, itemID: "sensor", quantity: .whole(4), at: time(5), batch: "b1", source: .spoken)
+        log.record(.used, itemID: "igniter", quantity: .whole(2), at: time(60), batch: "b2", source: .spoken)
         let shiftStart = VanStockHandover.shiftStart(log, now: time(400), calendar: calendar)
         XCTAssertEqual(shiftStart, time(0), "the shift began at the takeover")
         let extras = VanStockHandover.surplus(log, since: shiftStart)
         XCTAssertEqual(extras.map(\.item.id), ["igniter", "motor"])
-        XCTAssertEqual(extras.map(\.extra), [1, 1], "the igniters: loaded three, used two, one beyond the standard two")
+        XCTAssertEqual(extras.map(\.extra), [.whole(1), .whole(1)], "the igniters: loaded three, used two, one beyond the standard two")
     }
 
     func testOneLoadedAndUsedIsNotAnExtraAndStockFromAnEarlierShiftIsNotAskedAboutAgain() {
         var log = van
-        log.record(.loaded, itemID: "motor", quantity: 1, at: time(-600), batch: "b-1", source: .spoken)
-        log.record(.loaded, itemID: "igniter", quantity: 1, at: time(5), batch: "b1", source: .spoken)
-        log.record(.used, itemID: "igniter", quantity: 1, at: time(60), batch: "b2", source: .spoken)
+        log.record(.loaded, itemID: "motor", quantity: .whole(1), at: time(-600), batch: "b-1", source: .spoken)
+        log.record(.loaded, itemID: "igniter", quantity: .whole(1), at: time(5), batch: "b1", source: .spoken)
+        log.record(.used, itemID: "igniter", quantity: .whole(1), at: time(60), batch: "b2", source: .spoken)
         XCTAssertEqual(VanStockHandover.surplus(log, since: time(0)), [])
     }
 
     func testWithNoTakeoverTheShiftBeganThisMorning() {
         var log = VanStockLog()
         log.addItem(id: "fuse", description: "Fuse", batch: "b0")
-        log.record(.loaded, itemID: "fuse", quantity: 3, at: time(0), batch: "b0", source: .spoken)
+        log.record(.loaded, itemID: "fuse", quantity: .whole(3), at: time(0), batch: "b0", source: .spoken)
         XCTAssertEqual(VanStockHandover.shiftStart(log, now: time(30), calendar: calendar),
                        calendar.startOfDay(for: time(30)))
     }
@@ -117,10 +117,10 @@ final class VanStockHandoverTests: XCTestCase {
 
     func testTheMessageSaysWhatToTopUpWhatIsComingWhatNeedsCountingAndWhatCameBack() {
         var log = van
-        log.record(.ordered, itemID: "sensor", quantity: 1, at: time(10), batch: "b1", source: .spoken)
-        log.record(.used, itemID: "motor", quantity: 1, at: time(20), batch: "b2", source: .spoken)
-        log.record(.loaded, itemID: "igniter", quantity: 2, at: time(30), batch: "b3", source: .spoken)
-        log.record(.removed, itemID: "igniter", quantity: 2, at: time(300), batch: "b4", source: .spoken, reason: .returned)
+        log.record(.ordered, itemID: "sensor", quantity: .whole(1), at: time(10), batch: "b1", source: .spoken)
+        log.record(.used, itemID: "motor", quantity: .whole(1), at: time(20), batch: "b2", source: .spoken)
+        log.record(.loaded, itemID: "igniter", quantity: .whole(2), at: time(30), batch: "b3", source: .spoken)
+        log.record(.removed, itemID: "igniter", quantity: .whole(2), at: time(300), batch: "b4", source: .spoken, reason: .returned)
         let message = VanStockHandover.message(log, van: VanIdentity(id: "v4", name: "Truck 4"), now: time(400), calendar: calendar)
         XCTAssertEqual(message, """
         Truck 4 stock, 2026-09-21 20:53.
@@ -139,7 +139,7 @@ final class VanStockHandoverTests: XCTestCase {
     func testAVanWithNoStandardLoadSaysSo() {
         var log = VanStockLog()
         log.addItem(id: "fuse", description: "Fuse", batch: "b0")
-        log.record(.counted, itemID: "fuse", quantity: 0, at: time(0), batch: "b0", source: .typed)
+        log.record(.counted, itemID: "fuse", quantity: .whole(0), at: time(0), batch: "b0", source: .typed)
         let message = VanStockHandover.message(log, van: nil, now: time(1), calendar: calendar)
         XCTAssertTrue(message.hasPrefix("Van stock, "), message)
         XCTAssertTrue(message.contains("No standard load is set for this van"), message)
@@ -166,27 +166,27 @@ final class VanStockHandoverTests: XCTestCase {
         XCTAssertEqual(Set(takeover.log.items.map(\.id)), ["sensor", "igniter", "motor", "fuse"], "the lines keep their identity")
 
         let levels = takeover.log.levels
-        XCTAssertEqual(levels["sensor"]?.onHand, 2)
+        XCTAssertEqual(levels["sensor"]?.onHand, .whole(2))
         XCTAssertEqual(levels["sensor"]?.handedOver, true)
-        XCTAssertEqual(levels["sensor"]?.onOrder, 1, "what was on order comes across")
+        XCTAssertEqual(levels["sensor"]?.onOrder, .whole(1), "what was on order comes across")
         XCTAssertNil(takeover.log.movements.first { $0.kind == .ordered }?.requestID, "with no request attached")
         XCTAssertEqual(levels["motor"]?.unreliable, true, "a line that needed counting still does")
         XCTAssertEqual(takeover.log.item(id: "sensor")?.standardSetBy, .base)
         XCTAssertEqual(takeover.log.item(id: "igniter")?.standardSetBy, .van)
-        XCTAssertEqual(takeover.log.item(id: "fuse")?.minimum, 5)
+        XCTAssertEqual(takeover.log.item(id: "fuse")?.minimum, .whole(5))
         XCTAssertEqual(takeover.shortfalls, 1)
     }
 
     /// The state the van is left in for the takeover test: an order open and one line unreliable.
     private func log(_ log: inout VanStockLog) {
-        log.record(.ordered, itemID: "sensor", quantity: 1, at: time(10), batch: "b1", source: .spoken)
-        log.record(.used, itemID: "motor", quantity: 1, at: time(20), batch: "b2", source: .spoken)
+        log.record(.ordered, itemID: "sensor", quantity: .whole(1), at: time(10), batch: "b1", source: .spoken)
+        log.record(.used, itemID: "motor", quantity: .whole(1), at: time(20), batch: "b2", source: .spoken)
     }
 
     func testTakingOverReplacesThePhonesListAndKeepsTheOldOneOnce() throws {
         // This phone had Truck 2 on it.
         store.nameVan("Truck 2")
-        _ = service.load([.init(description: "Contactor", quantity: 3)])
+        _ = service.load([.init(description: "Contactor", quantity: .whole(3))])
         let truck2 = store.log
         XCTAssertFalse(store.hasPrevious)
 
@@ -196,7 +196,7 @@ final class VanStockHandoverTests: XCTestCase {
 
         XCTAssertEqual(store.van?.name, "Truck 4")
         XCTAssertNil(store.log.items.first { $0.description == "Contactor" }, "two vehicles are never merged")
-        XCTAssertEqual(store.log.level(of: "sensor").onHand, 2)
+        XCTAssertEqual(store.log.level(of: "sensor").onHand, .whole(2))
         XCTAssertTrue(store.hasPrevious)
         let check = service.check(.init(part: "00123"))
         XCTAssertTrue(check.contains("as handed over today at 05:13"), check)
@@ -204,7 +204,7 @@ final class VanStockHandoverTests: XCTestCase {
         // And it survives a relaunch.
         let reopened = VanStockStore(directory: directory, now: clock)
         XCTAssertEqual(reopened.van, VanIdentity(id: "v4", name: "Truck 4"))
-        XCTAssertEqual(reopened.log.level(of: "sensor").onHand, 2)
+        XCTAssertEqual(reopened.log.level(of: "sensor").onHand, .whole(2))
 
         XCTAssertTrue(store.restorePrevious())
         XCTAssertEqual(store.van?.name, "Truck 2")
@@ -290,17 +290,17 @@ final class VanStockHandoverTests: XCTestCase {
 
     func testABaselineTouchesStandardsAndNeverALevel() throws {
         let changes = try VanStockHandover.baseline(from: baselineSheet, log: van).get()
-        XCTAssertEqual(changes.map(\.kind), [.set, .keptOwn(current: 2), .newLine])
-        XCTAssertEqual(changes.map(\.standard), [8, 1, 2])
+        XCTAssertEqual(changes.map(\.kind), [.set, .keptOwn(current: .whole(2)), .newLine])
+        XCTAssertEqual(changes.map(\.standard), [.whole(8), .whole(1), .whole(2)])
 
         var applied = van
         VanStockHandover.apply(changes, to: &applied, at: time(10), batch: "baseline")
-        XCTAssertEqual(applied.item(id: "sensor")?.standard, 8)
+        XCTAssertEqual(applied.item(id: "sensor")?.standard, .whole(8))
         XCTAssertEqual(applied.item(id: "sensor")?.standardSetBy, .base)
-        XCTAssertEqual(applied.item(id: "igniter")?.standard, 2, "what this truck set itself is kept by default")
+        XCTAssertEqual(applied.item(id: "igniter")?.standard, .whole(2), "what this truck set itself is kept by default")
         XCTAssertEqual(applied.item(id: "igniter")?.standardSetBy, .van)
         let contactor = try XCTUnwrap(applied.items.first { $0.number == "77-100" })
-        XCTAssertEqual(contactor.standard, 2)
+        XCTAssertEqual(contactor.standard, .whole(2))
         XCTAssertFalse(applied.level(of: contactor.id).isRecorded, "a new line is at nothing recorded, not zero")
         XCTAssertEqual(applied.item(id: "fuse"), van.item(id: "fuse"), "a line the baseline does not name is left alone")
         for id in ["sensor", "igniter", "motor", "fuse"] {
@@ -316,14 +316,14 @@ final class VanStockHandoverTests: XCTestCase {
         let changes = try VanStockHandover.baseline(from: baselineSheet, log: van).get()
         var applied = van
         VanStockHandover.apply(changes, to: &applied, takingBaseFigure: ["igniter"], at: time(10), batch: "baseline")
-        XCTAssertEqual(applied.item(id: "igniter")?.standard, 1)
+        XCTAssertEqual(applied.item(id: "igniter")?.standard, .whole(1))
         XCTAssertEqual(applied.item(id: "igniter")?.standardSetBy, .base)
 
         // The truck grows a line of its own, then base reissues the same baseline.
-        applied.edit(itemID: "motor", .standard(1, setBy: .van), at: time(20), batch: "b9", source: .spoken)
+        applied.edit(itemID: "motor", .standard(.whole(1), setBy: .van), at: time(20), batch: "b9", source: .spoken)
         let again = try VanStockHandover.baseline(from: baselineSheet, log: applied).get()
         XCTAssertEqual(again, [], "nothing it names has changed, and what it does not name is not its business")
-        XCTAssertEqual(applied.item(id: "motor")?.standard, 1)
+        XCTAssertEqual(applied.item(id: "motor")?.standard, .whole(1))
     }
 
     func testAnExportOfAVansOwnStockIsNotABaselineAndQuantitiesAreOnlyReadAsStandardsInAForeignSheet() throws {
@@ -336,14 +336,14 @@ final class VanStockHandoverTests: XCTestCase {
         let quantitiesOnly = [XLSXReader.Sheet(name: "Truck load", isHidden: false, rows: [
             ["Part", "Description", "Qty"], ["00123", "Flame sensor", "9"],
         ])]
-        XCTAssertEqual(try VanStockHandover.baseline(from: quantitiesOnly, log: van).get().map(\.standard), [9])
+        XCTAssertEqual(try VanStockHandover.baseline(from: quantitiesOnly, log: van).get().map(\.standard), [.whole(9)])
     }
 
     // MARK: By voice
 
     func testToppingUpEverythingExceptWhatCouldNotBeFilled() {
         service.takeOver(.init(van: nil, log: van, exportedAt: nil, lineCount: 4, shortfalls: 1, needCounting: 0, refusals: []))
-        _ = service.setStandard(.init(description: "fuse", quantity: 10))
+        _ = service.setStandard(.init(description: "fuse", quantity: .whole(10)))
         clock = time(5)
         XCTAssertTrue(service.topUp().hasPrefix("2 to top up: "), service.topUp())
 
@@ -351,23 +351,23 @@ final class VanStockHandoverTests: XCTestCase {
         XCTAssertTrue(answer.hasPrefix("1 line brought to the standard load."), answer)
         XCTAssertTrue(answer.contains("Left as they were: Flame sensor (00123)."), answer)
         XCTAssertTrue(answer.contains("Not on the van list, so not treated as an exception: thermostat."), answer)
-        XCTAssertEqual(store.log.level(of: "fuse").onHand, 10)
-        XCTAssertEqual(store.log.level(of: "sensor").onHand, 2, "a line nobody filled stays short")
+        XCTAssertEqual(store.log.level(of: "fuse").onHand, .whole(10))
+        XCTAssertEqual(store.log.level(of: "sensor").onHand, .whole(2), "a line nobody filled stays short")
 
         clock = time(6)
         _ = service.undo()
-        XCTAssertEqual(store.log.level(of: "fuse").onHand, 3, "one undo takes the whole top-up back")
+        XCTAssertEqual(store.log.level(of: "fuse").onHand, .whole(3), "one undo takes the whole top-up back")
     }
 
     func testAStandardSetByVoiceIsThisTrucksOwnAndZeroClearsIt() {
         service.takeOver(.init(van: nil, log: van, exportedAt: nil, lineCount: 4, shortfalls: 1, needCounting: 0, refusals: []))
         // Plan KR P7: the change ends with what the reply must say.
-        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: 1)),
+        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: .whole(1))),
                        "The standard load for this truck is now 1 × Inducer motor.\n"
                        + "Say: the standard load set to 1 × Inducer motor. Put this in the reply, whatever else the technician asked this turn.")
         XCTAssertEqual(store.log.item(id: "motor")?.standardSetBy, .van)
         clock = time(1)
-        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: 0)),
+        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: .whole(0))),
                        "Inducer motor has no standard load now.\nSay: no standard load for Inducer motor now. Put this in the reply, whatever else the technician asked this turn.")
         XCTAssertNil(store.log.item(id: "motor")?.standard)
         XCTAssertTrue(service.setStandard(.init(description: "inducer motor")).contains("Say how many"))
@@ -377,7 +377,7 @@ final class VanStockHandoverTests: XCTestCase {
         service.takeOver(.init(van: VanIdentity(id: "v4", name: "Truck 4"), log: van, exportedAt: nil,
                                lineCount: 4, shortfalls: 1, needCounting: 0, refusals: []))
         clock = time(5)
-        _ = service.load([.init(description: "inducer motor", quantity: 1)])
+        _ = service.load([.init(description: "inducer motor", quantity: .whole(1))])
         unrecorded = [TaskPart(number: "14T65", partDescription: "Pressure switch", verified: true)]
         let handover = VanStockHandoverService(service: service)
         let tool = VanStockTool(service: service, handover: handover)
@@ -435,7 +435,7 @@ final class VanStockHandoverTests: XCTestCase {
         let own = try XCTUnwrap(service.exportFile())
         defer { try? FileManager.default.removeItem(at: own.deletingLastPathComponent()) }
         clock = time(1_010)
-        _ = service.use([.init(description: "igniter", quantity: 1)])
+        _ = service.use([.init(description: "igniter", quantity: .whole(1))])
         imports.handle(data: try Data(contentsOf: own), fileName: own.lastPathComponent)
         XCTAssertEqual(imports.suggestedMode, .corrections)
         XCTAssertTrue(imports.takeoverIsStale, "the phone has a later entry for this van than the workbook does")
@@ -454,19 +454,19 @@ final class VanStockHandoverTests: XCTestCase {
         XCTAssertEqual(imports.baseline?.count, 3)
         clock = time(10)
         XCTAssertTrue(imports.applyBaseline())
-        XCTAssertEqual(store.log.item(id: "sensor")?.standard, 8)
-        XCTAssertEqual(store.log.level(of: "sensor").onHand, 2, "no level moved")
+        XCTAssertEqual(store.log.item(id: "sensor")?.standard, .whole(8))
+        XCTAssertEqual(store.log.level(of: "sensor").onHand, .whole(2), "no level moved")
     }
 
     // MARK: Every place (Plan MK P1)
 
     func testTheMessageIsInThePlacesWords() {
         var log = van
-        log.record(.ordered, itemID: "fuse", quantity: 2, at: time(1), batch: "b1", source: .spoken)
-        log.record(.removed, itemID: "igniter", quantity: 1, at: time(2), batch: "b2", source: .spoken, reason: .returned)
+        log.record(.ordered, itemID: "fuse", quantity: .whole(2), at: time(1), batch: "b1", source: .spoken)
+        log.record(.removed, itemID: "igniter", quantity: .whole(1), at: time(2), batch: "b2", source: .spoken, reason: .returned)
         var unmeasured = VanStockLog()
-        unmeasured.addItem(id: "fuse", description: "Fuse", minimum: 5, batch: "b0")
-        unmeasured.record(.counted, itemID: "fuse", quantity: 3, at: time(0), batch: "b0", source: .typed)
+        unmeasured.addItem(id: "fuse", description: "Fuse", minimum: .whole(5), batch: "b0")
+        unmeasured.record(.counted, itemID: "fuse", quantity: .whole(3), at: time(0), batch: "b0", source: .typed)
         for kind in StockPlace.Kind.allCases {
             for (sample, identity) in [(log, VanIdentity?.none), (unmeasured, VanIdentity(id: "s", name: "Main street")),
                                        (VanStockLog(), nil)] {
@@ -487,12 +487,50 @@ final class VanStockHandoverTests: XCTestCase {
         service.takeOver(.init(van: nil, log: van, exportedAt: nil, lineCount: 4, shortfalls: 1, needCounting: 0, refusals: []))
         store.setPlace(.store)
         XCTAssertEqual(service.topUp(), "1 to top up: 4 × Flame sensor (00123) (2 on hand).")
-        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: 1)),
+        XCTAssertEqual(service.setStandard(.init(description: "inducer motor", quantity: .whole(1))),
                        "The par level for this store is now 1 × Inducer motor.\n"
                        + "Say: the par level set to 1 × Inducer motor. Put this in the reply, whatever else the technician asked this turn.")
         clock = time(1)
         let filled = service.loadToStandard()
         XCTAssertTrue(filled.hasPrefix("2 lines brought to the par level. The person can say 'undo that'"), filled)
         XCTAssertEqual(StockPlaceWordCheck.violations(filled, kind: .store), [], filled)
+    }
+
+    // MARK: Measured amounts (Plan ML P2)
+
+    /// Engine oil at 4.25 litres against a standard of 5, cable on order by the metre.
+    private var oil: VanStockLog {
+        var log = VanStockLog()
+        log.addItem(id: "oil", number: "OIL-5W30", description: "Engine oil", unit: .l, standard: .whole(5),
+                    standardSetBy: .van, batch: "b0")
+        log.addItem(id: "cable", description: "Thermostat cable", unit: .m, batch: "b0")
+        log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: 4250), at: time(0), batch: "b0", source: .typed)
+        log.record(.ordered, itemID: "cable", quantity: .whole(12), at: time(1), batch: "b1", source: .spoken)
+        return log
+    }
+
+    func testTheTopUpIsTheExactShortfallInWords() {
+        XCTAssertEqual(VanStockHandover.topUp(oil).first?.short, StockQuantity(scaled: 750))
+        service.takeOver(.init(van: nil, log: oil, exportedAt: nil, lineCount: 2, shortfalls: 1, needCounting: 0, refusals: []))
+        let topUp = service.topUp()
+        XCTAssertEqual(topUp, "1 to top up: 0.75 litres of Engine oil (OIL-5W30) (4.25 litres on board).")
+        store.setPlace(.store)
+        XCTAssertEqual(service.topUp(), "1 to top up: 0.75 litres of Engine oil (OIL-5W30) (4.25 litres on hand).")
+        for leak in ["4250", "4.250", "750", " l "] { XCTAssertFalse(topUp.contains(leak), "\(leak) in \(topUp)") }
+    }
+
+    func testTheMessageToBaseSaysMeasuredAmountsInWords() {
+        let message = VanStockHandover.message(oil, van: VanIdentity(id: "v4", name: "Truck 4"), now: time(10), calendar: calendar)
+        XCTAssertTrue(message.contains("  0.75 litres of Engine oil (OIL-5W30) — 4.25 litres on board"), message)
+        XCTAssertTrue(message.contains("  12 metres of Thermostat cable"), message)
+        XCTAssertFalse(message.contains(" l "), message)
+    }
+
+    func testToppingUpALitreLineLoadsTheExactShortfall() {
+        service.takeOver(.init(van: nil, log: oil, exportedAt: nil, lineCount: 2, shortfalls: 1, needCounting: 0, refusals: []))
+        clock = time(5)
+        _ = service.loadToStandard()
+        XCTAssertEqual(store.log.level(of: "oil").onHand, .whole(5))
+        XCTAssertEqual(store.log.movements.last?.quantity, StockQuantity(scaled: 750))
     }
 }

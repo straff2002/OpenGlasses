@@ -442,7 +442,7 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertTrue(notCarried.contains("It is not a line on the van list"), notCarried)
         XCTAssertTrue(store.log.isEmpty)
 
-        _ = van.load([.init(part: "14T65", quantity: 1)])
+        _ = van.load([.init(part: "14T65", quantity: .whole(1))])
         let toBeFitted = try await tool.execute(args: ["part": "14T65"])
         XCTAssertFalse(toBeFitted.contains("van list"), toBeFitted)
         XCTAssertFalse(store.log.movements.contains { $0.kind == .ordered })
@@ -456,6 +456,39 @@ final class WorkRecordTests: XCTestCase {
 
         let onVan = try await tool.execute(args: ["part": "14T65", "on_van": true])
         XCTAssertTrue(onVan.contains("The van list now shows 3 asked for"), onVan)
+    }
+
+    /// Plan ML P2 — a parts request stays a whole count of parts; for a line kept in litres it is
+    /// that many whole litres, scaled into the ledger.
+    func testAWholeOrderForALitreLineIsThatManyLitres() async throws {
+        let service = try lennoxSession()
+        let store = VanStockStore(directory: tempRoot.appendingPathComponent("van", isDirectory: true))
+        let van = VanStockService(store: store, verify: { service.verifyPart($0) },
+                                  partsIndex: { service.partsIndex }, activeJob: { nil })
+        let tool = PartsRequestTool(sessionService: service, vanStock: van)
+        _ = van.count([.init(part: "14T65", quantity: StockQuantity(scaled: 1250), unit: "l")])
+
+        let ordered = try await tool.execute(args: ["part": "14T65", "quantity": 5, "for_van_stock": true])
+        XCTAssertTrue(ordered.contains("The van list now shows 5 litres asked for and not yet loaded."), ordered)
+        XCTAssertEqual(store.log.movements.last?.quantity, .whole(5))
+        XCTAssertEqual(store.log.movements.last?.quantity.scaled, 5000)
+
+        let fraction = try await tool.execute(args: ["part": "14T65", "quantity": 4.25, "for_van_stock": true])
+        XCTAssertTrue(fraction.hasPrefix("Nothing was requested. A parts request is a whole number of parts"), fraction)
+        XCTAssertEqual(store.log.level(of: store.log.items[0].id).onOrder, .whole(5))
+    }
+
+    /// Plan ML P2 — the record's printed summary says what came off the van as the assistant does.
+    func testTheRecordSummarySaysMeasuredAmountsInWords() throws {
+        let service = try lennoxSession()
+        service.recordVanStockUse(VanStockUse(id: "m1", number: "OIL-5W30", description: "Engine oil",
+                                              quantity: StockQuantity(scaled: 4250), unit: .l, verified: false,
+                                              at: Date(timeIntervalSince1970: 1_795_000_000)))
+        let session = try XCTUnwrap(service.activeSession)
+        let record = WorkRecord(session: session, vaultName: "v")
+        XCTAssertTrue(record.summaryLines.contains("  4.25 litres of Engine oil (OIL-5W30)"), record.summary)
+        XCTAssertFalse(record.summary.contains("4250"), record.summary)
+        XCTAssertFalse(record.summary.contains("4.25 l "), record.summary)
     }
 
     /// Plan IH P4 — a part on a finished task with no stock entry holds a close by voice until the
@@ -476,7 +509,7 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertNil(service.activeSession.map { WorkRecord(session: $0, vaultName: "v") }?.vanStock)
 
         let use = VanStockUse(id: "m1", number: "14T65", description: "High-altitude pressure switch",
-                              quantity: 1, unit: .each, verified: true, at: Date(timeIntervalSince1970: 0))
+                              quantity: .whole(1), unit: .each, verified: true, at: Date(timeIntervalSince1970: 0))
         service.recordVanStockUse(use)
         XCTAssertEqual(service.unrecordedVanParts, [])
         let record = try XCTUnwrap(service.activeSession.map { WorkRecord(session: $0, vaultName: "v") })
@@ -541,6 +574,96 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertTrue(legacy.identityFields.isEmpty)
         XCTAssertTrue(legacy.jobEvidence.isEmpty)
         XCTAssertNil(legacy.jobReference)
+    }
+
+    // MARK: - The record's van_stock block (Plan ML P3)
+
+    private static func isoCoders() -> (JSONEncoder, JSONDecoder) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (encoder, decoder)
+    }
+
+    private static func vanStockLine(_ figure: String) -> String {
+        #"{"id":"m1","number":"OIL-5W30","description":"Engine oil","unit":"l","# + figure
+            + #","verified":true,"at":"2026-11-19T10:40:00Z"}"#
+    }
+
+    func testAVanStockLineIsWrittenScaledWithItsScaleAndNoQuantityKey() throws {
+        let (encoder, decoder) = Self.isoCoders()
+        let use = VanStockUse(id: "m1", number: "OIL-5W30", description: "Engine oil",
+                              quantity: StockQuantity(scaled: 4250), unit: .l, verified: true,
+                              at: Date(timeIntervalSince1970: 1_795_000_000))
+        let data = try encoder.encode(use)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["quantityScaled"] as? Int, 4250)
+        XCTAssertEqual(object["quantityScale"] as? Int, 3)
+        XCTAssertNil(object["quantity"], "a reader that knows only the old key must find nothing, not 4250 litres")
+        XCTAssertEqual(Set(object.keys), ["id", "number", "description", "unit", "quantityScaled", "quantityScale", "verified", "at"])
+        XCTAssertEqual(try decoder.decode(VanStockUse.self, from: data), use)
+    }
+
+    func testALegacyVanStockLineReadsAsWholeUnits() throws {
+        let (_, decoder) = Self.isoCoders()
+        let legacy = try decoder.decode(VanStockUse.self, from: Data(Self.vanStockLine(#""quantity":2"#).utf8))
+        XCTAssertEqual(legacy.quantity, .whole(2))
+        XCTAssertEqual(legacy.quantity.scaled, 2000)
+        XCTAssertEqual(legacy.unit, .l)
+    }
+
+    func testAVanStockLineAtAnotherScaleOrWithNoScaleIsRefused() {
+        let (_, decoder) = Self.isoCoders()
+        XCTAssertThrowsError(try decoder.decode(VanStockUse.self, from: Data(
+            Self.vanStockLine(#""quantityScaled":42500,"quantityScale":4"#).utf8)), "a finer scale is refused, not misread")
+        XCTAssertThrowsError(try decoder.decode(VanStockUse.self, from: Data(
+            Self.vanStockLine(#""quantityScaled":4250"#).utf8)), "a scaled figure with no scale is not guessed at")
+        XCTAssertThrowsError(try decoder.decode(VanStockUse.self, from: Data(
+            Self.vanStockLine(#""quantityScaled":-1,"quantityScale":3"#).utf8)))
+        XCTAssertNoThrow(try decoder.decode(VanStockUse.self, from: Data(
+            Self.vanStockLine(#""quantityScaled":4250,"quantityScale":3"#).utf8)))
+    }
+
+    func testTheContractFixturesVanStockBlockIsWhatThePhoneWrites() throws {
+        let (encoder, decoder) = Self.isoCoders()
+        let record = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: OfficeCheckInFixtures.data("office-report-record-van-stock-v1")) as? [String: Any])
+        let block = try JSONSerialization.data(withJSONObject: XCTUnwrap(record["van_stock"]), options: [.sortedKeys])
+        let uses = try decoder.decode([VanStockUse].self, from: block)
+        XCTAssertEqual(uses.map(\.quantity), [.whole(2), StockQuantity(scaled: 4250)])
+        XCTAssertEqual(uses.map(\.unit), [.each, .l])
+        XCTAssertEqual(uses.map(\.summary), ["2 × Sensor bracket (QX-100)", "4.25 litres of Engine oil (OIL-5W30)"])
+        // Written again, the lines are the fixture's, member for member.
+        let rewritten = try JSONSerialization.jsonObject(with: encoder.encode(uses)) as? [[String: AnyHashable]]
+        let original = try JSONSerialization.jsonObject(with: block) as? [[String: AnyHashable]]
+        XCTAssertEqual(rewritten, original)
+    }
+
+    func testAnOpenSessionSavedWithLegacyUsesDecodesThemAtTheNewScale() throws {
+        let (encoder, decoder) = Self.isoCoders()
+        let saved = """
+        {"id":"s0","vaultId":"lennox_slp99","mode":"ai_only","startedAt":"2026-01-02T03:04:05Z",
+         "outcome":"in_progress","escalations":[],"billableSeconds":0,
+         "vanStockUses":[{"id":"m1","number":"14T65","description":"High-altitude pressure switch","quantity":2,
+                          "unit":"each","verified":true,"at":"2026-01-02T03:10:00Z"}]}
+        """
+        let session = try decoder.decode(FieldSession.self, from: Data(saved.utf8))
+        let use = try XCTUnwrap(session.vanStockUses?.first)
+        XCTAssertEqual(use.quantity, .whole(2))
+
+        // The record it makes says what it always said, and sends the scaled pair.
+        let record = WorkRecord(session: session, vaultName: "v")
+        XCTAssertTrue(record.summaryLines.contains("  2 × High-altitude pressure switch (14T65)"), record.summaryLines.description)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(record)) as? [String: Any])
+        let line = try XCTUnwrap((object["van_stock"] as? [[String: Any]])?.first)
+        XCTAssertEqual(line["quantityScaled"] as? Int, 2000)
+        XCTAssertEqual(line["quantityScale"] as? Int, 3)
+        XCTAssertNil(line["quantity"])
+
+        // Saved again, it reads back the same.
+        XCTAssertEqual(try decoder.decode(FieldSession.self, from: encoder.encode(session)).vanStockUses, [use])
     }
 
     // MARK: - The record

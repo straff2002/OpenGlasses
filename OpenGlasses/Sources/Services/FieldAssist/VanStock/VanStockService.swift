@@ -15,14 +15,15 @@ final class VanStockService {
     struct Line: Equatable {
         var part: String?
         var description: String?
-        var quantity: Int?
+        /// In thousandths of the line's unit (`StockQuantity`).
+        var quantity: StockQuantity?
         var unit: String?
         var code: String?
         /// The technician said this is a different part from the similar line already on the van.
         /// Only its number or its code may then match; its description starts a new line.
         var asNew: Bool
 
-        init(part: String? = nil, description: String? = nil, quantity: Int? = nil,
+        init(part: String? = nil, description: String? = nil, quantity: StockQuantity? = nil,
              unit: String? = nil, code: String? = nil, asNew: Bool = false) {
             self.part = part?.trimmingCharacters(in: .whitespacesAndNewlines).vanStockNonEmpty
             self.description = description?.trimmingCharacters(in: .whitespacesAndNewlines).vanStockNonEmpty
@@ -163,8 +164,10 @@ final class VanStockService {
 
     func load(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
         write("load", lines) { log, line, batch, at in
-            let quantity = line.quantity ?? 1
-            guard quantity >= 1 else { return ("Nothing loaded for \(line.reference): the quantity has to be at least 1.", nil) }
+            let quantity = line.quantity ?? StockQuantity(whole: 1)
+            guard quantity > .zero else { return ("Nothing loaded for \(line.reference): the quantity has to be at least 1.", nil) }
+            guard quantity.isInRange else { return ("Nothing loaded for \(line.reference): \(Self.tooLarge).", nil) }
+            if let refusal = self.stepRefusal(quantity, line, in: log, mayCreate: true, verb: "loaded") { return (refusal, nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: true) {
             case .failure(let message): return (message, nil)
             case .success(let found):
@@ -182,8 +185,10 @@ final class VanStockService {
 
     func use(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
         write("use", lines) { log, line, batch, at in
-            let quantity = line.quantity ?? 1
-            guard quantity >= 1 else { return ("Nothing recorded for \(line.reference): the quantity has to be at least 1.", nil) }
+            let quantity = line.quantity ?? StockQuantity(whole: 1)
+            guard quantity > .zero else { return ("Nothing recorded for \(line.reference): the quantity has to be at least 1.", nil) }
+            guard quantity.isInRange else { return ("Nothing recorded for \(line.reference): \(Self.tooLarge).", nil) }
+            if let refusal = self.stepRefusal(quantity, line, in: log, mayCreate: false, verb: "recorded") { return (refusal, nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: false) {
             case .failure(let message): return (message, nil)
             case .success(let found):
@@ -207,8 +212,10 @@ final class VanStockService {
     func remove(_ lines: [Line], reason: VanStockMovement.RemovalReason,
                 source: VanStockMovement.Source = .spoken) -> String {
         write("remove:\(reason.rawValue)", lines) { log, line, batch, at in
-            let quantity = line.quantity ?? 1
-            guard quantity >= 1 else { return ("Nothing removed for \(line.reference): the quantity has to be at least 1.", nil) }
+            let quantity = line.quantity ?? StockQuantity(whole: 1)
+            guard quantity > .zero else { return ("Nothing removed for \(line.reference): the quantity has to be at least 1.", nil) }
+            guard quantity.isInRange else { return ("Nothing removed for \(line.reference): \(Self.tooLarge).", nil) }
+            if let refusal = self.stepRefusal(quantity, line, in: log, mayCreate: false, verb: "removed") { return (refusal, nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: false) {
             case .failure(let message): return (message, nil)
             case .success(let found):
@@ -225,7 +232,9 @@ final class VanStockService {
     func count(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
         write("count", lines) { log, line, batch, at in
             guard let quantity = line.quantity else { return ("Say how many \(line.reference) were counted.", nil) }
-            guard quantity >= 0 else { return ("Nothing counted for \(line.reference): a count cannot be below zero.", nil) }
+            guard quantity >= .zero else { return ("Nothing counted for \(line.reference): a count cannot be below zero.", nil) }
+            guard quantity.isInRange else { return ("Nothing counted for \(line.reference): \(Self.tooLarge).", nil) }
+            if let refusal = self.stepRefusal(quantity, line, in: log, mayCreate: true, verb: "counted") { return (refusal, nil) }
             switch self.target(line, in: &log, batch: batch, at: at, source: source, mayCreate: true) {
             case .failure(let message): return (message, nil)
             case .success(let found):
@@ -235,7 +244,7 @@ final class VanStockService {
                 let after = log.level(of: found.item.id)
                 let check = VanStockCountCheck(before: before, counted: after.onHand)
                 return (self.composer.counted(found.item, before: before, after: after, created: found.created),
-                        "\(found.item.name) counted: \(after.onHand) \(self.wording.location)" + (check?.said(found.item.unit) ?? ""))
+                        "\(found.item.name) counted: \(found.item.figure(after.onHand)) \(self.wording.location)" + (check?.said(found.item.unit) ?? ""))
             }
         }
     }
@@ -287,7 +296,7 @@ final class VanStockService {
 
     /// A count typed on the Van Stock screen. False when nothing was recorded.
     @discardableResult
-    func setCount(itemID: String, to quantity: Int) -> Bool {
+    func setCount(itemID: String, to quantity: StockQuantity) -> Bool {
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -299,7 +308,8 @@ final class VanStockService {
     }
 
     /// Changes typed on the Van Stock screen, as one batch. A new part number is looked up again,
-    /// so a corrected number is not left marked as verified on the strength of the old one.
+    /// so a corrected number is not left marked as verified on the strength of the old one. A
+    /// change of unit that `unitChangeRefusal` refuses is left out, and the rest still apply.
     @discardableResult
     func edit(itemID: String, _ changes: [VanStockLog.Change]) -> Bool {
         lastWrite = nil
@@ -322,6 +332,16 @@ final class VanStockService {
 
     // MARK: - The shift (Plan IH P5)
 
+    /// Why a line cannot be counted in `unit` now, or nil when it can: a unit counted whole while
+    /// a figure on the line is part of one (`VanStockLog.unitChangeRefusal`).
+    func unitChangeRefusal(itemID: String, to unit: VanStockUnit) -> String? {
+        guard !store.isUnreadable else { return nil }
+        return store.log.unitChangeRefusal(itemID: itemID, to: unit)
+    }
+
+    /// The tail of a refusal for a figure over a million units.
+    private static var tooLarge: String { StockQuantityRefusal.tooLarge.sentence(for: .each) }
+
     /// What it takes to bring the van back to its standard load: at premises, its par level.
     func topUp() -> String {
         guard !store.isUnreadable else { return unreadable }
@@ -335,8 +355,8 @@ final class VanStockService {
                             : "Nothing has run out. No \(w.usualFigure) is set for \(w.this), so there is nothing to top up to."
         }
         let listed = shortfalls.map { shortfall in
-            shortfall.short.map { "\(shortfall.item.phrase($0)) (\(shortfall.onHand) \(w.aboard))" }
-                ?? "\(shortfall.item.name) (\(shortfall.onHand) \(w.aboard))"
+            shortfall.short.map { "\(shortfall.item.phrase($0)) (\(shortfall.item.figure(shortfall.onHand)) \(w.aboard))" }
+                ?? "\(shortfall.item.name) (\(shortfall.item.figure(shortfall.onHand)) \(w.aboard))"
         }
         let lead = measured ? "\(shortfalls.count) to top up"
                             : "No \(w.usualFigure) is set for \(w.this); \(shortfalls.count) have run out or are below minimum"
@@ -398,7 +418,8 @@ final class VanStockService {
     func setStandard(_ line: Line) -> String {
         guard !store.isUnreadable else { return unreadable }
         let w = wording
-        guard let quantity = line.quantity, quantity >= 0 else { return "Say how many \(line.reference) \(w.shouldHold)." }
+        guard let quantity = line.quantity, quantity >= .zero else { return "Say how many \(line.reference) \(w.shouldHold)." }
+        guard quantity.isInRange else { return "Nothing was changed for \(line.reference): \(Self.tooLarge)." }
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -410,16 +431,25 @@ final class VanStockService {
             case .near(let items):
                 answer = self.composer.misheard(items, reference: line.reference, levels: log.levels, mayCreate: false)
             case .none: break
+            case .one(let item) where quantity != .zero && !quantity.fits(item.unit):
+                answer = Self.standardRefusal(item.name, unit: item.unit, wording: w) + " Nothing was changed."
             case .one(let item):
-                log.edit(itemID: item.id, .standard(quantity == 0 ? nil : quantity, setBy: .van), at: at,
+                log.edit(itemID: item.id, .standard(quantity == .zero ? nil : quantity, setBy: .van), at: at,
                          batch: batch, source: .spoken, id: self.makeID())
-                answer = quantity == 0 ? "\(item.name) has no \(w.usualFigure) now."
-                                       : "The \(w.usualFigure) for \(w.setByList) is now \(item.phrase(quantity))."
-                done = [quantity == 0 ? "no \(w.usualFigure) for \(item.name) now"
+                answer = quantity == .zero ? "\(item.name) has no \(w.usualFigure) now."
+                                           : "The \(w.usualFigure) for \(w.setByList) is now \(item.phrase(quantity))."
+                done = [quantity == .zero ? "no \(w.usualFigure) for \(item.name) now"
                                       : "the \(w.usualFigure) set to \(item.phrase(quantity))"]
             }
         }
         return Self.saying(answer, done)
+    }
+
+    /// A standard the line's unit cannot hold: "No standard load set for Wire nuts: packs are
+    /// counted whole."
+    static func standardRefusal(_ name: String, unit: VanStockUnit, reason: StockQuantityRefusal = .notWhole,
+                                wording w: StockPlaceWording) -> String {
+        "No \(w.usualFigure) set for \(name): \(reason.sentence(for: unit))."
     }
 
     /// What `send_to_base` says before anything is staged: parts with no stock entry, and the
@@ -512,23 +542,59 @@ final class VanStockService {
     }
 
     /// A replacement was asked for: the van now knows something is coming. Nil when the part is
-    /// not a line on the van — an order never creates one.
+    /// not a line on the van — an order never creates one. A parts request counts whole parts
+    /// (Plan ML Decision 8), so the order is that many whole units of the line: 5 is 5,000
+    /// thousandths. An order for more than a million is not noted.
     @discardableResult
     func noteOrdered(number: String, quantity: Int, requestID: String) -> String? {
-        guard !store.isUnreadable else { return nil }
+        guard !store.isUnreadable, quantity <= StockQuantity.maximumUnits else { return nil }
+        let ordered = StockQuantity(whole: max(quantity, 1))
         let at = now()
         let batch = makeID()
-        let recorded = store.update { log -> VanStockLevel? in
+        let recorded = store.update { log -> (item: VanStockItem, level: VanStockLevel)? in
             guard case .one(let item) = VanStockMatcher(items: log.items, partsIndex: self.partsIndex())
                 .match(number: number) else { return nil }
-            log.record(.ordered, itemID: item.id, quantity: max(quantity, 1), at: at, batch: batch,
+            log.record(.ordered, itemID: item.id, quantity: ordered, at: at, batch: batch,
                        source: .spoken, id: self.makeID(), requestID: requestID)
-            return log.level(of: item.id)
+            return (item, log.level(of: item.id))
         } ?? nil
         let w = wording
+        // "5 litres asked for" on a measured line; each and pack read as they always have.
         return recorded.map {
-            "\(StockPlaceWording.capitalised(w.list)) now shows \($0.onOrder) asked for and not yet \(w.putVerb)."
+            "\(StockPlaceWording.capitalised(w.list)) now shows \($0.item.figure($0.level.onOrder)) asked for and not yet \(w.putVerb)."
         }
+    }
+
+    // MARK: - The unit a figure is read in
+
+    /// The unit a spoken line's figure is kept in, and what to call the line in a refusal: the
+    /// line it names on the list, by the same match the write makes; otherwise the unit that was
+    /// said; otherwise each. The tool reads the model's figure against this before anything is
+    /// written, so 4.25 is taken for Engine oil in litres and refused for Wire nuts in packs.
+    /// `mayCreate` is true for a load or a count, which match a line said to be new by its number
+    /// or code only, as `target` does. Writes nothing.
+    func quantityUnit(for line: Line, mayCreate: Bool) -> (unit: VanStockUnit, name: String) {
+        guard !store.isUnreadable else {
+            return (line.unit.flatMap(VanStockUnit.init(spoken:)) ?? .each, line.reference)
+        }
+        return unit(of: line, in: store.log, mayCreate: mayCreate)
+    }
+
+    private func unit(of line: Line, in log: VanStockLog, mayCreate: Bool) -> (unit: VanStockUnit, name: String) {
+        if case .one(let item) = match(line, in: log, byWords: !(mayCreate && line.asNew)) {
+            return (item.unit, item.name)
+        }
+        return (line.unit.flatMap(VanStockUnit.init(spoken:)) ?? .each, line.reference)
+    }
+
+    /// The refusal for a figure the line's unit cannot hold ("Nothing loaded for Wire nuts: packs
+    /// are counted whole."), or nil when it fits. The tool reads every figure against the line's
+    /// unit first; this keeps a caller that did not from having its figure dropped without a word.
+    private func stepRefusal(_ quantity: StockQuantity, _ line: Line, in log: VanStockLog,
+                             mayCreate: Bool, verb: String) -> String? {
+        let (unit, name) = unit(of: line, in: log, mayCreate: mayCreate)
+        guard !quantity.fits(unit) else { return nil }
+        return "Nothing \(verb) for \(name): \(StockQuantityRefusal.notWhole.sentence(for: unit))."
     }
 
     // MARK: - One write
@@ -542,7 +608,7 @@ final class VanStockService {
 
         let at = now()
         let signature = action + "|" + lines.map {
-            "\($0.part ?? "")~\($0.description ?? "")~\($0.quantity.map(String.init) ?? "")~\($0.unit ?? "")~\($0.code ?? "")~\($0.asNew)"
+            "\($0.part ?? "")~\($0.description ?? "")~\($0.quantity.map { String($0.scaled) } ?? "")~\($0.unit ?? "")~\($0.code ?? "")~\($0.asNew)"
         }.joined(separator: "|")
         if let last = lastWrite, last.signature == signature,
            at.timeIntervalSince(last.at) < Self.duplicateWindow {
@@ -606,7 +672,7 @@ final class VanStockService {
             if let raw = line.unit {
                 guard let unit = VanStockUnit(spoken: raw) else { return .failure(self.unknownUnit(raw)) }
                 guard unit == item.unit else {
-                    return .failure("\(item.name) is counted in \(item.unit.rawValue), not \(unit.rawValue). Nothing was changed.")
+                    return .failure("\(item.name) is counted in \(item.unit.unitName), not \(unit.unitName). Nothing was changed.")
                 }
             }
             attach(line, to: item, in: &log, batch: batch, at: at, source: source)

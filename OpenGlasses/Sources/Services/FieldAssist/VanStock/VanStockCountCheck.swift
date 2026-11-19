@@ -5,13 +5,13 @@ import Foundation
 /// Nil when there was nothing to compare with: a new line, or one nothing had set yet — that count
 /// is the opening figure. Pure, so the read-back and the "Say:" line agree.
 enum VanStockCountCheck: Equatable, Sendable {
-    case matches(expected: Int)
-    case short(expected: Int, by: Int)
-    case over(expected: Int, by: Int)
+    case matches(expected: StockQuantity)
+    case short(expected: StockQuantity, by: StockQuantity)
+    case over(expected: StockQuantity, by: StockQuantity)
     /// The log's figure was marked unreliable, so it is no yardstick.
     case unreliable
 
-    init?(before: VanStockLevel, counted: Int) {
+    init?(before: VanStockLevel, counted: StockQuantity) {
         guard before.isRecorded else { return nil }
         if before.unreliable {
             self = .unreliable
@@ -24,24 +24,14 @@ enum VanStockCountCheck: Equatable, Sendable {
         }
     }
 
-    /// The tail of the "Say:" line: ", 2 short of the 18 expected".
+    /// The tail of the "Say:" line: ", 2 short of the 18 expected", ", 0.25 litres short of the 4.5
+    /// litres expected".
     func said(_ unit: VanStockUnit) -> String {
         switch self {
         case .matches: return ", as expected"
-        case .short(let expected, let by): return ", \(unit.amount(by)) short of the \(unit.amount(expected)) expected"
-        case .over(let expected, let by): return ", \(unit.amount(by)) over the \(unit.amount(expected)) expected"
+        case .short(let expected, let by): return ", \(unit.spoken(by)) short of the \(unit.spoken(expected)) expected"
+        case .over(let expected, let by): return ", \(unit.spoken(by)) over the \(unit.spoken(expected)) expected"
         case .unreliable: return ", replacing a figure that could not be trusted"
-        }
-    }
-}
-
-extension VanStockUnit {
-    /// A bare quantity in this unit, for comparisons: "2", "10 m", "1 pack".
-    func amount(_ quantity: Int) -> String {
-        switch self {
-        case .each: return "\(quantity)"
-        case .pack: return "\(quantity) \(quantity == 1 ? "pack" : "packs")"
-        case .m, .ft, .kg, .lb, .l: return "\(quantity) \(rawValue)"
         }
     }
 }
