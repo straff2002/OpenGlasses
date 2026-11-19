@@ -1,7 +1,9 @@
 # Plan MK — Stock Where It Lives (van stock for a shop, a storeroom or a warehouse, in the words of the place)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. Nine decisions owed; the build follows as
-its own PR once they are taken. The build PR goes in after PR 1139 (the near-match fix), which adds
+**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **Decisions 1–6, 8 and 9 taken 2026-11-19 as
+recommended.** Decision 7 was reworked the same day on the owner's point that a store may want its
+numbers checked against a catalogue or a particular manual (§4), and is the one decision owed.
+The build follows as its own PR once they are taken. The build PR goes in after PR 1139 (the near-match fix), which adds
 van wording of its own to the same three files.
 **Track:** Field Assist (B2B).
 **Builds on:**
@@ -160,21 +162,46 @@ writes "Office", so the reader must learn "office" as the same marker, or a re-i
 would claim every office-set figure as its own. "This store" and "This truck" already read as set
 by the list.
 
-### 4 · The manuals mark only when the manuals were asked
+### 4 · Numbers checked against the book the list names, and marked only when that book was asked
 
-`VanStockItem.verified: Bool` becomes `verification`: `found`, `notFound` or `notChecked`. A stored
-`true` decodes as `found` and a stored `false` as `notChecked`, because today's `false` cannot say
-whether anything was searched. A lookup is recorded as `notFound` only when it ran against at least
-one installed vault with manuals or a parts table. With no job open, or no vault, the result is
-`notChecked`, and the next look with a job open still upgrades it, as today.
+**What a lookup is today.** `PartsVerifier` is pure over one vault's parts table
+(`VaultPartsIndex`) and an exact-token search of that vault's manuals. `FieldSessionService` builds
+it only for the open job's vault, so a line loaded with no job open is never looked up at all.
+Nothing in the verifier is tied to a job: it can be built for any installed vault.
 
-- The screen's mark becomes "Not in the manuals", on `notFound` lines only.
-- The composer's "not verified against the manuals" is said for `notFound` only.
+**The list names its book.** A list may name one installed vault to check numbers against:
+"Check numbers against" on the Stock screen's Name and place sheet, beside the place. A vault is
+the app's container for both a catalogue and a manual, so this covers a supplier's catalogue
+written as a vault with a parts table, and a single manual added to a vault of its own. The
+choice is stored on the list (`VanIdentity.checkVaultID`). It is **not** written into the
+workbook, because a vault id means nothing on a phone that lacks that vault, and a takeover keeps
+the receiving phone's own choice. The book used for a number is, in order:
+
+1. the open job's vault, when a job is open (today's behaviour, unchanged);
+2. otherwise the list's named vault, when it is installed and readable;
+3. otherwise none, and nothing is searched.
+
+There is no default. A store searches nothing until somebody names a book, and a van searches
+the job's vault as it does now. A van may also name one, so a line loaded at the shop is checked
+at once against the brand the technician mostly works on. A named vault that has been removed is
+treated as none, and the sheet says it has gone.
+
+**Three states, not two.** `VanStockItem.verified: Bool` becomes `verification`: `found`, `notFound`
+or `notChecked`, plus the name of the vault that answered. A stored `true` decodes as `found` and a
+stored `false` as `notChecked`, because today's `false` cannot say whether anything was searched.
+A lookup is recorded as `notFound` only when it ran against a vault with a parts table or manuals.
+With no book it is `notChecked`, and a later look that has a book still upgrades it, as today.
+
+- The screen's mark names the book: "Not found in Supplier catalogue", on `notFound` lines only.
+  A `found` line can show where it was found, as a task's part does.
+- The composer's sentence names the book too ("not found in Supplier catalogue"), for `notFound`
+  only. A store that has named no book never hears about manuals.
 - The first-load spelling read-back stays for every place: a misheard stock code is as costly as a
-  misheard part number. The reason given changes with the facts: "has not been on this list before"
-  for `notChecked`, and "is not in the manuals and has not been on this list" for `notFound`.
-- **At a store or warehouse no lookup runs** and every line is `notChecked`. A shop's codes are
-  its own, and searching an HVAC vault for them could only produce false comfort or false alarm.
+  misheard part number. The reason given follows the facts: "has not been on this list before" for
+  `notChecked`, and "is not in Supplier catalogue and has not been on this list" for `notFound`.
+- **A found number is not proof of stock**, only that the number exists in that book, exactly as
+  for a technician. The supersession lookup (a number replaced by a newer one) comes for free from
+  the parts table.
 
 ### 5 · What each family keeps
 
@@ -207,18 +234,20 @@ phone rule (IH Decision 8), and the feature's licensing: it still needs Field As
 - **P1 — what the model sees and hears (headless).** The composer, service, handover, close question
   and `parts_request` lines through `StockPlaceWording`; `VanStockTool.description` and
   `parametersSchema` computed per place, with premises dropping `unrecorded` and `not_from_van`;
-  §4's `notFound`/`notChecked` and no lookups at premises; §5's premises `send_to_base` with no
-  extras question. Tests pin the wording per place (below).
+  §4's book order (job, then the list's named vault, then none) through a `PartsVerifier` built
+  for a named vault outside a session, and `found`/`notFound`/`notChecked` naming the book; §5's
+  premises `send_to_base` with no extras question. Tests pin the wording per place (below).
 - **P2 — who sets it, and the screen (headless + simulator).** The `organizationStockPlace` key, its
   content check, the profile summary line and the deployer sheet row; "Name and place…" with the
-  locked state; the place-neutral rewrite of the screen strings; the per-kind title, row, takeover
+  locked state and the "Check numbers against" vault picker (with its "has gone" state); the place-neutral rewrite of the screen strings; the per-kind title, row, takeover
   label, hint and placeholder; the workbook's sheet and file names; the "Not in the manuals" mark.
   Simulator screenshots of a van and a store in both appearances and at the largest text size, and
   the Van Stock screen's accessibility-audit entry IH P2 still owes.
 - **P3 — the catalog sync (its own PR).** The build PR adds English only. About 45 keys are changed
   or added: about 31 rewritten to be place-neutral, 4 titles, about 9 per-kind strings, and the
-  profile's summary and refusal. All of them are then translated into the 18 other languages and
-  the retired van keys removed, as PRs 1128, 1133 and 1140 did for earlier features.
+  profile's summary and refusal, and the vault picker's few strings. All of them are then
+  translated into the 18 other languages and the retired van keys removed, as PRs 1128, 1133 and
+  1140 did for earlier features.
 - **P4 — the pilot pass (owed).** A shop's own spreadsheet imported into a store list, a day of
   spoken checks, receipts and counts in the shop, and a read of every spoken answer for a stray
   "van", "truck", "base" or "manuals". The same day on a technician's phone with the place left at
@@ -242,11 +271,13 @@ P0–P2 are one PR, under the house rhythm. P3 is the catalog PR. P4 is a report
   "warehouse", "par" on a van). The van run's expected strings are today's, unchanged, so the
   default is pinned to what ships now.
 - `VanStockToolTests` additions: a premises schema has no `unrecorded` or `not_from_van`;
-  `send_to_base` at a store asks no extras question and stages the list; at a store no lookup is
-  made (the injected `verify` is never called).
+  `send_to_base` at a store asks no extras question and stages the list; a store with no named
+  vault makes no lookup (the injected `verify` is never called).
 - `VanStockVerificationTests`: legacy `true` is `found` and `false` is `notChecked`; a lookup with
-  no vault records `notChecked`, never `notFound`; a later lookup with a job open upgrades it; the
-  mark shows on `notFound` only.
+  no book records `notChecked`, never `notFound`; the book order is job, then named vault, then
+  none; a named vault that has been removed is none; a later lookup with a book upgrades
+  `notChecked`; the mark and the sentence name the book that answered and show on `notFound` only;
+  the named vault is not written into the workbook and a takeover keeps the receiving phone's.
 - `SettingKey` and `OrgProfileManager` tests: the new key's kind, a known kind applied and locked, an
   unknown kind dropped with its sentence, the summary line.
 - `VanStockSheetTests` additions: the sheet and file names per kind; "This store" and "This truck"
@@ -255,36 +286,44 @@ P0–P2 are one PR, under the house rhythm. P3 is the catalog PR. P4 is a report
 
 ## Decisions for Greig
 
-1. **Four kinds, and a custom name rides on one of them** (recommended): van, truck, store,
+**1–6, 8 and 9 taken 2026-11-19 as recommended** (owner: "1. yes, 2, yes, 3, yes, 4, yes, 5, yes,
+6, yes" and "8 and 9 yes"). 7 was reworked on the owner's question ("a store could want to search
+through a catalogue or a specific manual for a part number?") and is the one decision owed.
+
+1. ✅ **Four kinds, and a custom name rides on one of them** (recommended): van, truck, store,
    warehouse, with the list's existing name as the custom part. The alternative is a free-text
    place word, which cannot go into translated sentences and would leave the screen half in the
    person's word and half in "van".
-2. **The default stays van, with no guess from the region** (recommended), so no existing list
+2. ✅ **The default stays van, with no guess from the region** (recommended), so no existing list
    changes its words without someone choosing. The alternative, truck for American English (IH's
    open question 2), changes the wording on phones that have used the feature since October.
-3. **The organisation's profile sets and locks it, and otherwise the person keeping the list chooses
+3. ✅ **The organisation's profile sets and locks it, and otherwise the person keeping the list chooses
    it** (recommended). The vault and the trade do not set it. The alternative adds a second,
    unlocked profile key as a starting value, as the accent colour has. That can come later if a
    partner asks.
-4. **The place travels with the list, in its workbook** (recommended), so a takeover keeps the
+4. ✅ **The place travels with the list, in its workbook** (recommended), so a takeover keeps the
    words. The alternative is a per-phone setting, which a new phone would have to be told again.
-5. **The screen's sentences are rewritten to be place-neutral, and the place appears in the title,
+5. ✅ **The screen's sentences are rewritten to be place-neutral, and the place appears in the title,
    the row and three per-kind strings** (recommended): about 45 keys, translated once. The
    alternative, per-kind variants of every sentence, roughly triples the keys and every future
    string.
-6. **The tool and action names stay `van_stock`, `send_to_base`, `not_from_van`** (recommended),
+6. ✅ **The tool and action names stay `van_stock`, `send_to_base`, `not_from_van`** (recommended),
    and only their descriptions follow the place. A store's schema leaves out the two job-only
    actions. The alternative renames the tool to `stock`, which touches the classification tables,
    the offline policy, the field tool profile and every stock test, for a word the model reads
    through the description anyway.
-7. **The manuals mark is shown only for a number the manuals were searched for and did not hold, and
-   a store or warehouse never searches** (recommended). This also fixes the mark for technicians: a
-   line loaded at the shop is no longer flagged just because no job was open. The alternative hides
-   the mark only for premises and leaves the vehicle behaviour as it is.
-8. **"Par level" is the store's word for the standard load** (recommended): it is what retail and
+7. **Numbers are checked against the book the list names, and marked only when that book was
+   asked** (recommended, reworked 2026-11-19). The order is the open job's vault, then a vault the
+   list names under "Check numbers against" (a supplier's catalogue with a parts table, or one
+   manual), then none. Nothing is searched until a book is named, and the mark ("Not found in
+   Supplier catalogue") shows only for a number that book was searched for and did not hold. A van
+   may name one too, so a line loaded with no job open is checked at once. The first version of
+   this decision had a store never search. The alternative now is the job's vault only, as today,
+   with the mark narrowed to `notFound`, which leaves a store with no way to check a number.
+8. ✅ **"Par level" is the store's word for the standard load** (recommended): it is what retail and
    hospitality say, and the importer already reads a Par column. The alternatives are "usual level"
    or keeping "standard load" everywhere.
-9. **A store keeps `send_to_base` as "send the stock list", with no extras question, and keeps the
+9. ✅ **A store keeps `send_to_base` as "send the stock list", with no extras question, and keeps the
    takeover as "Take over this list"** (recommended). The alternative hides both at premises, which
    loses the opening-and-closing handover a shop with two staff phones can use.
 
