@@ -127,6 +127,8 @@ enum VaultAuthoring {
         for file in output.files {
             try file.contents.write(to: folder.appendingPathComponent(file.name), atomically: true, encoding: .utf8)
         }
+        // Validated on the main thread on purpose: a starter is a handful of short Markdown files
+        // and no manuals, so the check is quick, and the id is new, so nothing else holds it.
         let report = try VaultImporter.installReporting(from: folder)
         VaultRegistry.shared.reloadUserManifests()
         VaultRegistry.shared.resetCache()
@@ -199,12 +201,17 @@ enum VaultAuthoring {
 
     /// Add `manual` to the owned vault `vaultId`. Its per-file caps were applied when it was prepared;
     /// a vault of the subscriber's own has no manual count. The caller indexes the result.
+    ///
+    /// The vault is validated off the main thread, since that reads every manual it already holds,
+    /// under its lock, so nothing else re-lays it in the meantime.
     @discardableResult
-    static func addManual(_ manual: NewManual, to vaultId: String) throws -> VaultManifest {
-        guard isOwned(vaultId), let manifest = VaultImporter.installedManifest(id: vaultId) else { throw Failure.notOwned }
-        let taken = Set(manifest.documents.flatMap { [$0.file] + [$0.source].compactMap { $0 } } + manifest.files)
-        let kept = try kept(manual, existingFiles: taken)
-        return try VaultDocumentCarry.relay(vaultId: vaultId, removing: [], adding: [kept])
+    static func addManual(_ manual: NewManual, to vaultId: String) async throws -> VaultManifest {
+        try await VaultOperationLock.withLock(vaultId) {
+            guard isOwned(vaultId), let manifest = VaultImporter.installedManifest(id: vaultId) else { throw Failure.notOwned }
+            let taken = Set(manifest.documents.flatMap { [$0.file] + [$0.source].compactMap { $0 } } + manifest.files)
+            let kept = try kept(manual, existingFiles: taken)
+            return try await VaultDocumentCarry.relayOffMain(vaultId: vaultId, removing: [], adding: [kept])
+        }
     }
 
     // MARK: - Add file
@@ -220,8 +227,16 @@ enum VaultAuthoring {
     /// Add a Markdown core file named `name` to the owned vault `vaultId`, listed in `manifest.files`
     /// after the others. It starts as its title as a heading (the validator refuses an empty file);
     /// the author writes it in the editor. Returns the file's name.
+    ///
+    /// The whole vault is validated again, manuals included, so that runs off the main thread, under
+    /// the vault's lock: the staging copy is taken from the baseline, and nothing may change the
+    /// baseline before the copy is installed over it.
     @discardableResult
-    static func addFile(named name: String, to vaultId: String) throws -> String {
+    static func addFile(named name: String, to vaultId: String) async throws -> String {
+        try await VaultOperationLock.withLock(vaultId) { try await addFileLocked(named: name, to: vaultId) }
+    }
+
+    private static func addFileLocked(named name: String, to vaultId: String) async throws -> String {
         guard isOwned(vaultId), let manifest = VaultImporter.installedManifest(id: vaultId) else { throw Failure.notOwned }
         guard let file = coreFileName(name) else { throw Failure.emptyFileName }
         let taken = Set((manifest.files + manifest.documents.map(\.file)).map { $0.lowercased() })
@@ -235,7 +250,7 @@ enum VaultAuthoring {
         try "# \(heading)\n".write(to: staging.appendingPathComponent(file), atomically: true, encoding: .utf8)
         try JSONEncoder().encode(manifest.withFiles(manifest.files + [file]))
             .write(to: staging.appendingPathComponent("manifest.json"))
-        _ = try VaultImporter.installReporting(from: staging)
+        _ = try await VaultImporter.installReportingOffMain(from: staging)
         VaultRegistry.shared.reloadUserManifests()
         VaultRegistry.shared.resetCache()
         return file
@@ -364,7 +379,12 @@ enum AuthoringLinkIntake {
         var errorDescription: String? { String(localized: "This link carries no manuals to add.") }
     }
 
-    static func add(_ request: VaultLinkInstaller.Request, to vaultId: String) throws -> VaultLinkInstaller.Outcome {
+    /// Under the vault's lock, with the validation off the main thread (see `VaultAuthoring.addManual`).
+    static func add(_ request: VaultLinkInstaller.Request, to vaultId: String) async throws -> VaultLinkInstaller.Outcome {
+        try await VaultOperationLock.withLock(vaultId) { try await addLocked(request, to: vaultId) }
+    }
+
+    private static func addLocked(_ request: VaultLinkInstaller.Request, to vaultId: String) async throws -> VaultLinkInstaller.Outcome {
         guard VaultAuthoring.isOwned(vaultId), let target = VaultImporter.installedManifest(id: vaultId) else {
             throw VaultAuthoring.Failure.notOwned
         }
@@ -404,7 +424,7 @@ enum AuthoringLinkIntake {
             kept.append(.init(document: added, files: files))
         }
         guard !kept.isEmpty else { throw Failure.noManuals }
-        let manifest = try VaultDocumentCarry.relay(vaultId: vaultId, removing: [], adding: kept)
+        let manifest = try await VaultDocumentCarry.relayOffMain(vaultId: vaultId, removing: [], adding: kept)
         return VaultLinkInstaller.Outcome(vaultId: vaultId, vaultName: manifest.name, warnings: [],
                                           needsDocumentSync: true, manifest: manifest)
     }

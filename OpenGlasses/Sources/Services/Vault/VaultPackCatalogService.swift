@@ -119,7 +119,7 @@ final class VaultPackCatalogService: ObservableObject {
             return
         }
         installStates[entry.id] = .installing
-        switch installPack(zipData: zipData, signatureBase64: entry.packSignature, expectedId: entry.id, keeping: keeping) {
+        switch await installPack(zipData: zipData, signatureBase64: entry.packSignature, expectedId: entry.id, keeping: keeping) {
         case .success(let warnings):
             installStates[entry.id] = .installed(warnings: warnings)
             onInstalled()
@@ -135,7 +135,7 @@ final class VaultPackCatalogService: ObservableObject {
 
     /// The offline half of `install`, usable by a sideload path: verified bytes → installed vault.
     func installPack(zipData: Data, signatureBase64: String, expectedId: String?,
-                     keeping: [VaultDocumentCarry.Kept] = []) -> Result<[String], InstallFailure> {
+                     keeping: [VaultDocumentCarry.Kept] = []) async -> Result<[String], InstallFailure> {
         let packData: Data
         let files: [String: Data]
         switch VaultPackArchive.extract(zipData: zipData) {
@@ -166,26 +166,32 @@ final class VaultPackCatalogService: ObservableObject {
         }
 
         // Lay the files out as a folder and hand it to the same importer a customer folder uses.
-        let staging = FileManager.default.temporaryDirectory
-            .appendingPathComponent("VaultPack-\(UUID().uuidString.prefix(8))", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: staging) }
-        do {
-            for (path, data) in files {
-                let url = staging.appendingPathComponent(path)
-                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: url)
+        // Validated off the main thread: a company vault's core update carries its installed code
+        // books in `keeping`, and checking those on the main thread froze the app until iOS killed
+        // it. The vault's lock is held from the layout to the install, so no manual added, removed
+        // or indexed while the validation runs is overwritten by an update that never saw it.
+        return await VaultOperationLock.withLock(manifest.id) {
+            let staging = FileManager.default.temporaryDirectory
+                .appendingPathComponent("VaultPack-\(UUID().uuidString.prefix(8))", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: staging) }
+            do {
+                for (path, data) in files {
+                    let url = staging.appendingPathComponent(path)
+                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: url)
+                }
+                if !keeping.isEmpty {
+                    let composed = try VaultDocumentCarry.compose(keeping, into: staging, manifest: manifest)
+                    try JSONEncoder().encode(composed).write(to: staging.appendingPathComponent("manifest.json"))
+                }
+                let report = try await VaultImporter.installReportingOffMain(from: staging)
+                try VaultImporter.recordPack(pack, for: report.manifest.id)
+                VaultRegistry.shared.reloadUserManifests()
+                VaultRegistry.shared.resetCache()
+                return .success(report.warnings)
+            } catch {
+                return .failure(InstallFailure(error.localizedDescription))
             }
-            if !keeping.isEmpty {
-                let composed = try VaultDocumentCarry.compose(keeping, into: staging, manifest: manifest)
-                try JSONEncoder().encode(composed).write(to: staging.appendingPathComponent("manifest.json"))
-            }
-            let report = try VaultImporter.installReporting(from: staging)
-            try VaultImporter.recordPack(pack, for: report.manifest.id)
-            VaultRegistry.shared.reloadUserManifests()
-            VaultRegistry.shared.resetCache()
-            return .success(report.warnings)
-        } catch {
-            return .failure(InstallFailure(error.localizedDescription))
         }
     }
 

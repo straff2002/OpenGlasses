@@ -97,7 +97,7 @@ final class VaultImporterSiteTests: XCTestCase {
 
     // MARK: - Packs
 
-    func testAPackCarryingSitesIsRefused() throws {
+    func testAPackCarryingSitesIsRefused() async throws {
         let key = Curve25519.Signing.PrivateKey()
         let packId = "com.openglasses.vault.site_pack_test"
         let pack = VaultPackManifest(id: packId, vaultId: "site_pack_test", version: "1.0.0", name: "Site pack",
@@ -117,22 +117,22 @@ final class VaultImporterSiteTests: XCTestCase {
         let service = VaultPackCatalogService(catalogURL: { nil }, fetch: { _ in Data() },
                                               publicKeyBase64: key.publicKey.rawRepresentation.base64EncodedString(),
                                               currentBuild: 400)
-        func install(_ files: [String: Data]) throws -> Result<[String], VaultPackCatalogService.InstallFailure> {
+        func install(_ files: [String: Data]) async throws -> Result<[String], VaultPackCatalogService.InstallFailure> {
             let packData = try JSONEncoder().encode(pack)
             let signature = try VaultPackSignature.sign(packManifestData: packData, files: files,
                                                         privateKeyBase64: key.rawRepresentation.base64EncodedString())
             var entries = files
             entries[VaultPackManifest.filename] = packData
-            return service.installPack(zipData: VaultPackTests.makeZip(entries), signatureBase64: signature, expectedId: packId)
+            return await service.installPack(zipData: VaultPackTests.makeZip(entries), signatureBase64: signature, expectedId: packId)
         }
-        guard case .failure(let failure) = try install(files(sites: [F.siteFile])) else {
+        guard case .failure(let failure) = try await install(files(sites: [F.siteFile])) else {
             return XCTFail("a pack with sites must not install")
         }
         XCTAssertEqual(failure.reason, "a pack must not carry site documents; sites belong in a customer's own vault")
         XCTAssertNil(VaultImporter.installedManifest(id: "site_pack_test"))
         // Even an empty list: a pack has no sites key at all.
-        guard case .failure = try install(files(sites: [])) else { return XCTFail("an empty sites list is still sites") }
+        guard case .failure = try await install(files(sites: [])) else { return XCTFail("an empty sites list is still sites") }
         // Without the key, the same pack installs.
-        guard case .success = try install(files(sites: nil)) else { return XCTFail("the pack without sites installs") }
+        guard case .success = try await install(files(sites: nil)) else { return XCTFail("the pack without sites installs") }
     }
 }

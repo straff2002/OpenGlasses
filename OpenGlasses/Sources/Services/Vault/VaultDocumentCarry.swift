@@ -82,6 +82,9 @@ enum VaultDocumentCarry {
     /// Re-lay the installed vault `vaultId` with `removing` taken out and `adding` put in (a manual
     /// of the same name is replaced). Its core files, its pack record and the technician's overlay
     /// stay; the caller indexes the result with `VaultImporter.syncDocuments`.
+    ///
+    /// This validates the whole vault on the calling thread, which is the main thread. The app's
+    /// own callers use `relayOffMain`; this one stays for tests that lay a vault out directly.
     @MainActor
     static func relay(vaultId: String, removing: Set<String>, adding: [Kept]) throws -> VaultManifest {
         let laid = try lay(vaultId: vaultId, removing: removing, adding: adding)

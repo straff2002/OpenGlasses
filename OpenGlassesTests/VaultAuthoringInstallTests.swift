@@ -57,9 +57,9 @@ final class VaultAuthoringInstallTests: XCTestCase {
     }
 
     private func addFixtureManual(to id: String, title: String = "Installation manual", edition: String? = "Rev A",
-                                  photographed: Bool = false) throws -> VaultManifest {
+                                  photographed: Bool = false) async throws -> VaultManifest {
         let url = try manualFile()
-        return try VaultAuthoring.addManual(.init(original: url, readingPDF: url, converted: false, title: title,
+        return try await VaultAuthoring.addManual(.init(original: url, readingPDF: url, converted: false, title: title,
                                                   edition: edition, photographed: photographed), to: id)
     }
 
@@ -99,9 +99,9 @@ final class VaultAuthoringInstallTests: XCTestCase {
 
     // MARK: - Add manual
 
-    func testAnAddedManualRecordsItsRevisionOriginAndEdition() throws {
+    func testAnAddedManualRecordsItsRevisionOriginAndEdition() async throws {
         let vault = try newVault()
-        let manifest = try addFixtureManual(to: vault.id)
+        let manifest = try await addFixtureManual(to: vault.id)
         let document = try XCTUnwrap(manifest.documents.first)
         XCTAssertEqual(document.file, "installation-manual.txt")
         XCTAssertEqual(document.title, "Installation manual")
@@ -114,22 +114,22 @@ final class VaultAuthoringInstallTests: XCTestCase {
         XCTAssertEqual(manifest.files, AppStarter.fileNames, "The core files were dropped")
     }
 
-    func testPhotographedPagesAreACaptureAndAnEmptyEditionIsNone() throws {
+    func testPhotographedPagesAreACaptureAndAnEmptyEditionIsNone() async throws {
         let vault = try newVault()
-        let document = try XCTUnwrap(try addFixtureManual(to: vault.id, title: "Wiring sheet", edition: "  ",
-                                                          photographed: true).documents.first)
+        let added = try await addFixtureManual(to: vault.id, title: "Wiring sheet", edition: "  ", photographed: true)
+        let document = try XCTUnwrap(added.documents.first)
         XCTAssertEqual(document.origin, .capture)
         XCTAssertEqual(document.personalCapture, true)
         XCTAssertNil(document.edition)
     }
 
-    func testAWordOrMarkdownUploadKeepsItsReadingCopyBesideIt() throws {
+    func testAWordOrMarkdownUploadKeepsItsReadingCopyBesideIt() async throws {
         let vault = try newVault()
         let markdown = temp.appendingPathComponent("Service notes.md")
         try "# Service notes\n\nE9 means low suction pressure on the QX-100.".write(to: markdown, atomically: true, encoding: .utf8)
         let prepared = try ManualFileUpload.prepare(markdown)
         defer { prepared.discard() }
-        let manifest = try VaultAuthoring.addManual(.init(prepared, title: "Service notes", edition: nil, photographed: false), to: vault.id)
+        let manifest = try await VaultAuthoring.addManual(.init(prepared, title: "Service notes", edition: nil, photographed: false), to: vault.id)
         let document = try XCTUnwrap(manifest.documents.first)
         XCTAssertEqual(document.file, "service-notes.md")
         XCTAssertEqual(document.source, "service-notes.reading.pdf")
@@ -137,33 +137,36 @@ final class VaultAuthoringInstallTests: XCTestCase {
         XCTAssertEqual(document.revision, VaultDocumentLedger.hash(of: try Data(contentsOf: prepared.original)))
     }
 
-    func testASecondManualOfTheSameTitleGetsItsOwnFile() throws {
+    func testASecondManualOfTheSameTitleGetsItsOwnFile() async throws {
         let vault = try newVault()
-        _ = try addFixtureManual(to: vault.id)
-        let manifest = try addFixtureManual(to: vault.id)
+        _ = try await addFixtureManual(to: vault.id)
+        let manifest = try await addFixtureManual(to: vault.id)
         XCTAssertEqual(manifest.documents.map(\.file), ["installation-manual.txt", "installation-manual-2.txt"])
     }
 
-    func testAddingAManualKeepsTheAuthorsEdits() throws {
+    func testAddingAManualKeepsTheAuthorsEdits() async throws {
         let vault = try newVault()
         let store = try XCTUnwrap(VaultRegistry.shared.store(forId: vault.id))
         try store.write("safety.md", contents: "# Safety\n\nInvented site rule: two people at the panel.")
-        _ = try addFixtureManual(to: vault.id)
+        _ = try await addFixtureManual(to: vault.id)
         XCTAssertEqual(VaultRegistry.shared.store(forId: vault.id)?.read("safety.md"),
                        "# Safety\n\nInvented site rule: two people at the panel.")
     }
 
-    func testAManualCannotBeAddedToAVaultThatIsNotYourOwn() throws {
-        XCTAssertThrowsError(try addFixtureManual(to: "lw_p1_not_here")) { error in
+    func testAManualCannotBeAddedToAVaultThatIsNotYourOwn() async throws {
+        do {
+            _ = try await addFixtureManual(to: "lw_p1_not_here")
+            XCTFail("a manual was added to a vault that is not your own")
+        } catch {
             XCTAssertEqual(error as? VaultAuthoring.Failure, .notOwned)
         }
     }
 
     // MARK: - Add file
 
-    func testAnAddedFileIsListedInTheManifestAndReadable() throws {
+    func testAnAddedFileIsListedInTheManifestAndReadable() async throws {
         let vault = try newVault()
-        let file = try VaultAuthoring.addFile(named: "Wiring notes", to: vault.id)
+        let file = try await VaultAuthoring.addFile(named: "Wiring notes", to: vault.id)
         XCTAssertEqual(file, "wiring-notes.md")
         let manifest = try XCTUnwrap(VaultImporter.installedManifest(id: vault.id))
         XCTAssertEqual(manifest.files, AppStarter.fileNames + ["wiring-notes.md"])
@@ -172,13 +175,15 @@ final class VaultAuthoringInstallTests: XCTestCase {
             .allSatisfy { !$0.contains("wiring-notes") })
     }
 
-    func testAFileThatExistsOrHasNoNameIsRefused() throws {
+    func testAFileThatExistsOrHasNoNameIsRefused() async throws {
         let vault = try newVault()
-        XCTAssertThrowsError(try VaultAuthoring.addFile(named: "Safety", to: vault.id)) { error in
-            XCTAssertEqual(error as? VaultAuthoring.Failure, .fileExists("safety.md"))
-        }
-        XCTAssertThrowsError(try VaultAuthoring.addFile(named: "  ", to: vault.id)) { error in
-            XCTAssertEqual(error as? VaultAuthoring.Failure, .emptyFileName)
+        for (name, expected) in [("Safety", VaultAuthoring.Failure.fileExists("safety.md")), ("  ", .emptyFileName)] {
+            do {
+                _ = try await VaultAuthoring.addFile(named: name, to: vault.id)
+                XCTFail("\(name) was added")
+            } catch {
+                XCTAssertEqual(error as? VaultAuthoring.Failure, expected)
+            }
         }
     }
 
@@ -249,7 +254,7 @@ final class VaultAuthoringInstallTests: XCTestCase {
 
     func testTheLivePageTextReadsAnIndexedManualByPage() async throws {
         let vault = try newVault()
-        let manifest = try addFixtureManual(to: vault.id)
+        let manifest = try await addFixtureManual(to: vault.id)
         let storeDir = temp.appendingPathComponent("store", isDirectory: true)
         try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
         let documentStore = DocumentStore(directory: storeDir)
@@ -268,18 +273,18 @@ final class VaultAuthoringInstallTests: XCTestCase {
         XCTAssertNil(LiveDraftPageText.manual(vaultId: vault.id, file: "not-a-manual.pdf", documentStore: documentStore))
     }
 
-    func testAManualNotYetIndexedHasNoPageText() throws {
+    func testAManualNotYetIndexedHasNoPageText() async throws {
         let vault = try newVault()
-        _ = try addFixtureManual(to: vault.id)
+        _ = try await addFixtureManual(to: vault.id)
         let documentStore = DocumentStore(directory: temp.appendingPathComponent("empty-store", isDirectory: true))
         XCTAssertNil(LiveDraftPageText.manual(vaultId: vault.id, file: "installation-manual.txt", documentStore: documentStore))
     }
 
     // MARK: - Export
 
-    func testTheExportListsTheManualByTheKeyItsRowsCite() throws {
+    func testTheExportListsTheManualByTheKeyItsRowsCite() async throws {
         let vault = try newVault()
-        _ = try addFixtureManual(to: vault.id)
+        _ = try await addFixtureManual(to: vault.id)
         let folder = try VaultExporter.export(id: vault.id, learnings: { _ in nil })
         defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("manifest.json"))) as? [String: Any])
@@ -293,7 +298,7 @@ final class VaultAuthoringInstallTests: XCTestCase {
 
     // MARK: - A publisher's link
 
-    func testALinksManualsAreAddedToTheVaultAndItsCoreFilesAreNot() throws {
+    func testALinksManualsAreAddedToTheVaultAndItsCoreFilesAreNot() async throws {
         let vault = try newVault()
         let received = VaultManifest(id: "publisher_set", name: "Publisher set", version: "1.0.0", files: ["fault-codes.md"],
                                      documentsDir: "documents",
@@ -304,7 +309,7 @@ final class VaultAuthoringInstallTests: XCTestCase {
                                                  receipt: VaultReceipt(publisherId: nil, publisherName: nil, verification: .unverified,
                                                                        sourceHost: "manuals.example.test", receivedAt: Date(),
                                                                        archiveSHA256: "0000"))
-        let outcome = try AuthoringLinkIntake.add(request, to: vault.id)
+        let outcome = try await AuthoringLinkIntake.add(request, to: vault.id)
         XCTAssertEqual(outcome.vaultId, vault.id)
         let document = try XCTUnwrap(outcome.manifest.documents.first)
         XCTAssertEqual(document.file, "service-manual.txt")

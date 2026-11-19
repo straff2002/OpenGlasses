@@ -69,7 +69,7 @@ struct AddManualControls: View {
             pending = value
         })) { manual in
             AddManualDetailsSheet(manual: manual) { title, edition in
-                try add(manual, title: title, edition: edition)
+                try await add(manual, title: title, edition: edition)
             }
         }
         .sheet(isPresented: $receiving) {
@@ -116,8 +116,8 @@ struct AddManualControls: View {
         }
     }
 
-    private func add(_ manual: PendingManual, title: String, edition: String) throws {
-        let manifest = try VaultAuthoring.addManual(
+    private func add(_ manual: PendingManual, title: String, edition: String) async throws {
+        let manifest = try await VaultAuthoring.addManual(
             .init(manual.prepared, title: title, edition: edition, photographed: manual.photographed), to: vaultId)
         manual.discard()
         pending = nil
@@ -127,7 +127,7 @@ struct AddManualControls: View {
     private func openLink() {
         let target = vaultId
         link = VaultLinkService(install: { request in
-            try await MainActor.run { try AuthoringLinkIntake.add(request, to: target) }
+            try await AuthoringLinkIntake.add(request, to: target)
         })
         receiving = true
     }
@@ -137,12 +137,13 @@ struct AddManualControls: View {
 @MainActor
 struct AddManualDetailsSheet: View {
     let manual: AddManualControls.PendingManual
-    let onAdd: (_ title: String, _ edition: String) throws -> Void
+    let onAdd: (_ title: String, _ edition: String) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var edition = ""
     @State private var errorMessage: String?
+    @State private var adding = false
 
     var body: some View {
         NavigationStack {
@@ -163,17 +164,23 @@ struct AddManualDetailsSheet: View {
                     Text("The manual is saved on this phone, then indexed. It never leaves the phone, and an export of the vault lists it without it.")
                         .font(.footnote)
                 }
+                if adding { Section { ProgressView("Checking…") } }
                 if let errorMessage { Section { OGStatusLabel(errorMessage, kind: .error) } }
             }
             .navigationTitle("Add manual")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(adding) }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        do { try onAdd(title, edition) } catch { errorMessage = error.localizedDescription }
+                        adding = true
+                        errorMessage = nil
+                        Task {
+                            defer { adding = false }
+                            do { try await onAdd(title, edition) } catch { errorMessage = error.localizedDescription }
+                        }
                     }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(adding || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .onAppear {
@@ -182,5 +189,6 @@ struct AddManualDetailsSheet: View {
                 }
             }
         }
+        .interactiveDismissDisabled(adding)
     }
 }

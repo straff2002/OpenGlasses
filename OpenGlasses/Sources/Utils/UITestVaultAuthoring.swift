@@ -42,10 +42,10 @@ struct UITestVaultAuthoring: View {
             }
         }
         .background(OGTheme.canvas.ignoresSafeArea())
-        .task { if prepared == nil && failure == nil { prepare() } }
+        .task { if prepared == nil && failure == nil { await prepare() } }
     }
 
-    private func prepare() {
+    private func prepare() async {
         do {
             for manifest in VaultImporter.installedManifests() where manifest.name == Self.vaultName {
                 VaultImporter.uninstall(id: manifest.id)
@@ -58,7 +58,7 @@ struct UITestVaultAuthoring: View {
             let file = folder.appendingPathComponent("installation-manual.txt")
             try Self.pages.map(\.text).joined(separator: VaultDocumentExtractor.pageSeparator)
                 .write(to: file, atomically: true, encoding: .utf8)
-            let manifest = try VaultAuthoring.addManual(.init(original: file, readingPDF: file, converted: false,
+            let manifest = try await VaultAuthoring.addManual(.init(original: file, readingPDF: file, converted: false,
                                                               title: "Installation manual", edition: "Rev A"),
                                                         to: vault.id)
             guard let document = manifest.documents.first else { failure = "No manual"; return }
