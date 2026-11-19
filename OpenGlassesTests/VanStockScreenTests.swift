@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import OpenGlasses
 
 /// Plan IH P2 — what the Van Stock screen does to the log, and the organisation's switch.
@@ -135,6 +136,67 @@ final class VanStockScreenTests: XCTestCase {
         XCTAssertEqual(service.unitChangeRefusal(itemID: "cable", to: .pack),
                        "The standard of 40.5 m is not a whole number of packs; change it first.")
         XCTAssertEqual(store.log.item(id: "cable")?.unit, .m)
+    }
+
+    // MARK: A refused unit change, said on the screen
+
+    private func addMeasuredLine(onHand: Int, minimum: Int? = nil, standard: Int? = nil) {
+        store.update { log in
+            log.addItem(id: "oil", description: "Engine oil", unit: .l,
+                        minimum: minimum.map { StockQuantity(scaled: $0) }, batch: "b0")
+            log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: onHand), at: self.clock,
+                       batch: "b0", source: .typed)
+        }
+        if let standard {
+            XCTAssertTrue(service.edit(itemID: "oil", [.standard(StockQuantity(scaled: standard), setBy: .van)]))
+        }
+    }
+
+    func testTheBlockNamesOnHandFirstThenTheMinimumThenTheStandard() {
+        addMeasuredLine(onHand: 4250, minimum: 2500, standard: 40_500)
+        XCTAssertEqual(service.unitChangeBlock(itemID: "oil", to: .pack), .onHand(StockQuantity(scaled: 4250)))
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "oil", to: .pack),
+                       "4.25 l on hand is not a whole number of packs; count it first.", "the model's sentence is unchanged")
+
+        XCTAssertTrue(service.setCount(itemID: "oil", to: .whole(4)))
+        XCTAssertEqual(service.unitChangeBlock(itemID: "oil", to: .each), .minimum(StockQuantity(scaled: 2500)))
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "oil", to: .each),
+                       "The minimum of 2.5 l is not a whole number; change it first.")
+
+        XCTAssertTrue(service.edit(itemID: "oil", [.minimum(.whole(2))]))
+        XCTAssertEqual(service.unitChangeBlock(itemID: "oil", to: .each), .standard(StockQuantity(scaled: 40_500)))
+        XCTAssertEqual(service.unitChangeRefusal(itemID: "oil", to: .pack),
+                       "The standard of 40.5 l is not a whole number of packs; change it first.")
+    }
+
+    func testNoBlockForAMeasuredUnitOrWhenEveryFigureIsWhole() {
+        addMeasuredLine(onHand: 4250, minimum: 2500, standard: 40_500)
+        XCTAssertNil(service.unitChangeBlock(itemID: "oil", to: .kg), "a measured unit keeps the figure as it is")
+        XCTAssertNil(service.unitChangeBlock(itemID: "oil", to: .l), "no change is no block")
+        XCTAssertNil(service.unitChangeBlock(itemID: "nobody", to: .each))
+
+        XCTAssertTrue(service.setCount(itemID: "oil", to: .whole(4)))
+        XCTAssertTrue(service.edit(itemID: "oil", [.minimum(.whole(2)), .standard(.whole(40), setBy: .van)]))
+        XCTAssertNil(service.unitChangeBlock(itemID: "oil", to: .each))
+        XCTAssertNil(service.unitChangeBlock(itemID: "oil", to: .pack))
+        XCTAssertNil(service.unitChangeRefusal(itemID: "oil", to: .pack))
+    }
+
+    func testTheScreenSaysWhichFigureHoldsTheUnitInThePhonesLocale() {
+        let figure = StockQuantity(scaled: 4250)
+        XCTAssertEqual(VanStockItemView.amount(figure, unit: .l, locale: german), "4,25 l")
+        XCTAssertEqual(VanStockItemView.amount(figure, unit: .l, locale: english), "4.25 l")
+        XCTAssertEqual(VanStockItemView.amount(StockQuantity(scaled: 40_500), unit: .m, locale: german), "40,5 m")
+
+        let amount = "4,25 l"
+        XCTAssertEqual(VanStockItemView.message(.onHand(figure), unit: .l, locale: german),
+                       LocalizedStringKey("On hand is \(amount), not a whole number. Count it before changing the unit."))
+        XCTAssertEqual(VanStockItemView.message(.minimum(figure), unit: .l, locale: german),
+                       LocalizedStringKey("The minimum is \(amount), not a whole number. Change it before changing the unit."))
+        XCTAssertEqual(VanStockItemView.message(.standard(figure), unit: .l, locale: german),
+                       LocalizedStringKey("The standard is \(amount), not a whole number. Change it before changing the unit."))
+        XCTAssertNotEqual(VanStockItemView.message(.onHand(figure), unit: .l, locale: german),
+                          VanStockItemView.message(.minimum(figure), unit: .l, locale: german))
     }
 
     // MARK: Plan ML P2 — a measured figure typed on the line's page

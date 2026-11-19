@@ -232,6 +232,8 @@ struct VanStockItemView: View {
     /// Why the typed count or minimum was not taken. Nothing is saved while one is shown.
     @State private var countRefusal: StockQuantityRefusal?
     @State private var minimumRefusal: StockQuantityRefusal?
+    /// Why the unit picked was not taken: a figure on the line that it cannot hold.
+    @State private var unitRefusal: VanStockLog.UnitChangeBlock?
     @Environment(\.locale) private var locale
     @State private var description = ""
     @State private var number = ""
@@ -345,6 +347,12 @@ struct VanStockItemView: View {
             Picker("Counted in", selection: $unit) {
                 ForEach(VanStockUnit.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
+            .onChange(of: unit) { _, _ in unitRefusal = nil }
+            if let unitRefusal {
+                Text(Self.message(unitRefusal, unit: item.unit, locale: locale))
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
             TextField("Minimum", text: $minimum)
                 .keyboardType(unit.allowsFraction ? .decimalPad : .numberPad)
                 .onChange(of: minimum) { _, _ in minimumRefusal = nil }
@@ -419,6 +427,7 @@ struct VanStockItemView: View {
         minimum = item.minimum.map { VanStockEntry.text($0, locale: locale) } ?? ""
         minimumRefusal = nil
         unit = item.unit
+        unitRefusal = nil
     }
 
     // MARK: - The count
@@ -472,6 +481,27 @@ struct VanStockItemView: View {
         }
     }
 
+    /// Why the unit picked was not taken, with the figure in the phone's locale and the line's
+    /// current unit: "On hand is 4,25 l, not a whole number. Count it before changing the unit."
+    static func message(_ block: VanStockLog.UnitChangeBlock, unit: VanStockUnit, locale: Locale) -> LocalizedStringKey {
+        switch block {
+        case .onHand(let quantity):
+            let figure = amount(quantity, unit: unit, locale: locale)
+            return "On hand is \(figure), not a whole number. Count it before changing the unit."
+        case .minimum(let quantity):
+            let figure = amount(quantity, unit: unit, locale: locale)
+            return "The minimum is \(figure), not a whole number. Change it before changing the unit."
+        case .standard(let quantity):
+            let figure = amount(quantity, unit: unit, locale: locale)
+            return "The standard is \(figure), not a whole number. Change it before changing the unit."
+        }
+    }
+
+    /// A figure as the unit-change message shows it: "4,25 l" in German, "4.25 l" in English.
+    static func amount(_ quantity: StockQuantity, unit: VanStockUnit, locale: Locale) -> String {
+        "\(quantity.formatted(locale: locale)) \(unit.rawValue)"
+    }
+
     /// What the fields would change, in the order they are applied.
     private func changes(to item: VanStockItem) -> [VanStockLog.Change] {
         var changes: [VanStockLog.Change] = []
@@ -499,11 +529,17 @@ struct VanStockItemView: View {
 
     private func saveDetails() {
         guard let item else { return }
-        // A minimum that is not taken changes nothing at all, not just the minimum.
+        // A minimum or a unit that is not taken changes nothing at all, not just itself.
+        var refused = false
         if case .failure(let refusal) = VanStockEntry.minimum(minimum, unit: unit, locale: locale) {
             minimumRefusal = refusal
-            return
+            refused = true
         }
+        if unit != item.unit, let block = service.unitChangeBlock(itemID: itemID, to: unit) {
+            unitRefusal = block
+            refused = true
+        }
+        if refused { return }
         _ = service.edit(itemID: itemID, changes(to: item))
         if let saved = self.item { fill(from: saved, store.log.level(of: itemID)) }
     }
