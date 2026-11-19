@@ -35,6 +35,9 @@ enum JobCloseSequence {
         /// Parts on finished tasks with no stock entry, already named for the question (Plan IH
         /// P4). Empty when the technician keeps no van stock, or everything is accounted for.
         var unrecordedVanParts: String = ""
+        /// Where the stock is kept (Plan MK §2), for the question's words. The question follows the
+        /// job, not the place: a workshop is asked it as a van is (Plan MK §5).
+        var stockPlace: StockPlace.Kind = .default
     }
 
     enum Decision: Equatable {
@@ -69,13 +72,16 @@ enum JobCloseSequence {
         }
         // A part used and never recorded is what leaves the van short at the next job. By voice it
         // is asked about once per part; the screen's close does not hold a job for it.
+        // stock-wording-guard:begin — the stock question, worded for the place (Plan MK §3).
         if inputs.route == .voice, !inputs.unrecordedVanParts.isEmpty {
-            return .ask("Not closed yet: there is no van stock entry on this job for "
-                        + "\(inputs.unrecordedVanParts). Ask the technician whether each came off the van. "
+            let w = StockPlaceWording(inputs.stockPlace)
+            return .ask("Not closed yet: there is no \(w.stockName) entry on this job for "
+                        + "\(inputs.unrecordedVanParts). Ask \(w.person) whether each \(w.cameFrom). "
                         + "For one that did, call van_stock with action 'use', the part and how many. For one "
                         + "that was ordered in or was the customer's, call van_stock with action "
                         + "'not_from_van' and the part. Then close the job again.")
         }
+        // stock-wording-guard:end
         if case .blocked(let reason) = inputs.signOff { return .refuse(reason) }
         return .proceed(outcome: outcome)
     }

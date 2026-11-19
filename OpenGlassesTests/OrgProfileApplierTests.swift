@@ -318,4 +318,35 @@ final class OrgProfileApplierTests: XCTestCase {
         // The person's choice stands when no profile locks the accent.
         XCTAssertEqual(AppAccent.effectiveName(stored: "teal"), Config.organizationAccentColor ?? "teal")
     }
+
+    // MARK: - Where stock is kept (Plan MK P2)
+
+    /// The profile sets the place and locks it, like the accent, for each of the five kinds.
+    func testTheStockPlaceIsSetAndLockedForEachKnownKind() {
+        let key = SettingKey.organizationStockPlace
+        XCTAssertEqual(key.kind, .profileOwned(.string))
+        for kind in StockPlace.Kind.allCases {
+            let result = apply([key.rawValue: RawSetting(.string(kind.rawValue), .default)])
+            XCTAssertEqual(result.owned[key], .string(kind.rawValue), kind.rawValue)
+            XCTAssertEqual(result.effectiveValue(key, stored: .string("")), .string(kind.rawValue))
+            XCTAssertTrue(result.isLocked(key), kind.rawValue)
+            XCTAssertTrue(result.drops.isEmpty, kind.rawValue)
+        }
+    }
+
+    /// Deny by default: a place this build does not know is a named drop, never the nearest guess.
+    func testAnUnknownStockPlaceIsANamedDrop() {
+        let key = SettingKey.organizationStockPlace
+        for bad in ["boat", "shop", "", "van truck"] {
+            let result = apply([key.rawValue: RawSetting(.string(bad), .default)])
+            XCTAssertNil(result.owned[key], bad)
+            XCTAssertFalse(result.isLocked(key), bad)
+            XCTAssertEqual(result.drops, [.init(key: key.rawValue,
+                                                reason: .invalidValue("not one of van, truck, store, warehouse or stock"))],
+                           bad)
+        }
+        let wrongType = apply([key.rawValue: RawSetting(.bool(true), .default)])
+        XCTAssertNil(wrongType.owned[key])
+        XCTAssertFalse(wrongType.drops.isEmpty)
+    }
 }

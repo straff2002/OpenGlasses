@@ -359,12 +359,14 @@ class LLMService: ObservableObject {
 
     #if canImport(FoundationModels)
     /// The Apple `Tool` adapters for the tool names last offered, rebuilt when the names change
-    /// (Plan JD P0). The session itself is never cached — see `sendAppleOnDeviceImpl`.
-    private var _appleToolCache: (names: [String], tools: Any)?
+    /// (Plan JD P0) or when what they declare does (`definitionSignature`: `van_stock` words its
+    /// description for the place, Plan MK §3). The session itself is never cached — see
+    /// `sendAppleOnDeviceImpl`.
+    private var _appleToolCache: (names: [String], signature: Int, tools: Any)?
     @available(iOS 26.0, *)
-    private var appleToolCache: (names: [String], tools: [any Tool])? {
-        get { _appleToolCache.flatMap { cache in (cache.tools as? [any Tool]).map { (cache.names, $0) } } }
-        set { _appleToolCache = newValue.map { ($0.names, $0.tools as Any) } }
+    private var appleToolCache: (names: [String], signature: Int, tools: [any Tool])? {
+        get { _appleToolCache.flatMap { cache in (cache.tools as? [any Tool]).map { (cache.names, cache.signature, $0) } } }
+        set { _appleToolCache = newValue.map { ($0.names, $0.signature, $0.tools as Any) } }
     }
     #endif
 
@@ -5683,7 +5685,8 @@ class LLMService: ObservableObject {
             fieldAssistActive: Config.fieldAssistActive,
             offlineHandoff: offlineHandoffTurn,
             libraryHasManuals: PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
-        if let cache = appleToolCache, cache.names == names { return cache.tools }
+        let signature = registry.definitionSignature(for: names)
+        if let cache = appleToolCache, cache.names == names, cache.signature == signature { return cache.tools }
 
         let dispatch: @Sendable (String, String) async -> String = { [weak self] name, json in
             await self?.runAppleTool(name: name, argumentsJSON: json)
@@ -5709,7 +5712,7 @@ class LLMService: ObservableObject {
         let tools: [any Tool] = candidates.filter { kept.contains($0.0.name) }.map(\.1)
         PrivacyLog.model(.toolProfileApplied, provider: PrivacyToken("appleOnDevice"),
                          count: tools.count, total: names.count)
-        appleToolCache = (names, tools)
+        appleToolCache = (names, signature, tools)
         return tools
     }
 

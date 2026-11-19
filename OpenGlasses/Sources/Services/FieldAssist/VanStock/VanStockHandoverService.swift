@@ -31,6 +31,7 @@ final class VanStockHandoverService: ObservableObject {
     @discardableResult
     func stage() -> Bool {
         discard()
+        // The service names the file for the place in force, as the screen's Export does.
         guard let url = service.exportFile() else { return false }
         staged = Staged(id: url.deletingLastPathComponent().lastPathComponent,
                         message: service.handoverMessage(), fileURL: url)

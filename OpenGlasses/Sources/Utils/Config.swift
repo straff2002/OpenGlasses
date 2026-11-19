@@ -2832,6 +2832,17 @@ struct Config {
                             stored: UserDefaults.standard.bool(forKey: "organizationForbidsVanStock"))
     }
 
+    /// Where the organisation's profile says stock is kept (Plan MK §2), as the profile wrote it:
+    /// `van`, `truck`, `store`, `warehouse` or `stock`. Nil with no profile, or one that does not
+    /// say. `StockPlaceSetting.resolve` reads it strictly, so a value it does not know is no
+    /// setting at all. Written only by a profile; there is no setter on purpose.
+    static var organizationStockPlace: String? {
+        let stored = UserDefaults.standard.string(forKey: "organizationStockPlace") ?? ""
+        let raw = PolicyEnvelope.string(.organizationStockPlace, stored: stored)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw
+    }
+
     /// The organisation's add-on ceiling (Plan GF): the strictest of its three add-on keys, each a
     /// ceiling pinned on and written only by a profile. No ceiling on a phone without one.
     static var addOnCeiling: AddOnPolicy.Ceiling {

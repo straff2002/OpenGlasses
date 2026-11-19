@@ -7,6 +7,27 @@ import Foundation
 struct VanIdentity: Codable, Equatable, Sendable {
     let id: String
     var name: String
+    /// Where the list is kept (Plan MK §2). Nil when nobody has chosen, which is van. Carried in
+    /// the workbook, so a takeover keeps the words; a kind from a newer build reads as van.
+    var place: StockPlace.Kind? = nil
+    /// The installed vault this list checks part numbers against when no job is open (Plan MK
+    /// §4). This phone's own choice: never written into the workbook, because a vault's id means
+    /// nothing on a phone that lacks it, and kept by a takeover.
+    var checkVaultID: String? = nil
+
+    /// The list's place, kind and name together; van when nobody chose.
+    var stockPlace: StockPlace {
+        StockPlace(kind: place ?? .default, name: name.isEmpty ? nil : name)
+    }
+
+    /// The identity a takeover leaves on the receiving phone (Plan MK §4): the workbook's van, its
+    /// name and its place, with this phone's own choice of vault to check numbers against. A
+    /// takeover that names no van leaves no identity, so there is nothing to keep the choice on.
+    static func takenOver(_ incoming: VanIdentity?, keeping current: VanIdentity?) -> VanIdentity? {
+        guard var incoming else { return nil }
+        incoming.checkVaultID = current?.checkVaultID
+        return incoming
+    }
 }
 
 /// The end of a shift and the start of the next (Plan IH §8). Pure.
@@ -95,28 +116,33 @@ enum VanStockHandover {
 
     /// The short text that goes to base with the workbook: what to top up, what is on order, what
     /// needs counting, and what came back. No technician's name is taken from the log, because the
-    /// log never holds one; whoever sends the message signs it.
-    static func message(_ log: VanStockLog, van: VanIdentity?, now: Date, calendar: Calendar) -> String {
+    /// log never holds one; whoever sends the message signs it. Worded for the place (Plan MK
+    /// §3): with no `kind`, the place in force for `van`.
+    static func message(_ log: VanStockLog, van: VanIdentity?, now: Date, calendar: Calendar,
+                        kind: StockPlace.Kind? = nil) -> String {
+        let w = StockPlaceWording(kind ?? VanStockSheet.kind(for: van))
         let levels = log.levels
-        let name = van?.name ?? "Van"
-        var lines = ["\(name) stock, \(stamp(now, calendar))."]
+        // A list given a place before a name has an identity with no name yet (Plan MK §2), and
+        // is headed by its place's title: "Van stock", "Store stock".
+        let heading = van.flatMap { $0.name.isEmpty ? nil : "\($0.name) stock" } ?? w.title
+        var lines = ["\(heading), \(stamp(now, calendar))."]
 
         let shortfalls = topUp(log)
         if shortfalls.isEmpty {
-            lines.append(hasStandards(log) ? "Nothing to top up: every line is at its standard load."
-                                           : "Nothing has run out. No standard load is set for this van, so this list can only show what is gone.")
+            lines.append(hasStandards(log) ? "Nothing to top up: every line is at its \(w.usualFigure)."
+                                           : "Nothing has run out. No \(w.usualFigure) is set for \(w.this), so this list can only show what is gone.")
         } else {
             lines.append(hasStandards(log) ? "To top up (\(shortfalls.count)):"
-                                           : "Run out or below minimum (\(shortfalls.count)). No standard load is set for this van:")
+                                           : "Run out or below minimum (\(shortfalls.count)). No \(w.usualFigure) is set for \(w.this):")
             lines.append(contentsOf: shortfalls.map { shortfall in
-                shortfall.short.map { "  \(shortfall.item.phrase($0)) — \(shortfall.onHand) on board" }
-                    ?? "  \(shortfall.item.name) — \(shortfall.onHand) on board"
+                shortfall.short.map { "  \(shortfall.item.phrase($0)) — \(shortfall.onHand) \(w.aboard)" }
+                    ?? "  \(shortfall.item.name) — \(shortfall.onHand) \(w.aboard)"
             })
         }
 
         let ordered = log.items.filter { (levels[$0.id]?.onOrder ?? 0) > 0 }
         if !ordered.isEmpty {
-            lines.append("Asked for, not yet loaded:")
+            lines.append("Asked for, not yet \(w.putVerb):")
             lines.append(contentsOf: ordered.map { "  \($0.phrase(levels[$0.id]?.onOrder ?? 0))" })
         }
         let uncounted = log.items.filter { levels[$0.id]?.unreliable == true }

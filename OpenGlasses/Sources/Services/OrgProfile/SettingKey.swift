@@ -72,6 +72,10 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     case organizationForbidsJobRecording
     /// The technician's own van stock (Plan IH) is off: no `van_stock`, no Van Stock screen.
     case organizationForbidsVanStock
+    /// Where stock is kept (Plan MK §2): `van`, `truck`, `store`, `warehouse` or `stock`. Set and
+    /// locked by the profile, like the accent: the Stock screen's place picker is then read-only,
+    /// and removing the profile gives the list its own choice back.
+    case organizationStockPlace
     /// Add-ons (Plan GF) are off on this organisation's phones: none installs and none runs.
     case organizationForbidsAddOns
     /// Only signed add-ons — the vendor's or the organisation's — install and run: no add-on from
@@ -174,7 +178,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
              .organizationReportTranscriptInternal, .organizationAccentColor, .technicianDisplayName, .capturedManualsPolicy,
              .organizationToolDefinitionsMode, .organizationManualSearchModel, .technicianFullName, .technicianID, .organizationExperts,
-             .expertHandoverTranscript, .expertHandoverRetentionDays:
+             .expertHandoverTranscript, .expertHandoverRetentionDays, .organizationStockPlace:
             return .profileOwned(.string)
         case .expertHandoverIncludesAddress, .customerReportShowsExpertTime:
             return .profileOwned(.bool)
@@ -243,6 +247,11 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
                 ? String(localized: "not one of include, ask or never") : nil
         case (.expertHandoverRetentionDays, .string(let raw)):
             return ExpertHandoverRetention.days(raw) == nil ? String(localized: "not a whole number of days from 1 to 30") : nil
+        case (.organizationStockPlace, .string(let raw)):
+            // Deny by default (Plan MK §2): a kind this build does not know, from a newer build's
+            // profile, is a named drop, never a guess at the nearest place.
+            return StockPlace.Kind(strict: raw) == nil
+                ? String(localized: "not one of van, truck, store, warehouse or stock") : nil
         case (.capturedManualsPolicy, .string(let raw)):
             return ["off", "jobOnly", "reviewToPool"].contains(raw) ? nil : String(localized: "not a photographed-manual policy")
         case (.organizationReportTranscriptInternal, .string(let raw)):

@@ -519,9 +519,211 @@ final class VanStockToolTests: XCTestCase {
             + "4.25 for Engine oil and 0.5 for 70W16 are not whole numbers. Ask the technician for a whole number.")
     }
 
+    func testTheWholeNumberRefusalIsSaidInThePlacesWords() async throws {
+        for kind in StockPlace.Kind.allCases {
+            let refusal = try XCTUnwrap(VanStockTool.notWholeRefusal(
+                ["description": "Engine oil", "quantity": 4.25], place: kind))
+            XCTAssertEqual(StockPlaceWordCheck.violations(refusal, kind: kind), [], "\(kind): \(refusal)")
+        }
+        XCTAssertEqual(VanStockTool.notWholeRefusal(["description": "Engine oil", "quantity": 4.25], place: .store),
+                       "Nothing was changed. Stock keeps whole numbers only for now, and 4.25 for Engine oil "
+                       + "is not a whole number. Ask the person for a whole number.")
+        store.setPlace(.warehouse)
+        let answer = try await run(["action": "use", "description": "engine oil", "quantity": 4.25])
+        XCTAssertTrue(answer.hasPrefix("Nothing was changed. Stock keeps whole numbers"), answer)
+    }
+
     func testALoadWithNoQuantityStillDefaultsToOne() async throws {
         let answer = try await run(["action": "load", "description": "Igniter"])
         XCTAssertTrue(answer.hasPrefix("Loaded 1 × Igniter."), answer)
         XCTAssertEqual(onHand("Igniter"), 1)
+    }
+
+    // MARK: Every place (Plan MK P1)
+
+    func testTheDescriptionLeadsWithThePlaceInItsOwnWords() {
+        for kind in StockPlace.Kind.allCases {
+            let description = VanStockTool.description(for: kind)
+            XCTAssertEqual(StockPlaceWordCheck.violations(description, kind: kind), [], "\(kind): \(description)")
+            XCTAssertTrue(description.contains(StockPlaceWording(kind).location), "\(kind)")
+            XCTAssertTrue(description.contains("'list' (what is there, all of it or one bin; pass 'bin')"), "\(kind)")
+        }
+        XCTAssertTrue(VanStockTool.description(for: .van).hasPrefix(
+            "The technician's own van or truck stock, kept on the phone. Use it whenever they ask what is on the "
+            + "van or truck, or say they loaded, used, returned or counted parts. Works without a job open"))
+        XCTAssertTrue(VanStockTool.description(for: .store).hasPrefix(
+            "The stock kept in the store, on the phone. Use it whenever they ask what is in the store, or say they "
+            + "received, sold, used, returned or counted stock."))
+        XCTAssertEqual(tool.name, "van_stock", "the name is a contract string and stays")
+    }
+
+    func testEveryKindsSchemaHasEveryActionIncludingTheJobOnesAndList() throws {
+        for kind in StockPlace.Kind.allCases {
+            let schema = VanStockTool.parametersSchema(for: kind)
+            let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+            let action = try XCTUnwrap(properties["action"] as? [String: Any])
+            let actions = try XCTUnwrap(action["enum"] as? [String])
+            for wanted in ["unrecorded", "not_from_van", "list", "send_to_base", "top_up", "set_standard", "use"] {
+                XCTAssertTrue(actions.contains(wanted), "\(kind) lacks \(wanted)")
+            }
+            XCTAssertNotNil(properties["bin"], "\(kind)")
+            let reason = try XCTUnwrap(properties["reason"] as? [String: Any])
+            XCTAssertEqual(StockPlaceWordCheck.violations(reason["description"] as? String ?? "", kind: kind), [], "\(kind)")
+        }
+    }
+
+    func testTheToolFollowsThePlaceSetOnTheList() {
+        XCTAssertEqual(tool.description, VanStockTool.description(for: .van))
+        store.setPlace(.store)
+        XCTAssertEqual(tool.description, VanStockTool.description(for: .store))
+        XCTAssertTrue((tool.parametersSchema["properties"] as? [String: Any])?["bin"] != nil)
+    }
+
+    /// A place changed on the screen reaches the next turn's tool definitions: the registry, the
+    /// declarations a request carries, and the signature the on-device tool cache keys on.
+    func testAChangedPlaceReachesTheNextToolDefinitions() {
+        let registry = NativeToolRegistry(locationService: LocationService())
+        registry.register(tool)
+        let before = registry.toolDescriptions(for: ["van_stock"]).first?.description
+        let signature = registry.definitionSignature(for: ["van_stock"])
+        XCTAssertEqual(before, VanStockTool.description(for: .van))
+
+        store.setPlace(.warehouse)
+        XCTAssertEqual(registry.toolDescriptions(for: ["van_stock"]).first?.description,
+                       VanStockTool.description(for: .warehouse))
+        XCTAssertNotEqual(registry.definitionSignature(for: ["van_stock"]), signature,
+                          "a cache keyed on the names alone would serve the van's description")
+        let declared = ToolDeclarations.nativeToolDeclarations(registry: registry, fieldJobActive: false,
+                                                               fieldProfileEnabled: false)
+            .first { ($0["name"] as? String) == "van_stock" }
+        XCTAssertEqual(declared?["description"] as? String, VanStockTool.description(for: .warehouse))
+        XCTAssertEqual(registry.definitionSignature(for: ["van_stock"]), registry.definitionSignature(for: ["van_stock"]),
+                       "the signature is stable while nothing changes")
+    }
+
+    func testAtAStoreWithNoJobOpenTheJobActionsRefuseInTheStoresWords() async throws {
+        store.setPlace(.store)
+        let unrecorded = try await run(["action": "unrecorded"])
+        XCTAssertTrue(unrecorded.contains("There is no job open"), unrecorded)
+        let notFrom = try await run(["action": "not_from_van", "part": "22B22"])
+        XCTAssertTrue(notFrom.contains("There is no job open"), notFrom)
+        let unnamed = try await run(["action": "not_from_van"])
+        XCTAssertEqual(unnamed, "Say which part did not come from the store, by its part number.")
+        for answer in [unrecorded, notFrom, unnamed] {
+            XCTAssertEqual(StockPlaceWordCheck.violations(answer, kind: .store), [], answer)
+        }
+        XCTAssertTrue(store.log.isEmpty)
+    }
+
+    func testAtStockWithAJobOpenAUsedLineIsTaggedToTheJob() async throws {
+        store.setPlace(.stock)
+        var told: [VanStockUse] = []
+        let service = VanStockService(
+            store: store, partsIndex: { VaultPartsIndex(files: []) }, activeJob: { [unowned self] in self.job },
+            now: { [unowned self] in self.clock }, calendar: calendar,
+            makeID: { [unowned self] in self.counter += 1; return "id-\(self.counter)" },
+            jobUses: .init(record: { told.append($0) }, remove: { _ in }, notFromVan: { _ in true }, unrecorded: { [] }))
+        let tool = VanStockTool(service: service)
+        _ = try await tool.execute(args: ["action": "load", "description": "Brake pads", "quantity": 4])
+        job = .init(sessionID: "s1", reference: "job-7")
+        clock.addTimeInterval(60)
+        let answer = try await tool.execute(args: ["action": "use", "description": "brake pads", "quantity": 1])
+        XCTAssertTrue(answer.hasPrefix("Used or sold 1 × Brake pads on job job-7."), answer)
+        XCTAssertTrue(answer.contains("Say: 1 × Brake pads taken from stock for job job-7."), answer)
+        XCTAssertEqual(store.log.movements.last?.jobSessionID, "s1")
+        XCTAssertEqual(told.map(\.summary), ["1 × Brake pads"])
+        let noted = try await tool.execute(args: ["action": "not_from_van", "part": "BP-9"])
+        XCTAssertTrue(noted.hasPrefix("Noted: BP-9 did not come from stock on this job. The stock list is unchanged."), noted)
+        for text in [answer, noted] {
+            XCTAssertEqual(StockPlaceWordCheck.violations(text, kind: .stock), [], text)
+        }
+    }
+
+    func testSendingAStoresListAsksNoExtrasQuestionAndStagesIt() async throws {
+        store.setPlace(.store)
+        store.nameVan("Main street store")
+        _ = try await run(["action": "count", "description": "Gin", "quantity": 4])
+        clock.addTimeInterval(60)
+        // At a van this load, beyond any standard and made this shift, is asked about first.
+        _ = try await run(["action": "load", "description": "gin", "quantity": 6])
+        let handover = VanStockHandoverService(service: service)
+        defer { handover.discard() }
+        let answer = try await VanStockTool(service: service, handover: handover).execute(args: ["action": "send_to_base"])
+        XCTAssertTrue(answer.hasPrefix("Staged on the phone for the person to look at and send. Nothing has been sent."), answer)
+        XCTAssertFalse(answer.contains("returning it"), answer)
+        XCTAssertEqual(StockPlaceWordCheck.violations(answer, kind: .store), [], answer)
+        let staged = try XCTUnwrap(handover.staged)
+        XCTAssertTrue(staged.message.hasPrefix("Main street store stock, "), staged.message)
+        XCTAssertTrue(staged.fileURL.lastPathComponent.hasPrefix("Store stock "), staged.fileURL.lastPathComponent)
+        XCTAssertEqual(StockPlaceWordCheck.violations(staged.message, kind: .store), [], staged.message)
+    }
+
+    func testAVanStillAsksAboutTheDaysExtras() async throws {
+        _ = try await run(["action": "count", "description": "Gin", "quantity": 4])
+        clock.addTimeInterval(60)
+        _ = try await run(["action": "load", "description": "gin", "quantity": 6])
+        let asked = try await VanStockTool(service: service, handover: VanStockHandoverService(service: service))
+            .execute(args: ["action": "send_to_base"])
+        XCTAssertTrue(asked.contains("Ask for each: returning it, or keeping it on the truck?"), asked)
+    }
+
+    func testAStoreWithNoNamedVaultMakesNoLookup() async throws {
+        store.setPlace(.store)
+        var looked = 0
+        var named = 0
+        let book = VanStockBook(name: "Supplier catalogue", verify: { looked += 1; return TaskPart(number: $0, verified: true) })
+        let service = VanStockService(
+            store: store, books: VanStockBooks(job: { nil }, named: { _ in named += 1; return book }),
+            partsIndex: { VaultPartsIndex(files: []) }, activeJob: { nil },
+            now: { [unowned self] in self.clock }, calendar: calendar)
+        let answer = try await VanStockTool(service: service).execute(args: ["action": "load", "part": "62-23543-01",
+                                                                             "description": "sensor", "quantity": 2])
+        XCTAssertEqual(looked, 0, "nothing is searched until a book is named")
+        XCTAssertEqual(named, 0)
+        XCTAssertEqual(store.log.items.first?.verification, .notChecked)
+        XCTAssertTrue(answer.contains("Part number 62-23543-01 has not been on this list before."), answer)
+        XCTAssertFalse(answer.contains("manuals"), answer)
+        XCTAssertFalse(answer.contains("not found"), answer)
+    }
+
+    func testEveryResultAtEveryPlaceIsInItsWords() async throws {
+        for kind in StockPlace.Kind.allCases {
+            try? FileManager.default.removeItem(at: directory)
+            store = VanStockStore(directory: directory, now: clock)
+            store.setPlace(kind)
+            let service = makeService()
+            let tool = VanStockTool(service: service)
+            var answers: [String] = []
+            answers.append(try await tool.execute(args: ["action": "check", "description": "igniter"]))
+            answers.append(try await tool.execute(args: ["action": "list"]))
+            answers.append(try await tool.execute(args: ["action": "load", "part": "22B22", "description": "Igniter", "quantity": 3]))
+            clock.addTimeInterval(20)
+            answers.append(try await tool.execute(args: ["action": "load", "description": "Fuse", "quantity": 1, "unit": "kg"]))
+            answers.append(try await tool.execute(args: ["action": "use", "part": "22B22", "quantity": 1]))
+            clock.addTimeInterval(20)
+            answers.append(try await tool.execute(args: ["action": "remove", "part": "22B22", "quantity": 1, "reason": "returned"]))
+            clock.addTimeInterval(20)
+            answers.append(try await tool.execute(args: ["action": "count", "part": "22B22", "quantity": 5]))
+            answers.append(try await tool.execute(args: ["action": "check", "part": "22B22"]))
+            answers.append(try await tool.execute(args: ["action": "check", "description": "flamingo"]))
+            answers.append(try await tool.execute(args: ["action": "use", "description": "flamingo"]))
+            answers.append(try await tool.execute(args: ["action": "low"]))
+            answers.append(try await tool.execute(args: ["action": "list", "bin": "cellar"]))
+            answers.append(try await tool.execute(args: ["action": "top_up"]))
+            answers.append(try await tool.execute(args: ["action": "set_standard", "part": "22B22", "quantity": 8]))
+            answers.append(try await tool.execute(args: ["action": "set_standard", "part": "22B22"]))
+            answers.append(try await tool.execute(args: ["action": "top_up"]))
+            clock.addTimeInterval(20)
+            answers.append(try await tool.execute(args: ["action": "load", "to_standard": true]))
+            answers.append(try await tool.execute(args: ["action": "undo"]))
+            answers.append(try await tool.execute(args: ["action": "undo"]))
+            answers.append(try await tool.execute(args: ["action": "unrecorded"]))
+            answers.append(try await tool.execute(args: ["action": "set_standard"]))
+            answers.append(try await tool.execute(args: ["action": "load", "code": "0123456"]))
+            for answer in answers {
+                XCTAssertEqual(StockPlaceWordCheck.violations(answer, kind: kind), [], "\(kind): \(answer)")
+            }
+            XCTAssertTrue(answers[2].contains(StockPlaceWording(kind).location), "\(kind): \(answers[2])")
+        }
     }
 }

@@ -66,8 +66,9 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
     /// Scanned codes that mean this line. A printed barcode is usually a retail code, not the part
     /// number, so it is remembered here the first time somebody says what it was.
     var codes: [String]
-    /// Whether the number was found in the vault when it was last checked. Never a gate.
-    var verified: Bool
+    /// What the last lookup of the number said, and which book answered (Plan MK §4). Never a
+    /// gate.
+    var verification: VanStockVerification
     /// The batch that created the line, so undoing that batch takes the line away again.
     let createdBatch: String
 
@@ -81,6 +82,7 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
          bin: String? = nil,
          codes: [String] = [],
          verified: Bool = false,
+         verification: VanStockVerification? = nil,
          createdBatch: String) {
         self.id = id
         self.number = number
@@ -91,14 +93,65 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         self.standardSetBy = standardSetBy
         self.bin = bin
         self.codes = codes
-        self.verified = verified
+        self.verification = verification ?? VanStockVerification(legacy: verified)
         self.createdBatch = createdBatch
     }
 
+    /// Whether the number was found when it was last looked up: today's two-state view of
+    /// `verification`, kept so every existing caller reads as before until Plan MK P1 moves them.
+    /// Setting it changes the state only when the answer changes: `true` is found (in no named
+    /// book), `false` takes a found line back to not checked and leaves a not-found line as it is.
+    var verified: Bool {
+        get { verification.isFound }
+        set {
+            guard newValue != verification.isFound else { return }
+            verification = newValue ? .found(in: nil) : .notChecked
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, number, description, unit, minimum, standard, bin, codes, verified
+        case id, number, description, unit, minimum, standard, bin, codes, verified, verification
         case standardSetBy = "standard_set_by"
         case createdBatch = "created_batch"
+    }
+
+    /// A line stored before Plan MK has only `verified`: `true` reads as found and `false`, or
+    /// nothing, as not checked. A newer line has `verification`, which wins.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        number = try container.decodeIfPresent(String.self, forKey: .number)
+        description = try container.decode(String.self, forKey: .description)
+        unit = try container.decode(VanStockUnit.self, forKey: .unit)
+        minimum = try container.decodeIfPresent(Int.self, forKey: .minimum)
+        standard = try container.decodeIfPresent(Int.self, forKey: .standard)
+        standardSetBy = try container.decodeIfPresent(StandardOrigin.self, forKey: .standardSetBy)
+        bin = try container.decodeIfPresent(String.self, forKey: .bin)
+        codes = try container.decode([String].self, forKey: .codes)
+        if let stored = try container.decodeIfPresent(VanStockVerification.self, forKey: .verification) {
+            verification = stored
+        } else {
+            verification = VanStockVerification(legacy: try container.decodeIfPresent(Bool.self, forKey: .verified) ?? false)
+        }
+        createdBatch = try container.decode(String.self, forKey: .createdBatch)
+    }
+
+    /// Writes `verification`, and `verified` beside it, so a phone that goes back to an older
+    /// build, which requires `verified`, can still read its list.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(number, forKey: .number)
+        try container.encode(description, forKey: .description)
+        try container.encode(unit, forKey: .unit)
+        try container.encodeIfPresent(minimum, forKey: .minimum)
+        try container.encodeIfPresent(standard, forKey: .standard)
+        try container.encodeIfPresent(standardSetBy, forKey: .standardSetBy)
+        try container.encodeIfPresent(bin, forKey: .bin)
+        try container.encode(codes, forKey: .codes)
+        try container.encode(verified, forKey: .verified)
+        try container.encode(verification, forKey: .verification)
+        try container.encode(createdBatch, forKey: .createdBatch)
     }
 
     /// "Flame sensor (62-23543-01)", "45/5 capacitor", or the bare number for a line nobody

@@ -519,6 +519,64 @@ final class JobTabAccessibilityTests: AccessibilityAuditCase {
     }
 
     /// The signature pad, however the tree happens to expose a `PKCanvasView` wrapped in SwiftUI.
+    // MARK: - The stock list (Plan IH P2, Plan MK P2)
+
+    /// The stock list's row on the Jobs list, then the screen it opens. Below the jobs on a short
+    /// phone, so the list is scrolled to it, as the past jobs are.
+    private func openTheStockList(in app: XCUIApplication,
+                                  file: StaticString = #filePath, line: UInt = #line) {
+        let row = app.buttons["van-stock-row"]
+        reachThePastJobs(row, in: app, file: file, line: line)
+        row.tap()
+        // Undo is always in the screen's bar, whether the list is empty, full or unreadable.
+        awaitScreen(app.navigationBars.buttons["Undo"], named: "The stock list", file: file, line: line)
+    }
+
+    /// The Van Stock screen IH P2 owed an audit entry since October, with the place's title on it.
+    func testTheStockList() {
+        let app = launch([.configured, .fieldAssist])
+        openJobTab(in: app)
+        openTheStockList(in: app)
+        save(app, named: "mk-stock-list")
+
+        audit(app, screen: "Stock list",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+    }
+
+    func testTheStockListAtTheLargestAccessibilitySize() {
+        let app = launch([.configured, .fieldAssist], contentSizeCategory: Self.ax5)
+        openJobTab(in: app)
+        openTheStockList(in: app)
+        save(app, named: "mk-stock-list-ax5")
+
+        audit(app, screen: "Stock list at AX5",
+              deferring: formDeferrals + [AuditDeferral.contentUnderTheTabBar(of: app)])
+    }
+
+    /// Name and place: the name, the kind of place and the book numbers are checked against.
+    /// Reached through the bar's overflow menu, whose button the system names.
+    func testTheNameAndPlaceSheet() throws {
+        let app = launch([.configured, .fieldAssist])
+        openJobTab(in: app)
+        openTheStockList(in: app)
+
+        let more = app.navigationBars.buttons["More"]
+        try XCTSkipUnless(more.waitForExistence(timeout: 10),
+                          "the navigation bar's overflow menu has no \"More\" button on this system")
+        more.tap()
+        let item = app.buttons["Name and place…"]
+        awaitScreen(item, named: "The Name and place menu item")
+        item.tap()
+
+        awaitScreen(app.navigationBars["Name and place"], named: "The Name and place sheet")
+        XCTAssertTrue(app.staticTexts["Check numbers against"].exists
+                      || app.buttons["Check numbers against"].exists,
+                      "the sheet names the book numbers are checked against")
+        save(app, named: "mk-name-and-place")
+
+        audit(app, screen: "Name and place", deferring: formDeferrals)
+    }
+
     private func signaturePad(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(
             NSPredicate(format: "label == %@", "Signature pad")).firstMatch

@@ -182,11 +182,13 @@ final class PartsRequestTool: NativeTool {
         if let model = request.modelToken { lines.append("For the \(model).") }
         lines.append("It goes out with the job record, and on its own as soon as there is a connection. "
                      + "If the technician wants it emailed to the office now, call parts_request with action 'send'.")
+        // stock-wording-guard:begin — the stock lines, worded for the place (Plan MK §3).
         if let vanNote {
             lines.append(vanNote)
         } else if forVanStock {
-            lines.append("It is not a line on the van list, so the list does not show it as asked for.")
+            lines.append("It is not a line on \(vanStock.wording.list), so the list does not show it as asked for.")
         }
+        // stock-wording-guard:end
         return lines.joined(separator: " ")
     }
 

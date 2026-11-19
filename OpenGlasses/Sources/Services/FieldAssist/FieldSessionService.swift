@@ -849,10 +849,13 @@ final class FieldSessionService: ObservableObject {
     private(set) var partsIndex = VaultPartsIndex(files: [])
 
     /// Verification of a part number against the vault's parts table first, then its manuals.
-    var partsVerifier: PartsVerifier {
-        let store = activeVault
+    var partsVerifier: PartsVerifier { partsVerifier(store: activeVault, index: partsIndex) }
+
+    /// The same verifier over any vault's store and parts table, with the same availability rules,
+    /// so a vault named outside a session is searched exactly as the job's is (Plan MK §4).
+    private func partsVerifier(store: VaultStore?, index: VaultPartsIndex) -> PartsVerifier {
         let documentStore = self.documentStore
-        return PartsVerifier(index: partsIndex) { [weak self] token in
+        return PartsVerifier(index: index) { [weak self] token in
             guard let self, let store, let documentStore else { return [] }
             // The same availability check the retriever runs. A part number is written into a task
             // and ordered from it, so a citation to a manual that has gone is the last thing this
@@ -875,6 +878,51 @@ final class FieldSessionService: ObservableObject {
     /// Verify one part number the way everything else does, so nothing can be written down by a
     /// route that skips the book.
     func verifyPart(_ number: String) -> TaskPart { partsVerifier.verify(number) }
+
+    // MARK: - Books for van stock (Plan MK §4)
+
+    /// The open job's vault as a book for a stock line's number: nil with no job open, or when the
+    /// vault has neither a parts table nor manuals, so searching it could never say not found.
+    var vanStockJobBook: VanStockBook? {
+        guard activeSession != nil, let store = activeVault, hasPartsBook(store: store, index: partsIndex) else { return nil }
+        let verifier = partsVerifier
+        return VanStockBook(name: store.manifest.name, verify: { verifier.verify($0) })
+    }
+
+    /// A vault the stock list names under "Check numbers against", as a book outside any session.
+    /// Nil when it is no longer installed, cannot be opened (`VaultRegistry.isUnlocked`, the same
+    /// gate a job's vault passes), or has nothing to search: a vault that has gone is no book.
+    func vanStockBook(forVault id: String) -> VanStockBook? {
+        let registry = VaultRegistry.shared
+        guard let manifest = registry.manifest(id: id), registry.isUnlocked(manifest) else { return nil }
+        let store = registry.store(for: manifest)
+        let index = namedVaultPartsIndex(store)
+        guard hasPartsBook(store: store, index: index) else { return nil }
+        let verifier = partsVerifier(store: store, index: index)
+        return VanStockBook(name: manifest.name, verify: { verifier.verify($0) })
+    }
+
+    /// The parts table of a vault named outside a session, read once per vault store and kept
+    /// while the registry keeps the same store.
+    private var namedVaultPartsIndexes: [String: (store: VaultStore, index: VaultPartsIndex)] = [:]
+
+    private func namedVaultPartsIndex(_ store: VaultStore) -> VaultPartsIndex {
+        let id = store.manifest.id
+        if let cached = namedVaultPartsIndexes[id], cached.store === store { return cached.index }
+        let index = VaultPartsIndex(store: store)
+        namedVaultPartsIndexes[id] = (store, index)
+        return index
+    }
+
+    /// Whether a vault has anything a number can be found in: a parts table, or at least one
+    /// reference document in the namespaces the verifier searches.
+    private func hasPartsBook(store: VaultStore, index: VaultPartsIndex) -> Bool {
+        if !index.isEmpty { return true }
+        guard let documentStore else { return false }
+        return retrievalNamespaces(vaultId: store.manifest.id)
+            .filter { $0.source.isReference }
+            .contains { documentStore.documentCount(namespace: $0.namespace) > 0 }
+    }
 
     /// Apply a change to the active session and persist it through the one update path, so the
     /// audit record, the history list and a crash-restored session cannot disagree.

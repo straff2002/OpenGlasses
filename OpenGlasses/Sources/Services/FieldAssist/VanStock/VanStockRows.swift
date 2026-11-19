@@ -8,8 +8,20 @@ struct VanStockRow: Identifiable, Equatable {
     let isLow: Bool
 
     var id: String { item.id }
-    /// The part number is one nothing has verified against the manuals.
-    var isUnverified: Bool { item.number != nil && !item.verified }
+    /// The part number was looked for in a book and the book did not hold it (Plan MK §4). A
+    /// number nothing was searched for carries no mark, so a store that names no book never sees
+    /// one.
+    var isNotFound: Bool { item.number != nil && item.verification.state == .notFound }
+
+    /// The mark on a number its book did not hold: "Not found in Supplier catalogue", or "Not in
+    /// the manuals" when the lookup did not record which book answered. Nil for every other line.
+    var notFoundLabel: String? {
+        guard isNotFound else { return nil }
+        if let vault = item.verification.vault {
+            return String(localized: "Not found in \(vault)")
+        }
+        return String(localized: "Not in the manuals")
+    }
 
     /// "4", "10 m", or nil for a line nothing has been recorded against — an unknown is never
     /// shown as a number.

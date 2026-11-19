@@ -147,6 +147,7 @@ final class GuidedJobFlow: ObservableObject {
                   evidence: EvidenceSelection? = nil) throws -> FieldSession {
         if let evidence { sessions.setEvidenceSelection(evidence) }
         let session = sessions.activeSession
+        let unrecordedVanParts = VanStockReconciler.named(sessions.unrecordedVanParts)
         let closeInputs = JobCloseSequence.Inputs(
             requestedOutcome: outcome,
             openVerifications: session?.openVerifications.map(\.title) ?? [],
@@ -155,7 +156,9 @@ final class GuidedJobFlow: ObservableObject {
             signOff: SignOffPolicy.decide(signOff: session?.signOff,
                                           required: sessions.customerSignOffRequired),
             route: route,
-            unrecordedVanParts: VanStockReconciler.named(sessions.unrecordedVanParts))
+            unrecordedVanParts: unrecordedVanParts,
+            // Only read when there is a stock question to word (Plan MK §3).
+            stockPlace: unrecordedVanParts.isEmpty ? .default : VanStockStore.shared.resolvedPlace.kind)
         let finalOutcome: FieldSession.Outcome
         switch JobCloseSequence.decide(closeInputs) {
         case .proceed(let decided): finalOutcome = decided

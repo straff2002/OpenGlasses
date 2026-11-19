@@ -132,4 +132,23 @@ final class VanStockJobCloseTests: XCTestCase {
         XCTAssertEqual(dismissed.last, "14t65")
         XCTAssertTrue(service.notFromVan(.init(description: "the switch")).contains("by its part number"))
     }
+
+    // MARK: Every place (Plan MK P1)
+
+    func testTheQuestionIsInThePlacesWordsAndAVanHearsWhatItAlwaysDid() {
+        var inputs = closing
+        inputs.unrecordedVanParts = "Igniter (22B22)"
+        guard case .ask(let vanQuestion) = JobCloseSequence.decide(inputs) else { return XCTFail("asked") }
+        XCTAssertEqual(vanQuestion, "Not closed yet: there is no van stock entry on this job for Igniter (22B22). "
+                       + "Ask the technician whether each came off the van. For one that did, call van_stock with "
+                       + "action 'use', the part and how many. For one that was ordered in or was the customer's, "
+                       + "call van_stock with action 'not_from_van' and the part. Then close the job again.")
+        for kind in StockPlace.Kind.allCases {
+            inputs.stockPlace = kind
+            guard case .ask(let question) = JobCloseSequence.decide(inputs) else { return XCTFail("\(kind) is asked too") }
+            XCTAssertEqual(StockPlaceWordCheck.violations(question, kind: kind), [], "\(kind): \(question)")
+            XCTAssertTrue(question.contains(StockPlaceWording(kind).cameFrom), "\(kind): \(question)")
+            XCTAssertTrue(question.contains("'not_from_van'"), "\(kind)")
+        }
+    }
 }

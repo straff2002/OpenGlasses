@@ -86,13 +86,15 @@ struct VanStockLog: Codable, Equatable, Sendable {
                           bin: String? = nil,
                           codes: [String] = [],
                           verified: Bool = false,
+                          verification: VanStockVerification? = nil,
                           batch: String) -> VanStockItem {
         let normalised = number.map(VaultPartsIndex.normalise).flatMap { $0.isEmpty ? nil : $0 }
         let item = VanStockItem(id: id, number: normalised,
                                 description: description.trimmingCharacters(in: .whitespacesAndNewlines),
                                 unit: unit, minimum: minimum, standard: standard,
                                 standardSetBy: standard == nil ? nil : standardSetBy,
-                                bin: bin, codes: codes, verified: verified, createdBatch: batch)
+                                bin: bin, codes: codes, verified: verified, verification: verification,
+                                createdBatch: batch)
         items.append(item)
         return item
     }
@@ -159,7 +161,11 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case standard(Int?, setBy: VanStockItem.StandardOrigin?)
         case bin(String?)
         case addCode(String)
+        /// Today's two-state change: `true` is found in no named book, `false` is not checked.
         case verified(Bool)
+        /// What a lookup said, and which book answered (Plan MK §4). Recorded under the same
+        /// `verified` attribute, so an older build still reads the log.
+        case verification(VanStockVerification)
     }
 
     /// Change one attribute of a line and note that it changed. False, and nothing noted, when the
@@ -207,6 +213,9 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case .verified(let value):
             (attribute, old, new) = (.verified, String(item.verified), String(value))
             item.verified = value
+        case .verification(let value):
+            (attribute, old, new) = (.verified, item.verification.storedValue, value.storedValue)
+            item.verification = value
         }
 
         guard old != new else { return false }
@@ -271,7 +280,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
             items[index].standardSetBy = origin
         case .bin: items[index].bin = old
         case .code: items[index].codes.removeAll { $0 == movement.newValue }
-        case .verified: items[index].verified = old == "true"
+        // "true" and "false" from an older log, or a stored verification from a newer one.
+        case .verified: items[index].verification = VanStockVerification(storedValue: old)
         }
     }
 

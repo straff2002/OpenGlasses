@@ -482,6 +482,22 @@ final class NativeToolRegistry {
         }
     }
 
+    /// A fingerprint of what the named tools declare right now: each one's description and
+    /// schema. A tool may work its definition out from state, as `van_stock` does from where the
+    /// stock is kept (Plan MK §3), so a cache of built definitions keys on this as well as on the
+    /// names, or it would go on serving a description the tool no longer gives.
+    func definitionSignature(for names: [String]) -> Int {
+        var hasher = Hasher()
+        for name in names {
+            hasher.combine(name)
+            guard let tool = tools[name] else { continue }
+            hasher.combine(tool.description)
+            let schema = try? JSONSerialization.data(withJSONObject: tool.parametersSchema, options: [.sortedKeys])
+            hasher.combine(schema ?? Data())
+        }
+        return hasher.finalize()
+    }
+
     /// Context-aware tool names — filters out tools that aren't relevant to the current state.
     /// Reduces token usage by only including tools the LLM can actually use right now.
     func contextualToolNames(
