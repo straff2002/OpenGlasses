@@ -1,6 +1,7 @@
 # Plan MN — Answers the App Can Check (typed answers on procedure steps, and branches the app decides from them, so a fixed procedure runs on the phone with no model)
 
-**Status:** 📝 Drafted 2026-11-20. Nothing is implemented, and eight decisions are owed.
+**Status:** 📝 Drafted 2026-11-20. Nothing is implemented. All eight decisions were taken on
+2026-11-20 as recommended, so P0 can start.
 **Track:** Field Assist procedures. The same shape suits any site that runs a fixed check
 (production lines, cleaning and sanitation rounds, start-of-shift checks).
 **Builds on:**
@@ -374,27 +375,30 @@ P0–P2 are one PR, per the house rhythm. P3 is another, and P4 is a device repo
 
 ## Decisions for Greig
 
-1. **Two ranges per number, `plausible` and `spec` (recommended).** A value outside `plausible` is
+**Taken 2026-11-20: all eight as recommended.** The recommended option in each item below is the
+one the build follows.
+
+1. **Two ranges per number, `plausible` and `spec` (recommended; taken).** A value outside `plausible` is
    asked again. A value outside `spec` is recorded as out of spec. The alternative is one range,
    which forces the author to choose between rejecting real out-of-spec readings and accepting
    "pH 42".
-2. **A step's branches are all rules or none (recommended).** This keeps "who decided this route"
+2. **A step's branches are all rules or none (recommended; taken).** This keeps "who decided this route"
    unambiguous. The alternative lets rules and model choices mix on one step, with the model
    choosing only when no rule holds.
-3. **The person can override a rule with a reason; the assistant never can (recommended).** The
+3. **The person can override a rule with a reason; the assistant never can (recommended; taken).** The
    override is recorded and flagged. The alternative is no overrides, which leaves a wrong rule
    blocking the run until the vault is fixed.
-4. **Read back a spoken critical answer before it decides (recommended).** Typed answers aren't
+4. **Read back a spoken critical answer before it decides (recommended; taken).** Typed answers aren't
    read back. The alternatives are reading back every spoken number, or none.
-5. **When no-model mode runs (recommended):** automatically when no model is usable, when a
+5. **When no-model mode runs (recommended; taken):** automatically when no model is usable, when a
    procedure asks for it, when an organisation profile forces it, or when the person chooses it.
    The alternative is only by choice.
-6. **Capture flows stay separate in this plan (recommended).** A later plan may fold Plan U's flows
+6. **Capture flows stay separate in this plan (recommended; taken).** A later plan may fold Plan U's flows
    into linear procedures with answers. The alternative folds them now and migrates the bundled
    flows.
-7. **An out-of-spec critical answer needs a corrective note before continuing (recommended).** The
+7. **An out-of-spec critical answer needs a corrective note before continuing (recommended; taken).** The
    alternative records the reading and leaves corrective action to the procedure's own next step.
-8. **Included with Field Assist at no extra charge (recommended),** since it uses no model and costs
+8. **Included with Field Assist at no extra charge (recommended; taken),** since it uses no model and costs
    nothing to run. The alternative is a separate tier for rule-only procedures, aimed at sites that
    want no AI at all.
 
