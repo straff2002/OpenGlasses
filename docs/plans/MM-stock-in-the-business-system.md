@@ -1,7 +1,8 @@
 # Plan MM — Stock Kept in the Business's Own System (a garage's workshop system or a shop's till holds the count; the phone reads it and sends back what was used)
 
 **Status:** 📝 Drafted 2026-11-19 — nothing implemented. Decisions 1–12 are owed. Which system comes
-first is the owner's choice, made for a pilot (Decision 1).
+first is the owner's choice, made for a pilot (Decision 1). **Merges after Plan
+[ML](ML-measured-quantities.md)**, which owns the app's quantity type and HF's quantity members.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own movement log, the `van_stock` tool, the Stock screen,
@@ -12,7 +13,7 @@ first is the owner's choice, made for a pilot (Decision 1).
   `stock`) and its wording, and the vault a list names to check numbers against. This plan adds
   where the count is kept to the place. It does not change MK.
 - Plan [HF](HF-office-stock-and-capture-contracts.md): the office stock snapshot (locations, lines,
-  `onHand` or `known: false`, provenance, as-of time, replace-whole) and its rule that the phone
+  `onHandScaled` or `known: false`, provenance, as-of time, replace-whole) and its rule that the phone
   sends proposals, never ledger writes. This plan reuses the snapshot's body shape with a connector
   as its source in place of Avenkin Office.
 - Plan [JR](JR-workiz-from-the-phone.md): the precedent for the phone talking straight to a
@@ -20,6 +21,9 @@ first is the owner's choice, made for a pilot (Decision 1).
   route-per-system registration, a write plan with read-back before retry, and the office route
   ceiling (`organizationFieldServiceRoute`) that stops every direct connector once a firm's office
   connects the system itself.
+- Plan [ML](ML-measured-quantities.md): `StockQuantity`, a whole number of thousandths of the line's
+  unit, and HF's quantity members as amended there (`onHandScaled`, `quantityScaled` under a signed
+  `quantityScale` of `3`, with `each` and `pack` whole). Every quantity in this plan is that type.
 - Plans [HT](HT-external-job-references.md) and [HU](HU-service-history-and-maintenance-flags.md):
   a job's identity in another system (`ExternalJobReference`), which lets parts used go onto
   the system's own job.
@@ -74,7 +78,8 @@ count.** It does three jobs there:
   impossible to put in a photograph, and a test asserts it is disjoint from `Config`'s secret
   inventories. `organizationFieldServiceRoute` is a string ceiling pinned to `office`.
 - **The office snapshot is drafted and unbuilt.** HF's snapshot is signed by Office and delivered
-  over FX's transport, and none of it exists in code. Its `onHand` is an integer.
+  over FX's transport, and none of it exists in code. Plan ML amends its quantities to whole
+  thousandths under a signed `quantityScale`.
 - **No stock system is connected.** Nothing reads or writes any garage, trade or retail system's
   inventory today. The Workiz v2 reference read for JR has job line items but no stock calls.
 
@@ -136,7 +141,7 @@ for the same shelf.
 ### 2 · The snapshot: HF's shape, fed by a connector
 
 `StockSystemSnapshot` is HF's snapshot **body**: `locations` (`id`, `name`, `class`) and `lines`
-(`part`, `description`, `unit`, `levels` per location with `onHand` **or** `known: false`,
+(`part`, `description`, `unit`, `levels` per location with `onHandScaled` **or** `known: false`,
 `provenance`, optional `lineAsOf`, optional `price`). Two things differ, because no office signs
 it:
 
@@ -149,8 +154,9 @@ it:
   arrived at it. HF's `counted`, `inferred` and `declared` describe Office's ledger. The phone
   cannot know which of those a POS figure is, and saying "counted" would claim too much.
 
-**Quantities are decimal** (§8). HF P0 is unbuilt, so its `onHand` can take the same form before
-anything ships. That is a note for HF's build, not a change this PR makes to HF's contract.
+**Quantities are Plan ML's** (§8): `onHandScaled` in thousandths under `quantityScale` `3`, and
+`unit` from the phone's closed list. The connector converts the system's figures into that form
+before a line enters the snapshot. This plan adds nothing to HF's quantity members.
 
 `StockSystemSnapshotStore` keeps the last good snapshot per connector, outside vault content,
 protected, replaced atomically, with the previous one kept until the new one is committed (HF P1's
@@ -305,26 +311,30 @@ A new outbound connection is reviewed the way JR's was, in the same PR as the co
 Fluids, cable, refrigerant and loose fasteners by weight do not come in whole numbers. Square
 already counts in decimal strings, and a garage sells oil by the litre.
 
-- **The connector's quantities are decimal strings**, kept as `Decimal`, never `Double`, each with
-  its unit and the unit's precision (Square's measurement unit carries one; others default to the
-  unit's own: three places for `l` and `kg`, none for `each`). A spoken *"half a litre"* becomes
-  `0.5 l`; a quantity finer than the unit's precision is refused with its reason, never rounded in
-  silence.
-- **Plan ML** (measured quantities, being drafted in parallel) may define the app's quantity form.
-  If it does, this plan uses ML's type and its spoken forms, and `StockQuantity` here is only an
-  adapter to the systems' wire formats. If ML lands later, P0 builds `StockQuantity` the way the
-  table above says and ML adopts or replaces it. Either way there is one quantity type in the app
-  (Decision 8).
-- **The phone's own ledger stays whole-number** in this plan. Moving IH's `Int` to decimals is ML's
-  question, not this plan's.
-- **A system with whole numbers only** (Shopify) refuses a fractional line before it is staged,
-  with the reason.
+**Plan ML owns the quantity.** Every quantity here is ML's `StockQuantity`: a whole number of
+thousandths of the line's unit (4.25 l is `4250`), parsed digit by digit and never through a float,
+with `each` and `pack` whole. In the snapshot it is HF's `onHandScaled` under `quantityScale` `3`,
+as ML amends HF. This plan defines no quantity type and no HF member. **The conversion is the
+connector's job, at the seam**, in both directions:
+
+- **In.** A system's decimal string goes through `StockQuantity(decimal:unit:)`. A figure with more
+  decimal places than the scale allows (Square keeps up to five) is **refused, never rounded**: the
+  line stays in the snapshot with `known: false` and the reason, so the answer is *"Square holds
+  that to more decimal places than I keep, so I can't give you its figure."* A system unit that
+  maps onto none of the phone's closed list (`each`, `m`, `ft`, `kg`, `lb`, `l`, `pack`) is treated
+  the same way. Each connector's unit map is a pure table with its own tests.
+- **Out.** A staged use is a `StockQuantity`, written to the system with
+  `StockQuantity.decimalString`. A system that keeps whole numbers only (Shopify) refuses a
+  fractional line before it is staged, with the reason. A unit the system does not keep for that
+  item is refused the same way.
+- **Spoken.** ML's spoken forms, unchanged: *"half a litre"* is `500` thousandths of `l`.
 
 ## Phases (one PR each)
 
 **P0 — The seam, the snapshot and the sentences (pure, headless).** `StockAuthority` and its
 `resolve`; `StockSystemSnapshot` (HF's body plus `source` and the `system` provenance) with its
-closed decoding; `StockQuantity` (or ML's type) with the spoken and wire forms; `StockSystemJoin`
+closed decoding; each connector's conversion into ML's `StockQuantity` (the unit map and the
+refusals of §8); `StockSystemJoin`
 over a snapshot and the vault MK resolves; `StockSystemAnswerComposer`; `StagedStockUse` and
 `PartsUsedWritePlan`; the `StockSystemConnector` protocol (pull a snapshot, list locations, write a
 plan, read back), with a fake. Two fixture sets in `Contracts/fixtures/stock-systems/`, invented and
@@ -375,8 +385,10 @@ said "van", "counted" or a number for an unknown.
   line dropped and counted); `known: false` round-trips as unknown and never zero; price dropped
   unless enabled; the line cap; `asOf` is the oldest system date when the system dates its
   figures.
-- `StockQuantityTests`: decimal strings to `Decimal` and back without loss; spoken fractions; the
-  unit's precision refuses a finer quantity; a whole-number system refuses a fraction.
+- `StockSystemQuantityTests` (the seam, over ML's `StockQuantity`): a system's decimal string to
+  thousandths and back without loss; more than three decimal places gives `known: false` with its
+  reason, never a rounded figure; an unmapped unit likewise; a whole-number system refuses a
+  fractional staged use.
 - `StockSystemJoinTests`: the three join outcomes; supersession both ways; MK's book order.
 - `StockSystemAnswerComposerTests`: as-of always present; stale wording first; unknown never a
   number; "in Square", never "counted"; other locations; the place's words from
@@ -420,8 +432,9 @@ said "van", "counted" or a number for an unknown.
    count sent only after the person reads it back and confirms it, if a pilot wants stocktakes from
    the phone.
 7. **Sales at a POS.** *Recommend:* the phone never records a sale. The till does that.
-8. **Quantities.** *Recommend:* decimal strings kept as `Decimal`, with the unit's precision, in one
-   type shared with Plan ML; the phone's own ledger stays whole-number until ML changes it.
+8. **Quantities.** *Recommend:* Plan ML's `StockQuantity` and its amendment of HF, with no quantity
+   form of this plan's own. The connector converts at the seam and refuses a figure finer than the
+   scale or in a unit the phone does not keep, rather than rounding it.
 9. **Prices.** *Recommend:* dropped at decode and never spoken unless the organisation enables them
    (the one organisation key HF Decision 4 proposes, shared by both plans).
 10. **Live check.** *Recommend:* snapshot answers, plus a check-now for the asked-about lines when
