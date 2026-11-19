@@ -139,6 +139,8 @@ struct ConversationThreadMessages: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var store: ConversationStore
     let threadId: String
+    /// A reply's support report, asked for from its bubble (Plan MH P1).
+    @State private var replyReport: SupportReportRequest?
 
     private var thread: ConversationThread? { store.threads.first { $0.id == threadId } }
     private var isThinking: Bool { appState.isProcessing && store.activeThreadId == threadId }
@@ -152,7 +154,7 @@ struct ConversationThreadMessages: View {
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(thread?.messages ?? []) { message in
-                MessageBubble(message: message)
+                MessageBubble(message: message, onReport: reportAction(for: message))
             }
             if let streamingText {
                 StreamingBubble(text: streamingText)
@@ -160,6 +162,13 @@ struct ConversationThreadMessages: View {
                 TypingIndicator()
             }
         }
+        .replyReportSheet($replyReport)
+    }
+
+    /// "Report this reply" for a stored reply, or nil when the bubble should not offer it.
+    private func reportAction(for message: ConversationMessage) -> (() -> Void)? {
+        guard let request = appState.replyReportRequest(threadId: threadId, message: message) else { return nil }
+        return { replyReport = request }
     }
 }
 

@@ -161,6 +161,9 @@ final class PrivateConversationSinkGuardTests: XCTestCase {
         ("TranscriptionService.swift", "private func setupAndStartRecording(", "PrivateConversationGate.skips(.serverSpeechRecognition)"),
         ("NativeToolRouter.swift", "private func authorizeAndDispatch(", "privateConversationRefusal(call"),
         ("LLMService.swift", "private static func buildSystemPrompt(", "SystemPromptBuilder.privateConversationLine"),
+        // Plan MH P1: "Report this reply" is a support report, whose private row is `.skip`.
+        ("ReportedReplyScope.swift", "static func offersReport(", "PrivateConversationPolicy.rule(for: .supportReport)"),
+        ("SupportReporting.swift", "func replyReportRequest(", "PrivateConversationGate.isActive"),
     ]
 
     private func body(of declaration: String, in source: [String]) -> [String]? {

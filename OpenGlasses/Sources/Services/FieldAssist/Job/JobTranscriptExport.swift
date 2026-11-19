@@ -38,6 +38,9 @@ enum JobTranscriptExport {
         /// A single thread, whether a job owns it or not. Reported as a conversation either way:
         /// see `selection(threadId:threads:sessions:traces:now:)`.
         case conversation(threadId: String)
+        /// One reported AI reply and the question that led to it (Plan MH P1): the turn
+        /// `ReportedReplyScope` chooses, and nothing else from its conversation.
+        case reply(threadId: String, messageId: String)
     }
 
     enum Speaker: String, Equatable {
@@ -173,7 +176,7 @@ enum JobTranscriptExport {
             chosen = sessions.filter { $0.id == id }
         case .day(let day):
             chosen = sessions.filter { calendar.isDate($0.startedAt, inSameDayAs: day) }
-        case .conversation:
+        case .conversation, .reply:
             // No job, even when a job owns the thread: the job's log, its tasks and its other
             // details are more than the person asked to send.
             chosen = []
@@ -309,10 +312,51 @@ enum JobTranscriptExport {
             window: window(around: said.map(\.timestamp) + turns.map(\.at), now: now))
     }
 
-    /// From the earliest of `moments` to the latest, with `windowMargin` either side.
-    static func window(around moments: [Date], now: Date) -> (start: Date, end: Date) {
-        ((moments.min() ?? now).addingTimeInterval(-windowMargin),
-         (moments.max() ?? now).addingTimeInterval(windowMargin))
+    /// From the earliest of `moments` to the latest, with `margin` either side.
+    static func window(around moments: [Date], now: Date,
+                       margin: TimeInterval = windowMargin) -> (start: Date, end: Date) {
+        ((moments.min() ?? now).addingTimeInterval(-margin),
+         (moments.max() ?? now).addingTimeInterval(margin))
+    }
+
+    // MARK: - One reported reply
+
+    /// What a reply scope holds (Plan MH P1).
+    struct ReplySelection {
+        /// The turn's lines under a heading of its own; nil when the reply is not on the phone.
+        let conversation: Conversation?
+        /// The turn's AI records.
+        let traces: [TurnTrace]
+        /// Which provider and model answered (`ReportedReplyScope.answeredBy`).
+        let answeredBy: String?
+        /// The turn's period, with `ReportedReplyScope.windowMargin` either side.
+        let window: (start: Date, end: Date)
+    }
+
+    /// The heading a reported reply's lines go under. The thread's own title stays out: it is made
+    /// from the first words said in the conversation, which this report does not carry.
+    static let reportedReplyTitle = "Reported reply"
+
+    /// One reported reply's turn, chosen from values by `ReportedReplyScope`: the question and the
+    /// reply, the records of that turn, and no other line of the thread. A thread a job owns is
+    /// not named as the job's either: the job is not part of what was reported.
+    static func replySelection(threadId: String, messageId: String, threads: [ConversationThread],
+                               traces: [TurnTrace], now: Date) -> ReplySelection {
+        guard let thread = threads.first(where: { $0.id == threadId }),
+              let turn = ReportedReplyScope.turn(in: thread.messages, reportedId: messageId) else {
+            return ReplySelection(conversation: nil, traces: [], answeredBy: nil,
+                                  window: window(around: [], now: now,
+                                                 margin: ReportedReplyScope.windowMargin))
+        }
+        let said = lines(of: turn.messages)
+        let turns = ReportedReplyScope.traces(traces, threadId: threadId, for: turn)
+        return ReplySelection(
+            conversation: said.isEmpty ? nil : Conversation(threadId: threadId,
+                                                            title: reportedReplyTitle, lines: said),
+            traces: turns,
+            answeredBy: ReportedReplyScope.answeredBy(turns, reply: turn.reply),
+            window: window(around: said.map(\.timestamp) + turns.map(\.at), now: now,
+                           margin: ReportedReplyScope.windowMargin))
     }
 
     /// The debug log's lines that fall inside a period.
@@ -494,6 +538,25 @@ enum JobTranscriptExport {
         source URLs when returned; long contents are marked as truncated.
         """
 
+    /// The top of a file that holds one reported reply (Plan MH P1). Like the conversation's, it
+    /// says what is not in it.
+    static let replyPreamble = """
+        One reported AI reply: the question that led to it, as the phone transcribed it, and the \
+        assistant's reply. Times are the phone's clock. Nothing else said in the conversation, or \
+        that day, is in this file. It can still contain names, addresses and anything else said in \
+        the question or the reply: share it only with people who should see it.
+        """
+
+    static let replyTroubleshootingPreamble = """
+        Troubleshooting details are included: for this turn, which model answered, what went with \
+        the words (the parts of the instructions by size, manual pages, photos, tools), how long it \
+        took and how it ended; \(GlassesSupportPolicy.reportDevices); and the app's event log and \
+        debug log from a minute before the turn to a minute after it. The words sent to the AI are \
+        the transcript lines themselves. Keys and tokens are masked. Recorded web searches include \
+        their queries and returned text, including source URLs when returned; long contents are \
+        marked as truncated.
+        """
+
     static let jobConversationNote = """
         This conversation was held on a job. Only the conversation is in this file: the job's own \
         log is not. For that, send the job's support report from the Job tab.
@@ -516,7 +579,8 @@ enum JobTranscriptExport {
     /// `secrets` plus the shared patterns.
     static func document(scope: Scope, jobs: [Job], exportedAt: Date, timeZone: TimeZone,
                          conversations: [Conversation] = [], details: Details? = nil,
-                         secrets: [String] = [], from: String? = nil) -> Document {
+                         secrets: [String] = [], from: String? = nil,
+                         answeredBy: String? = nil) -> Document {
         let format = Format(timeZone: timeZone)
         let troubleshooting = details != nil
         let kind = troubleshooting ? "support report" : "transcript"
@@ -549,9 +613,24 @@ enum JobTranscriptExport {
                 ?? exportedAt
             title = "Conversation \(kind) — \(format.dateTime(began))"
             displayName = "Conversation \(kind) \(format.fileDateTime(began)).txt"
+        case .reply:
+            // Dated to the reply, the line the report is about.
+            let answered = conversations.first?.lines.last?.timestamp ?? exportedAt
+            title = "Reported reply \(kind) — \(format.dateTime(answered))"
+            displayName = "Reported reply \(kind) \(format.fileDateTime(answered)).txt"
         }
+        let aboutOneReply: Bool
+        if case .reply = scope { aboutOneReply = true } else { aboutOneReply = false }
+        // A reported reply is a conversation of one turn, and reads like one below.
         let aboutOneConversation: Bool
-        if case .conversation = scope { aboutOneConversation = true } else { aboutOneConversation = false }
+        switch scope {
+        case .conversation, .reply: aboutOneConversation = true
+        case .job, .day: aboutOneConversation = false
+        }
+        let opening = aboutOneReply ? replyPreamble
+            : aboutOneConversation ? conversationPreamble : preamble
+        let troubleshootingOpening = aboutOneReply ? replyTroubleshootingPreamble
+            : aboutOneConversation ? conversationTroubleshootingPreamble : troubleshootingPreamble
 
         var out: [String] = [
             "Avenkin — \(title)",
@@ -559,9 +638,9 @@ enum JobTranscriptExport {
         ]
         if let from = from ?? details?.from { out.append("From: " + from) }
         if let app = details?.app { out.append("App \(app)") }
-        out += ["", aboutOneConversation ? conversationPreamble : preamble]
+        out += ["", opening]
         if troubleshooting {
-            out += ["", aboutOneConversation ? conversationTroubleshootingPreamble : troubleshootingPreamble]
+            out += ["", troubleshootingOpening]
         }
 
         // Which traces belong where. A trace is claimed by the first thing it matches, so no turn
@@ -574,7 +653,8 @@ enum JobTranscriptExport {
         }
 
         if jobs.isEmpty && conversations.isEmpty {
-            out += ["", aboutOneConversation ? "Nothing from this conversation is on the phone." : "No jobs."]
+            out += ["", aboutOneReply ? "This reply is not on the phone any more."
+                        : aboutOneConversation ? "Nothing from this conversation is on the phone." : "No jobs."]
         }
 
         var printedTurns = 0
@@ -620,8 +700,10 @@ enum JobTranscriptExport {
         }
 
         for conversation in conversations {
-            out += ["", rule("="), conversationHeading(conversation, alone: aboutOneConversation),
-                    rule("-")]
+            out += ["", rule("="), aboutOneReply ? reportedReplyTitle
+                        : conversationHeading(conversation, alone: aboutOneConversation)]
+            if aboutOneReply { out.append("Answered by: " + (answeredBy ?? "not recorded on this phone")) }
+            out.append(rule("-"))
             let traces = claim { $0.threadId == conversation.threadId }
             printedTurns += traces.count
             failedTurns += traces.filter { $0.outcome == .failed }.count
@@ -1027,6 +1109,7 @@ enum JobTranscriptExporter {
         let window: (start: Date, end: Date)
         var conversations: [JobTranscriptExport.Conversation] = []
         var conversationTraces: [TurnTrace] = []
+        var answeredBy: String?
         switch scope {
         case .day(let day):
             window = JobTranscriptExport.window(of: day, calendar: calendar)
@@ -1043,6 +1126,19 @@ enum JobTranscriptExporter {
             window = selection.window
             conversations = selection.conversation.map { [$0] } ?? []
             conversationTraces = selection.traces
+        case .reply(let threadId, let messageId):
+            // The turn's records are read whatever the layer: they are where the model and the
+            // provider are known from. They are printed only with the troubleshooting layer.
+            let selection = JobTranscriptExport.replySelection(
+                threadId: threadId, messageId: messageId, threads: store.threads,
+                traces: traces.all, now: now)
+            // A reply that is not on the phone any more has nothing to report: its records alone
+            // say nothing about what it said.
+            guard let conversation = selection.conversation else { return .failure(.nothingToExport) }
+            window = selection.window
+            conversations = [conversation]
+            conversationTraces = options.troubleshooting ? selection.traces : []
+            answeredBy = selection.answeredBy
         }
 
         if case .day = scope, options.otherConversations {
@@ -1072,16 +1168,18 @@ enum JobTranscriptExporter {
                     trace.fieldSessionId.map { jobIds.contains($0) } == true
                         || trace.threadId.map { jobThreadIds.contains($0) } == true
                 }
-            case .conversation:
+            case .conversation, .reply:
                 scoped = conversationTraces
             }
-            // One conversation's report promises nothing from outside it, so its debug log is cut
-            // to the period too. A job's and a day's keep the newest lines, as they always have.
+            // One conversation's report, and one reply's, promise nothing from outside it, so its
+            // debug log is cut to the period too. A job's and a day's keep the newest lines, as
+            // they always have.
             let debugLog: [String]
-            if case .conversation = scope {
+            switch scope {
+            case .conversation, .reply:
                 debugLog = JobTranscriptExport.debugLines(environment.debugLog, within: window,
                                                           calendar: calendar)
-            } else {
+            case .job, .day:
                 debugLog = environment.debugLog
             }
             var events: [String: [SessionLogger.Event]] = [:]
@@ -1113,7 +1211,8 @@ enum JobTranscriptExporter {
 
         return .success(JobTranscriptExport.document(
             scope: scope, jobs: jobs, exportedAt: now, timeZone: calendar.timeZone,
-            conversations: conversations, details: details, secrets: environment.secrets, from: environment.from))
+            conversations: conversations, details: details, secrets: environment.secrets, from: environment.from,
+            answeredBy: answeredBy))
     }
 
     /// Write the document to a protected, short-lived file. The lease is released when the share

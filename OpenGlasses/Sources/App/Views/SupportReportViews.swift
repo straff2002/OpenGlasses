@@ -89,6 +89,11 @@ struct SupportReportSheet: View {
         return false
     }
 
+    private var isReply: Bool {
+        if case .reply = request.scope { return true }
+        return false
+    }
+
     /// What the file is rebuilt for: either what it covers or what it includes changing.
     private struct BuildKey: Equatable {
         let scope: JobTranscriptExport.Scope
@@ -119,15 +124,43 @@ struct SupportReportSheet: View {
         }
     }
 
+    /// A reported reply opens on that one turn; this is the way to the whole conversation, which
+    /// the wearer chooses here and nowhere else (Plan MH P1).
+    @ViewBuilder
+    private func replyCoverage(threadId: String) -> some View {
+        OGSection(
+            header: "What to send",
+            footer: "This reply sends the question and the answer you're reporting, and nothing else from the conversation. The whole conversation adds everything else said in it."
+        ) {
+            Picker("What to send", selection: Binding(
+                get: { isConversation },
+                set: { wholeConversation in
+                    if openedOn == nil { openedOn = request.scope }
+                    request.scope = wholeConversation ? .conversation(threadId: threadId) : (openedOn ?? request.scope)
+                }
+            )) {
+                Text("This reply").tag(false)
+                Text("The whole conversation").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             OGScrollPage {
                 if let reason = request.reason {
-                    OGNotice(text: reason, systemImage: "exclamationmark.triangle")
+                    OGNotice(text: reason, systemImage: isReply ? "exclamationmark.bubble" : "exclamationmark.triangle")
                 }
 
                 if let widerDay = request.widerDay {
                     coverage(widerDay: widerDay)
+                }
+
+                if let threadId = request.widerThreadId {
+                    replyCoverage(threadId: threadId)
                 }
 
                 if isDay {
@@ -304,7 +337,9 @@ struct SupportReportSheet: View {
         var parts: [String] = []
         // One conversation is not a job, and "0 jobs" would read as something missing.
         let jobs = document.jobCount
-        if isConversation {
+        if isReply {
+            parts.append(String(localized: "1 reported reply"))
+        } else if isConversation {
             parts.append(String(localized: "1 conversation"))
         } else {
             parts.append(jobs == 1 ? String(localized: "1 job") : String(localized: "\(jobs) jobs"))
@@ -363,6 +398,27 @@ struct SupportReportSheet: View {
         case .finished(.failed):
             OGStatusLabel("Mail couldn't send the report. Share the file instead.", kind: .error)
         }
+    }
+}
+
+/// Where "Report this reply" opens the support report (Plan MH P1): on the view that showed the
+/// reply, so the sheet comes up over a conversation that is itself in a sheet or pushed page.
+struct ReplyReportSheetHost: ViewModifier {
+    @Binding var request: SupportReportRequest?
+    @EnvironmentObject private var appState: AppState
+
+    func body(content: Content) -> some View {
+        content.sheet(item: $request) { request in
+            SupportReportSheet(request: request)
+                .environmentObject(appState)
+        }
+    }
+}
+
+extension View {
+    /// Present a reported reply's support report from this view.
+    func replyReportSheet(_ request: Binding<SupportReportRequest?>) -> some View {
+        modifier(ReplyReportSheetHost(request: request))
     }
 }
 

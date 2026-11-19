@@ -2,7 +2,11 @@
 
 **Status:** 🚧 P0 built 2026-11-18 (headless): the System Boot Time required-reason API is declared,
 with a guard test that reads the sources, and the three paywalls state an eligible introductory
-offer ("1 week free, then $4.99/month"). P1–P4 are not started. 6 decisions open.
+offer ("1 week free, then $4.99/month"). P1 built 2026-11-19 (headless): **Report this reply** on
+every stored assistant reply opens the support report scoped to that one turn
+(`ReportedReplyScope`), never offered in a private conversation; `support.html` publishes the route
+and the review notes carry the four lines. Owed: the catalog sync for P0's and P1's strings, and the
+P4 device pass. P2–P4 not started. Decision 4 taken as recommended; 5 decisions open.
 **Track:** the phone-only App Store build (`OPENGLASSES_PHONE_ONLY=1`). Every change also reaches the
 glasses build, where it does no harm.
 **Builds on:**
@@ -72,6 +76,60 @@ sequences the other six.
   3,767 of 4,000 bytes, so make room by trimming the Field Assist paragraph.
 - **Not in scope:** blocking users or removing other people's content. There is no social feature.
 
+### As built (P1, 2026-11-19)
+
+Decision 4 taken as recommended: the report goes by email, through the existing support report
+composer.
+
+- **`ReportedReplyScope`** (pure, `Services/Diagnostics/`). Given a thread's messages and the
+  reported message id, `turn(in:reportedId:isPrivate:)` returns the turn: the nearest user message
+  before the reply (the question) and every assistant message from it up to and including the
+  reported one. Pinned boundaries: a tool round's interim line belongs with the reply; anything the
+  assistant said **after** the reported reply does not; the first reply of a thread is a turn with no
+  question; system messages are never part of a turn. An unknown id, the wearer's own message, an
+  app instruction or an empty reply returns nil. `traces(_:threadId:for:)` keeps the turn records
+  filed against the thread after the message before the turn and no later than the reply;
+  `answeredBy` names the provider and model from the newest of them ("not recorded on this phone"
+  when turn records have aged out or were off).
+- **A new export scope, not a parallel path.** `JobTranscriptExport.Scope.reply(threadId:messageId:)`
+  runs through the same `JobTranscriptExporter.document` as every support report, so the masking
+  pass (`DiagnosticsRedactor`, configured secrets, `redactionHits` on the sheet), the phone section
+  and the build identity (`AppBuildIdentity`) apply unchanged. The file's own preamble says what is
+  not in it; the heading is "Reported reply" with an "Answered by:" line, never the thread's title
+  (it is made from the conversation's first words). The app's events and debug lines are cut to a
+  minute either side of the turn, narrower than a conversation's five.
+- **`SupportReportRequest.reportedReply`** opens with the troubleshooting layer, the reason line
+  "Reporting the AI reply from 14:32. Add what was wrong with it before you send.", and
+  `widerThreadId`: the sheet's "What to send" switch offers **This reply** (the default) or **The
+  whole conversation**, the existing conversation scope. The day is not offered. The wearer reads
+  the whole file before Mail or the share sheet sends it, as with every support report.
+- **Call sites.** `MessageBubble` takes `onReport` beside `onEdit`/`onRegenerate`; the bubble shows
+  **Report this reply** in its context menu (and as a VoiceOver action) for an assistant message
+  only, whatever is passed. The Chat tab's thread, the Voice tab's conversation
+  (`ConversationThreadMessages`) and a finished job's read-only transcript pass it through
+  `AppState.replyReportRequest(threadId:message:)` and present the sheet from their own view, so it
+  comes up over a conversation that is itself in a sheet.
+- **Private conversations (Plan LU): the action is absent.** LU's row for the support report is
+  `.skip`, because there is no thread to export, so the safe choice is no action rather than a
+  thinner report. `offersReport` consults `PrivateConversationPolicy.rule(for: .supportReport)`;
+  `replyReportRequest` passes the controller's and the gate's state, so no reply is offered for
+  report while a private conversation is open; the private page's bubbles are given no `onReport`,
+  and their messages exist in no stored thread, so a report asked for by id finds nothing.
+- **Tests.** `ReportedReplyScopeTests`: the report carries the turn and nothing else (no other line,
+  no other turn's model, no system prompt, no thread title) and keeps the build identity; masking
+  still applies; the first reply; the tool-round boundary; record selection; `answeredBy`; unknown
+  ids; the wearer's own message; the request's defaults; the private behaviour; and a scrape that
+  every `onReport` comes through `replyReportRequest` and the private page passes none.
+  `PrivateConversationSinkGuardTests` gains the two consult sites.
+- **Site and notes.** `support.html` § "Reporting an AI reply" gives the in-app route, the Settings ›
+  Advanced & Support route and the email, and says reports are read and acted on. The review notes
+  gain a "Reporting and connections" block (report route, provider-side filters, the `ts.net`
+  exception, packs and MCP not being app code) with the Field Assist paragraph trimmed to fit
+  (3,995 of 4,000 bytes); the detailed draft carries the fuller versions; the submission checklist
+  gains "file a report from a reply".
+- **Owed:** catalog sync for the new strings (on its own commit, as usual), and filing a report from
+  a reply on a device (P4).
+
 ## P2 — store metadata and declarations (owner, App Store Connect)
 
 - **Keywords:** replace `HomeKit` and `CarPlay` with generic terms ("smart home", "car"). The
@@ -103,7 +161,7 @@ On the exact phone-only archive, with a sandbox account:
 - File a report from a reply.
 - Watch for any ITMS-91053 email after the upload.
 
-## Decisions open
+## Decisions
 
 1. **Seller entity.** Stay an Individual (the copyright names the account holder, and the trader
    address is a personal one) or move to an Organisation account for Skunkworks NZ Ltd before
@@ -112,7 +170,8 @@ On the exact phone-only archive, with a sandbox account:
 2. **Replacement keywords.** *Recommendation:* "smart home,car".
 3. **Shared Location answer.** *Recommendation:* no.
 4. **Report destination.** The email in `support.html`, or a form on avenkin.com.
-   *Recommendation:* email, through the existing report composer.
+   *Recommendation:* email, through the existing report composer. **Taken as recommended
+   2026-11-19 (P1).**
 5. **Claude subscription OAuth in the store build.** Keep it with written evidence, or compile it
    out. *Recommendation:* compile it out of the phone-only build unless the evidence is in hand.
 6. **Trial wording when eligibility is unknown** (StoreKit has not answered yet). *Recommendation:*

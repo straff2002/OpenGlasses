@@ -73,7 +73,9 @@ struct PrivateConversationStartButton: View {
 
 /// The private conversation's turns, drawn with the bubbles every conversation uses, and the reply
 /// still being worked on. Nothing here is stored: the turns are the in-memory transcript, gone when
-/// the conversation ends. No edit or regenerate — those rewrite a stored thread.
+/// the conversation ends. No edit or regenerate — those rewrite a stored thread — and no report
+/// (Plan MH P1): Plan LU's support report row is `.skip`, so these bubbles are given no `onReport`.
+/// Their messages are made here and belong to no stored thread, so a report could find nothing anyway.
 struct PrivateConversationMessages: View {
     @EnvironmentObject var appState: AppState
 

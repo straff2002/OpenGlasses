@@ -28,6 +28,8 @@ struct ChatThreadView: View {
     @State private var attachNotice: String?
     /// Raised when making this thread the live one would take the technician out of an open job.
     @State private var pendingLeaveJob: JobThreadQuestion?
+    /// A reply's support report, asked for from its bubble (Plan MH P1).
+    @State private var replyReport: SupportReportRequest?
 
     @ObservedObject private var weatherThreads = WeatherAttributionThreads.shared
 
@@ -127,6 +129,13 @@ struct ChatThreadView: View {
         .jobThreadQuestionAlert($pendingLeaveJob) { _ in
             appState.activateConversationThread(threadId, confirmed: true)
         }
+        .replyReportSheet($replyReport)
+    }
+
+    /// "Report this reply" for a stored reply, or nil when the bubble should not offer it.
+    private func reportAction(for message: ConversationMessage) -> (() -> Void)? {
+        guard let request = appState.replyReportRequest(threadId: threadId, message: message) else { return nil }
+        return { replyReport = request }
     }
 
     private var editingBinding: Binding<Bool> {
@@ -146,7 +155,8 @@ struct ChatThreadView: View {
                             MessageBubble(
                                 message: message,
                                 onEdit: message.role == "user" ? { beginEdit(message) } : nil,
-                                onRegenerate: isLastAssistant(message) ? { regenerate() } : nil
+                                onRegenerate: isLastAssistant(message) ? { regenerate() } : nil,
+                                onReport: reportAction(for: message)
                             )
                         }
                     } else {

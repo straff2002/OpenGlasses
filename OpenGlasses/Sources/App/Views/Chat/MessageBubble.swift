@@ -9,10 +9,20 @@ struct MessageBubble: View {
     var onEdit: (() -> Void)? = nil
     /// Regenerate this (assistant) reply; nil hides the action.
     var onRegenerate: (() -> Void)? = nil
+    /// Report this (assistant) reply to support (Plan MH P1); nil hides the action. Only a surface
+    /// that knows the reply's thread passes it, and never for a private conversation's turns.
+    var onReport: (() -> Void)? = nil
 
     @Environment(\.appAccent) private var accent
 
     private var isUser: Bool { message.role == "user" }
+
+    /// The report action, for an assistant reply only — never the wearer's own words, whatever a
+    /// call site passes.
+    private var reportAction: (() -> Void)? {
+        guard message.role == "assistant" else { return nil }
+        return onReport
+    }
 
     /// Who said it, what was said, and whether a photo went with it — one VoiceOver line.
     private var spokenLabel: String {
@@ -89,7 +99,16 @@ struct MessageBubble: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenLabel)
+        // Named here as well as in the context menu, so VoiceOver lists it among the bubble's
+        // actions and it can be reached without the long press.
+        .accessibilityActions {
+            if let reportAction {
+                Button(Self.reportLabel, action: reportAction)
+            }
+        }
     }
+
+    private static let reportLabel = String(localized: "Report this reply")
 
     @ViewBuilder
     private var contextActions: some View {
@@ -103,6 +122,13 @@ struct MessageBubble: View {
         }
         if let onRegenerate {
             Button(action: onRegenerate) { Label("Regenerate", systemImage: "arrow.clockwise") }
+        }
+        if let reportAction {
+            Divider()
+            Button(action: reportAction) {
+                Label(Self.reportLabel, systemImage: "exclamationmark.bubble")
+            }
+            .accessibilityHint("Opens a support report with this question and reply. Nothing is sent until you send it.")
         }
     }
 }
