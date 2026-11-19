@@ -31,7 +31,7 @@ struct WeatherKitProvider: WeatherProviding {
                 humidity: current.humidity,
                 symbolName: current.symbolName
             ),
-            days: daily.forecast.prefix(4).map { day in
+            days: daily.forecast.prefix(WeatherReport.forecastDays).map { day in
                 WeatherReport.Day(
                     date: day.date,
                     highC: day.highTemperature.converted(to: .celsius).value,

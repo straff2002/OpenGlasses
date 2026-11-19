@@ -71,4 +71,14 @@ struct ModelCascadeMemory: Equatable {
               candidates.first?.id != preferred.id else { return candidates }
         return [preferred] + candidates.filter { $0.id != preferred.id }
     }
+
+    /// The order a turn's `chain` is tried in. A chosen Vision model at the front of a photo
+    /// turn's chain keeps its place, since the hold is about the assistant's lead; any other
+    /// chain is `ordered`. The cascade and the routing line said before it both read this, so the
+    /// line never names a model the turn will not start on.
+    func startOrder(_ chain: [ModelFallbackChain.Candidate], lead: String, visionModelId: String?,
+                    now: Date) -> [ModelFallbackChain.Candidate] {
+        if let visionModelId, chain.first?.id == visionModelId { return chain }
+        return ordered(chain, lead: lead, now: now)
+    }
 }

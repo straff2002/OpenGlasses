@@ -1852,6 +1852,35 @@ class LLMService: ObservableObject {
                          error: error.map { SafeErrorSummary($0) })
     }
 
+    /// The chain a cascading turn led by `leadId` builds, and the order it is tried in at `now`.
+    /// A lead the last turn hopped away from stays second for a while (`ModelCascadeMemory`):
+    /// the model that answered starts, so the wearer does not wait out the same failure every
+    /// turn. Plan KA P1: a photo turn tries the chosen Vision model first.
+    private func cascadeStartOrder(lead leadId: String, imageAttached: Bool, now: Date)
+        -> (chain: [ModelFallbackChain.Candidate], candidates: [ModelFallbackChain.Candidate]) {
+        let visionModelId = imageAttached ? Config.visionRoleModelId : nil
+        let chain = ModelFallbackChain.candidates(
+            activeId: leadId, saved: Config.savedModels,
+            fallbackOrder: Config.modelFallbackOrder, requiresVision: imageAttached,
+            visionModelId: visionModelId)
+        return (chain, cascadeMemory.startOrder(chain, lead: leadId, visionModelId: visionModelId, now: now))
+    }
+
+    /// Whether a turn led by `leadId` will start on another model: a hold left by an earlier
+    /// turn's hop, or a photo's Vision model. The routing line ("switching to Gemini Flash") is
+    /// said before the cascade runs; when the cascade will not start there, the line is not said
+    /// (support report, build 728: the line named Gemini, held after a timeout, and Grok answered).
+    /// The same exits as `sendMessageCascading`: a medical local-only turn, a phone handoff, or
+    /// the cascade switched off for a text turn all start on the lead.
+    func cascadeStartsElsewhere(lead leadId: String, imageAttached: Bool, now: Date = Date()) -> Bool {
+        guard !MedicalLLMRoutingPolicy.isEnforced(hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly),
+              !offlineHandoffTurn,
+              Config.modelCascadeEnabled || imageAttached else { return false }
+        let order = cascadeStartOrder(lead: leadId, imageAttached: imageAttached, now: now)
+        guard let first = order.candidates.first else { return false }
+        return first.id != leadId
+    }
+
     /// The configuration the last attempt was sent to, as resolved for the turn (a spend cap's
     /// cheaper model, a job route's model), and whether its request could be fitted: it carried
     /// tool schemas on demand-capable exposure, on a provider the fit serves.
@@ -2136,21 +2165,12 @@ class LLMService: ObservableObject {
 
         // Plan KA P1: a photo turn tries the chosen Vision model first; the rest of the
         // conversation stays on the assistant.
-        let visionModelId = imageData != nil ? Config.visionRoleModelId : nil
-        let chain = ModelFallbackChain.candidates(
-            activeId: leadId, saved: Config.savedModels,
-            fallbackOrder: Config.modelFallbackOrder, requiresVision: imageData != nil,
-            visionModelId: visionModelId)
+        let now = Date()
+        let (chain, candidates) = cascadeStartOrder(lead: leadId, imageAttached: imageData != nil, now: now)
         // A photo needs a capable model even when the text-request fallback switch is off.
         guard (Config.modelCascadeEnabled || imageData != nil), !chain.isEmpty else {
             return try await send()
         }
-        // A lead the last turn hopped away from stays second for a while: the model that
-        // answered starts, so the wearer does not wait out the same failure every turn.
-        let now = Date()
-        // The memory's hold is about the assistant's lead; a chosen Vision model keeps the front.
-        let candidates = visionModelId != nil && chain.first?.id == visionModelId
-            ? chain : cascadeMemory.ordered(chain, lead: leadId, now: now)
         if let first = candidates.first, first.id != chain.first?.id {
             PrivacyLog.model(.cascadeLeadDeferred, configuration: PrivateIdentifier(first.id))
         }
@@ -2195,6 +2215,11 @@ class LLMService: ObservableObject {
                 // Only a hop after the lead was actually tried counts; the driver's pre-attempt
                 // capability switch (a lead that cannot see the photo) is not the lead failing.
                 if from.id == leadId, attempting == leadId { leadHop = failure }
+                // The attempt that ran and failed goes on the turn's trace, so the support report
+                // shows the wait before the model that answered (build 728's 30 s on Gemini).
+                if attempting == from.id {
+                    TurnRecorder.noteAttemptAbandoned(failure: "\(failure)", error: error.map { SafeErrorSummary($0) })
+                }
                 // Rewind the partial UI stream and log the hop; P2c narrates it out loud. The
                 // error goes in the log too (Plan KL P2): the class alone never said what failed.
                 onStreamReset?()
@@ -5373,6 +5398,12 @@ class LLMService: ObservableObject {
                     thinksAtLength: FirstReplyPolicy.thinksAtLength(reasoning.wire),
                     hasNextCandidate: self.cascadeHasNextCandidate, toolsAlreadyRan: requestsSent > 0)
                 requestsSent += 1
+                // As the Chat Completions path logs it: without this line a Gemini request that
+                // timed out could not be told from one never sent (support report, build 728).
+                PrivacyLog.model(.requestSent, provider: PrivacyToken(config.llmProvider.rawValue),
+                                 model: PrivacyToken(config.model), count: contents.count,
+                                 bytes: request.httpBody?.count ?? 0,
+                                 detail: PrivacyToken(imageData != nil ? "withImage" : "textOnly"))
 
                 // One bounded retry when the service says it is busy (503 UNAVAILABLE, 429, 5xx),
                 // and on Vertex one forced refresh of the Google token on a 401 (Plan FG P1a).

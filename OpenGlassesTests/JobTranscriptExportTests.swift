@@ -398,6 +398,28 @@ final class JobTranscriptExportTests: XCTestCase {
         XCTAssertEqual(document.turnCount, 0)
     }
 
+    /// Support report, build 728: a 65-second turn read as Grok's alone, when Gemini had spent
+    /// 30 s of it timing out first. The attempt given up on is printed under the model line.
+    func testAnAttemptTheCascadeGaveUpOnIsPrinted() {
+        var timeline = TurnTimeline(backend: .direct(.xai), model: "grok-4.7")
+        timeline.mark(.commit, at: Self.date(26, 10, 0))
+        timeline.earlierAttempts = [.init(backend: TurnBackend.direct(.gemini).label, model: "gemini-3.8-flash",
+                                          failure: "retryOtherModel", error: "timedOut(URLError)#-1001",
+                                          seconds: 30)]
+        let trace = TurnTrace(timeline, sealedAt: Self.date(26, 10, 1))
+        let lines = JobTranscriptExport.render(trace, stamp: "10:00")
+        let indent = String(repeating: " ", count: "10:00".count + 4)
+        XCTAssertEqual(lines[1], indent + "model: xai / grok-4.7")
+        XCTAssertEqual(lines[2], indent + "tried first: gemini / gemini-3.8-flash — gave up after 30.0 s "
+                       + "(timedOut(URLError)#-1001), moved on: retryOtherModel")
+    }
+
+    func testATurnWithNoEarlierAttemptStoresNone() {
+        let trace = TurnTrace(TurnTimeline(backend: .direct(.xai), model: "grok-4.7"), sealedAt: Self.date(26, 10, 0))
+        XCTAssertNil(trace.earlierAttempts)
+        XCTAssertFalse(JobTranscriptExport.render(trace, stamp: "10:00").contains { $0.contains("tried first") })
+    }
+
     func testATurnThatNeverReachedTheAIDoesNotReadAsAnAnswer() {
         var timeline = TurnTimeline()
         timeline.mark(.commit, at: Self.date(26, 10, 0))

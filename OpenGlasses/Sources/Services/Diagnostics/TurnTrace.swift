@@ -48,6 +48,9 @@ struct TurnTrace: Codable, Equatable, Identifiable {
     var manualPassages: [String]
     var manualRefused: Bool
     var toolCalls: [TurnTimeline.ToolNote]
+    /// Attempts the cascade gave up on before `backend`/`model` answered. Optional: traces
+    /// written before it decode as nil; a turn with none stores nil.
+    var earlierAttempts: [TurnTimeline.EarlierAttempt]?
     var outcome: Outcome
     var failure: String?
     // What a refused request adds to the failure (Plan IE P0). All optional: traces written
@@ -94,6 +97,7 @@ struct TurnTrace: Codable, Equatable, Identifiable {
         manualPassages = timeline.manualPassages
         manualRefused = timeline.manualRefused
         toolCalls = timeline.toolCalls
+        earlierAttempts = timeline.earlierAttempts.isEmpty ? nil : timeline.earlierAttempts
         failure = timeline.failure?.description
         rejectionReason = timeline.rejection?.reason.rawValue
         requestId = timeline.rejection?.requestID

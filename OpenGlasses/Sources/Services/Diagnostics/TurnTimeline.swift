@@ -211,6 +211,23 @@ struct TurnTimeline: Identifiable, Equatable {
     /// The manuals were searched and the evidence gate refused: nothing reliable was found.
     var manualRefused = false
     var toolCalls: [ToolNote] = []
+    /// One attempt the cascade gave up on before the model that answered (support report, build
+    /// 728: a 65-second turn read as Grok's alone, when Gemini had spent 30 s of it timing out).
+    /// The backend label, model, how the chain classed the failure and the error's category.
+    struct EarlierAttempt: Equatable, Codable {
+        let backend: String?
+        let model: String?
+        /// `ModelFallbackChain.FailureClass`, by case name.
+        let failure: String
+        /// `SafeErrorSummary`'s description: a category and code, never a message.
+        let error: String?
+        /// From the attempt's dispatch to the hop.
+        let seconds: TimeInterval?
+    }
+    /// Attempts given up on before the one that answered, oldest first; capped by `TurnRecorder`.
+    var earlierAttempts: [EarlierAttempt] = []
+    /// When the current attempt was dispatched (`TurnRecorder.noteBackend`), for its duration.
+    var attemptStartedAt: Date?
     /// Why the turn failed, when it did. A category from `SafeErrorSummary`'s closed vocabulary.
     var failure: SafeErrorSummary?
     /// What the provider's refusal classified as, when the failure was one (Plan IE P0): its error

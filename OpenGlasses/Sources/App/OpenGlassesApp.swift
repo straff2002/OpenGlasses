@@ -9354,7 +9354,10 @@ class AppState: ObservableObject, AppStateProtocol {
             // BK P2c: narrate the auto-routing switch too, so the principle holds everywhere a model
             // changes under the user (not just on failure). Started, not awaited: the request below
             // runs while it plays, and the thinking sound waits for it to end.
-            if Config.narrateModelSwitchesEnabled, let dest = tierModel {
+            // Not when the cascade will start elsewhere (a hold after this model's last failure,
+            // or a photo's Vision model): the line would name a model the turn does not use.
+            if Config.narrateModelSwitchesEnabled, let dest = tierModel,
+               !llmService.cascadeStartsElsewhere(lead: id, imageAttached: hasImage) {
                 didNarrateModelSwitchThisTurn = true
                 turnAnnouncement.announce(
                     ModelSwitchNarrator.routingPhrase(to: .init(name: dest.name, isLocal: dest.llmProvider == .local)),

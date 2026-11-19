@@ -57,6 +57,33 @@ final class ModelCascadeMemoryTests: XCTestCase {
         XCTAssertEqual(memory.deferral, held, "neither extended nor cleared")
     }
 
+    // MARK: - Start order (the routing line reads it too)
+
+    /// Support report, build 728: Gemini timed out, Grok answered, and on the next turn the
+    /// routing line still named Gemini while the held chain started on Grok. The line asks
+    /// `startOrder`, which is what the cascade tries.
+    func testAHeldLeadStartsOnThePreferredModel() {
+        var memory = ModelCascadeMemory()
+        memory.recordTurn(lead: gemini, answeredBy: chatgpt, hop: .retryOtherModel, now: t0)
+        let order = memory.startOrder(chain, lead: gemini, visionModelId: nil, now: t0.addingTimeInterval(60))
+        XCTAssertEqual(order.map(\.id), [chatgpt, gemini, claude])
+        let later = memory.startOrder(chain, lead: gemini, visionModelId: nil,
+                                      now: t0.addingTimeInterval(ModelCascadeMemory.holdSeconds + 1))
+        XCTAssertEqual(later.first?.id, gemini, "the hold has ended")
+    }
+
+    func testAChosenVisionModelAtTheFrontKeepsItsPlace() {
+        var memory = ModelCascadeMemory()
+        memory.recordTurn(lead: gemini, answeredBy: chatgpt, hop: .retryOtherModel, now: t0)
+        let order = memory.startOrder(chain, lead: gemini, visionModelId: gemini, now: t0.addingTimeInterval(60))
+        XCTAssertEqual(order.map(\.id), [gemini, chatgpt, claude])
+    }
+
+    func testWithoutAHoldTheChainIsUnchanged() {
+        let order = ModelCascadeMemory().startOrder(chain, lead: gemini, visionModelId: nil, now: t0)
+        XCTAssertEqual(order.map(\.id), [gemini, chatgpt, claude])
+    }
+
     func testADifferentLeadIsItsOwnHold() {
         var memory = ModelCascadeMemory()
         memory.recordTurn(lead: gemini, answeredBy: chatgpt, hop: .retryOtherModel, now: t0)
