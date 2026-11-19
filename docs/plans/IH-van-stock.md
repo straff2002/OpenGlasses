@@ -13,7 +13,7 @@ in for bulk loading and hand corrections. At the end of a shift the levels and a
 to base, and the next technician to take the vehicle picks the list up on their own phone.
 Company-wide stock is not in this plan.
 **Note (2026-11-19, a tester's build-728 report):** a line's brand was heard as the everyday word
-it sounds like and its "355" as "3 55", so `check` matched nothing and said "none on the van" over
+it sounds like and a number in its size heard in two pieces, so `check` matched nothing and said "none on the van" over
 22 packs. `VanStockMatcher` now tries a number broken at a space rejoined (an exact match), and,
 when nothing matches word for word, returns `.near` for lines that match every said word but one,
 at least two of them, the odd one sounding like an unsaid word of the line (a small phonetic key or

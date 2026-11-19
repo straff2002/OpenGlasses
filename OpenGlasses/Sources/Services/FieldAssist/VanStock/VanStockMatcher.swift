@@ -8,7 +8,7 @@ import Foundation
 /// 1. a scanned code already attached to a line;
 /// 2. the part number exactly, then the vault's supersession in both directions;
 /// 3. the words of the description: every word said is one of the line's. A number the recogniser
-///    broke up ("3 55" for "355", "1 200" for "1200") is tried put back together as well as the
+///    broke up ("2 50" for "250", "1 200" for "1200") is tried put back together as well as the
 ///    way it was heard, and either way is a match word for word;
 /// 4. failing that, a near miss: every word said but one is the line's, at least two of them are,
 ///    and the one left over sounds like a word of the line the technician did not say — the
@@ -26,8 +26,8 @@ struct VanStockMatcher {
         /// More than one line fits. The technician is asked which.
         case several([VanStockItem])
         /// Nothing fits word for word, but these lines would if one misheard word were what it
-        /// sounds like. Asked about, never acted on: a build-728 tester's "check <brand> original
-        /// 8 x 355" was heard with the brand as an everyday word and was answered "none on the van"
+        /// sounds like. Asked about, never acted on: a build-728 tester's request for a line by its
+        /// brand was heard with the brand as an everyday word and was answered "none on the van"
         /// while 22 packs were on it.
         case near([VanStockItem])
         case none
@@ -132,7 +132,7 @@ struct VanStockMatcher {
     private static let mostReadings = 16
 
     /// What was said as words: first as heard, then with each number the recogniser broke at a
-    /// space put back together every way it can be ("8 x 3 55" is also `8 x 355`; the "x" keeps the
+    /// space put back together every way it can be ("6 x 2 50" is also `6 x 250`; the "x" keeps the
     /// 8 apart). The reading as heard is always kept, so "2 4" still finds "2 x 4".
     static func saidTokens(_ text: String) -> [Set<String>] {
         // Pieces of the phrase: a word on its own, or digit runs with only spaces between them.
@@ -168,8 +168,8 @@ struct VanStockMatcher {
         return seen
     }
 
-    /// Every way to join neighbouring runs of one broken number, as heard first: ["3", "55"] gives
-    /// ["3", "55"] and ["355"].
+    /// Every way to join neighbouring runs of one broken number, as heard first: ["2", "50"] gives
+    /// ["2", "50"] and ["250"].
     private static func joinings(_ runs: [String]) -> [[String]] {
         guard let first = runs.first else { return [[]] }
         var results: [[String]] = [[first]]
@@ -199,7 +199,7 @@ struct VanStockMatcher {
     /// is already a quarter of the word; below four, a single letter makes another word
     /// ("cap"/"cat"), so short words must sound the same. A closing s sound is left out of the
     /// comparison, because `tokens` has already taken a plural-looking "s" off one of the two
-    /// ("kors" is `kor`, "course" keeps its e).
+    /// ("kwarts" is `kwart`, "quartz" keeps its z).
     static func soundsAlike(_ heard: String, _ word: String) -> Bool {
         guard heard.count >= 3, word.count >= 3 else { return false }
         func stem(_ key: String) -> String { key.hasSuffix("S") ? String(key.dropLast()) : key }
@@ -210,8 +210,8 @@ struct VanStockMatcher {
         return distance(heard, word) <= (shorter <= 5 ? 1 : 2)
     }
 
-    /// A small phonetic key, Soundex-like but with the first letter coded too, so that "course"
-    /// and a "kors" brand both read `KRS`: consonants by the sound they make (a hard c, k, q and g
+    /// A small phonetic key, Soundex-like but with the first letter coded too, so that "quartz"
+    /// and a "kwartz" brand both read `KRTS`: consonants by the sound they make (a hard c, k, q and g
     /// are one; s, z and a soft c another; b/p, d/t, f/v/ph, m/n), vowels and h, w, y dropped
     /// after the start, and a repeated sound said once.
     static func soundKey(_ word: String) -> String {
