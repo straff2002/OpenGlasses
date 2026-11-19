@@ -84,12 +84,63 @@ enum VaultDocumentCarry {
     /// stay; the caller indexes the result with `VaultImporter.syncDocuments`.
     @MainActor
     static func relay(vaultId: String, removing: Set<String>, adding: [Kept]) throws -> VaultManifest {
+        let laid = try lay(vaultId: vaultId, removing: removing, adding: adding)
+        defer { laid.discard() }
+        return try finish(laid, report: VaultImporter.installReporting(from: laid.staging))
+    }
+
+    /// `relay`, with the vault's validation off the main thread
+    /// (`VaultImporter.installReportingOffMain`): adding a long manual to a vault that names its
+    /// tables in rule chains scans every page of every manual it holds. The caller holds
+    /// `VaultOperationLock` for `vaultId` across the call, so nothing else re-lays the vault while
+    /// the validation runs.
+    @MainActor
+    static func relayOffMain(vaultId: String, removing: Set<String>, adding: [Kept]) async throws -> VaultManifest {
+        let laid = try lay(vaultId: vaultId, removing: removing, adding: adding)
+        defer { laid.discard() }
+        return try finish(laid, report: await VaultImporter.installReportingOffMain(from: laid.staging))
+    }
+
+    /// The vault laid out afresh in a staging folder, ready to install.
+    struct Laid {
+        let vaultId: String
+        let staging: URL
+        let pack: VaultPackManifest?
+
+        func discard() { try? FileManager.default.removeItem(at: staging) }
+    }
+
+    @MainActor
+    private static func finish(_ laid: Laid, report: VaultImporter.InstallReport) throws -> VaultManifest {
+        // The importer lays the baseline from the manifest's own lists, which never name pack.json.
+        if let pack = laid.pack { try VaultImporter.recordPack(pack, for: laid.vaultId) }
+        VaultRegistry.shared.reloadUserManifests()
+        VaultRegistry.shared.resetCache()
+        return report.manifest
+    }
+
+    @MainActor
+    private static func lay(vaultId: String, removing: Set<String>, adding: [Kept]) throws -> Laid {
         guard let manifest = VaultImporter.installedManifest(id: vaultId) else { throw CarryError.notInstalled(vaultId) }
         let pack = VaultImporter.installedPack(for: vaultId)
         let fm = FileManager.default
         let staging = fm.temporaryDirectory.appendingPathComponent("VaultRelay-\(UUID().uuidString.prefix(8))", isDirectory: true)
-        defer { try? fm.removeItem(at: staging) }
-        try fm.copyItem(at: VaultImporter.baselineDirectory(for: vaultId), to: staging)
+        let laid = Laid(vaultId: vaultId, staging: staging, pack: pack)
+        do {
+            try layOut(manifest: manifest, from: VaultImporter.baselineDirectory(for: vaultId), into: staging,
+                       removing: removing, adding: adding)
+        } catch {
+            laid.discard()
+            throw error
+        }
+        return laid
+    }
+
+    @MainActor
+    private static func layOut(manifest: VaultManifest, from baseline: URL, into staging: URL,
+                               removing: Set<String>, adding: [Kept]) throws {
+        let fm = FileManager.default
+        try fm.copyItem(at: baseline, to: staging)
         let replaced = Set(adding.map(\.document.file))
         let gone = manifest.documents.filter { removing.contains($0.file) || replaced.contains($0.file) }
         for document in gone {
@@ -101,12 +152,6 @@ enum VaultDocumentCarry {
         let remaining = manifest.documents.filter { !removing.contains($0.file) && !replaced.contains($0.file) }
         let composed = try compose(adding, into: staging, manifest: manifest.withDocuments(remaining, documentsDir: manifest.documentsDir))
         try JSONEncoder().encode(composed).write(to: staging.appendingPathComponent("manifest.json"))
-        let report = try VaultImporter.installReporting(from: staging)
-        // The importer lays the baseline from the manifest's own lists, which never name pack.json.
-        if let pack { try VaultImporter.recordPack(pack, for: vaultId) }
-        VaultRegistry.shared.reloadUserManifests()
-        VaultRegistry.shared.resetCache()
-        return report.manifest
     }
 }
 

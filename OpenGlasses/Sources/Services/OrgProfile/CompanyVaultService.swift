@@ -755,8 +755,10 @@ final class LiveCompanyVaultInstaller: CompanyVaultInstalling {
                                   files: [manual.fileName: copy.original, reading: copy.readingPDF]))
             }
         }
+        // Validated off the main thread, under the vault's lock: the company code books are long,
+        // and checking them on the main thread froze the app until iOS killed it.
         let manifest = try await VaultOperationLock.withLock(vaultId) {
-            try VaultDocumentCarry.relay(vaultId: vaultId, removing: removing, adding: kept)
+            try await VaultDocumentCarry.relayOffMain(vaultId: vaultId, removing: removing, adding: kept)
         }
         if let store = AppStateProvider.shared?.documentStore {
             _ = try await VaultImporter.syncDocuments(manifest: manifest, into: store)

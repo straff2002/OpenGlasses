@@ -88,8 +88,55 @@ enum VaultImporter {
     /// `install(from:)` plus the validator's advisory warnings (core over budget, and so on).
     enum InstallOrigin { case folder, personalPDF, receivedSigned }
 
+    /// A validation already run on a folder, so the install that follows does not run it again.
+    /// Only used for the same folder and the same `manualOnly` it was made with; anything else is
+    /// validated afresh, so a mismatch costs time, never an unchecked install.
+    struct Prevalidated {
+        let directory: URL
+        let manualOnly: Bool
+        let result: VaultValidator.Result
+
+        func answers(_ directory: URL, manualOnly: Bool) -> VaultValidator.Result? {
+            self.directory.standardizedFileURL == directory.standardizedFileURL && self.manualOnly == manualOnly
+                ? result : nil
+        }
+    }
+
+    /// Whether an install from `origin` validates the folder as manuals only.
+    static func validatesManualOnly(_ origin: InstallOrigin) -> Bool {
+        origin == .personalPDF || origin == .receivedSigned
+    }
+
+    /// What `installReportingOffMain` validates with. A seam so a test can see which thread the
+    /// validation ran on; nothing else sets it.
+    nonisolated(unsafe) static var offMainValidator: @Sendable (URL, Bool) -> VaultValidator.Result = {
+        VaultValidator.validate(directory: $0, manualOnly: $1)
+    }
+
+    /// `installReporting`, with the validation run off the main thread first.
+    ///
+    /// Validation reads every manual's text and, in a vault with rule chains, scans every page of
+    /// every PDF for tables. For a pair of company code books that took over a minute on a 4 GB
+    /// iPad. Run on the main thread it froze the app, and iOS killed it when it could not quit
+    /// (build 728, `0x8BADF00D`, while company manuals were being added). The install after it
+    /// stays on the main actor as before. The caller must keep the folder unchanged across the
+    /// `await`, and hold `VaultOperationLock` for the vault when another operation could change it.
+    @MainActor
+    static func installReportingOffMain(from sourceDir: URL, origin: InstallOrigin = .folder,
+                                        reservation: UUID? = nil) async throws -> InstallReport {
+        let manualOnly = validatesManualOnly(origin)
+        let validate = offMainValidator
+        let result = await Task.detached(priority: .userInitiated) {
+            validate(sourceDir, manualOnly)
+        }.value
+        return try installReporting(from: sourceDir, origin: origin, reservation: reservation,
+                                    prevalidated: Prevalidated(directory: sourceDir, manualOnly: manualOnly,
+                                                               result: result))
+    }
+
     static func installReporting(from sourceDir: URL, origin: InstallOrigin = .folder,
-                                 reservation: UUID? = nil) throws -> InstallReport {
+                                 reservation: UUID? = nil,
+                                 prevalidated: Prevalidated? = nil) throws -> InstallReport {
         let entitlement = FieldAssistEntitlement.shared
         if entitlement.has(.personalManuals) && !entitlement.has(.ownVaults) {
             guard origin != .folder else {
@@ -107,16 +154,18 @@ enum VaultImporter {
                 throw ImportError.documentFailed(String(localized: "My Manuals accepts document content only."))
             }
             return try ManualLibraryAdmission.install(manifest: manifest, root: sourceDir, reservation: reservation) {
-                try installValidated(from: sourceDir, manualOnly: true)
+                try installValidated(from: sourceDir, manualOnly: true, prevalidated: prevalidated)
             }
         }
         let proposed = try JSONDecoder().decode(VaultManifest.self, from: Data(contentsOf: sourceDir.appendingPathComponent("manifest.json")))
         guard !proposed.isPersonalLibrary else { throw ImportError.notEntitled }
-        return try installValidated(from: sourceDir)
+        return try installValidated(from: sourceDir, prevalidated: prevalidated)
     }
 
-    private static func installValidated(from sourceDir: URL, manualOnly: Bool = false) throws -> InstallReport {
-        let result = VaultValidator.validate(directory: sourceDir, manualOnly: manualOnly)
+    private static func installValidated(from sourceDir: URL, manualOnly: Bool = false,
+                                         prevalidated: Prevalidated? = nil) throws -> InstallReport {
+        let result = prevalidated?.answers(sourceDir, manualOnly: manualOnly)
+            ?? VaultValidator.validate(directory: sourceDir, manualOnly: manualOnly)
         guard result.isValid, let validated = result.manifest else {
             throw ImportError.invalid(result.issues)
         }
