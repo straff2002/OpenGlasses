@@ -339,6 +339,13 @@ final class VanStockService {
         return store.log.unitChangeRefusal(itemID: itemID, to: unit)
     }
 
+    /// Which figure stops a line being counted in `unit` now, or nil when none does, for the
+    /// screen to word (`VanStockLog.unitChangeBlock`).
+    func unitChangeBlock(itemID: String, to unit: VanStockUnit) -> VanStockLog.UnitChangeBlock? {
+        guard !store.isUnreadable else { return nil }
+        return store.log.unitChangeBlock(itemID: itemID, to: unit)
+    }
+
     /// The tail of a refusal for a figure over a million units.
     private static var tooLarge: String { StockQuantityRefusal.tooLarge.sentence(for: .each) }
 

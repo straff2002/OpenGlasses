@@ -174,7 +174,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     /// Change one attribute of a line and note that it changed. False, and nothing noted, when the
     /// line does not exist, the value is already what was asked for, or the change is refused: a
-    /// unit counted whole while a figure on the line is not (`unitChangeRefusal`), or a minimum or
+    /// unit counted whole while a figure on the line is not (`unitChangeBlock`), or a minimum or
     /// standard that is no figure the line's unit can hold.
     @discardableResult
     mutating func edit(itemID: String, _ change: Change, at: Date, batch: String,
@@ -195,7 +195,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
             (attribute, old, new) = (.description, item.description, value)
             item.description = value
         case .unit(let value):
-            guard unitChangeRefusal(itemID: itemID, to: value) == nil else { return false }
+            guard unitChangeBlock(itemID: itemID, to: value) == nil else { return false }
             (attribute, old, new) = (.unit, item.unit.rawValue, value.rawValue)
             item.unit = value
         case .minimum(let value):
@@ -234,23 +234,38 @@ struct VanStockLog: Codable, Equatable, Sendable {
         return true
     }
 
-    /// Why a line cannot be changed to `unit`, or nil when it can. A unit counted whole (`each`,
-    /// `pack`) is refused while the line's on-hand, minimum or standard is part of one: "4.25 l on
-    /// hand is not a whole number of packs; count it first." The stored figures never change with
-    /// the unit, so 4 each becomes 4 l and back again. English, for the model.
-    func unitChangeRefusal(itemID: String, to unit: VanStockUnit) -> String? {
+    /// Which figure holds a line in its unit: the first of on hand, minimum and standard that a
+    /// unit counted whole cannot hold.
+    enum UnitChangeBlock: Equatable, Sendable {
+        case onHand(StockQuantity)
+        case minimum(StockQuantity)
+        case standard(StockQuantity)
+    }
+
+    /// What stops a line being changed to `unit`, or nil when nothing does. A unit counted whole
+    /// (`each`, `pack`) is refused while the line's on-hand, minimum or standard is part of one,
+    /// checked in that order. The stored figures never change with the unit, so 4 each becomes 4 l
+    /// and back again. The screen words it from this; the model hears `unitChangeRefusal`.
+    func unitChangeBlock(itemID: String, to unit: VanStockUnit) -> UnitChangeBlock? {
         guard let item = item(id: itemID), unit != item.unit, !unit.allowsFraction else { return nil }
+        let onHand = level(of: itemID).onHand
+        if !onHand.fits(unit) { return .onHand(onHand) }
+        if let minimum = item.minimum, !minimum.fits(unit) { return .minimum(minimum) }
+        if let standard = item.standard, !standard.fits(unit) { return .standard(standard) }
+        return nil
+    }
+
+    /// Why a line cannot be changed to `unit`, or nil when it can, as `unitChangeBlock` finds it:
+    /// "4.25 l on hand is not a whole number of packs; count it first." English, for the model.
+    func unitChangeRefusal(itemID: String, to unit: VanStockUnit) -> String? {
+        guard let item = item(id: itemID), let block = unitChangeBlock(itemID: itemID, to: unit) else { return nil }
         let whole = unit == .pack ? "a whole number of packs" : "a whole number"
         func amount(_ quantity: StockQuantity) -> String { "\(quantity.decimalString) \(item.unit.rawValue)" }
-        let onHand = level(of: itemID).onHand
-        if !onHand.fits(unit) { return "\(amount(onHand)) on hand is not \(whole); count it first." }
-        if let minimum = item.minimum, !minimum.fits(unit) {
-            return "The minimum of \(amount(minimum)) is not \(whole); change it first."
+        switch block {
+        case .onHand(let onHand): return "\(amount(onHand)) on hand is not \(whole); count it first."
+        case .minimum(let minimum): return "The minimum of \(amount(minimum)) is not \(whole); change it first."
+        case .standard(let standard): return "The standard of \(amount(standard)) is not \(whole); change it first."
         }
-        if let standard = item.standard, !standard.fits(unit) {
-            return "The standard of \(amount(standard)) is not \(whole); change it first."
-        }
-        return nil
     }
 
     // MARK: - Undo

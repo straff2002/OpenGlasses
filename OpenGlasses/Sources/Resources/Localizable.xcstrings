@@ -370058,6 +370058,16 @@
         }
       }
     },
+    "On hand is %@, not a whole number. Count it before changing the unit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "On hand is %@, not a whole number. Count it before changing the unit."
+          }
+        }
+      }
+    },
     "On its way from the office." : {
       "localizations" : {
         "ar" : {
@@ -578259,6 +578269,16 @@
         }
       }
     },
+    "The minimum is %@, not a whole number. Change it before changing the unit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The minimum is %@, not a whole number. Change it before changing the unit."
+          }
+        }
+      }
+    },
     "The mirror serves HUD content over the network, so HIPAA mode hard-disables it." : {
       "localizations" : {
         "ar" : {
@@ -591179,6 +591199,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "除非你開啟某個項目的開關以保留手機上的數字，否則會使用試算表中的數字。"
+          }
+        }
+      }
+    },
+    "The standard is %@, not a whole number. Change it before changing the unit." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The standard is %@, not a whole number. Change it before changing the unit."
           }
         }
       }
