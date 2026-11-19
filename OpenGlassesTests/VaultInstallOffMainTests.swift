@@ -216,31 +216,18 @@ final class VaultInstallOffMainTests: XCTestCase {
     /// A pack install (a company vault's core update among them) waits for the vault's lock, so a
     /// manual added while it is checked is not overwritten by an update that never saw it.
     func testAPackInstallWaitsForTheVaultsLockAndValidatesOffMain() async throws {
-        let key = Curve25519.Signing.PrivateKey()
-        let packId = "com.openglasses.vault.\(Self.packVaultId)"
-        let pack = VaultPackManifest(id: packId, vaultId: Self.packVaultId, version: "1.0.0", name: "Off main pack",
-                                     summary: "s", author: "Example author", minAppBuild: nil, licensePack: nil)
-        let manifest = VaultManifest(id: Self.packVaultId, name: "Off main pack", version: "1.0.0", files: ["safety.md"],
-                                     gating: .init(iap: packId), promptRules: ["Never fabricate.", "Cite the source."])
-        var files: [String: Data] = ["manifest.json": try JSONEncoder().encode(manifest),
-                                     "safety.md": Data("# Safety\n\nInvented: isolate before work.".utf8)]
-        let packData = try JSONEncoder().encode(pack)
-        let signature = try VaultPackSignature.sign(packManifestData: packData, files: files,
-                                                    privateKeyBase64: key.rawRepresentation.base64EncodedString())
-        files[VaultPackManifest.filename] = packData
-        let service = VaultPackCatalogService(catalogURL: { nil }, fetch: { _ in Data() },
-                                              publicKeyBase64: key.publicKey.rawRepresentation.base64EncodedString(),
-                                              currentBuild: 400)
+        let pack = try SignedPack(vaultId: Self.packVaultId)
+        let built = try pack.build(version: "1.0.0")
         let calls = Calls()
         let real = previousValidator!
         VaultImporter.offMainValidator = { directory, manualOnly in
             calls.note(onMain: Thread.isMainThread)
             return real(directory, manualOnly)
         }
-        let zip = VaultPackTests.makeZip(files)
         var install: Task<Result<[String], VaultPackCatalogService.InstallFailure>, Never>?
         await VaultOperationLock.withLock(Self.packVaultId) {
-            install = Task { await service.installPack(zipData: zip, signatureBase64: signature, expectedId: packId) }
+            install = Task { await pack.service.installPack(zipData: built.zip, signatureBase64: built.signature,
+                                                            expectedId: pack.packId) }
             try? await Task.sleep(nanoseconds: 100_000_000)
             XCTAssertEqual(calls.count, 0, "the pack was checked while another operation held the vault")
         }
@@ -248,7 +235,68 @@ final class VaultInstallOffMainTests: XCTestCase {
         guard case .success = await installing.value else { return XCTFail("the pack did not install") }
         XCTAssertEqual(calls.count, 1)
         XCTAssertEqual(calls.onMain, false, "the pack was checked on the main thread")
-        XCTAssertEqual(VaultImporter.installedPack(for: Self.packVaultId)?.id, packId)
+        XCTAssertEqual(VaultImporter.installedPack(for: Self.packVaultId)?.id, pack.packId)
+    }
+
+    /// An update keeps the manuals the vault holds when it installs, not when it was asked for: a
+    /// manual added while the update waited (downloading, or behind another operation) stays.
+    func testAPackUpdateKeepsAManualAddedWhileItWaited() async throws {
+        let pack = try SignedPack(vaultId: Self.packVaultId)
+        let first = try pack.build(version: "1.0.0")
+        guard case .success = await pack.service.installPack(zipData: first.zip, signatureBase64: first.signature,
+                                                             expectedId: pack.packId) else {
+            return XCTFail("the first version did not install")
+        }
+        let update = try pack.build(version: "1.0.1")
+        let manual = temp.appendingPathComponent("service.txt")
+        try "Service manual\n\nInvented: E9 means low suction.".write(to: manual, atomically: true, encoding: .utf8)
+        var install: Task<Result<[String], VaultPackCatalogService.InstallFailure>, Never>?
+        try await VaultOperationLock.withLock(Self.packVaultId) {
+            install = Task { await pack.service.installPack(zipData: update.zip, signatureBase64: update.signature,
+                                                            expectedId: pack.packId, keepsInstalledManuals: true) }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            // While the update waits, a company manual is laid in under the same lock.
+            _ = try VaultDocumentCarry.relay(vaultId: Self.packVaultId, removing: [], adding: [
+                .init(document: VaultDocument(file: "service.txt", title: "Service manual", kind: "company_manual",
+                                              origin: .company),
+                      files: ["service.txt": manual])])
+        }
+        let installing = try XCTUnwrap(install)
+        guard case .success = await installing.value else { return XCTFail("the update did not install") }
+        XCTAssertEqual(VaultImporter.installedPack(for: Self.packVaultId)?.version, "1.0.1")
+        XCTAssertEqual(VaultImporter.installedManifest(id: Self.packVaultId)?.documents.map(\.file), ["service.txt"],
+                       "the update dropped a manual added while it waited")
+    }
+}
+
+/// A pack for `vaultId`, signed with a key of its own, and a catalog service that trusts that key.
+@MainActor
+private struct SignedPack {
+    let vaultId: String
+    let packId: String
+    let key = Curve25519.Signing.PrivateKey()
+    let service: VaultPackCatalogService
+
+    init(vaultId: String) throws {
+        self.vaultId = vaultId
+        packId = "com.openglasses.vault.\(vaultId)"
+        service = VaultPackCatalogService(catalogURL: { nil }, fetch: { _ in Data() },
+                                          publicKeyBase64: key.publicKey.rawRepresentation.base64EncodedString(),
+                                          currentBuild: 400)
+    }
+
+    func build(version: String) throws -> (zip: Data, signature: String) {
+        let pack = VaultPackManifest(id: packId, vaultId: vaultId, version: version, name: "Off main pack",
+                                     summary: "s", author: "Example author", minAppBuild: nil, licensePack: nil)
+        let manifest = VaultManifest(id: vaultId, name: "Off main pack", version: version, files: ["safety.md"],
+                                     gating: .init(iap: packId), promptRules: ["Never fabricate.", "Cite the source."])
+        var files: [String: Data] = ["manifest.json": try JSONEncoder().encode(manifest),
+                                     "safety.md": Data("# Safety\n\nInvented: isolate before work.".utf8)]
+        let packData = try JSONEncoder().encode(pack)
+        let signature = try VaultPackSignature.sign(packManifestData: packData, files: files,
+                                                    privateKeyBase64: key.rawRepresentation.base64EncodedString())
+        files[VaultPackManifest.filename] = packData
+        return (VaultPackTests.makeZip(files), signature)
     }
 }
 

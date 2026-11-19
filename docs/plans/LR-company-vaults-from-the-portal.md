@@ -241,7 +241,7 @@ when a job closes. Packs install through `VaultPackCatalogService` with the comp
 manuals download through `BoundedHTTPClient` into protected staging (`VaultLinkStagingStore.companyVaults()`,
 `Caches/CompanyVaultStaging`), are checked for length and `sealedSha256`, opened, checked against `revision`, and
 laid into the vault by `VaultDocumentCarry.relay` then indexed by `VaultImporter.syncDocuments`. A pack update
-keeps the vault's manuals (`VaultPackCatalogService.install(_:keeping:)`), so the technician's own manuals and
+keeps the vault's manuals (`VaultPackCatalogService.install(_:keepsInstalledManuals:)`), so the technician's own manuals and
 overlay survive. `CompanyVaultRowsView` under *Managed by ⟨org⟩*. `VaultRegistry.isUnlocked` locks a company
 vault with the organisation's content; the departure records `companyVaultIds` and erases them
 (`OrgDepartureService.Seams.eraseCompanyVaults`); a lapse erasure forgets them on the record so a renewal
