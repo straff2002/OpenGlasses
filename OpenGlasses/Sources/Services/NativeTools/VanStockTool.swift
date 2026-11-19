@@ -12,8 +12,8 @@ private func vanStockLineProperties(_ w: StockPlaceWording) -> [String: Any] {
             "description": "What the part is, in \(w.person)'s words: '45/5 capacitor'."
         ],
         "quantity": [
-            "type": "integer",
-            "description": "How many, as a whole number; fractions are not kept yet. Defaults to 1 for 'load', 'use' and 'remove'; required for 'count'."
+            "type": "number",
+            "description": "How much, in the line's unit. Up to 3 decimal places for m, ft, kg, lb and l (4.25 litres is 4.25); whole numbers for each and pack. Defaults to 1 for 'load', 'use' and 'remove'; required for 'count'."
         ],
         "unit": [
             "type": "string",
@@ -134,10 +134,18 @@ final class VanStockTool: NativeTool {
             return "Your organisation has switched \(w.stockName) off on this phone. Nothing was looked up or changed."
         }
         let action = (args["action"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        let lines = Self.lines(args)
-
-        if Self.quantityActions.contains(action), let refusal = Self.notWholeRefusal(args, place: service.place) {
-            return refusal
+        let lines: [VanStockService.Line]
+        if let verb = Self.quantityVerbs[action], (args["to_standard"] as? Bool) != true {
+            // Each figure is read against its own line's unit; one that does not fit refuses the
+            // whole call, so nothing in it is recorded.
+            let mayCreate = action == "load" || action == "count"
+            switch Self.read(args, verb: verb, wording: w,
+                             unit: { [service] in service.quantityUnit(for: $0, mayCreate: mayCreate) }) {
+            case .success(let read): lines = read
+            case .failure(let refusal): return refusal.sentence
+            }
+        } else {
+            lines = Self.lines(args)
         }
 
         switch action {
@@ -187,63 +195,75 @@ final class VanStockTool: NativeTool {
         }
     }
 
-    /// The actions that write a quantity. Any of them with a figure that is not whole changes nothing.
-    private static let quantityActions: Set<String> = ["load", "use", "remove", "count", "set_standard"]
+    /// The actions that write a quantity, and how a refusal of each opens: "Nothing loaded for
+    /// Wire nuts". A standard is refused in its own words (`VanStockService.standardRefusal`).
+    private static let quantityVerbs: [String: String] = [
+        "load": "loaded", "use": "recorded", "remove": "removed", "count": "counted", "set_standard": "set",
+    ]
 
     /// The raw entries of one call: `items` when it is given, otherwise the single-part fields.
     private static func entries(_ args: [String: Any]) -> [[String: Any]] {
         (args["items"] as? [[String: Any]]).flatMap { $0.isEmpty ? nil : $0 } ?? [args]
     }
 
-    /// A sentence refusing the whole call when any of its quantities is not a whole number, so
-    /// 4.25 litres is never recorded as 4 and a standard of 0.5 never clears the standard.
-    /// Worded for the place: "Van stock … Ask the technician", "Stock … Ask the person".
-    static func notWholeRefusal(_ args: [String: Any], place: StockPlace.Kind = .van) -> String? {
-        let offending: [String] = entries(args).compactMap { entry in
-            guard case .notWhole(let spelling) = PartsRequestTool.quantityArgument(entry["quantity"]),
-                  let named = Self.line(entry) else { return nil }
-            return "\(spelling) for \(named.reference)"
-        }
-        guard !offending.isEmpty else { return nil }
-        let list = offending.count == 1
-            ? offending[0]
-            : offending.dropLast().joined(separator: ", ") + " and " + offending[offending.count - 1]
-        let verdict = offending.count == 1 ? "is not a whole number" : "are not whole numbers"
-        let w = StockPlaceWording(place)
-        let keeper = w.stockName.prefix(1).uppercased() + w.stockName.dropFirst()
-        return "Nothing was changed. \(keeper) keeps whole numbers only for now, and \(list) \(verdict). "
-            + "Ask \(w.person) for a whole number."
+    /// A call refused for a figure its line cannot hold. Nothing in it was recorded.
+    struct QuantityRefusal: Error, Equatable {
+        let sentence: String
     }
 
-    /// The lines of one call: `items` when it is given, otherwise the single-part fields.
+    /// The lines of one call, each figure read exactly against the unit `unit` gives its line
+    /// (`StockQuantity.parse(json:unit:)`): 4.25 is taken for a line in litres and refused for a
+    /// line in packs, and nothing is ever cut to fit. Any figure refused refuses the whole call,
+    /// with a sentence per line: "Nothing recorded for Engine oil: litres are kept to 3 decimal
+    /// places." Worded for the place.
+    static func read(_ args: [String: Any], verb: String, wording w: StockPlaceWording,
+                     unit: (VanStockService.Line) -> (unit: VanStockUnit, name: String))
+        -> Result<[VanStockService.Line], QuantityRefusal> {
+        var lines: [VanStockService.Line] = []
+        var refused: [String] = []
+        for entry in entries(args) {
+            guard var line = Self.line(entry) else { continue }
+            let (lineUnit, name) = unit(line)
+            switch StockQuantity.parse(json: entry["quantity"], unit: lineUnit) {
+            case nil: line.quantity = nil
+            case .success(let quantity): line.quantity = quantity
+            case .failure(let reason):
+                refused.append(verb == "set"
+                    ? VanStockService.standardRefusal(name, unit: lineUnit, reason: reason, wording: w)
+                    : "Nothing \(verb) for \(name): \(reason.sentence(for: lineUnit)).")
+            }
+            lines.append(line)
+        }
+        guard !refused.isEmpty else { return .success(lines) }
+        var sentence = refused.joined(separator: " ")
+        if lines.count > refused.count { sentence += " Nothing else in this call was recorded either." }
+        return .failure(QuantityRefusal(sentence: sentence + " Ask \(w.person) for the figure again."))
+    }
+
+    /// The lines of one call: `items` when it is given, otherwise the single-part fields. A
+    /// figure is read against the unit the entry names, or each; one that does not fit reads as
+    /// none. The writing actions go through `read(_:verb:wording:unit:)` instead, which knows the
+    /// line's own unit and refuses rather than dropping a figure.
     static func lines(_ args: [String: Any]) -> [VanStockService.Line] {
-        entries(args).compactMap { Self.line($0) }
+        entries(args).compactMap { entry in
+            guard var line = Self.line(entry) else { return nil }
+            let unit = line.unit.flatMap(VanStockUnit.init(spoken:)) ?? .each
+            if case .success(let quantity) = StockQuantity.parse(json: entry["quantity"], unit: unit) {
+                line.quantity = quantity
+            }
+            return line
+        }
     }
 
-    /// One entry as a line, or nil when it names no part, description or code. A quantity that is
-    /// not whole reads as none here; `notWholeRefusal` stops the call before that matters.
+    /// One entry as a line, with no figure yet, or nil when it names no part, description or
+    /// code.
     private static func line(_ entry: [String: Any]) -> VanStockService.Line? {
-        let quantity: StockQuantity?
-        if case .whole(let value) = PartsRequestTool.quantityArgument(entry["quantity"]) {
-            quantity = Self.quantity(whole: value)
-        } else {
-            quantity = nil
-        }
         let line = VanStockService.Line(part: Self.text(entry["part"]),
                                         description: Self.text(entry["description"]),
-                                        quantity: quantity,
                                         unit: Self.text(entry["unit"]),
                                         code: Self.text(entry["code"]),
                                         asNew: (entry["new_line"] as? Bool) ?? false)
         return line.part == nil && line.description == nil && line.code == nil ? nil : line
-    }
-
-    /// A whole figure from the model in thousandths. A sign is kept, so the service refuses a
-    /// negative in its own words; anything past a million is held just past it, so the service
-    /// refuses it as too large instead of the multiplication overflowing.
-    static func quantity(whole value: Int) -> StockQuantity {
-        let limit = StockQuantity.maximumUnits + 1
-        return StockQuantity(whole: min(max(value, -limit), limit))
     }
 
     /// A call that carries a scanned code was scanned; anything else was said.

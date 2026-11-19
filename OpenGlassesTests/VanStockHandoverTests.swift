@@ -495,4 +495,42 @@ final class VanStockHandoverTests: XCTestCase {
         XCTAssertTrue(filled.hasPrefix("2 lines brought to the par level. The person can say 'undo that'"), filled)
         XCTAssertEqual(StockPlaceWordCheck.violations(filled, kind: .store), [], filled)
     }
+
+    // MARK: Measured amounts (Plan ML P2)
+
+    /// Engine oil at 4.25 litres against a standard of 5, cable on order by the metre.
+    private var oil: VanStockLog {
+        var log = VanStockLog()
+        log.addItem(id: "oil", number: "OIL-5W30", description: "Engine oil", unit: .l, standard: .whole(5),
+                    standardSetBy: .van, batch: "b0")
+        log.addItem(id: "cable", description: "Thermostat cable", unit: .m, batch: "b0")
+        log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: 4250), at: time(0), batch: "b0", source: .typed)
+        log.record(.ordered, itemID: "cable", quantity: .whole(12), at: time(1), batch: "b1", source: .spoken)
+        return log
+    }
+
+    func testTheTopUpIsTheExactShortfallInWords() {
+        XCTAssertEqual(VanStockHandover.topUp(oil).first?.short, StockQuantity(scaled: 750))
+        service.takeOver(.init(van: nil, log: oil, exportedAt: nil, lineCount: 2, shortfalls: 1, needCounting: 0, refusals: []))
+        let topUp = service.topUp()
+        XCTAssertEqual(topUp, "1 to top up: 0.75 litres of Engine oil (OIL-5W30) (4.25 litres on board).")
+        store.setPlace(.store)
+        XCTAssertEqual(service.topUp(), "1 to top up: 0.75 litres of Engine oil (OIL-5W30) (4.25 litres on hand).")
+        for leak in ["4250", "4.250", "750", " l "] { XCTAssertFalse(topUp.contains(leak), "\(leak) in \(topUp)") }
+    }
+
+    func testTheMessageToBaseSaysMeasuredAmountsInWords() {
+        let message = VanStockHandover.message(oil, van: VanIdentity(id: "v4", name: "Truck 4"), now: time(10), calendar: calendar)
+        XCTAssertTrue(message.contains("  0.75 litres of Engine oil (OIL-5W30) — 4.25 litres on board"), message)
+        XCTAssertTrue(message.contains("  12 metres of Thermostat cable"), message)
+        XCTAssertFalse(message.contains(" l "), message)
+    }
+
+    func testToppingUpALitreLineLoadsTheExactShortfall() {
+        service.takeOver(.init(van: nil, log: oil, exportedAt: nil, lineCount: 2, shortfalls: 1, needCounting: 0, refusals: []))
+        clock = time(5)
+        _ = service.loadToStandard()
+        XCTAssertEqual(store.log.level(of: "oil").onHand, .whole(5))
+        XCTAssertEqual(store.log.movements.last?.quantity, StockQuantity(scaled: 750))
+    }
 }

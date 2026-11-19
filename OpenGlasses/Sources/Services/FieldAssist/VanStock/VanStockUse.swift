@@ -93,7 +93,8 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
         try container.encode(at, forKey: .at)
     }
 
-    /// "2 × Igniter (22B22)".
+    /// "2 × Igniter (22B22)", "4.25 litres of Engine oil (OIL-5W30)": the words the assistant uses
+    /// (`VanStockUnit.spoken(_:of:)`).
     var summary: String {
         let described = description.trimmingCharacters(in: .whitespacesAndNewlines)
         let name: String
@@ -102,7 +103,7 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
         } else {
             name = described.isEmpty ? "Unnamed item" : described
         }
-        return unit.phrase(quantity, of: name)
+        return unit.spoken(quantity, of: name)
     }
 }
 

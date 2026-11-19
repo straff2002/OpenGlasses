@@ -23,12 +23,20 @@ struct VanStockRow: Identifiable, Equatable {
         return String(localized: "Not in the manuals")
     }
 
-    /// "4", "10 m", or nil for a line nothing has been recorded against — an unknown is never
-    /// shown as a number.
-    var quantity: String? {
+    /// "4", "10 m", "4,25 l" in German, or nil for a line nothing has been recorded against — an
+    /// unknown is never shown as a number.
+    var quantity: String? { quantity(locale: .current) }
+
+    func quantity(locale: Locale) -> String? {
         guard level.isRecorded else { return nil }
-        let figure = level.onHand.decimalString
-        return item.unit == .each ? figure : "\(figure) \(item.unit.rawValue)"
+        return VanStockRow.figure(level.onHand, unit: item.unit, locale: locale)
+    }
+
+    /// A figure as the screen shows it: the locale's form and the unit's symbol, never a converted
+    /// unit. Each is the bare number. "4", "4,25 l", "1,000 m".
+    static func figure(_ quantity: StockQuantity, unit: VanStockUnit, locale: Locale = .current) -> String {
+        let figure = quantity.formatted(locale: locale)
+        return unit == .each ? figure : "\(figure) \(unit.rawValue)"
     }
 }
 
@@ -75,9 +83,44 @@ enum VanStockRows {
     }
 }
 
-extension StockQuantity {
-    /// The figure in whole units, for the screen's whole-number labels and fields. Every figure
-    /// on a line is whole until the screen takes measured amounts, which reads them with
-    /// `formatted(locale:)` instead; until then this drops nothing.
-    var wholeUnits: Int { scaled / Self.perUnit }
+/// What a figure typed on a line's page means (Plan ML §4). Pure.
+///
+/// A measured unit is typed into a decimal field in the phone's locale ("4,25" in German, "4.25"
+/// in English) and read exactly, as the tool reads the model's figure; `each` and `pack` keep the
+/// whole-number stepper. A figure the line's unit cannot hold is refused, never rounded.
+enum VanStockEntry {
+
+    /// A figure as a field holds it: the locale's decimal separator, no grouping and no trailing
+    /// zeros, so what is shown reads back as the same figure. "4,25" in German, "1000.5" in English.
+    static func text(_ quantity: StockQuantity, locale: Locale) -> String {
+        let plain = quantity.decimalString
+        guard let separator = locale.decimalSeparator, separator != "." else { return plain }
+        return plain.replacingOccurrences(of: ".", with: separator)
+    }
+
+    /// A typed figure, read exactly in `unit`.
+    static func read(_ text: String, unit: VanStockUnit, locale: Locale) -> Result<StockQuantity, StockQuantityRefusal> {
+        StockQuantity.parse(localized: text, locale: locale, unit: unit)
+    }
+
+    /// A typed minimum: an empty field is no minimum.
+    static func minimum(_ text: String, unit: VanStockUnit, locale: Locale) -> Result<StockQuantity?, StockQuantityRefusal> {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .success(nil) }
+        return read(text, unit: unit, locale: locale).map { Optional($0) }
+    }
+
+    /// One whole unit up or down from the field's figure, or from `fallback` when the field holds
+    /// none, kept within nothing and a million. 4.25 steps to 5.25 and 3.25; 0.5 steps down to 0.
+    static func stepped(_ text: String, by units: Int, unit: VanStockUnit, locale: Locale,
+                        fallback: StockQuantity) -> String {
+        let current = (try? read(text, unit: unit, locale: locale).get()) ?? fallback
+        let moved = current.scaled + units * StockQuantity.perUnit
+        return Self.text(StockQuantity(scaled: min(max(moved, 0), StockQuantity.maximumScaled)), locale: locale)
+    }
+
+    /// The whole number a stepper shows for a line in `each` or `pack`. Their figures are always
+    /// whole (`VanStockUnit.step`); nil for one that is not, which a stepper would cut.
+    static func wholeCount(_ quantity: StockQuantity) -> Int? {
+        quantity.isWhole ? quantity.scaled / StockQuantity.perUnit : nil
+    }
 }

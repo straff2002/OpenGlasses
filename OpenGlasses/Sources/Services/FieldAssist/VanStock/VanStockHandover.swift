@@ -135,8 +135,8 @@ enum VanStockHandover {
             lines.append(hasStandards(log) ? "To top up (\(shortfalls.count)):"
                                            : "Run out or below minimum (\(shortfalls.count)). No \(w.usualFigure) is set for \(w.this):")
             lines.append(contentsOf: shortfalls.map { shortfall in
-                shortfall.short.map { "  \(shortfall.item.phrase($0)) — \(shortfall.onHand.decimalString) \(w.aboard)" }
-                    ?? "  \(shortfall.item.name) — \(shortfall.onHand.decimalString) \(w.aboard)"
+                shortfall.short.map { "  \(shortfall.item.phrase($0)) — \(shortfall.item.figure(shortfall.onHand)) \(w.aboard)" }
+                    ?? "  \(shortfall.item.name) — \(shortfall.item.figure(shortfall.onHand)) \(w.aboard)"
             })
         }
 
@@ -195,6 +195,11 @@ enum VanStockHandover {
             var seen = Set<String>()
             for row in read.rows {
                 let id = row.itemID.flatMap { $0.isEmpty ? nil : $0 } ?? makeID()
+                // A row that gave no unit is a line in each, and holds whole figures.
+                if let refusal = VanStockSheet.stepRefusal(row, unit: row.unit ?? .each) {
+                    refusals.append(refusal)
+                    continue
+                }
                 guard seen.insert(id).inserted else {
                     refusals.append(.init(row: row.number, reason: .repeatsRow(row.number)))
                     continue
@@ -265,6 +270,8 @@ enum VanStockHandover {
                 guard let standard = hasStandardColumn ? row.standard : (read.isOwn ? nil : row.onHand) else { continue }
                 let existing = VanStockSheet.match(id: row.itemID, number: row.partNumber,
                                                    description: row.description, in: log)
+                // A standard the line's unit cannot hold (2.5 packs) is no standard for it.
+                guard standard.fits(row.unit ?? existing?.unit ?? .each) else { continue }
                 if let item = existing {
                     // The same figure is no change, whoever set it.
                     guard seen.insert(item.id).inserted, item.standard != standard else { continue }

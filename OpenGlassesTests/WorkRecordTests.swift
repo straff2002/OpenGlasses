@@ -458,6 +458,39 @@ final class WorkRecordTests: XCTestCase {
         XCTAssertTrue(onVan.contains("The van list now shows 3 asked for"), onVan)
     }
 
+    /// Plan ML P2 — a parts request stays a whole count of parts; for a line kept in litres it is
+    /// that many whole litres, scaled into the ledger.
+    func testAWholeOrderForALitreLineIsThatManyLitres() async throws {
+        let service = try lennoxSession()
+        let store = VanStockStore(directory: tempRoot.appendingPathComponent("van", isDirectory: true))
+        let van = VanStockService(store: store, verify: { service.verifyPart($0) },
+                                  partsIndex: { service.partsIndex }, activeJob: { nil })
+        let tool = PartsRequestTool(sessionService: service, vanStock: van)
+        _ = van.count([.init(part: "14T65", quantity: StockQuantity(scaled: 1250), unit: "l")])
+
+        let ordered = try await tool.execute(args: ["part": "14T65", "quantity": 5, "for_van_stock": true])
+        XCTAssertTrue(ordered.contains("The van list now shows 5 litres asked for and not yet loaded."), ordered)
+        XCTAssertEqual(store.log.movements.last?.quantity, .whole(5))
+        XCTAssertEqual(store.log.movements.last?.quantity.scaled, 5000)
+
+        let fraction = try await tool.execute(args: ["part": "14T65", "quantity": 4.25, "for_van_stock": true])
+        XCTAssertTrue(fraction.hasPrefix("Nothing was requested. A parts request is a whole number of parts"), fraction)
+        XCTAssertEqual(store.log.level(of: store.log.items[0].id).onOrder, .whole(5))
+    }
+
+    /// Plan ML P2 — the record's printed summary says what came off the van as the assistant does.
+    func testTheRecordSummarySaysMeasuredAmountsInWords() throws {
+        let service = try lennoxSession()
+        service.recordVanStockUse(VanStockUse(id: "m1", number: "OIL-5W30", description: "Engine oil",
+                                              quantity: StockQuantity(scaled: 4250), unit: .l, verified: false,
+                                              at: Date(timeIntervalSince1970: 1_795_000_000)))
+        let session = try XCTUnwrap(service.activeSession)
+        let record = WorkRecord(session: session, vaultName: "v")
+        XCTAssertTrue(record.summaryLines.contains("  4.25 litres of Engine oil (OIL-5W30)"), record.summary)
+        XCTAssertFalse(record.summary.contains("4250"), record.summary)
+        XCTAssertFalse(record.summary.contains("4.25 l "), record.summary)
+    }
+
     /// Plan IH P4 — a part on a finished task with no stock entry holds a close by voice until the
     /// technician has said where it came from, and what came off the van reaches the record.
     func testAPartWithNoStockEntryIsAskedAboutAtTheCloseAndTheRecordCarriesWhatCameOffTheVan() throws {
@@ -601,7 +634,7 @@ final class WorkRecordTests: XCTestCase {
         let uses = try decoder.decode([VanStockUse].self, from: block)
         XCTAssertEqual(uses.map(\.quantity), [.whole(2), StockQuantity(scaled: 4250)])
         XCTAssertEqual(uses.map(\.unit), [.each, .l])
-        XCTAssertEqual(uses.map(\.summary), ["2 × Sensor bracket (QX-100)", "4.25 l of Engine oil (OIL-5W30)"])
+        XCTAssertEqual(uses.map(\.summary), ["2 × Sensor bracket (QX-100)", "4.25 litres of Engine oil (OIL-5W30)"])
         // Written again, the lines are the fixture's, member for member.
         let rewritten = try JSONSerialization.jsonObject(with: encoder.encode(uses)) as? [[String: AnyHashable]]
         let original = try JSONSerialization.jsonObject(with: block) as? [[String: AnyHashable]]

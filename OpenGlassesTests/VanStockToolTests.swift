@@ -189,7 +189,7 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertEqual(store.log.items.first?.unit, .m)
         clock.addTimeInterval(60)
         let mismatch = try await run(["action": "load", "description": "thermostat cable", "quantity": 5, "unit": "ft"])
-        XCTAssertTrue(mismatch.contains("is counted in m, not ft"), mismatch)
+        XCTAssertTrue(mismatch.contains("is counted in metres, not feet"), mismatch)
         XCTAssertEqual(onHand("Thermostat cable"), .whole(30))
         let unknown = try await run(["action": "load", "description": "Solder", "quantity": 1, "unit": "reel"])
         XCTAssertTrue(unknown.contains("is not a unit the van list keeps"), unknown)
@@ -450,42 +450,83 @@ final class VanStockToolTests: XCTestCase {
                        [VanStockService.Line(description: "Igniter", quantity: .whole(2))])
     }
 
-    // MARK: Whole numbers only, for now
+    // MARK: Measured quantities (Plan ML P2)
 
     private func standard(_ description: String) -> StockQuantity? {
         store.log.items.first { $0.description == description }?.standard
     }
 
-    func testAFractionalUseIsRefusedNotCut() async throws {
+    /// No model-facing result carries the stored thousandths, a padded decimal or a bare litre symbol.
+    private func assertSpokenPlainly(_ answer: String, file: StaticString = #filePath, line: UInt = #line) {
+        for leak in ["4250", "4.250", " l ", " l.", " kg ", " m "] {
+            XCTAssertFalse(answer.contains(leak), "\(leak) in: \(answer)", file: file, line: line)
+        }
+    }
+
+    func testAUseOfFourAndAQuarterLitresIsKeptExactly() async throws {
         _ = try await run(["action": "load", "description": "Engine oil", "quantity": 5, "unit": "l"])
-        let movements = store.log.movements.count
         clock.addTimeInterval(60)
         let answer = try await run(["action": "use", "description": "engine oil", "quantity": 4.25])
-        XCTAssertTrue(answer.hasPrefix("Nothing was changed."), answer)
-        XCTAssertTrue(answer.contains("4.25 for engine oil is not a whole number"), answer)
+        XCTAssertTrue(answer.hasPrefix("Used 4.25 litres of Engine oil."), answer)
+        XCTAssertTrue(answer.contains("0.75 litres left."), answer)
+        XCTAssertEqual(store.log.movements.last?.quantity, StockQuantity(scaled: 4250))
+        XCTAssertEqual(onHand("Engine oil"), StockQuantity(scaled: 750))
+        assertSpokenPlainly(answer)
+    }
+
+    func testAFractionOnALineCountedWholeIsRefusedNotCut() async throws {
+        _ = try await run(["action": "load", "description": "Igniter", "quantity": 5])
+        let movements = store.log.movements.count
+        clock.addTimeInterval(60)
+        let answer = try await run(["action": "use", "description": "igniter", "quantity": 4.25])
+        XCTAssertTrue(answer.hasPrefix("Nothing recorded for Igniter: each is counted in whole numbers."), answer)
         XCTAssertEqual(store.log.movements.count, movements)
+        XCTAssertEqual(onHand("Igniter"), .whole(5))
+
+        let packs = try await run(["action": "load", "description": "Wire nuts", "quantity": 2.5, "unit": "pack"])
+        XCTAssertTrue(packs.hasPrefix("Nothing loaded for Wire nuts: packs are counted whole."), packs)
+        XCTAssertNil(onHand("Wire nuts"), "no line was started for it")
+    }
+
+    func testTheLinesOwnUnitDecidesNotTheUnitTheModelLeftOut() async throws {
+        // The use names no unit: the line it matches is in litres, so 4.25 is taken.
+        _ = try await run(["action": "count", "description": "Engine oil", "quantity": 6, "unit": "l"])
+        clock.addTimeInterval(60)
+        _ = try await run(["action": "use", "description": "engine oil", "quantity": "4.25"])
+        XCTAssertEqual(onHand("Engine oil"), StockQuantity(scaled: 1750))
+    }
+
+    func testMoreThanThreeDecimalPlacesIsRefused() async throws {
+        _ = try await run(["action": "load", "description": "Engine oil", "quantity": 5, "unit": "l"])
+        clock.addTimeInterval(60)
+        let answer = try await run(["action": "use", "description": "engine oil", "quantity": 4.2513])
+        XCTAssertTrue(answer.hasPrefix("Nothing recorded for Engine oil: litres are kept to 3 decimal places."), answer)
         XCTAssertEqual(onHand("Engine oil"), .whole(5))
     }
 
-    func testAFractionalCountSentAsTextIsRefused() async throws {
-        _ = try await run(["action": "load", "description": "Igniter", "quantity": 4])
-        let movements = store.log.movements.count
+    func testACountByWeightIsKeptExactly() async throws {
+        let answer = try await run(["action": "count", "description": "Refrigerant", "quantity": 3.5, "unit": "kg"])
+        XCTAssertEqual(onHand("Refrigerant"), StockQuantity(scaled: 3500))
+        XCTAssertTrue(answer.hasPrefix("Counted: 3.5 kilograms of Refrigerant on the van."), answer)
         clock.addTimeInterval(60)
-        let answer = try await run(["action": "count", "description": "igniter", "quantity": "3.5"])
-        XCTAssertTrue(answer.contains("whole number"), answer)
-        XCTAssertEqual(store.log.movements.count, movements)
-        XCTAssertEqual(onHand("Igniter"), .whole(4))
+        let short = try await run(["action": "count", "description": "refrigerant", "quantity": 3.25])
+        XCTAssertTrue(short.contains("The log expected 3.5 kilograms, so that is 0.25 kilograms short."), short)
+        XCTAssertTrue(short.contains("counted: 3.25 kilograms on the van, 0.25 kilograms short of the 3.5 kilograms expected"), short)
     }
 
-    func testAFractionalStandardDoesNotClearTheStandard() async throws {
+    func testAHalfLitreStandardIsSetAndAHalfIgniterDoesNotClearOne() async throws {
+        _ = try await run(["action": "load", "description": "Engine oil", "quantity": 5, "unit": "l"])
         _ = try await run(["action": "load", "description": "Igniter", "quantity": 4])
         clock.addTimeInterval(60)
+        let oil = try await run(["action": "set_standard", "description": "engine oil", "quantity": 0.5])
+        XCTAssertEqual(standard("Engine oil"), StockQuantity(scaled: 500), "0.5 used to be cut to 0, which cleared it")
+        XCTAssertTrue(oil.contains("is now 0.5 litres of Engine oil"), oil)
+
         _ = try await run(["action": "set_standard", "description": "igniter", "quantity": 3])
-        XCTAssertEqual(standard("Igniter"), .whole(3))
         clock.addTimeInterval(60)
         let answer = try await run(["action": "set_standard", "description": "igniter", "quantity": 0.5])
-        XCTAssertTrue(answer.contains("whole number"), answer)
-        XCTAssertEqual(standard("Igniter"), .whole(3), "0.5 used to be cut to 0, which cleared the standard")
+        XCTAssertTrue(answer.hasPrefix("No standard load set for Igniter: each is counted in whole numbers."), answer)
+        XCTAssertEqual(standard("Igniter"), .whole(3))
     }
 
     func testAWholeNumberSentAsADecimalIsKept() async throws {
@@ -494,43 +535,63 @@ final class VanStockToolTests: XCTestCase {
         XCTAssertEqual(onHand("Igniter"), .whole(2))
     }
 
-    func testAQuantityInWordsIsRefusedNotTakenAsOne() async throws {
+    func testAQuantityInWordsOrALocalSpellingIsRefusedNotTakenAsOne() async throws {
         let answer = try await run(["action": "load", "description": "Igniter", "quantity": "two"])
-        XCTAssertTrue(answer.contains("two for Igniter is not a whole number"), answer)
+        XCTAssertTrue(answer.hasPrefix("Nothing loaded for Igniter: that is not a number."), answer)
+        let comma = try await run(["action": "load", "description": "Engine oil", "quantity": "4,25", "unit": "l"])
+        XCTAssertTrue(comma.hasPrefix("Nothing loaded for Engine oil: that is not a number."), comma)
+        let negative = try await run(["action": "count", "description": "Igniter", "quantity": -1])
+        XCTAssertTrue(negative.hasPrefix("Nothing counted for Igniter: a quantity cannot be below zero."), negative)
         XCTAssertTrue(store.log.isEmpty)
     }
 
-    func testOneFractionInABatchStopsTheWholeBatch() async throws {
+    func testOneRefusedFigureInABatchStopsTheWholeBatchAndEachIsNamed() async throws {
         let answer = try await run(["action": "load", "items": [
             entry(["description": "Igniter", "quantity": 2]),
             entry(["description": "Thermostat cable", "quantity": 1.5, "unit": "m"]),
-        ]])
-        XCTAssertTrue(answer.contains("1.5 for Thermostat cable is not a whole number"), answer)
-        XCTAssertTrue(store.log.isEmpty, "nothing in the batch is recorded")
-    }
-
-    func testEveryFractionInABatchIsNamed() {
-        let refusal = VanStockTool.notWholeRefusal(["items": [
-            entry(["description": "Engine oil", "quantity": 4.25]),
+            entry(["description": "Wire nuts", "quantity": 1.5, "unit": "pack"]),
             entry(["part": "70W16", "quantity": "0.5"]),
-            entry(["description": "Igniter", "quantity": 1]),
         ]])
-        XCTAssertEqual(refusal, "Nothing was changed. Van stock keeps whole numbers only for now, and "
-            + "4.25 for Engine oil and 0.5 for 70W16 are not whole numbers. Ask the technician for a whole number.")
+        XCTAssertEqual(answer, "Nothing loaded for Wire nuts: packs are counted whole. Nothing loaded for 70W16: "
+            + "each is counted in whole numbers. Nothing else in this call was recorded either. Ask the technician "
+            + "for the figure again.")
+        XCTAssertTrue(store.log.isEmpty, "nothing in the batch is recorded, the 1.5 m that fitted included")
+
+        let fitted = try await run(["action": "load", "items": [
+            entry(["description": "Igniter", "quantity": 2]),
+            entry(["description": "Thermostat cable", "quantity": 1.5, "unit": "m"]),
+        ]])
+        XCTAssertTrue(fitted.contains("Loaded 1.5 metres of Thermostat cable."), fitted)
+        XCTAssertEqual(onHand("Thermostat cable"), StockQuantity(scaled: 1500))
     }
 
-    func testTheWholeNumberRefusalIsSaidInThePlacesWords() async throws {
+    func testTheRefusalIsSaidInThePlacesWords() async throws {
         for kind in StockPlace.Kind.allCases {
-            let refusal = try XCTUnwrap(VanStockTool.notWholeRefusal(
-                ["description": "Engine oil", "quantity": 4.25], place: kind))
-            XCTAssertEqual(StockPlaceWordCheck.violations(refusal, kind: kind), [], "\(kind): \(refusal)")
+            store.setPlace(kind)
+            for args in [["action": "use", "description": "Wire nuts", "quantity": 4.25, "unit": "pack"] as [String: Any],
+                         ["action": "set_standard", "description": "Wire nuts", "quantity": 0.5, "unit": "pack"]] {
+                let refusal = try await run(args)
+                XCTAssertTrue(refusal.contains("packs are counted whole"), "\(kind): \(refusal)")
+                XCTAssertEqual(StockPlaceWordCheck.violations(refusal, kind: kind), [], "\(kind): \(refusal)")
+            }
         }
-        XCTAssertEqual(VanStockTool.notWholeRefusal(["description": "Engine oil", "quantity": 4.25], place: .store),
-                       "Nothing was changed. Stock keeps whole numbers only for now, and 4.25 for Engine oil "
-                       + "is not a whole number. Ask the person for a whole number.")
-        store.setPlace(.warehouse)
-        let answer = try await run(["action": "use", "description": "engine oil", "quantity": 4.25])
-        XCTAssertTrue(answer.hasPrefix("Nothing was changed. Stock keeps whole numbers"), answer)
+        store.setPlace(.store)
+        let answer = try await run(["action": "use", "description": "Wire nuts", "quantity": 4.25, "unit": "pack"])
+        XCTAssertTrue(answer.hasSuffix("Ask the person for the figure again."), answer)
+    }
+
+    func testTheQuantityIsANumberForStockAndAWholeNumberForAPartsRequest() throws {
+        for kind in StockPlace.Kind.allCases {
+            let properties = try XCTUnwrap(VanStockTool.parametersSchema(for: kind)["properties"] as? [String: Any])
+            let quantity = try XCTUnwrap(properties["quantity"] as? [String: Any])
+            XCTAssertEqual(quantity["type"] as? String, "number", "\(kind)")
+            XCTAssertTrue((quantity["description"] as? String ?? "").contains("4.25 litres is 4.25"), "\(kind)")
+            let items = try XCTUnwrap(properties["items"] as? [String: Any])
+            let itemFields = try XCTUnwrap((items["items"] as? [String: Any])?["properties"] as? [String: Any])
+            XCTAssertEqual((itemFields["quantity"] as? [String: Any])?["type"] as? String, "number", "\(kind)")
+        }
+        let parts = try XCTUnwrap(PartsRequestTool().parametersSchema["properties"] as? [String: Any])
+        XCTAssertEqual((parts["quantity"] as? [String: Any])?["type"] as? String, "integer")
     }
 
     func testALoadWithNoQuantityStillDefaultsToOne() async throws {

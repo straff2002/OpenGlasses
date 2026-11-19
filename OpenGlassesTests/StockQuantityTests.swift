@@ -278,10 +278,11 @@ final class StockQuantityTests: XCTestCase {
         XCTAssertEqual(VanStockUnit.l.spoken(q(4250), of: "Engine oil"), "4.25 litres of Engine oil")
         XCTAssertEqual(VanStockUnit.each.spoken(q(2000), of: "Flame sensor"), "2 × Flame sensor")
         XCTAssertEqual(VanStockUnit.pack.spoken(q(1000), of: "Wire nuts"), "1 pack of Wire nuts")
+        // The old `phrase(_:of:)` is gone; spoken is now the one wording, and it reads as that did.
         for whole in [0, 1, 2, 12] {
-            for unit in [VanStockUnit.each, .pack] {
-                XCTAssertEqual(unit.spoken(StockQuantity(whole: whole), of: "Fuse"), unit.phrase(StockQuantity(whole: whole), of: "Fuse"))
-            }
+            XCTAssertEqual(VanStockUnit.each.spoken(StockQuantity(whole: whole), of: "Fuse"), "\(whole) × Fuse")
+            XCTAssertEqual(VanStockUnit.pack.spoken(StockQuantity(whole: whole), of: "Fuse"),
+                           whole == 1 ? "1 pack of Fuse" : "\(whole) packs of Fuse")
         }
     }
 

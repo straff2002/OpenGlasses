@@ -13,16 +13,6 @@ enum VanStockUnit: String, Codable, CaseIterable, Sendable {
     case l
     case pack
 
-    /// "2 × Flame sensor", "10 m of Thermostat cable", "1 pack of Wire nuts".
-    func phrase(_ quantity: StockQuantity, of name: String) -> String {
-        let number = quantity.decimalString
-        switch self {
-        case .each: return "\(number) × \(name)"
-        case .pack: return "\(number) \(quantity == StockQuantity(whole: 1) ? "pack" : "packs") of \(name)"
-        case .m, .ft, .kg, .lb, .l: return "\(number) \(rawValue) of \(name)"
-        }
-    }
-
     /// What a spoken or typed unit means. Nil for anything that is not on the list, so a unit the
     /// app does not keep is refused instead of being filed as `each`.
     init?(spoken raw: String) {
@@ -163,6 +153,10 @@ struct VanStockItem: Codable, Equatable, Identifiable, Sendable {
         return described.isEmpty ? number : "\(described) (\(number))"
     }
 
-    /// "2 × Flame sensor (62-23543-01)".
-    func phrase(_ quantity: StockQuantity) -> String { unit.phrase(quantity, of: name) }
+    /// "2 × Flame sensor (62-23543-01)", "4.25 litres of Engine oil": for the model, measured
+    /// amounts in words (`VanStockUnit.spoken(_:of:)`).
+    func phrase(_ quantity: StockQuantity) -> String { unit.spoken(quantity, of: name) }
+
+    /// A figure for this line in a sentence that does not name the unit: "3", "4.25 litres".
+    func figure(_ quantity: StockQuantity) -> String { unit.figure(quantity) }
 }

@@ -112,7 +112,7 @@ final class VanStockAnswerComposerTests: XCTestCase {
     }
 
     func testUnitsAreSaid() {
-        XCTAssertTrue(composer.check(item(number: nil, unit: .m), level: level(10)).hasPrefix("10 m of Flame sensor"))
+        XCTAssertTrue(composer.check(item(number: nil, unit: .m), level: level(10)).hasPrefix("10 metres of Flame sensor"))
         XCTAssertTrue(composer.check(item(number: nil, unit: .pack), level: level(1)).hasPrefix("1 pack of Flame sensor"))
     }
 
@@ -211,9 +211,68 @@ final class VanStockAnswerComposerTests: XCTestCase {
     func testACountComparisonKeepsTheUnit() {
         let cable = VanStockItem(id: "i", description: "Thermostat cable", unit: .m, createdBatch: "b0")
         XCTAssertEqual(composer.counted(cable, before: level(30), after: level(25), created: false),
-                       "Counted: 25 m of Thermostat cable on the van. The log expected 30 m, so that is 5 m short.")
-        XCTAssertEqual(VanStockCountCheck(before: level(30), counted: .whole(25))?.said(.m), ", 5 m short of the 30 m expected")
+                       "Counted: 25 metres of Thermostat cable on the van. The log expected 30 metres, so that is 5 metres short.")
+        XCTAssertEqual(VanStockCountCheck(before: level(30), counted: .whole(25))?.said(.m), ", 5 metres short of the 30 metres expected")
         XCTAssertEqual(VanStockCountCheck(before: level(1), counted: .whole(2))?.said(.pack), ", 1 pack over the 1 pack expected")
+    }
+
+    // MARK: Measured amounts in words (Plan ML P2)
+
+    private func measured(_ description: String, _ unit: VanStockUnit, minimum: StockQuantity? = nil) -> VanStockItem {
+        VanStockItem(id: "i", description: description, unit: unit, minimum: minimum, createdBatch: "b0")
+    }
+
+    private func level(scaled: Int, onOrder: StockQuantity = .zero) -> VanStockLevel {
+        VanStockLevel(itemID: "i", onHand: StockQuantity(scaled: scaled), onOrder: onOrder, oldestOrderAt: nil,
+                      provenance: .counted, asOf: date(2026, 10, 14, 10, 40), unreliable: false, handedOver: false)
+    }
+
+    /// No result carries the stored thousandths, a padded decimal or a bare unit symbol.
+    private func assertSpokenPlainly(_ answer: String, file: StaticString = #filePath, line: UInt = #line) {
+        for leak in ["4250", "4.250", " l ", " l.", " l,", " kg ", " m ", " ft ", " lb "] {
+            XCTAssertFalse(answer.contains(leak), "\(leak) in: \(answer)", file: file, line: line)
+        }
+    }
+
+    func testMeasuredAmountsAreSaidInWords() {
+        let oil = measured("Engine oil", .l)
+        let checked = composer.check(oil, level: level(scaled: 4250))
+        XCTAssertEqual(checked, "4.25 litres of Engine oil on the van — counted today at 10:40.")
+        XCTAssertTrue(composer.check(oil, level: level(scaled: 1000)).hasPrefix("1 litre of Engine oil"))
+        XCTAssertTrue(composer.check(measured("Resin", .kg), level: level(scaled: 500)).hasPrefix("0.5 kilograms of Resin"))
+        XCTAssertTrue(composer.check(measured("Cable", .m), level: level(scaled: 12_000)).hasPrefix("12 metres of Cable"))
+        XCTAssertTrue(composer.check(measured("Grease", .lb), level: level(scaled: 750)).hasPrefix("0.75 pounds of Grease"))
+        XCTAssertTrue(composer.check(measured("Duct", .ft), level: level(scaled: 3000)).hasPrefix("3 feet of Duct"))
+        assertSpokenPlainly(checked)
+    }
+
+    func testEachAndPackReadExactlyAsTheyDid() {
+        XCTAssertEqual(composer.check(item(), level: level(2)), "2 × Flame sensor (62-23543-01) on the van — counted today at 10:40.")
+        XCTAssertTrue(composer.check(measured("Wire nuts", .pack), level: level(1)).hasPrefix("1 pack of Wire nuts"))
+        XCTAssertTrue(composer.check(measured("Wire nuts", .pack), level: level(3)).hasPrefix("3 packs of Wire nuts"))
+        XCTAssertEqual(VanStockCountCheck(before: level(18), counted: .whole(16))?.said(.each), ", 2 short of the 18 expected")
+        let low = composer.low([(item: measured("Wire nuts", .pack, minimum: .whole(2)), level: level(1))])
+        XCTAssertEqual(low, "1 line is low: Wire nuts — 1 left, minimum 2.")
+    }
+
+    func testTheCountCheckSaysTheShortfallInWords() {
+        XCTAssertEqual(VanStockCountCheck(before: level(scaled: 4500), counted: StockQuantity(scaled: 4250))?.said(.l),
+                       ", 0.25 litres short of the 4.5 litres expected")
+        let answer = composer.counted(measured("Engine oil", .l), before: level(scaled: 4500), after: level(scaled: 4250), created: false)
+        XCTAssertEqual(answer, "Counted: 4.25 litres of Engine oil on the van. The log expected 4.5 litres, so that is "
+            + "0.25 litres short.")
+        assertSpokenPlainly(answer)
+    }
+
+    func testAMeasuredLinesBareFiguresCarryTheirUnit() {
+        let oil = measured("Engine oil", .l, minimum: .whole(2))
+        let used = composer.used(oil, quantity: StockQuantity(scaled: 2750), before: level(scaled: 4250),
+                                 after: level(scaled: 1500), jobReference: nil)
+        XCTAssertEqual(used, "Used 2.75 litres of Engine oil. 1.5 litres left, at or below the minimum of 2 litres. "
+            + "Offer to ask the office for a replacement, and request one only if the technician says yes.")
+        let low = composer.low([(item: oil, level: level(scaled: 1500, onOrder: .whole(5)))])
+        XCTAssertEqual(low, "1 line is low: Engine oil — 1.5 litres left, minimum 2 litres (5 litres asked for).")
+        assertSpokenPlainly(used + low)
     }
 
     // MARK: Lists and misses

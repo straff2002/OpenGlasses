@@ -186,9 +186,11 @@ final class VanStockSheetTests: XCTestCase {
         sheets = editing(sheets, line: "Thermostat cable", .unit, to: "reel")
         let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
         XCTAssertEqual(proposal.refusals.map(\.row), [2, 3, 5])
-        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAWholeNumber(column: "On hand", value: "-1"),
-                                                         .notAWholeNumber(column: "On hand", value: "2.5"),
+        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAQuantity(column: "On hand", value: "-1", unit: .each),
+                                                         .notAQuantity(column: "On hand", value: "2.5", unit: .each),
                                                          .unknownUnit("reel")])
+        XCTAssertEqual(proposal.refusals.map(\.quantityRefusal), [.negative, .notWhole, nil])
+        XCTAssertEqual(proposal.refusals.map(\.name), ["Flame sensor", "Fuse", "Thermostat cable"])
         XCTAssertEqual(proposal.counts.map(\.itemID), ["igniter"], "the refused lines change nothing")
     }
 
@@ -390,5 +392,143 @@ final class VanStockSheetTests: XCTestCase {
         ]
         let read = try VanStockSheet.rows(from: foreign).get()
         XCTAssertEqual(read.rows.map(\.description), ["Soda water"])
+    }
+
+    // MARK: Measured quantities (Plan ML P2)
+
+    /// Engine oil at 4.25 litres against a standard of 5 with a minimum of 2.5, and wire nuts in packs.
+    private var measured: VanStockLog {
+        var log = VanStockLog()
+        log.addItem(id: "oil", number: "OIL-5W30", description: "Engine oil", unit: .l, minimum: StockQuantity(scaled: 2500),
+                    standard: .whole(5), standardSetBy: .van, batch: "b0")
+        log.addItem(id: "nuts", description: "Wire nuts", unit: .pack, batch: "b0")
+        log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: 4250), at: time(0), batch: "b0", source: .typed)
+        log.record(.ordered, itemID: "oil", quantity: StockQuantity(scaled: 500), at: time(1), batch: "b1", source: .spoken)
+        log.record(.counted, itemID: "nuts", quantity: .whole(4), at: time(0), batch: "b0", source: .typed)
+        return log
+    }
+
+    func testAnExportWritesDecimalNumberCells() throws {
+        let data = VanStockSheet.data(measured, exportedAt: time(10), calendar: calendar)
+        // The parts are stored, not compressed, so the sheet's XML is in the bytes as written.
+        let xml = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(xml.contains("<v>4.25</v>"), "on hand")
+        XCTAssertTrue(xml.contains("<v>0.75</v>"), "to top up")
+        XCTAssertTrue(xml.contains("<v>2.5</v>"), "minimum")
+        XCTAssertTrue(xml.contains("<v>0.5</v>"), "on order")
+        XCTAssertTrue(xml.contains("<v>4</v>"), "a whole figure is written as it always was")
+        XCTAssertFalse(xml.contains("<v>4250</v>"), "never thousandths")
+        XCTAssertFalse(xml.contains(">4.25</t>"), "never as text")
+
+        let oil = try exported(measured, at: time(10))[0].rows.first { $0.count > 1 && $0[1] == "Engine oil" }
+        XCTAssertEqual(oil?[column(.onHand)], "4.25")
+        XCTAssertEqual(oil?[column(.toTopUp)], "0.75")
+    }
+
+    func testAnExportImportedStraightBackChangesNothing() throws {
+        let log = measured
+        let sheets = try exported(log, at: time(10))
+        let proposal = try VanStockSheet.proposal(from: sheets, log: log).get()
+        XCTAssertEqual(proposal.counts, [])
+        XCTAssertEqual(proposal.edits, [])
+        XCTAssertEqual(proposal.newLines, [])
+        XCTAssertEqual(proposal.refusals, [])
+        var applied = log
+        VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
+        XCTAssertEqual(applied, log)
+    }
+
+    func testDecimalsAreReadInTheRowsUnit() throws {
+        var sheets = try exported(measured, at: time(10))
+        sheets = editing(sheets, line: "Engine oil", .onHand, to: "3.125")
+        sheets = editing(sheets, line: "Wire nuts", .onHand, to: "2.5")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: measured).get()
+        XCTAssertEqual(proposal.counts.map(\.to), [StockQuantity(scaled: 3125)])
+        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAQuantity(column: "On hand", value: "2.5", unit: .pack)])
+        XCTAssertEqual(proposal.refusals.first?.name, "Wire nuts")
+        XCTAssertEqual(proposal.refusals.first?.quantityRefusal, .notWhole)
+    }
+
+    func testMoreThanThreeDecimalPlacesRefusesTheLine() throws {
+        let sheets = editing(try exported(measured, at: time(10)), line: "Engine oil", .onHand, to: "4.2513")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: measured).get()
+        XCTAssertEqual(proposal.refusals.map(\.reason), [.notAQuantity(column: "On hand", value: "4.2513", unit: .l)])
+        XCTAssertEqual(proposal.refusals.first?.quantityRefusal, .tooManyDecimals)
+        XCTAssertEqual(proposal.counts, [])
+    }
+
+    func testHowASpreadsheetStoresANumberIsRead() {
+        XCTAssertEqual(VanStockSheet.quantity("4.2499999999999991", unit: .l), .value(StockQuantity(scaled: 4250)),
+                       "a formula's binary noise is the nearest thousandth")
+        XCTAssertEqual(VanStockSheet.quantity("4.25E-1", unit: .l), .value(StockQuantity(scaled: 425)))
+        XCTAssertEqual(VanStockSheet.quantity("2.0000000000000004", unit: .each), .value(.whole(2)))
+        XCTAssertEqual(VanStockSheet.quantity("4", unit: .l), .value(.whole(4)), "an older workbook's 4 is 4 units")
+        XCTAssertEqual(VanStockSheet.quantity("4.250", unit: .l), .value(StockQuantity(scaled: 4250)))
+        XCTAssertEqual(VanStockSheet.quantity("12.0", unit: .each), .value(.whole(12)))
+        XCTAssertEqual(VanStockSheet.quantity("", unit: .l), .absent)
+        XCTAssertEqual(VanStockSheet.quantity("4.2513", unit: .l), .refused(.tooManyDecimals))
+        XCTAssertEqual(VanStockSheet.quantity("2.5", unit: .pack), .refused(.notWhole))
+        XCTAssertEqual(VanStockSheet.quantity("-1", unit: .l), .refused(.negative))
+        XCTAssertEqual(VanStockSheet.quantity("1e7", unit: .l), .refused(.tooLarge))
+        XCTAssertEqual(VanStockSheet.quantity("four", unit: .l), .refused(.notANumber))
+        XCTAssertEqual(VanStockSheet.quantity("0x10", unit: .each), .refused(.notANumber), "not a spreadsheet's spelling")
+        XCTAssertEqual(VanStockSheet.quantity("nan", unit: .l), .refused(.notANumber))
+        XCTAssertEqual(VanStockSheet.quantity("4,25", unit: .l), .refused(.notANumber), "storage always uses a point")
+    }
+
+    func testARowsUnitIsReadBeforeItsFiguresEvenWhenThePhoneCountsItWhole() throws {
+        // On the phone the oil is counted in each; the sheet moves it to litres with a decimal count.
+        var phone = VanStockLog()
+        phone.addItem(id: "oil", description: "Engine oil", batch: "b0")
+        phone.record(.counted, itemID: "oil", quantity: .whole(4), at: time(0), batch: "b0", source: .typed)
+        var sheets = try exported(phone, at: time(10))
+        sheets = editing(sheets, line: "Engine oil", .unit, to: "l")
+        sheets = editing(sheets, line: "Engine oil", .onHand, to: "4.25")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: phone).get()
+        XCTAssertEqual(proposal.refusals, [])
+        XCTAssertEqual(proposal.edits.first?.changes, [.unit(.l)])
+        XCTAssertEqual(proposal.counts.map(\.to), [StockQuantity(scaled: 4250)])
+        VanStockSheet.apply(proposal, to: &phone, at: time(20), batch: "import", verify: verify)
+        XCTAssertEqual(phone.item(id: "oil")?.unit, .l)
+        XCTAssertEqual(phone.level(of: "oil").onHand, StockQuantity(scaled: 4250))
+    }
+
+    func testARowMovingALineToEachWithWholeFiguresIsApplied() throws {
+        // The phone holds 4.25 l with a minimum of 2.5; the row says each, 4 on hand, a minimum of 2
+        // and a standard of 5. Applied in the row's own order, the unit change finds whole figures.
+        var sheets = try exported(measured, at: time(10))
+        sheets = editing(sheets, line: "Engine oil", .unit, to: "each")
+        sheets = editing(sheets, line: "Engine oil", .onHand, to: "4")
+        sheets = editing(sheets, line: "Engine oil", .minimum, to: "2")
+        let proposal = try VanStockSheet.proposal(from: sheets, log: measured).get()
+        XCTAssertEqual(proposal.refusals, [])
+        var applied = measured
+        VanStockSheet.apply(proposal, to: &applied, at: time(20), batch: "import", verify: verify)
+        XCTAssertEqual(applied.item(id: "oil")?.unit, .each)
+        XCTAssertEqual(applied.level(of: "oil").onHand, .whole(4))
+        XCTAssertEqual(applied.item(id: "oil")?.minimum, .whole(2))
+        XCTAssertEqual(applied.item(id: "oil")?.standard, .whole(5))
+
+        // One undo takes it all back, the unit included.
+        applied.undoLastBatch(at: time(21), batch: "undo", source: .typed)
+        XCTAssertEqual(applied.items, measured.items)
+        XCTAssertEqual(applied.levels, measured.levels)
+    }
+
+    func testARowWithNoUnitHoldsItsFiguresToTheLinesOwnUnit() throws {
+        let foreign = [XLSXReader.Sheet(name: "Stock", isHidden: false, rows: [
+            ["Description", "Qty"], ["Engine oil", "3.75"], ["Wire nuts", "2.5"], ["Grease", "0.5"],
+        ])]
+        let proposal = try VanStockSheet.proposal(from: foreign, log: measured).get()
+        XCTAssertEqual(proposal.counts.map(\.to), [StockQuantity(scaled: 3750)])
+        XCTAssertEqual(proposal.refusals.map(\.reason), [
+            .notAQuantity(column: "On hand", value: "2.5", unit: .pack),
+            .notAQuantity(column: "On hand", value: "0.5", unit: .each),
+        ], "a new line with no unit is counted in each")
+        XCTAssertEqual(proposal.newLines, [])
+
+        let takeover = try VanStockHandover.takeover(from: foreign, at: time(20), batch: "t").get()
+        XCTAssertEqual(takeover.log.items.map(\.description), [], "every row is each with no unit, and 3.75 each is not one")
+        XCTAssertEqual(takeover.refusals.count, 3)
     }
 }

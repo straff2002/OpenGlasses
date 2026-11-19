@@ -76,7 +76,7 @@ extension VanStockAnswerComposer {
     private func figure(_ item: VanStockItem, level: VanStockLevel, provenance perLine: Bool) -> String {
         var line: String
         if level.unreliable {
-            line = "\(item.name): unreliable, the count cannot be trusted; the log shows \(level.onHand.decimalString), "
+            line = "\(item.name): unreliable, the count cannot be trusted; the log shows \(item.figure(level.onHand)), "
                 + "so ask \(wording.person) to count it"
         } else if let asOf = level.asOf {
             line = level.onHand == .zero ? "\(item.name): none" : item.phrase(level.onHand)
@@ -84,7 +84,7 @@ extension VanStockAnswerComposer {
         } else {
             line = "\(item.name): nothing recorded yet, no count"
         }
-        if level.onOrder > .zero { line += "; \(level.onOrder.decimalString) asked for" }
+        if level.onOrder > .zero { line += "; \(item.figure(level.onOrder)) asked for" }
         return line
     }
 

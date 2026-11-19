@@ -160,6 +160,7 @@ struct VanStockView: View {
 /// One line in the list: what it is, how many, and what needs attention.
 private struct VanStockRowLabel: View {
     let row: VanStockRow
+    @Environment(\.locale) private var locale
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
@@ -173,7 +174,7 @@ private struct VanStockRowLabel: View {
                 marks
             }
             Spacer(minLength: 12)
-            if let quantity = row.quantity {
+            if let quantity = row.quantity(locale: locale) {
                 Text(quantity)
                     .font(.title3.monospacedDigit())
             } else {
@@ -205,7 +206,7 @@ private struct VanStockRowLabel: View {
                 .font(.caption)
         }
         if row.level.onOrder > .zero {
-            Label("\(row.level.onOrder.wholeUnits) asked for", systemImage: "shippingbox")
+            Label("\(VanStockRow.figure(row.level.onOrder, unit: row.item.unit, locale: locale)) asked for", systemImage: "shippingbox")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -224,7 +225,14 @@ struct VanStockItemView: View {
     let itemID: String
     var service: VanStockService = .shared
 
+    /// The count in whole units, for a line in `each` or `pack`.
     @State private var count = 0
+    /// The count as typed, for a line in a measured unit.
+    @State private var countText = ""
+    /// Why the typed count or minimum was not taken. Nothing is saved while one is shown.
+    @State private var countRefusal: StockQuantityRefusal?
+    @State private var minimumRefusal: StockQuantityRefusal?
+    @Environment(\.locale) private var locale
     @State private var description = ""
     @State private var number = ""
     @State private var bin = ""
@@ -240,7 +248,7 @@ struct VanStockItemView: View {
                 let level = store.log.level(of: itemID)
                 List {
                     levelSection(item, level)
-                    countSection(level)
+                    countSection(item, level)
                     detailsSection(item)
                     historySection
                 }
@@ -266,7 +274,7 @@ struct VanStockItemView: View {
             }
             if let asOf = level.asOf {
                 LabeledContent("On hand") {
-                    Text(item.unit == .each ? "\(level.onHand.wholeUnits)" : "\(level.onHand.wholeUnits) \(item.unit.rawValue)")
+                    Text(verbatim: VanStockRow.figure(level.onHand, unit: item.unit, locale: locale))
                 }
                 LabeledContent("How it's known") {
                     if level.handedOver {
@@ -285,20 +293,41 @@ struct VanStockItemView: View {
                     .foregroundStyle(.secondary)
             }
             if level.onOrder > .zero {
-                LabeledContent("Asked for, not yet loaded") { Text("\(level.onOrder.wholeUnits)") }
+                LabeledContent("Asked for, not yet loaded") {
+                    Text(verbatim: VanStockRow.figure(level.onOrder, unit: item.unit, locale: locale))
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func countSection(_ level: VanStockLevel) -> some View {
+    private func countSection(_ item: VanStockItem, _ level: VanStockLevel) -> some View {
         Section {
-            Stepper(value: $count, in: 0...9_999) {
-                LabeledContent("Count") { Text("\(count)").monospacedDigit() }
+            if item.unit.allowsFraction {
+                // A measured unit: typed to the thousandth, with a stepper that moves one whole unit.
+                HStack {
+                    TextField("Amount", text: $countText)
+                        .keyboardType(.decimalPad)
+                        .monospacedDigit()
+                        .onChange(of: countText) { _, _ in countRefusal = nil }
+                    Text(verbatim: item.unit.rawValue)
+                        .foregroundStyle(.secondary)
+                    Stepper("Count",
+                            onIncrement: { step(item, level, by: 1) },
+                            onDecrement: { step(item, level, by: -1) })
+                        .labelsHidden()
+                }
+                if let countRefusal {
+                    refusalText(countRefusal, unit: item.unit)
+                }
+            } else {
+                Stepper(value: $count, in: 0...9_999) {
+                    LabeledContent("Count") { Text("\(count)").monospacedDigit() }
+                }
             }
-            Button("Save count") { _ = service.setCount(itemID: itemID, to: StockQuantity(whole: count)) }
+            Button("Save count") { saveCount(item) }
                 .disabled(level.isRecorded && !level.unreliable && level.provenance == .counted
-                          && StockQuantity(whole: count) == level.onHand)
+                          && typedCount(item) == level.onHand)
         } header: {
             Text("Set the count")
         } footer: {
@@ -317,10 +346,14 @@ struct VanStockItemView: View {
                 ForEach(VanStockUnit.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             TextField("Minimum", text: $minimum)
-                .keyboardType(.numberPad)
+                .keyboardType(unit.allowsFraction ? .decimalPad : .numberPad)
+                .onChange(of: minimum) { _, _ in minimumRefusal = nil }
+            if let minimumRefusal {
+                refusalText(minimumRefusal, unit: unit)
+            }
             TextField("Where it lives", text: $bin)
             Button("Save details") { saveDetails() }
-                .disabled(changes(to: item).isEmpty)
+                .disabled(changes(to: item).isEmpty && minimumIsTaken)
         } header: {
             Text("Details")
         } footer: {
@@ -362,13 +395,14 @@ struct VanStockItemView: View {
     }
 
     private func kindText(_ movement: VanStockMovement) -> Text {
+        let figure = movement.quantity.formatted(locale: locale)
         switch movement.kind {
-        case .loaded: return Text("Loaded \(movement.quantity.wholeUnits)")
-        case .used: return Text("Used \(movement.quantity.wholeUnits)")
-        case .removed: return Text("Removed \(movement.quantity.wholeUnits)")
-        case .counted: return Text("Counted \(movement.quantity.wholeUnits)")
-        case .ordered: return Text("Asked for \(movement.quantity.wholeUnits)")
-        case .opening: return Text("Carried forward \(movement.quantity.wholeUnits)")
+        case .loaded: return Text("Loaded \(figure)")
+        case .used: return Text("Used \(figure)")
+        case .removed: return Text("Removed \(figure)")
+        case .counted: return Text("Counted \(figure)")
+        case .ordered: return Text("Asked for \(figure)")
+        case .opening: return Text("Carried forward \(figure)")
         case .edited, .reversed: return Text("Details changed")
         }
     }
@@ -376,12 +410,66 @@ struct VanStockItemView: View {
     // MARK: - Editing
 
     private func fill(from item: VanStockItem, _ level: VanStockLevel) {
-        count = level.onHand.wholeUnits
+        count = VanStockEntry.wholeCount(level.onHand) ?? 0
+        countText = level.isRecorded ? VanStockEntry.text(level.onHand, locale: locale) : ""
+        countRefusal = nil
         description = item.description
         number = item.number ?? ""
         bin = item.bin ?? ""
-        minimum = item.minimum.map(\.decimalString) ?? ""
+        minimum = item.minimum.map { VanStockEntry.text($0, locale: locale) } ?? ""
+        minimumRefusal = nil
         unit = item.unit
+    }
+
+    // MARK: - The count
+
+    /// The count the page holds, read in the line's unit. Nil while a typed figure is refused.
+    private func typedCount(_ item: VanStockItem) -> StockQuantity? {
+        guard item.unit.allowsFraction else { return StockQuantity(whole: count) }
+        return try? VanStockEntry.read(countText, unit: item.unit, locale: locale).get()
+    }
+
+    private func step(_ item: VanStockItem, _ level: VanStockLevel, by units: Int) {
+        countText = VanStockEntry.stepped(countText, by: units, unit: item.unit, locale: locale, fallback: level.onHand)
+    }
+
+    /// Records the count, or shows why the typed figure was not taken and records nothing.
+    private func saveCount(_ item: VanStockItem) {
+        guard item.unit.allowsFraction else {
+            _ = service.setCount(itemID: itemID, to: StockQuantity(whole: count))
+            return
+        }
+        switch VanStockEntry.read(countText, unit: item.unit, locale: locale) {
+        case .success(let quantity):
+            countRefusal = nil
+            if service.setCount(itemID: itemID, to: quantity) {
+                countText = VanStockEntry.text(quantity, locale: locale)
+            }
+        case .failure(let refusal):
+            countRefusal = refusal
+        }
+    }
+
+    /// A short line under a field that was not taken.
+    private func refusalText(_ refusal: StockQuantityRefusal, unit: VanStockUnit) -> some View {
+        Text(Self.message(refusal, unit: unit))
+            .font(.caption)
+            .foregroundStyle(.red)
+    }
+
+    /// Why a typed figure was not taken, in a few words.
+    static func message(_ refusal: StockQuantityRefusal, unit: VanStockUnit) -> LocalizedStringKey {
+        switch refusal {
+        case .notANumber: return "Not a number."
+        case .negative: return "Can't be below zero."
+        case .tooLarge: return "No more than a million."
+        case .tooManyDecimals, .notWhole:
+            switch unit {
+            case .pack: return "Packs are counted whole."
+            case .each: return "Whole numbers only."
+            case .m, .ft, .kg, .lb, .l: return "Up to 3 decimal places."
+            }
+        }
     }
 
     /// What the fields would change, in the order they are applied.
@@ -392,17 +480,30 @@ struct VanStockItemView: View {
         let newNumber = VaultPartsIndex.normalise(number)
         if newNumber != (item.number ?? "") { changes.append(.number(newNumber.isEmpty ? nil : newNumber)) }
         if unit != item.unit { changes.append(.unit(unit)) }
-        // Whole units on this screen, within what a line can hold.
-        let newMinimum = Int(minimum.trimmingCharacters(in: .whitespaces))
-            .map { StockQuantity(whole: min(max($0, 0), StockQuantity.maximumUnits)) }
-        if newMinimum != item.minimum { changes.append(.minimum(newMinimum)) }
+        // Read in the unit chosen above, which is applied first; a figure it cannot hold is no change.
+        if case .success(let newMinimum) = VanStockEntry.minimum(minimum, unit: unit, locale: locale),
+           newMinimum != item.minimum {
+            changes.append(.minimum(newMinimum))
+        }
         let newBin = bin.trimmingCharacters(in: .whitespacesAndNewlines)
         if newBin != (item.bin ?? "") { changes.append(.bin(newBin.isEmpty ? nil : newBin)) }
         return changes
     }
 
+    /// Whether the typed minimum can be kept in the chosen unit. One that cannot still lets Save
+    /// details be tapped, so it can say why.
+    private var minimumIsTaken: Bool {
+        if case .success = VanStockEntry.minimum(minimum, unit: unit, locale: locale) { return true }
+        return false
+    }
+
     private func saveDetails() {
         guard let item else { return }
+        // A minimum that is not taken changes nothing at all, not just the minimum.
+        if case .failure(let refusal) = VanStockEntry.minimum(minimum, unit: unit, locale: locale) {
+            minimumRefusal = refusal
+            return
+        }
         _ = service.edit(itemID: itemID, changes(to: item))
         if let saved = self.item { fill(from: saved, store.log.level(of: itemID)) }
     }

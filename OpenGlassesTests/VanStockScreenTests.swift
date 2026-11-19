@@ -137,6 +137,64 @@ final class VanStockScreenTests: XCTestCase {
         XCTAssertEqual(store.log.item(id: "cable")?.unit, .m)
     }
 
+    // MARK: Plan ML P2 — a measured figure typed on the line's page
+
+    private let german = Locale(identifier: "de_DE")
+    private let english = Locale(identifier: "en_NZ")
+
+    func testATypedMeasuredFigureIsReadInThePhonesLocaleExactly() {
+        XCTAssertEqual(try VanStockEntry.read("4,25", unit: .l, locale: german).get(), StockQuantity(scaled: 4250))
+        XCTAssertEqual(try VanStockEntry.read("4.25", unit: .l, locale: german).get(), StockQuantity(scaled: 4250))
+        XCTAssertEqual(try VanStockEntry.read("4.25", unit: .l, locale: english).get(), StockQuantity(scaled: 4250))
+        XCTAssertEqual(VanStockEntry.read("4,2513", unit: .l, locale: german), .failure(.tooManyDecimals))
+        XCTAssertEqual(VanStockEntry.read("2,5", unit: .pack, locale: german), .failure(.notWhole))
+        XCTAssertEqual(VanStockEntry.read("1,000", unit: .m, locale: english), .failure(.notANumber), "grouping is refused, not guessed")
+        XCTAssertEqual(VanStockEntry.read("", unit: .l, locale: english), .failure(.notANumber))
+        XCTAssertEqual(try VanStockEntry.minimum(" ", unit: .l, locale: english).get(), nil, "an empty minimum is none")
+        XCTAssertEqual(try VanStockEntry.minimum("0,5", unit: .kg, locale: german).get(), StockQuantity(scaled: 500))
+        XCTAssertEqual(VanStockEntry.minimum("2.5", unit: .each, locale: english), .failure(.notWhole))
+    }
+
+    func testAFieldShowsTheFigureSoItReadsBackTheSame() {
+        XCTAssertEqual(VanStockEntry.text(StockQuantity(scaled: 4250), locale: german), "4,25")
+        XCTAssertEqual(VanStockEntry.text(StockQuantity(scaled: 1_000_500), locale: english), "1000.5", "no grouping")
+        XCTAssertEqual(VanStockEntry.text(.whole(4), locale: german), "4")
+        for scaled in [1, 4250, 1_000_500, 999_999_999] {
+            let quantity = StockQuantity(scaled: scaled)
+            XCTAssertEqual(try VanStockEntry.read(VanStockEntry.text(quantity, locale: german), unit: .l, locale: german).get(), quantity)
+        }
+    }
+
+    func testTheStepperMovesOneWholeUnitAndStopsAtZero() {
+        XCTAssertEqual(VanStockEntry.stepped("4,25", by: 1, unit: .l, locale: german, fallback: .zero), "5,25")
+        XCTAssertEqual(VanStockEntry.stepped("4,25", by: -1, unit: .l, locale: german, fallback: .zero), "3,25")
+        XCTAssertEqual(VanStockEntry.stepped("0.5", by: -1, unit: .l, locale: english, fallback: .zero), "0")
+        XCTAssertEqual(VanStockEntry.stepped("oops", by: 1, unit: .l, locale: english, fallback: StockQuantity(scaled: 2500)), "3.5",
+                       "a field that holds no figure steps from the line's own")
+        XCTAssertEqual(VanStockEntry.wholeCount(.whole(7)), 7)
+        XCTAssertNil(VanStockEntry.wholeCount(StockQuantity(scaled: 4250)), "never cut for a stepper")
+    }
+
+    func testTheListShowsTheLocalesFormAndTheUnitsSymbol() {
+        store.update { log in
+            log.addItem(id: "oil", description: "Engine oil", unit: .l, batch: "b0")
+            log.record(.counted, itemID: "oil", quantity: StockQuantity(scaled: 4250), at: self.clock, batch: "b0", source: .typed)
+        }
+        let row = VanStockRows.rows(store.log).first
+        XCTAssertEqual(row?.quantity(locale: german), "4,25 l")
+        XCTAssertEqual(row?.quantity(locale: english), "4.25 l")
+        XCTAssertEqual(VanStockRow.figure(.whole(3), unit: .each, locale: german), "3")
+        XCTAssertEqual(VanStockRow.figure(.whole(3), unit: .pack, locale: german), "3 pack")
+    }
+
+    func testATypedDecimalCountIsRecordedExactly() {
+        store.update { log in log.addItem(id: "oil", description: "Engine oil", unit: .l, batch: "b0") }
+        let typed = try? VanStockEntry.read("4,25", unit: .l, locale: german).get()
+        XCTAssertTrue(service.setCount(itemID: "oil", to: typed ?? .zero))
+        XCTAssertEqual(store.log.level(of: "oil").onHand, StockQuantity(scaled: 4250))
+        XCTAssertEqual(store.log.level(of: "oil").provenance, .counted)
+    }
+
     func testANewNumberIsLookedUpAgain() {
         verified = ["22B22"]
         let id = loadIgniter()

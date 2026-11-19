@@ -312,4 +312,16 @@ extension VanStockUnit {
         case .m, .ft, .kg, .lb, .l, .pack: return "\(spoken(quantity)) of \(name)"
         }
     }
+
+    /// A figure in a sentence that does not otherwise name the unit ("3 left", "minimum 2"), for
+    /// the model. Each and pack stay the bare number they have always been; a measured unit
+    /// carries its word, so "4.25 left" never reaches the model without saying litres: "4.25
+    /// litres left".
+    func figure(_ quantity: StockQuantity) -> String {
+        allowsFraction ? spoken(quantity) : quantity.decimalString
+    }
+
+    /// The unit in a sentence about the unit itself ("counted in metres, not feet"), for the
+    /// model. Each and pack keep the names the tool's schema uses.
+    var unitName: String { allowsFraction ? pluralWord : rawValue }
 }

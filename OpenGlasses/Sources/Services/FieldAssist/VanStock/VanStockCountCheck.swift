@@ -24,25 +24,14 @@ enum VanStockCountCheck: Equatable, Sendable {
         }
     }
 
-    /// The tail of the "Say:" line: ", 2 short of the 18 expected".
+    /// The tail of the "Say:" line: ", 2 short of the 18 expected", ", 0.25 litres short of the 4.5
+    /// litres expected".
     func said(_ unit: VanStockUnit) -> String {
         switch self {
         case .matches: return ", as expected"
-        case .short(let expected, let by): return ", \(unit.amount(by)) short of the \(unit.amount(expected)) expected"
-        case .over(let expected, let by): return ", \(unit.amount(by)) over the \(unit.amount(expected)) expected"
+        case .short(let expected, let by): return ", \(unit.spoken(by)) short of the \(unit.spoken(expected)) expected"
+        case .over(let expected, let by): return ", \(unit.spoken(by)) over the \(unit.spoken(expected)) expected"
         case .unreliable: return ", replacing a figure that could not be trusted"
-        }
-    }
-}
-
-extension VanStockUnit {
-    /// A bare quantity in this unit, for comparisons: "2", "10 m", "1 pack".
-    func amount(_ quantity: StockQuantity) -> String {
-        let number = quantity.decimalString
-        switch self {
-        case .each: return number
-        case .pack: return "\(number) \(quantity == StockQuantity(whole: 1) ? "pack" : "packs")"
-        case .m, .ft, .kg, .lb, .l: return "\(number) \(rawValue)"
         }
     }
 }
