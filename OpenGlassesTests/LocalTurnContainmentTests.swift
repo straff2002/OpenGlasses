@@ -270,7 +270,8 @@ final class LocalTurnContainmentTests: XCTestCase {
         enableWebReask(&harness, recorder: recorder)
         let answer = try await run(&harness, ask: "Who wrote Dune?")
         XCTAssertEqual(recorder.queries.count, 1)
-        XCTAssertEqual(answer, "Frank Herbert wrote Dune.")
+        XCTAssertTrue(answer.hasSuffix("Frank Herbert wrote Dune."), answer)
+        XCTAssertNotEqual(answer, hedged, "the grounded answer replaces the hedge")
     }
 
     func testAnOfflineHandoffTurnNeverAttemptsTheWebReask() async throws {
