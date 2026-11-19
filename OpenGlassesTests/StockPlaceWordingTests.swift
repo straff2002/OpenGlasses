@@ -126,4 +126,26 @@ final class StockPlaceWordingTests: XCTestCase {
             XCTAssertEqual(StockPlace(kind: kind, name: "Somewhere").wording, wording)
         }
     }
+
+    // MARK: The sentence words (Plan MK P1)
+
+    func testTheSentenceWordsKeepToTheirFamily() {
+        for kind in StockPlace.Kind.allCases {
+            let wording = StockPlaceWording(kind)
+            XCTAssertFalse(wording.sentencePhrases.contains { $0.isEmpty }, "\(kind)")
+            for phrase in wording.sentencePhrases + [wording.toolLead, wording.goods] {
+                XCTAssertEqual(StockPlaceWordCheck.violations(phrase, kind: kind), [], "\(kind): \"\(phrase)\"")
+            }
+            XCTAssertEqual(wording.list, "the " + wording.listNoun)
+            XCTAssertEqual(wording.extrasQuestion("1 × Fuse") == nil, kind.family == .premises,
+                           "only a vehicle is asked about the day's extras")
+        }
+        let van = StockPlaceWording(.van)
+        XCTAssertEqual([van.stockName, van.log, van.person, van.aboard, van.this, van.comeFrom, van.cameFrom,
+                        van.notFrom, van.shouldHold, van.putNoun, van.screen],
+                       ["van stock", "the van log", "the technician", "on board", "this van", "come off the van",
+                        "came off the van", "not from the van", "the van should carry", "load", "the Van stock screen"])
+        XCTAssertEqual(StockPlaceWording(.stock).screen, "the Stock screen")
+        XCTAssertEqual(StockPlaceWording.capitalised("the stock list"), "The stock list")
+    }
 }

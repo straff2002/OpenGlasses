@@ -251,7 +251,7 @@ enum ActivityTitler {
             "remove": "Took a part off your van stock", "undo": "Undid a van stock change",
             "top_up": "Topped up your van stock", "set_standard": "Set a standard van stock level",
             "send_to_base": "Sent your van stock to the office",
-        ], reads: ["check", "low", "count", "unrecorded"]),
+        ], reads: ["check", "list", "low", "count", "unrecorded"]),
         "task": .init("Updated a job task", actions: [
             "add": "Added a task to the job", "accept": "Accepted a job task",
             "decline": "Declined a job task", "defer": "Put off a job task",

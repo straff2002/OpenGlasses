@@ -8,10 +8,16 @@ import Foundation
 /// makes one.
 ///
 /// Pure, with the clock and the calendar handed in, so the same log always reads the same way.
+/// Every word about the place comes from `wording` (Plan MK §3), so a store hears "in the store"
+/// and a van hears what it always has.
 struct VanStockAnswerComposer {
 
     var now: Date
     var calendar: Calendar = .current
+    var wording = StockPlaceWording(.default)
+
+    private var w: StockPlaceWording { wording }
+    private func cap(_ phrase: String) -> String { StockPlaceWording.capitalised(phrase) }
 
     // MARK: - Reading
 
@@ -19,29 +25,38 @@ struct VanStockAnswerComposer {
         var lines: [String] = []
         if level.unreliable {
             lines.append("The count for \(item.name) cannot be trusted: a use was recorded when the log "
-                + "showed none. The log shows \(item.phrase(level.onHand)). Ask the technician to count them.")
+                + "showed none. The log shows \(item.phrase(level.onHand)). Ask \(w.person) to count them.")
         } else if let asOf = level.asOf {
-            let figure = level.onHand == 0 ? "No \(item.name) on the van" : "\(item.phrase(level.onHand)) on the van"
+            let figure = level.onHand == 0 ? "No \(item.name) \(w.location)" : "\(item.phrase(level.onHand)) \(w.location)"
             lines.append("\(figure) — \(provenance(level, asOf: asOf)).")
         } else {
-            lines.append("\(item.name) is on the van list with nothing recorded against it — no count yet.")
+            lines.append("\(item.name) is on \(w.list) with nothing recorded against it — no count yet.")
         }
         if let ordered = ordered(level) { lines.append(ordered) }
         if !level.unreliable, level.onHand > 0, let minimum = item.minimum, level.onHand <= minimum {
             lines.append("That is at or below the minimum of \(minimum).")
         }
-        if item.number != nil, !item.verified {
-            lines.append("The part number is not verified against the manuals.")
+        if item.number != nil, let notFound = notFound(item.verification) {
+            lines.append(notFound)
         }
         return lines.joined(separator: " ")
     }
 
+    /// The sentence for a number its book did not hold (Plan MK §4), naming the book. Nil for a
+    /// number that was found, and for one nothing was searched for: a store that has named no
+    /// book never hears about one.
+    private func notFound(_ verification: VanStockVerification) -> String? {
+        guard verification.state == .notFound else { return nil }
+        guard let vault = verification.vault else { return "The part number was not found where it was looked up." }
+        return "The part number is not found in \(vault)."
+    }
+
     func candidates(_ items: [VanStockItem], levels: [String: VanStockLevel]) -> String {
         let listed = items.enumerated().map { offset, item in
-            "\(offset + 1). \(item.name) — \(levels[item.id]?.onHand ?? 0) on the van"
+            "\(offset + 1). \(item.name) — \(levels[item.id]?.onHand ?? 0) \(w.location)"
         }
-        return "More than one line on the van fits: " + listed.joined(separator: "; ")
-            + ". Ask the technician which one; do not choose for them. Nothing was changed."
+        return "More than one line \(w.location) fits: " + listed.joined(separator: "; ")
+            + ". Ask \(w.person) which one; do not choose for them. Nothing was changed."
     }
 
     /// A check that matched nothing word for word but found a line that sounds like it. The
@@ -52,15 +67,15 @@ struct VanStockAnswerComposer {
         let figures = items.map { check($0, level: levels[$0.id] ?? VanStockLevel(itemID: $0.id)) }
         let ask: String
         if figures.count == 1 {
-            ask = "The closest on the van: " + figures[0] + " It may have been misheard: ask the technician "
+            ask = "The closest \(w.location): " + figures[0] + " It may have been misheard: ask \(w.person) "
                 + "whether that is the part; if it is, give them this figure."
         } else {
             let listed = figures.enumerated().map { "\($0.offset + 1). \($0.element)" }
-            ask = "The closest on the van: " + listed.joined(separator: " ") + " It may have been misheard: ask "
-                + "the technician which, if any, is the part; give them that line's figure, and do not choose for them."
+            ask = "The closest \(w.location): " + listed.joined(separator: " ") + " It may have been misheard: ask "
+                + "\(w.person) which, if any, is the part; give them that line's figure, and do not choose for them."
         }
-        return "No line on the van list matches '\(reference)' word for word. " + ask
-            + " Do not say there is none on the van unless they say it is none of these. Nothing was changed."
+        return "No line on \(w.list) matches '\(reference)' word for word. " + ask
+            + " Do not say there is none \(w.location) unless they say it is none of these. Nothing was changed."
     }
 
     /// A write that matched nothing word for word but sounds like a line already on the van:
@@ -69,39 +84,39 @@ struct VanStockAnswerComposer {
     func misheard(_ items: [VanStockItem], reference: String, levels: [String: VanStockLevel],
                   mayCreate: Bool) -> String {
         let listed = items.enumerated().map { offset, item in
-            "\(items.count == 1 ? "" : "\(offset + 1). ")\(item.name) — \(levels[item.id]?.onHand ?? 0) on the van"
+            "\(items.count == 1 ? "" : "\(offset + 1). ")\(item.name) — \(levels[item.id]?.onHand ?? 0) \(w.location)"
         }
-        var answer = "Nothing on the van list matches '\(reference)' word for word, but a word may have been "
-            + "misheard. Did they mean " + listed.joined(separator: "; ") + "? Ask the technician; do not choose for them."
+        var answer = "Nothing on \(w.list) matches '\(reference)' word for word, but a word may have been "
+            + "misheard. Did they mean " + listed.joined(separator: "; ") + "? Ask \(w.person); do not choose for them."
         if mayCreate {
-            answer += " If it is a different part, record it again with 'new_line' true and it goes on the van list as a new line."
+            answer += " If it is a different part, record it again with 'new_line' true and it goes on \(w.list) as a new line."
         }
         return answer + " Nothing was changed."
     }
 
     func notOnVan(_ reference: String) -> String {
-        "Nothing on the van list matches \(reference). Nothing was changed."
+        "Nothing on \(w.list) matches \(reference). Nothing was changed."
     }
 
     /// A check that found nothing. It ends the search: a tester's "do I have a flame sensor in my
     /// truck" was looked up five times under five names, used the turn's every tool round and
     /// failed without an answer. The list was searched by number and by name both.
     func notCarried(_ reference: String) -> String {
-        "Nothing on the van list matches \(reference), by part number or by name: as far as the van "
-            + "log knows, there is none on the van. Say so — do not look it up again under another "
-            + "name unless the technician gives one. "
-            + "Offer to ask the office for one, and request it only if the technician says yes. "
+        "Nothing on \(w.list) matches \(reference), by part number or by name: as far as \(w.log) "
+            + "knows, there is none \(w.location). Say so — do not look it up again under another "
+            + "name unless \(w.person) gives one. "
+            + "Offer to ask the office for one, and request it only if \(w.person) says yes. "
             + "Nothing was changed."
     }
 
     func emptyVan() -> String {
-        "The van list is empty: nothing has been loaded or counted yet. The technician can say what "
-            + "they have loaded, count what is on the shelves, or import a spreadsheet from the Van stock "
-            + "screen, to start it. Do not guess what is on the van."
+        "\(cap(w.list)) is empty: nothing has been \(w.putVerb) or counted yet. \(cap(w.person)) can say what "
+            + "they have \(w.putVerb), count what is on the shelves, or import a spreadsheet from \(w.screen), "
+            + "to start it. Do not guess what is \(w.location)."
     }
 
     func low(_ entries: [(item: VanStockItem, level: VanStockLevel)]) -> String {
-        guard !entries.isEmpty else { return "Nothing on the van is at or below its minimum." }
+        guard !entries.isEmpty else { return "Nothing \(w.location) is at or below its minimum." }
         let listed = entries.map { entry -> String in
             var line = entry.level.onHand == 0 ? "\(entry.item.name) — none left"
                                                : "\(entry.item.name) — \(entry.level.onHand) left"
@@ -117,7 +132,7 @@ struct VanStockAnswerComposer {
 
     func loaded(_ item: VanStockItem, quantity: Int, before: VanStockLevel, after: VanStockLevel,
                 created: Bool) -> String {
-        var lines = ["Loaded \(item.phrase(quantity)). \(item.phrase(after.onHand)) on the van now."]
+        var lines = ["\(cap(w.putVerb)) \(item.phrase(quantity)). \(item.phrase(after.onHand)) \(w.location) now."]
         if created { lines.append(contentsOf: newLine(item)) }
         let covered = before.onOrder - after.onOrder
         if covered > 0 {
@@ -134,7 +149,7 @@ struct VanStockAnswerComposer {
     func used(_ item: VanStockItem, quantity: Int, before: VanStockLevel, after: VanStockLevel,
               jobReference: String?) -> String {
         let job = jobReference.map { " on job \($0)" } ?? ""
-        var lines = ["Used \(item.phrase(quantity))\(job)."]
+        var lines = ["\(cap(w.takenVerb)) \(item.phrase(quantity))\(job)."]
         lines.append(contentsOf: remaining(item, before: before, after: after, offer: true))
         return lines.joined(separator: " ")
     }
@@ -150,7 +165,7 @@ struct VanStockAnswerComposer {
     /// "I counted 16, check that against stock" is answered "2 short" by the tool rather than by
     /// the model doing sums across two results.
     func counted(_ item: VanStockItem, before: VanStockLevel, after: VanStockLevel, created: Bool) -> String {
-        var lines = ["Counted: \(item.phrase(after.onHand)) on the van."]
+        var lines = ["Counted: \(item.phrase(after.onHand)) \(w.location)."]
         switch VanStockCountCheck(before: before, counted: after.onHand) {
         case nil: break
         case .matches(let expected):
@@ -173,7 +188,7 @@ struct VanStockAnswerComposer {
             let item = names[movement.itemID]
             let name = item?.name ?? "a line"
             switch movement.kind {
-            case .loaded: return "the load of \(item?.phrase(movement.quantity) ?? name)"
+            case .loaded: return "the \(w.putNoun) of \(item?.phrase(movement.quantity) ?? name)"
             case .used: return "the use of \(item?.phrase(movement.quantity) ?? name)"
             case .removed: return "the removal of \(item?.phrase(movement.quantity) ?? name)"
             case .counted: return "the count of \(name)"
@@ -183,26 +198,34 @@ struct VanStockAnswerComposer {
         }
         var lines = ["Undone: " + taken.joined(separator: "; ") + "."]
         if !undone.removedItems.isEmpty {
-            lines.append("Taken off the van list again: "
+            lines.append("Taken off \(w.list) again: "
                 + undone.removedItems.map(\.name).joined(separator: "; ") + ".")
         }
         return lines.joined(separator: " ")
     }
 
     func nothingToUndo() -> String {
-        "There is nothing to undo: the last van stock entry has already been taken back, or there is none."
+        "There is nothing to undo: the last \(w.stockName) entry has already been taken back, or there is none."
     }
 
     // MARK: - Pieces
 
-    /// A line the van has not carried before. A number nothing knows is read back a character at a
-    /// time, because this is the one place a misheard digit becomes a wrong line of stock.
+    /// A line the list has not held before. A number nothing knows is read back a character at a
+    /// time, because this is the one place a misheard digit becomes a wrong line of stock: as
+    /// costly for a stock code as for a part number, so every place hears it. The reason given is
+    /// the one the lookup supports (Plan MK §4): a number nothing was searched for has only not
+    /// been on the list; one its book did not hold is said to be missing from that book.
     private func newLine(_ item: VanStockItem) -> [String] {
-        var lines = ["That is a new line on the van list."]
-        if let number = item.number, !item.verified {
-            lines.append("Part number \(number) is not in the manuals and has not been on this van "
-                + "before. Read it back as: \(SpokenPartNumber.spoken(number)). "
-                + "The technician can say 'undo that' if it was misheard.")
+        var lines = ["That is a new line on \(w.list)."]
+        if let number = item.number, !item.verification.isFound {
+            let reason: String
+            if item.verification.state == .notFound {
+                reason = "is not in \(item.verification.vault ?? "the book it was looked up in") and has not been on this list"
+            } else {
+                reason = "has not been on this list before"
+            }
+            lines.append("Part number \(number) \(reason). Read it back as: \(SpokenPartNumber.spoken(number)). "
+                + "\(cap(w.person)) can say 'undo that' if it was misheard.")
         }
         return lines
     }
@@ -211,13 +234,13 @@ struct VanStockAnswerComposer {
                            offer: Bool) -> [String] {
         if after.unreliable, !before.unreliable {
             return ["The log showed \(before.onHand), so it cannot say how many are left. "
-                + "Ask the technician to count them when they can."]
+                + "Ask \(w.person) to count them when they can."]
         }
         if after.unreliable {
-            return ["The count for this line is unreliable; ask the technician to count them."]
+            return ["The count for this line is unreliable; ask \(w.person) to count them."]
         }
         if after.onHand == 0 {
-            return ["That was the last on the van."] + (offer ? [replacement(after)] : [])
+            return ["That was the last \(w.location)."] + (offer ? [replacement(after)] : [])
         }
         if let minimum = item.minimum, after.onHand <= minimum {
             return ["\(after.onHand) left, at or below the minimum of \(minimum)."]
@@ -229,20 +252,22 @@ struct VanStockAnswerComposer {
     /// The offer, and where it stops: nothing is requested unless the technician says so.
     private func replacement(_ level: VanStockLevel) -> String {
         if let ordered = ordered(level) { return ordered }
-        return "Offer to ask the office for a replacement, and request one only if the technician says yes."
+        return "Offer to ask the office for a replacement, and request one only if \(w.person) says yes."
     }
 
     private func ordered(_ level: VanStockLevel) -> String? {
         guard level.onOrder > 0 else { return nil }
         let since = level.oldestOrderAt.map { " \(age($0))" } ?? ""
-        return "\(level.onOrder) asked for\(since) and not yet loaded."
+        return "\(level.onOrder) asked for\(since) and not yet \(w.putVerb)."
     }
 
-    private func provenance(_ level: VanStockLevel, asOf: Date) -> String {
+    /// How a figure is known and as of when: "counted today at 10:40".
+    func provenance(_ level: VanStockLevel, asOf: Date) -> String {
         if level.handedOver { return "as handed over \(age(asOf))" }
         switch level.provenance {
         case .counted: return "counted \(age(asOf))"
-        case .inferred: return "worked out from what was loaded and used, not counted; last changed \(age(asOf))"
+        case .inferred:
+            return "worked out from what was \(w.putVerb) and \(w.takenVerb), not counted; last changed \(age(asOf))"
         }
     }
 

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The fields that describe one part, shared by a single-part call and each entry of `items`.
-private func vanStockLineProperties() -> [String: Any] {
+private func vanStockLineProperties(_ w: StockPlaceWording) -> [String: Any] {
     [
         "part": [
             "type": "string",
@@ -9,11 +9,11 @@ private func vanStockLineProperties() -> [String: Any] {
         ],
         "description": [
             "type": "string",
-            "description": "What the part is, in the technician's words: '45/5 capacitor'."
+            "description": "What the part is, in \(w.person)'s words: '45/5 capacitor'."
         ],
         "quantity": [
             "type": "integer",
-            "description": "How many, as a whole number; fractions are not kept yet. Defaults to 1 for load, use and remove; required for count."
+            "description": "How many, as a whole number; fractions are not kept yet. Defaults to 1 for 'load', 'use' and 'remove'; required for 'count'."
         ],
         "unit": [
             "type": "string",
@@ -26,70 +26,92 @@ private func vanStockLineProperties() -> [String: Any] {
         ],
         "new_line": [
             "type": "boolean",
-            "description": "For load or count: true when the technician says this is a different part from a similar line already on the van."
+            "description": "For 'load' or 'count': true when \(w.person) says this is a different part from a similar line already \(w.location)."
         ]
     ]
 }
 
-/// What is on the technician's own van or truck, kept by voice (Plan IH §3).
+/// What is on the technician's own van or truck, kept by voice (Plan IH §3), or in the store,
+/// the warehouse or stock the list is kept in (Plan MK).
 ///
 /// Loading happens at the shop with no job open, so unlike the other Field Assist tools this one
 /// needs Field Assist switched on and nothing else. Everything it does is on the phone: it works
 /// with no signal, and it never asks the office for anything — at zero it tells the model to offer
 /// a request, and the request is `parts_request`'s to make once the technician has said yes.
+///
+/// The description and the schema are worked out from the place in force each time they are read
+/// (Plan MK §3), so a place changed on the screen is in the next turn's tool definitions. The tool's
+/// name and its action values stay as they were: they are contract strings the model does not
+/// read for meaning.
 @MainActor
 final class VanStockTool: NativeTool {
     let name = "van_stock"
-    let description = """
-    The technician's own van or truck stock, kept on the phone. Use it whenever they ask what is \
-    on the van or truck, or say they loaded, used, returned or counted parts. Works without a job \
-    open and without signal. Pass 'action': 'check' (how many of one part; pass 'part' and/or \
-    'description'), 'low' (what has run out or is at its minimum), 'load' (parts put on the van), \
-    'use' (parts fitted from the van; tagged to the open job), 'remove' (parts taken off for \
-    another reason; pass 'reason'), 'count' (a stocktake: sets the figure and says how it compares with what the log expected), 'undo' (takes back \
-    the last spoken entry), 'unrecorded' (parts on this job's finished tasks with no stock entry), \
-    'not_from_van' (a part on this job that was ordered in or was the customer's; pass 'part'), \
-    'top_up' (what it takes to bring the van back to its standard load), 'set_standard' (how many \
-    of a part this truck should carry; pass 'quantity', 0 for none), or 'send_to_base' (stages the \
-    end-of-shift stock for the technician to send; it sends nothing itself). To record a top-up, \
-    call 'load' with 'to_standard' true, and 'items' naming any parts that could not be filled. \
-    For one part pass 'part' (the number exactly as printed), \
-    'description', 'quantity' and optionally 'unit'; for several parts in one sentence pass \
-    'items', each with the same fields. A scanned barcode goes in 'code'. Read the result back to \
-    the technician as given: it says how each figure is known, and it spells out a part number it \
-    has not met so a misheard one can be undone. Never state a quantity this tool did not return. \
-    When more than one line fits, ask which one. When the result offers a replacement, ask the \
-    technician before requesting one.
-    """
 
-    let parametersSchema: [String: Any] = {
-        var properties = vanStockLineProperties()
+    /// Every action, for every kind of place: the job-only ones follow an open job, not the place
+    /// (Plan MK §5).
+    static let actions = ["check", "list", "low", "load", "use", "remove", "count", "undo", "unrecorded",
+                          "not_from_van", "top_up", "set_standard", "send_to_base"]
+
+    var description: String { Self.description(for: service.place) }
+
+    var parametersSchema: [String: Any] { Self.parametersSchema(for: service.place) }
+
+    /// The description for a place, leading with it (Plan MK §3).
+    static func description(for kind: StockPlace.Kind) -> String {
+        let w = StockPlaceWording(kind)
+        return w.toolLead + " Works without a job open and without signal. Pass 'action': 'check' (how many of "
+            + "one part; pass 'part' and/or 'description'), 'list' (what is there, all of it or one bin; pass "
+            + "'bin'), 'low' (what has run out or is at its minimum), 'load' (\(w.goods) \(w.putThere)), "
+            + "'use' (\(w.useGloss); tagged to the open job), 'remove' (\(w.goods) taken off for another reason; "
+            + "pass 'reason'), 'count' (a stocktake: sets the figure and says how it compares with what the log "
+            + "expected), 'undo' (takes back the last spoken entry), 'unrecorded' (parts on this job's finished "
+            + "tasks with no stock entry), 'not_from_van' (a part on this job that was ordered in or was the "
+            + "customer's, so it did not \(w.comeFrom); pass 'part'), 'top_up' (what it takes to bring "
+            + "\(w.placeNoun) back to its \(w.usualFigure)), 'set_standard' (how many of a part \(w.setByList) "
+            + "should carry; pass 'quantity', 0 for none), or 'send_to_base' (\(w.handoverGloss); it sends "
+            + "nothing itself). The job actions work only while a job is open. To record a top-up, call 'load' "
+            + "with 'to_standard' true, and 'items' naming any parts that could not be filled. For one part "
+            + "pass 'part' (the number exactly as printed), 'description', 'quantity' and optionally 'unit'; for "
+            + "several parts in one sentence pass 'items', each with the same fields. A scanned barcode goes in "
+            + "'code'. Read the result back to \(w.person) as given: it says how each figure is known, and it "
+            + "spells out a part number it has not met so a misheard one can be undone. Never state a quantity "
+            + "this tool did not return. When more than one line fits, ask which one. When the result offers a "
+            + "replacement, ask \(w.person) before requesting one."
+    }
+
+    /// The schema for a place: the same actions and fields for every kind, described in its words.
+    static func parametersSchema(for kind: StockPlace.Kind) -> [String: Any] {
+        let w = StockPlaceWording(kind)
+        var properties = vanStockLineProperties(w)
         properties["action"] = [
             "type": "string",
-            "enum": ["check", "low", "load", "use", "remove", "count", "undo", "unrecorded", "not_from_van",
-                     "top_up", "set_standard", "send_to_base"],
+            "enum": actions,
             "description": "What to do."
         ]
         properties["items"] = [
             "type": "array",
             "description": "Several parts said in one sentence. Use instead of the single-part fields.",
-            "items": ["type": "object", "properties": vanStockLineProperties()] as [String: Any]
+            "items": ["type": "object", "properties": vanStockLineProperties(w)] as [String: Any]
+        ]
+        properties["bin"] = [
+            "type": "string",
+            "description": "For 'list': the bin to read, in the words said ('main fridge'). Every word must be in the bin's label. Omit for the whole list."
         ]
         properties["to_standard"] = [
             "type": "boolean",
-            "description": "For 'load': true when the technician says they topped everything up. Every short line is brought to its standard load, except the parts named in 'items'."
+            "description": "For 'load': true when \(w.person) says they topped everything up. Every short line is brought to its \(w.usualFigure), except the parts named in 'items'."
         ]
         properties["answered"] = [
             "type": "boolean",
-            "description": "For 'send_to_base': true once the technician has answered what the first call asked about."
+            "description": "For 'send_to_base': true once \(w.person) has answered what the first call asked about."
         ]
         properties["reason"] = [
             "type": "string",
             "enum": VanStockMovement.RemovalReason.allCases.map(\.rawValue),
-            "description": "For 'remove': why it came off the van."
+            "description": "For 'remove': why it \(w.cameFrom)."
         ]
         return ["type": "object", "properties": properties, "required": ["action"]]
-    }()
+    }
 
     /// The service to speak for; nil means the shared one. Injectable for tests.
     private let injectedService: VanStockService?
@@ -107,18 +129,23 @@ final class VanStockTool: NativeTool {
         guard Config.fieldAssistActive else {
             return "Field Assist is disabled. Enable it in Settings → Field Assist."
         }
+        let w = service.wording
         guard !Config.organizationForbidsVanStock else {
-            return "Your organisation has switched van stock off on this phone. Nothing was looked up or changed."
+            return "Your organisation has switched \(w.stockName) off on this phone. Nothing was looked up or changed."
         }
         let action = (args["action"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
         let lines = Self.lines(args)
 
-        if Self.quantityActions.contains(action), let refusal = Self.notWholeRefusal(args) { return refusal }
+        if Self.quantityActions.contains(action), let refusal = Self.notWholeRefusal(args, place: service.place) {
+            return refusal
+        }
 
         switch action {
         case "check":
             guard let line = lines.first else { return "Say which part to check, by number or description." }
             return service.check(line)
+        case "list":
+            return service.list(bin: Self.text(args["bin"]))
         case "low":
             return service.low()
         case "load":
@@ -136,26 +163,26 @@ final class VanStockTool: NativeTool {
         case "top_up":
             return service.topUp()
         case "set_standard":
-            guard let line = lines.first else { return "Say which part, and how many the van should carry." }
+            guard let line = lines.first else { return "Say which part, and how many \(w.shouldHold)." }
             return service.setStandard(line)
         case "send_to_base":
             // The handover carries descriptions that may have been dictated, so it is not staged
             // while the medical mode holds everything on the phone.
             guard !Config.hipaaMode else {
-                return "The stock is not sent to base while Medical Compliance mode is on. "
-                    + "The technician can export it themselves from the Van stock screen."
+                return "\(w.handoverNotSent) while Medical Compliance mode is on. "
+                    + "\(StockPlaceWording.capitalised(w.person)) can export it themselves from \(w.screen)."
             }
             if (args["answered"] as? Bool) != true, let questions = service.handoverQuestions() { return questions }
-            guard handover.stage() else { return "There is no readable van list to send." }
-            return "Staged on the phone for the technician to look at and send. Nothing has been sent. "
+            guard handover.stage() else { return "There is no readable \(w.listNoun) to send." }
+            return "Staged on the phone for \(w.person) to look at and send. Nothing has been sent. "
                 + "What it says: " + service.handoverMessage()
         case "unrecorded":
             return service.unrecorded()
         case "not_from_van":
-            guard let line = lines.first else { return "Say which part did not come off the van, by its part number." }
+            guard let line = lines.first else { return "Say which part did not \(w.comeFrom), by its part number." }
             return service.notFromVan(line)
         default:
-            return "Pass 'action': check, low, load, use, remove, count, undo, unrecorded, not_from_van, "
+            return "Pass 'action': check, list, low, load, use, remove, count, undo, unrecorded, not_from_van, "
                 + "top_up, set_standard or send_to_base."
         }
     }
@@ -170,7 +197,8 @@ final class VanStockTool: NativeTool {
 
     /// A sentence refusing the whole call when any of its quantities is not a whole number, so
     /// 4.25 litres is never recorded as 4 and a standard of 0.5 never clears the standard.
-    static func notWholeRefusal(_ args: [String: Any]) -> String? {
+    /// Worded for the place: "Van stock … Ask the technician", "Stock … Ask the person".
+    static func notWholeRefusal(_ args: [String: Any], place: StockPlace.Kind = .van) -> String? {
         let offending: [String] = entries(args).compactMap { entry in
             guard case .notWhole(let spelling) = PartsRequestTool.quantityArgument(entry["quantity"]),
                   let named = Self.line(entry) else { return nil }
@@ -181,8 +209,10 @@ final class VanStockTool: NativeTool {
             ? offending[0]
             : offending.dropLast().joined(separator: ", ") + " and " + offending[offending.count - 1]
         let verdict = offending.count == 1 ? "is not a whole number" : "are not whole numbers"
-        return "Nothing was changed. Van stock keeps whole numbers only for now, and \(list) \(verdict). "
-            + "Ask the technician for a whole number."
+        let w = StockPlaceWording(place)
+        let keeper = w.stockName.prefix(1).uppercased() + w.stockName.dropFirst()
+        return "Nothing was changed. \(keeper) keeps whole numbers only for now, and \(list) \(verdict). "
+            + "Ask \(w.person) for a whole number."
     }
 
     /// The lines of one call: `items` when it is given, otherwise the single-part fields.

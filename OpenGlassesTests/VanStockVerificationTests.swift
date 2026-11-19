@@ -143,4 +143,153 @@ final class VanStockVerificationTests: XCTestCase {
         log.undoLastBatch(at: start, batch: "u", source: .typed)
         XCTAssertEqual(log.item(id: "i1")?.verification, .notChecked)
     }
+
+    // MARK: The book a number is looked up in (Plan MK P1, §4)
+
+    private final class Books {
+        var job: VanStockBook?
+        var named: [String: VanStockBook] = [:]
+        var namedAsked: [String] = []
+        var searches: [String] = []
+
+        @MainActor
+        func book(_ name: String, holds numbers: Set<String>) -> VanStockBook {
+            VanStockBook(name: name, verify: { [unowned self] number in
+                self.searches.append(name)
+                let cleaned = VaultPartsIndex.normalise(number)
+                return TaskPart(number: cleaned, partDescription: numbers.contains(cleaned) ? "From \(name)" : nil,
+                                verified: numbers.contains(cleaned))
+            })
+        }
+
+        @MainActor
+        var seam: VanStockBooks {
+            VanStockBooks(job: { [unowned self] in self.job },
+                          named: { [unowned self] id in self.namedAsked.append(id); return self.named[id] })
+        }
+    }
+
+    @MainActor
+    private func service(_ store: VanStockStore, _ books: Books, clock: @escaping () -> Date = { Date(timeIntervalSince1970: 1_790_000_000) })
+        -> VanStockService {
+        var counter = 0
+        return VanStockService(store: store, books: books.seam, partsIndex: { VaultPartsIndex(files: []) },
+                               activeJob: { nil }, now: clock,
+                               makeID: { counter += 1; return "id-\(counter)" })
+    }
+
+    @MainActor
+    private func store() -> (VanStockStore, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("van-stock-verification-tests-\(UUID().uuidString)", isDirectory: true)
+        return (VanStockStore(directory: directory, now: start), directory)
+    }
+
+    @MainActor
+    func testTheBookOrderIsTheJobThenTheNamedVaultThenNone() {
+        let (store, directory) = store()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let books = Books()
+        books.named["catalogue"] = books.book("Supplier catalogue", holds: ["00123"])
+        books.job = books.book("Furnace manual", holds: [])
+        store.checkNumbers(against: "catalogue")
+        var clock = start
+        let service = service(store, books, clock: { clock })
+
+        // A job is open: its vault answers, and the named one is not asked.
+        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: 1)])
+        XCTAssertEqual(store.log.items.last?.verification, .notFound(in: "Furnace manual"))
+        XCTAssertEqual(books.namedAsked, [])
+
+        // No job: the list's named vault answers.
+        books.job = nil
+        clock.addTimeInterval(60)
+        _ = service.load([.init(part: "00456", description: "Igniter", quantity: 1)])
+        XCTAssertEqual(store.log.items.last?.verification, .notFound(in: "Supplier catalogue"))
+        clock.addTimeInterval(60)
+        _ = service.count([.init(part: "00123", quantity: 4)])
+        XCTAssertEqual(store.log.items.first?.verification, .found(in: "Supplier catalogue"),
+                       "a later look with a book upgrades a not-found line it holds")
+
+        // No job and no named vault: nothing is searched.
+        store.checkNumbers(against: nil)
+        let searched = books.searches.count
+        clock.addTimeInterval(60)
+        _ = service.load([.init(part: "00789", description: "Fuse", quantity: 1)])
+        XCTAssertEqual(books.searches.count, searched, "no book, no search")
+        XCTAssertEqual(store.log.items.last?.verification, .notChecked)
+    }
+
+    @MainActor
+    func testARemovedVaultIsNoBook() {
+        let (store, directory) = store()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let books = Books()
+        store.checkNumbers(against: "gone")   // named, then removed: the seam has no book for it
+        let service = service(store, books)
+        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: 1)])
+        XCTAssertEqual(books.namedAsked, ["gone"])
+        XCTAssertEqual(store.log.items.first?.verification, .notChecked)
+
+        // The phone's own seam: a vault that is not installed is no book.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("vs-books-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sessions = FieldSessionService(sessionsRoot: root)
+        XCTAssertNil(sessions.vanStockBook(forVault: "no-such-vault-\(UUID().uuidString)"))
+        XCTAssertNil(sessions.vanStockJobBook, "no job open, so no job book")
+    }
+
+    @MainActor
+    func testNoBookNeverRecordsNotFoundAndALaterBookUpgradesIt() {
+        let (store, directory) = store()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let books = Books()
+        var clock = start
+        let service = service(store, books, clock: { clock })
+        _ = service.load([.init(part: "00123", description: "Flame sensor", quantity: 1)])
+        XCTAssertEqual(store.log.items.first?.verification, .notChecked, "nothing was searched, so it is not not found")
+        XCTAssertFalse(VanStockRows.rows(store.log).first?.isNotFound ?? true, "and carries no mark")
+
+        books.named["catalogue"] = books.book("Supplier catalogue", holds: [])
+        store.checkNumbers(against: "catalogue")
+        clock.addTimeInterval(60)
+        _ = service.load([.init(part: "00123", quantity: 1)])
+        XCTAssertEqual(store.log.items.first?.verification, .notFound(in: "Supplier catalogue"),
+                       "a later look that has a book records what it said")
+
+        // A look that has no book never takes the answer back.
+        store.checkNumbers(against: nil)
+        clock.addTimeInterval(60)
+        _ = service.load([.init(part: "00123", quantity: 1)])
+        XCTAssertEqual(store.log.items.first?.verification, .notFound(in: "Supplier catalogue"))
+    }
+
+    @MainActor
+    func testTheSentenceTheReadBackAndTheMarkNameTheBook() {
+        let (store, directory) = store()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let books = Books()
+        books.named["catalogue"] = books.book("Supplier catalogue", holds: ["00123"])
+        store.checkNumbers(against: "catalogue")
+        store.setPlace(.store)
+        var clock = start
+        let service = service(store, books, clock: { clock })
+
+        let loaded = service.load([.init(part: "00456", description: "Gin", quantity: 2)])
+        XCTAssertTrue(loaded.contains("Part number 00456 is not in Supplier catalogue and has not been on this list."), loaded)
+        let check = service.check(.init(part: "00456"))
+        XCTAssertTrue(check.hasSuffix("The part number is not found in Supplier catalogue."), check)
+        let row = VanStockRows.rows(store.log).first
+        XCTAssertEqual(row?.isNotFound, true)
+        XCTAssertEqual(row?.notFoundLabel, "Not found in Supplier catalogue")
+
+        clock.addTimeInterval(60)
+        let found = service.load([.init(part: "00123", description: "Tonic", quantity: 2)])
+        XCTAssertFalse(found.contains("Read it back"), "a number its book holds is not spelled out")
+        XCTAssertFalse(service.check(.init(part: "00123")).contains("not found"))
+        XCTAssertNil(VanStockRows.rows(store.log).first { $0.item.number == "00123" }?.notFoundLabel)
+        for text in [loaded, check, found] {
+            XCTAssertFalse(text.contains("manuals"), text)
+        }
+    }
 }

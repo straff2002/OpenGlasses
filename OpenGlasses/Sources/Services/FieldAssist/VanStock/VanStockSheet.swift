@@ -105,15 +105,6 @@ enum VanStockSheet {
         return String(format: "%@ %04d-%02d-%02d.xlsx", title, parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
-    /// A file name this wrote, with its place's title changed to `kind`'s and the date kept:
-    /// "Van stock 2026-10-14.xlsx" becomes "Store stock 2026-10-14.xlsx". A name that does not
-    /// start with a place's title comes back as it was.
-    static func fileName(retitling name: String, to kind: StockPlace.Kind) -> String {
-        let titles = StockPlace.Kind.allCases.map { StockPlaceWording($0).title }.sorted { $0.count > $1.count }
-        guard let old = titles.first(where: { name.hasPrefix($0 + " ") }) else { return name }
-        return StockPlaceWording(kind).title + name.dropFirst(old.count)
-    }
-
     /// The workbook. With no kind given, the place in force for `van` (`kind(for:)`).
     static func data(_ log: VanStockLog, van: VanIdentity? = nil, exportedAt: Date,
                      calendar: Calendar = .current, kind: StockPlace.Kind? = nil) -> Data {

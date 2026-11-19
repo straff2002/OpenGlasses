@@ -333,18 +333,6 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(VanStockSheet.stockSheetNames.count, 5)
     }
 
-    func testAFileNameIsRetitledForThePlaceAndKeepsItsDate() {
-        XCTAssertEqual(VanStockSheet.fileName(retitling: "Van stock 2026-09-21.xlsx", to: .store),
-                       "Store stock 2026-09-21.xlsx")
-        XCTAssertEqual(VanStockSheet.fileName(retitling: "Store stock 2026-09-21.xlsx", to: .stock),
-                       "Stock 2026-09-21.xlsx")
-        XCTAssertEqual(VanStockSheet.fileName(retitling: "Stock 2026-09-21.xlsx", to: .warehouse),
-                       "Warehouse stock 2026-09-21.xlsx")
-        XCTAssertEqual(VanStockSheet.fileName(retitling: "Van stock 2026-09-21.xlsx", to: .van),
-                       "Van stock 2026-09-21.xlsx")
-        XCTAssertEqual(VanStockSheet.fileName(retitling: "inventory.xlsx", to: .store), "inventory.xlsx")
-    }
-
     func testTheStandardSetByColumnSpeaksForThePlace() throws {
         let expected: [StockPlace.Kind: (base: String, own: String)] = [
             .van: ("Base", "This truck"), .truck: ("Base", "This truck"), .store: ("Office", "This store"),

@@ -128,7 +128,7 @@ struct VanStockView: View {
     /// Write the workbook to a temporary file, share it, and remove the file when the share is
     /// done — sent, saved or cancelled alike.
     private func export() {
-        guard let url = VanStockHandoverService.exportFile(service, kind: store.resolvedPlace.kind) else {
+        guard let url = service.exportFile() else {
             exportFailed = true
             return
         }

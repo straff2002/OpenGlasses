@@ -4,7 +4,8 @@ import Foundation
 ///
 /// The tool parses arguments and the screen shows rows; this is the one place a spoken line is
 /// matched, recorded and answered, so the voice and the phone cannot disagree about what a load or
-/// a use means. Nothing here touches the network.
+/// a use means. Nothing here touches the network. Every word about the place comes from the
+/// place in force (`StockPlaceWording`, Plan MK §3), so a store's list is spoken of as a store's.
 @MainActor
 final class VanStockService {
 
@@ -46,7 +47,15 @@ final class VanStockService {
     static let duplicateWindow: TimeInterval = 10
 
     private let store: VanStockStore
-    private let verify: @MainActor (String) -> TaskPart
+    /// A bare verifier injected the way callers before Plan MK did: it does not say which book it
+    /// searched, so it records found or not checked (`VanStockLookup(legacy:)`). Nil in the app,
+    /// which looks numbers up through `books`.
+    private let legacyVerify: (@MainActor (String) -> TaskPart)?
+    /// Where a number is looked up, by Plan MK §4's order: the job's vault, the list's named
+    /// vault, or none.
+    private let books: VanStockBooks
+    /// The place in force (Plan MK §2): the organisation's profile over the list's own choice.
+    private let placeKind: @MainActor () -> StockPlace.Kind
     private let partsIndex: @MainActor () -> VaultPartsIndex
     private let activeJob: @MainActor () -> Job?
     private let now: () -> Date
@@ -78,14 +87,20 @@ final class VanStockService {
 
     init(store: VanStockStore? = nil,
          verify: (@MainActor (String) -> TaskPart)? = nil,
+         books: VanStockBooks? = nil,
+         place: (@MainActor () -> StockPlace.Kind)? = nil,
          partsIndex: (@MainActor () -> VaultPartsIndex)? = nil,
          activeJob: (@MainActor () -> Job?)? = nil,
          now: @escaping () -> Date = Date.init,
          calendar: Calendar = .current,
          makeID: @escaping () -> String = { UUID().uuidString },
          jobUses: JobUses? = nil) {
-        self.store = store ?? .shared
-        self.verify = verify ?? { FieldSessionService.shared.verifyPart($0) }
+        let resolvedStore = store ?? .shared
+        self.store = resolvedStore
+        self.legacyVerify = verify
+        // A service built for a test with its own store searches no book unless it is given one.
+        self.books = books ?? (store == nil ? .shared : .none)
+        self.placeKind = place ?? { resolvedStore.resolvedPlace.kind }
         self.partsIndex = partsIndex ?? { FieldSessionService.shared.partsIndex }
         self.activeJob = activeJob ?? {
             FieldSessionService.shared.activeSession.map { Job(sessionID: $0.id, reference: $0.jobReference) }
@@ -97,15 +112,27 @@ final class VanStockService {
         self.jobUses = jobUses ?? (store == nil ? .shared : .none)
     }
 
-    private var composer: VanStockAnswerComposer { VanStockAnswerComposer(now: now(), calendar: calendar) }
+    /// The place in force for this list (Plan MK §2), read fresh each time so a place changed on
+    /// the screen is in the next sentence and the next turn's tool description.
+    var place: StockPlace.Kind { placeKind() }
 
-    private static let unreadable = "The van stock list on this phone could not be read, so nothing "
-        + "was looked up or changed. Tell the technician; do not guess what is on the van."
+    /// The words for that place.
+    var wording: StockPlaceWording { StockPlaceWording(place) }
+
+    private var composer: VanStockAnswerComposer {
+        VanStockAnswerComposer(now: now(), calendar: calendar, wording: wording)
+    }
+
+    private var unreadable: String {
+        let w = wording
+        return "The \(w.stockName) list on this phone could not be read, so nothing "
+            + "was looked up or changed. Tell \(w.person); do not guess what is \(w.location)."
+    }
 
     // MARK: - Reading
 
     func check(_ line: Line) -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
+        guard !store.isUnreadable else { return unreadable }
         let log = store.log
         guard !log.isEmpty else { return composer.emptyVan() }
         switch match(line, in: log) {
@@ -117,8 +144,15 @@ final class VanStockService {
         }
     }
 
+    /// What is there: everything, or the lines in the bins `bin` names (Plan MK §8). Writes
+    /// nothing.
+    func list(bin: String?) -> String {
+        guard !store.isUnreadable else { return unreadable }
+        return composer.list(store.log, bin: bin)
+    }
+
     func low() -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
+        guard !store.isUnreadable else { return unreadable }
         let log = store.log
         guard !log.isEmpty else { return composer.emptyVan() }
         let levels = log.levels
@@ -141,7 +175,7 @@ final class VanStockService {
                            jobReference: job?.reference)
                 return (self.composer.loaded(found.item, quantity: quantity, before: before,
                                              after: log.level(of: found.item.id), created: found.created),
-                        "\(found.item.phrase(quantity)) put on the van")
+                        "\(found.item.phrase(quantity)) \(self.wording.putThere)")
             }
         }
     }
@@ -161,11 +195,11 @@ final class VanStockService {
                 if job != nil, let movement {
                     self.jobUses.record(VanStockUse(id: movement.id, number: found.item.number,
                                                     description: found.item.description, quantity: quantity,
-                                                    unit: found.item.unit, verified: found.item.verified, at: at))
+                                                    unit: found.item.unit, verified: found.item.verification.isFound, at: at))
                 }
                 return (self.composer.used(found.item, quantity: quantity, before: before,
                                            after: log.level(of: found.item.id), jobReference: job?.reference),
-                        "\(found.item.phrase(quantity)) taken off the van" + (job?.reference.map { " for job \($0)" } ?? ""))
+                        "\(found.item.phrase(quantity)) \(self.wording.takenFrom)" + (job?.reference.map { " for job \($0)" } ?? ""))
             }
         }
     }
@@ -183,7 +217,7 @@ final class VanStockService {
                            source: source, id: self.makeID(), reason: reason)
                 return (self.composer.removed(found.item, quantity: quantity, reason: reason, before: before,
                                               after: log.level(of: found.item.id)),
-                        "\(found.item.phrase(quantity)) taken off the van (\(reason.rawValue))")
+                        "\(found.item.phrase(quantity)) \(self.wording.takenFrom) (\(reason.rawValue))")
             }
         }
     }
@@ -201,42 +235,49 @@ final class VanStockService {
                 let after = log.level(of: found.item.id)
                 let check = VanStockCountCheck(before: before, counted: after.onHand)
                 return (self.composer.counted(found.item, before: before, after: after, created: found.created),
-                        "\(found.item.name) counted: \(after.onHand) on the van" + (check?.said(found.item.unit) ?? ""))
+                        "\(found.item.name) counted: \(after.onHand) \(self.wording.location)" + (check?.said(found.item.unit) ?? ""))
             }
         }
     }
 
     /// Take back the most recent batch.
     func undo(source: VanStockMovement.Source = .spoken) -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
+        guard !store.isUnreadable else { return unreadable }
         lastWrite = nil
         let at = now()
         let undone = store.update { $0.undoLastBatch(at: at, batch: self.makeID(), source: source, makeID: self.makeID) }
         guard let undone = undone ?? nil else { return composer.nothingToUndo() }
         let uses = Set(undone.movements.filter { $0.kind == .used }.map(\.id))
         if !uses.isEmpty { jobUses.remove(uses) }
-        return Self.saying(composer.undone(undone, items: store.log.items), ["the last van stock entry taken back"])
+        return Self.saying(composer.undone(undone, items: store.log.items), ["the last \(wording.stockName) entry taken back"])
     }
 
     // MARK: - The job's own account
 
     /// Parts on the open job's finished tasks with no stock entry, for the model to ask about.
+    /// These follow an open job, not the place (Plan MK §5): a workshop's car on the hoist is a
+    /// job, and a shop that never opens one is told there is none.
     func unrecorded() -> String {
+        let w = wording
         let parts = jobUses.unrecorded()
         guard !parts.isEmpty else {
-            return "Every part on this job's finished tasks has a van stock entry, or was said not to have come off the van."
+            guard activeJob() != nil else {
+                return "There is no job open, so there are no parts on one to check. Nothing was changed."
+            }
+            return "Every part on this job's finished tasks has a \(w.stockName) entry, or was said not to have \(w.comeFrom)."
         }
-        return "No van stock entry on this job for " + VanStockReconciler.named(parts)
-            + ". Ask the technician whether each came off the van; do not record a use they did not confirm."
+        return "No \(w.stockName) entry on this job for " + VanStockReconciler.named(parts)
+            + ". Ask \(w.person) whether each \(w.cameFrom); do not record a use they did not confirm."
     }
 
     /// The technician said a part on the open job did not come off the van.
     func notFromVan(_ line: Line) -> String {
-        guard let part = line.part else { return "Say which part did not come off the van, by its part number." }
+        let w = wording
+        guard let part = line.part else { return "Say which part did not \(w.comeFrom), by its part number." }
         guard jobUses.notFromVan(part) else { return "There is no job open to say that about. Nothing was changed." }
         let number = VaultPartsIndex.normalise(part)
-        return Self.saying("Noted: \(number) did not come off the van on this job. The van list is unchanged.",
-                           ["\(number) noted as not from the van"])
+        return Self.saying("Noted: \(number) did not \(w.comeFrom) on this job. \(StockPlaceWording.capitalised(w.list)) is unchanged.",
+                           ["\(number) noted as \(w.notFrom)"])
     }
 
     // MARK: - From the screen
@@ -269,8 +310,8 @@ final class VanStockService {
             for change in changes {
                 any = log.edit(itemID: itemID, change, at: at, batch: batch, source: .typed, id: self.makeID()) || any
                 if case .number(let number) = change {
-                    let verified = number.map { self.verify($0).verified } ?? false
-                    any = log.edit(itemID: itemID, .verified(verified), at: at, batch: batch,
+                    let verification = number.map { self.lookUp($0).verification } ?? .notChecked
+                    any = log.edit(itemID: itemID, .verification(verification), at: at, batch: batch,
                                    source: .typed, id: self.makeID()) || any
                 }
             }
@@ -281,30 +322,32 @@ final class VanStockService {
 
     // MARK: - The shift (Plan IH P5)
 
-    /// What it takes to bring the van back to its standard load.
+    /// What it takes to bring the van back to its standard load: at premises, its par level.
     func topUp() -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
+        guard !store.isUnreadable else { return unreadable }
+        let w = wording
         let log = store.log
         guard !log.isEmpty else { return composer.emptyVan() }
         let shortfalls = VanStockHandover.topUp(log)
         let measured = VanStockHandover.hasStandards(log)
         guard !shortfalls.isEmpty else {
-            return measured ? "Nothing to top up: every line is at its standard load."
-                            : "Nothing has run out. No standard load is set for this van, so there is nothing to top up to."
+            return measured ? "Nothing to top up: every line is at its \(w.usualFigure)."
+                            : "Nothing has run out. No \(w.usualFigure) is set for \(w.this), so there is nothing to top up to."
         }
         let listed = shortfalls.map { shortfall in
-            shortfall.short.map { "\(shortfall.item.phrase($0)) (\(shortfall.onHand) on board)" }
-                ?? "\(shortfall.item.name) (\(shortfall.onHand) on board)"
+            shortfall.short.map { "\(shortfall.item.phrase($0)) (\(shortfall.onHand) \(w.aboard))" }
+                ?? "\(shortfall.item.name) (\(shortfall.onHand) \(w.aboard))"
         }
         let lead = measured ? "\(shortfalls.count) to top up"
-                            : "No standard load is set for this van; \(shortfalls.count) have run out or are below minimum"
+                            : "No \(w.usualFigure) is set for \(w.this); \(shortfalls.count) have run out or are below minimum"
         return "\(lead): " + listed.joined(separator: "; ") + "."
     }
 
     /// "Topped up everything except the flame sensors": every short line but those is brought to
     /// its standard load, as one batch that one undo takes back.
     func loadToStandard(except exceptions: [Line] = [], source: VanStockMovement.Source = .spoken) -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
+        guard !store.isUnreadable else { return unreadable }
+        let w = wording
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -316,7 +359,7 @@ final class VanStockService {
         for line in exceptions {
             if case .near(let items) = match(line, in: store.log) {
                 return composer.misheard(items, reference: line.reference, levels: store.log.levels, mayCreate: false)
-                    + " Once they say, record the top-up again, naming the part as the van list has it."
+                    + " Once they say, record the top-up again, naming the part as \(w.list) has it."
             }
         }
         store.update { log in
@@ -336,23 +379,26 @@ final class VanStockService {
             }
         }
         guard VanStockHandover.hasStandards(store.log) else {
-            return "No standard load is set for this van, so there is nothing to top up to. Nothing was changed."
+            return "No \(w.usualFigure) is set for \(w.this), so there is nothing to top up to. Nothing was changed."
         }
-        var lines = [filled == 0 ? "Nothing was short of its standard load, so nothing was loaded."
-                                 : "\(filled) \(filled == 1 ? "line" : "lines") brought to the standard load."]
+        var lines = [filled == 0 ? "Nothing was short of its \(w.usualFigure), so nothing was \(w.putVerb)."
+                                 : "\(filled) \(filled == 1 ? "line" : "lines") brought to the \(w.usualFigure)."]
         if !skipped.isEmpty { lines.append("Left as they were: " + skipped.map(\.name).joined(separator: "; ") + ".") }
         if !unmatched.isEmpty {
-            lines.append("Not on the van list, so not treated as an exception: " + unmatched.joined(separator: "; ") + ".")
+            lines.append("Not on \(w.list), so not treated as an exception: " + unmatched.joined(separator: "; ") + ".")
         }
-        if filled > 0 { lines.append("The technician can say 'undo that' to take the whole top-up back.") }
+        if filled > 0 {
+            lines.append("\(StockPlaceWording.capitalised(w.person)) can say 'undo that' to take the whole top-up back.")
+        }
         return Self.saying(lines.joined(separator: " "),
-                           filled > 0 ? ["\(filled) \(filled == 1 ? "line" : "lines") brought to the standard load"] : [])
+                           filled > 0 ? ["\(filled) \(filled == 1 ? "line" : "lines") brought to the \(w.usualFigure)"] : [])
     }
 
     /// Set what the van should carry of one line. Set by the technician, so it is this truck's own.
     func setStandard(_ line: Line) -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
-        guard let quantity = line.quantity, quantity >= 0 else { return "Say how many \(line.reference) the van should carry." }
+        guard !store.isUnreadable else { return unreadable }
+        let w = wording
+        guard let quantity = line.quantity, quantity >= 0 else { return "Say how many \(line.reference) \(w.shouldHold)." }
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -367,31 +413,32 @@ final class VanStockService {
             case .one(let item):
                 log.edit(itemID: item.id, .standard(quantity == 0 ? nil : quantity, setBy: .van), at: at,
                          batch: batch, source: .spoken, id: self.makeID())
-                answer = quantity == 0 ? "\(item.name) has no standard load now."
-                                       : "The standard load for this truck is now \(item.phrase(quantity))."
-                done = [quantity == 0 ? "no standard load for \(item.name) now"
-                                      : "the standard load set to \(item.phrase(quantity))"]
+                answer = quantity == 0 ? "\(item.name) has no \(w.usualFigure) now."
+                                       : "The \(w.usualFigure) for \(w.setByList) is now \(item.phrase(quantity))."
+                done = [quantity == 0 ? "no \(w.usualFigure) for \(item.name) now"
+                                      : "the \(w.usualFigure) set to \(item.phrase(quantity))"]
             }
         }
         return Self.saying(answer, done)
     }
 
     /// What `send_to_base` says before anything is staged: parts with no stock entry, and the
-    /// day's extras still on board. Nil when there is nothing left to ask.
+    /// day's extras still on board. Nil when there is nothing left to ask. Premises are asked
+    /// about the open job's parts, as a vehicle is, and never about extras: their stock does not
+    /// travel (Plan MK §5).
     func handoverQuestions() -> String? {
+        let w = wording
         var lines: [String] = []
         let parts = jobUses.unrecorded()
         if !parts.isEmpty {
-            lines.append("Before the stock is sent: there is no van stock entry on the open job for "
-                + VanStockReconciler.named(parts) + ". Ask whether each came off the van.")
+            lines.append("Before the stock is sent: there is no \(w.stockName) entry on the open job for "
+                + VanStockReconciler.named(parts) + ". Ask whether each \(w.cameFrom).")
         }
-        let extras = VanStockHandover.surplus(store.log, since: VanStockHandover.shiftStart(store.log, now: now(), calendar: calendar))
-        if !extras.isEmpty {
-            lines.append("Loaded this shift and still on board beyond the standard load: "
-                + extras.map { $0.item.phrase($0.extra) }.joined(separator: "; ")
-                + ". Ask for each: returning it, or keeping it on the truck? Record a return with action 'remove' "
-                + "and reason 'returned'. For one that is kept, offer to make it part of this truck's standard load "
-                + "(action 'set_standard').")
+        if w.family == .vehicle {
+            let extras = VanStockHandover.surplus(store.log, since: VanStockHandover.shiftStart(store.log, now: now(), calendar: calendar))
+            if !extras.isEmpty, let question = w.extrasQuestion(extras.map { $0.item.phrase($0.extra) }.joined(separator: "; ")) {
+                lines.append(question)
+            }
         }
         guard !lines.isEmpty else { return nil }
         lines.append("Then call send_to_base again with 'answered' true.")
@@ -400,7 +447,7 @@ final class VanStockService {
 
     /// The text that goes to base with the workbook.
     func handoverMessage() -> String {
-        VanStockHandover.message(store.log, van: store.van, now: now(), calendar: calendar)
+        VanStockHandover.message(store.log, van: store.van, now: now(), calendar: calendar, kind: place)
     }
 
     /// Take a van over from a workbook: its list replaces the phone's.
@@ -437,10 +484,12 @@ final class VanStockService {
         let at = now()
         let folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("van-stock-export-\(makeID())", isDirectory: true)
-        let url = folder.appendingPathComponent(VanStockSheet.fileName(exportedAt: at, calendar: calendar))
+        let kind = place
+        // Named for the place, as the sheet inside it is (Plan MK §3): "Store stock 2026-11-19.xlsx".
+        let url = folder.appendingPathComponent(VanStockSheet.fileName(exportedAt: at, calendar: calendar, kind: kind))
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try VanStockSheet.data(store.log, van: store.van, exportedAt: at, calendar: calendar)
+            try VanStockSheet.data(store.log, van: store.van, exportedAt: at, calendar: calendar, kind: kind)
                 .write(to: url, options: [.atomic, .completeFileProtection])
             return url
         } catch {
@@ -457,7 +506,7 @@ final class VanStockService {
         let before = store.log
         store.update { log in
             VanStockSheet.apply(proposal, to: &log, keepingPhoneFigure: keepingPhoneFigure, at: at,
-                                batch: batch, verify: { self.verify($0) }, makeID: self.makeID)
+                                batch: batch, verify: { self.lookUp($0).part }, makeID: self.makeID)
         }
         return store.log != before
     }
@@ -476,7 +525,10 @@ final class VanStockService {
                        source: .spoken, id: self.makeID(), requestID: requestID)
             return log.level(of: item.id)
         } ?? nil
-        return recorded.map { "The van list now shows \($0.onOrder) asked for and not yet loaded." }
+        let w = wording
+        return recorded.map {
+            "\(StockPlaceWording.capitalised(w.list)) now shows \($0.onOrder) asked for and not yet \(w.putVerb)."
+        }
     }
 
     // MARK: - One write
@@ -485,7 +537,7 @@ final class VanStockService {
     /// the reply must say was done (`saying(_:_:)`).
     private func write(_ action: String, _ lines: [Line],
                        _ apply: (inout VanStockLog, Line, _ batch: String, _ at: Date) -> (answer: String, done: String?)) -> String {
-        guard !store.isUnreadable else { return Self.unreadable }
+        guard !store.isUnreadable else { return unreadable }
         guard !lines.isEmpty else { return "Say which part, and how many." }
 
         let at = now()
@@ -552,7 +604,7 @@ final class VanStockService {
             return .failure(composer.misheard(items, reference: line.reference, levels: log.levels, mayCreate: mayCreate))
         case .one(let item):
             if let raw = line.unit {
-                guard let unit = VanStockUnit(spoken: raw) else { return .failure(Self.unknownUnit(raw)) }
+                guard let unit = VanStockUnit(spoken: raw) else { return .failure(self.unknownUnit(raw)) }
                 guard unit == item.unit else {
                     return .failure("\(item.name) is counted in \(item.unit.rawValue), not \(unit.rawValue). Nothing was changed.")
                 }
@@ -566,15 +618,20 @@ final class VanStockService {
     }
 
     /// What a write can add to a line it matched: a number it did not have, a scanned code, and a
-    /// fresh look in the manuals for a number that was not verified last time.
+    /// fresh look in the book for a number that was not found last time. A look that had no book
+    /// to search changes nothing, so it never takes a line's mark away or gives it one; a look that
+    /// had one upgrades a line nothing was searched for, as a found number always did (Plan MK §4).
     private func attach(_ line: Line, to item: VanStockItem, in log: inout VanStockLog, batch: String,
                         at: Date, source: VanStockMovement.Source) {
         if item.number == nil, let number = Self.number(in: line) {
-            let checked = verify(number)
-            log.edit(itemID: item.id, .number(checked.number), at: at, batch: batch, source: source, id: makeID())
-            log.edit(itemID: item.id, .verified(checked.verified), at: at, batch: batch, source: source, id: makeID())
-        } else if let number = item.number, !item.verified, verify(number).verified {
-            log.edit(itemID: item.id, .verified(true), at: at, batch: batch, source: source, id: makeID())
+            let checked = lookUp(number)
+            log.edit(itemID: item.id, .number(checked.part.number), at: at, batch: batch, source: source, id: makeID())
+            log.edit(itemID: item.id, .verification(checked.verification), at: at, batch: batch, source: source, id: makeID())
+        } else if let number = item.number, !item.verification.isFound {
+            let checked = lookUp(number).verification
+            if checked.state != .notChecked, checked != item.verification {
+                log.edit(itemID: item.id, .verification(checked), at: at, batch: batch, source: source, id: makeID())
+            }
         }
         if let code = line.code {
             log.edit(itemID: item.id, .addCode(code), at: at, batch: batch, source: .scanned, id: makeID())
@@ -587,25 +644,33 @@ final class VanStockService {
         let described = line.description ?? (number == nil ? line.part : nil)
         guard number != nil || described != nil else {
             if line.code != nil {
-                return .failure("That code is not on the van list yet. Ask the technician what the part is, "
+                return .failure("That code is not on \(wording.list) yet. Ask \(wording.person) what the part is, "
                     + "then record it again with the code and its part number or description.")
             }
             return .failure("Say what the part is: a part number, a description, or both.")
         }
         var unit = VanStockUnit.each
         if let raw = line.unit {
-            guard let spoken = VanStockUnit(spoken: raw) else { return .failure(Self.unknownUnit(raw)) }
+            guard let spoken = VanStockUnit(spoken: raw) else { return .failure(self.unknownUnit(raw)) }
             unit = spoken
         }
-        let checked = number.map(verify)
+        let checked = number.map(lookUp)
         let item = log.addItem(id: makeID(),
-                               number: checked?.number ?? number,
-                               description: described ?? checked?.partDescription ?? "",
+                               number: checked?.part.number ?? number,
+                               description: described ?? checked?.part.partDescription ?? "",
                                unit: unit,
                                codes: line.code.map { [$0] } ?? [],
-                               verified: checked?.verified ?? false,
+                               verification: checked?.verification ?? .notChecked,
                                batch: batch)
         return .success(Found(item: item, created: true))
+    }
+
+    /// Look a number up in the book Plan MK §4's order gives: the open job's vault, then the
+    /// list's named vault, then none. With none, nothing is searched (the book's verifier is
+    /// never called) and the number is not checked.
+    private func lookUp(_ number: String) -> VanStockLookup {
+        if let legacyVerify { return VanStockLookup(legacy: legacyVerify(number)) }
+        return VanStockLookup.look(number, in: books.book(namedID: store.van?.checkVaultID))
     }
 
     /// The part number in a line, when what was given is one. A part number has no spaces and at
@@ -617,8 +682,8 @@ final class VanStockService {
         return normalised.isEmpty ? nil : normalised
     }
 
-    private static func unknownUnit(_ raw: String) -> String {
-        "'\(raw)' is not a unit the van list keeps. Use one of: "
+    private func unknownUnit(_ raw: String) -> String {
+        "'\(raw)' is not a unit \(wording.list) keeps. Use one of: "
             + VanStockUnit.allCases.map(\.rawValue).joined(separator: ", ") + ". Nothing was changed."
     }
 }
