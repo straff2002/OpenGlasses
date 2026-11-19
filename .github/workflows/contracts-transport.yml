@@ -183,3 +183,6 @@ jobs:
 
       - name: Recorded-session rules
         run: python3 Contracts/tests/test_recorded_session_contracts.py
+
+      - name: Work record van stock block
+        run: python3 -I Contracts/tests/test_van_stock_record.py

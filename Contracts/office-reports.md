@@ -381,3 +381,45 @@ ignore unknown additive fields. Existing golden signed envelopes remain valid.
 `office-report-record-identity-v1.json` adds this attribution to the existing fictional work
 record. The envelope's digest changes with any change to `reported_by`; its outer format and
 application-signature checks remain the v1 checks above.
+
+## Stock used from the van (Plan ML, additive v1 extension)
+
+A work record may carry `van_stock`, an array of the parts that came off the technician's stock
+list on the job, one object per use, in the order they were recorded. A job that used nothing
+from the list omits the array. Each line has these members:
+
+- `id` — string, the identifier of the movement in the phone's stock log that recorded the use;
+- `number` — string, the normalised part number, omitted for a line that has none;
+- `description` — string, the line's description, possibly empty;
+- `unit` — string, one of `each`, `m`, `ft`, `kg`, `lb`, `l`, `pack` (the phone's closed list;
+  a unit added later is added here at the same time);
+- `quantityScaled` — integer, the amount in units of 10^−`quantityScale` of `unit`, from 0 to
+  1 000 000 000 (a million units);
+- `quantityScale` — integer, the scale of `quantityScaled`. It is `3` in every line written
+  under this extension: 4.25 litres is `"quantityScaled": 4250` and two of a part are `2000`. It
+  is on each line so a line copied out of the record still says what it is;
+- `verified` — boolean, whether the part number was found when it was last looked up. It is a
+  label for the office, never a check the office relies on;
+- `at` — string, when the use was recorded, RFC 3339 in UTC.
+
+`each` and `pack` are counted whole, so their `quantityScaled` values are multiples of 1000.
+
+A reader refuses a line whose `quantityScale` is anything other than `3`, or that has
+`quantityScaled` without `quantityScale`; it never guesses a scale. A record written before
+this extension carried `quantity`, a whole number of `unit`, in place of the scaled pair. A line
+written under this extension has no `quantity` member, and a reader never reads a legacy
+`quantity` from a record written after this extension (one whose lines carry `quantityScale`): a
+reader that knows only `quantity` finds nothing and
+shows nothing, rather than reading 4250 thousandths of a litre as 4250 litres. The phone reads a
+legacy `quantity` from its own saved sessions and records written before this extension as that
+many whole units.
+
+The outer signed report format and its signing domain are unchanged: the record digest covers
+this array like every other record byte. Readers accept records without it and ignore unknown
+additive fields. Existing golden signed envelopes remain valid.
+
+`office-report-record-van-stock-v1.json` adds this array to the existing fictional work record:
+one `each` line of 2000 and one `l` line of 4250. The portable check
+(`python3 -I Contracts/tests/test_van_stock_record.py`, standard library only) asserts that no
+line carries `quantity`, that every `quantityScale` is 3, that each and pack figures are
+multiples of 1000, and that every unit is on the closed list.
