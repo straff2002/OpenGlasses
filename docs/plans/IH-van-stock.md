@@ -605,7 +605,9 @@ top-up, one extra returned and one extra kept.
 1. **Units.** Is whole-number `each`/length/weight enough for the pilot, or is refrigerant by
    weight needed from the first day? Fractions change the quantity type everywhere, HF included.
 2. **The word.** "Truck" in North America, "van" here. Proposed: the tool understands both and
-   the screen title follows the region's English.
+   the screen title follows the region's English. *Taken up by Plan [MK](MK-stock-where-it-lives.md)
+   (2026-11-19): a place setting (van, truck, store or warehouse) that the organisation can lock,
+   proposed with no region default.*
 3. **Where corrections happen.** If pilot technicians correct on the phone, P2 is enough for them
    and P3 is only for the first load. If they correct at a desk, P3 moves ahead of P2.
 4. **Barcodes.** Do the shop's parts carry them? If not, the alias work in P1 can wait.
