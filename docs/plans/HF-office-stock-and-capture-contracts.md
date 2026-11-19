@@ -5,6 +5,11 @@
 phone, with no office involved, in this plan's movement vocabulary. Where both exist the phone's
 ledger answers for its own van and the snapshot answers for base and every other location; P1's
 `StockAnswerComposer` should take the own-van figure from there.
+**Amended 2026-11-19 by Plan [ML](ML-measured-quantities.md):** every quantity in these contracts
+is a whole number of thousandths of the line's unit, so 4.25 litres is `4250`, under a signed
+`quantityScale` that is exactly `3` in v1. Quantity members are named for that form (`onHandScaled`,
+`quantityScaled`, `neededScaled`), and `unit` is the phone's closed list. See *Quantities* below.
+The integers-only rule is unchanged.
 **Depends on:** Plan [FX](FX-desktop-office-and-device-sync.md)'s next milestone (a physical
 main-app pairing, then one signed job and one signed manual with an exact receipt — **no production
 managed folder is enabled today**, so nothing in this plan can be delivered until that lands);
@@ -116,6 +121,25 @@ vendor-rooted binding, never by the message. Every payload carries `version`, `k
 `messageID`, `organizationID`, `enrolmentID`, `officeID`, `generation`, both transport identities,
 `sequence`, `issuedAt` and `expiresAt`, exactly as `OfficeManagedJob.Payload` does.
 
+**Quantities** (amended by Plan [ML](ML-measured-quantities.md)). A quantity is never a fraction on
+the wire. It is a non-negative integer in units of 10^−`quantityScale` of its line's `unit`:
+
+- Every payload whose body carries a quantity (the stock snapshot, the capture message, the job
+  readiness note and the stock answer) has a **`quantityScale`** member. In v1 it is exactly `3`,
+  so `4250` with unit `l` is 4.25 litres and `2000` with unit `each` is two. Any other value is
+  refused. A finer scale later is then a value a v1 verifier refuses, never one it misreads.
+- Quantity members carry the form in their name: **`onHandScaled`**, **`quantityScaled`** and
+  **`neededScaled`**. No member is called `onHand`, `quantity` or `needed`, so a reader written for
+  whole units finds nothing to misread.
+- Each is at most 1,000,000,000 (a million units), and is a whole multiple of its unit's step:
+  `1000` for `each` and `pack`, `1` for `m`, `ft`, `kg`, `lb` and `l`. A value that is not is
+  refused.
+- `unit` is exactly the phone's closed list: `each`, `m`, `ft`, `kg`, `lb`, `l`, `pack`
+  (`VanStockUnit`). A unit added later is added to the phone and to this list together, and a v1
+  verifier refuses a unit it does not know.
+- **Unknown is still not zero.** A figure that is not known is absent, with `known: false`. A
+  zero is a counted zero.
+
 Because payloads are flat, anything with rows (stock lines, readiness lines, attachments) is a
 separate **body file** named by digest and byte count in the signed payload, the way a managed job
 names its `.ogjob`. The body has its own closed schema and is checked for exact length and SHA-256
@@ -134,7 +158,7 @@ for one kind can never be replayed as another.
 ### 1 · Stock snapshot
 
 Payload adds `snapshotID`, `asOf` (Unix UTC seconds: when Office derived the levels),
-`bodySHA256`, `bodyBytes`, `lineCount`, `locationCount`. Envelope ≤ 32 KiB; body ≤ 4 MiB and
+`quantityScale`, `bodySHA256`, `bodyBytes`, `lineCount`, `locationCount`. Envelope ≤ 32 KiB; body ≤ 4 MiB and
 ≤ 20,000 lines (proposed; Decision 2).
 
 Body: a `locations` array (`id`, `name`, `class` — `base` / `van` / `site` / `other`, and whether
@@ -144,8 +168,8 @@ it is this phone's own van) and a `lines` array. Each line:
 |---|---|
 | `part` | Part number as Office holds it |
 | `description` | Short text |
-| `unit` | `each`, `m`, `kg`, `l`, … (closed list) |
-| `levels` | Per location: `onHand` as an integer, **or absent with `known: false`** |
+| `unit` | One of `each`, `m`, `ft`, `kg`, `lb`, `l`, `pack` (the phone's closed list; *Quantities* above) |
+| `levels` | Per location: `onHandScaled`, an integer in units of 10^−`quantityScale` of `unit` (`4250` is 4.25 l), **or absent with `known: false`** |
 | `provenance` | `counted`, `inferred` (derived from movements since the last count) or `declared` (entered from a document, never counted) |
 | `lineAsOf` | Optional; when this line's figure was last established, if older than the snapshot |
 | `supersededBy` | Optional; Office's view, kept apart from the vault's |
@@ -175,10 +199,10 @@ A technician's stock observation or source document, delivered as an inbox item.
 
 Payload adds `captureID`, `capturedAt`, `captureKind` (`photo`, `scan`, `note`, `count`),
 `jobReference` (optional), `locationID` (optional, from the snapshot's locations),
-`bodySHA256`, `bodyBytes`, `attachmentCount`, `attachmentsSHA256` (a digest over the sorted
+`quantityScale`, `bodySHA256`, `bodyBytes`, `attachmentCount`, `attachmentsSHA256` (a digest over the sorted
 attachment digests) and `attachmentsBytes`.
 
-Body: for `count`, structured lines (`part`, `quantity`, `unit`, `locationID`, `verified` — whether
+Body: for `count`, structured lines (`part`, `quantityScaled`, `unit`, `locationID`, `verified` — whether
 the number resolved in the vault — and `source` `spoken` / `typed`); for `note`, the dictated text;
 for every kind, an attachment table (name, media type from a closed list, bytes, SHA-256).
 Caps proposed: ≤ 8 attachments, ≤ 5 MiB each, ≤ 20 MiB per message.
@@ -191,9 +215,10 @@ FX's; HF reuses it rather than defining a second one, and P2 cannot start before
 ### 3 · Job readiness note
 
 Attached to, or following, a managed job. Payload adds `jobMessageID` (the managed job it refers
-to), `jobSHA256`, `asOf`, `bodySHA256`, `bodyBytes`. Body: lines of `part`, `description`,
-`needed` (quantity, or unknown), `likelihood` (`listed` on the job / `likely` from Office's
-review), `onHand` per location as in the snapshot, and `short: true|false|unknown`.
+to), `jobSHA256`, `asOf`, `quantityScale`, `bodySHA256`, `bodyBytes`. Body: lines of `part`,
+`description`, `unit`, `neededScaled` (a quantity, or absent with `known: false`), `likelihood`
+(`listed` on the job / `likely` from Office's review), `onHandScaled` per location as in the
+snapshot, and `short: true|false|unknown`.
 
 A note for a job the phone does not hold is kept pending until the job arrives or the note
 expires; a note whose `jobSHA256` does not match the held job is refused. The note is information
@@ -203,7 +228,8 @@ base's answers.
 ### 4 · Stock query and answer (later phase)
 
 A small signed question (`queryID`, up to 10 part numbers, optional `locationID`) and a signed
-answer (`queryID`, `asOf`, the same line shape as the snapshot, ≤ 32 KiB inline — no body file).
+answer (`queryID`, `asOf`, `quantityScale`, the same line shape as the snapshot, ≤ 32 KiB inline
+— no body file).
 On the LAN or a direct route this is seconds. When Office is unreachable the tool answers from the
 snapshot and says so; a query is never left hanging in front of the technician, and an answer that
 arrives after the tool has replied is stored and reported only if asked again.
@@ -253,7 +279,11 @@ The work record already goes back with the job. HF adds nothing to that path exc
 mapping (P0) from the record to the movements Office will propose: a `TaskPart` on a task that
 ended `done` is "issued to job"; a `PartsRequest` is a request, with its `onVan` flag; `verified`
 and `page` travel with each; model and serial come from `equipment` and `identityFields`, each with
-its source (`nameplate` / `spoken` / `display`).
+its source (`nameplate` / `spoken` / `display`). A line of the record's `van_stock` block (Plan
+[IH](IH-van-stock.md) §7) is "issued to job from this van" with its exact amount, read from
+`quantityScaled` and `quantityScale` (Plan [ML](ML-measured-quantities.md) §5). A `van_stock` line
+with no `quantityScale` is refused by the mapping, never read as whole units. A `PartsRequest`'s
+`quantity` stays a whole count of the part.
 
 Capture is by voice and by the phone: *"three of these in van two"* (a `count`, with the part
 resolved from the active task or read back for confirmation), *"send this docket to the office"*
@@ -308,9 +338,16 @@ They reuse the closed-JSON and identifier checks the existing verifiers already 
 `OfficeStockSnapshotTests`, `OfficeStockCaptureTests`,
 `OfficeJobReadinessTests`, `OfficeStockQueryTests` (each: bad signature, wrong domain, foreign
 recipient, expiry, rollback, same-sequence conflict, exact replay, duplicate or unknown key,
-oversize, altered body), `OfficeStockBodyTests` (unknown quantity round-trips as unknown, never
-zero), `WorkRecordStockMappingTests`. The portable contract runner gains the new cases.
+oversize, altered body, a missing `quantityScale` or one other than `3`),
+`OfficeStockBodyTests` (unknown quantity round-trips as unknown, never zero; `onHandScaled` 4250
+on an `l` line is 4.25 litres; 2500 on an `each` or `pack` line, a unit off the list, a fractional
+or exponent spelling, a value over 1,000,000,000 and a member named `onHand` or `quantity` are each
+refused), `WorkRecordStockMappingTests` (a `van_stock` line's `quantityScaled` maps exactly; a line
+with only a legacy `quantity` and no scale is refused). The portable contract runner gains the new cases.
 *Owed:* the Go side agreeing on the same fixtures byte for byte; no device or Office check.
+
+Quantities on the phone side use Plan ML's `StockQuantity`, so the snapshot and the phone's own
+ledger share one type and one scale.
 
 **P1 — Snapshot store, join and `parts_stock`.** `StockSnapshotStore` (durable, outside vault
 content, atomic replace, previous snapshot kept until the new one is committed),
