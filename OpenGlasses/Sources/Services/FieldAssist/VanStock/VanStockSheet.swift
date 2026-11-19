@@ -15,6 +15,9 @@ enum VanStockSheet {
     static let exportedAtKey = "exported_at"
     static let vanIDKey = "van_id"
     static let vanNameKey = "van_name"
+    /// Where the list is kept (Plan MK §2), as the kind's raw value. Written only when the list has
+    /// a place; an older build looks rows up by key and ignores it.
+    static let placeKey = "place"
     static let fileExtension = "xlsx"
 
     /// Whether a file handed to the app is a workbook this can try to read.
@@ -119,6 +122,8 @@ enum VanStockSheet {
         if let van {
             meta.append([.text(vanIDKey), .text(van.id)])
             meta.append([.text(vanNameKey), .text(van.name)])
+            // The vault the list checks numbers against stays on this phone (Plan MK §4).
+            if let place = van.place { meta.append([.text(placeKey), .text(place.rawValue)]) }
         }
 
         return XLSX.Workbook(sheets: [
@@ -277,7 +282,11 @@ enum VanStockSheet {
             meta.first { $0.first == key }.flatMap { $0.count > 1 && !$0[1].isEmpty ? $0[1] : nil }
         }
         read.exportedAt = value(exportedAtKey).flatMap { ISO8601DateFormatter().date(from: $0) }
-        if let id = value(vanIDKey) { read.van = VanIdentity(id: id, name: value(vanNameKey) ?? "") }
+        if let id = value(vanIDKey) {
+            // A kind from a newer build reads as van; a workbook with no place row has none.
+            read.van = VanIdentity(id: id, name: value(vanNameKey) ?? "",
+                                   place: value(placeKey).map { StockPlace.Kind(lenient: $0) })
+        }
 
         for (offset, cells) in sheet.rows.enumerated() where offset > headerIndex {
             let rowNumber = offset + 1

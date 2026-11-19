@@ -7,6 +7,27 @@ import Foundation
 struct VanIdentity: Codable, Equatable, Sendable {
     let id: String
     var name: String
+    /// Where the list is kept (Plan MK §2). Nil when nobody has chosen, which is van. Carried in
+    /// the workbook, so a takeover keeps the words; a kind from a newer build reads as van.
+    var place: StockPlace.Kind? = nil
+    /// The installed vault this list checks part numbers against when no job is open (Plan MK
+    /// §4). This phone's own choice: never written into the workbook, because a vault's id means
+    /// nothing on a phone that lacks it, and kept by a takeover.
+    var checkVaultID: String? = nil
+
+    /// The list's place, kind and name together; van when nobody chose.
+    var stockPlace: StockPlace {
+        StockPlace(kind: place ?? .default, name: name.isEmpty ? nil : name)
+    }
+
+    /// The identity a takeover leaves on the receiving phone (Plan MK §4): the workbook's van, its
+    /// name and its place, with this phone's own choice of vault to check numbers against. A
+    /// takeover that names no van leaves no identity, so there is nothing to keep the choice on.
+    static func takenOver(_ incoming: VanIdentity?, keeping current: VanIdentity?) -> VanIdentity? {
+        guard var incoming else { return nil }
+        incoming.checkVaultID = current?.checkVaultID
+        return incoming
+    }
 }
 
 /// The end of a shift and the start of the next (Plan IH §8). Pure.
@@ -98,7 +119,8 @@ enum VanStockHandover {
     /// log never holds one; whoever sends the message signs it.
     static func message(_ log: VanStockLog, van: VanIdentity?, now: Date, calendar: Calendar) -> String {
         let levels = log.levels
-        let name = van?.name ?? "Van"
+        // A list given a place before a name has an identity with no name yet (Plan MK §2).
+        let name = van.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "Van"
         var lines = ["\(name) stock, \(stamp(now, calendar))."]
 
         let shortfalls = topUp(log)

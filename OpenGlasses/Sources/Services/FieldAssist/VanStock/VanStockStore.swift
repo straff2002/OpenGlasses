@@ -95,13 +95,40 @@ final class VanStockStore: ObservableObject {
     func nameVan(_ name: String, makeID: () -> String = { UUID().uuidString }) {
         let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isUnreadable, !cleaned.isEmpty, cleaned != van?.name else { return }
-        van = VanIdentity(id: van?.id ?? makeID(), name: cleaned)
+        var identity = van ?? VanIdentity(id: makeID(), name: "")
+        identity.name = cleaned
+        van = identity
+        save()
+    }
+
+    /// Choose where the list is kept, or clear the choice back to van with nil (Plan MK §2). A
+    /// list nobody has named yet is given its identifier here, with no name, so the place has a
+    /// list to belong to. The profile's place is never written here: it is resolved over this.
+    func setPlace(_ place: StockPlace.Kind?, makeID: () -> String = { UUID().uuidString }) {
+        guard !isUnreadable, place != van?.place else { return }
+        var identity = van ?? VanIdentity(id: makeID(), name: "")
+        identity.place = place
+        van = identity
+        save()
+    }
+
+    /// Name the installed vault this list checks part numbers against, or none with nil (Plan MK
+    /// §4). Kept on this phone only.
+    func checkNumbers(against vaultID: String?, makeID: () -> String = { UUID().uuidString }) {
+        let cleaned = vaultID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = cleaned?.isEmpty == false ? cleaned : nil
+        guard !isUnreadable, value != van?.checkVaultID else { return }
+        var identity = van ?? VanIdentity(id: makeID(), name: "")
+        identity.checkVaultID = value
+        van = identity
         save()
     }
 
     /// Take a van over: the list a handover describes replaces the phone's own. The list that was
-    /// here is kept beside it, one generation deep, and never merged in.
-    func replace(with log: VanStockLog, van: VanIdentity?) {
+    /// here is kept beside it, one generation deep, and never merged in. The workbook's van and
+    /// place come across; this phone's own choice of vault to check numbers against stays (Plan MK
+    /// §4).
+    func replace(with log: VanStockLog, van incoming: VanIdentity?) {
         guard !isUnreadable else { return }
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try? FileManager.default.removeItem(at: archiveURL)
@@ -109,7 +136,7 @@ final class VanStockStore: ObservableObject {
             protect(archiveURL)
         }
         self.log = log
-        self.van = van
+        self.van = VanIdentity.takenOver(incoming, keeping: van)
         save()
     }
 

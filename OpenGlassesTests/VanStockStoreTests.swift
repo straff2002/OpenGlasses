@@ -104,4 +104,41 @@ final class VanStockStoreTests: XCTestCase {
         // And the fold was written, so the next launch does not redo it.
         XCTAssertEqual(VanStockStore(directory: directory, now: later).log, reopened.log)
     }
+
+    // MARK: Plan MK P0 — place, book and verification on disk
+
+    func testAStoreWrittenBeforePlacesStillReads() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let older = #"{"van":{"id":"v4","name":"Truck 4"},"version":1,"log":{"items":[{"id":"item-1","number":"00123","description":"Flame sensor","unit":"each","codes":[],"verified":true,"created_batch":"b0"},{"id":"item-2","description":"Fuse","unit":"each","codes":[],"verified":false,"created_batch":"b0"}],"movements":[]}}"#
+        try Data(older.utf8).write(to: fileURL)
+
+        let store = VanStockStore(directory: directory, now: start)
+        XCTAssertFalse(store.isUnreadable)
+        XCTAssertEqual(store.van, VanIdentity(id: "v4", name: "Truck 4"))
+        XCTAssertNil(store.van?.place)
+        XCTAssertNil(store.van?.checkVaultID)
+        XCTAssertEqual(store.log.item(id: "item-1")?.verification, .found(in: nil))
+        XCTAssertEqual(store.log.item(id: "item-2")?.verification, .notChecked)
+    }
+
+    func testThePlaceAndTheBookSurviveARelaunch() {
+        let store = VanStockStore(directory: directory, now: start)
+        store.setPlace(.store, makeID: { "s1" })
+        store.checkNumbers(against: "vault-9")
+        store.update { $0.addItem(id: "item-1", number: "00123", description: "Soda water",
+                                  verification: .notFound(in: "Supplier catalogue"), batch: "b0") }
+        let reopened = VanStockStore(directory: directory, now: start)
+        XCTAssertEqual(reopened.van, VanIdentity(id: "s1", name: "", place: .store, checkVaultID: "vault-9"))
+        XCTAssertEqual(reopened.log.item(id: "item-1")?.verification, .notFound(in: "Supplier catalogue"))
+    }
+
+    func testAnUnreadableStoreTakesNoPlace() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("{".utf8).write(to: fileURL)
+        let store = VanStockStore(directory: directory, now: start)
+        store.setPlace(.store)
+        store.checkNumbers(against: "vault-9")
+        XCTAssertNil(store.van)
+        XCTAssertEqual(try Data(contentsOf: fileURL), Data("{".utf8))
+    }
 }

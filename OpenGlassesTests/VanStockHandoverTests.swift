@@ -221,6 +221,63 @@ final class VanStockHandoverTests: XCTestCase {
         XCTAssertEqual(VanStockStore(directory: directory, now: clock).van?.id, "v4")
     }
 
+    // MARK: The place across a takeover (Plan MK P0)
+
+    func testATakeoverCarriesThePlaceAndKeepsThisPhonesBook() throws {
+        // This phone checks its numbers against its own catalogue.
+        store.nameVan("Back room", makeID: { "s0" })
+        store.checkNumbers(against: "vault-here")
+        let left = VanIdentity(id: "s1", name: "Main street store", place: .store, checkVaultID: "vault-there")
+        let sheets = try handover(of: van, van: left, at: time(400))
+
+        let takeover = try VanStockHandover.takeover(from: sheets, at: time(900), batch: "takeover").get()
+        XCTAssertEqual(takeover.van, VanIdentity(id: "s1", name: "Main street store", place: .store),
+                       "the place travels in the workbook; the other phone's book does not")
+
+        clock = time(900)
+        service.takeOver(try service.takeover(from: sheets).get())
+        XCTAssertEqual(store.van, VanIdentity(id: "s1", name: "Main street store", place: .store,
+                                              checkVaultID: "vault-here"))
+        XCTAssertEqual(VanStockStore(directory: directory, now: clock).van?.checkVaultID, "vault-here")
+        XCTAssertEqual(VanStockStore(directory: directory, now: clock).van?.place, .store)
+    }
+
+    func testATakeoverFromAnOlderWorkbookLeavesTheListAtVan() throws {
+        store.setPlace(.store, makeID: { "s0" })
+        let sheets = try handover(of: van, van: VanIdentity(id: "v4", name: "Truck 4"), at: time(400))
+        service.takeOver(try service.takeover(from: sheets).get())
+        XCTAssertNil(store.van?.place, "the workbook's list never chose, so it is a van")
+        XCTAssertEqual(store.van?.stockPlace.kind, .van)
+    }
+
+    func testTheTakenOverIdentityIsTheWorkbooksWithThisPhonesBook() {
+        let incoming = VanIdentity(id: "s1", name: "Store", place: .stock)
+        let current = VanIdentity(id: "s0", name: "Old", place: .truck, checkVaultID: "vault-here")
+        XCTAssertEqual(VanIdentity.takenOver(incoming, keeping: current),
+                       VanIdentity(id: "s1", name: "Store", place: .stock, checkVaultID: "vault-here"))
+        XCTAssertEqual(VanIdentity.takenOver(incoming, keeping: nil), incoming)
+        XCTAssertNil(VanIdentity.takenOver(nil, keeping: current))
+    }
+
+    func testNamingAListKeepsItsPlaceAndBook() {
+        store.setPlace(.warehouse, makeID: { "w1" })
+        store.checkNumbers(against: "  vault-9  ")
+        XCTAssertEqual(store.van, VanIdentity(id: "w1", name: "", place: .warehouse, checkVaultID: "vault-9"))
+        store.nameVan("Warehouse A")
+        XCTAssertEqual(store.van, VanIdentity(id: "w1", name: "Warehouse A", place: .warehouse, checkVaultID: "vault-9"))
+        store.setPlace(nil)
+        store.checkNumbers(against: "")
+        XCTAssertEqual(store.van, VanIdentity(id: "w1", name: "Warehouse A"))
+        XCTAssertEqual(VanStockStore(directory: directory, now: clock).van, VanIdentity(id: "w1", name: "Warehouse A"))
+    }
+
+    func testAListWithAPlaceAndNoNameNeverSendsAnEmptyName() {
+        let message = VanStockHandover.message(van, van: VanIdentity(id: "s1", name: "", place: .store),
+                                               now: time(400), calendar: calendar)
+        XCTAssertFalse(message.hasPrefix(" stock"), message)
+        XCTAssertTrue(message.hasPrefix("Van stock, "), "the fallback name is today's until Plan MK P1: \(message)")
+    }
+
     // MARK: Base's baseline
 
     private let baselineSheet = [XLSXReader.Sheet(name: "Standard load", isHidden: false, rows: [

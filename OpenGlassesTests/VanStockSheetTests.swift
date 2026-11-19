@@ -249,4 +249,67 @@ final class VanStockSheetTests: XCTestCase {
         XCTAssertEqual(VanStockSheet.proposal(from: foreign, log: log), .failure(.noRecognisableHeader))
         XCTAssertEqual(VanStockSheet.proposal(from: Data("not a workbook".utf8), log: log), .failure(.workbook(.notAWorkbook)))
     }
+
+    // MARK: The list's place (Plan MK P0)
+
+    private func meta(_ sheets: [XLSXReader.Sheet]) -> [[String]] {
+        sheets.first { $0.name == VanStockSheet.metaSheetName }?.rows ?? []
+    }
+
+    private func written(_ van: VanIdentity?) throws -> [XLSXReader.Sheet] {
+        try XLSXReader.read(VanStockSheet.data(log, van: van, exportedAt: time(10), calendar: calendar)).get()
+    }
+
+    func testThePlaceRoundTripsThroughTheMetaSheet() throws {
+        for kind in StockPlace.Kind.allCases {
+            let sheets = try written(VanIdentity(id: "s1", name: "Main street", place: kind))
+            XCTAssertTrue(meta(sheets).contains([VanStockSheet.placeKey, kind.rawValue]), "\(kind)")
+            XCTAssertEqual(try VanStockSheet.rows(from: sheets).get().van,
+                           VanIdentity(id: "s1", name: "Main street", place: kind))
+        }
+    }
+
+    func testAListWithNoPlaceWritesNoPlaceRowAndReadsBackWithNone() throws {
+        let sheets = try written(VanIdentity(id: "v4", name: "Truck 4"))
+        XCTAssertFalse(meta(sheets).contains { $0.first == VanStockSheet.placeKey })
+        XCTAssertEqual(try VanStockSheet.rows(from: sheets).get().van, VanIdentity(id: "v4", name: "Truck 4"))
+    }
+
+    func testAnOlderWorkbookWithoutAPlaceRowImportsAsToday() throws {
+        // What a build before places wrote: format, exported_at, van_id and van_name, and no place.
+        let older = try written(VanIdentity(id: "v4", name: "Truck 4", place: .store)).map { sheet -> XLSXReader.Sheet in
+            guard sheet.name == VanStockSheet.metaSheetName else { return sheet }
+            let rows = sheet.rows.filter { $0.first != VanStockSheet.placeKey }
+            return XLSXReader.Sheet(name: sheet.name, isHidden: sheet.isHidden, rows: rows)
+        }
+        XCTAssertEqual(meta(older).map { $0.first ?? "" }, ["key", "format", "exported_at", "van_id", "van_name"])
+        let read = try VanStockSheet.rows(from: older).get()
+        XCTAssertNil(read.van?.place)
+        XCTAssertEqual(read.van?.stockPlace.kind, .van)
+        XCTAssertEqual(read.rows.count, 4)
+        let proposal = try VanStockSheet.proposal(from: older, log: log).get()
+        // As for any unedited workbook: only the unreliable igniter is offered, as a count.
+        XCTAssertEqual(proposal.counts.map(\.itemID), ["igniter"])
+        XCTAssertEqual(proposal.edits, [])
+        XCTAssertEqual(proposal.newLines, [])
+    }
+
+    func testAPlaceFromANewerBuildReadsAsVan() throws {
+        let newer = try written(VanIdentity(id: "s1", name: "Bar", place: .store)).map { sheet -> XLSXReader.Sheet in
+            guard sheet.name == VanStockSheet.metaSheetName else { return sheet }
+            let rows = sheet.rows.map { $0.first == VanStockSheet.placeKey ? [VanStockSheet.placeKey, "boat"] : $0 }
+            return XLSXReader.Sheet(name: sheet.name, isHidden: sheet.isHidden, rows: rows)
+        }
+        XCTAssertEqual(try VanStockSheet.rows(from: newer).get().van?.place, .van)
+    }
+
+    func testTheVaultTheListChecksAgainstIsNeverWrittenIntoTheWorkbook() throws {
+        let van = VanIdentity(id: "s1", name: "Main street", place: .store, checkVaultID: "vault-secret-9")
+        let data = VanStockSheet.data(log, van: van, exportedAt: time(10), calendar: calendar)
+        let sheets = try XLSXReader.read(data).get()
+        for sheet in sheets {
+            XCTAssertFalse(sheet.rows.joined().contains { $0.contains("vault-secret-9") }, sheet.name)
+        }
+        XCTAssertNil(try VanStockSheet.rows(from: sheets).get().van?.checkVaultID)
+    }
 }
