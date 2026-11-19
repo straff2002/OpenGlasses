@@ -1,8 +1,15 @@
 # Plan ML — Measured Quantities (4.25 litres of oil, kept exactly, on the phone and to the office)
 
-**Status:** 📝 Drafted 2026-11-19 — only Decision 9's refusal built. **All nine decisions taken 2026-11-19 as
-recommended** (owner: "1-9 yes, build it"). Decision 9's refusal is built (headless), on its own PR ahead of the rest: `van_stock` and `parts_request` now refuse a quantity that is not a whole number with a sentence (`PartsRequestTool.quantityArgument`), so 4.25 is never cut to 4. ML's own build replaces it for stock. The build follows Plan [MK](MK-stock-where-it-lives.md)'s build PR (branch
-`feat/mk-stock-place`), which is changing the same VanStock files now. This docs PR also amends
+**Status:** 🚧 P0–P3 built 2026-11-20 (headless, on the build branch `feat/ml-measured-quantities`); P4 (the
+catalog sync) and P5 (the device pass) owed. **All nine decisions taken 2026-11-19 as recommended**
+(owner: "1-9 yes, build it"). P0 is `StockQuantity`, an exact quantity in thousandths. P1 moves the
+ledger to file format 2 and migrates a format 1 log exactly. P2 opens the edges: `van_stock` takes
+a decimal and reads it against the line's own unit, refusing with a sentence what the unit cannot
+hold; measured amounts are said in words; the line's page has a decimal field in the phone's
+locale; and the spreadsheet writes and reads decimal number cells. P3 writes the record's
+`van_stock` block with `quantityScaled` and `quantityScale` and adds it to the office report
+contract. Decision 9's whole-number refusal, built ahead of the rest, is replaced for stock; a
+parts request still refuses a fraction. The plan's docs PR amended
 Plan [HF](HF-office-stock-and-capture-contracts.md)'s four contracts so that the phone and the
 office agree on one quantity form before either side is built.
 **Track:** Field Assist (B2B).
