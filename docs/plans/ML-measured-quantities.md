@@ -1,7 +1,7 @@
 # Plan ML — Measured Quantities (4.25 litres of oil, kept exactly, on the phone and to the office)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. Nine decisions are open (below), each
-with a recommendation. The build follows Plan [MK](MK-stock-where-it-lives.md)'s build PR (branch
+**Status:** 📝 Drafted 2026-11-19 — nothing implemented. **All nine decisions taken 2026-11-19 as
+recommended** (owner: "1-9 yes, build it"). Decision 9's refusal ships first, as its own PR. The build follows Plan [MK](MK-stock-where-it-lives.md)'s build PR (branch
 `feat/mk-stock-place`), which is changing the same VanStock files now. This docs PR also amends
 Plan [HF](HF-office-stock-and-capture-contracts.md)'s four contracts so that the phone and the
 office agree on one quantity form before either side is built.
@@ -331,7 +331,9 @@ the build PR, after MK's. P4 is the catalog PR. P5 is a report.
 
 ## Decisions for Greig
 
-1. **Fixed-point integers, not `Decimal`** (recommended). Every quantity is a whole number of
+**All nine taken 2026-11-19 as recommended** (owner: "1-9 yes, build it").
+
+1. ✅ **Fixed-point integers, not `Decimal`** (recommended). Every quantity is a whole number of
    thousandths, so the maths is exact and every contract keeps its integers-only rule. The
    alternative is `Decimal` everywhere, which is weighed here honestly. It is exact in base ten
    and reads naturally in code, but it has three costs. Foundation's `JSONDecoder` has been known to
@@ -340,46 +342,46 @@ the build PR, after MK's. P4 is the catalog PR. P5 is a report.
    decimal type in its standard library, so the office would read the numbers as `float64`. And
    rounding becomes a choice at every operation instead of an impossibility. `Double` is not a
    candidate.
-2. **One scale (thousandths) for every unit, with `each` and `pack` held to whole thousands**
+2. ✅ **One scale (thousandths) for every unit, with `each` and `pack` held to whole thousands**
    (recommended). The alternative is a scale per unit (×1,000 for measured units, ×1 for
    each/pack). Because a line's unit can be edited and movements do not record their unit, that
    puts two scales in one line's history and makes the migration depend on the unit at each point
    in time. Both give the same contracts, since the scale is stated either way.
-3. **Three decimal places, no finer for now** (recommended): a millilitre, a gram or a millimetre.
+3. ✅ **Three decimal places, no finer for now** (recommended): a millilitre, a gram or a millimetre.
    That covers the mechanic's 4.25 L, fluids to the millilitre and refrigerant to the gram. The
    scale is written into the record line and HF's payloads, so a finer scale later is a new value
    that older readers refuse, not a silent change. Alternative: four places now, for a trade
    that weighs grease or additive below a gram. No pilot has asked for that.
-4. **Imperial units take thousandths like the metric ones, and no new units come in this plan**
+4. ✅ **Imperial units take thousandths like the metric ones, and no new units come in this plan**
    (recommended). `ft` and `lb` get thousandths (about a third of a millimetre and about half a
    gram). Quarts, gallons, fluid ounces, ounces and inches are not on the list today. A North
    American mechanic adds oil in quarts, so `qt` is likely to be the first one asked for. Each is
    one enum case, its spoken word and its screen string, and HF's unit list gains it at the same
    time. Alternative: add `qt`, `gal`, `fl oz`, `oz` and `in` now.
-5. **One unit per line; cases and loose bottles are two lines** (recommended). A line counted in
+5. ✅ **One unit per line; cases and loose bottles are two lines** (recommended). A line counted in
    two units (a case of 12 and 5 loose) needs a conversion factor on the line, a two-part amount
    in every movement and every contract, and a rule for what "low" means. Two lines ("Soda water,
    case" and "Soda water, bottle") already work, and MK's Open question 1 proposes waiting for the
    pilot to ask. Alternative: a per-line `per` factor (12 bottles to a case) with the ledger in the
    smaller unit.
-6. **In contracts, the scale is stated and the field name says the figure is scaled**
+6. ✅ **In contracts, the scale is stated and the field name says the figure is scaled**
    (recommended): `quantityScaled` plus `quantityScale: 3` on each `van_stock` line, and in HF a
    signed `quantityScale` (exactly 3 in v1) with `onHandScaled`, `quantityScaled` and
    `neededScaled`. The new name protects against a reader that ignores fields it does not know.
    The scale protects against a reader that knows the name and assumes the scale. Alternatives:
    the name only (`quantityThousandths`, which would have to be renamed for a finer scale), or the
    scale only (keeps `quantity`, which a tolerant old reader of the record would misread).
-7. **Measured amounts are written in words in what the model is given** (recommended): "4.25
+7. ✅ **Measured amounts are written in words in what the model is given** (recommended): "4.25
    litres", "0.5 kilograms", "12 metres". This changes today's model-facing "10 m" for measured
    units only, and MK's wording tests are updated for those lines on purpose. Each and pack are
    untouched. The screen shows the symbol in the locale's form ("4,25 l"). Alternative: keep the
    symbols and leave the expansion to the model, which risks "l" being read as "one".
-8. **Parts requests and job updates stay whole counts** (recommended). `PartsRequest.quantity`,
+8. ✅ **Parts requests and job updates stay whole counts** (recommended). `PartsRequest.quantity`,
    `parts_request` and `Contracts/job-updates.md`'s `quantity` count parts and carry no unit. An
    order for a measured line is whole units of it. Alternative: give `PartsRequest` a unit and a
    scale, which changes a record kind the office receives and the built job-update contract, for
    orders no supplier takes.
-9. **Stop the silent cut now, ahead of this plan** (recommended). Today a decimal from the model is
+9. ✅ **Stop the silent cut now, ahead of this plan** (recommended). Today a decimal from the model is
    cut to an integer with no warning: 4.25 litres is recorded as 4, a count of 3.5 as 3, and a
    standard of 0.5 clears the standard. A small fix of its own, in `PartsRequestTool.integer`'s
    stock callers, refuses a quantity that is not whole with a sentence ("whole numbers only for
