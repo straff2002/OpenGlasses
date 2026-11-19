@@ -394,6 +394,15 @@ continuous countdowns; streamed viewfinder and video calls; face-recognition nam
   carry their icon (`LensButtonIconPolicy`); every other button is sent as its label. Device
   confirmation owed: the launcher on a real Ray-Ban Display shows every row's label; if the
   hardware keeps labels beside icons, the rule can be relaxed.
+  **Build 728 report (2026-11-19):** after the Display had slept, the next question did not bring
+  the lens back. Each start read `stopped` for over a second after `Display.start()`, and
+  `DisplayStartWait` gave a display that had not begun only one second before it gave up
+  (`displayCapabilityRead state=stopped count=1000`, then `renderFailed displayDidNotStart`); the
+  render-error path rebuilt the session and the next start went the same way, 3–4 times a
+  question. A display that has not begun now gets the whole 10 s allowance, as a `starting` one
+  does; one seen `starting` that then stops still fails at once, and one the backend has let go of
+  meanwhile is not waited for. Device confirmation owed: a question after the lens has slept
+  draws the answer on the first try.
 
 ## Acceptance
 

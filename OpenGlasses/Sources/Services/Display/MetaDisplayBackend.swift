@@ -637,11 +637,14 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
 
     /// Hold the first send until the capability is `started` (`DisplayStartWait`). A display that
     /// stops or never gets there throws `displayDidNotStart`, which the render-error path reads as
-    /// a failure and rebuilds from — never a send into a display that is not ready.
+    /// a failure and rebuilds from — never a send into a display that is not ready. A display that
+    /// still reads `stopped` (waking from the glasses' idle sleep) is given the whole allowance;
+    /// one this backend has let go of meanwhile is not waited for.
     private func awaitStarted(_ display: Display) async throws {
-        let (outcome, waited) = try await DisplayStartWait.wait {
-            DisplayCapabilityPhase(display.state)
-        }
+        let (outcome, waited) = try await DisplayStartWait.wait(
+            phase: { DisplayCapabilityPhase(display.state) },
+            isCurrent: { [weak self] in self?.display === display }
+        )
         PrivacyLog.device(.hud, .displayCapabilityRead, state: PrivacyToken(outcome.rawValue),
                           count: Int((waited * 1000).rounded()))
         guard outcome == .started else {
