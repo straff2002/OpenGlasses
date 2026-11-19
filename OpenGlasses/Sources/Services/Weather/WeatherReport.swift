@@ -52,6 +52,9 @@ struct WeatherReport: Equatable, Sendable {
     var current: Current
     /// Today first, when WeatherKit's daily forecast starts today.
     var days: [Day]
+    /// How many daily forecasts are kept: today and six more, so a weekend or "next Monday" is
+    /// covered from any day of the week.
+    static let forecastDays = 7
     /// `nil` where the region has no minute forecast. An empty array is a forecast with no minutes
     /// left in it, which is not the same thing and is treated as unknown too.
     var minutes: [Minute]?

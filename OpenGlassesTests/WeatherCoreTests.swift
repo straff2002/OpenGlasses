@@ -141,6 +141,26 @@ final class WeatherPhraserTests: XCTestCase {
             + "Saturday: clear, 19°C/10°C.")
     }
 
+    /// Support report, build 728: asked about the weekend on a Thursday, the tool fetched Sunday
+    /// and dropped it, and the model searched the web for it. Every later day is named.
+    func testEveryLaterDayTheReportHoldsIsNamed() {
+        let days = (0..<WeatherReport.forecastDays).map { WeatherFixtures.day($0, high: 17 + Double($0), low: 9) }
+        let text = WeatherPhraser.answer(WeatherFixtures.report(days: days), placeName: nil,
+                                         units: .metric, now: now, calendar: WeatherFixtures.utcCalendar)
+        let calendar = WeatherFixtures.utcCalendar
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEEE"
+        XCTAssertTrue(text.contains("Tomorrow: partly cloudy, 18°C/9°C."), text)
+        for offset in 2..<WeatherReport.forecastDays {
+            let name = formatter.string(from: WeatherFixtures.day(offset).date)
+            XCTAssertTrue(text.contains("\(name): partly cloudy, \(17 + offset)°C/9°C."),
+                          "day +\(offset) (\(name)) is missing: \(text)")
+        }
+    }
+
     func testFahrenheitAndARainyToday() {
         let report = WeatherFixtures.report(days: [WeatherFixtures.day(0, .rain, high: 20, low: 10, chance: 0.64)])
         let units = WeatherUnits(temperature: .fahrenheit, speed: .milesPerHour)

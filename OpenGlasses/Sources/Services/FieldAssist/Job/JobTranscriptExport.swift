@@ -906,6 +906,16 @@ enum JobTranscriptExport {
         if let voice = trace.speechEngine { who.append("voice: \(voice)") }
         let whoLine = who.filter { !$0.isEmpty }.joined(separator: " · ")
         if !whoLine.isEmpty { out.append(indent + "model: " + whoLine) }
+        // The attempts the cascade gave up on first: the wait the wearer sat through before the
+        // model above answered (support report, build 728).
+        for attempt in trace.earlierAttempts ?? [] {
+            let who = [attempt.backend, attempt.model].compactMap { $0 }.joined(separator: " / ")
+            var line = indent + "tried first: " + (who.isEmpty ? "another model" : who)
+            line += attempt.seconds.map { " — gave up after \(seconds($0))" } ?? " — gave up"
+            if let error = attempt.error { line += " (\(error))" }
+            line += ", moved on: \(attempt.failure)"
+            out.append(line)
+        }
 
         if !trace.promptBlocks.isEmpty || trace.imageSent {
             // A photo from a button or quick action went with the app's own prompt; there are no

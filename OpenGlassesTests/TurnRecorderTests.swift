@@ -303,6 +303,34 @@ final class TurnRecorderTests: XCTestCase {
         XCTAssertNil(sealAndRead()?.firstAudioAt)
     }
 
+    // MARK: - Attempts the cascade gave up on
+
+    /// Support report, build 728: Gemini spent 30 s timing out before Grok answered, and the trace
+    /// named only Grok. The abandoned attempt keeps its model, class, error and duration.
+    func testAnAbandonedAttemptIsKeptWithItsDuration() {
+        TurnRecorder.beginTurn()
+        TurnRecorder.mark(.commit, at: at(0))
+        TurnRecorder.noteBackend(.direct(.gemini), model: "gemini-3.8-flash")
+        clock.now = at(30.0)
+        TurnRecorder.noteAttemptAbandoned(failure: "retryOtherModel", error: nil)
+        TurnRecorder.noteBackend(.direct(.xai), model: "grok-4.7")
+        TurnRecorder.mark(.generationDone, at: at(40.0))
+
+        let turn = sealAndRead()
+        XCTAssertEqual(turn?.model, "grok-4.7")
+        XCTAssertEqual(turn?.earlierAttempts.count, 1)
+        XCTAssertEqual(turn?.earlierAttempts.first?.backend, TurnBackend.direct(.gemini).label)
+        XCTAssertEqual(turn?.earlierAttempts.first?.model, "gemini-3.8-flash")
+        XCTAssertEqual(turn?.earlierAttempts.first?.failure, "retryOtherModel")
+        XCTAssertEqual(turn?.earlierAttempts.first?.seconds ?? .nan, 30.0, accuracy: 0.001)
+    }
+
+    func testAnAbandonMarkWithNoAttemptRecordsNothing() {
+        TurnRecorder.beginTurn()
+        TurnRecorder.noteAttemptAbandoned(failure: "retryOtherModel", error: nil)
+        XCTAssertEqual(sealAndRead()?.earlierAttempts.count, 0)
+    }
+
     // MARK: - Off-turn work
 
     /// `AgentScheduler`, the notification digest and the OpenClaw triage all reach

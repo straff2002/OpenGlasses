@@ -311,6 +311,28 @@ enum TurnRecorder {
             $0.model = model
             $0.credential = nil
             $0.toolsSent = nil
+            $0.attemptStartedAt = now()
+        }
+    }
+
+    static let maxEarlierAttempts = 4
+
+    /// The cascade gave up on the attempt `noteBackend` last recorded and is moving to another
+    /// model. The attempt is kept with its failure class, the error's category and how long it
+    /// ran, so the trace shows the wait the wearer sat through rather than only the model that
+    /// answered after it.
+    static func noteAttemptAbandoned(failure: String, error: SafeErrorSummary?) {
+        let abandonedAt = now()
+        update {
+            guard $0.backend != nil || $0.model != nil,
+                  $0.earlierAttempts.count < maxEarlierAttempts else { return }
+            $0.earlierAttempts.append(.init(
+                backend: $0.backend?.label,
+                model: $0.model.map(TurnTrace.modelName),
+                failure: failure,
+                error: error?.description,
+                seconds: $0.attemptStartedAt.map { max(0, abandonedAt.timeIntervalSince($0)) }))
+            $0.attemptStartedAt = nil
         }
     }
 

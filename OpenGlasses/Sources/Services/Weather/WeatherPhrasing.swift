@@ -236,7 +236,7 @@ enum WeatherAlertDigest {
 enum WeatherPhraser {
 
     /// The tool's answer: current conditions, today's high and low, rain in the next hour, any
-    /// alerts, then tomorrow and the day after. Sentences are dropped, never guessed, when the
+    /// alerts, then tomorrow and each later day the report holds (`WeatherReport.forecastDays`). Sentences are dropped, never guessed, when the
     /// data for them is missing.
     static func answer(
         _ report: WeatherReport,
@@ -273,11 +273,13 @@ enum WeatherPhraser {
             sentences.append("Tomorrow: \(WeatherConditionPhrase.phrase(tomorrow.condition)), "
                              + "\(units.temperature(tomorrow.highC))/\(units.temperature(tomorrow.lowC)).")
         }
-        if days.count >= 3 {
-            let after = days[2]
-            let name = weekdayName(after.date, calendar: calendar)
-            sentences.append("\(name): \(WeatherConditionPhrase.phrase(after.condition)), "
-                             + "\(units.temperature(after.highC))/\(units.temperature(after.lowC)).")
+        // Every later day fetched, by name: "this weekend" asked on a Thursday needs Sunday, and a
+        // tool that dropped it sent the model to the web for a forecast it already had (support
+        // report, build 728).
+        for later in days.dropFirst(2) {
+            let name = weekdayName(later.date, calendar: calendar)
+            sentences.append("\(name): \(WeatherConditionPhrase.phrase(later.condition)), "
+                             + "\(units.temperature(later.highC))/\(units.temperature(later.lowC)).")
         }
         return sentences.joined(separator: " ")
     }

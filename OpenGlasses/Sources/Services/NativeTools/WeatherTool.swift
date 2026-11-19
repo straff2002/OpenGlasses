@@ -3,14 +3,14 @@ import Foundation
 
 /// Weather from Apple's WeatherKit: current conditions, today's high and low, rain starting or
 /// stopping within the next hour (where the region has a minute forecast), active severe-weather
-/// alerts, and the next two days.
+/// alerts, and the next six days by name (enough for this weekend or next week).
 ///
 /// The sentence is built by the pure `WeatherPhraser` from a `WeatherReport`; the provider, the
 /// location fix, the geocoder, the units and the Medical Local Only check are all injected, so the
 /// whole tool runs headless in tests without a request leaving the machine.
 final class WeatherTool: NativeTool, @unchecked Sendable {
     let name = "get_weather"
-    let description = "Get the weather from Apple Weather for the user's current location or a named place: current conditions, today's high and low, whether rain starts or stops within the next hour (where available), any active severe-weather alerts, and the next two days. Use this for any weather, rain, umbrella or what-to-wear question."
+    let description = "Get the weather from Apple Weather for the user's current location or a named place: current conditions, today's high and low, whether rain starts or stops within the next hour (where available), any active severe-weather alerts, and the next six days by name (enough for this weekend or next week). Use this for any weather, rain, umbrella or what-to-wear question."
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
