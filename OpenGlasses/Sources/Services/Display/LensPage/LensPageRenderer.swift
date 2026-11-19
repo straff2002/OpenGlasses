@@ -51,9 +51,9 @@ struct LensPageRequest: Equatable {
     }
 }
 
-/// One page laid out for the lens: its size, its marks as rectangles, its drawings, where the view
-/// opens, how legible its text is, and — for a cited text passage — its words to read. Pure once
-/// made.
+/// One page laid out for the lens: its size, its marks as rectangles, its drawings, the part the
+/// view is about, how legible its text is, and — for a cited text passage — its words to read.
+/// Pure once made.
 struct LensPageLayout: Equatable {
     let pageSize: CGSize
     let marks: LensPageMarks?
@@ -66,15 +66,15 @@ struct LensPageLayout: Equatable {
     let figureIndex: Int?
     let focus: LensPageFocus
     let legibility: LensLegibility
-    /// The cited passages' own words, when the view opens on a cited text passage (reading mode,
-    /// `LensPageReading`); nil when it opens on anything else.
+    /// The cited passages' own words, when the part is a cited text passage (reading mode,
+    /// `LensPageReading`, which opens on them); nil when it is anything else.
     let reading: LensPageReading?
 
     /// `figure` is a known drawing's rectangle; without one, the chosen drawing's (`figureIndex`
     /// into `drawings`). `drawingFocus` says where the drawing stands in the order (§1): ahead of
     /// the cited passages (`.first`), after them (`.afterMarks`), or not a focus at all (`.none`,
     /// a request for the page: the drawings are still kept for **Next diagram ›**). `reading` is
-    /// kept only when the view opens on the cited passages.
+    /// kept only when the part is the cited passages.
     init(pageSize: CGSize, marks: LensPageMarks?, pictureAreas: [CGRect],
          tone: LensPageRenderPlan.Tone, figure: CGRect? = nil,
          drawings: [PageDrawing] = [], figureIndex: Int? = nil,
@@ -99,13 +99,23 @@ struct LensPageLayout: Equatable {
         self.reading = focus.source == .citedPassages && pictureAreas.isEmpty && tone == .lineArt ? reading : nil
     }
 
-    /// The view's opening viewport, for its first frame (the citation line over it).
-    var openingViewport: LensPageViewport {
-        Self.viewport(opening: focus, legibility: legibility, citation: true)
+    /// The part of the page the view is about — the focus fitted exactly — where **Back to part**
+    /// goes. Fitted in a later frame's box (no citation line over it), since Back to part is never
+    /// the first frame; the whole page when the focus is the whole page.
+    var partViewport: LensPageViewport {
+        Self.viewport(opening: focus, legibility: legibility, citation: false)
     }
 
-    /// The drawing the view opened on, when it opened on one.
-    var openingDrawing: Int? { focus.source == .figure ? figureIndex : nil }
+    /// The view's first frame: the whole page, the part kept for **Back to part**. A tester's
+    /// build-728 report on a real Ray-Ban Display: opening zoomed onto the part showed a corner of
+    /// the page and left the controls to be scrolled to, so every picture opens on the whole page
+    /// with its controls in sight, and the part is one press away. (`HUDPageViewState.framed()`
+    /// draws it into the first frame's box, the citation line over it.)
+    var openingViewport: LensPageViewport { partViewport.startingOnWholePage() }
+
+    /// The drawing the part is, when it is one: what **Back to part** returns to, and where **Next
+    /// diagram ›** counts from.
+    var partDrawing: Int? { focus.source == .figure ? figureIndex : nil }
 
     /// The view opened on drawing `index` (**Next diagram ›**, "the bottom one"), on a later frame.
     func viewport(onDrawing index: Int) -> LensPageViewport? {
@@ -133,7 +143,7 @@ struct LensPageLayout: Equatable {
     }
 
     /// `focus` fitted exactly into the box its frame leaves the picture: the citation line on the
-    /// first frame, and the hint when the opening needs it (`HUDPageViewState.showsZoomHint`).
+    /// first frame, and the hint when the view needs it (`HUDPageViewState.showsZoomHint`).
     static func viewport(opening focus: LensPageFocus, legibility: LensLegibility,
                          citation: Bool) -> LensPageViewport {
         let plain = LensPageViewport(opening: focus, box: LensPageFrame.pictureBox(citation: citation, hint: false))

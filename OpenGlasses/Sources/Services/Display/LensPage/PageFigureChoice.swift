@@ -45,7 +45,7 @@ enum PageFigurePosition: String, Equatable, Sendable, CaseIterable {
 struct PageFigureAsk: Equatable, Sendable {
     /// Where the drawing stands in the focus order (§1).
     enum DrawingFocus: String, Equatable, Sendable {
-        /// Not a focus: the view opens on the cited passages, the table's area or the whole page.
+        /// Not a focus: the view's part is the cited passages, the table's area or none.
         case none
         /// After the cited passages and the table's area (a figure page the app put up).
         case afterMarks
@@ -145,7 +145,7 @@ struct PageFigureAsk: Equatable, Sendable {
     }
 }
 
-/// Which of a page's drawings the view opens on (Plan KV P1b). Pure. Each step is used only when
+/// Which of a page's drawings is the view's part (Plan KV P1b). Pure. Each step is used only when
 /// it decides:
 /// 1. **A named caption** found on the page: the drawing nearest it, above or below (captions sit
 ///    on either side). Decides when one drawing is nearer than the rest by `captionMarginPoints`.
@@ -163,7 +163,7 @@ struct PageFigureChoice: Equatable {
 
     /// The page's drawings, in reading order.
     let drawings: [PageDrawing]
-    /// The one the view opens on; nil when the page has none.
+    /// The one that is the view's part; nil when the page has none.
     let index: Int?
     let reason: Reason?
 

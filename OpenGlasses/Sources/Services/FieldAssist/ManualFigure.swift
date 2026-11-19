@@ -103,13 +103,14 @@ enum ManualFigureAttachment {
 ///
 /// Plan KV found that a lens can show a manual page after all, in part. A whole letter page fitted
 /// to the 600 px lens draws its 8 pt labels about 8 px tall, which no one can read; a part of the
-/// page zoomed in draws them readable, and a marked table row or a diagram opens filling the lens's
-/// width. Body text is the exception: a text line spans the column, so even fitted to the line it
-/// draws about 9 px, and a cited text passage opens as its own words, set as lens text. So on a
-/// backend that draws pictures the page goes to the lens as the page view (`LensPageSession`):
-/// opened on the part the answer is about, with the whole page a press away. This line is what is left: the cue on a page the app
-/// put up by itself (on a card with **Show here**, so it never covers the lens unasked), and the
-/// whole message on a lens that draws text only (Even G2, the web mirror).
+/// page zoomed in draws them readable, and a marked table row or a diagram zoomed in fills the
+/// lens's width. Body text is the exception: a text line spans the column, so even fitted to the
+/// line it draws about 9 px, and a cited text passage opens as its own words, set as lens text. So
+/// on a backend that draws pictures the page goes to the lens as the page view (`LensPageSession`):
+/// opened on the whole page, controls in sight, with the part the answer is about a press away
+/// (**Back to part**). This line is what is left: the cue on a page the app put up by itself (on a
+/// card with **Show here**, so it never covers the lens unasked), and the whole message on a lens
+/// that draws text only (Even G2, the web mirror).
 enum ManualFigureCue {
 
     /// A photographed page (Plan IF): its paper is grey, which the lens drawing stretches first.

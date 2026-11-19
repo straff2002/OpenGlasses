@@ -18,11 +18,20 @@ import Foundation
 /// crop's height changes.
 ///
 /// **Zoom** is `pixelsPerPoint`, lens pixels per page point; `scale` is that relative to the whole
-/// page fitted into the box (scale 1). The view opens at the magnification that fits the padded
-/// focus exactly (`init(opening:box:)`). **Zoom in** and **Zoom out** move along a ladder of ×1.5
-/// per press anchored at the opening magnification, stopped at scale 1 below and at
+/// page fitted into the box (scale 1). **Zoom in** and **Zoom out** move along a ladder of ×1.5
+/// per press anchored at the part's magnification, stopped at scale 1 below and at
 /// `maxPixelsPerPoint` above (`LensLegibility.zoomCapPixelsPerPoint`: 8 pt labels at the readable
 /// floor, and one more press). **Whole page** is scale 1.
+///
+/// **The part, and where the view starts.** A viewport remembers one view, its *part*
+/// (`partMagnification`, `partCenter`): where **Back to part** (`reset()`) goes and what the ladder
+/// is anchored at. `init(opening:box:)` makes the part the padded focus fitted exactly, and starts
+/// there; a viewport with no part (the whole page, `init(wholePage:)`) has the whole page as its
+/// reset view. `startingOnWholePage()` keeps the part and starts the view on the whole page instead:
+/// how the page view opens on a page with a focus (a tester's build-728 report: open on the whole
+/// page, controls in sight, the part one press away). Invariants: `hasPart` says there is a part to
+/// go back to whatever the view shows; `isAtPart` is true where `reset()` lands; `isAtStart` is true
+/// on the view the viewport started on (the whole page when it started there, else the part).
 ///
 /// **Clamping.** On each axis separately: where the crop is shorter than the page, it lies wholly
 /// inside the page. Where it is longer — a portrait page's width in a wide box at scale 1 — it is
@@ -95,9 +104,12 @@ struct LensPageViewport: Equatable {
     /// The requested centre, in top-down page points, clamped when it was set.
     private var target: CGPoint
 
-    /// Where the view opened, so `reset()` can go back to it.
-    let openingMagnification: CGFloat?
-    let openingCenter: CGPoint
+    /// The part: where `reset()` (**Back to part**) goes, and the ladder's anchor. Nil
+    /// magnification: the viewport has no part, and resets to the whole page.
+    let partMagnification: CGFloat?
+    let partCenter: CGPoint
+    /// The view started on the whole page, the part kept for `reset()` (`startingOnWholePage()`).
+    private(set) var startsOnWholePage = false
     /// The deepest magnification (see the type's note).
     let maxPixelsPerPoint: CGFloat
 
@@ -117,8 +129,8 @@ struct LensPageViewport: Equatable {
         self.magnification = opening
         let clamped = Self.clamp(center, crop: Self.cropSize(box: box, pixelsPerPoint: opening ?? fit), pageSize: size)
         self.target = clamped
-        self.openingMagnification = opening
-        self.openingCenter = clamped
+        self.partMagnification = opening
+        self.partCenter = clamped
     }
 
     /// The whole page, fitted into `box`.
@@ -127,9 +139,9 @@ struct LensPageViewport: Equatable {
                   pixelsPerPoint: nil)
     }
 
-    /// A viewport opening on `focus` in `box`: its padded rectangle fitted exactly (as large as the
-    /// box holds it whole), up to the cap; the whole page when the focus is the whole page or as
-    /// large as it.
+    /// A viewport on `focus` in `box`, starting there: its padded rectangle fitted exactly (as large
+    /// as the box holds it whole), up to the cap, is the part; the whole page when the focus is the
+    /// whole page or as large as it (then there is no part).
     init(opening focus: LensPageFocus, box: CGSize = LensPageViewport.plainBox) {
         let magnification = focus.padded.map { padded -> CGFloat in
             min(max(box.width, 1) / max(padded.width, 1), max(box.height, 1) / max(padded.height, 1))
@@ -167,15 +179,18 @@ struct LensPageViewport: Equatable {
     var isWholePage: Bool { pixelsPerPoint <= fitPixelsPerPoint * (1 + Self.tolerance) }
     /// True at the cap.
     var isDeepest: Bool { pixelsPerPoint >= maxPixelsPerPoint * (1 - Self.tolerance) }
-    /// The magnification the view opened at, in the current box.
-    var openingPixelsPerPoint: CGFloat { openingMagnification.map { max($0, fitPixelsPerPoint) } ?? fitPixelsPerPoint }
-    /// True when the view is where it opened.
-    var isAtOpening: Bool {
-        abs(pixelsPerPoint - openingPixelsPerPoint) <= openingPixelsPerPoint * Self.tolerance
-            && Self.near(center, Self.clamp(openingCenter, crop: cropSize, pageSize: pageSize))
+    /// The part's magnification, in the current box (the whole page's when there is no part).
+    var partPixelsPerPoint: CGFloat { partMagnification.map { max($0, fitPixelsPerPoint) } ?? fitPixelsPerPoint }
+    /// True where `reset()` lands: on the part, or on the whole page for a viewport with none.
+    var isAtPart: Bool {
+        abs(pixelsPerPoint - partPixelsPerPoint) <= partPixelsPerPoint * Self.tolerance
+            && Self.near(center, Self.clamp(partCenter, crop: cropSize, pageSize: pageSize))
     }
-    /// True when the view opened on a part of the page rather than the whole of it.
-    var opensOnPart: Bool { openingMagnification != nil }
+    /// True on the view the viewport started on: the whole page when it started there (the whole
+    /// page is always centred, so any whole-page view is it), else the part.
+    var isAtStart: Bool { startsOnWholePage ? isWholePage : isAtPart }
+    /// True when there is a part of the page to go back to (**Back to part**), whatever is shown.
+    var hasPart: Bool { partMagnification != nil }
 
     var canZoomIn: Bool { !isDeepest }
     var canZoomOut: Bool { !isWholePage }
@@ -210,6 +225,16 @@ struct LensPageViewport: Equatable {
     mutating func showWholePage() {
         magnification = nil
         reclampTarget()
+    }
+
+    /// This viewport, its part kept for `reset()`, started on the whole page instead of the part.
+    /// One with no part is the whole page already, and comes back as it is.
+    func startingOnWholePage() -> LensPageViewport {
+        guard hasPart else { return self }
+        var copy = self
+        copy.showWholePage()
+        copy.startsOnWholePage = true
+        return copy
     }
 
     /// Half a crop in `step`'s direction, stopped at the page's edge. Against the edge, nothing.
@@ -258,9 +283,9 @@ struct LensPageViewport: Equatable {
         zoom(rungs: isWholePage ? Self.pointZoomRungs : 1, around: CGPoint(x: rect.midX, y: rect.midY))
     }
 
-    /// Plan MG §4: the views one press away — the next rung in and out, the whole page, the opening
-    /// view, and each move — most likely first, each once and none the same as this one. The page
-    /// view draws their pictures while the wearer looks, so a press only sends.
+    /// Plan MG §4: the views one press away — the next rung in and out, the whole page, the part
+    /// (**Back to part**), and each move — most likely first, each once and none the same as this
+    /// one. The page view draws their pictures while the wearer looks, so a press only sends.
     func neighbours() -> [LensPageViewport] {
         var candidates: [LensPageViewport] = []
         var probe = self
@@ -293,10 +318,10 @@ struct LensPageViewport: Equatable {
             && Self.near(center, other.center) && box == other.box
     }
 
-    /// Back to the opening view.
+    /// Back to the part (**Back to part**); the whole page for a viewport with no part.
     mutating func reset() {
-        magnification = openingMagnification
-        target = openingCenter
+        magnification = partMagnification
+        target = partCenter
     }
 
     /// Draw into `box` from now on, keeping the magnification (the whole page stays whole).
@@ -316,11 +341,18 @@ struct LensPageViewport: Equatable {
         target = Self.clamp(target, crop: cropSize, pageSize: pageSize)
     }
 
-    /// The ladder's next rung from `value`: the opening magnification × 1.5ⁿ, for the next n up or
-    /// down.
+    /// The ladder's next rung from `value`: the part's magnification × 1.5ⁿ, for the next n up or
+    /// down. Up from the whole page it is the first rung at least ×1.5 the whole page, as a press
+    /// magnifies everywhere else: the rung just over the fit can be barely over it, and once the
+    /// first frame's citation line goes (a taller box, so a larger fit) it would be the whole page
+    /// again. With no part the ladder is anchored at the fit, and that rung is the fit × 1.5.
     private func ladder(from value: CGFloat, upwards: Bool) -> CGFloat {
-        let base = openingPixelsPerPoint
+        let base = partPixelsPerPoint
         guard base > 0, value > 0 else { return value }
+        if upwards, isWholePage {
+            let rung = log(Double(value * Self.zoomStep / base)) / log(Double(Self.zoomStep))
+            return base * CGFloat(pow(Double(Self.zoomStep), (rung - 1e-6).rounded(.up)))
+        }
         let rung = log(Double(value / base)) / log(Double(Self.zoomStep))
         let next = upwards ? (rung + 1e-6).rounded(.down) + 1 : (rung - 1e-6).rounded(.up) - 1
         return base * CGFloat(pow(Double(Self.zoomStep), next))

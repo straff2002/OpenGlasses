@@ -14,6 +14,18 @@ the question above the answer; the page view in the phone preview; and the simul
 by `MockDisplayLaneGuardTests`), which the owner tried on the simulator before the PR. Drafted 2026-11-08
 from the partner's ask, made while ordering a Meta Ray-Ban Display for pilot demos; the owner took all
 nine recommended decisions the same day and added P1b and P4.
+**2026-11-19 (a tester's build-728 report):** the opening changed. On a real Ray-Ban Display with
+Answers on the lens set to Scroll, the view opened zoomed onto the part and showed only the bottom left
+of the page, and the tester had to scroll up with the band to find Zoom in, Move and Close. Every
+picture now opens on the **whole page**, its controls in sight (in Scroll, as its tiles), with the part
+(the cited passages' marks, the chosen drawing, the pictured table's area) kept for **Back to part**,
+which lands on it exactly as the view used to open (`LensPageViewport.startingOnWholePage()`,
+`LensPageLayout.openingViewport`/`partViewport`). "Back" on that opening does the same. Reading mode is
+unchanged, and its **Page** still opens on the passage's mark; explicit zoom asks still zoom. **Next
+page ›** shows on the opening and on the part. One press of Zoom in from the whole page now magnifies at
+least ×1.5. The part is drawn ahead with the opening. P5 (and MG's P6) should also check where the lens
+lands on a zoomed strip view (Back to part, a tile press). On the tester's glasses it opened scrolled
+below the button row, which can't be reproduced headless.
 **Track:** Display (Meta Ray-Ban Display through `MWDATDisplay`). Field Assist and personal manuals:
 every page "show me the page" or an answer opens. P0–P3 (with P1b) are headless; P4 runs on the iOS Simulator
 against Meta's simulated Display; P5 needs a real one.
@@ -116,7 +128,9 @@ struct LensPageViewport: Equatable {
 }
 ```
 
-It opens on the **focus**, picked by a pure `LensPageFocus` in this order:
+The view's **part** is the **focus**, picked by a pure `LensPageFocus` in this order. (Since
+2026-11-19 the view opens on the whole page with the part kept for **Back to part**; it first opened
+on the part itself, see Status.)
 
 1. The cited passages' bounds on that page, united (IN's marks, turned into rectangles).
 2. The pictured table's outlined area (JN's `pictureAreas`).
@@ -187,8 +201,8 @@ The row under the picture (a pure `HUDPageScreenBuilder`, from the viewport stat
 
 | View | Buttons |
 |---|---|
-| Opening view, zoomed | **Zoom in** · **Whole page** · **Move** · **Close** |
-| Whole page | **Zoom in** · **Back to part** (when there is a focus) · **Close** |
+| Whole page (the opening view since 2026-11-19) | **Zoom in** · **Back to part** (when there is a focus) · **Close** |
+| The part, or zoomed | **Zoom in** · **Whole page** · **Move** · **Close** |
 | At the deepest zoom | **Zoom out** · **Move** · **Close** |
 | Move (pushed) | **↑** · **↓** · **←** · **→** · **Done** |
 | Reading mode (§1b) | **Next ›** (while pages remain) · **Page** · **‹ Back** · **Next page ›** · **Close** (four at most) |
@@ -460,9 +474,10 @@ updated.
 
 ## Acceptance
 
-- "Show me the page" with a Display on puts the page on the lens, opened on the part the answer is about,
-  with the marks the phone shows.
-- "Show me the diagram on page 7" opens on the diagram itself, zoomed to hold the whole drawing, and
+- "Show me the page" with a Display on puts the page on the lens, with the marks the phone shows: since
+  2026-11-19 opened on the whole page, with **Back to part** going to the part the answer is about.
+- "Show me the diagram on page 7" reaches the diagram itself with **Back to part** (since 2026-11-19;
+  before, it opened there), zoomed to hold the whole drawing, and
   "figure 12" picks that figure when the page holds two. A drawing with no caption is found the same way,
   and two uncaptioned drawings are told apart by their labels, by "the bottom one", or by **Next
   diagram ›**.

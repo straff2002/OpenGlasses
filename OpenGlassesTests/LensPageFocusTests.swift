@@ -39,7 +39,7 @@ final class LensPageFocusTests: XCTestCase {
         XCTAssertNil(focus.region)
         XCTAssertFalse(focus.hasFocus)
         XCTAssertNil(focus.padded)
-        XCTAssertFalse(LensPageViewport(opening: focus).opensOnPart)
+        XCTAssertFalse(LensPageViewport(opening: focus).hasPart)
         XCTAssertTrue(LensPageViewport(opening: focus).isWholePage)
     }
 
@@ -115,7 +115,7 @@ final class LensPageFocusTests: XCTestCase {
         let drawingFocus = LensPageFocus.pick(pageSize: page, figure: drawing)
         let drawingView = LensPageViewport(opening: drawingFocus)
         XCTAssertTrue(drawingView.isWholePage)
-        XCTAssertFalse(drawingView.opensOnPart)
+        XCTAssertFalse(drawingView.hasPart)
         XCTAssertTrue(LensLegibility().needsZoomHint(at: drawingView), "a drawing's labels need zooming at fit")
     }
 

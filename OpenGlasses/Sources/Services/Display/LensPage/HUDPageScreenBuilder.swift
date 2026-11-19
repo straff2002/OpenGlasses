@@ -7,7 +7,8 @@ enum HUDPageAction: Equatable {
     case zoomIn
     case zoomOut
     case wholePage
-    /// From the whole page back to the part the view opened on.
+    /// To the part the view is about (the cited passage, the chosen drawing, the table's area):
+    /// from the whole page every picture opens on, or from anywhere since.
     case backToPart
     /// Push the arrow row.
     case move
@@ -46,8 +47,9 @@ struct HUDPageViewState: Equatable {
     var citation: String?
     /// There is a further cited page after this one ("show me the relevant pages").
     var hasNextPage: Bool = false
-    /// How many drawings the page has (Plan KV P1b), and which one the view is on (nil when it
-    /// opened on something else: a cited passage, a table's area, the whole page).
+    /// How many drawings the page has (Plan KV P1b), and which one is the view's part (what **Back
+    /// to part** returns to; nil when the part is something else — a cited passage, a table's area
+    /// — or the page has none).
     var diagramCount: Int = 0
     var diagramIndex: Int?
     /// Reading mode (§1): the cited passage's words as lens text, paged; empty when the page has
@@ -66,9 +68,9 @@ struct HUDPageViewState: Equatable {
     /// A zoomed view is drawn as a strip.
     var showsStrip: Bool { tilesAndStrips && !isReading && !viewport.isWholePage }
 
-    /// **Next diagram ›** has somewhere to go: from a view on a drawing, the page has another;
-    /// from a view on no drawing (the whole page "show me page 7" opened on, a cited passage),
-    /// the page has any.
+    /// **Next diagram ›** has somewhere to go: from a view whose part is a drawing, the page has
+    /// another; from a view whose part is none (a page asked for by number, a cited passage), the
+    /// page has any.
     var hasNextDiagram: Bool { diagramIndex == nil ? diagramCount >= 1 : diagramCount >= 2 }
 
     /// The page has words to read, so its picture offers **Read it**.
@@ -114,17 +116,20 @@ struct HUDPageViewState: Equatable {
 ///
 /// | View | Buttons |
 /// |---|---|
-/// | zoomed (the opening view, or any magnification short of the cap) | Zoom in · Whole page · Move · Close |
-/// | the whole page | Zoom in · Back to part (when the view opened on one) · Close |
+/// | the whole page (where every picture opens) | Zoom in · Back to part (when the page has a part) · Close |
+/// | zoomed (the part, or any magnification short of the cap) | Zoom in · Whole page · Move · Close |
 /// | at the zoom cap | Zoom out · Move · Close |
 /// | Move (pushed) | ↑ · ↓ · ← · → · Done |
 /// | Reading mode | Next › (while pages remain) · Page · ‹ Back (after the first page) · Close |
 ///
-/// **Next page ›** goes in before Close on the opening view, while another cited page follows (in
-/// reading mode, on its last page). **Read it** goes in second on every picture row of a page with
-/// words to read (reading mode, §1). **Next diagram ›** goes in after them, on the opening view and
-/// on the whole page, while it has somewhere to go (`hasNextDiagram`: another drawing, or any
-/// drawing from a view on none; Plan KV P1b).
+/// In Scroll (Plan MG §4, `showsTiles`) the whole page is its tiles, which replace **Zoom in**: the
+/// opening row is Back to part (when there is a part) · Close.
+///
+/// **Next page ›** goes in before Close on the view the page opened on and on its part, while
+/// another cited page follows (in reading mode, on its last page). **Read it** goes in second on
+/// every picture row of a page with words to read (reading mode, §1). **Next diagram ›** goes in
+/// after them, on the part and on the whole page, while it has somewhere to go (`hasNextDiagram`:
+/// another drawing, or any drawing from a view on none; Plan KV P1b).
 /// A row holds at most four buttons (`maxButtons`, P4): over that, **Move**, then **Next
 /// diagram ›**, then **Whole page** give way (`capped`); each is still said by voice.
 /// The arrow row is always all four arrows, so a press always does the same thing; one against the
@@ -253,13 +258,13 @@ enum HUDPageScreenBuilder {
         var items: [HUDItem] = []
         if viewport.isWholePage, state.showsTiles {
             // Plan MG decision 7: the tiles are the zoom; a press on one goes two rungs in.
-            if viewport.opensOnPart {
+            if viewport.hasPart {
                 items.append(item(ItemID.backToPart, String(localized: "Back to part"), .secondary,
                                   .backToPart, onAction))
             }
         } else if viewport.isWholePage {
             items.append(item(ItemID.zoomIn, String(localized: "Zoom in"), .primary, .zoomIn, onAction))
-            if viewport.opensOnPart {
+            if viewport.hasPart {
                 items.append(item(ItemID.backToPart, String(localized: "Back to part"), .secondary,
                                   .backToPart, onAction))
             }
@@ -278,12 +283,12 @@ enum HUDPageScreenBuilder {
                               .secondary, .readIt, onAction), at: after)
             after += 1
         }
-        if state.hasNextDiagram, viewport.isAtOpening || viewport.isWholePage, !items.isEmpty || state.showsTiles {
+        if state.hasNextDiagram, viewport.isAtPart || viewport.isWholePage, !items.isEmpty || state.showsTiles {
             items.insert(item(ItemID.nextDiagram, String(localized: "Next diagram ›",
                                                          comment: "Glasses: show the page's next drawing."),
                               .secondary, .nextDiagram, onAction), at: after)
         }
-        if state.hasNextPage, viewport.isAtOpening {
+        if state.hasNextPage, viewport.isAtStart || viewport.isAtPart {
             items.append(item(ItemID.nextPage, String(localized: "Next page ›"), .secondary, .nextPage, onAction))
         }
         items.append(item(ItemID.close, String(localized: "Close"), .outline, .close, onAction))
@@ -318,12 +323,14 @@ enum HUDPageScreenBuilder {
     static let maxButtons = 4
 
     /// A row over `maxButtons` loses **Move** first (one **Zoom in** brings it back, and an arrow
-    /// row on the opening view is rarely what's wanted), then **Next diagram ›** (still said as
+    /// row on the part is rarely what's wanted), then **Next diagram ›** (still said as
     /// "next diagram"), then **Whole page** (still said as "whole page"; it gives way only on a
-    /// page with words to read, whose **Read it** has the place). **Close** always stays.
+    /// page with words to read, whose **Read it** has the place), then **‹ Back**, and last **Next
+    /// page ›** (still said as "next page"; only a whole page that started there with words to read
+    /// and a part to go back to would need it). **Close** always stays.
     static func capped(_ items: [HUDItem]) -> [HUDItem] {
         var items = items
-        for id in [ItemID.move, ItemID.nextDiagram, ItemID.wholePage, ItemID.previousText]
+        for id in [ItemID.move, ItemID.nextDiagram, ItemID.wholePage, ItemID.previousText, ItemID.nextPage]
         where items.count > maxButtons {
             items.removeAll { $0.id == id }
         }

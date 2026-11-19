@@ -221,8 +221,8 @@ final class LensPageRenderPlanTests: XCTestCase {
         XCTAssertEqual(layout.pageSize, page)
         XCTAssertEqual(layout.pictureAreas, [area.rect], "only this page's areas")
         XCTAssertEqual(layout.focus.source, .pictureArea)
-        XCTAssertFalse(layout.openingViewport.isWholePage)
-        XCTAssertTrue(layout.openingViewport.cropRect.contains(area.rect))
+        XCTAssertFalse(layout.partViewport.isWholePage)
+        XCTAssertTrue(layout.partViewport.cropRect.contains(area.rect))
         XCTAssertNil(layout.reading, "a pictured table keeps the picture")
     }
 

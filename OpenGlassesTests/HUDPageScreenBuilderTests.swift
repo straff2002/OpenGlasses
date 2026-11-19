@@ -44,6 +44,31 @@ final class HUDPageScreenBuilderTests: XCTestCase {
         XCTAssertEqual(ids(state(noFocus)), [ID.zoomIn, ID.close])
     }
 
+    /// A tester's build-728 report: the view opens on the whole page with its part kept — Zoom in ·
+    /// Back to part · Close, Next page › on it while another page follows, Next diagram › giving way
+    /// first when the row is full; in Scroll the tiles replace Zoom in.
+    func testTheWholePageOpeningRows() {
+        let opening = zoomedOpening().startingOnWholePage()
+        XCTAssertEqual(ids(state(opening, firstFrame: true)), [ID.zoomIn, ID.backToPart, ID.close])
+        XCTAssertEqual(ids(state(opening, firstFrame: true, nextPage: true)),
+                       [ID.zoomIn, ID.backToPart, ID.nextPage, ID.close])
+
+        var drawing = HUDPageViewState(viewport: opening, legibility: LensLegibility(), citation: citation,
+                                       diagramCount: 2, diagramIndex: 0)
+        XCTAssertEqual(ids(drawing), [ID.zoomIn, ID.nextDiagram, ID.backToPart, ID.close])
+        drawing.hasNextPage = true
+        XCTAssertEqual(ids(drawing), [ID.zoomIn, ID.backToPart, ID.nextPage, ID.close], "Next diagram › gives way")
+
+        var tiles = state(opening, firstFrame: true, nextPage: true)
+        tiles.tilesAndStrips = true
+        XCTAssertEqual(ids(tiles), [ID.backToPart, ID.nextPage, ID.close])
+
+        var part = opening
+        part.reset()
+        XCTAssertEqual(ids(state(part, nextPage: true)), [ID.zoomIn, ID.wholePage, ID.nextPage, ID.close],
+                       "Back to part's row is the old opening's")
+    }
+
     func testTheDeepestZoom() {
         var viewport = zoomedOpening()
         viewport.zoomIn()
@@ -148,8 +173,10 @@ final class HUDPageScreenBuilderTests: XCTestCase {
                 for diagrams in [0, 1, 3] {
                     for moving in [false, true] {
                         for reading in [false, true] {
-                            let viewport = LensPageViewport(pageSize: page, center: CGPoint(x: 306, y: 396),
-                                                            pixelsPerPoint: zoom)
+                          for started in [false, true] {
+                            let zoomed = LensPageViewport(pageSize: page, center: CGPoint(x: 306, y: 396),
+                                                          pixelsPerPoint: zoom)
+                            let viewport = started ? zoomed.startingOnWholePage() : zoomed
                             var state = HUDPageViewState(viewport: viewport, legibility: LensLegibility(), isMoving: moving,
                                                          hasNextPage: nextPage, diagramCount: diagrams,
                                                          diagramIndex: diagrams > 0 ? 0 : nil)
@@ -161,6 +188,7 @@ final class HUDPageScreenBuilderTests: XCTestCase {
                                 XCTAssertEqual(row.last?.id, ID.close)
                                 XCTAssertEqual(row.contains { $0.id == ID.readIt }, reading, "Read it never gives way")
                             }
+                          }
                         }
                     }
                 }
