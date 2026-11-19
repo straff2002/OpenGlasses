@@ -10,7 +10,10 @@ the content-free return probe (`NetworkRoute.connectivityProbe`); the old uncond
 absorbed (sync line only with queued items); Settings → AI & Personality "Keep Talking Without Signal"
 (on when an on-device model is installed, else a link to the download); `OfflineKeywordRouter` and the
 in-memory `HeldQuestionStore` (one slot, 30-min TTL, answered automatically on return, notification
-on expiry). P3: a live session that exhausts its retries because the signal is gone hands the
+on expiry). A phone-model turn that produces no usable answer (broken tool markup, or a promise to
+look something up that it never keeps) is held for the cloud the same way, with its own line, rather
+than ending in "please ask me again" and being reported as answered on the phone; and an offline
+on-device turn never attempts the uncertainty web re-ask, which could only fail (2026-11-20). P3: a live session that exhausts its retries because the signal is gone hands the
 conversation to Direct mode's phone path and is restarted on return, seeded through
 `LiveContextHandover` (`LiveModeHandoffPlanner`). **Not built:** BU P2's camera-grounded
 `OfflineLiveSessionService` (the live modes use Direct mode's phone path instead — see P3 below), and the
@@ -120,7 +123,10 @@ available wins, decided by a pure `OfflineBrainSelector(appActive:available:)`:
    (replaced by GK's classifier when it lands). Anything else: "I can't think that through
    without signal while the phone is locked — I'll answer when we're back online." The question is
    held (in memory only, one slot per conversation, 30 min TTL) and answered by the cloud on return
-   if still within TTL, or offered as a notification.
+   if still within TTL, or offered as a notification. A foreground on-device model that tries and
+   produces no usable answer has its question held the same way ("I couldn't answer that on the
+   phone. I'll answer it when we're back online."): asking again without signal would get the same
+   miss.
 
 Hearing (SenseVoice) and voice (Kokoro/AVSpeech) are CPU and work backgrounded; only the
 thinking changes.
