@@ -10,7 +10,8 @@ returns none), `StockPlaceWording` (§3's table, plus `putVerb` "loaded"/"receiv
 book, and `VanStockVerification` on `VanStockItem` with the legacy decode. No sentence, tool or
 screen changed: `verified` stays as a computed two-state view so the composer, service and matcher
 compile untouched, and a verification edit is recorded under the existing `verified` attribute so
-an older build still reads the log.
+an older build still reads the log. **Amended 2026-11-19 for P1:** the job-only actions follow an
+open job for every kind of place (§5), and `van_stock` gains `list` (§8).
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the movement log, `van_stock`, the Van Stock screen, the spreadsheet
@@ -222,11 +223,18 @@ With no book it is `notChecked`, and a later look that has a book still upgrades
 | IH step | vehicle (van, truck) | premises (store, warehouse, stock) |
 |---|---|---|
 | `check`, `low`, `load`, `use`, `remove`, `count`, `undo` | as today | as today, in premises words: a use is "sold or used" |
-| `use` tagged to the open job; `unrecorded`, `not_from_van`; the close-of-job question | as today | no longer in the schema the model is given. A premises list has no job to tag, and the close question is asked only when a job closes, so nothing is lost |
+| `use` tagged to the open job; `unrecorded`, `not_from_van`; the close-of-job question | as today | as today, in the place's words ("didn't come from stock"). They act only while a job is open, so a shop that never opens one never hears them, and a workshop, where every car on the hoist is a job, keeps the check van stock was built for |
 | standard load: `top_up`, `set_standard`, `load` with `to_standard`; base's baseline import | as today | kept, worded as the par level: "brought everything up to par except the soda water". The sheet already reads a Par column |
 | `send_to_base` | as today | kept as "send the stock list": the levels, what to reorder and what needs counting, through the share sheet. It never says "base", and the day's-extras question is not asked |
 | Take over this list (from a workbook) | as today | kept, as "Take over this list", for a shop where the closing person's phone hands over to the opening person's |
 | Previous list, Import, Export, Undo | as today | as today |
+
+**A job follows the job, not the place** (amended 2026-11-19, owner: "yes, change §5 too"). The
+first draft took the job-only actions out of every premises schema, because a shop runs no jobs. A
+workshop does: parts come off its shelves onto the car on the hoist, and the check that started IH
+(a part fitted, never recorded, and missing for the next car) matters there most. The actions
+already refuse without an open job, and the close question is asked only when a job closes, so
+keeping them for every kind costs a shop nothing.
 
 The day's extras (`VanStockSurplus`) belong to a vehicle that is loaded for a route and comes back.
 A shop's stock does not travel, so asking "returning it, or keeping it on the truck?" would only
@@ -247,13 +255,50 @@ phone rule (IH Decision 8), and the feature's licensing: it still needs Field As
   people taking from the same stock at once. That needs the company's stock in Avenkin Office
   (Plan [HF](HF-office-stock-and-capture-contracts.md)), not a setting. Until then, each person
   keeps their own list, or one phone keeps the list for the whole place.
-- **Whole quantities only** (IH §1). Resin by the kilogram or cable cut to fractions of a metre hits
-  the same limit as refrigerant by weight. Fractions change the quantity type through the ledger
-  and HF.
+- **Whole quantities only** (IH §1). Resin by the kilogram, cable cut to fractions of a metre, or
+  4.25 L of oil hits the same limit as refrigerant by weight. Fractions change the quantity type
+  through the ledger, the work record and HF, so they get a plan of their own (Plan ML, measured
+  quantities, being drafted 2026-11-19), built after this one.
 - **Where the list is opened.** It is reached from the Job tab, and a factory or a shop runs no jobs
   (Open question 2).
 - **Locations inside the building are already covered**: every line has a bin label ("Main fridge",
-  "Rack C3"), searched like the description.
+  "Rack C3"), searched like the description, and asked about with `list` (§8).
+
+**A mechanic, for example.** A mobile mechanic is a van, exactly as IH was built: each car is a
+job, a part fitted is tagged to it, and "the customer brought their own pads" is `not_from_van`. A
+workshop is `stock` named "Workshop" (or a `warehouse`): every car on the hoist is still a job and
+keeps the job-only actions (§5), and the parts catalogue is the vault named under "Check numbers
+against" (§4), with superseded numbers resolved by its parts table. Oil and other fluids wait on
+measured quantities. **A professional garage or a serious shop already keeps stock in its own
+management or point-of-sale system**, and a second count on the phone would only drift from it.
+There the phone should read that system's figure and send back what each job used: a plan of its
+own (Plan MM, stock from the business's own system, being drafted 2026-11-19). MK's own list is for
+the businesses that have no such system.
+
+### 8 · Asking what is there: the `list` action (added 2026-11-19, owner: "add the list action to P1")
+
+IH's tool answers one line (`check`), what is short (`low`) and what to top up (`top_up`). Nothing
+answers "what's in the main fridge?" or "read me the stock". A technician asks part by part; a
+shop asks by place. `van_stock` gains `list`, for every kind of place:
+
+- **`bin` (optional)** narrows it to one bin. The match ignores case, and every word said must be
+  in the bin's label ("fridge" finds "Main fridge"). With no `bin`, `list` covers the whole list.
+- **Order:** by bin, then by name, so a spoken list follows the shelves. Lines with no bin come
+  last, under "no bin".
+- **Each line says its figure the way `check` does,** with the same honesty rules: an unreliable
+  line is called unreliable before any figure, a line at zero says "none", and the result gives no
+  number the log does not hold. How a figure is known is said once for the whole list when every
+  line shares it ("all counted on Monday"), and per line otherwise.
+- **Spoken lines are capped at 8,** then "and 14 more: the full list is on the Stock screen". On a
+  Meta Display the reply page shows the same text, and the KP pager turns it into pages.
+- **A bin that matches nothing** says so and names the bins the list has ("No bin called cellar.
+  The bins are: Main fridge, Back shelf, Cool room"), so the model can ask which one. Several bins
+  that match ("fridge" against "Main fridge" and "Door fridge") are listed together, with each bin
+  named.
+- **An empty list** gives IH's empty-list sentence. `list` writes nothing, and the tool's offline
+  and effect classifications stay as they are, since the strongest action still writes.
+- The description gains "'list' (what is there, all of it or one bin; pass 'bin')", in the
+  place's words.
 
 ## Phases
 
@@ -263,7 +308,8 @@ phone rule (IH Decision 8), and the feature's licensing: it still needs Field As
   `VanStockVerification` with the legacy decode. About 25 tests.
 - **P1 — what the model sees and hears (headless).** The composer, service, handover, close question
   and `parts_request` lines through `StockPlaceWording`; `VanStockTool.description` and
-  `parametersSchema` computed per place, with premises dropping `unrecorded` and `not_from_van`;
+  `parametersSchema` computed per place, the job-only actions kept in every kind's schema (§5);
+  the `list` action (§8);
   §4's book order (job, then the list's named vault, then none) through a `PartsVerifier` built
   for a named vault outside a session, and `found`/`notFound`/`notChecked` naming the book; §5's
   premises `send_to_base` with no extras question. Tests pin the wording per place (below).
@@ -300,9 +346,17 @@ P0–P2 are one PR, under the house rhythm. P3 is the catalog PR. P4 is a report
   kind's own words and none of the other family's ("van", "truck", "base", "load" at a store; "store",
   "warehouse", "par" on a van; no place noun at all at `stock`). The van run's expected strings are
   today's, unchanged, so the default is pinned to what ships now.
-- `VanStockToolTests` additions: a premises schema has no `unrecorded` or `not_from_van`;
+- `VanStockToolTests` additions: every kind's schema has `unrecorded` and `not_from_van`; at a store
+  with no job open they refuse in the store's words; at `stock` with a job open a used line is
+  tagged to the job;
   `send_to_base` at a store asks no extras question and stages the list; a store with no named
   vault makes no lookup (the injected `verify` is never called).
+- `VanStockListTests` (§8): the whole list in bin-then-name order with bin-less lines last; a bin
+  matched case-insensitively by every said word; several matching bins listed with each named; an
+  unknown bin names the bins there are; at most 8 lines spoken, then the count of the rest and the
+  Stock screen; an unreliable line said unreliable before its figure; a line at zero says none; a
+  shared provenance said once; an empty list gives the empty-list sentence; nothing is written; the
+  wording per kind.
 - `VanStockVerificationTests`: legacy `true` is `found` and `false` is `notChecked`; a lookup with
   no book records `notChecked`, never `notFound`; the book order is job, then named vault, then
   none; a named vault that has been removed is none; a later lookup with a book upgrades
@@ -340,8 +394,8 @@ through a catalogue or a specific manual for a part number?") and taken in that 
    alternative, per-kind variants of every sentence, roughly triples the keys and every future
    string.
 6. ✅ **The tool and action names stay `van_stock`, `send_to_base`, `not_from_van`** (recommended),
-   and only their descriptions follow the place. A store's schema leaves out the two job-only
-   actions. The alternative renames the tool to `stock`, which touches the classification tables,
+   and only their descriptions follow the place. *Amended 2026-11-19:* the job-only actions stay in
+   every kind's schema, because they follow an open job, not the place (§5). The alternative renames the tool to `stock`, which touches the classification tables,
    the offline policy, the field tool profile and every stock test, for a word the model reads
    through the description anyway.
 7. ✅ **Numbers are checked against the book the list names, and marked only when that book was
