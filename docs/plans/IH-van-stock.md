@@ -22,6 +22,8 @@ every write changes nothing and asks, and `load`/`count` start a new line only w
 **Track:** Field Assist (B2B).
 **Depends on:** Plan [EM](EM-work-record-and-parts.md) P1 (shipped: `PartsVerifier`,
 `VaultPartsIndex`, `parts_request`, the work record). Nothing here waits on the office connection.
+**See also (2026-11-19):** Plan [MM](MM-stock-in-the-business-system.md): where the business keeps
+stock in its own system, that system answers and this ledger stops counting that place.
 **Related:** Plan [HF](HF-office-stock-and-capture-contracts.md) (the firm's stock in Avenkin
 Office; this plan is the van end of it, built so HF can take it over), Plan
 [FO](FO-guided-job-flow-and-job-tab.md) (the Job tab and its to-dos), Plan

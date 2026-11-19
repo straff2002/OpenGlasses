@@ -10,6 +10,10 @@ is a whole number of thousandths of the line's unit, so 4.25 litres is `4250`, u
 `quantityScale` that is exactly `3` in v1. Quantity members are named for that form (`onHandScaled`,
 `quantityScaled`, `neededScaled`), and `unit` is the phone's closed list. See *Quantities* below.
 The integers-only rule is unchanged.
+**See also (2026-11-19):** Plan [MM](MM-stock-in-the-business-system.md) reuses this plan's snapshot
+body with a third-party stock system (a workshop system or a POS) as its source, adds a `system`
+provenance and decimal quantities, and proposes that `onHand` here take the same decimal form before
+P0 ships.
 **Depends on:** Plan [FX](FX-desktop-office-and-device-sync.md)'s next milestone (a physical
 main-app pairing, then one signed job and one signed manual with an exact receipt — **no production
 managed folder is enabled today**, so nothing in this plan can be delivered until that lands);
