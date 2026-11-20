@@ -276,6 +276,9 @@ class LLMService: ObservableObject {
         var selectedID: LocalModelID?
         var installation: InstalledLocalModel?
         var coordinator: LocalInferenceCoordinator?
+        /// Stands in for the web search the uncertainty re-ask runs, so a fixture never reaches the
+        /// network.
+        var webSearch: ((String) async throws -> String?)?
     }
     var localTurnOverridesForTesting: LocalTurnOverrides?
 
@@ -1725,6 +1728,13 @@ class LLMService: ObservableObject {
     /// offline tool set, and the history window `HandoffTranscriptBridge` picks for the on-device
     /// budget. Cleared when the turn finishes.
     var offlineHandoffTurn = false
+
+    /// The last on-device turn ended in ``localMissMessage``: the model produced no usable answer
+    /// (broken tool markup, or a promise to look something up that it never kept). On a turn the
+    /// offline handoff put on the phone, `AppState` holds the question for the cloud instead of
+    /// asking the wearer to repeat it, since repeating it without signal gets the same miss. Reset
+    /// by `sendLocal` and by `AppState` when it routes a turn to the phone.
+    var lastLocalTurnMissed = false
 
     /// The outcome of every cloud model attempt (nil on success), for the offline handoff.
     var onCloudAttempt: ((Error?) -> Void)?
@@ -5960,6 +5970,7 @@ class LLMService: ObservableObject {
         // generation and the history insertion at the end of it.
         beginTurnScope()
         defer { endTurnScope() }
+        lastLocalTurnMissed = false
 
         guard let localService = localLLMService else {
             throw LLMError.missingAPIKey(String(localized: "Local LLM service not initialized"))
@@ -6235,6 +6246,7 @@ class LLMService: ObservableObject {
                 // machine-shaped string that this regeneration exists to translate. Say so rather
                 // than reading it out or going silent.
                 cleanFinal = Self.localMissMessage
+                lastLocalTurnMissed = true
             } else {
                 // Genuinely empty completion — unchanged BK P3 contract, an error rather than
                 // dead air at the speaker.
@@ -6261,6 +6273,7 @@ class LLMService: ObservableObject {
             if cleanResponse.isEmpty || Self.announcesToolIntent(cleanResponse) {
                 conversationHistory.append(["role": "assistant", "content": Self.localMissMessage])
                 trimHistory()
+                lastLocalTurnMissed = true
                 return Self.localMissMessage
             }
         }
@@ -6280,16 +6293,23 @@ class LLMService: ObservableObject {
         // personal reminders", the exact reply the detector's guard exists to prevent.
         let isPersonalData = UncertaintyDetector.isPersonalDataQuestion(text.lowercased())
         var finalAnswer = cleanResponse
+        //
+        // Not on a turn the offline handoff put on the phone: it is there because the network is
+        // unreachable, so the search can only fail, and in a tunnel or behind a captive portal it
+        // fails by timing out while the wearer waits. Apple's on-device path skips it the same way.
         if !MedicalLLMRoutingPolicy.isEnforced(
                hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly),
-           Config.localWebSearchFallbackEnabled, !isPersonalData,
+           Config.localWebSearchFallbackEnabled, !isPersonalData, !offlineHandoffTurn,
            announcedIntent || UncertaintyDetector.assess(question: text, answer: cleanResponse).shouldSearch {
             finalAnswer = await UncertaintyReask.answer(
                 question: text,
                 originalAnswer: cleanResponse,
                 vaultOnly: VaultOnlyPolicy.jobIsSealed,
                 history: history,
-                search: { query in try await WebSearchTool().execute(args: ["query": query]) },
+                search: { query in
+                    if let injected = overrides?.webSearch { return try await injected(query) }
+                    return try await WebSearchTool().execute(args: ["query": query])
+                },
                 rewriteQuery: { q in
                     // A follow-up leaning on the conversation ("the other semi final?") is a
                     // junk literal query — one tiny generation makes it self-contained.
@@ -6316,6 +6336,7 @@ class LLMService: ObservableObject {
         // or the fallback flag is off), replace it with an honest miss.
         if announcedIntent && finalAnswer == cleanResponse {
             finalAnswer = Self.localMissMessage
+            lastLocalTurnMissed = true
         }
 
         // BK P3: reject an empty local completion (immediate EOS / all-markup) instead of

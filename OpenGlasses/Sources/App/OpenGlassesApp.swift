@@ -9333,6 +9333,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Config.setActiveModelId(id)
             llmService.refreshActiveModel()
             llmService.offlineHandoffTurn = true
+            llmService.lastLocalTurnMissed = false
             PrivacyLog.model(.offlineTurn, detail: PrivacyToken("phoneModel"))
         case .localAgent:
             useLocalAgent = true
@@ -9518,7 +9519,7 @@ class AppState: ObservableObject, AppStateProtocol {
                     hudAnswerCard.offerWebSources(count: llmService.replyWebSources.count,
                                                   hasSearchSuggestions: llmService.replySearchSuggestions != nil)
                     nowPlayingAtStart = nil  // consumed for this turn
-                    return rawResponse
+                    return settlePhoneModelReply(rawResponse, query: query, answeredOnPhone: answeredOnPhone)
                 },
                 postProcess: { [self] rawResponse in
                     // Parse and execute memory commands from the response
@@ -9542,7 +9543,8 @@ class AppState: ObservableObject, AppStateProtocol {
                         return
                     }
                     lastResponse = response
-                    if answeredOnPhone {
+                    // A held question is not an answer: the cloud answers it on return.
+                    if answeredOnPhone, !llmService.lastLocalTurnMissed {
                         connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
                     }
 
@@ -9794,6 +9796,7 @@ class AppState: ObservableObject, AppStateProtocol {
             Config.setActiveModelId(configId)
             llmService.refreshActiveModel()
             llmService.offlineHandoffTurn = true
+            llmService.lastLocalTurnMissed = false
             answeredOnPhone = true
             PrivacyLog.model(.offlineTurn, detail: PrivacyToken("phoneModelTyped"))
         }
@@ -9864,7 +9867,7 @@ class AppState: ObservableObject, AppStateProtocol {
                         hudAnswerCard.offerWebSources(count: llmService.replyWebSources.count,
                                                       hasSearchSuggestions: llmService.replySearchSuggestions != nil)
                     }
-                    return reply
+                    return settlePhoneModelReply(reply, query: query, answeredOnPhone: answeredOnPhone)
                 },
                 postProcess: { [self] rawResponse in
                     Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
@@ -9877,7 +9880,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     }
                     lastResponse = response
                     streamingTurn = nil  // clear before persisting so the live bubble doesn't duplicate the saved message
-                    if answeredOnPhone {
+                    // A held question is not an answer: the cloud answers it on return.
+                    if answeredOnPhone, !llmService.lastLocalTurnMissed {
                         connectivityHandoff.recordOnDeviceAnswer(question: query, answer: response)
                     }
 

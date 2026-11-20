@@ -245,6 +245,75 @@ final class LocalTurnContainmentTests: XCTestCase {
         XCTAssertEqual(harness.backend.passCount, 1, "a broken frame is not retried in a loop")
     }
 
+    // MARK: - Offline handoff (Plan GE)
+
+    /// Counts the searches the uncertainty re-ask asks for, and answers them without a network.
+    private final class SearchRecorder {
+        private(set) var queries: [String] = []
+        func search(_ query: String) -> String? {
+            queries.append(query)
+            return "Frank Herbert wrote Dune, published in 1965."
+        }
+    }
+
+    private func enableWebReask(_ harness: inout Harness, recorder: SearchRecorder) {
+        Config.localWebSearchFallbackEnabled = true   // restored in tearDown
+        harness.service.localTurnOverridesForTesting?.webSearch = { query in recorder.search(query) }
+    }
+
+    private let hedged = "I'm not sure, but it might be Frank Herbert."
+
+    func testAHedgedAnswerOnlineStillGetsTheWebReask() async throws {
+        // Positive control for the test below: the same hedge, online, does search.
+        var harness = makeHarness(scripts: [[hedged], ["Frank Herbert wrote Dune."]])
+        let recorder = SearchRecorder()
+        enableWebReask(&harness, recorder: recorder)
+        let answer = try await run(&harness, ask: "Who wrote Dune?")
+        XCTAssertEqual(recorder.queries.count, 1)
+        XCTAssertTrue(answer.hasSuffix("Frank Herbert wrote Dune."), answer)
+        XCTAssertNotEqual(answer, hedged, "the grounded answer replaces the hedge")
+    }
+
+    func testAnOfflineHandoffTurnNeverAttemptsTheWebReask() async throws {
+        // The turn is on the phone because the network is unreachable: a search can only fail,
+        // and behind a captive portal it fails by timing out while the wearer waits.
+        var harness = makeHarness(scripts: [[hedged]])
+        let recorder = SearchRecorder()
+        enableWebReask(&harness, recorder: recorder)
+        harness.service.offlineHandoffTurn = true
+        defer { harness.service.offlineHandoffTurn = false }
+        let answer = try await run(&harness, ask: "Who wrote Dune?")
+        XCTAssertTrue(recorder.queries.isEmpty, "no search on a phone turn")
+        XCTAssertEqual(harness.backend.passCount, 1, "no rewrite or grounding pass either")
+        XCTAssertEqual(answer, hedged)
+        XCTAssertFalse(harness.service.lastLocalTurnMissed, "a hedge is still an answer")
+    }
+
+    func testAMissIsFlaggedAndTheNextAnswerClearsIt() async throws {
+        // AppState reads the flag to hold a missed phone turn's question for the cloud.
+        var harness = makeHarness(scripts: [[#"<tool_call>{"name": "get_we"#],
+                                            ["The gate code is 4412."]])
+        let missed = try await run(&harness)
+        XCTAssertEqual(missed, LLMService.localMissMessage)
+        XCTAssertTrue(harness.service.lastLocalTurnMissed)
+
+        let answered = try await run(&harness, ask: "what's the gate code")
+        XCTAssertEqual(answered, "The gate code is 4412.")
+        XCTAssertFalse(harness.service.lastLocalTurnMissed)
+    }
+
+    func testAPromiseThatSurvivesTheCorrectionIsFlaggedAsAMiss() async throws {
+        // "Let me look that up" twice, offline: no search to keep the promise, so the turn is a
+        // miss and the question goes to the cloud rather than being dropped.
+        var harness = makeHarness(scripts: [["Let me look that up for you."],
+                                            ["I'll check that for you now."]])
+        harness.service.offlineHandoffTurn = true
+        defer { harness.service.offlineHandoffTurn = false }
+        let answer = try await run(&harness, ask: "when does the ferry leave")
+        XCTAssertEqual(answer, LLMService.localMissMessage)
+        XCTAssertTrue(harness.service.lastLocalTurnMissed)
+    }
+
     func testUnterminatedFrameIsNotExecutedAndNotSpoken() async throws {
         var harness = makeHarness(scripts: [[#"<tool_call>{"name": "get_we"#]])
         let answer = try await run(&harness)

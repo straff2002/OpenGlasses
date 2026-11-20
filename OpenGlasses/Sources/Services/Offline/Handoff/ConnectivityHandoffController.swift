@@ -209,13 +209,26 @@ final class ConnectivityHandoffController: ObservableObject {
         return .phoneModel(configId: configId)
     }
 
+    /// Why a question is held.
+    enum HoldReason: Equatable {
+        /// Nothing on the phone can think right now (the phone locked in a pocket, no model).
+        case nothingCanThink
+        /// The on-device model tried and produced no usable answer. Asking again without signal
+        /// would get the same miss, so the cloud answers it on return.
+        case phoneModelMissed
+    }
+
     /// Hold a question nothing on the phone can answer. Returns the line to say: the full
     /// explanation once per episode, a short acknowledgement after that.
-    func hold(_ question: String) -> String {
+    func hold(_ question: String, reason: HoldReason = .nothingCanThink) -> String {
         heldQuestions.hold(question, conversationId: seams.conversationId(), now: seams.now())
         defer { heldLineSaidThisEpisode = true }
         ensureLoop()
-        return heldLineSaidThisEpisode ? HandoffAnnouncer.heldReplacedLine : HandoffAnnouncer.heldFirstLine
+        if heldLineSaidThisEpisode { return HandoffAnnouncer.heldReplacedLine }
+        switch reason {
+        case .nothingCanThink: return HandoffAnnouncer.heldFirstLine
+        case .phoneModelMissed: return HandoffAnnouncer.heldAfterMissLine
+        }
     }
 
     /// An exchange answered on the phone, for the note the cloud model gets on return.
