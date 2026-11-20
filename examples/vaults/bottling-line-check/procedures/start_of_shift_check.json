@@ -1,0 +1,194 @@
+{
+  "id": "start_of_shift_check",
+  "title": "Start-of-shift line check",
+  "version": "1.0.0",
+  "vault": "bottling_line_check",
+  "description": "The checks a bottling line runs before the first production bottles are released.",
+  "safety_notes": ["Lock out the filler and the capper before reaching into either."],
+  "entry_step": "confirm_line_clear",
+  "steps": [
+    {
+      "id": "confirm_line_clear",
+      "title": "Line clear",
+      "instruction": "Check the line is clear of the last run's bottles, caps and labels.",
+      "citations": ["safety.md"],
+      "answer": { "record_as": "line_clear", "kind": "yes_no", "label": "Line clear" },
+      "branches": [
+        { "id": "clear", "condition": "The line is clear", "when": { "answer": "line_clear", "is": "yes" }, "next": "check_co2" },
+        { "id": "not_clear", "condition": "Something from the last run is still on the line", "when": { "answer": "line_clear", "is": "no" }, "next": "clear_line" }
+      ]
+    },
+    {
+      "id": "clear_line",
+      "title": "Clear the line",
+      "instruction": "With the line locked out, remove everything from the last run, then check again.",
+      "safety_note": "Lock out the conveyor before reaching in.",
+      "citations": ["safety.md"],
+      "default_next": "confirm_line_clear"
+    },
+    {
+      "id": "check_co2",
+      "title": "Check the carbonation",
+      "instruction": "Take a bottle from the filler discharge and read its carbonation.",
+      "citations": ["line_values.md"],
+      "answer": {
+        "record_as": "co2",
+        "kind": "number",
+        "label": "CO2",
+        "decimals": 2,
+        "plausible": [0, 6],
+        "spec": [2.4, 2.8],
+        "show_spec": true,
+        "critical": true
+      },
+      "branches": [
+        { "id": "in_spec", "condition": "CO2 2.4 to 2.8 volumes", "when": { "answer": "co2", "between": [2.4, 2.8] }, "next": "check_brix" },
+        { "id": "low", "condition": "CO2 below 2.4 volumes", "when": { "answer": "co2", "lt": 2.4 }, "next": "adjust_carbonation" },
+        { "id": "high", "condition": "CO2 above 2.8 volumes", "when": { "answer": "co2", "gt": 2.8 }, "next": "adjust_carbonation" }
+      ]
+    },
+    {
+      "id": "adjust_carbonation",
+      "title": "Adjust the carbonation",
+      "instruction": "Adjust the carbonator to the line's setting, run ten bottles to drain, then retest.",
+      "citations": ["line_values.md"],
+      "default_next": "check_co2"
+    },
+    {
+      "id": "check_brix",
+      "title": "Check the Brix",
+      "instruction": "Read the Brix of the same sample on the refractometer.",
+      "citations": ["line_values.md"],
+      "answer": {
+        "record_as": "brix",
+        "kind": "number",
+        "label": "Brix",
+        "unit": "°Bx",
+        "decimals": 1,
+        "plausible": [0, 30],
+        "spec": [10.5, 11.5],
+        "critical": true
+      },
+      "branches": [
+        { "id": "in_spec", "condition": "Brix 10.5 to 11.5", "when": { "answer": "brix", "between": [10.5, 11.5] }, "next": "check_fill_height" },
+        { "id": "low_and_flat", "condition": "Brix below 10.5 and CO2 below 2.5", "when": { "all": [ { "answer": "brix", "lt": 10.5 }, { "answer": "co2", "lt": 2.5 } ] }, "next": "hold_batch" },
+        { "id": "off_spec", "condition": "Brix outside 10.5 to 11.5", "when": { "answer": "brix", "outside": [10.5, 11.5] }, "next": "adjust_syrup" }
+      ]
+    },
+    {
+      "id": "adjust_syrup",
+      "title": "Adjust the syrup ratio",
+      "instruction": "Adjust the syrup ratio to the line's setting, run ten bottles to drain, then retest the Brix.",
+      "citations": ["line_values.md"],
+      "default_next": "check_brix"
+    },
+    {
+      "id": "hold_batch",
+      "title": "Hold the batch",
+      "instruction": "Stop the line, tag the batch on hold and call the shift supervisor.",
+      "terminal": true,
+      "outcome": "escalated"
+    },
+    {
+      "id": "check_fill_height",
+      "title": "Check the fill height",
+      "instruction": "Measure the fill height of three bottles from the finish and enter the lowest.",
+      "citations": ["line_values.md"],
+      "answer": {
+        "record_as": "fill_height",
+        "kind": "number",
+        "label": "Fill height",
+        "unit": "mm",
+        "decimals": 1,
+        "plausible": [0, 100],
+        "spec": [55, 60]
+      },
+      "branches": [
+        { "id": "in_spec", "condition": "Fill height in spec", "when": { "answer": "fill_height", "out_of_spec": false }, "next": "photo_first_bottles" },
+        { "id": "out_of_spec", "condition": "Fill height out of spec", "when": { "answer": "fill_height", "out_of_spec": true }, "next": "adjust_filler" }
+      ]
+    },
+    {
+      "id": "adjust_filler",
+      "title": "Adjust the filler",
+      "instruction": "With the filler locked out, set the fill tubes to the line's height, then measure again.",
+      "safety_note": "Lock out the filler before reaching into the bowl.",
+      "citations": ["safety.md", "line_values.md"],
+      "default_next": "check_fill_height"
+    },
+    {
+      "id": "photo_first_bottles",
+      "title": "Photograph the first bottles",
+      "instruction": "Photograph the first bottles off the capper, label side facing you.",
+      "answer": { "record_as": "first_bottles", "kind": "photo", "label": "First bottles", "min": 1, "max": 3 },
+      "default_next": "check_cap_torque"
+    },
+    {
+      "id": "check_cap_torque",
+      "title": "Check the cap torque",
+      "instruction": "Measure the removal torque of one cap on the torque tester.",
+      "citations": ["line_values.md"],
+      "answer": {
+        "record_as": "cap_torque",
+        "kind": "number",
+        "label": "Cap torque",
+        "unit": "N·m",
+        "decimals": 1,
+        "plausible": [0, 10],
+        "spec": [1.2, 2.0]
+      },
+      "branches": [
+        { "id": "in_spec", "condition": "Cap torque 1.2 to 2.0 N·m", "when": { "answer": "cap_torque", "between": [1.2, 2.0] }, "next": "check_label" },
+        { "id": "off_spec", "condition": "Cap torque outside 1.2 to 2.0 N·m", "when": { "answer": "cap_torque", "outside": [1.2, 2.0] }, "next": "adjust_capper" }
+      ]
+    },
+    {
+      "id": "adjust_capper",
+      "title": "Adjust the capper",
+      "instruction": "With the capper locked out, set the capping head to the line's torque, then test again.",
+      "safety_note": "Lock out the capper before reaching into the head.",
+      "citations": ["safety.md", "line_values.md"],
+      "default_next": "check_cap_torque"
+    },
+    {
+      "id": "check_label",
+      "title": "Check the label",
+      "instruction": "Look at the label on the first bottles: placed straight, skewed, or missing?",
+      "answer": {
+        "record_as": "label_placement",
+        "kind": "choice",
+        "label": "Label",
+        "options": [
+          { "id": "ok", "label": "Straight", "says": ["good", "fine", "level"] },
+          { "id": "skewed", "label": "Skewed", "says": ["crooked", "tilted", "wonky"] },
+          { "id": "missing", "label": "Missing", "says": ["none", "no label"] }
+        ]
+      },
+      "branches": [
+        { "id": "ok", "condition": "The label is straight", "when": { "answer": "label_placement", "in": ["ok"] }, "next": "record_date_code" },
+        { "id": "fault", "condition": "The label is skewed or missing", "when": { "answer": "label_placement", "in": ["skewed", "missing"] }, "next": "adjust_labeller" }
+      ]
+    },
+    {
+      "id": "adjust_labeller",
+      "title": "Adjust the labeller",
+      "instruction": "Reset the labeller's guide and glue, run ten bottles, then look at the label again.",
+      "default_next": "check_label"
+    },
+    {
+      "id": "record_date_code",
+      "title": "Record the date code",
+      "instruction": "Scan or type the date code printed on the first bottle.",
+      "answer": { "record_as": "date_code", "kind": "code", "label": "Date code", "symbology": "barcode" },
+      "default_next": "sign_off"
+    },
+    {
+      "id": "sign_off",
+      "title": "Release the line",
+      "instruction": "Release the line for production once the shift lead has looked over the record.",
+      "terminal": true,
+      "outcome": "released",
+      "requires_confirmation": true
+    }
+  ]
+}

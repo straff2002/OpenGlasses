@@ -2899,6 +2899,13 @@ struct Config {
                             stored: UserDefaults.standard.bool(forKey: "organizationRequiresTableChecks"))
     }
 
+    /// Plan MN §4: the organisation runs procedures without the assistant on its phones. A ceiling
+    /// a profile may only pin on; off without one.
+    static var organizationRunsProceduresWithoutAssistant: Bool {
+        PolicyEnvelope.bool(.organizationRunsProceduresWithoutAssistant,
+                            stored: UserDefaults.standard.bool(forKey: "organizationRunsProceduresWithoutAssistant"))
+    }
+
     /// That the person holding this phone read what recording a job means and said so
     /// (`RecordingConsent`): when, for which wording, and for which organisation. Three plain
     /// values rather than a record, and nil unless all three are there.

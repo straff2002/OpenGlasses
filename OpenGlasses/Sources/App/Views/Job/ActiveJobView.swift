@@ -43,6 +43,8 @@ struct ActiveJobView: View {
     @EnvironmentObject private var appState: AppState
     @FocusState private var referenceFocused: Bool
     @State private var expandedTaskId: String?
+    /// The running procedure's step screen (Plan MN §4).
+    @State private var showingProcedureStep = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -56,6 +58,9 @@ struct ActiveJobView: View {
             timeSection
             unitSection
             workSection
+            // The running procedure and the way into its step screen (Plan MN §4). Draws nothing
+            // with none running.
+            ActiveProcedureSection(showingStep: $showingProcedureStep)
             // Parts asked for on this job and not sent yet, with the button that emails them.
             JobPartsOrderSection(sessionId: FieldSessionService.shared.activeSession?.id)
             PhotographedManualSection()
@@ -102,6 +107,10 @@ struct ActiveJobView: View {
         }
         // Asked here rather than by the section, which draws nothing until it knows the answer.
         .task { await appState.jobRecordings?.refresh() }
+        .sheet(isPresented: $showingProcedureStep) {
+            ProcedureStepScreen()
+                .environmentObject(appState)
+        }
     }
 
     // MARK: - The questions

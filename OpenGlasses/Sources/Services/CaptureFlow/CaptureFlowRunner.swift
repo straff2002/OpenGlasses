@@ -186,11 +186,32 @@ final class CaptureFlowRunner {
 
     /// Map a spoken phrase to one of `options` deterministically (exact, then substring either way).
     /// Returns nil on no match or ambiguity.
-    static func resolveOption(_ phrase: String, options: [String]) -> String? {
+    nonisolated static func resolveOption(_ phrase: String, options: [String]) -> String? {
         let p = phrase.lowercased().trimmingCharacters(in: .whitespaces)
         guard !p.isEmpty else { return nil }
         if let exact = options.first(where: { $0.lowercased() == p }) { return exact }
         let contains = options.filter { p.contains($0.lowercased()) || $0.lowercased().contains(p) }
+        return contains.count == 1 ? contains[0] : nil
+    }
+
+    /// `resolveOption` extended with synonyms (Plan MN §1): each option also answers to the words
+    /// in `says[option]` ("good", "level" for an option `ok`). Exact first — the option or one of
+    /// its words — then whole words either way, so "crooked" never matches an option `ok`; nil on
+    /// no match or when two options match.
+    nonisolated static func resolveOption(_ phrase: String, options: [String],
+                                          says: [String: [String]]) -> String? {
+        func words(_ text: String) -> String {
+            " " + text.lowercased().split { !($0.isLetter || $0.isNumber) }.joined(separator: " ") + " "
+        }
+        let p = words(phrase)
+        guard p.trimmingCharacters(in: .whitespaces).isEmpty == false else { return nil }
+        func terms(_ option: String) -> [String] {
+            ([option] + (says[option] ?? [])).map(words).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        }
+        if let exact = options.first(where: { terms($0).contains(p) }) { return exact }
+        let contains = options.filter { option in
+            terms(option).contains { p.contains($0) || $0.contains(p) }
+        }
         return contains.count == 1 ? contains[0] : nil
     }
 }

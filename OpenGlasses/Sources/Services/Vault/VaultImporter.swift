@@ -38,6 +38,8 @@ enum VaultImporter {
     struct InstallReport {
         let manifest: VaultManifest
         let warnings: [String]
+        /// Plan MN §6: which procedures run with no assistant (`VaultValidator.Result`).
+        var procedureSummary: String? = nil
     }
 
     /// Progress of a document sync: (document title, completed chunks, total chunks).
@@ -304,7 +306,8 @@ enum VaultImporter {
             try? fm.removeItem(at: staging)
             throw ImportError.ioError(error.localizedDescription)
         }
-        return InstallReport(manifest: manifest, warnings: result.warnings)
+        return InstallReport(manifest: manifest, warnings: result.warnings,
+                             procedureSummary: result.procedureSummary)
     }
 
     // MARK: - Reference documents
