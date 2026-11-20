@@ -45,9 +45,13 @@ struct StockSystemRawRow: Codable, Equatable, Sendable {
     let price: String?
     let currency: String?
     let reorderPoint: String?
+    /// The most decimal places the system keeps for the item, when it says.
+    let decimalPlaces: Int?
 
     init(itemID: String, part: String?, description: String?, unit: String, levels: [Level],
-         asOf: String? = nil, price: String? = nil, currency: String? = nil, reorderPoint: String? = nil) {
+         asOf: String? = nil, price: String? = nil, currency: String? = nil, reorderPoint: String? = nil,
+         decimalPlaces: Int? = nil) {
+        self.decimalPlaces = decimalPlaces
         self.itemID = itemID
         self.part = part
         self.description = description
@@ -69,6 +73,8 @@ struct StockSystemRawRow: Codable, Equatable, Sendable {
 ///   exactly is unknown with its reason, never rounded and never zero.
 /// - It stops at `lineCap` lines and says how many it left out.
 /// - A price is dropped unless prices are enabled (Decision 9).
+/// - The item's decimal places are kept when the system says them and they are in
+///   `StockSystemPolicy.decimalPlacesRange`; otherwise dropped, which is no extra limit.
 /// - `asOf` is the oldest date the system put on its figures, when it dates them, otherwise the
 ///   time the pull finished. A date after the pull (a clock out of step) counts as the pull time.
 struct StockSystemSnapshotBuilder {
@@ -172,7 +178,8 @@ struct StockSystemSnapshotBuilder {
 
         return StockSystemSnapshot.Line(itemID: itemID, part: part, description: description, unit: unit,
                                         systemUnit: systemUnit, levels: levels, provenance: .system,
-                                        lineAsOf: lineAsOf, price: price, reorderPoint: reorderPoint)
+                                        lineAsOf: lineAsOf, price: price, reorderPoint: reorderPoint,
+                                        decimalPlaces: row.decimalPlaces)
     }
 
     private static func capped(_ raw: String?, _ cap: Int) -> String? {

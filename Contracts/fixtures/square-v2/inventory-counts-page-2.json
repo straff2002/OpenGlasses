@@ -1,0 +1,66 @@
+{
+  "counts": [
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-GREASE",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "4",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-FILTER",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "6",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-FILTER",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-VAN",
+      "quantity": "2",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-HOSE",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "7.5",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-BRAKE",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "500",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-POSTER",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "40",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-NOT-IN-CATALOG",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "9",
+      "state": "IN_STOCK"
+    },
+    {
+      "catalog_object_id": "VAR-FILTER",
+      "location_id": "LOC-FIX-VAN",
+      "quantity": 3,
+      "state": "IN_STOCK"
+    }
+  ]
+}

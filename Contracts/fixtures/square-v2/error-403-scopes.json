@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "category": "AUTHENTICATION_ERROR",
+      "code": "INSUFFICIENT_SCOPES",
+      "detail": "Fixture text that must never be repeated."
+    }
+  ]
+}

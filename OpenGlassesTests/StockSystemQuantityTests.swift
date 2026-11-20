@@ -70,4 +70,46 @@ final class StockSystemQuantityTests: XCTestCase {
         XCTAssertEqual(StockSystemOutRefusal.fractional.sentence(system: "Sample System", quantity: StockQuantity(scaled: 500), unit: .l),
                        "Sample System keeps whole numbers only, so 0.5 litres can't be sent.")
     }
+
+    // MARK: - Plan MM P1: the item's decimal places
+
+    func testAQuantityFinerThanTheItemsDecimalPlacesIsRefusedNeverRounded() {
+        let quarter = StockQuantity(scaled: 250)
+        XCTAssertEqual(StockSystemQuantityConversion.outgoing(quarter, unit: .l, itemUnit: .l, wholeNumbersOnly: false,
+                                                              decimalPlaces: 1), .failure(.tooManyDecimals))
+        XCTAssertEqual(StockSystemQuantityConversion.outgoing(quarter, unit: .l, itemUnit: .l, wholeNumbersOnly: false,
+                                                              decimalPlaces: 2), .success("0.25"))
+        XCTAssertEqual(StockSystemQuantityConversion.outgoing(StockQuantity(scaled: 500), unit: .l, itemUnit: .l,
+                                                              wholeNumbersOnly: false, decimalPlaces: 0), .failure(.tooManyDecimals))
+        XCTAssertEqual(StockSystemQuantityConversion.outgoing(.whole(3), unit: .l, itemUnit: .l, wholeNumbersOnly: false,
+                                                              decimalPlaces: 0), .success("3"))
+        // Three or more places, or none said, is no limit beyond the phone's own.
+        for places in [nil, 3, 4, 5] {
+            XCTAssertEqual(StockSystemQuantityConversion.outgoing(StockQuantity(scaled: 125), unit: .l, itemUnit: .l,
+                                                                  wholeNumbersOnly: false, decimalPlaces: places), .success("0.125"))
+        }
+        // Whole numbers only still comes first, with its own sentence.
+        XCTAssertEqual(StockSystemQuantityConversion.outgoing(quarter, unit: .l, itemUnit: .l, wholeNumbersOnly: true,
+                                                              decimalPlaces: 1), .failure(.fractional))
+    }
+
+    func testTheTooManyDecimalsSentenceSaysTheItemsLimit() {
+        let amount = StockQuantity(scaled: 250)
+        XCTAssertEqual(StockSystemOutRefusal.tooManyDecimals.sentence(system: "Sample System", quantity: amount, unit: .l, decimalPlaces: 0),
+                       "Sample System keeps that item in whole numbers, so 0.25 litres can't be sent.")
+        XCTAssertEqual(StockSystemOutRefusal.tooManyDecimals.sentence(system: "Sample System", quantity: amount, unit: .l, decimalPlaces: 1),
+                       "Sample System keeps that item to 1 decimal place, so 0.25 litres can't be sent.")
+        XCTAssertEqual(StockSystemOutRefusal.tooManyDecimals.sentence(system: "Sample System", quantity: StockQuantity(scaled: 125),
+                                                                      unit: .m, decimalPlaces: 2),
+                       "Sample System keeps that item to 2 decimal places, so 0.125 metres can't be sent.")
+    }
+
+    func testAQuantityKnowsHowManyDecimalPlacesItNeeds() {
+        XCTAssertEqual(StockQuantity.whole(4).decimalPlaces, 0)
+        XCTAssertEqual(StockQuantity.zero.decimalPlaces, 0)
+        XCTAssertEqual(StockQuantity(scaled: 4500).decimalPlaces, 1)
+        XCTAssertEqual(StockQuantity(scaled: 4250).decimalPlaces, 2)
+        XCTAssertEqual(StockQuantity(scaled: 4001).decimalPlaces, 3)
+        XCTAssertEqual(StockQuantity(scaled: 10).decimalPlaces, 2)
+    }
 }

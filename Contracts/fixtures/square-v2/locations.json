@@ -1,0 +1,44 @@
+{
+  "locations": [
+    {
+      "business_name": "Fixture Motors",
+      "capabilities": [
+        "CREDIT_CARD_PROCESSING"
+      ],
+      "country": "AU",
+      "created_at": "2025-03-01T00:00:00Z",
+      "currency": "AUD",
+      "id": "LOC-FIX-MAIN",
+      "merchant_id": "MER-FIX-0001",
+      "name": "Harbour Street Workshop",
+      "status": "ACTIVE",
+      "timezone": "Australia/Sydney",
+      "type": "PHYSICAL"
+    },
+    {
+      "id": "LOC-FIX-VAN",
+      "merchant_id": "MER-FIX-0001",
+      "name": "Service Van 2",
+      "status": "ACTIVE",
+      "type": "MOBILE"
+    },
+    {
+      "id": "LOC-FIX-NORTH",
+      "merchant_id": "MER-FIX-0001",
+      "name": "North Shop",
+      "status": "ACTIVE",
+      "type": "PHYSICAL"
+    },
+    {
+      "id": "LOC-FIX-OLD",
+      "merchant_id": "MER-FIX-0001",
+      "name": "Old Depot",
+      "status": "INACTIVE",
+      "type": "PHYSICAL"
+    },
+    {
+      "name": "A location with no id",
+      "status": "ACTIVE"
+    }
+  ]
+}

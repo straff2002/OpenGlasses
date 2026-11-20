@@ -167,6 +167,29 @@ final class PartsUsedWritePlanTests: XCTestCase {
 
     /// Read back before retry: after an uncertain send, only what the system does not show is sent
     /// again, and every write lands once.
+    /// Plan MM P1: a quantity finer than the item's decimal places is not sent, never rounded, and
+    /// the stored plan keeps the reason.
+    func testAQuantityFinerThanTheItemKeepsIsNotSent() throws {
+        let rows = [S.row("B", description: "Coolant", unit: "litre", [("L1", "4")])]
+        var raw = rows[0]
+        raw = StockSystemRawRow(itemID: raw.itemID, part: raw.part, description: raw.description, unit: raw.unit,
+                                levels: raw.levels, decimalPlaces: 1)
+        let snapshot = S.snapshot([S.row("A", [("L1", "3")]), raw])
+        let plan = PartsUsedWritePlan(batch: batch(), reference: nil, capabilities: capabilities(hasJobs: false),
+                                      snapshot: snapshot)
+        XCTAssertEqual(plan.steps.map(\.stagedLineID), ["S1", "S2"], "0.5 litres fits one decimal place")
+        let finer = PartsUsedWritePlan(batch: batch([
+            StagedStockUse(id: "S2", itemID: "B", part: "ZX-B", description: "Coolant",
+                           quantity: StockQuantity(scaled: 250), unit: .l, source: .typed),
+        ]), reference: nil, capabilities: capabilities(hasJobs: false), snapshot: snapshot)
+        XCTAssertEqual(finer.steps, [])
+        XCTAssertEqual(finer.notSent.map(\.reason), [.quantity(.tooManyDecimals)])
+        XCTAssertEqual(finer.notSent.first?.reason.code, "too_many_decimals")
+        XCTAssertEqual(finer.notSent.first?.sentence,
+                       "Coolant (ZX-B): Sample System keeps that item to 1 decimal place, so 0.25 litres can't be sent.")
+        XCTAssertEqual(try JSONDecoder().decode(PartsUsedWritePlan.self, from: JSONEncoder().encode(finer)), finer)
+    }
+
     func testReadBackBeforeRetryWithAFakeConnector() async throws {
         let plan = PartsUsedWritePlan(batch: batch(), reference: reference(), capabilities: capabilities(hasJobs: true),
                                       snapshot: snapshot)

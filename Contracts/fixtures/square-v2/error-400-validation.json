@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "category": "INVALID_REQUEST_ERROR",
+      "code": "INVALID_VALUE",
+      "detail": "Fixture text that must never be repeated.",
+      "field": "changes[0].adjustment.quantity"
+    }
+  ]
+}

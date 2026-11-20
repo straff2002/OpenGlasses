@@ -1,0 +1,53 @@
+{
+  "counts": [
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-CAP-455",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "3",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-CAP-455",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-VAN",
+      "quantity": "1",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-CAP-455",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-NORTH",
+      "quantity": "5",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-COOL-5L",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "12.5",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-COOL-5L",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "0.5",
+      "state": "WASTE"
+    },
+    {
+      "calculated_at": "2026-11-19T21:40:00.000Z",
+      "catalog_object_id": "VAR-WELD",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "1.23456",
+      "state": "IN_STOCK"
+    }
+  ],
+  "cursor": "CUR-COUNTS-PAGE-2"
+}

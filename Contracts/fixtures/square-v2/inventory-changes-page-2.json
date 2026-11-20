@@ -1,0 +1,47 @@
+{
+  "changes": [
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-CAP-455",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-102",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "2",
+        "reference_id": "d8672ee2620b46cc518bf935fabc160e3f9167d56c958c445d43286df7fd93cd",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "WASTE"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    },
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-FILTER",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-091",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "1",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "WASTE"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    }
+  ]
+}

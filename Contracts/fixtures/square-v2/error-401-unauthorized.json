@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "category": "AUTHENTICATION_ERROR",
+      "code": "UNAUTHORIZED",
+      "detail": "Fixture text that must never be repeated."
+    }
+  ]
+}

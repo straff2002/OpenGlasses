@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "category": "RATE_LIMIT_ERROR",
+      "code": "RATE_LIMITED",
+      "detail": "Fixture text that must never be repeated."
+    }
+  ]
+}

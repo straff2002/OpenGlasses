@@ -1,0 +1,66 @@
+{
+  "connectorID": "square",
+  "entries": [
+    {
+      "adjustment": {
+        "idempotencyKey": "5936580cb7a38af7d33c48da58161060a2dccc7975e9b3ab7e7d83c93fb4c273",
+        "itemID": "VAR-COOL-5L",
+        "locationID": "LOC-FIX-MAIN",
+        "quantity": "0.5",
+        "reason": "waste",
+        "stagedLineID": "S1",
+        "unit": "l"
+      },
+      "kind": "adjustment"
+    },
+    {
+      "adjustment": {
+        "idempotencyKey": "d8672ee2620b46cc518bf935fabc160e3f9167d56c958c445d43286df7fd93cd",
+        "itemID": "VAR-CAP-455",
+        "locationID": "LOC-FIX-MAIN",
+        "quantity": "1",
+        "reason": "waste",
+        "stagedLineID": "S2",
+        "unit": "each"
+      },
+      "kind": "adjustment"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "too_many_decimals",
+      "sentence": "Coolant concentrate, Bulk (CL-50): Square keeps that item to 2 decimal places, so 0.125 litres can't be sent.",
+      "stagedLineID": "S3"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "unit_not_kept",
+      "sentence": "Grease (GR-400): Square doesn't keep that item in each, so 1 can't be sent.",
+      "stagedLineID": "S4"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "not_carried",
+      "sentence": "Mystery part (ZZ-1): not in Square's catalogue, so not sent.",
+      "stagedLineID": "S5"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "too_many_decimals",
+      "sentence": "Heater hose, 16 mm: Square keeps that item to 1 decimal place, so 0.25 metres can't be sent.",
+      "stagedLineID": "S6"
+    },
+    {
+      "adjustment": {
+        "idempotencyKey": "e6fba1754603e780b62ee4b6a25d9840d9210377dbf2f237d794d9de347bb829",
+        "itemID": "VAR-FILTER",
+        "locationID": "LOC-FIX-MAIN",
+        "quantity": "2",
+        "reason": "waste",
+        "stagedLineID": "S7",
+        "unit": "pack"
+      },
+      "kind": "adjustment"
+    }
+  ],
+  "jobID": "JOB-SQ-FIX-1"
+}

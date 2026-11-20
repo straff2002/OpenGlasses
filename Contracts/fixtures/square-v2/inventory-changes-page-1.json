@@ -1,0 +1,60 @@
+{
+  "changes": [
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-COOL-5L",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-101",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "0.50000",
+        "reference_id": "5936580cb7a38af7d33c48da58161060a2dccc7975e9b3ab7e7d83c93fb4c273",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "WASTE"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    },
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-CAP-455",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-090",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "1",
+        "reference_id": "till-receipt-7781",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "SOLD"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    },
+    {
+      "physical_count": {
+        "catalog_object_id": "VAR-FILTER",
+        "id": "PC-FIX-1",
+        "location_id": "LOC-FIX-MAIN",
+        "occurred_at": "2026-11-20T08:00:00Z",
+        "quantity": "6",
+        "state": "IN_STOCK"
+      },
+      "type": "PHYSICAL_COUNT"
+    }
+  ],
+  "cursor": "CUR-CHANGES-PAGE-2"
+}

@@ -1,0 +1,96 @@
+{
+  "changes": [
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-COOL-5L",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-101",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "0.50000",
+        "reference_id": "5936580cb7a38af7d33c48da58161060a2dccc7975e9b3ab7e7d83c93fb4c273",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "WASTE"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    },
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-CAP-455",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-102",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "1",
+        "reference_id": "d8672ee2620b46cc518bf935fabc160e3f9167d56c958c445d43286df7fd93cd",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "WASTE"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    },
+    {
+      "adjustment": {
+        "catalog_object_id": "VAR-FILTER",
+        "catalog_object_type": "ITEM_VARIATION",
+        "created_at": "2026-11-20T10:02:01.120Z",
+        "from_location_id": "LOC-FIX-MAIN",
+        "from_state": "IN_STOCK",
+        "id": "ADJ-FIX-103",
+        "occurred_at": "2026-11-20T10:02:00Z",
+        "quantity": "2",
+        "reference_id": "e6fba1754603e780b62ee4b6a25d9840d9210377dbf2f237d794d9de347bb829",
+        "source": {
+          "application_id": "APP-FIX-1",
+          "name": "Fixture App",
+          "product": "EXTERNAL_API"
+        },
+        "to_location_id": "LOC-FIX-MAIN",
+        "to_state": "WASTE"
+      },
+      "measurement_unit_id": null,
+      "type": "ADJUSTMENT"
+    }
+  ],
+  "counts": [
+    {
+      "calculated_at": "2026-11-20T10:02:01.120Z",
+      "catalog_object_id": "VAR-COOL-5L",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "12",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-20T10:02:01.120Z",
+      "catalog_object_id": "VAR-CAP-455",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "2",
+      "state": "IN_STOCK"
+    },
+    {
+      "calculated_at": "2026-11-20T10:02:01.120Z",
+      "catalog_object_id": "VAR-FILTER",
+      "catalog_object_type": "ITEM_VARIATION",
+      "location_id": "LOC-FIX-MAIN",
+      "quantity": "4",
+      "state": "IN_STOCK"
+    }
+  ]
+}
