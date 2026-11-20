@@ -256,3 +256,19 @@ generic detector. Scoped to the one exact value AND that one file.
 condition = "AND"
 paths = ['''^Contracts/fixtures/office-publisher-grant-v1\.json$''']
 regexes = ['''PH5UJYKYn\+zEShzaulyuGir0cEU/y07EPM4nNMrrcfE=''']
+
+[[allowlists]]
+description = """
+Idempotency keys in the stock-system contract fixtures (Plan MM P0). Each is the SHA-256 of a
+public fixture job id, staged line id and step kind (Contracts/stock-systems.md), recomputed by
+PartsUsedWritePlanTests and StockSystemFixtureTests; the field name `idempotencyKey` trips the
+generic detector. Scoped to the four exact values AND the two expected write-plan files.
+"""
+condition = "AND"
+paths = ['''^Contracts/fixtures/stock-systems/with(out)?-jobs/expected-write-plan\.json$''']
+regexes = [
+  '''e86ac8930fa59b0d6ca098190f5c7cacf6b0d959243d57f2b106437139e33582''',
+  '''4bc2d12f3edce2a931a0ea674a56753a49799b8352d1667d1b9ac9954234cc1e''',
+  '''f5a57b25254206ef31101a01355c48005d71505b07afd2470803c441c32db7dc''',
+  '''a246d09b127e8d9046cc7cc60dc3e2ec905c316251c5c88344f7584c678f03fe''',
+]

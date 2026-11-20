@@ -1,0 +1,34 @@
+{
+  "connectorID": "fixture-workshop",
+  "entries": [
+    {
+      "jobPartLine": {
+        "externalJobID": "WO-77",
+        "idempotencyKey": "e86ac8930fa59b0d6ca098190f5c7cacf6b0d959243d57f2b106437139e33582",
+        "itemID": "ITM-1001",
+        "quantity": "1",
+        "stagedLineID": "S1",
+        "unit": "each"
+      },
+      "kind": "job_part_line"
+    },
+    {
+      "jobPartLine": {
+        "externalJobID": "WO-77",
+        "idempotencyKey": "4bc2d12f3edce2a931a0ea674a56753a49799b8352d1667d1b9ac9954234cc1e",
+        "itemID": "ITM-1002",
+        "quantity": "0.5",
+        "stagedLineID": "S2",
+        "unit": "l"
+      },
+      "kind": "job_part_line"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "not_carried",
+      "sentence": "Relay (ZX-1999): not in Fixture Workshop's catalogue, so not sent.",
+      "stagedLineID": "S3"
+    }
+  ],
+  "jobID": "JOB-LOCAL-0001"
+}

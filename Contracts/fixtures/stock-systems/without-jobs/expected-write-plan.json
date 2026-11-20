@@ -1,0 +1,42 @@
+{
+  "connectorID": "fixture-till",
+  "entries": [
+    {
+      "adjustment": {
+        "idempotencyKey": "f5a57b25254206ef31101a01355c48005d71505b07afd2470803c441c32db7dc",
+        "itemID": "SKU-2001",
+        "locationID": "LOC-A",
+        "quantity": "2",
+        "reason": "internal_use",
+        "stagedLineID": "T1",
+        "unit": "pack"
+      },
+      "kind": "adjustment"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "fractional",
+      "sentence": "Cleaning fluid (ZX-2007): Fixture Till keeps whole numbers only, so 0.5 litres can't be sent.",
+      "stagedLineID": "T2"
+    },
+    {
+      "kind": "not_sent",
+      "reason": "unit_not_kept",
+      "sentence": "Cable tie (ZX-2002): Fixture Till doesn't keep that item in metres, so 1 metre can't be sent.",
+      "stagedLineID": "T3"
+    },
+    {
+      "adjustment": {
+        "idempotencyKey": "a246d09b127e8d9046cc7cc60dc3e2ec905c316251c5c88344f7584c678f03fe",
+        "itemID": "SKU-2004",
+        "locationID": "LOC-A",
+        "quantity": "1",
+        "reason": "internal_use",
+        "stagedLineID": "T4",
+        "unit": "each"
+      },
+      "kind": "adjustment"
+    }
+  ],
+  "jobID": "DAY-2026-11-20"
+}

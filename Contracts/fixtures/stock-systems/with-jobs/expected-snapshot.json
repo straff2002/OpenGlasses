@@ -1,0 +1,101 @@
+{
+  "asOf": 1795165800,
+  "lines": [
+    {
+      "description": "Capacitor 45/5",
+      "itemID": "ITM-1001",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "onHandScaled": 3000
+        },
+        {
+          "location": "LOC-2",
+          "onHandScaled": 1000
+        }
+      ],
+      "part": "ZX-1001",
+      "provenance": "system",
+      "reorderPointScaled": 2000,
+      "systemUnit": "ea",
+      "unit": "each"
+    },
+    {
+      "description": "Coolant",
+      "itemID": "ITM-1002",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "onHandScaled": 4250
+        }
+      ],
+      "part": "ZX-1002",
+      "provenance": "system",
+      "systemUnit": "litre",
+      "unit": "l"
+    },
+    {
+      "description": "Brake fluid",
+      "itemID": "ITM-1003",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-1",
+          "reason": "too_many_decimals"
+        }
+      ],
+      "part": "ZX-1003",
+      "provenance": "system",
+      "systemUnit": "Litre",
+      "unit": "l"
+    },
+    {
+      "description": "Fastener tin",
+      "itemID": "ITM-1004",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-1",
+          "reason": "unmapped_unit",
+          "systemUnit": "tin"
+        }
+      ],
+      "part": "ZX-1004",
+      "provenance": "system",
+      "systemUnit": "tin"
+    },
+    {
+      "description": "Oil filter",
+      "itemID": "ITM-1005",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-1",
+          "reason": "no_count"
+        }
+      ],
+      "part": "ZX-1005",
+      "provenance": "system",
+      "systemUnit": "ea",
+      "unit": "each"
+    }
+  ],
+  "locations": [
+    {
+      "class": "base",
+      "id": "LOC-1",
+      "name": "Workshop Bay"
+    },
+    {
+      "class": "van",
+      "id": "LOC-2",
+      "name": "Service Vehicle 2"
+    }
+  ],
+  "quantityScale": 3,
+  "source": {
+    "account": "Sample Garage",
+    "connector": "fixture-workshop",
+    "name": "Fixture Workshop"
+  }
+}

@@ -19,7 +19,10 @@ build; no office reads a report yet), [job updates](job-updates.md) (an update o
 already has, and the phone's receipt; messages, fixtures, and the phone's half in the opt-in
 build) and [office check-in, renewal and removal](office-check-in.md) (team learning is design only; the
 folders carry managed jobs and check-in in the opt-in phone build; check-in has its messages,
-key-holder operations and fixtures, the phone's half in that build, and no office app caller).
+key-holder operations and fixtures, the phone's half in that build, and no office app caller),
+and [stock systems](stock-systems.md) (the only writes a phone's connector to a business's own
+stock system may make, their idempotency keys and read-back; Plan MM P0, fixtures and the phone's
+pure core, no connector yet).
 
 This is a tested draft and import preflight, not production commissioning or delivery. The
 Swift phone verifier and Go implementation agree on the same public, fictional signed vault
