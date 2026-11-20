@@ -1,9 +1,13 @@
 import Foundation
 import Combine
-import UserNotifications
 
 /// Listens to live captions during a meeting, periodically sends the transcript to an LLM,
 /// and posts lock screen notifications with a running summary and suggested follow-up questions.
+///
+/// Plan MO §2: the prompt and the delivery sit behind a `MeetingAnalysisSink`. A recording's
+/// assistant (`start(captionService:llm:)`) uses `MeetingNotificationSink`, which asks and posts
+/// exactly what this service did before; a live-hints lecture feeds its own finals
+/// (`startFed(llm:sink:registry:)` and `ingest`) to `LectureKeyPointSink`.
 @MainActor
 class MeetingAssistantService: ObservableObject {
     @Published var isActive = false
@@ -34,26 +38,29 @@ class MeetingAssistantService: ObservableObject {
     private var isAnalysing = false
 
     /// Resolves a diarized caption's speaker to the name the wearer gave it.
-    private weak var captionService: AmbientCaptionService?
+    private var registry: SpeakerRegistry?
 
     // MARK: - Public API
 
-    /// Start the assistant.
+    /// Where the analysis goes and what it asks (Plan MO §2): a recording's notification, or a
+    /// live-hints lecture's key point.
+    private var sink: MeetingAnalysisSink?
+
+    /// The analysis running now, if any. Tests await it.
+    private(set) var analysisTask: Task<Void, Never>?
+
+    /// The sink a recording's assistant uses: the running summary as a notification.
+    static func makeRecordingSink() -> MeetingAnalysisSink { MeetingNotificationSink() }
+
+    /// Start the assistant for a recording.
     /// - Parameters:
     ///   - captionService: The ambient caption service whose `captionHistory` is observed.
     ///   - llm: Async closure that sends a prompt to the LLM and returns the response text.
     func start(captionService: AmbientCaptionService, llm: @escaping (String) async throws -> String) {
         guard !isActive else { return }
-        isActive = true
-        self.llm = llm
-        self.captionService = captionService
-        fullTranscript = []
-        bufferText = ""
+        begin(llm: llm, sink: Self.makeRecordingSink(), registry: captionService.speakerRegistry)
         // Start from the present: anything already in the buffer predates this meeting.
-        cursor = CaptionCursor()
         _ = cursor.take(newestFirst: captionService.captionHistory)
-        isAnalysing = false
-        lastSummary = ""
 
         // Subscribe to caption history changes.
         captionSubscription = captionService.$captionHistory
@@ -61,6 +68,27 @@ class MeetingAssistantService: ObservableObject {
             .sink { [weak self] history in
                 self?.handleCaptionUpdate(history)
             }
+    }
+
+    /// Start the assistant fed by its caller (Plan MO §2, a live-hints lecture): no caption
+    /// subscription of its own; the caller hands each new final to `ingest`.
+    func startFed(llm: @escaping (String) async throws -> String, sink: MeetingAnalysisSink,
+                  registry: SpeakerRegistry? = nil) {
+        guard !isActive else { return }
+        begin(llm: llm, sink: sink, registry: registry)
+    }
+
+    private func begin(llm: @escaping (String) async throws -> String, sink: MeetingAnalysisSink,
+                       registry: SpeakerRegistry?) {
+        isActive = true
+        self.llm = llm
+        self.sink = sink
+        self.registry = registry
+        fullTranscript = []
+        bufferText = ""
+        cursor = CaptionCursor()
+        isAnalysing = false
+        lastSummary = ""
 
         // Periodic 60-second analysis trigger.
         timerTask = Task { [weak self] in
@@ -82,8 +110,11 @@ class MeetingAssistantService: ObservableObject {
         captionSubscription = nil
         timerTask?.cancel()
         timerTask = nil
+        // An analysis already asked is not cancelled: its reply is delivered, as it always was.
+        analysisTask = nil
         llm = nil
-        captionService = nil
+        sink = nil
+        registry = nil
         PrivacyLog.speech(.meetingNotes, .stopped)
     }
 
@@ -92,19 +123,24 @@ class MeetingAssistantService: ObservableObject {
     /// Called whenever `captionHistory` publishes a new value.
     /// `captionHistory` is newest-first; we need entries we haven't seen yet.
     private func handleCaptionUpdate(_ history: [AmbientCaptionService.CaptionEntry]) {
-        let newEntries = cursor.take(newestFirst: history)
-        guard !newEntries.isEmpty else { return }
+        ingest(cursor.take(newestFirst: history))
+    }
+
+    /// New finals, oldest first. Analyses early once the buffer holds 100 words: a final ends at
+    /// the recogniser's endpoint, so this is the pause after about 100 words.
+    func ingest(_ newEntries: [AmbientCaptionService.CaptionEntry]) {
+        guard isActive, !newEntries.isEmpty else { return }
 
         for entry in newEntries {
-            let line = Self.transcriptLine(for: entry, registry: captionService?.speakerRegistry)
+            let line = Self.transcriptLine(for: entry, registry: registry)
             fullTranscript.append(line)
             bufferText += (bufferText.isEmpty ? "" : " ") + line
         }
 
         // Trigger early if the buffer already has ≥ 100 words.
         let wordCount = bufferText.split(whereSeparator: \.isWhitespace).count
-        if wordCount >= 100 {
-            Task { await analyseIfNeeded(force: false) }
+        if wordCount >= 100, !isAnalysing {
+            analysisTask = Task { await analyseIfNeeded(force: false) }
         }
     }
 
@@ -129,64 +165,22 @@ class MeetingAssistantService: ObservableObject {
         isAnalysing = true
         defer { isAnalysing = false }
 
+        guard let sink else { return }
         // Snapshot and clear the buffer.
+        let recent = bufferText
         bufferText = ""
 
         let transcript = fullTranscript.joined(separator: "\n")
-        let prompt = """
-            You are a live meeting assistant listening to a conversation. Lines may be speaker-labelled \
-            ("Alice: …", "Speaker 2: …"); attribute decisions and action items to those people.
-
-            Transcript so far:
-            \(transcript)
-
-            Provide:
-            1. A 2-3 sentence running summary of the key points discussed (name speakers when labelled)
-            2. 2-3 smart follow-up questions the listener could ask right now
-
-            Format your response EXACTLY as:
-            SUMMARY: [summary here]
-            QUESTIONS:
-            • [question 1]
-            • [question 2]
-            • [question 3 if relevant]
-
-            Be concise. Focus on what's most actionable RIGHT NOW.
-            """
+        let prompt = sink.prompt(transcript: transcript, recent: recent)
 
         do {
             let response = try await llm(prompt)
             lastSummary = response
-            postNotification(body: response)
+            sink.deliver(response)
             PrivacyLog.speech(.meetingNotes, .analysisCompleted, characters: response.count)
         } catch {
             PrivacyLog.model(.requestFailed, detail: PrivacyToken("meetingSummary"),
                              error: SafeErrorSummary(error))
-        }
-    }
-
-    // MARK: - Notifications
-
-    private func postNotification(body: String) {
-        let content = UNMutableNotificationContent()
-        content.title = String(localized: "Meeting Update")
-        content.body = body
-        content.categoryIdentifier = "meeting_assistant"
-        content.sound = nil
-        content.threadIdentifier = "meeting_assistant"
-
-        let request = UNNotificationRequest(
-            identifier: "meeting_assistant_\(Date().timeIntervalSince1970)",
-            content: content,
-            trigger: nil // deliver immediately
-        )
-
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error {
-                PrivacyLog.speech(.meetingNotes, .sendFailed,
-                                  detail: PrivacyToken("notification"),
-                                  error: SafeErrorSummary(error))
-            }
         }
     }
 }
