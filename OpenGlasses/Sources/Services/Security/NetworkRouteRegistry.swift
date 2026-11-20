@@ -181,6 +181,9 @@ enum NetworkRoute: String, CaseIterable, Sendable {
     case expertSignaling
     case offlineEndpointSync
     case workizAPI
+    /// Plan MM P2: the business's own Square account as its stock system. One route per stock
+    /// system; every one rides the common stock transport (`URLSessionStockSystemTransport`).
+    case squareStockAPI
     case webRTCBrowserStreaming
     case twitchChatSocket
     /// A recorded job's bundle sent to the organisation's office over the managed connection
@@ -279,6 +282,7 @@ extension NetworkRoute {
         case .webRTCBrowserStreaming: return "Relay camera frames to a browser viewer through the signaling server."
         case .licenceSeatLease: return "Claim, renew or release this phone's seat on a seat-checked organisation licence with the vendor's licence service, about once a day: the enrolment id, a public key made for this phone, the app build and the profile id, and on a renewal the ids and versions of the organisation's own vaults installed here, and nothing else."
         case .workizAPI: return "Read assigned jobs and write a confirmed work report to the technician’s Workiz account."
+        case .squareStockAPI: return "Read stock, items and locations from the business's own Square account, and write the parts-used adjustments a person confirmed, with the key pasted on this phone."
         case .offlineEndpointSync: return "Flush queued offline records to the configured sync endpoint."
         case .twitchChatSocket: return "Read and post broadcast chat messages."
         case .jobRecordingOfficeSync: return "Send a recorded job — its video, sound, timeline and transcript — to the organisation's own office, the one this phone is paired with."
@@ -369,6 +373,9 @@ extension NetworkRoute {
         case .jobRecordingOfficeSync:
             return [.frame, .audio, .transcript]
         case .workizAPI: return [.transcript, .healthFact, .credential, .contactData]
+        // Part numbers, quantities, the chosen locations and the step keys. Business data, filed as
+        // prompt text because a line's description may have been dictated. No customer details.
+        case .squareStockAPI: return [.promptText, .credential]
         case .licenceSeatLease: return [.deviceIdentifier]
         case .offlineEndpointSync:
             return [.transcript, .healthFact, .credential]
@@ -403,7 +410,7 @@ extension NetworkRoute {
              .cloudTranslationCaptions, .llmCompletion, .intentClassification,
              .providerModelCatalog, .conversationRecallSummary, .connectivityProbe,
              .customAgentHarness, .expertBridgeWebhook, .expertSignaling,
-             .offlineEndpointSync, .workizAPI, .webRTCBrowserStreaming,
+             .offlineEndpointSync, .workizAPI, .squareStockAPI, .webRTCBrowserStreaming,
              .fhirExport, .fhirConnectionTest:
             return .userConfiguredCloud
         case .claudeOAuthToken, .chatGPTOAuthToken, .googleOAuthToken, .xaiOAuthToken,
@@ -533,6 +540,7 @@ extension NetworkRoute {
         case .expertBridgeWebhook: return ["WebhookExpertNotifier"]
         case .expertSignaling: return ["ExpertSignalingClient"]
         case .workizAPI: return ["URLSessionWorkizTransport"]
+        case .squareStockAPI: return ["URLSessionStockSystemTransport"]
         case .licenceSeatLease: return ["DeviceSeatHTTPClient"]
         case .offlineEndpointSync: return ["EndpointSyncSink"]
         case .webRTCBrowserStreaming: return ["WebRTCStreamingService"]

@@ -101,6 +101,10 @@ enum SensitiveStore: String, CaseIterable {
     /// The company secret from the activation file, which opens the profile's sealed credentials.
     case orgCompanySecret
     case vanStock
+    /// The connection to the business's own stock system (Plan MM P2): its key and choices.
+    case stockSystemConnection
+    /// The last good stock figures pulled from that system (Plan MM P2).
+    case stockSystemSnapshot
     case learningCandidates
     case capturedManuals
     /// The My Manuals new-manual allowance (Plan JK §8): the iCloud copy of the history.
@@ -874,6 +878,36 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/VanStock/VanStockStore.swift"],
                           location: "Application Support/FieldAssist/van-stock.json, and van-stock-previous.json "
                               + "(the list from before the last takeover, one generation)")
+
+        case .stockSystemConnection:
+            // The key pasted for the business's own stock system and the choices made with it
+            // (Plan MM P2): which locations are this place, whether parts used go back and with
+            // which reason. One device-only Keychain item per system, so nothing of it reaches a
+            // backup or a profile; the chosen system and an unfinished erase are plain preferences.
+            // Erased on Remove connection, when the phone leaves its organisation, and when the
+            // office route arrives.
+            return Record(store: self, dataClass: .credential, subjectLinkage: .wearer,
+                          protection: .keychainAfterFirstUnlockThisDeviceOnly, backupExcluded: true,
+                          retention: .none, deleteAll: .api("StockSystemConnectionStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked, owner: "StockSystemConnectionStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/StockSystem/StockSystemConnectionStore.swift"],
+                          location: "Keychain stockSystemConnection.<system>: key, environment, chosen locations and what goes back; "
+                              + "the chosen system and any unfinished erase in UserDefaults")
+
+        case .stockSystemSnapshot:
+            // The business's figures for the chosen locations (Plan MM §2): part numbers,
+            // descriptions, units and quantities, and the locations' names. Nothing about a person.
+            // Protected, and excluded from backup: a restored phone pulls fresh figures rather than
+            // trusting old ones. Each pull replaces the last, keeping the one before it until the
+            // new one is written; retired on Remove connection, a new key and the office route.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("replaced by each pull; the one before kept until then"),
+                          deleteAll: .api("StockSystemSnapshotStore.retireAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "StockSystemSnapshotStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/StockSystem/StockSystemSnapshotStore.swift"],
+                          location: "Application Support/FieldAssist/stock-system/<system>.json and <system>-previous.json")
 
         case .capturedManuals:
             return Record(store: self, dataClass: .documentCorpus, subjectLinkage: .thirdPartySubject,

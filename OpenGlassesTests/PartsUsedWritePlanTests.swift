@@ -196,17 +196,17 @@ final class PartsUsedWritePlanTests: XCTestCase {
         let connector = FakeStockSystemConnector(capabilities: capabilities(hasJobs: true), failAfter: 1, snapshot: snapshot)
 
         do {
-            _ = try await connector.apply(plan.steps)
+            _ = try await connector.apply(plan.steps, confirmedAt: S.pulledAt)
             XCTFail("the first send should be uncertain")
         } catch {}
-        let readBack = try await connector.readBack(plan)
+        let readBack = try await connector.readBack(plan, queuedAt: S.pulledAt)
         let remaining = plan.remaining(after: readBack)
         XCTAssertEqual(remaining.map(\.stagedLineID), ["S2"])
-        _ = try await connector.apply(remaining)
+        _ = try await connector.apply(remaining, confirmedAt: S.pulledAt)
 
         let writes = await connector.writes
         XCTAssertEqual(writes.sorted(), plan.steps.map(\.idempotencyKey).sorted())
-        let settled = try await connector.readBack(plan)
+        let settled = try await connector.readBack(plan, queuedAt: S.pulledAt)
         XCTAssertEqual(plan.remaining(after: settled), [])
 
         let pulled = try await connector.pullSnapshot(locationIDs: ["L1"], pulledAt: S.pulledAt)
@@ -237,7 +237,11 @@ actor FakeStockSystemConnector: StockSystemConnector {
 
     func pullSnapshot(locationIDs: [String], pulledAt: Date) async throws -> StockSystemSnapshot { snapshot }
 
-    func apply(_ steps: [PartsUsedWritePlan.Step]) async throws -> StockSystemReadBack {
+    func probe() async throws -> StockSystemProbe {
+        StockSystemProbe(locations: snapshot.locations, checks: [.init(purpose: .stock, missingScope: nil)])
+    }
+
+    func apply(_ steps: [PartsUsedWritePlan.Step], confirmedAt: Date) async throws -> StockSystemReadBack {
         for step in steps {
             if let limit = failAfter, writes.count >= limit {
                 failAfter = nil
@@ -249,7 +253,7 @@ actor FakeStockSystemConnector: StockSystemConnector {
         return StockSystemReadBack(applied: Set(writes))
     }
 
-    func readBack(_ plan: PartsUsedWritePlan) async throws -> StockSystemReadBack {
+    func readBack(_ plan: PartsUsedWritePlan, queuedAt: Date) async throws -> StockSystemReadBack {
         StockSystemReadBack(applied: Set(writes).intersection(plan.steps.map(\.idempotencyKey)))
     }
 }

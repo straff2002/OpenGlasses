@@ -57,6 +57,8 @@ struct Config {
         values.append(compatibleRealtimeConfiguration.apiKey)
         if let data = KeychainService.data(for: WorkizConnection.keychainAccount),
            let credential = try? JSONDecoder().decode(WorkizCredential.self, from: data) { values.append(credential.key) }
+        // Every stock system key pasted on this phone (Plan MM P2), one Keychain item per system.
+        values.append(contentsOf: StockSystemConnectionStore.knownKeys())
         // A licence is a bearer credential too; support files carry only its fingerprint.
         if let code = UserDefaults.standard.string(forKey: LicenseService.storageKey) { values.append(code) }
         // FHIR credentials live in their own protected store rather than the migration list, but a

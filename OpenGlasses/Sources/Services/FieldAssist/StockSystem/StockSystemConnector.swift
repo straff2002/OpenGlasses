@@ -53,11 +53,57 @@ protocol StockSystemConnector: Sendable {
     /// A whole snapshot of the chosen locations' stock.
     func pullSnapshot(locationIDs: [String], pulledAt: Date) async throws -> StockSystemSnapshot
 
-    /// Sends the plan's steps, each with its idempotency key, and returns what the system
-    /// accepted. Throws when the outcome is uncertain, so the caller reads back before trying
-    /// again.
-    func apply(_ steps: [PartsUsedWritePlan.Step]) async throws -> StockSystemReadBack
+    /// Test connection (Plan MM P2): the locations, then the smallest read of each kind the
+    /// snapshot needs. Reads only. A missing permission is reported per kind, not thrown.
+    func probe() async throws -> StockSystemProbe
 
-    /// Which of the plan's steps the system already shows.
-    func readBack(_ plan: PartsUsedWritePlan) async throws -> StockSystemReadBack
+    /// Sends the plan's steps, each with its idempotency key, and returns what the system
+    /// accepted. `confirmedAt` is when the person confirmed the batch. Throws when the outcome is
+    /// uncertain, so the caller reads back before trying again.
+    func apply(_ steps: [PartsUsedWritePlan.Step], confirmedAt: Date) async throws -> StockSystemReadBack
+
+    /// Which of the plan's steps the system already shows, read from its history since
+    /// `queuedAt`, when the batch was queued.
+    func readBack(_ plan: PartsUsedWritePlan, queuedAt: Date) async throws -> StockSystemReadBack
+}
+
+/// What Test connection found (Plan MM P2): the system's locations, and for each kind of read the
+/// snapshot needs, whether the key may make it. Common: every system's probe reads this way.
+struct StockSystemProbe: Equatable, Sendable {
+
+    struct Check: Equatable, Sendable {
+        let purpose: StockSystemEndpoint.Purpose
+        /// The permission the key lacks for this read, in the system's own word; nil when it worked.
+        let missingScope: String?
+
+        var passed: Bool { missingScope == nil }
+    }
+
+    let locations: [StockSystemLocation]
+    let checks: [Check]
+
+    var passed: Bool { checks.allSatisfy(\.passed) }
+
+    /// The one line Settings shows after Test connection, with the system's name: "Connected to
+    /// <system>. Stock ✓ Items ✓ — sending back is off." A missing permission is named in
+    /// `StockSystemFailure.missingScope`'s own sentence.
+    func line(system: String, sendingBack: Bool) -> String {
+        if let missing = checks.first(where: { !$0.passed }), let scope = missing.missingScope {
+            return StockSystemFailure.missingScope(scope).sentence(system: system)
+        }
+        let ticks = checks.map { "\(Self.word($0.purpose)) ✓" }.joined(separator: " ")
+        let back = sendingBack ? "sending back is on" : "sending back is off"
+        return ticks.isEmpty ? "Connected to \(system) — \(back)." : "Connected to \(system). \(ticks) — \(back)."
+    }
+
+    /// How a kind of read is named in that line.
+    static func word(_ purpose: StockSystemEndpoint.Purpose) -> String {
+        switch purpose {
+        case .locations: return "Locations"
+        case .catalogue: return "Items"
+        case .stock: return "Stock"
+        case .history: return "History"
+        case .write: return "Sending"
+        }
+    }
 }

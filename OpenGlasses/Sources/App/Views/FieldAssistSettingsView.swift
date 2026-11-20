@@ -169,6 +169,18 @@ struct FieldAssistSettingsView: View {
                         }.accessibilityIdentifier("workiz.settings")
                     }
                 }
+                // Plan MM P2: hidden once the office connects the firm's systems itself.
+                if !appState.stockSystem.connection.officeRoute {
+                    Section {
+                        NavigationLink("Stock system") {
+                            StockSystemSettingsView(service: appState.stockSystem)
+                        }.accessibilityIdentifier("stockSystem.settings")
+                    } header: {
+                        Text("Stock")
+                    } footer: {
+                        Text("Read stock from the business's own system, where it keeps its count.")
+                    }
+                }
             } else {
                 entitlementPaywall
             }

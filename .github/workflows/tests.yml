@@ -453,6 +453,7 @@ jobs:
             -only-testing:OpenGlassesTests/PrivacyCanaryTests \
             -only-testing:OpenGlassesTests/PrivacyLogTests \
             -only-testing:OpenGlassesTests/TelemetryOptOutGuardTests \
+            -only-testing:OpenGlassesTests/StockSystemTransportTests \
             SWIFT_EMIT_LOC_STRINGS=NO \
             2>&1 | tee security.log | grep --line-buffered -E "Test Suite|Test Case.*(passed|failed)|error:|\*\* TEST" \
             || { tail -100 security.log; exit 1; }

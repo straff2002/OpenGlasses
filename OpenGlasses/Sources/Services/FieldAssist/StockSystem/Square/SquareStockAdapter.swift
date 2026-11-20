@@ -51,6 +51,7 @@ struct SquareStockAdapter: StockSystemAdapter {
     let hosts = StockSystemHosts(production: "connect.squareup.com", sandbox: "connect.squareupsandbox.com")
     var allowedEndpoints: [StockSystemEndpoint] { Endpoint.all }
     var unitMap: StockSystemUnitMap { SquareUnitMap.table }
+    var maximumResponseBytes: Int { Self.maximumResponseBytes }
 
     /// No jobs; decimals per item (`decimalPlaces`); one reason, `waste` (`IN_STOCK` → `WASTE`);
     /// no note field, because `reference_id` carries the idempotency key.
@@ -64,6 +65,16 @@ struct SquareStockAdapter: StockSystemAdapter {
 
     func locationsPlan() -> any StockSystemPullPlan<[StockSystemLocation]> {
         SquareLocationsPlan(adapter: self)
+    }
+
+    /// Test connection's reads beside the locations: one `IN_STOCK` count and one item variation,
+    /// stock first. Each is a page of one, so a key without the permission is named and nothing is
+    /// pulled.
+    func probeRequests() throws -> [StockSystemRequest] {
+        [
+            try request(Endpoint.inventoryCounts, body: ["states": ["IN_STOCK"], "limit": 1]),
+            try request(Endpoint.catalogSearch, body: ["object_types": ["ITEM_VARIATION"], "limit": 1]),
+        ]
     }
 
     func snapshotPlan(locationIDs: [String], pulledAt: Date, accountLabel: String?,

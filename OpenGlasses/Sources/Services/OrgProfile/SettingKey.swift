@@ -76,6 +76,16 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// locked by the profile, like the accent: the Stock screen's place picker is then read-only,
     /// and removing the profile gives the list its own choice back.
     case organizationStockPlace
+    /// The connection to the business's own stock system (Plan MM P2): a profile may switch it
+    /// on or off, and the Settings section then follows it. Never the key: a key is pasted on the
+    /// phone, behind the administrator's passcode on a managed phone.
+    case stockSystemEnabled
+    /// Which stock system: a connector id this build offers (`StockSystemAdapterRegistry`).
+    case stockSystemConnector
+    /// Whether parts used go back to the stock system once a person confirms them.
+    case stockSystemSendBack
+    /// The adjustment reason for parts used and not sold: `internal_use`, `waste` or `damage`.
+    case stockSystemAdjustmentReason
     /// Add-ons (Plan GF) are off on this organisation's phones: none installs and none runs.
     case organizationForbidsAddOns
     /// Only signed add-ons — the vendor's or the organisation's — install and run: no add-on from
@@ -175,6 +185,8 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
         case .organizationFieldServiceRoute: return .stringCeiling(pinnedTo: "office")
         case .workizEnabled, .workizClientNotes: return .profileOwned(.bool)
         case .workizReportFieldName: return .profileOwned(.string)
+        case .stockSystemEnabled, .stockSystemSendBack: return .profileOwned(.bool)
+        case .stockSystemConnector, .stockSystemAdjustmentReason: return .profileOwned(.string)
         case .organizationDisplayName, .organizationJobSigningKey, .organizationJobReportChannel,
              .organizationReportTranscriptInternal, .organizationAccentColor, .technicianDisplayName, .capturedManualsPolicy,
              .organizationToolDefinitionsMode, .organizationManualSearchModel, .technicianFullName, .technicianID, .organizationExperts,
@@ -252,6 +264,13 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
             // profile, is a named drop, never a guess at the nearest place.
             return StockPlace.Kind(strict: raw) == nil
                 ? String(localized: "not one of van, truck, store, warehouse or stock") : nil
+        case (.stockSystemConnector, .string(let raw)):
+            // Deny by default: a system this build does not offer is a named drop.
+            return StockSystemAdapterRegistry.registration(for: raw) == nil
+                ? String(localized: "not a stock system this version offers (\(StockSystemAdapterRegistry.connectorIDs.joined(separator: ", ")))") : nil
+        case (.stockSystemAdjustmentReason, .string(let raw)):
+            return StockAdjustmentReason(rawValue: raw) == nil
+                ? String(localized: "not one of internal_use, waste or damage") : nil
         case (.capturedManualsPolicy, .string(let raw)):
             return ["off", "jobOnly", "reviewToPool"].contains(raw) ? nil : String(localized: "not a photographed-manual policy")
         case (.organizationReportTranscriptInternal, .string(let raw)):
