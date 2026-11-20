@@ -272,3 +272,18 @@ regexes = [
   '''f5a57b25254206ef31101a01355c48005d71505b07afd2470803c441c32db7dc''',
   '''a246d09b127e8d9046cc7cc60dc3e2ec905c316251c5c88344f7584c678f03fe''',
 ]
+
+[[allowlists]]
+description = """
+Idempotency keys in the Square adapter's expected write plan (Plan MM P1). Each is the SHA-256 of a
+public fixture job id, staged line id and step kind (Contracts/stock-systems.md), recomputed by
+SquareStockAdapterTests; the field name `idempotencyKey` trips the generic detector. Scoped to the
+three exact values AND the one expected write-plan file.
+"""
+condition = "AND"
+paths = ['''^Contracts/fixtures/square-v2/expected-write-plan\.json$''']
+regexes = [
+  '''5936580cb7a38af7d33c48da58161060a2dccc7975e9b3ab7e7d83c93fb4c273''',
+  '''d8672ee2620b46cc518bf935fabc160e3f9167d56c958c445d43286df7fd93cd''',
+  '''e6fba1754603e780b62ee4b6a25d9840d9210377dbf2f237d794d9de347bb829''',
+]
