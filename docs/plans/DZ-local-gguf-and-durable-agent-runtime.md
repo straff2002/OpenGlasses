@@ -915,6 +915,15 @@ For each supported phone tier, record Debug and Release separately:
 Record device model, OS build, app build, runtime/framework revision, model revision/quantization,
 context size, and whether increased-memory entitlement is active. Never record prompts or responses.
 
+**Tool-call evidence (2026-11-20 research, [report](../../reports/iOS%20local%20model%20tool%20calling.md)).**
+The vendored `llama.xcframework` ships only llama.cpp's core headers. llama.cpp's tool-call parsing
+and Jinja tool templates live in `common/chat`, so this runtime has no native tool-call parsing.
+The app's own `<tool_call>` markup and `LocalOutputPolicy` are all a GGUF model gets.
+GBNF grammars (`llama_sampler_init_grammar`) are available for constraining a call once one
+starts. Before any GGUF entry earns `.toolFriendly`, decide between linking `common/chat` and
+keeping the app's parser. Run the tool-call fixture through the path that ships, not a desktop
+llama.cpp.
+
 ## Rollout and rollback
 
 1. Land P0 with all flags off and exercise MLX through internal tests only.

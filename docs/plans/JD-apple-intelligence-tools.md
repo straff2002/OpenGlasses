@@ -2,6 +2,13 @@
 
 **Status:** 🚧 P0 built 2026-10-18 · window follow-up built 2026-10-20 · device pass owed · P1 planned
 
+**Manual answers (2026-11-20).** The window follow-up below keeps manual questions off this model.
+[Plan MP](MP-apple-intelligence-manual-answers.md) drafts the way back: the app retrieves the
+passages and the model only reads them, on Apple's Private Cloud Compute model (iOS 27, a daily
+per-user allowance) when online and on the device otherwise, with the answer checked against the
+passage in code. MP P1 also takes P1's "measured budget" below, reading
+`SystemLanguageModel.contextSize` at runtime instead of assuming 4,096.
+
 **Window follow-up (2026-10-20).** A field report showed "open a new job" on the on-device model
 overflow its window on a brand-new conversation, retry three times (re-running `field_session`
 each time) and be reported as a max-tokens stop. Now: the on-device path has its own instructions

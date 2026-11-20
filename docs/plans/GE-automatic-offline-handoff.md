@@ -114,7 +114,9 @@ speaker/earbuds path is the same.
 MLX uses Metal and cannot run backgrounded. The conversation keeps going with this ladder, first
 available wins, decided by a pure `OfflineBrainSelector(appActive:available:)`:
 1. **Apple on-device model** (`appleOnDevice`) — *device-unverified* whether it serves a
-   background app; P3 measures it. Used only if verified.
+   background app; P3 measures it. Used only if verified. (2026-11-20: [Plan MP](MP-apple-intelligence-manual-answers.md)
+   adds an offline manual-reading turn on this model. Apple's Private Cloud Compute model needs the
+   network, so this plan treats it as a cloud model: it is never an offline rung.)
 2. **llama.cpp, CPU only** (`gpuLayers: 0`, a ≤1.5 B GGUF already installed) — CPU work is
    allowed while the audio background mode keeps the app alive; risk is the background CPU
    budget and heat. *Device-unverified*; off unless P3 shows it is safe.
