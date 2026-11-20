@@ -1,0 +1,41 @@
+{
+  "confirmation": "voice",
+  "jobID": "JOB-LOCAL-0001",
+  "jobNumber": "J-501",
+  "lines": [
+    {
+      "description": "Capacitor 45/5",
+      "id": "S1",
+      "itemID": "ITM-1001",
+      "part": "ZX-1001",
+      "quantityScaled": 1000,
+      "source": "spoken",
+      "unit": "each"
+    },
+    {
+      "description": "Coolant",
+      "id": "S2",
+      "itemID": "ITM-1002",
+      "part": "ZX-1002",
+      "quantityScaled": 500,
+      "source": "typed",
+      "unit": "l"
+    },
+    {
+      "description": "Relay",
+      "id": "S3",
+      "itemID": null,
+      "part": "ZX-1999",
+      "quantityScaled": 1000,
+      "source": "spoken",
+      "unit": "each"
+    }
+  ],
+  "locationID": "LOC-1",
+  "reference": {
+    "job_id": "WO-77",
+    "job_number": "J-501",
+    "system": "fixture-workshop",
+    "system_name": "Fixture Workshop"
+  }
+}

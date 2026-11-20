@@ -1,8 +1,14 @@
 # Plan MM — Stock Kept in the Business's Own System (a garage's workshop system or a shop's till holds the count; the phone reads it and sends back what was used)
 
-**Status:** 📝 Drafted 2026-11-19 — nothing implemented. Decisions 1–12 are owed. Which system comes
-first is the owner's choice, made for a pilot (Decision 1). **Merges after Plan
-[ML](ML-measured-quantities.md)**, which owns the app's quantity type and HF's quantity members.
+**Status:** 🚧 P0 built 2026-11-20 (headless): the pure seam in
+`Services/FieldAssist/StockSystem/` (who holds the count, the snapshot and its builder, the
+conversion into Plan ML's `StockQuantity`, the join, the sentences, the parts-used write plan, the
+connector protocol), two invented fixture sets and `Contracts/stock-systems.md`; 47 tests. Built on
+the recommendations for decisions 2–9 and 11, each kept in one place (`StockSystemPolicy`), which
+remain the owner's to change. **Decision 1 taken 2026-11-20: Square and Simpro**, one system without
+jobs and one with, built against fixtures from each vendor's public reference and checked against a
+live account later, as Workiz was. P1–P4 not built; P5 owed. Quantities are Plan
+[ML](ML-measured-quantities.md)'s.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own movement log, the `van_stock` tool, the Stock screen,
@@ -342,6 +348,14 @@ built from each vendor's published example shapes: one system with jobs and one 
 `Contracts/stock-systems.md` lists the only writes each connector may make and the idempotency and
 read-back rules, so an office-side connector can recognise what a phone wrote. Tests below. No
 network, no UI, no store.
+✅ **Built 2026-11-20.** As built: the fixtures are vendor-neutral, connector-normalised rows (the
+vendor-shaped ones come with P1, once Decision 1 named the systems). A line whose system unit maps
+to none of the phone's units keeps the system's unit string and has no `unit`. A connection with no
+location chosen resolves to the phone. A job reference is used only when its system matches the
+connector. A price is kept as the system's decimal text and currency code, and only when enabled.
+The idempotency key is SHA-256 over the job id, the staged line id and the step kind, each followed
+by a zero byte. The load refusal says "each receipt and count is done there", so it never says
+"counted". Times follow the app's 24-hour style ("as of 09:10").
 *Owed:* nothing.
 
 **P1 — The first connector (pure decode and request building) and its qualification.** The system
@@ -407,7 +421,9 @@ said "van", "counted" or a number for an unknown.
 
 ## Decisions for Greig
 
-1. **Which system first.** *Recommend:* the one the first committed pilot runs, chosen when a pilot
+1. ✅ **Taken 2026-11-20 (owner): Square and Simpro**, built against fixtures from each vendor's
+   public reference and qualified against a live account later, as Workiz was. *Recommended had
+   been:* the one the first committed pilot runs, chosen when a pilot
    commits. A New Zealand garage is most likely on MechanicDesk or Workshop Software, which first
    needs the vendor's documentation and permission. If the seam must be proved first, prove it on
    Square (public reference, sandbox, decimals, self-serve). P0 is built over one system with jobs

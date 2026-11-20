@@ -1,0 +1,48 @@
+{
+  "confirmation": "screen",
+  "jobID": "DAY-2026-11-20",
+  "jobNumber": "J-88",
+  "lines": [
+    {
+      "description": "Wire nuts",
+      "id": "T1",
+      "itemID": "SKU-2001",
+      "part": "ZX-2001",
+      "quantityScaled": 2000,
+      "source": "scanned",
+      "unit": "pack"
+    },
+    {
+      "description": "Cleaning fluid",
+      "id": "T2",
+      "itemID": "SKU-2007",
+      "part": "ZX-2007",
+      "quantityScaled": 500,
+      "source": "spoken",
+      "unit": "l"
+    },
+    {
+      "description": "Cable tie",
+      "id": "T3",
+      "itemID": "SKU-2002",
+      "part": "ZX-2002",
+      "quantityScaled": 1000,
+      "source": "typed",
+      "unit": "m"
+    },
+    {
+      "description": "Spray cleaner",
+      "id": "T4",
+      "itemID": "SKU-2004",
+      "part": "ZX-2004",
+      "quantityScaled": 1000,
+      "source": "spoken",
+      "unit": "each"
+    }
+  ],
+  "locationID": "LOC-A",
+  "reference": {
+    "job_id": "WO-1",
+    "system": "fixture-workshop"
+  }
+}

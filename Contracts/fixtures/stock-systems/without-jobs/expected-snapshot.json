@@ -1,0 +1,110 @@
+{
+  "asOf": 1795104600,
+  "lines": [
+    {
+      "description": "Wire nuts",
+      "itemID": "SKU-2001",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "onHandScaled": 12000
+        },
+        {
+          "location": "LOC-B",
+          "onHandScaled": 4000
+        }
+      ],
+      "lineAsOf": 1795165500,
+      "part": "ZX-2001",
+      "price": {
+        "amount": "3.40",
+        "currency": "NZD"
+      },
+      "provenance": "system",
+      "systemUnit": "pack",
+      "unit": "pack"
+    },
+    {
+      "description": "Cable tie",
+      "itemID": "SKU-2002",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-A",
+          "reason": "not_whole"
+        }
+      ],
+      "lineAsOf": 1795104600,
+      "part": "ZX-2002",
+      "provenance": "system",
+      "systemUnit": "each",
+      "unit": "each"
+    },
+    {
+      "description": "Fuse 10A",
+      "itemID": "SKU-2003",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-A",
+          "reason": "negative"
+        }
+      ],
+      "part": "ZX-2003",
+      "provenance": "system",
+      "systemUnit": "each",
+      "unit": "each"
+    },
+    {
+      "description": "Spray cleaner",
+      "itemID": "SKU-2004",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "onHandScaled": 0
+        },
+        {
+          "location": "LOC-B",
+          "onHandScaled": 6000
+        }
+      ],
+      "lineAsOf": 1795161600,
+      "part": "ZX-2004",
+      "provenance": "system",
+      "systemUnit": "each",
+      "unit": "each"
+    },
+    {
+      "description": "Cleaning fluid",
+      "itemID": "SKU-2007",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "onHandScaled": 5000
+        }
+      ],
+      "part": "ZX-2007",
+      "provenance": "system",
+      "systemUnit": "l",
+      "unit": "l"
+    }
+  ],
+  "locations": [
+    {
+      "class": "base",
+      "id": "LOC-A",
+      "name": "Front Counter"
+    },
+    {
+      "class": "other",
+      "id": "LOC-B",
+      "name": "North Bay"
+    }
+  ],
+  "quantityScale": 3,
+  "source": {
+    "account": "Sample Shop",
+    "connector": "fixture-till",
+    "name": "Fixture Till"
+  }
+}
