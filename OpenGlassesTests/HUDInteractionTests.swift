@@ -919,4 +919,16 @@ private final class FakeProcedureHost: ObservableObject, ProcedureHosting {
         backCount += 1
         return activeProcedureStep ?? Procedure.Step(id: "x", title: "x", instruction: "")
     }
+    // Plan MN §4: no runner behind this double, so no presentation; the lens falls back to the
+    // step's own branches. `ProcedureLensAnswerTests` drives a real runner.
+    var activeProcedurePresentation: ProcedureStepPresentation? { nil }
+    var answers: [(value: String?, method: ProcedureAnswerMethod)] = []
+    func answerProcedure(value: String?, method: ProcedureAnswerMethod, note: String?,
+                         confirmed: Bool, locale: Locale) throws -> ProcedureRunner.AnswerResult {
+        answers.append((value, method))
+        return .notAccepted("no runner")
+    }
+    func confirmProcedureReadBack(_ correct: Bool) throws -> ProcedureRunner.AnswerResult {
+        .notAccepted("no runner")
+    }
 }

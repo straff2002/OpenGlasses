@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: 8d482f315e934c21a996ccba5965b1e405e73ea84b37edbe0f8d148bf932b38e -->
+     source-sha256: 5ecb17bd957bfdc3f525a76ac2724149e5a89ab7fc3688d76d23e87176ec84d0 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -422,6 +422,89 @@ is the honest answer.</p>
   ]
 }
 </code></pre>
+<h3 id="answers-and-routes-the-app-decides">Answers and routes the app decides</h3>
+<p>The procedure above needs the assistant at every branch: it hears "bubbling" and picks the branch whose <code>condition</code> matches. For a fixed check (a start-of-shift check, a sanitation round, a pass/fail quality step) the app can do that itself. Give a step a typed <strong><code>answer</code></strong>, and give every branch on it a <strong><code>when</code></strong> rule that reads the answer. The app then records the value, checks it, and takes the route, with no assistant at all. The phone runs the procedure offline, and the record says the rule decided.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;check_co2&quot;,
+  &quot;title&quot;: &quot;Check the carbonation&quot;,
+  &quot;instruction&quot;: &quot;Take a bottle from the filler discharge and read its carbonation.&quot;,
+  &quot;answer&quot;: {
+    &quot;record_as&quot;: &quot;co2&quot;,
+    &quot;kind&quot;: &quot;number&quot;,
+    &quot;label&quot;: &quot;CO2&quot;,
+    &quot;decimals&quot;: 2,
+    &quot;plausible&quot;: [0, 6],
+    &quot;spec&quot;: [2.4, 2.8],
+    &quot;critical&quot;: true
+  },
+  &quot;branches&quot;: [
+    { &quot;id&quot;: &quot;in_spec&quot;, &quot;condition&quot;: &quot;CO2 2.4 to 2.8 volumes&quot;, &quot;when&quot;: { &quot;answer&quot;: &quot;co2&quot;, &quot;between&quot;: [2.4, 2.8] }, &quot;next&quot;: &quot;check_brix&quot; },
+    { &quot;id&quot;: &quot;low&quot;,     &quot;condition&quot;: &quot;CO2 below 2.4 volumes&quot;,  &quot;when&quot;: { &quot;answer&quot;: &quot;co2&quot;, &quot;lt&quot;: 2.4 },             &quot;next&quot;: &quot;adjust_carbonation&quot; },
+    { &quot;id&quot;: &quot;high&quot;,    &quot;condition&quot;: &quot;CO2 above 2.8 volumes&quot;,  &quot;when&quot;: { &quot;answer&quot;: &quot;co2&quot;, &quot;gt&quot;: 2.8 },             &quot;next&quot;: &quot;adjust_carbonation&quot; }
+  ]
+}
+</code></pre>
+<p><strong>The answer.</strong> One per step. Every kind has <code>record_as</code> (the answer's name in the record and in rules: snake_case, unique in the procedure), <code>label</code> (what is printed and spoken), <code>required</code> (default true: the step needs its answer before <em>next</em>) and <code>critical</code>.</p>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th><code>kind</code></th>
+<th>Its own fields</th>
+<th>How the technician gives it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>number</code></td>
+<td><code>unit</code>, <code>decimals</code> 0–3, <code>plausible</code> [lo, hi], <code>spec</code> [lo, hi] (optional), <code>show_spec</code></td>
+<td>typed, or said as digits or words ("four point two"); a decimal comma where the phone's language writes one</td>
+</tr>
+<tr>
+<td><code>choice</code></td>
+<td><code>options</code>: 2–12 of <code>{ "id", "label", "says": [other words for it] }</code></td>
+<td>a tap, a lens button, or the label or one of its <code>says</code> words</td>
+</tr>
+<tr>
+<td><code>yes_no</code></td>
+<td>none</td>
+<td>a tap, a lens button, or yes / yeah / done / pass and no / nope / fail</td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td><code>min_len</code>, <code>max_len</code> (default 1 and 500)</td>
+<td>typed or dictated, kept as said</td>
+</tr>
+<tr>
+<td><code>photo</code></td>
+<td><code>min</code> 1–5 (default 1), <code>max</code> up to 5</td>
+<td>the job's camera; attached to the job and listed by id, never assessed</td>
+</tr>
+<tr>
+<td><code>code</code></td>
+<td><code>symbology</code> <code>qr</code> or <code>barcode</code>, <code>expected</code> (optional)</td>
+<td>scanned, or typed</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Two ranges on a number.</strong> <code>plausible</code> is what a reading can be at all. Outside it, the app takes the value as misheard and asks again ("CO2 42? Read it again"), and records nothing. <code>spec</code> is what the reading should be. Outside it, the reading is <strong>recorded as out of spec</strong>, because that reading is the reason the check exists. A <code>code</code> with <code>expected</code> is out of spec when it doesn't match.</p>
+<p><strong>Critical answers.</strong> A spoken critical answer is read back before it decides anything ("CO2 2.90, out of spec, is that right?"); a typed one is already on the screen. A critical answer out of spec needs a corrective note before the run goes on ("adjusted the carbonator, retesting"), and the note is kept with the reading.</p>
+<p><strong>The rule.</strong> <code>when</code> is a small rule in JSON:</p>
+<ul>
+<li>a test, <code>{ "answer": "&lt;record_as&gt;", &lt;comparison&gt;: &lt;value&gt; }</code>, with <code>eq</code>, <code>ne</code>, <code>lt</code>, <code>lte</code>, <code>gt</code>, <code>gte</code>, <code>between</code> [lo, hi] and <code>outside</code> [lo, hi] (bounds included) for numbers; <code>in</code> [option ids] for a choice; <code>is</code> <code>"yes"</code> / <code>"no"</code> for yes or no; <code>out_of_spec</code> true / false for an answer with a spec; and <code>present</code> true / false for any answer;</li>
+<li>or <code>{ "all": [ … ] }</code>, <code>{ "any": [ … ] }</code> and <code>{ "not": { … } }</code>, nested at most three deep.</li>
+</ul>
+<p>A rule can read this step's answer or any earlier step's on the path taken, so "Brix below 10.5 <strong>and</strong> CO2 below 2.5 → hold the batch" works. An answer the path didn't pass through makes its test false, except <code>present: false</code>.</p>
+<p><strong>How a route is decided.</strong> The branches are tried in the order you list them, and the first rule that holds wins. If none holds, the app follows <code>default_next</code>, and if the step has none, it stops and says so ("pH 3.75 matches none of this step's routes") and asks the technician to choose. It never guesses. Numbers are compared exactly at the step's <code>decimals</code>: 4.40 against <code>gt 4.4</code> is false every time, so a bound means what you wrote.</p>
+<p><strong>Who decides.</strong> On a step whose branches all have <code>when</code>, the rule decides. The assistant hears the value and helps, and it can't choose a different route. The technician can override a rule, with a reason, and the record flags the override beside the route the rule gave. A step's branches are either all rules or none: a step can't be half and half.</p>
+<p><strong>Keep <code>condition</code>.</strong> It is still required. It is what an older app's assistant reads, what the lens and the phone print on a button, and the rule in words. Make them say the same thing: the importer warns when a condition's numbers aren't the rule's.</p>
+<p><strong>What the importer checks.</strong> As well as the graph, the importer refuses a missing or repeated <code>record_as</code>, an unknown <code>kind</code>, fields of another kind, <code>decimals</code> outside 0–3, a <code>plausible</code> whose lo isn't below its hi, a <code>spec</code> outside <code>plausible</code>, a choice with fewer than 2 or more than 12 options or a word said for two of them, a rule that reads an answer no earlier step records, a comparison that doesn't fit the answer (<code>gt</code> on a choice), rules nested more than three deep, and a step that mixes rules and words. It warns, and still installs, about a unit the app doesn't know, an answer recorded on only some paths to the rule that reads it, a condition whose numbers aren't the rule's, and a number step whose rules leave a gap ("a pH of 3.75 matches no route and there is no default") or overlap ("4.4 matches both in_spec and high; the first listed wins").</p>
+<p><strong>Runs with no assistant.</strong> After the import the app says how many of the vault's procedures run with no assistant, and names the first step of each one that doesn't ("4 procedures, 3 run with no assistant; Line changeover step 4 chooses its route from words"). A procedure runs with no assistant when every step that branches has rules (or only one way on), and no step asks in words (<code>expected_input</code>) for an answer it has no typed <code>answer</code> for.</p>
+<p><strong>Running it on the phone.</strong> The open job shows the running procedure, and tapping it opens the step: the instruction, the answer (a number pad with the unit beside it, big buttons for a choice or yes or no, a field for text, the camera for photos), the route the rule took, and the steps done so far. A run started by voice or on the glasses shows there too. On the glasses, a choice or a yes or no is a row of buttons, and a number is said or typed on the phone and shown on the lens once recorded. The procedure runs with <strong>no assistant</strong> when no AI model is set up or the phone is offline with no model of its own, when the technician chooses it on the step screen, when an organisation profile sets <code>organizationRunsProceduresWithoutAssistant</code>, or when the procedure itself says so. With no assistant the phone says each step in its own voice and listens, on the phone where the language allows, for <em>next</em>, <em>back</em>, <em>repeat</em> and the step's answer; anything else gets one line, "I can take the answer to this step, or next, back or repeat". It answers no questions. To make a procedure always run this way, whatever the phone has, add <code>"runs": "without_assistant"</code> beside its <code>title</code>. That is the only value <code>runs</code> takes, and the importer refuses any other.</p>
+<p><strong>Writing the rules on the phone.</strong> On a vault of your own, <em>Build this vault</em> lists its procedures and whether each runs with no assistant. Open one to add or change a step's answer and the rule on each route. The importer's checks, the gaps and overlaps, and the step that stops the procedure running with no assistant show beside the step as you edit. <em>Copy prompt</em> gives you a prompt for your own AI that turns each route's words into a rule (and proposes an answer for a step that has none). Paste its reply back, and each suggested rule appears beside its sentence, to accept or reject one at a time. A suggestion the app can't use, such as a rule on only some of a step's routes, or one that reads an answer no step records, is listed with the reason. Nothing changes in the vault until you save, and a procedure the importer would refuse doesn't save. An export carries the saved procedure.</p>
+<p><strong>Older apps.</strong> An app older than build 738 ignores <code>answer</code>, <code>when</code> and <code>runs</code>, and its assistant chooses from <code>condition</code> as before. A pack whose procedures use them should set <code>minAppBuild</code> to at least 738 in <code>pack.json</code>; the importer warns when it doesn't. A folder copied by hand still runs on an older app the old way.</p>
+<p>The worked example in <a href="https://github.com/straff2002/OpenGlasses/blob/main/examples/vaults/bottling-line-check/README.md"><code>examples/vaults/bottling-line-check</code></a> is a complete start-of-shift check that runs with no assistant: numbers with a readable range and a spec, a critical limit with its corrective note, a rule that reads two answers, a choice with synonyms, a yes or no, photos and a code.</p>
 <h2 id="tables-and-chains-optional">Tables and chains (optional)</h2>
 <p>A table in a manual or a code book you load is read into rows and columns at import, on the phone, from your own copy, and the technician can ask for one value from it: <em>"what's the rating in Table 99 for QXRT, three conductors, rating group 2?"</em> The answer comes back with its row, its column, its notes and the page it is printed on, or as the two rows a number falls between. Nothing is interpolated, and the app never picks "the next size up" on its own.</p>
 <p>Some answers take several tables and a rule or two together: size a conductor for a load once it is corrected for the temperature and the grouping, or check whether one already installed carries it. The app does not know which rules your code applies, so it does not guess. You write the steps down once, as a <strong>rule chain</strong>, against the table and rule numbers of your own code and edition, and the assistant runs them for the technician one step at a time: it asks for each value in its own words, does every lookup and every sum itself, never goes past a step it could not complete, and reads the whole chain back with the page of every value it used. The read-back goes on the job record like a reading.</p>

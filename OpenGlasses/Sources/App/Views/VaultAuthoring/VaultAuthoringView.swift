@@ -17,6 +17,7 @@ struct VaultAuthoringView: View {
     @State private var reviewing: ReviewTarget?
     @State private var exportWarnings: ExportWarnings?
     @State private var shareItem: ShareItem?
+    @State private var procedures: [ProcedureLibrary.Candidate] = []
 
     struct ReviewTarget: Identifiable, Hashable {
         let file: String
@@ -41,6 +42,9 @@ struct VaultAuthoringView: View {
                 Text("Equipment models")
             } footer: {
                 Text("Photograph the plate at the unit, pick the model it shows, and say which manual covers it.")
+            }
+            if manifest?.proceduresDir != nil {
+                proceduresSection
             }
             Section("Vault") {
                 NavigationLink {
@@ -85,6 +89,35 @@ struct VaultAuthoringView: View {
             }
         }
         .sheet(item: $shareItem) { item in ShareSheet(items: item.items) }
+    }
+
+    /// Plan MN P3: each procedure's answers and rules, and whether it runs with no assistant.
+    private var proceduresSection: some View {
+        Section {
+            if procedures.isEmpty {
+                Text("This vault has no procedures yet.").foregroundStyle(.secondary)
+            }
+            ForEach(procedures, id: \.file) { entry in
+                NavigationLink {
+                    ProcedureRulesView(vaultId: vaultId, file: entry.file, title: entry.procedure.title)
+                        .onDisappear(perform: reload)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: entry.procedure.title)
+                        if ProcedureReadiness.blockers(entry.procedure).isEmpty {
+                            Text("Runs with no assistant").font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text("Needs an assistant").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("vaultAuthoring.procedure.\(entry.procedure.id)")
+            }
+        } header: {
+            Text("Procedures")
+        } footer: {
+            Text("Give a step a typed answer and its routes rules, and the app decides the route itself, on this phone, with no assistant.")
+        }
     }
 
     private var manualsSection: some View {
@@ -133,6 +166,7 @@ struct VaultAuthoringView: View {
     private func reload() {
         manifest = VaultImporter.installedManifest(id: vaultId)
         ledger = VaultImporter.documentLedger(for: vaultId)
+        procedures = ProcedureAuthoring.entries(vaultId: vaultId)
     }
 
     private func index(_ added: VaultManifest) async {

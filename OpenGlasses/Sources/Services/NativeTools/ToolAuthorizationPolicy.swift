@@ -134,6 +134,13 @@ enum ToolAuthorizationPolicy {
             return .refuse(reason: .restrictedTarget, message: ComposedToolPolicy.refusalMessage(target: name))
         }
 
+        // 0b. Actions the person confirms whatever the mode (Plan MN decision 3): overriding a
+        //    procedure's rule changes a recorded route, so the person says yes to it, never the
+        //    model alone. Agent mode's supervisor does not cover it, so this applies in both modes.
+        if let summary = personConfirmedSummary(tool: name, args: args) {
+            return .confirm(summary: attributed(summary, call: call))
+        }
+
         // 1. Actuation floor (Plan BC): confirmation before irreversible, security-relevant physical
         //    actions even when agent mode is OFF, so a prompt-injected sign or web result can't
         //    silently actuate. With agent mode on, the supervisor below already covers these tools
@@ -175,6 +182,18 @@ enum ToolAuthorizationPolicy {
                 : reason
             return .confirm(summary: attributed(summary, call: call))
         }
+    }
+
+    /// The confirmation line for a call the person must confirm in every mode, or nil. Today that
+    /// is `procedure_runner` `override` (Plan MN decision 3): the route the technician takes
+    /// instead of the rule's, with their reason, so the record's override is theirs.
+    static func personConfirmedSummary(tool: String, args: [String: Any]) -> String? {
+        guard tool == "procedure_runner",
+              (args["action"] as? String)?.lowercased().trimmingCharacters(in: .whitespaces) == "override" else { return nil }
+        let branch = (args["branch"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "another route"
+        let reason = (args["reason"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return "Override the procedure's rule and take '\(branch)'"
+            + (reason.isEmpty ? "" : " because \"\(reason)\"")
     }
 
     // MARK: - Model-facing copy

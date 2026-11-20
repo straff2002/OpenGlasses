@@ -42,6 +42,10 @@ struct SessionExport: Codable, Equatable {
     /// so absence means "an older build wrote this" rather than "this job recorded nothing".
     let clips: [ClipRef]?
     let proceduresRun: [ProcedureRun]
+    /// Plan MN §5: each procedure run's record — one row per step left, with its answer and how the
+    /// route was decided. Nothing in it is model-written. Optional so an older export still
+    /// decodes; a session that ran no procedure writes an empty list.
+    var procedureRecords: [ProcedureRecord]? = nil
     let captures: [CaptureRun]
     let citations: [Citation]
     let escalations: [EscalationEntry]
@@ -199,6 +203,71 @@ struct SessionExport: Codable, Equatable {
         let outcome: String?   // nil if the procedure was left in progress
     }
 
+    /// One procedure run as a record (Plan MN §5), rebuilt from its `procedureStep` events.
+    struct ProcedureRecord: Codable, Equatable {
+        let procedureId: String
+        let title: String?
+        let startedAt: Date?
+        let outcome: String?
+        let rows: [Row]
+
+        /// One step left, in the order it happened (a retest loop visits a step again, and shows
+        /// it again).
+        struct Row: Codable, Equatable {
+            let stepId: String
+            let stepTitle: String?
+            let at: Date
+            /// The answer's label ("pH") and value with unit ("4.60 pH"), as the app read it.
+            var answerLabel: String? = nil
+            var answer: String? = nil
+            /// What was typed, said or scanned.
+            var entered: String? = nil
+            /// "in" or "out" of spec, and the spec in words.
+            var specStatus: String? = nil
+            var spec: String? = nil
+            /// typed / spoken / lens / scanned / photo.
+            var method: String? = nil
+            var note: String? = nil
+            var photoIds: [String]? = nil
+            /// Where the route went, and why.
+            var nextStepId: String? = nil
+            var nextStepTitle: String? = nil
+            /// rule / person / assistant / override.
+            var decidedBy: String? = nil
+            var ruleText: String? = nil
+            /// For an override: the branch the rule gave, and the person's reason.
+            var ruleBranch: String? = nil
+            var reason: String? = nil
+            var branchTaken: String? = nil
+
+            var isOverride: Bool { decidedBy == ProcedureDecider.override.rawValue }
+            var isOutOfSpec: Bool { specStatus == SpecStatus.out.rawValue }
+            /// Marked in the PDF: an override, or a reading out of spec.
+            var isFlagged: Bool { isOverride || isOutOfSpec }
+
+            enum CodingKeys: String, CodingKey {
+                case at, answer, entered, spec, method, note, reason
+                case stepId = "step_id"
+                case stepTitle = "step_title"
+                case answerLabel = "answer_label"
+                case specStatus = "spec_status"
+                case photoIds = "photo_ids"
+                case nextStepId = "next_step_id"
+                case nextStepTitle = "next_step_title"
+                case decidedBy = "decided_by"
+                case ruleText = "rule_text"
+                case ruleBranch = "rule_branch"
+                case branchTaken = "branch_taken"
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case title, outcome, rows
+            case procedureId = "procedure_id"
+            case startedAt = "started_at"
+        }
+    }
+
     /// A finished capture-flow record (Plan U) reconstructed from its `capture_record` audit event.
     struct CaptureRun: Codable, Equatable {
         let timestamp: Date
@@ -210,6 +279,19 @@ struct SessionExport: Codable, Equatable {
             let field: String
             let value: String    // human-readable rendering (`CaptureValue.display`)
             let method: String   // provenance — "voice" | "voice_number" | "enum" | "photo" | "barcode" | "ocr"
+            /// A procedure answer's own keys (Plan MN §5); absent for a capture flow's field.
+            var entered: String? = nil
+            var specStatus: String? = nil
+            var note: String? = nil
+            var stepId: String? = nil
+            var photoIds: [String]? = nil
+
+            enum CodingKeys: String, CodingKey {
+                case field, value, method, entered, note
+                case specStatus = "spec_status"
+                case stepId = "step_id"
+                case photoIds = "photo_ids"
+            }
         }
 
         enum CodingKeys: String, CodingKey {
@@ -287,6 +369,7 @@ struct SessionExport: Codable, Equatable {
         case transcriptIncluded = "transcript_included"
         case transcriptOmittedReason = "transcript_omitted_reason"
         case proceduresRun = "procedures_run"
+        case procedureRecords = "procedure_records"
         case captures, citations, escalations
         case workRecord = "work_record"
         case provenance = "ai_provenance"

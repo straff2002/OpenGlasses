@@ -40,6 +40,9 @@ enum LaunchState: String {
     case vaultLinkSigned = "-OGUITestVaultLinkSigned"
     case vaultLinkUnverified = "-OGUITestVaultLinkUnverified"
     case vaultReceivedBadge = "-OGUITestVaultReceivedBadge"
+    /// With `seedFieldJob`, the open job runs the example bottling-line procedure, answered
+    /// through its first step (Plan MN P2).
+    case seedProcedure = "-OGUITestSeedProcedure"
     /// Dark appearance, for the half of a screenshot pass that is about the dark palette.
     case darkAppearance = "-OGUITestDarkAppearance"
     /// One goal part-way through and a morning's activity trail (Plan IW P2).
@@ -301,10 +304,11 @@ class AccessibilityAuditCase: XCTestCase {
     @discardableResult
     func launch(
         _ states: [LaunchState],
-        contentSizeCategory: String? = nil
+        contentSizeCategory: String? = nil,
+        extraArguments: [String] = []
     ) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-OGUITest"] + states.map(\.rawValue)
+        app.launchArguments = ["-OGUITest"] + states.map(\.rawValue) + extraArguments
         app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
         if let contentSizeCategory {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", contentSizeCategory]

@@ -397,6 +397,8 @@ final class FieldSessionService: ObservableObject {
         guard var session = activeSession, let logger else {
             throw FieldSessionError.noActiveSession
         }
+        // A procedure still running keeps the answers it has on the record (Plan MN §5).
+        persistProcedureRecord()
         accumulateBillableTime(into: &session)
         session.endedAt = Date()
         session.endLocation = endLocation.map(FieldSession.GeoPoint.init)
@@ -559,6 +561,7 @@ final class FieldSessionService: ObservableObject {
         if let previous = session.equipment, previous.heading != identity.heading,
            previous.unitKey != identity.unitKey {
             session.continuityScope = UUID().uuidString
+            persistProcedureRecord()
             runner = nil
             activeProcedureId = nil
             // The job has moved off the unit the earlier work was attached to (Plan GD2).
@@ -640,6 +643,7 @@ final class FieldSessionService: ObservableObject {
     func startNextUnit(_ identity: EquipmentIdentity?) {
         guard var session = activeSession else { return }
         session.continuityScope = UUID().uuidString
+        persistProcedureRecord()
         runner = nil
         activeProcedureId = nil
         session.earlierWorkAttachedAt = nil
@@ -674,6 +678,7 @@ final class FieldSessionService: ObservableObject {
         let earlierScope = session.continuityScope
         let unitScope = UUID().uuidString
         session.continuityScope = unitScope
+        persistProcedureRecord()
         runner = nil
         activeProcedureId = nil
         if let index = session.visitedUnits.lastIndex(where: { $0.continuityScope == earlierScope }) {
@@ -733,6 +738,7 @@ final class FieldSessionService: ObservableObject {
         guard var session = activeSession else { return }
         let previous = session.equipment
         session.continuityScope = UUID().uuidString
+        persistProcedureRecord()
         runner = nil
         activeProcedureId = nil
         session.equipment = nil
@@ -4524,12 +4530,24 @@ final class FieldSessionService: ObservableObject {
     /// own record of it, and from nowhere else.
     @discardableResult
     func startProcedure(id: String) throws -> Procedure.Step {
-        guard activeSession != nil, let logger else { throw FieldSessionError.noActiveSession }
+        guard activeSession != nil, logger != nil else { throw FieldSessionError.noActiveSession }
         guard runner == nil else { throw FieldSessionError.procedureAlreadyRunning }
         guard let procedure = try library?.procedure(id: id) ?? coachingProcedure(id: id) else {
             throw FieldSessionError.unknownProcedure(id)
         }
+        return try startProcedure(procedure)
+    }
+
+    /// Begin `procedure`, already resolved. `startProcedure(id:)` resolves it from the vault or the
+    /// job's coaching; tests hand one in directly.
+    @discardableResult
+    func startProcedure(_ procedure: Procedure) throws -> Procedure.Step {
+        guard activeSession != nil, let logger else { throw FieldSessionError.noActiveSession }
+        guard runner == nil else { throw FieldSessionError.procedureAlreadyRunning }
+        let id = procedure.id
         let newRunner = try ProcedureRunner(starting: procedure, logger: logger)
+        procedureRunModeChoice = nil
+        lastFinishedProcedure = nil
         runner = newRunner
         activeProcedureId = procedure.id
         mutateSession { $0.procedureEquipmentScope = $0.continuityScope }
@@ -4572,13 +4590,23 @@ final class FieldSessionService: ObservableObject {
         raiseTaskCue(task, phase: .started)
     }
 
+    /// Advance by the person — a lens button, the phone, a spoken "next" (Plan MN §3).
     @discardableResult
     func advanceProcedure(choice: String?) throws -> ProcedureRunner.Transition {
+        try advanceProcedure(choice: choice, decidedBy: .person)
+    }
+
+    /// Advance, saying who asked: the assistant through `procedure_runner`, or the person. On a
+    /// step the app decides, the rules choose and a disagreeing choice is refused.
+    @discardableResult
+    func advanceProcedure(choice: String?, decidedBy decider: ProcedureDecider) throws -> ProcedureRunner.Transition {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
-        let transition = try runner.advance(choice: choice)
+        objectWillChange.send()
+        let transition = try runner.advance(choice: choice, by: decider)
         switch transition {
         case .completed(let outcome):
             closeTaskForProcedure(id: activeProcedureId, outcome: outcome)
+            lastFinishedProcedure = FinishedProcedure(title: runner.procedure.title, outcome: outcome)
             clearRunner()
         case .arrivedAtTerminal(let step):
             requireVerification(for: step)
@@ -4591,6 +4619,7 @@ final class FieldSessionService: ObservableObject {
     @discardableResult
     func procedureBack() throws -> Procedure.Step {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
+        objectWillChange.send()
         return try runner.goBack()
     }
 
@@ -4598,6 +4627,96 @@ final class FieldSessionService: ObservableObject {
     func procedureRepeat() throws -> Procedure.Step {
         guard let runner else { throw FieldSessionError.noProcedureRunning }
         return try runner.repeatStep()
+    }
+
+    // MARK: Answers the app checks (Plan MN P1)
+
+    /// The running procedure's runner, for reading its state: the current step's answer, a
+    /// read-back or corrective note waiting, the route the rules give. Change it only through the
+    /// methods below, which keep the published state and the record in step.
+    var activeProcedureRunner: ProcedureRunner? { runner }
+
+    /// The running procedure's current step as the phone step screen, the lens and the no-model
+    /// voice show it (Plan MN §4). Nil when no procedure is running.
+    var activeProcedurePresentation: ProcedureStepPresentation? {
+        guard let runner else { return nil }
+        let since = runner.stepEnteredAt
+        let photos = jobMedia.filter { $0.kind == .photo && $0.capturedAt >= since }.count
+        return ProcedureStepPresentation.make(procedure: runner.procedure, visited: runner.visited,
+                                              answers: runner.answers, pendingReadBack: runner.pendingReadBack,
+                                              ruleDecision: runner.ruleDecision, photosSinceStep: photos)
+    }
+
+    /// The running procedure itself, for its run mode (`runs`) and title.
+    var activeProcedure: Procedure? { runner?.procedure }
+
+    /// The person's choice of run mode on the procedure screen (Plan MN §4, decision 5), for the
+    /// running procedure only: a new run starts with no choice made.
+    @Published var procedureRunModeChoice: ProcedureRunMode?
+
+    /// The procedure that finished last on this job, and how, for the step screen that was open on
+    /// it. Cleared when another starts.
+    @Published private(set) var lastFinishedProcedure: FinishedProcedure?
+
+    struct FinishedProcedure: Equatable {
+        let title: String
+        let outcome: String
+    }
+
+    /// Give the current step's answer. `confirmed` true answers a read-back yes (with `value`
+    /// empty, or the same value again); a `note` alone adds the corrective note to the answer
+    /// already recorded. A photo step with no value takes the job photos taken since the step began,
+    /// by id — the photos themselves go through `attachPhoto` and nowhere else.
+    func answerProcedure(value: String?, method: ProcedureAnswerMethod, note: String? = nil,
+                         confirmed: Bool = false, locale: Locale = .current) throws -> ProcedureRunner.AnswerResult {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        objectWillChange.send()
+        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let note = note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if let pending = runner.pendingReadBack, pending.stepId == runner.currentStepId, confirmed,
+           value.isEmpty || value == pending.value.entered {
+            let result = runner.confirmReadBack(true)
+            if case .needsNote = result, !note.isEmpty { return runner.addCorrectiveNote(note) }
+            return result
+        }
+        if value.isEmpty, !note.isEmpty, runner.currentAnswer != nil, runner.currentStep?.answer?.kind != .photo {
+            return runner.addCorrectiveNote(note)
+        }
+        if runner.currentStep?.answer?.kind == .photo, value.isEmpty {
+            let since = runner.stepEnteredAt
+            let ids = jobMedia.filter { $0.kind == .photo && $0.capturedAt >= since }.map(\.id)
+            return runner.answer(ids.joined(separator: ","), method: .photo, note: note, locale: locale)
+        }
+        return runner.answer(value, method: method, note: note, locale: locale)
+    }
+
+    /// The person's answer to a read-back, from the phone or the lens.
+    func confirmProcedureReadBack(_ correct: Bool) throws -> ProcedureRunner.AnswerResult {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        objectWillChange.send()
+        return runner.confirmReadBack(correct)
+    }
+
+    /// The person takes another route than the rule's, with their reason (Plan MN decision 3).
+    @discardableResult
+    func overrideProcedure(branch: String, reason: String) throws -> ProcedureRunner.Transition {
+        guard let runner else { throw FieldSessionError.noProcedureRunning }
+        objectWillChange.send()
+        let transition = try runner.override(branch: branch, reason: reason)
+        if case .arrivedAtTerminal(let step) = transition { requireVerification(for: step) }
+        return transition
+    }
+
+    /// The run's answers, as a Plan U record, into the offline queue and the audit log (§5) — the
+    /// same `.captureRecord` op a capture flow writes, so nothing new travels. Nothing is written
+    /// for a run with no answers.
+    private func persistProcedureRecord() {
+        guard let runner, let session = activeSession,
+              let record = runner.captureRecord(sessionId: session.id, assetId: session.assetId) else { return }
+        if let data = try? JSONEncoder().encode(record) {
+            offlineQueue?.enqueue(QueuedOp(kind: .captureRecord, sessionId: record.sessionId, payload: data))
+        }
+        logCaptureRecord(record)
     }
 
     /// Finish the running procedure. On a last step that asks for a check, `confirmed` is the
@@ -4614,6 +4733,7 @@ final class FieldSessionService: ObservableObject {
         _ = runner.complete(outcome: recorded)
         let procedureId = activeProcedureId
         closeTaskForProcedure(id: procedureId, outcome: recorded, confirmed: !owesCheck)
+        lastFinishedProcedure = FinishedProcedure(title: runner.procedure.title, outcome: recorded)
         clearRunner()
         let open = owesCheck ? activeSession?.openVerifications.last?.title : nil
         return (recorded, open)
@@ -4623,8 +4743,10 @@ final class FieldSessionService: ObservableObject {
     static let pendingVerificationOutcome = "pending_verification"
 
     private func clearRunner() {
+        persistProcedureRecord()
         runner = nil
         activeProcedureId = nil
+        procedureRunModeChoice = nil
     }
 
     // MARK: - An expert's coaching steps (Plan KM §5, P3)
@@ -4853,11 +4975,13 @@ final class FieldSessionService: ObservableObject {
               (session.procedureEquipmentScope ?? "initial") == session.continuityScope else { return }
         var activeProcId: String?
         var stack: [String] = []
+        var runStartedAt: Date?
         for event in events {
             switch event.kind {
             case .procedureStarted:
                 activeProcId = event.payload?["procedure_id"]?.value as? String
                 stack = (event.payload?["entry_step"]?.value as? String).map { [$0] } ?? []
+                runStartedAt = event.timestamp
             case .procedureStep:
                 if let snapshot = event.payload?["stack"]?.value as? [Any] {
                     stack = snapshot.compactMap { $0 as? String }
@@ -4871,7 +4995,9 @@ final class FieldSessionService: ObservableObject {
         }
         guard let procId = activeProcId,
               let procedure = library?.procedure(id: procId) ?? (try? coachingProcedure(id: procId)) else { return }
-        runner = ProcedureRunner(restoring: procedure, visited: stack, logger: logger)
+        runner = ProcedureRunner(restoring: procedure, visited: stack, logger: logger,
+                                 answers: ProcedureRunner.restoredAnswers(from: events, procedure: procedure),
+                                 startedAt: runStartedAt ?? Date())
         activeProcedureId = procId
     }
 

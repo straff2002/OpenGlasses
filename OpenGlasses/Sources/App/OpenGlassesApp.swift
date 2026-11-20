@@ -335,6 +335,9 @@ struct OpenGlassesApp: App {
                 if UITestSupport.isSet(.vaultAuthoring) {
                     UITestVaultAuthoring()
                         .environmentObject(appState)
+                } else if UITestSupport.isSet(.procedureRules) {
+                    UITestProcedureRules()
+                        .environmentObject(appState)
                 } else {
                     RootView()
                         .environmentObject(appState)
@@ -5133,6 +5136,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // they list during an active session. Selecting one ensures a session, starts the
         // procedure, and hands off to the Plan X card.
         hudLauncher.fieldAssistActive = { Config.fieldAssistActive }
+        // Plan MN §4: a procedure running with no model is heard on the phone where it can be.
+        installProcedureVoiceGate()
         hudLauncher.availableProcedures = { FieldSessionService.shared.availableProcedureDefinitions() }
         hudLauncher.startProcedure = { [weak self] id in
             guard let self else { return }
@@ -8071,6 +8076,14 @@ class AppState: ObservableObject, AppStateProtocol {
             VoiceCommandHandler(label: "job-question") { [weak self] text in
                 guard let self, await self.guidedJobFlow.handleUtterance(text) else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("jobQuestion"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // Plan MN §4: a procedure running with no model takes every utterance — its step
+            // words, its answer, or one fixed line — so nothing waits on a model that isn't there.
+            // After the job question, which is answering something the app asked a moment ago.
+            VoiceCommandHandler(label: "procedure-no-model") { [weak self] text in
+                guard let self, await self.answerProcedureWithoutModel(text) else { return false }
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
