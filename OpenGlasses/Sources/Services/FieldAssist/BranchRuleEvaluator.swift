@@ -188,3 +188,68 @@ enum BranchRuleEvaluator {
         }
     }
 }
+
+// MARK: - A rule in words, before anything is recorded
+
+extension BranchRuleEvaluator {
+
+    /// What `rule` takes, in words, with no values yet (Plan MN P3, the authoring screen): "pH is
+    /// above 4.4", "Brix is below 11 and pH is above 4.4", "Seal is Damaged or Missing". `answers`
+    /// are the procedure's answers by `record_as`, for their labels and option names; an answer it
+    /// doesn't hold is named by its record name.
+    static func words(_ rule: BranchRule, answers: [String: StepAnswer]) -> String {
+        words(rule, answers: answers, negated: false)
+    }
+
+    private static func words(_ rule: BranchRule, answers: [String: StepAnswer], negated: Bool) -> String {
+        switch rule {
+        case .test(let test):
+            return words(test, answers: answers, negated: negated)
+        case .malformed(let reason):
+            return "a rule this app can't read (\(reason))"
+        case .not(let inner):
+            return words(inner, answers: answers, negated: !negated)
+        case .all(let rules):
+            if negated { return "not (" + rules.map { words($0, answers: answers) }.joined(separator: " and ") + ")" }
+            return rules.map { words($0, answers: answers) }.joined(separator: " and ")
+        case .any(let rules):
+            // Not any: none of them holds.
+            if negated { return rules.map { words($0, answers: answers, negated: true) }.joined(separator: " and ") }
+            return rules.map { words($0, answers: answers) }.joined(separator: " or ")
+        }
+    }
+
+    private static func words(_ test: BranchRule.Test, answers: [String: StepAnswer], negated: Bool) -> String {
+        let answer = answers[test.answer]
+        let label = answer?.displayLabel ?? test.answer.replacingOccurrences(of: "_", with: " ")
+        let not = negated ? " not" : ""
+        func bound(_ value: Double) -> String { ExactDecimal.text(ExactDecimal.from(value)) }
+        func option(_ id: String) -> String { answer?.optionLabel(id) ?? id }
+        switch (test.op, test.operand) {
+        case (.gt, .number(let b)): return "\(label) is\(not) above \(bound(b))"
+        case (.gte, .number(let b)): return negated ? "\(label) is below \(bound(b))" : "\(label) is at least \(bound(b))"
+        case (.lt, .number(let b)): return "\(label) is\(not) below \(bound(b))"
+        case (.lte, .number(let b)): return negated ? "\(label) is above \(bound(b))" : "\(label) is at most \(bound(b))"
+        case (.eq, .number(let b)): return "\(label) is\(not) \(bound(b))"
+        case (.ne, .number(let b)): return negated ? "\(label) is \(bound(b))" : "\(label) is not \(bound(b))"
+        case (.between, .pair(let lo, let hi)): return "\(label) is\(not) between \(bound(lo)) and \(bound(hi))"
+        case (.outside, .pair(let lo, let hi)):
+            return negated ? "\(label) is between \(bound(lo)) and \(bound(hi))" : "\(label) is outside \(bound(lo)) to \(bound(hi))"
+        case (.eq, .text(let id)): return "\(label) is\(not) \(option(id))"
+        case (.ne, .text(let id)): return negated ? "\(label) is \(option(id))" : "\(label) is not \(option(id))"
+        case (.inList, .list(let ids)): return "\(label) is\(not) \(ids.map(option).joined(separator: " or "))"
+        case (.isAnswer, .text(let value)):
+            let said = value.lowercased()
+            let shown = negated ? (said == "yes" ? "no" : "yes") : said
+            return "\(label) is answered \(shown)"
+        case (.outOfSpec, .flag(let wanted)):
+            let out = wanted != negated
+            let spec = answer?.specText.map { " (\($0))" } ?? ""
+            return "\(label) is \(out ? "out of" : "in") spec\(spec)"
+        case (.present, .flag(let wanted)):
+            return (wanted != negated) ? "\(label) was recorded" : "no \(label) was recorded"
+        default:
+            return "\(label): a rule that does not fit this answer"
+        }
+    }
+}
