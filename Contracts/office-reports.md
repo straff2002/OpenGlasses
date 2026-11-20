@@ -423,3 +423,33 @@ one `each` line of 2000 and one `l` line of 4250. The portable check
 (`python3 -I Contracts/tests/test_van_stock_record.py`, standard library only) asserts that no
 line carries `quantity`, that every `quantityScale` is 3, that each and pack figures are
 multiples of 1000, and that every unit is on the closed list.
+
+### Parts for a business's own stock system (Plan MM P4, additive)
+
+Where a business's own stock system holds the count (`Contracts/stock-systems.md`), the parts
+noted on the job are lines of the same `van_stock` array, after any phone-held lines, with three
+more members:
+
+- `itemID` — string, the system's id for the item; omitted for a line the system does not carry;
+- `delivery` — string, where the line stood when the record was taken: `staged` (noted, not yet
+  confirmed by a person), `queued` (confirmed and waiting to be sent), `sent` (the system shows
+  it), `not_sent` (kept on the phone; never sent), or `needs_attention` (the system refused it,
+  or shows a different change under its key; nothing more is sent for it);
+- `deliveryReason` — string, a lower-case code, present exactly when `delivery` is `not_sent` or
+  `needs_attention`: for `not_sent`, `not_carried`, `unit_not_kept`, `fractional`,
+  `too_many_decimals`, `out_of_range`, `no_reason`, `sending_off`, `local_only`, `office_route`,
+  `disconnected` or `discarded`; for `needs_attention`, the failure's code (`unauthorized_expired`,
+  `missing_scope`, `rejected`, `attempts_exhausted`, …) or `mismatch_<difference>`.
+
+The record then also carries `van_stock_system`: `{"connector": "<connector id>", "name":
+"<display name>"}`. A record with no such line has neither the members nor `van_stock_system`,
+so a phone-held record is unchanged, and a job that used nothing still omits `van_stock`. A line
+`not_sent` with `office_route` is the office's to post into the system; a line `sent` is already
+there, under the idempotency key `Contracts/stock-systems.md` defines, and is never posted again.
+A reader that does not know these members ignores them. A `delivery` value it does not know is
+read as no state, never guessed at.
+
+`office-report-record-van-stock-system-v1.json` adds five such lines (one in each state) and
+`van_stock_system` to the same fictional record; the same portable check asserts the closed
+states, that a reason goes with `not_sent` and `needs_attention` only, and that the phone-held
+fixture carries none of these members.

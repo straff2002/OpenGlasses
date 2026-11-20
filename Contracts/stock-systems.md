@@ -6,8 +6,8 @@ system's figures into a snapshot and sends back the parts used on a job, once a 
 confirmed them. This contract lists what a phone-side connector may write, so that an
 office-side connector, or anyone reading the system's audit trail, can recognise what a phone wrote.
 The first adapter is Square's (below); since Plan MM P2 a phone can connect to it from Settings and
-read its stock, and since P3 `van_stock` answers from it and notes parts used on the phone (staged,
-not sent); nothing is written to the system yet. The synthetic fixtures are in
+read its stock, since P3 `van_stock` answers from it and notes parts used on the phone, and since
+P4 the noted parts go to it once a person confirms them, through the offline queue (below). The synthetic fixtures are in
 [`fixtures/stock-systems/`](fixtures/stock-systems/) (one system with jobs, one without,
 vendor-neutral) and [`fixtures/square-v2/`](fixtures/square-v2/) (Square's response shapes).
 
@@ -128,9 +128,9 @@ the answer sentences, the parts-used write plan and its idempotency keys, the ba
 write-time rule, and (since P2) the connection in Settings › Field Assist › Stock system with its
 device-only Keychain item, the pinned-host transport, the connector that drives any adapter, the
 snapshot store and the pull triggers, and (since P3) `van_stock` answering from the system with
-the check-now merge, and the parts noted on the phone per job or premises day. Still to be built
-by the common layer, once, for every system: the person's confirmation, and the queued sink with
-its read-back before retry.
+the check-now merge, and the parts noted on the phone per job or premises day, and (since P4) the
+person's confirmation, the queued sink with its read-back before retry, the job's states and the
+record's members.
 
 Beside its folder, a new system needs only: one `NetworkRoute` case (its purpose, `credential` and
 `promptText`, blocked under Medical Local Only, owned by `URLSessionStockSystemTransport`), one entry
@@ -163,6 +163,54 @@ calendar), the job's number, the connector, the system's location it came from, 
 verification against the book, `source`), the write-off reason where there is one, when it was
 noted and the call that noted it. A quantity the item cannot take is refused before it is noted, by
 the same rules as `not_sent` above. One file on the phone, out of backup; kept when a snapshot is
-retired and cleared when the phone leaves its organisation. Confirming and sending them is P4's.
+retired and cleared when the phone leaves its organisation. Confirming and sending them is P4's
+(below).
 
 
+
+## Confirmed and sent (Plan MM P4)
+
+**A person confirms, one yes per batch.** At a job's close the parts noted on it are read back
+once: *"Two parts used on this job: one Run capacitor 45/5, half a litre of Coolant. Send them to
+<system>?"* By voice the app puts that question itself at the end of the turn and reads the
+person's own plain yes or no before the model hears anything; the close waits for it and then
+finishes. On the screen the parts step shows the same lines, each with a stepper that moves only by
+what the item takes (its unit, and the system's `decimalPlaces`; never to nothing), and one Send.
+At premises with no job open, the day's list is confirmed the same way from the Stock screen. No
+is kept: the lines stay on the job, noted and unsent, until someone sends or discards them. No
+tool and no agent path can confirm or send (`StockSystemConfirmationGuardTests`). Sending is not
+offered while sending back is off, Medical Local Only holds the route, the office posts stock, or
+the system is not connected: the job's noted lines then go on its record as `not_sent` with that
+reason when it closes.
+
+**The queued batch.** One offline-queue item (`stockSystemParts`) per batch — one location and one
+reason — holding the write plan (`PartsUsedWritePlan`, Codable), the connector id, the system's
+name, the scope, when the person confirmed it and when it was queued, and how far delivery has
+got: the keys applied, the keys found on a different write, whether the last write's outcome is
+uncertain, the key generation a `401`/`403` came back for, the next try's time, and a terminal
+failure or ending. **Never the key**: the connection is read from the Keychain at delivery. It
+survives a relaunch, and one sink delivers every system's batches through the connector the
+registry names.
+
+**Delivery.** A write is marked uncertain before it is sent. After an uncertain outcome (a
+timeout, a dropped connection, a `5xx`, a reply the phone cannot read, or a kill mid-send) the
+next attempt reads back first and sends only the steps whose keys the system does not show; a
+step under a key on a different write is `needs_attention` and never resent. `401`/`403` stop
+with the failure's sentence until a new key is saved. `429` waits for `Retry-After` when given,
+else the back-off (30 s doubling, at most an hour); a `5xx` backs off; no signal waits without
+counting an attempt. `MedicalEgressGuard` runs before every request, retries included.
+`occurred_at` is the confirmation time, clamped as above. The office route arriving, or the
+connection being removed, ends a queued batch with its sentence and leaves its lines on the
+record as `not_sent` (`office_route`, `disconnected`) for the office to post. After a send the
+figures are pulled again (one pull at a time); until a newer figure arrives, a `check` says the
+use is still being sent.
+
+**The job's states.** *Sent to <system>*, *Waiting for a connection*, *Needs attention — <the
+sentence>*, *N parts not sent to <system>* (noted, not confirmed), and *N not sent: <reason>*,
+on the job's row, its page and the parts step.
+
+**On the record.** Each line is a `van_stock` line with `itemID`, `delivery` (`staged`,
+`queued`, `sent`, `not_sent`, `needs_attention`) and, for the last two, `deliveryReason`; the
+record names the system in `van_stock_system` (`connector`, `name`). See
+[`office-reports.md`](office-reports.md), "Parts for a business's own stock system". A line that
+was sent, or kept on the phone for good, stays on the phone for 30 days after it settled.
