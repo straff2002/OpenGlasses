@@ -131,12 +131,26 @@ struct StockSystemVanStock {
         return composer.low(in: snapshot, here: here)
     }
 
-    /// What is noted and not yet sent for an item, in the scope in force.
-    private func unsent(_ itemID: String) -> StockSystemAnswerComposer.Unsent? {
-        guard let scope = scope else { return nil }
-        let quantity = staged.entries(in: scope).filter { $0.use.itemID == itemID }
-            .reduce(StockQuantity.zero) { $0 + $1.use.quantity }
-        return quantity > .zero ? .init(quantity: quantity, state: .staged) : nil
+    /// What the system's figure for an item does not show yet, in the scope in force (Plan MM P4):
+    /// uses still being sent (queued, or sent after the figure was read, until the next pull), and
+    /// uses noted and not yet confirmed. A line kept on the phone, or needing a person, is neither.
+    private func unsent(_ itemID: String) -> [StockSystemAnswerComposer.Unsent] {
+        guard let scope = scope else { return [] }
+        let asOf = snapshot?.asOf ?? .distantPast
+        var sending = StockQuantity.zero
+        var noted = StockQuantity.zero
+        for entry in staged.entries(in: scope) where entry.use.itemID == itemID {
+            switch entry.delivery.state {
+            case .staged: noted += entry.use.quantity
+            case .queued: sending += entry.use.quantity
+            case .sent where (entry.delivery.changedAt ?? .distantPast) > asOf: sending += entry.use.quantity
+            case .sent, .notSent, .needsAttention: break
+            }
+        }
+        var result: [StockSystemAnswerComposer.Unsent] = []
+        if sending > .zero { result.append(.init(quantity: sending, state: .sending)) }
+        if noted > .zero { result.append(.init(quantity: noted, state: .staged)) }
+        return result
     }
 
     // MARK: - Noting a use

@@ -50,6 +50,13 @@ final class StockSystemService: ObservableObject {
     private var inFlight: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
+    /// A connection ended with parts possibly still queued for it (Plan MM P4): removed (one
+    /// system's id, or every system's when nil), or the office route arrived. The queued batches
+    /// end with their sentence and stay on the job's record as not sent.
+    var onConnectionEnded: (@MainActor (StockSystemQueuedBatch.Ending, String?) -> Void)?
+    /// Confirming and sending the noted parts (Plan MM P4), for the Stock screen's day list.
+    weak var partsUsed: StockSystemPartsUsed?
+
     init(connection: StockSystemConnectionStore, store: StockSystemSnapshotStore,
          registry: @escaping (String) -> StockSystemRegistration? = { StockSystemAdapterRegistry.registration(for: $0) },
          now: @escaping () -> Date = { Date() },
@@ -336,6 +343,7 @@ final class StockSystemService: ObservableObject {
         try? connection.remove(id)
         store.retire(id)
         pullMessage = connection.problem
+        onConnectionEnded?(.disconnected, id)
     }
 
     /// Every connection and every snapshot: the phone left its organisation.
@@ -346,6 +354,7 @@ final class StockSystemService: ObservableObject {
         // The organisation's parts noted and not yet sent are its own, and go with it.
         staged.removeAll()
         pullMessage = connection.problem
+        onConnectionEnded?(.disconnected, nil)
     }
 
     /// The office route ceiling (`organizationFieldServiceRoute = office`): the office connects the
@@ -357,6 +366,8 @@ final class StockSystemService: ObservableObject {
         stopWork()
         try? connection.removeAll()
         store.retireAll()
+        // Parts already queued are the office's to post now: they end, and stay on the record.
+        onConnectionEnded?(.officeRoute, nil)
     }
 
     private func stopWork() {

@@ -1,0 +1,75 @@
+{
+ "job_file": {
+  "job_id": "job-2031",
+  "revision": 2
+ },
+ "job_reference": "JOB-1042",
+ "session_id": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+ "tasks": [],
+ "van_stock": [
+  {
+   "at": "2027-01-15T08:00:00Z",
+   "delivery": "sent",
+   "description": "Run capacitor 45/5",
+   "id": "7C2A1E40-1B3D-4C5E-8F60-1A2B3C4D5E61",
+   "itemID": "VAR-FIX-CAP",
+   "number": "ZX-455",
+   "quantityScale": 3,
+   "quantityScaled": 1000,
+   "unit": "each",
+   "verified": true
+  },
+  {
+   "at": "2027-01-15T08:05:00Z",
+   "delivery": "queued",
+   "description": "Coolant concentrate",
+   "id": "7C2A1E40-1B3D-4C5E-8F60-1A2B3C4D5E62",
+   "itemID": "VAR-FIX-COOL",
+   "number": "CL-50",
+   "quantityScale": 3,
+   "quantityScaled": 500,
+   "unit": "l",
+   "verified": false
+  },
+  {
+   "at": "2027-01-15T08:10:00Z",
+   "delivery": "not_sent",
+   "deliveryReason": "not_carried",
+   "description": "Mystery part",
+   "id": "7C2A1E40-1B3D-4C5E-8F60-1A2B3C4D5E63",
+   "number": "ZZ-1",
+   "quantityScale": 3,
+   "quantityScaled": 1000,
+   "unit": "each",
+   "verified": false
+  },
+  {
+   "at": "2027-01-15T08:12:00Z",
+   "delivery": "needs_attention",
+   "deliveryReason": "mismatch_quantity",
+   "description": "Oil filter",
+   "id": "7C2A1E40-1B3D-4C5E-8F60-1A2B3C4D5E64",
+   "itemID": "VAR-FIX-FILTER",
+   "number": "OF-12",
+   "quantityScale": 3,
+   "quantityScaled": 2000,
+   "unit": "pack",
+   "verified": true
+  },
+  {
+   "at": "2027-01-15T08:15:00Z",
+   "delivery": "staged",
+   "description": "Heater hose",
+   "id": "7C2A1E40-1B3D-4C5E-8F60-1A2B3C4D5E65",
+   "itemID": "VAR-FIX-HOSE",
+   "quantityScale": 3,
+   "quantityScaled": 250,
+   "unit": "m",
+   "verified": false
+  }
+ ],
+ "van_stock_system": {
+  "connector": "fixture-till",
+  "name": "Fixture Till"
+ }
+}

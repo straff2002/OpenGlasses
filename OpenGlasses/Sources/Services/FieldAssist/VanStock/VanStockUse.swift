@@ -23,12 +23,19 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
     /// Whether the part number was found in the manuals.
     let verified: Bool
     let at: Date
+    /// Where a business's own system holds the count (Plan MM P4): the system's id for the item,
+    /// where the line stands on its way there, and why it was kept on the phone or needs a person.
+    /// All nil, and absent from the JSON, for a line from the phone's own list.
+    let itemID: String?
+    let delivery: StockSystemLineDelivery.State?
+    let deliveryReason: String?
 
     /// The scale every line is written at: `quantityScaled` is in units of 10^−3 of `unit`.
     static let quantityScale = StockQuantity.scale
 
     init(id: String, number: String?, description: String, quantity: StockQuantity,
-         unit: VanStockUnit, verified: Bool, at: Date) {
+         unit: VanStockUnit, verified: Bool, at: Date, itemID: String? = nil,
+         delivery: StockSystemLineDelivery.State? = nil, deliveryReason: String? = nil) {
         self.id = id
         self.number = number
         self.description = description
@@ -36,10 +43,14 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
         self.unit = unit
         self.verified = verified
         self.at = at
+        self.itemID = itemID
+        self.delivery = delivery
+        self.deliveryReason = deliveryReason
     }
 
     enum CodingKeys: String, CodingKey {
         case id, number, description, unit, verified, at
+        case itemID, delivery, deliveryReason
         case quantityScaled, quantityScale
         /// Read only: a use saved before figures were kept in thousandths, in whole units.
         case legacyQuantity = "quantity"
@@ -55,6 +66,10 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
         unit = try container.decode(VanStockUnit.self, forKey: .unit)
         verified = try container.decode(Bool.self, forKey: .verified)
         at = try container.decode(Date.self, forKey: .at)
+        itemID = try container.decodeIfPresent(String.self, forKey: .itemID)
+        // A state from a newer build is not guessed at: the line reads as one with no state.
+        delivery = (try? container.decodeIfPresent(StockSystemLineDelivery.State.self, forKey: .delivery)) ?? nil
+        deliveryReason = try container.decodeIfPresent(String.self, forKey: .deliveryReason)
         if let scaled = try container.decodeIfPresent(Int.self, forKey: .quantityScaled) {
             let scale = try container.decode(Int.self, forKey: .quantityScale)
             guard scale == Self.quantityScale else {
@@ -80,7 +95,8 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
-    /// Writes `quantityScaled` and `quantityScale`, and no `quantity` key.
+    /// Writes `quantityScaled` and `quantityScale`, and no `quantity` key; the system's members
+    /// only when the line has them.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -91,6 +107,9 @@ struct VanStockUse: Codable, Equatable, Identifiable, Sendable {
         try container.encode(unit, forKey: .unit)
         try container.encode(verified, forKey: .verified)
         try container.encode(at, forKey: .at)
+        try container.encodeIfPresent(itemID, forKey: .itemID)
+        try container.encodeIfPresent(delivery, forKey: .delivery)
+        try container.encodeIfPresent(deliveryReason, forKey: .deliveryReason)
     }
 
     /// "2 × Igniter (22B22)", "4.25 litres of Engine oil (OIL-5W30)": the words the assistant uses
@@ -119,8 +138,11 @@ enum VanStockReconciler {
 
     /// Parts on finished tasks that were neither recorded as used from the van on this job nor
     /// said not to have come from it, in the order the job reached them.
-    static func unrecorded(partsUsed: [TaskPart], uses: [VanStockUse], notFromVan: [String]) -> [TaskPart] {
-        let recorded = Set(uses.compactMap { $0.number.map(VaultPartsIndex.normalise) })
+    /// `noted` is the part numbers noted on the job for a business's own system (Plan MM P4): a
+    /// part noted there is accounted for, as one recorded on the van is.
+    static func unrecorded(partsUsed: [TaskPart], uses: [VanStockUse], notFromVan: [String],
+                           noted: [String] = []) -> [TaskPart] {
+        let recorded = Set(uses.compactMap { $0.number.map(VaultPartsIndex.normalise) } + noted.map(VaultPartsIndex.normalise))
         let dismissed = Set(notFromVan.map(VaultPartsIndex.normalise))
         var seen = Set<String>()
         return partsUsed.filter { part in

@@ -38,6 +38,10 @@ enum JobCloseSequence {
         /// Where the stock is kept (Plan MK §2), for the question's words. The question follows the
         /// job, not the place: a workshop is asked it as a van is (Plan MK §5).
         var stockPlace: StockPlace.Kind = .default
+        /// The question the app puts about parts noted for a business's own stock system, when the
+        /// job has lines waiting and sending them is offered (Plan MM P4). Empty otherwise. Only
+        /// the voice close is held for it: the screen's close has its own parts step.
+        var partsToSend: String = ""
     }
 
     enum Decision: Equatable {
@@ -48,6 +52,12 @@ enum JobCloseSequence {
         /// Not at all, for the reason given.
         case refuse(String)
     }
+
+    /// What the model is told while the app asks about the parts (Plan MM P4).
+    static let partsHeld = "Not closed yet: the parts used on this job go to the stock system only when the "
+        + "technician says so, and the app is asking them now, in its own words. Do not read the parts out, do not "
+        + "answer for the technician and do not call any tool for them. Say only that the job closes once they have "
+        + "answered."
 
     static func decide(_ inputs: Inputs) -> Decision {
         var outcome = inputs.requestedOutcome
@@ -82,6 +92,11 @@ enum JobCloseSequence {
                         + "'not_from_van' and the part. Then close the job again.")
         }
         // stock-wording-guard:end
+        // Parts for a business's own system go only on a person's yes (Plan MM Decision 5). The
+        // app asks, in its own words, and takes the answer itself: the model must not.
+        if inputs.route == .voice, !inputs.partsToSend.isEmpty {
+            return .ask(partsHeld)
+        }
         if case .blocked(let reason) = inputs.signOff { return .refuse(reason) }
         return .proceed(outcome: outcome)
     }

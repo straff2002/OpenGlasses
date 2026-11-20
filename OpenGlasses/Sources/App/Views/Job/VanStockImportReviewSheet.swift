@@ -112,6 +112,8 @@ struct VanStockImportReviewSheet: View {
             return Text("That spreadsheet has no header row this recognises. It needs Part number or Description, and On hand.")
         case .nothingToChange:
             return Text("That spreadsheet matches the list already. There is nothing to import.")
+        case .heldBySystem(let system):
+            return Text(verbatim: VanStockImportService.Refusal.heldBySystemSentence(system))
         }
     }
 

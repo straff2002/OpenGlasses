@@ -12,17 +12,37 @@ struct StockAuthorityReader<Content: View>: View {
 }
 
 /// The connected system's figures and the uses noted for it, read-only (Plan MM P3): what the
-/// Stock screen shows in place of the phone's own list while the system holds the count. P4 adds
-/// confirming and sending the noted uses.
+/// Stock screen shows in place of the phone's own list while the system holds the count. Since
+/// P4, at premises with no job open, today's noted uses are confirmed and sent from here, on the
+/// screen (the person's tap is the yes); a job's are confirmed at its close.
 struct StockSystemHeldSections: View {
     @ObservedObject var service: StockSystemService
     let search: String
     let kind: StockPlace.Kind
     /// The open job: its session id and the number people use for it.
     let job: (sessionID: String, reference: String?)?
+    @State private var sendingToday = false
 
     var body: some View {
         let model = self.model
+        if job == nil, kind.family == .premises, let parts = service.partsUsed {
+            let today = parts.today
+            let lines = parts.rowLines(for: today)
+            if !lines.isEmpty {
+                Section {
+                    ForEach(lines, id: \.self) { Text($0).font(.footnote) }
+                    if !parts.awaiting(in: today).isEmpty {
+                        Button("Review and send to \(model.system)…") { sendingToday = true }
+                            .frame(minHeight: OGMetrics.minTouchTarget)
+                    }
+                } header: {
+                    Text("Today's parts")
+                }
+                .sheet(isPresented: $sendingToday) {
+                    StockSystemPartsSendSheet(parts: parts, scope: today, jobNumber: nil) { sendingToday = false }
+                }
+            }
+        }
         if let stale = model.staleLine {
             Section {
                 Label(stale, systemImage: "clock.badge.exclamationmark")
@@ -47,7 +67,7 @@ struct StockSystemHeldSections: View {
             } header: {
                 Text(title)
             } footer: {
-                Text("These go to \(model.system) when the parts are confirmed. \(model.system)'s figures don't change until then.")
+                Text("These go to \(model.system) once a person confirms the parts. \(model.system)'s figures don't change until then.")
             }
         }
         Section {

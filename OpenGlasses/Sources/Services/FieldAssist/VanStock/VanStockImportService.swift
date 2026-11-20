@@ -20,6 +20,14 @@ final class VanStockImportService: ObservableObject {
         case noRecognisableHeader
         /// It was read, and applying it would change nothing.
         case nothingToChange
+        /// A business's own stock system holds the count (Plan MM P3/P4): the phone's list is the
+        /// previous list, so a workbook is not loaded into it. Carries the system's name.
+        case heldBySystem(String)
+
+        /// "Stock is kept in <system>, so this list was kept as the previous list and not loaded."
+        static func heldBySystemSentence(_ system: String) -> String {
+            "Stock is kept in \(system), so this list was kept as the previous list and not loaded."
+        }
     }
 
     enum Stage: Equatable {
@@ -82,6 +90,11 @@ final class VanStockImportService: ObservableObject {
     func handle(data: Data, fileName: String) {
         if let refusal = isAllowed() {
             stage = .refused(refusal)
+            return
+        }
+        // Said, never skipped silently: the system holds the count, so nothing is loaded.
+        if let system = service.systemName {
+            stage = .refused(.heldBySystem(system))
             return
         }
         guard !store.isUnreadable else {

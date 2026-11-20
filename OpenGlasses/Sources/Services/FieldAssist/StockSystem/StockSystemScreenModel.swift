@@ -72,7 +72,9 @@ struct StockSystemScreenModel: Equatable {
             notedTitle = nil
         }
         noted = scope.map { scope in
-            entries.filter { $0.scope == scope }.map { entry in
+            // Only what still waits for a person: lines on their way, sent or kept on the phone
+            // are said by the job's states (Plan MM P4).
+            entries.filter { $0.scope == scope && $0.isAwaitingConfirmation }.map { entry in
                 Noted(id: entry.id, name: entry.use.name,
                       amount: VanStockRow.figure(entry.use.quantity, unit: entry.use.unit, locale: locale),
                       writtenOff: entry.reason != nil)
