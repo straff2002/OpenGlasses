@@ -10,12 +10,17 @@ enum VaultValidator {
         let issues: [String]
         /// Advisory only — the pack still installs. Surfaced so an author sees them where they can act.
         let warnings: [String]
+        /// Plan MN §6: how many procedures run with no assistant, and the step that stops each one
+        /// that doesn't ("8 procedures, 6 run with no assistant; …"). Nil for a vault without any.
+        let procedureSummary: String?
         var isValid: Bool { issues.isEmpty }
 
-        init(manifest: VaultManifest?, issues: [String], warnings: [String] = []) {
+        init(manifest: VaultManifest?, issues: [String], warnings: [String] = [],
+             procedureSummary: String? = nil) {
             self.manifest = manifest
             self.issues = issues
             self.warnings = warnings
+            self.procedureSummary = procedureSummary
         }
     }
 
@@ -111,6 +116,7 @@ enum VaultValidator {
         // Procedures decode + graph-validate, and each declares its own id: a scenario is addressed
         // by id everywhere (the Field Assist tab, `procedure` actions), so two files sharing one
         // would leave one of them unreachable.
+        var procedures: [Procedure] = []
         if let dir = manifest.proceduresDir {
             let proceduresURL = directory.appendingPathComponent(dir, isDirectory: true)
             let jsons = ((try? fm.contentsOfDirectory(at: proceduresURL, includingPropertiesForKeys: nil))?
@@ -128,7 +134,12 @@ enum VaultValidator {
                     fileById[procedure.id] = url.lastPathComponent
                 }
                 issues.append(contentsOf: validateProcedureGraph(procedure).map { "\(procedure.id): \($0)" })
+                warnings.append(contentsOf: ProcedureAnswerValidator.check(procedure).warnings.map { "\(procedure.id): \($0)" })
+                procedures.append(procedure)
             }
+        }
+        if let warning = minAppBuildWarning(procedures: procedures, directory: directory) {
+            warnings.append(warning)
         }
 
         // Rule chains (Plan JJ P2). Only a vault that lists a chains.md reaches this.
@@ -154,7 +165,24 @@ enum VaultValidator {
             warnings.append(contentsOf: site.warnings)
         }
 
-        return Result(manifest: manifest, issues: issues, warnings: warnings)
+        return Result(manifest: manifest, issues: issues, warnings: warnings,
+                      procedureSummary: ProcedureReadiness.importSummary(procedures))
+    }
+
+    /// Plan MN §7: a pack whose procedures take typed answers or decide routes by rule sets
+    /// `minAppBuild`, so an older build refuses the pack rather than running those procedures with
+    /// the assistant choosing routes from the condition text. Only a folder carrying `pack.json`
+    /// is a pack; a hand-copied folder runs on an older build as it always did.
+    static func minAppBuildWarning(procedures: [Procedure], directory: URL) -> String? {
+        let using = procedures.filter(ProcedureAnswerValidator.usesFormat)
+        guard !using.isEmpty,
+              let data = try? Data(contentsOf: directory.appendingPathComponent(VaultPackManifest.filename)),
+              let pack = try? JSONDecoder().decode(VaultPackManifest.self, from: data) else { return nil }
+        let needed = ProcedureAnswerFormat.firstAppBuild
+        if let build = pack.minAppBuild, build >= needed { return nil }
+        return "\(using.map(\.id).joined(separator: ", ")) take typed answers or decide routes by rule, which app build \(needed) "
+            + "and later read; set minAppBuild to at least \(needed) in \(VaultPackManifest.filename) so an older build "
+            + "doesn't install the pack"
     }
 
     /// A vault's rule chains: every step that does not read is an issue naming its line, as a
@@ -327,6 +355,8 @@ enum VaultValidator {
         }
         if !reachedTerminal { issues.append("no terminal step is reachable from entry") }
 
+        // Typed answers and rule branches (Plan MN §7). Their warnings are `validate`'s.
+        issues.append(contentsOf: ProcedureAnswerValidator.check(procedure).issues)
         return issues
     }
 }

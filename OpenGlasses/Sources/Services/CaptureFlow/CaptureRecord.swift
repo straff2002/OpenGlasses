@@ -19,7 +19,11 @@ struct CaptureValue: Codable, Equatable {
     /// Human-readable rendering for prompts / summaries.
     var display: String {
         switch kind {
-        case "number": return unit.map { "\(trimmedNumber) \($0)" } ?? trimmedNumber
+        // A procedure answer keeps its exact text ("4.60", Plan MN §2) in `string`; a capture
+        // flow's number has none and prints as it always did.
+        case "number":
+            let shown = string ?? trimmedNumber
+            return unit.map { "\(shown) \($0)" } ?? shown
         case "photo":  return "photo"
         default:       return string ?? ""
         }
@@ -50,6 +54,25 @@ struct CapturedField: Codable, Equatable {
     let field: String
     let value: CaptureValue
     let provenance: Provenance
+    /// Plan MN §5: what was typed, said or scanned, kept beside the value so a misread can be seen.
+    /// Absent on a capture-flow field and on a record written before this existed.
+    var entered: String? = nil
+    /// Plan MN §5: "in" or "out" of the step's spec. Absent when the answer has none.
+    var specStatus: String? = nil
+    /// Plan MN §5: the corrective note an out-of-spec critical answer needs (decision 7).
+    var note: String? = nil
+    /// Plan MN §5: the procedure step the answer was given on.
+    var stepId: String? = nil
+    /// Plan MN §5: job photo ids, for a photo answer — attached through the job photo path and
+    /// listed here by id only.
+    var photoIds: [String]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case field, value, provenance, entered, note
+        case specStatus = "spec_status"
+        case stepId = "step_id"
+        case photoIds = "photo_ids"
+    }
 }
 
 /// The structured output of a capture flow — a first-class durable object that the [[OfflineQueue]]
@@ -102,11 +125,21 @@ extension CaptureRecord {
     var auditEvent: SessionLogger.Event {
         var payload: [String: AnyCodable] = [
             "flow_id": AnyCodable(flowId),
-            "fields": AnyCodable(fields.map { [
-                "field": $0.field,
-                "value": $0.value.display,
-                "method": $0.provenance.method,
-            ] }),
+            "fields": AnyCodable(fields.map { field -> [String: Any] in
+                var entry: [String: Any] = [
+                    "field": field.field,
+                    "value": field.value.display,
+                    "method": field.provenance.method,
+                ]
+                // A procedure answer's own keys (Plan MN §5), only when it has them, so a capture
+                // flow's event reads exactly as it did.
+                if let entered = field.entered { entry["entered"] = entered }
+                if let specStatus = field.specStatus { entry["spec_status"] = specStatus }
+                if let note = field.note { entry["note"] = note }
+                if let stepId = field.stepId { entry["step_id"] = stepId }
+                if let photoIds = field.photoIds { entry["photo_ids"] = photoIds }
+                return entry
+            }),
         ]
         if let assetId { payload["asset_id"] = AnyCodable(assetId) }
         return SessionLogger.Event(

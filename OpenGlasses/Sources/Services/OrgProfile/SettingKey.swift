@@ -95,6 +95,11 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// A table read from a picture of a manual gives no value until it has been checked against
     /// its page (Plan JN P3). Checking is optional otherwise.
     case organizationRequiresTableChecks
+    /// Procedures run without the assistant on this organisation's phones (Plan MN §4, decision
+    /// 5): the step screen, the rules and the on-device voice, never a model choosing a route. An
+    /// organisation may switch it on, never off — a procedure's own `runs` and a phone with no model
+    /// still run that way whatever this says.
+    case organizationRunsProceduresWithoutAssistant
 
     // Capability ceilings — tighten only.
     case privacyFilterEnabled
@@ -192,7 +197,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .organizationForbidsAddOns, .organizationForbidsCommunityAddOns,
              .organizationAllowsOnlyOrganisationAddOns, .organizationForbidsSelfBuiltAddOns,
              .organizationRequiresBlurBeforeOfficeSync, .organizationForbidsRecordingSyncOnCellular,
-             .organizationRequiresTableChecks,
+             .organizationRequiresTableChecks, .organizationRunsProceduresWithoutAssistant,
              .privacyFilterEnabled, .aiConnectionCueEnabled:
             return .ceiling(pinnedTo: true)
         case .remoteInvokeObserveEnabled, .remoteInvokeOutputEnabled, .remoteInvokeCaptureEnabled,

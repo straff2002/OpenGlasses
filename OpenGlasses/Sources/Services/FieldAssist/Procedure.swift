@@ -18,6 +18,11 @@ struct Procedure: Codable, Equatable, Identifiable {
     /// Id of the first step. Falls back to the first entry in `steps` when nil.
     let entryStep: String?
     let steps: [Step]
+    /// Plan MN §4: `"without_assistant"` asks for the procedure to run rule-only every time, on the
+    /// phone with no model, for checks a site never wants an assistant to route. Kept as written,
+    /// so a value this build does not know is the validator's issue rather than a decoding failure
+    /// that would drop the procedure. Optional; absent is left out when encoding.
+    let runs: String?
     /// Set only on an expert's coaching steps walked on a job (Plan KM P3): who wrote them, so
     /// the runner and the tool put them in front of the model **as written** and credited.
     /// **Never read from a file** — it is not one of the coding keys — so a vault's procedure can't
@@ -32,7 +37,7 @@ struct Procedure: Codable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, version, vault, description, steps
+        case id, title, version, vault, description, steps, runs
         case safetyNotes = "safety_notes"
         case entryStep = "entry_step"
     }
@@ -46,6 +51,7 @@ struct Procedure: Codable, Equatable, Identifiable {
         safetyNotes: [String] = [],
         entryStep: String? = nil,
         steps: [Step],
+        runs: String? = nil,
         coaching: Coaching? = nil
     ) {
         self.id = id
@@ -56,8 +62,15 @@ struct Procedure: Codable, Equatable, Identifiable {
         self.safetyNotes = safetyNotes
         self.entryStep = entryStep
         self.steps = steps
+        self.runs = runs
         self.coaching = coaching
     }
+
+    /// The one value `runs` takes (Plan MN §4).
+    static let runsWithoutAssistantValue = "without_assistant"
+
+    /// Whether the procedure asks to run with no assistant, every time.
+    var runsWithoutAssistant: Bool { runs == Self.runsWithoutAssistantValue }
 
     /// A single step in the procedure graph.
     struct Step: Codable, Equatable, Identifiable {
@@ -90,9 +103,32 @@ struct Procedure: Codable, Equatable, Identifiable {
         /// schema; absent is no clip, and is left out when encoding. The lens offers **Watch** only
         /// for a URL `HUDVideo.playable` accepts.
         let videoURL: String?
+        /// Plan MN §1: the step's typed answer — a number, a choice, yes or no, text, photos or a
+        /// code. Optional in the schema; absent is a step that behaves exactly as before, and it is
+        /// left out when encoding.
+        let answer: StepAnswer?
 
         /// Whether completing here needs the technician's confirmation.
         var needsConfirmation: Bool { terminal && requiresConfirmation == true }
+
+        /// Who chooses the way on from this step (Plan MN §2, decision 2).
+        enum RouteDecider: Equatable {
+            /// No branches: `default_next`, or the end.
+            case linear
+            /// Every branch has a `when` rule: the app decides from the answers.
+            case rules
+            /// Branches the person or the assistant chooses from their `condition` words. A step
+            /// that mixes rules and words (an issue at import) is treated as this, never guessed.
+            case words
+        }
+
+        var routeDecider: RouteDecider {
+            if branches.isEmpty { return .linear }
+            return branches.allSatisfy { $0.when != nil } ? .rules : .words
+        }
+
+        /// Whether the app decides this step's route from the answers.
+        var isAppDecided: Bool { routeDecider == .rules }
 
         enum CodingKeys: String, CodingKey {
             case id, title, instruction, branches, terminal, outcome, citations
@@ -102,6 +138,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             case calcRef = "calc_ref"
             case defaultNext = "default_next"
             case videoURL = "video_url"
+            case answer
         }
 
         init(
@@ -117,7 +154,8 @@ struct Procedure: Codable, Equatable, Identifiable {
             terminal: Bool = false,
             outcome: String? = nil,
             requiresConfirmation: Bool? = nil,
-            videoURL: String? = nil
+            videoURL: String? = nil,
+            answer: StepAnswer? = nil
         ) {
             self.id = id
             self.title = title
@@ -132,6 +170,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             self.outcome = outcome
             self.requiresConfirmation = requiresConfirmation
             self.videoURL = videoURL
+            self.answer = answer
         }
 
         init(from decoder: Decoder) throws {
@@ -149,6 +188,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             outcome = try c.decodeIfPresent(String.self, forKey: .outcome)
             requiresConfirmation = try c.decodeIfPresent(Bool.self, forKey: .requiresConfirmation)
             videoURL = try c.decodeIfPresent(String.self, forKey: .videoURL)
+            answer = try c.decodeIfPresent(StepAnswer.self, forKey: .answer)
         }
     }
 
@@ -160,6 +200,18 @@ struct Procedure: Codable, Equatable, Identifiable {
         let condition: String
         /// Target step id.
         let next: String
+        /// Plan MN §2: the rule that takes this branch, read from the step's answers. Optional in
+        /// the schema; absent is a branch the person or the assistant chooses from `condition`,
+        /// and it is left out when encoding. `condition` stays required: it is what an older
+        /// build's model reads, what a button prints, and the rule in words.
+        let when: BranchRule?
+
+        init(id: String, condition: String, next: String, when: BranchRule? = nil) {
+            self.id = id
+            self.condition = condition
+            self.next = next
+            self.when = when
+        }
     }
 
     /// Optional link from a step to a `DomainCalcTool` operation.

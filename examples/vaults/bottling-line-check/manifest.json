@@ -1,0 +1,16 @@
+{
+  "id": "bottling_line_check",
+  "name": "Bottling Line Start-of-Shift Check (example)",
+  "version": "1.0.0",
+  "files": ["safety.md", "line_values.md"],
+  "procedures_dir": "procedures",
+  "gating": { "iap": "enterprise" },
+  "prompt_rules": [
+    "Never fabricate readings, limits or corrective actions; the procedure's own values are the limits.",
+    "Use only the vault contents and the operator's stated readings.",
+    "Cite the source file on every factual claim.",
+    "On a step the app decides from the answer, take the reading and let the procedure choose the route."
+  ],
+  "source_attribution_format": "Source: {files}",
+  "source_attribution_required": true
+}
