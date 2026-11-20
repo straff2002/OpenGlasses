@@ -341,6 +341,72 @@ Each procedure is one JSON file in `procedures/`. The importer checks the graph 
 }
 ```
 
+### Answers and routes the app decides
+
+The procedure above needs the assistant at every branch: it hears "bubbling" and picks the branch whose `condition` matches. For a fixed check (a start-of-shift check, a sanitation round, a pass/fail quality step) the app can do that itself. Give a step a typed **`answer`**, and give every branch on it a **`when`** rule that reads the answer. The app then records the value, checks it, and takes the route, with no assistant at all. The phone runs the procedure offline, and the record says the rule decided.
+
+```json
+{
+  "id": "check_co2",
+  "title": "Check the carbonation",
+  "instruction": "Take a bottle from the filler discharge and read its carbonation.",
+  "answer": {
+    "record_as": "co2",
+    "kind": "number",
+    "label": "CO2",
+    "decimals": 2,
+    "plausible": [0, 6],
+    "spec": [2.4, 2.8],
+    "critical": true
+  },
+  "branches": [
+    { "id": "in_spec", "condition": "CO2 2.4 to 2.8 volumes", "when": { "answer": "co2", "between": [2.4, 2.8] }, "next": "check_brix" },
+    { "id": "low",     "condition": "CO2 below 2.4 volumes",  "when": { "answer": "co2", "lt": 2.4 },             "next": "adjust_carbonation" },
+    { "id": "high",    "condition": "CO2 above 2.8 volumes",  "when": { "answer": "co2", "gt": 2.8 },             "next": "adjust_carbonation" }
+  ]
+}
+```
+
+**The answer.** One per step. Every kind has `record_as` (the answer's name in the record and in rules: snake_case, unique in the procedure), `label` (what is printed and spoken), `required` (default true: the step needs its answer before *next*) and `critical`.
+
+| `kind` | Its own fields | How the technician gives it |
+|---|---|---|
+| `number` | `unit`, `decimals` 0–3, `plausible` [lo, hi], `spec` [lo, hi] (optional), `show_spec` | typed, or said as digits or words ("four point two"); a decimal comma where the phone's language writes one |
+| `choice` | `options`: 2–12 of `{ "id", "label", "says": [other words for it] }` | a tap, a lens button, or the label or one of its `says` words |
+| `yes_no` | none | a tap, a lens button, or yes / yeah / done / pass and no / nope / fail |
+| `text` | `min_len`, `max_len` (default 1 and 500) | typed or dictated, kept as said |
+| `photo` | `min` 1–5 (default 1), `max` up to 5 | the job's camera; attached to the job and listed by id, never assessed |
+| `code` | `symbology` `qr` or `barcode`, `expected` (optional) | scanned, or typed |
+
+**Two ranges on a number.** `plausible` is what a reading can be at all. Outside it, the app takes the value as misheard and asks again ("CO2 42? Read it again"), and records nothing. `spec` is what the reading should be. Outside it, the reading is **recorded as out of spec**, because that reading is the reason the check exists. A `code` with `expected` is out of spec when it doesn't match.
+
+**Critical answers.** A spoken critical answer is read back before it decides anything ("CO2 2.90, out of spec, is that right?"); a typed one is already on the screen. A critical answer out of spec needs a corrective note before the run goes on ("adjusted the carbonator, retesting"), and the note is kept with the reading.
+
+**The rule.** `when` is a small rule in JSON:
+
+- a test, `{ "answer": "<record_as>", <comparison>: <value> }`, with `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `between` [lo, hi] and `outside` [lo, hi] (bounds included) for numbers; `in` [option ids] for a choice; `is` `"yes"` / `"no"` for yes or no; `out_of_spec` true / false for an answer with a spec; and `present` true / false for any answer;
+- or `{ "all": [ … ] }`, `{ "any": [ … ] }` and `{ "not": { … } }`, nested at most three deep.
+
+A rule can read this step's answer or any earlier step's on the path taken, so "Brix below 10.5 **and** CO2 below 2.5 → hold the batch" works. An answer the path didn't pass through makes its test false, except `present: false`.
+
+**How a route is decided.** The branches are tried in the order you list them, and the first rule that holds wins. If none holds, the app follows `default_next`, and if the step has none, it stops and says so ("pH 3.75 matches none of this step's routes") and asks the technician to choose. It never guesses. Numbers are compared exactly at the step's `decimals`: 4.40 against `gt 4.4` is false every time, so a bound means what you wrote.
+
+**Who decides.** On a step whose branches all have `when`, the rule decides. The assistant hears the value and helps, and it can't choose a different route. The technician can override a rule, with a reason, and the record flags the override beside the route the rule gave. A step's branches are either all rules or none: a step can't be half and half.
+
+**Keep `condition`.** It is still required. It is what an older app's assistant reads, what the lens and the phone print on a button, and the rule in words. Make them say the same thing: the importer warns when a condition's numbers aren't the rule's.
+
+**What the importer checks.** As well as the graph, the importer refuses a missing or repeated `record_as`, an unknown `kind`, fields of another kind, `decimals` outside 0–3, a `plausible` whose lo isn't below its hi, a `spec` outside `plausible`, a choice with fewer than 2 or more than 12 options or a word said for two of them, a rule that reads an answer no earlier step records, a comparison that doesn't fit the answer (`gt` on a choice), rules nested more than three deep, and a step that mixes rules and words. It warns, and still installs, about a unit the app doesn't know, an answer recorded on only some paths to the rule that reads it, a condition whose numbers aren't the rule's, and a number step whose rules leave a gap ("a pH of 3.75 matches no route and there is no default") or overlap ("4.4 matches both in_spec and high; the first listed wins").
+
+**Runs with no assistant.** After the import the app says how many of the vault's procedures run with no assistant, and names the first step of each one that doesn't ("4 procedures, 3 run with no assistant; Line changeover step 4 chooses its route from words"). A procedure runs with no assistant when every step that branches has rules (or only one way on), and no step asks in words (`expected_input`) for an answer it has no typed `answer` for.
+
+**Running it on the phone.** The open job shows the running procedure, and tapping it opens the step: the instruction, the answer (a number pad with the unit beside it, big buttons for a choice or yes or no, a field for text, the camera for photos), the route the rule took, and the steps done so far. A run started by voice or on the glasses shows there too. On the glasses, a choice or a yes or no is a row of buttons, and a number is said or typed on the phone and shown on the lens once recorded. The procedure runs with **no assistant** when no AI model is set up or the phone is offline with no model of its own, when the technician chooses it on the step screen, when an organisation profile sets `organizationRunsProceduresWithoutAssistant`, or when the procedure itself says so. With no assistant the phone says each step in its own voice and listens, on the phone where the language allows, for *next*, *back*, *repeat* and the step's answer; anything else gets one line, "I can take the answer to this step, or next, back or repeat". It answers no questions. To make a procedure always run this way, whatever the phone has, add `"runs": "without_assistant"` beside its `title`. That is the only value `runs` takes, and the importer refuses any other.
+
+**Writing the rules on the phone.** On a vault of your own, *Build this vault* lists its procedures and whether each runs with no assistant. Open one to add or change a step's answer and the rule on each route. The importer's checks, the gaps and overlaps, and the step that stops the procedure running with no assistant show beside the step as you edit. *Copy prompt* gives you a prompt for your own AI that turns each route's words into a rule (and proposes an answer for a step that has none). Paste its reply back, and each suggested rule appears beside its sentence, to accept or reject one at a time. A suggestion the app can't use, such as a rule on only some of a step's routes, or one that reads an answer no step records, is listed with the reason. Nothing changes in the vault until you save, and a procedure the importer would refuse doesn't save. An export carries the saved procedure.
+
+**Older apps.** An app older than build 738 ignores `answer`, `when` and `runs`, and its assistant chooses from `condition` as before. A pack whose procedures use them should set `minAppBuild` to at least 738 in `pack.json`; the importer warns when it doesn't. A folder copied by hand still runs on an older app the old way.
+
+The worked example in [`examples/vaults/bottling-line-check`](../examples/vaults/bottling-line-check/README.md) is a complete start-of-shift check that runs with no assistant: numbers with a readable range and a spec, a critical limit with its corrective note, a rule that reads two answers, a choice with synonyms, a yes or no, photos and a code.
+
 ## Tables and chains (optional)
 
 A table in a manual or a code book you load is read into rows and columns at import, on the phone, from your own copy, and the technician can ask for one value from it: *"what's the rating in Table 99 for QXRT, three conductors, rating group 2?"* The answer comes back with its row, its column, its notes and the page it is printed on, or as the two rows a number falls between. Nothing is interpolated, and the app never picks "the next size up" on its own.

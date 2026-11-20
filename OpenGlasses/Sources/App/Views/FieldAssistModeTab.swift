@@ -278,6 +278,16 @@ struct FieldAssistModeTab: View {
                 Text(stepCount(proc))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                // Plan MN §6: a fact the app states — every route is decided by a rule or a
+                // tap, and every answer is typed — so the author and the technician can see it.
+                if ProcedureReadiness.of(proc) == .runsWithoutModel {
+                    Text("Runs with no assistant")
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.secondary.opacity(0.22)))
+                        .foregroundStyle(Color.primary)
+                }
             }
             Spacer(minLength: 0)
             Image(systemName: "play.circle.fill")
@@ -295,7 +305,9 @@ struct FieldAssistModeTab: View {
     }
 
     private func scenarioSpoken(_ proc: Procedure) -> String {
-        [proc.title, proc.description, stepCount(proc)].compactMap { $0 }.filter { !$0.isEmpty }
+        let readiness = ProcedureReadiness.of(proc) == .runsWithoutModel
+            ? String(localized: "Runs with no assistant") : nil
+        return [proc.title, proc.description, stepCount(proc), readiness].compactMap { $0 }.filter { !$0.isEmpty }
             .joined(separator: ". ")
     }
 

@@ -110,10 +110,19 @@ enum UITestSupport {
         /// signed by a key this build cannot hold, so no enrolment is faked: the rows are made by
         /// the shipping `CompanyVaultRow.rows` from fixture state and drawn by the shipping view.
         case publishedVaultRows = "-OGUITestPublishedVaultRows"
+        /// Plan MN P2: a modifier on `seedFieldJob` — the open job runs the example bottling-line
+        /// check, read from the repository's `examples/` folder (a simulator reads the host's
+        /// files), answered through its first step so the step screen shows a number pad, a spec
+        /// hint and a trail. Every answer goes through the shipping session calls.
+        case seedProcedure = "-OGUITestSeedProcedure"
         /// Plan LW P1: a vault made by the shipping New Vault path with one invented manual added,
         /// and its draft review screen drawn over the app, so a pasted reply can be checked and a row
         /// kept into the vault's file.
         case vaultAuthoring = "-OGUITestVaultAuthoring"
+        /// Plan MN P3: the procedure review screen on an invented procedure, with a reply from an
+        /// author's own AI already read, so a suggested rule shows beside its sentence. Drawn in
+        /// place of the app's screens; nothing is saved (there is no vault behind it).
+        case procedureRules = "-OGUITestProcedureRules"
     }
 
     /// Whether a vault-link review is being staged for a screenshot.
@@ -607,6 +616,22 @@ enum UITestSupport {
         DeliveryQueueStore.eraseStoredQueue()
     }
 
+    /// The example procedure, started on the open job and answered through its first step.
+    @MainActor
+    private static func seedProcedure(_ sessions: FieldSessionService) {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // Utils
+            .deletingLastPathComponent()   // Sources
+            .deletingLastPathComponent()   // OpenGlasses
+            .deletingLastPathComponent()   // repository
+            .appendingPathComponent("examples/vaults/bottling-line-check/procedures/start_of_shift_check.json")
+        guard let data = try? Data(contentsOf: file),
+              let procedure = try? JSONDecoder().decode(Procedure.self, from: data),
+              (try? sessions.startProcedure(procedure)) != nil else { return }
+        _ = try? sessions.answerProcedure(value: "yes", method: .typed)
+        _ = try? sessions.advanceProcedure(choice: nil)
+    }
+
     /// One finished job, and — with `.seedFieldJob` — one open one on top of it.
     ///
     /// Written through the service's own API, so what lands on disk is exactly what a real visit
@@ -671,6 +696,8 @@ enum UITestSupport {
         }
         _ = try? sessions.addOperatorTask(title: "Clean the flame sensor",
                                           why: "Signal reading low")
+
+        if isSet(.seedProcedure) { seedProcedure(sessions) }
 
         if isSet(.seedFieldPhotos) {
             // Three pictures with the shape the review has to cope with: one logged on the job

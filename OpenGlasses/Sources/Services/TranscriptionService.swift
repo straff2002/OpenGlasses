@@ -290,7 +290,9 @@ class TranscriptionService: ObservableObject {
         let preference = gate.preference()
         // Plan LU decision 4: a private conversation's question never goes to a cloud vendor. The
         // selector already keeps cloud engines out of compliance mode; the same exclusion serves.
-        let privateTurn = !PrivateRecognitionPolicy.allowsCloudVendor(isPrivate: PrivateConversationGate.isActive)
+        // Plan MN §4: a procedure running with no model is heard on the phone, as a private turn is.
+        let privateTurn = !PrivateRecognitionPolicy.allowsCloudVendor(
+            isPrivate: PrivateConversationGate.isActive || ProcedureVoiceGate.listensOnDevice())
         let hipaa = gate.hipaa() || privateTurn
         let online = onlineProvider()
         let availability = ASREngineSelector.Availability(
@@ -478,7 +480,7 @@ class TranscriptionService: ObservableObject {
         // Plan LU decision 4: a private conversation's question stays on the phone where the
         // locale can; where it can't, Apple's server recognition is used, as for every question.
         recognitionRequest.requiresOnDeviceRecognition = PrivateRecognitionPolicy.requiresOnDevice(
-            isPrivate: PrivateConversationGate.skips(.serverSpeechRecognition),
+            isPrivate: PrivateConversationGate.skips(.serverSpeechRecognition) || ProcedureVoiceGate.listensOnDevice(),
             localeSupportsOnDevice: speechRecognizer?.supportsOnDeviceRecognition ?? false)
         // Plan JM P0: tell the recogniser which words are likely. The count is logged, never a word.
         let vocabulary = vocabularyProvider()

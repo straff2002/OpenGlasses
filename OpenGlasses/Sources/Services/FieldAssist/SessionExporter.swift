@@ -183,7 +183,12 @@ enum SessionExporter {
                         guard let dict = raw as? [String: Any], let field = dict["field"] as? String else { return nil }
                         return .init(field: field,
                                      value: dict["value"] as? String ?? "",
-                                     method: dict["method"] as? String ?? "")
+                                     method: dict["method"] as? String ?? "",
+                                     entered: dict["entered"] as? String,
+                                     specStatus: dict["spec_status"] as? String,
+                                     note: dict["note"] as? String,
+                                     stepId: dict["step_id"] as? String,
+                                     photoIds: (dict["photo_ids"] as? [Any])?.compactMap { $0 as? String })
                     }
                     captures.append(.init(timestamp: event.timestamp, flowId: flowId,
                                           assetId: event.payload?["asset_id"]?.value as? String,
@@ -236,6 +241,7 @@ enum SessionExporter {
         let proceduresRun: [SessionExport.ProcedureRun] = procOrder.map { id in
             .init(procedureId: id, stepsCompleted: procStepIds[id]?.count ?? 0, outcome: procOutcome[id])
         }
+        let procedureRecords = procedureRecords(from: events)
 
         // What the technician chose at close (Plan FO P2a). Applied to the reconstructed list
         // rather than replacing it: every photo the job took stays in the audit JSON, and what the
@@ -276,6 +282,7 @@ enum SessionExporter {
             photos: photos,
             clips: clipRefs(session: session, plan: clipPlan),
             proceduresRun: proceduresRun,
+            procedureRecords: procedureRecords,
             captures: captures,
             citations: citations,
             escalations: escalations,
@@ -289,6 +296,114 @@ enum SessionExporter {
             provenance: provenance ?? AIProvenance.forActiveModel(
                 promptSources: [FieldAssistProvenance.promptIdentity])
         )
+    }
+
+    /// Plan MN §5: each procedure run's record, from its own events: the answer each step left
+    /// with, how the route was decided and why. Built from what the runner logged — the person's
+    /// values, the app's rule text and the person's reasons — and nothing the assistant wrote.
+    static func procedureRecords(from events: [SessionLogger.Event]) -> [SessionExport.ProcedureRecord] {
+        struct Open { var title: String?; var startedAt: Date; var rows: [SessionExport.ProcedureRecord.Row] }
+        var records: [SessionExport.ProcedureRecord] = []
+        var open: [String: Open] = [:]
+        var order: [String] = []
+        func close(_ id: String, outcome: String?) {
+            guard let run = open.removeValue(forKey: id) else { return }
+            records.append(.init(procedureId: id, title: run.title, startedAt: run.startedAt,
+                                 outcome: outcome, rows: run.rows))
+            order.removeAll { $0 == id }
+        }
+        for event in events {
+            guard let id = event.payload?["procedure_id"]?.value as? String else { continue }
+            switch event.kind {
+            case .procedureStarted:
+                close(id, outcome: nil)
+                open[id] = Open(title: event.text, startedAt: event.timestamp, rows: [])
+                order.append(id)
+            case .procedureStep:
+                guard let from = event.payload?["from_step"]?.value as? String else { continue }
+                if open[id] == nil { open[id] = Open(title: nil, startedAt: event.timestamp, rows: []); order.append(id) }
+                var row = procedureRow(stepId: from, title: event.payload?["from_title"]?.value as? String,
+                                       at: event.timestamp, answer: event.payload?["answer"]?.value as? [String: Any])
+                row.nextStepId = event.payload?["step_id"]?.value as? String
+                row.nextStepTitle = event.text
+                row.decidedBy = event.payload?["decided_by"]?.value as? String
+                row.ruleText = event.payload?["rule_text"]?.value as? String
+                row.ruleBranch = event.payload?["rule_branch"]?.value as? String
+                row.reason = event.payload?["reason"]?.value as? String
+                row.branchTaken = event.payload?["branch_taken"]?.value as? String
+                open[id]?.rows.append(row)
+            case .procedureCompleted:
+                if let stepId = event.payload?["step_id"]?.value as? String,
+                   let answer = event.payload?["answer"]?.value as? [String: Any] {
+                    if open[id] == nil { open[id] = Open(title: event.text, startedAt: event.timestamp, rows: []); order.append(id) }
+                    open[id]?.rows.append(procedureRow(stepId: stepId, title: event.payload?["step_title"]?.value as? String,
+                                                       at: event.timestamp, answer: answer))
+                }
+                close(id, outcome: event.payload?["outcome"]?.value as? String)
+            default:
+                break
+            }
+        }
+        for id in order { close(id, outcome: nil) }
+        // A run that took no answer and no route decision (an ordinary procedure, walked by the
+        // assistant as before) has nothing for this block; its summary stays under "Procedures".
+        return records.filter { record in
+            record.rows.contains { $0.answer != nil || $0.decidedBy != nil }
+        }
+    }
+
+    private static func procedureRow(stepId: String, title: String?, at: Date,
+                                     answer: [String: Any]?) -> SessionExport.ProcedureRecord.Row {
+        var row = SessionExport.ProcedureRecord.Row(stepId: stepId, stepTitle: title, at: at)
+        guard let answer else { return row }
+        row.answerLabel = answer["label"] as? String
+        row.answer = answer["display"] as? String
+        row.entered = answer["entered"] as? String
+        row.specStatus = answer["spec_status"] as? String
+        row.spec = answer["spec"] as? String
+        row.method = answer["method"] as? String
+        row.note = answer["note"] as? String
+        row.photoIds = (answer["photo_ids"] as? [Any])?.compactMap { $0 as? String }
+        return row
+    }
+
+    /// One row of the PDF's "Procedure record": the answer and how it was entered, then the route
+    /// and why. Overrides and out-of-spec readings are marked.
+    static func procedureRowLines(_ row: SessionExport.ProcedureRecord.Row) -> [String] {
+        var lines: [String] = []
+        var head = "• \(row.stepTitle ?? humanReadable(row.stepId))"
+        if let answer = row.answer {
+            head += " — \(row.answerLabel.map { "\($0): " } ?? "")\(answer)"
+            if row.isOutOfSpec { head += " — OUT OF SPEC\(row.spec.map { " (spec \($0))" } ?? "")" }
+            else if row.specStatus == SpecStatus.in.rawValue { head += " (in spec)" }
+            if let method = row.method { head += ", \(method)" }
+        }
+        lines.append(head)
+        if let next = row.nextStepTitle ?? row.nextStepId {
+            var route = "    Route: \(next)"
+            switch row.decidedBy {
+            case ProcedureDecider.rule.rawValue?:
+                route += row.ruleText.map { " — by rule: \($0)" } ?? " — by rule"
+            case ProcedureDecider.override.rawValue?:
+                route = "    OVERRIDE — route: \(next), taken by the technician instead of the rule's"
+                    + (row.ruleBranch.map { " (\($0))" } ?? "")
+                lines.append(route)
+                if let ruleText = row.ruleText { lines.append("    The rule read: \(ruleText)") }
+                if let reason = row.reason { lines.append("    Reason: \(reason)") }
+                if let note = row.note { lines.append("    Corrective note: \(note)") }
+                return lines
+            case ProcedureDecider.person.rawValue?:
+                route += " — chosen by the technician"
+                if let reason = row.reason { route += " (\(reason))" }
+            case ProcedureDecider.assistant.rawValue?:
+                route += " — chosen with the assistant"
+            default:
+                break
+            }
+            lines.append(route)
+        }
+        if let note = row.note { lines.append("    Corrective note: \(note)") }
+        return lines
     }
 
     /// The work record as an export for `audience` carries it.
@@ -419,9 +534,16 @@ enum SessionExporter {
                 }
             }
 
-            if !document.captures.isEmpty {
+            if let records = document.procedureRecords, !records.isEmpty {
+                drawProcedureRecords(records, document: document, photosDirectory: photosDirectory, layout: layout)
+            }
+
+            // A procedure's answers print in its own record above, so the capture list keeps to
+            // the capture flows.
+            let flowCaptures = document.captures.filter { !$0.flowId.hasPrefix(Self.procedureFlowPrefix) }
+            if !flowCaptures.isEmpty {
                 layout.section("Captured Records")
-                for capture in document.captures {
+                for capture in flowCaptures {
                     let asset = capture.assetId.map { " (\($0))" } ?? ""
                     layout.body("• \(humanReadable(capture.flowId))\(asset) — \(capture.fields.count) field(s)")
                     for field in capture.fields {
@@ -500,6 +622,40 @@ enum SessionExporter {
             layout.body(document.provenance?.footerLine
                 ?? "Assistant turns in this record were AI-generated. The model was not recorded.")
         }
+    }
+
+    /// The flow-id prefix of a procedure's answers in a `CaptureRecord` (Plan MN §5).
+    static let procedureFlowPrefix = "procedure:"
+
+    /// The "Procedure record" block (Plan MN §5): per run, one row per step. Photos are drawn as
+    /// thumbnails only when the evidence review sent them with the report; otherwise the row names
+    /// them, as the photo section does.
+    private static func drawProcedureRecords(_ records: [SessionExport.ProcedureRecord], document: SessionExport,
+                                             photosDirectory: URL?, layout: PDFLayout) {
+        layout.section("Procedure record")
+        let reviewed = EvidenceSelectionPolicy.effective(document.workRecord?.evidenceSelection) != nil
+        let sent = Set((document.workRecord?.evidencePlan.groups ?? []).flatMap(\.entries)
+            .filter { $0.item.kind == .photo }.map(\.item.id))
+        for record in records {
+            let outcome = record.outcome.map { " — outcome: \(humanReadable($0))" } ?? " — in progress"
+            layout.subheading("\(record.title ?? humanReadable(record.procedureId))\(outcome)")
+            for row in record.rows {
+                for line in procedureRowLines(row) { layout.body(line) }
+                for id in row.photoIds ?? [] {
+                    if reviewed, !sent.contains(id) {
+                        layout.caption("    Photo \(id) — not sent with this report")
+                    } else if reviewed, let photosDirectory,
+                              let image = EvidenceImageRenderer.load(id, from: photosDirectory) {
+                        layout.image(EvidenceImageRenderer.downscaled(image, plan: EvidenceImageBudget.standard.plan(photoCount: max(1, sent.count))),
+                                     maxHeight: 120)
+                        layout.caption("    Photo \(id)")
+                    } else {
+                        layout.caption("    Photo \(id)")
+                    }
+                }
+            }
+        }
+        layout.caption("Every value in this record is what the technician entered; every route is the procedure's rule or the technician's choice.")
     }
 
     // MARK: - Evidence

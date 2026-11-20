@@ -117,15 +117,22 @@ enum VaultExporter {
                 try fm.copyItem(at: source, to: dest)
             }
 
-            // procedures/ — copy whatever is present (overlay wins, else bundle).
+            // procedures/ — the bundle's files, with each one the overlay holds in its place (the
+            // overlay wins file by file, as `ProcedureLibrary` reads them). An edited procedure
+            // (Plan MN P3) is one file in the overlay; the vault's other procedures stay in the export.
             if let dir = manifest.proceduresDir {
                 let dest = root.appendingPathComponent(dir, isDirectory: true)
-                let overlaySrc = store.overlayRoot.appendingPathComponent(dir, isDirectory: true)
-                let bundleSrc = store.bundleRoot?.appendingPathComponent(dir, isDirectory: true)
-                if fm.fileExists(atPath: overlaySrc.path) {
-                    try fm.copyItem(at: overlaySrc, to: dest)
-                } else if let bundleSrc, fm.fileExists(atPath: bundleSrc.path) {
-                    try fm.copyItem(at: bundleSrc, to: dest)
+                let sources = [store.bundleRoot?.appendingPathComponent(dir, isDirectory: true),
+                               store.overlayRoot.appendingPathComponent(dir, isDirectory: true)].compactMap { $0 }
+                for source in sources where fm.fileExists(atPath: source.path) {
+                    let names = try fm.contentsOfDirectory(atPath: source.path).filter { !$0.hasPrefix(".") }
+                    guard !names.isEmpty else { continue }
+                    try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+                    for name in names {
+                        let target = dest.appendingPathComponent(name)
+                        if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+                        try fm.copyItem(at: source.appendingPathComponent(name), to: target)
+                    }
                 }
             }
         } catch {

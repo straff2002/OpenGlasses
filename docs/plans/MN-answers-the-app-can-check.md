@@ -1,7 +1,33 @@
 # Plan MN — Answers the App Can Check (typed answers on procedure steps, and branches the app decides from them, so a fixed procedure runs on the phone with no model)
 
-**Status:** 📝 Drafted 2026-11-20. Nothing is implemented. All eight decisions were taken on
-2026-11-20 as recommended, so P0 can start.
+**Status:** 🚧 P0–P3 built 2026-11-20; the P4 device pass is owed. P3 (authoring): a vault of your
+own lists its procedures under *Build this vault*, and each opens a review screen with answer and
+rule editing (the pure `AnswerDraft` / `RuleDraft` / `ProcedureEditing`, checked by the import
+validator on every edit, with issues, coverage warnings and the condition-against-rule warning
+beside the step and route they name, all-or-none enforced at save, and the procedure's readiness
+on top); the *conditions to rules* kit (`PromptKit.conditionsToRules`, `RuleProposalParser`,
+`ProcedureRuleReview`) that lands each proposed rule or answer beside its sentence, to accept or
+reject one at a time; and the save to the vault's overlay (`ProcedureAuthoring`), which the export
+now merges file by file with the baseline's procedures. The authoring flow writes no `pack.json`
+(a vault of your own is never a pack), so `minAppBuild` stays the importer's warning on a pack.
+P0–P2 built 2026-11-20. P0 and P1 (headless): the `answer` / `when` format,
+`AnswerReader` (with the `SpokenNumber.decimal(in:)` words reader), `BranchRuleEvaluator`,
+`RuleCoverage`, `ProcedureReadiness`, the §7 checks in `ProcedureAnswerValidator` (run from
+`VaultValidator.validateProcedureGraph`), the import summary line, the worked example in
+`examples/vaults/bottling-line-check` and the vault guide section; then `ProcedureRunner.answer` /
+`override`, rule-decided `advance`, the read-back and the corrective note, the `CaptureRecord`
+fold and the `procedureStep` keys, `procedure_runner` `answer` / `override` (an override is
+confirmed by the person), the prompt lines and the export's "Procedure record" block. P2 (simulator):
+the procedure-level `"runs": "without_assistant"` key (validated, guide line); the pure
+`ProcedureRunMode` with its four triggers, including the organisation ceiling
+`organizationRunsProceduresWithoutAssistant`; `ProcedureStepPresentation` (position, trail, answer,
+route, lens buttons); `ProcedureStepScreen` from the open job's procedure row, in both modes; the
+no-model voice (`ProcedureVoiceDecider` + `ProcedureVoiceLoop`, on the existing wake-word and
+transcription path, recognised on the phone where the locale allows, said with the on-device voice);
+lens buttons for `choice` and `yes_no` answers and the read-back, and the recorded number on the
+card; the "Runs with no assistant" badge on the scenario list. MI's `ProcedureShape` isn't on main,
+so the position is "Step 3 of 12" only for a straight-line procedure and "Step 3" otherwise. The
+`code` kind is typed on the screen (no barcode scan yet). All eight decisions were taken on 2026-11-20 as recommended.
 **Track:** Field Assist procedures. The same shape suits any site that runs a fixed check
 (production lines, cleaning and sanitation rounds, start-of-shift checks).
 **Builds on:**
