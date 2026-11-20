@@ -1,7 +1,8 @@
 # Plan ML — Measured Quantities (4.25 litres of oil, kept exactly, on the phone and to the office)
 
-**Status:** 🚧 P0–P3 built 2026-11-20 (headless, on the build branch `feat/ml-measured-quantities`); P4 (the
-catalog sync) and P5 (the device pass) owed. **All nine decisions taken 2026-11-19 as recommended**
+**Status:** ✅ P0–P4 built 2026-11-20 (headless): P0–P3 merged as PR 1149 (build 735), the screen's
+unit-change message as PR 1150 (build 736), and P4's catalog sync (26 keys in the 13 complete
+languages) in its own PR. P5, the device pass, is owed. **All nine decisions taken 2026-11-19 as recommended**
 (owner: "1-9 yes, build it"). P0 is `StockQuantity`, an exact quantity in thousandths. P1 moves the
 ledger to file format 2 and migrates a format 1 log exactly. P2 opens the edges: `van_stock` takes
 a decimal and reads it against the line's own unit, refusing with a sentence what the unit cannot
