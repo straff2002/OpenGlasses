@@ -119,6 +119,10 @@ enum UITestSupport {
         /// and its draft review screen drawn over the app, so a pasted reply can be checked and a row
         /// kept into the vault's file.
         case vaultAuthoring = "-OGUITestVaultAuthoring"
+        /// Plan MN P3: the procedure review screen on an invented procedure, with a reply from an
+        /// author's own AI already read, so a suggested rule shows beside its sentence. Drawn in
+        /// place of the app's screens; nothing is saved (there is no vault behind it).
+        case procedureRules = "-OGUITestProcedureRules"
     }
 
     /// Whether a vault-link review is being staged for a screenshot.

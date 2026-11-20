@@ -45,6 +45,12 @@ struct ProcedureLibrary {
     // MARK: - Loading
 
     private static func load(proceduresDir: String, bundleRoot: URL?, overlayRoot: URL) -> [Procedure] {
+        resolve(candidates(proceduresDir: proceduresDir, bundleRoot: bundleRoot, overlayRoot: overlayRoot))
+    }
+
+    /// Every procedure file that decodes, one per file name, with the overlay's file in place of the
+    /// bundle's of the same name.
+    private static func candidates(proceduresDir: String, bundleRoot: URL?, overlayRoot: URL) -> [Candidate] {
         // Overlay wins: collect overlay filenames first, then fill gaps from the bundle.
         var byFilename: [String: (url: URL, fromOverlay: Bool)] = [:]
         if let bundleRoot {
@@ -57,12 +63,25 @@ struct ProcedureLibrary {
         }
 
         let decoder = JSONDecoder()
-        let candidates = byFilename.compactMap { file, source -> Candidate? in
+        return byFilename.compactMap { file, source -> Candidate? in
             guard let data = try? Data(contentsOf: source.url),
                   let procedure = try? decoder.decode(Procedure.self, from: data) else { return nil }
             return Candidate(file: file, fromOverlay: source.fromOverlay, procedure: procedure)
         }
-        return resolve(candidates)
+    }
+
+    /// The vault's procedures with the file each is read from (Plan MN P3: the authoring screen
+    /// writes an edited procedure back over the same file name, in the overlay). The same choice
+    /// `all` makes — one per id, the overlay's file first — in id order.
+    static func entries(store: VaultStore) -> [Candidate] {
+        guard let dir = store.manifest.proceduresDir else { return [] }
+        let found = candidates(proceduresDir: dir, bundleRoot: store.bundleRoot, overlayRoot: store.overlayRoot)
+        let chosen = resolve(found)
+        return chosen.compactMap { procedure in
+            found.filter { $0.procedure.id == procedure.id }
+                .sorted { lhs, rhs in lhs.fromOverlay != rhs.fromOverlay ? lhs.fromOverlay : lhs.file < rhs.file }
+                .first
+        }
     }
 
     /// One decoded procedure file, as `resolve` weighs it.
