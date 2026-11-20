@@ -41,19 +41,29 @@ struct DictationVocabulary: Equatable, Sendable {
         var wakePhrases: [String]
         /// The trades in force; each contributes its glossary, last.
         var trades: [FieldTrade]
+        /// A live-hints session's trigger words (Plan MO §8), typed by the wearer for the session.
+        /// First: they are the words the session most needs heard.
+        var keywords: [String]
+        /// The titles of the documents a live-hints session searches (Plan MO §8). Titles only:
+        /// never the names a document mentions, which are about people, not the work.
+        var documentTitles: [String]
 
         init(activeEquipment: EquipmentIdentity? = nil,
              jobEquipment: [KnownEquipment] = [],
              vanStock: [VanStockItem] = [],
              vaults: [VaultManifest] = [],
              wakePhrases: [String] = [],
-             trades: [FieldTrade] = []) {
+             trades: [FieldTrade] = [],
+             keywords: [String] = [],
+             documentTitles: [String] = []) {
             self.activeEquipment = activeEquipment
             self.jobEquipment = jobEquipment
             self.vanStock = vanStock
             self.vaults = vaults
             self.wakePhrases = wakePhrases
             self.trades = trades
+            self.keywords = keywords
+            self.documentTitles = documentTitles
         }
     }
 
@@ -64,11 +74,12 @@ struct DictationVocabulary: Equatable, Sendable {
         phrases = Self.build(input)
     }
 
-    /// Order: active equipment, job equipment, van stock, vault titles, wake phrases, glossary.
-    /// Trimmed, single characters and over-long entries dropped, de-duplicated case-insensitively
-    /// keeping the first spelling, then capped.
+    /// Order: a live-hints session's keywords, active equipment, job equipment, van stock, vault
+    /// titles, the session's document titles, wake phrases, glossary. Trimmed, single characters
+    /// and over-long entries dropped, de-duplicated case-insensitively keeping the first spelling,
+    /// then capped.
     static func build(_ input: Input) -> [String] {
-        var candidates: [String] = []
+        var candidates: [String] = input.keywords
 
         if let equipment = input.activeEquipment {
             if let stated = equipment.statedModel { candidates.append(stated) }
@@ -94,6 +105,8 @@ struct DictationVocabulary: Equatable, Sendable {
             candidates.append(vault.name)
             candidates += vault.documents.map(\.title)
         }
+
+        candidates += input.documentTitles
 
         candidates += input.wakePhrases
 

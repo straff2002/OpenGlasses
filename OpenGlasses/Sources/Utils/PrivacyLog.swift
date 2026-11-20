@@ -1402,6 +1402,8 @@ enum PrivacyLog {
         case memoryRewind, diarization, intentClassifier
         /// Dictation through a cloud recogniser the wearer chose (Plan JM P2).
         case cloudDictation
+        /// A live-hints session (Plan MO P1): timings and lengths only, never a question or a hint.
+        case liveHints
     }
 
     enum SpeechEvent: String {
@@ -1427,6 +1429,13 @@ enum PrivacyLog {
         /// the number of samples), and ran one recogniser on it (`detail` is the engine and how it
         /// ended, as tokens). Never a word of it.
         case utteranceKept, comparisonRan
+        /// Plan MO P1, live hints. `hintShown`: the first card for a question, `seconds` from its
+        /// final caption, `characters` the card's length, `detail` its source (passage, model,
+        /// key point). `hintReplaced`: the model's hint replaced the passage card. `hintSkipped`:
+        /// a caption or an answer that made no card, `detail` why. `hintSpoken`: the ear said one,
+        /// `characters` long. `limitWarned`: the long-session warning. `latencyReport`: at stop,
+        /// `count` hints with p50 and p95 in `detail`, as milliseconds.
+        case hintShown, hintReplaced, hintSkipped, hintSpoken, limitWarned, latencyReport
     }
 
     /// `language` is a BCP-47 tag — a property of the session, not of what was said — so it is

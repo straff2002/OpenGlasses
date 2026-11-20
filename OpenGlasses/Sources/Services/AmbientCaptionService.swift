@@ -123,6 +123,11 @@ class AmbientCaptionService: ObservableObject {
     /// Voice" says, so a reply is never transcribed as if a person had said it.
     weak var assistantVoiceGate: (any AssistantVoiceGating)?
 
+    /// Extra words for the on-device recogniser to listen for (Plan MO §8): a live-hints session's
+    /// keywords and its documents' titles, set for the session and restored at its stop. Read at
+    /// every recognition (re)start, so a change applies from the next request. Empty by default.
+    var sessionContextualStrings: [String] = []
+
     /// The id every caption path registers its mic consumer under.
     static let audioConsumerId = "ambient_captions"
 
@@ -279,6 +284,9 @@ class AmbientCaptionService: ObservableObject {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
+        if !sessionContextualStrings.isEmpty {
+            request.contextualStrings = sessionContextualStrings
+        }
         self.recognitionRequest = request
 
         // Hook into the shared audio engine's buffer stream (named consumer)
