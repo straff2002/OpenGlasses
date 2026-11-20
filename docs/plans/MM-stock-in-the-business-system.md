@@ -15,7 +15,11 @@ fixtures; 57 new tests. Simpro is not built (no public reference). Square's live
 is owed. **P2 built 2026-11-20 (headless): the common connection** (Settings › Field Assist › Stock
 system, the device-only Keychain item, the pinned-host transport and `squareStockAPI` route, the
 snapshot store and the pull triggers, the office-route erase, the profile keys); device checks owed.
-P3–P4 not built; P5 owed. Quantities are Plan [ML](ML-measured-quantities.md)'s.
+**P3 built 2026-11-20 (headless): `van_stock` answers from the system** (who holds the count in the
+service and the tool, the §5 table, the description per authority, check-now within 3 seconds,
+uses staged per job or premises day, the Stock screen's read-only figures and the previous list);
+a day of spoken checks against a real account owed. P4 not built; P5 owed. Quantities are Plan
+[ML](ML-measured-quantities.md)'s.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own movement log, the `van_stock` tool, the Stock screen,
@@ -455,8 +459,48 @@ Stock screen strings (separate PR).
 the per-action table in §5; the computed description per authority; the Stock screen showing the
 system's figures read-only with *"From Square at 9:10"* and the previous list kept; check-now with
 its budget.
+✅ **Built 2026-11-20** (headless; 49 new tests). As built, all of it common, reading the system's
+name, capabilities and reasons from the adapter: `VanStockService` asks `StockSystemService.authority`
+(`StockAuthority.resolve` over the office route and the running connection) before every action, and
+while a system holds the count hands the action to `StockSystemVanStock`, which answers from the
+snapshot through `StockSystemJoin` (a number joined across the book, supersession both ways; words
+matched against the system's descriptions with IH's matcher) and `StockSystemAnswerComposer` (new:
+`low`, `list`, no figures yet, the notes and their undo). **The phone's list is kept where it is**,
+not moved aside: every write to it (spoken, typed on the screen, a workbook import or takeover, a
+baseline, an order noted from a parts request) is refused while the system holds the count, so it is
+the previous list read-only, and removing the connection gives it back unchanged; IH P5's archive is
+for a takeover and was not reused. A `use`, or a `remove` with `damaged` when the system keeps
+damage or waste, is staged in `StagedStockUseStore` (`SensitiveStore.stagedStockUse`: one file
+beside the delivery queue, first-unlock, out of backup, kept when a snapshot is retired, cleared on
+leaving the organisation) with its scope (`job:<session>`, or at premises with no job `day:<date>`),
+the system's location, the item, quantity, unit, verification, source, the write-off reason and the
+call; a vehicle with no job open is refused. A quantity the item cannot take is refused before it is
+staged (`StockSystemQuantityConversion.outgoing` with the item's `decimalPlaces`), and so is a unit
+other than the item's. The same use said twice within ten seconds is noted once; `undo` takes back
+the last call's notes. No phone movement is written and no `VanStockUse` reaches the job, so the work
+record is unchanged. The tool's description and schema are computed per authority: under a system
+they offer `check`, `list`, `low`, `use`, `remove` (damaged), `undo` and the two job actions, say
+receiving, stocktakes, par levels and reordering are done in the system, and never offer a sale;
+`load`, `count`, `set_standard` and `top_up` are refused before any figure is read, `send_to_base`
+says the system already has it, and `sell`/`sale`/`sold` get the till's sentence. **Check-now**: a
+new pure adapter operation, `linesPlan(itemIDs:locationIDs:)` (Square: the same counts
+batch-retrieve with `catalog_object_ids`, at most 100, so the five endpoints are unchanged), and
+`pullLines` on the connector (a fallback whole pull for one without it); `StockSystemService.checkNow`
+asks only when the figures for the asked lines are over ten minutes old, there is signal
+(`Reachability`) and Medical Local Only does not hold the route, races the read against the
+3-second budget (injected), merges a reply in time into the store (only those lines' levels and
+`lineAsOf`; an older reading never wins, a missing figure keeps the reason it had), and lets a late
+reply refresh the store without being waited for. The Stock screen, while a system holds the count,
+shows "From <system> at 09:10", the figures read-only (unknowns with the reason, never 0; stale
+said plainly), what is noted for the open job or today, and the phone's list as "Previous list",
+collapsed; pull-to-refresh and the open-screen pull stay; only Name and place remains in the menu.
+Decided in the build: a premises day's note says "used today", never "sold or used"; a removal for
+returned, lent or other is refused (only a write-off is the system's to record); the work record's
+new fields wait for P4, and so does the close-of-job question over staged lines (`unrecorded` still
+reads the job's phone uses).
 *Owed (device):* a day of spoken checks against a real account, including the stale and unknown
-cases.
+cases, and the Stock screen's read-only figures and previous list on a phone. *Owed (build):* a
+catalog sync of the new Stock screen strings (separate PR).
 
 **P4 — Parts used, out per job.** Staging, the close-of-job confirmation by voice and on screen,
 the premises day list, `PartsUsedWritePlan` through the connector's sink, read-back reconcile, the

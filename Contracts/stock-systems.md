@@ -6,7 +6,8 @@ system's figures into a snapshot and sends back the parts used on a job, once a 
 confirmed them. This contract lists what a phone-side connector may write, so that an
 office-side connector, or anyone reading the system's audit trail, can recognise what a phone wrote.
 The first adapter is Square's (below); since Plan MM P2 a phone can connect to it from Settings and
-read its stock, and nothing is written yet. The synthetic fixtures are in
+read its stock, and since P3 `van_stock` answers from it and notes parts used on the phone (staged,
+not sent); nothing is written to the system yet. The synthetic fixtures are in
 [`fixtures/stock-systems/`](fixtures/stock-systems/) (one system with jobs, one without,
 vendor-neutral) and [`fixtures/square-v2/`](fixtures/square-v2/) (Square's response shapes).
 
@@ -73,7 +74,7 @@ in [`fixtures/square-v2/README.md`](fixtures/square-v2/README.md).
 |---|---|---|
 | `GET /v2/locations` | `MERCHANT_PROFILE_READ` | "Which stock is here?" (active locations), and naming the chosen ones in a pull |
 | `POST /v2/catalog/search` | `ITEMS_READ` | `ITEM_VARIATION` and `MEASUREMENT_UNIT` objects with related objects (the parent `ITEM`), paged |
-| `POST /v2/inventory/counts/batch-retrieve` | `INVENTORY_READ` | The chosen locations' `IN_STOCK` counts, paged |
+| `POST /v2/inventory/counts/batch-retrieve` | `INVENTORY_READ` | The chosen locations' `IN_STOCK` counts, paged; and a check's few lines: the same read with `catalog_object_ids` (at most 100), paged |
 | `POST /v2/inventory/changes/batch-retrieve` | `INVENTORY_READ` | The read-back: `ADJUSTMENT`s at the location, for at most 500 items at a time, since five minutes before the batch was queued, paged |
 | `POST /v2/inventory/changes/batch-create` | `INVENTORY_WRITE` | The one write |
 
@@ -112,15 +113,24 @@ conforming to `StockSystemAdapter`. It supplies five things, and only these:
 5. **Read-back**: recognising its own writes, by the step's key, and saying when one under the
    key is not the step.
 
+Among its reads is **a check's few lines** (`linesPlan(itemIDs:locationIDs:)`, Plan MM P3): the
+current figures for just the asked-about items at the chosen locations, on its stock endpoint, as
+the system's own decimal text by item and location. A `check` asks for it when the snapshot's
+figures for those items are older than ten minutes and there is signal, and waits at most three
+seconds; the common layer merges the reply into the stored snapshot (only those lines' figures and
+their `lineAsOf`; the snapshot's `asOf` stays the pull's), and a reply after the budget only
+refreshes the store. A connector without one falls back to a whole pull.
+
 It gets from the common layer, which names no vendor: the request value and its allowed-list check,
 the driver that runs a plan, the failure categories with their sentences (which stop retrying and
 which back off), the snapshot and its builder, the conversion into the phone's quantities, the join,
 the answer sentences, the parts-used write plan and its idempotency keys, the batch key rule and the
 write-time rule, and (since P2) the connection in Settings › Field Assist › Stock system with its
 device-only Keychain item, the pinned-host transport, the connector that drives any adapter, the
-snapshot store and the pull triggers. Still to be built by the common layer, once, for every
-system: `van_stock` answering from the system, the staging and the person's confirmation, and the
-queued sink with its read-back before retry.
+snapshot store and the pull triggers, and (since P3) `van_stock` answering from the system with
+the check-now merge, and the parts noted on the phone per job or premises day. Still to be built
+by the common layer, once, for every system: the person's confirmation, and the queued sink with
+its read-back before retry.
 
 Beside its folder, a new system needs only: one `NetworkRoute` case (its purpose, `credential` and
 `promptText`, blocked under Medical Local Only, owned by `URLSessionStockSystemTransport`), one entry
@@ -141,4 +151,18 @@ HTTPS, for an endpoint on the adapter's list, with the key added as a bearer hea
 transport alone; redirects are refused and the reply is capped at the adapter's size. The last good
 snapshot per system is kept outside vault content and out of backup, and a new one replaces it
 only once written. Test connection reads only.
+
+## Parts noted, not yet sent (Plan MM P3)
+
+While a system holds the place's count, a `use` (or a `remove` for a reason the system keeps) is
+noted on the phone as a staged line and nothing is written anywhere: the system's figure does not
+change, and the phone's own list is kept read-only as the previous list. Each staged line carries
+its scope (`job:<session id>`, or at premises with no job open `day:<yyyy-MM-dd>` in the phone's
+calendar), the job's number, the connector, the system's location it came from, the staged use
+(its id, the system's `itemID`, `part`, `description`, quantity in thousandths and `unit`,
+verification against the book, `source`), the write-off reason where there is one, when it was
+noted and the call that noted it. A quantity the item cannot take is refused before it is noted, by
+the same rules as `not_sent` above. One file on the phone, out of backup; kept when a snapshot is
+retired and cleared when the phone leaves its organisation. Confirming and sending them is P4's.
+
 
