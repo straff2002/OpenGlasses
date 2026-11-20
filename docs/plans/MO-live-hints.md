@@ -1,7 +1,11 @@
 # Plan MO — Live Hints (when someone asks you a question, a short answer from your own documents, on the lens or in your ear)
 
-**Status:** 📝 Drafted 2026-11-20. Nothing is implemented. Decisions 1–10 have recommendations
-(§12); P0 starts on them as recommended unless the owner says otherwise.
+**Status:** 🚧 P0 built 2026-11-20 (headless): the pure core (`HintTrigger` with `HintQueue`,
+`KeywordMatcher`, `HintReply`, `HintPromptBuilder`, `PassageHint`, `HintSpeechPolicy`, constants
+in `HintLimits`) and the caption voice gate (`CaptionAudioGate` on all four caption consumers,
+wired from the capture router). Nothing a wearer can start yet. Remaining: P1 (the session and
+delivery), P2 (the surfaces) and the P3 device pass. Decisions 1–10 have recommendations; P0 was
+built on them as recommended.
 **Track:** Everyday assistant: conversations. Captions, documents, the lens, speech output.
 **Origin:** The owner, 2026-11-20, after surveying adjacent live-assistant products: a session that
 listens to a conversation and, when someone asks the wearer a question, puts a short answer from
