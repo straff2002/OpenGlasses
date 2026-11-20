@@ -335,6 +335,9 @@ struct OpenGlassesApp: App {
                 if UITestSupport.isSet(.vaultAuthoring) {
                     UITestVaultAuthoring()
                         .environmentObject(appState)
+                } else if UITestSupport.isSet(.procedureRules) {
+                    UITestProcedureRules()
+                        .environmentObject(appState)
                 } else {
                     RootView()
                         .environmentObject(appState)
