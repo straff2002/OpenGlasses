@@ -641,8 +641,10 @@ struct VaultManagerView: View {
                 warnings = report.warnings
                 reloadLedgers()
                 // Which procedures run with no assistant (Plan MN §6), beside the install itself.
-                successMessage = String(localized: "Installed \(report.manifest.name).")
-                    + (report.procedureSummary.map { " " + $0 + "." } ?? "")
+                successMessage = report.procedureSummary.map {
+                    String(localized: "Installed \(report.manifest.name). \($0).",
+                           comment: "After a vault import: its name, then which of its procedures run with no assistant")
+                } ?? String(localized: "Installed \(report.manifest.name).")
                 // Team learnings already approved for this vault come back into its namespace, and
                 // any the folder carries are staged — never applied — for acceptance (Plan FP P3).
                 LearningReviewService.shared.republish()

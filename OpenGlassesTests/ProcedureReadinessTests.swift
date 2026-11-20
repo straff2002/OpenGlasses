@@ -57,4 +57,24 @@ final class ProcedureReadinessTests: XCTestCase {
                        "1 procedure, none run with no assistant; Line changeover step 4 chooses its route from words")
         XCTAssertNil(ProcedureReadiness.importSummary([]))
     }
+
+    /// The screens show `localized`, the tests and `of(_:)` read `english`; in English they are
+    /// the same words, so a reworded reason can't drift between the two.
+    func testEachReasonShowsTheSameWordsInEnglish() {
+        for reason in [ProcedureReadiness.Reason.choosesFromWords, .asksInWords, .unknownAnswerKind] {
+            XCTAssertEqual(reason.localized, reason.english)
+        }
+        XCTAssertEqual(ProcedureReadiness.choosesFromWords, "chooses its route from words")
+    }
+
+    func testTheImportSummaryNamesNoMoreThanThreeAndCountsTheRest() {
+        let words = Procedure(id: "w", title: "Words", version: "1", steps: [
+            .init(id: "a", title: "A", instruction: "Look.", branches: [
+                .init(id: "x", condition: "looks clean", next: "b"), .init(id: "y", condition: "looks dirty", next: "b")]),
+            .init(id: "b", title: "B", instruction: "Done.", terminal: true),
+        ])
+        XCTAssertEqual(ProcedureReadiness.importSummary(Array(repeating: words, count: 5)),
+                       "5 procedures, none run with no assistant; Words step 1 chooses its route from words; "
+                       + "Words step 1 chooses its route from words; Words step 1 chooses its route from words; and 2 more")
+    }
 }

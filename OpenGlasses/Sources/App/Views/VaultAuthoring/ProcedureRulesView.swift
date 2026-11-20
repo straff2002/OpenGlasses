@@ -109,7 +109,7 @@ private struct ReadinessSection: View {
                 OGStatusLabel("Needs an assistant", kind: .warn)
                     .accessibilityIdentifier("procedureRules.readiness")
                 ForEach(blockers, id: \.stepId) { blocker in
-                    Text("Step \(blocker.stepNumber) \(blocker.reason)")
+                    Text("Step \(blocker.stepNumber) \(blocker.kind.localized)")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

@@ -629,7 +629,8 @@ enum SessionExporter {
 
     /// The "Procedure record" block (Plan MN §5): per run, one row per step. Photos are drawn as
     /// thumbnails only when the evidence review sent them with the report; otherwise the row names
-    /// them, as the photo section does.
+    /// them, as the photo section does. In English like every other heading and line of the work
+    /// order: the customer's and the office's document, in one language, wherever the phone is set.
     private static func drawProcedureRecords(_ records: [SessionExport.ProcedureRecord], document: SessionExport,
                                              photosDirectory: URL?, layout: PDFLayout) {
         layout.section("Procedure record")

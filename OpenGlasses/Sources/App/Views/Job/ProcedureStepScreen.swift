@@ -631,7 +631,7 @@ private struct NumberPad: View {
                 GridRow { key("7"); key("8"); key("9") }
                 GridRow {
                     if allowsNegative {
-                        keyButton("±", spoken: String(localized: "Plus or minus")) { toggleSign() }
+                        keyButton("±", spoken: String(localized: "Change sign", comment: "Number pad key that makes the reading negative or positive")) { toggleSign() }
                     } else {
                         keyButton(separator, spoken: String(localized: "Decimal point")) { addSeparator() }
                     }
