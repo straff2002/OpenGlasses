@@ -31,8 +31,8 @@ Plan [IM](IM-experience-recordings.md) (experience recordings), Plan
 For talk-through (§7a): Plan [JX](JX-journeyman-engine.md) §4 (procedure state from evidence),
 Plan [JL](JL-procedure-deviations-and-learning-round-trip.md) (deviation phrases), Plan
 [MI](MI-steps-you-can-see.md) (step figures), Plan [GE](GE-automatic-offline-handoff.md) (the
-offline handoff), the [teleprompter](teleprompter.md) (`ScriptAligner`), and Plan MO (live hints,
-drafted on its own branch), which shares the hint card and the ear policy.
+offline handoff), the [teleprompter](teleprompter.md) (`ScriptAligner`), and Plan [MO](MO-live-hints.md) (live
+hints), which shares the hint card and the ear policy.
 **Origin:** The owner, 2026-10-19, after drafting JG: everything else that helps an apprentice,
 nine features, "add those in". On calling a journeyman: "all of them won't use glasses yet so it
 would only be voice call, or FaceTime". Glasses are not the primary device. Every feature here works
@@ -542,7 +542,7 @@ an unfamiliar unit too, so the switch stays available to every role.
 - `LocalLLMService` for an answer written on the phone. It runs only in the foreground: the GPU is
   off-limits to a backgrounded app, and a locked phone in a pocket is the normal case on a job.
 
-**Shared with Plan MO (live hints, drafted on its own branch).** The hint card on the lens, the
+**Shared with Plan [MO](MO-live-hints.md) (live hints).** The hint card on the lens, the
 "speak when quiet" ear policy, the voice gate that keeps the app's own speech out of the captions,
 and the free-question path are the same pieces. Whichever plan is built first builds them; the other
 reuses them. If this slice goes first, those pieces are built here and MO points at them.
