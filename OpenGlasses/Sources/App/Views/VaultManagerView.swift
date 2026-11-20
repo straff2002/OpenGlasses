@@ -640,7 +640,9 @@ struct VaultManagerView: View {
                 VaultRegistry.shared.reloadUserManifests()
                 warnings = report.warnings
                 reloadLedgers()
+                // Which procedures run with no assistant (Plan MN §6), beside the install itself.
                 successMessage = String(localized: "Installed \(report.manifest.name).")
+                    + (report.procedureSummary.map { " " + $0 + "." } ?? "")
                 // Team learnings already approved for this vault come back into its namespace, and
                 // any the folder carries are staged — never applied — for acceptance (Plan FP P3).
                 LearningReviewService.shared.republish()

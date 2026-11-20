@@ -1115,6 +1115,7 @@ extension SettingKey {
         case .organizationRequiresBlurBeforeOfficeSync: return String(localized: "Faces must be blurred before a job recording goes to the office")
         case .organizationForbidsRecordingSyncOnCellular: return String(localized: "Job recordings are never sent over mobile data")
         case .organizationRequiresTableChecks: return String(localized: "A table read from a picture gives no value until it is checked")
+        case .organizationRunsProceduresWithoutAssistant: return String(localized: "Procedures run without the assistant")
         case .privacyFilterEnabled: return String(localized: "Bystander face blur is always on")
         case .remoteInvokeObserveEnabled: return String(localized: "Remote status requests are off")
         case .remoteInvokeOutputEnabled: return String(localized: "Remote speak-and-display requests are off")
