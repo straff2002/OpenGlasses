@@ -1,0 +1,117 @@
+{
+  "capabilities": {
+    "adjustmentNote": true,
+    "adjustmentReasons": [
+      "internal_use",
+      "waste"
+    ],
+    "chosenReason": "internal_use",
+    "hasJobs": true,
+    "wholeNumbersOnly": false
+  },
+  "locations": [
+    {
+      "class": "base",
+      "id": "LOC-1",
+      "name": "Workshop Bay"
+    },
+    {
+      "class": "van",
+      "id": "LOC-2",
+      "name": "Service Vehicle 2"
+    }
+  ],
+  "pricesEnabled": false,
+  "pulledAt": "2026-11-20T09:10:00Z",
+  "rows": [
+    {
+      "currency": "NZD",
+      "description": "Capacitor 45/5",
+      "itemID": "ITM-1001",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "quantity": "3"
+        },
+        {
+          "location": "LOC-2",
+          "quantity": "1"
+        }
+      ],
+      "part": "ZX-1001",
+      "price": "12.50",
+      "reorderPoint": "2",
+      "unit": "ea"
+    },
+    {
+      "description": "Coolant",
+      "itemID": "ITM-1002",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "quantity": "4.25"
+        },
+        {
+          "location": "LOC-9",
+          "quantity": "8"
+        }
+      ],
+      "part": "ZX-1002",
+      "unit": "litre"
+    },
+    {
+      "description": "Brake fluid",
+      "itemID": "ITM-1003",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "quantity": "1.23456"
+        }
+      ],
+      "part": "ZX-1003",
+      "unit": "Litre"
+    },
+    {
+      "description": "Fastener tin",
+      "itemID": "ITM-1004",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "quantity": "7"
+        }
+      ],
+      "part": "ZX-1004",
+      "unit": "tin"
+    },
+    {
+      "description": "Oil filter",
+      "itemID": "ITM-1005",
+      "levels": [
+        {
+          "location": "LOC-1",
+          "quantity": null
+        }
+      ],
+      "part": "ZX-1005",
+      "unit": "ea"
+    },
+    {
+      "description": "A row with no item id",
+      "itemID": "",
+      "levels": [],
+      "part": "ZX-1006",
+      "unit": "ea"
+    }
+  ],
+  "source": {
+    "account": "Sample Garage",
+    "connector": "fixture-workshop",
+    "name": "Fixture Workshop"
+  },
+  "unitMap": {
+    "ea": "each",
+    "litre": "l",
+    "metre": "m",
+    "unit": "each"
+  }
+}
