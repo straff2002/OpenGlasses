@@ -144,4 +144,39 @@ final class StockSystemSnapshotTests: XCTestCase {
         XCTAssertThrowsError(try JSONDecoder().decode(StockSystemSnapshot.self,
                                                       from: JSONSerialization.data(withJSONObject: object)))
     }
+
+    // MARK: - Plan MM P1: the item's decimal places
+
+    func testDecimalPlacesRoundTripAndAnythingOutOfRangeIsDropped() throws {
+        let rows = [
+            StockSystemRawRow(itemID: "1", part: "ZX-1", description: "Coolant", unit: "litre",
+                              levels: [.init(location: "L1", quantity: "4.5")], decimalPlaces: 1),
+            StockSystemRawRow(itemID: "2", part: "ZX-2", description: "Wire", unit: "m",
+                              levels: [.init(location: "L1", quantity: "4")], decimalPlaces: 12),
+            StockSystemRawRow(itemID: "3", part: "ZX-3", description: "Cap", unit: "ea",
+                              levels: [.init(location: "L1", quantity: "4")]),
+        ]
+        let snapshot = S.snapshot(rows)
+        XCTAssertEqual(snapshot.lines.map(\.decimalPlaces), [1, nil, nil], "a value no system means is dropped")
+        let data = try S.encodeSorted(snapshot)
+        let lines = try XCTUnwrap(try S.object(data)["lines"] as? [[String: Any]])
+        XCTAssertEqual(lines[0]["decimalPlaces"] as? Int, 1)
+        XCTAssertNil(lines[1]["decimalPlaces"], "absent is no extra limit")
+        XCTAssertEqual(try JSONDecoder().decode(StockSystemSnapshot.self, from: data), snapshot)
+
+        // On decode, out of range or not a number is dropped and the line kept.
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var stored = try XCTUnwrap(object["lines"] as? [[String: Any]])
+        stored[0]["decimalPlaces"] = -1
+        stored[1]["decimalPlaces"] = "2"
+        stored[2]["decimalPlaces"] = 10
+        object["lines"] = stored
+        let decoded = try JSONDecoder().decode(StockSystemSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(decoded.lines.map(\.decimalPlaces), [nil, nil, nil])
+        XCTAssertEqual(decoded.droppedLineCount, 0)
+        stored[0]["decimalPlaces"] = 0
+        object["lines"] = stored
+        XCTAssertEqual(try JSONDecoder().decode(StockSystemSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
+            .lines.first?.decimalPlaces, 0)
+    }
 }

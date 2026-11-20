@@ -194,6 +194,7 @@ struct PartsUsedWritePlan: Codable, Equatable, Sendable {
             case .quantity(.unitNotKept): return "unit_not_kept"
             case .quantity(.fractional): return "fractional"
             case .quantity(.outOfRange): return "out_of_range"
+            case .quantity(.tooManyDecimals): return "too_many_decimals"
             case .noReason: return "no_reason"
             }
         }
@@ -263,12 +264,14 @@ struct PartsUsedWritePlan: Codable, Equatable, Sendable {
             }
             let quantity: String
             switch StockSystemQuantityConversion.outgoing(use.quantity, unit: use.unit, itemUnit: line.unit,
-                                                          wholeNumbersOnly: capabilities.wholeNumbersOnly) {
+                                                          wholeNumbersOnly: capabilities.wholeNumbersOnly,
+                                                          decimalPlaces: line.decimalPlaces) {
             case .success(let text):
                 quantity = text
             case .failure(let refusal):
                 entries.append(notSent(.quantity(refusal), "\(use.name): "
-                    + refusal.sentence(system: system, quantity: use.quantity, unit: use.unit)))
+                    + refusal.sentence(system: system, quantity: use.quantity, unit: use.unit,
+                                       decimalPlaces: line.decimalPlaces)))
                 continue
             }
             switch route {
@@ -306,9 +309,18 @@ struct PartsUsedWritePlan: Codable, Equatable, Sendable {
     }
 
     /// The steps still to send after a read-back: every step whose key the system did not show as
-    /// applied. A retry sends only these, never the whole plan again.
+    /// applied. A retry sends only these, never the whole plan again. A step whose key the system
+    /// shows on a different write is not sent either (`needsAttention(after:)`).
     func remaining(after readBack: StockSystemReadBack) -> [Step] {
-        steps.filter { readBack.applied.contains($0.idempotencyKey) == false }
+        let attention = readBack.needsAttention
+        return steps.filter { !readBack.applied.contains($0.idempotencyKey) && !attention.contains($0.idempotencyKey) }
+    }
+
+    /// The steps a read-back found under their keys on a write that is not theirs: neither trusted
+    /// as applied nor sent again, until a person looks.
+    func needsAttention(after readBack: StockSystemReadBack) -> [Step] {
+        let attention = readBack.needsAttention
+        return steps.filter { attention.contains($0.idempotencyKey) && !readBack.applied.contains($0.idempotencyKey) }
     }
 
     // MARK: - Codable
@@ -377,6 +389,7 @@ private extension PartsUsedWritePlan.NotSentReason {
         case "unit_not_kept": self = .quantity(.unitNotKept)
         case "fractional": self = .quantity(.fractional)
         case "out_of_range": self = .quantity(.outOfRange)
+        case "too_many_decimals": self = .quantity(.tooManyDecimals)
         case "no_reason": self = .noReason
         default: return nil
         }

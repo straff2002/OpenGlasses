@@ -4,16 +4,41 @@ import Foundation
 /// system shows as already applied, from the job's part lines or the adjustments since the batch
 /// was queued. A retry sends only what is not here (`PartsUsedWritePlan.remaining(after:)`).
 struct StockSystemReadBack: Equatable, Sendable {
-    let applied: Set<String>
 
-    init(applied: Set<String>) {
-        self.applied = applied
+    /// A write the system shows under one of the plan's keys that is not the write the plan holds
+    /// (Plan MM P1). It is neither trusted as applied nor sent again: a person looks at it.
+    struct Mismatch: Equatable, Sendable {
+        enum Difference: String, Equatable, Sendable {
+            /// Another item.
+            case item
+            /// Another location.
+            case location
+            /// Another amount.
+            case quantity
+            /// Another kind of movement (another state, another kind of change).
+            case movement
+            /// The key shows more than once.
+            case duplicate
+        }
+        let idempotencyKey: String
+        let difference: Difference
     }
+
+    let applied: Set<String>
+    let mismatched: [Mismatch]
+
+    init(applied: Set<String>, mismatched: [Mismatch] = []) {
+        self.applied = applied
+        self.mismatched = mismatched
+    }
+
+    /// The keys a person has to look at.
+    var needsAttention: Set<String> { Set(mismatched.map(\.idempotencyKey)) }
 }
 
-/// The seam every stock connector sits behind (Plan MM P0). One per system; each is plain HTTPS
-/// through its own transport (Plan MM §7), and none exists yet: P1 builds the first. Tests use a
-/// fake.
+/// The seam every stock connector sits behind (Plan MM P0). Each system is plain HTTPS through the
+/// common transport (Plan MM §7, P2), driving that system's `StockSystemAdapter` (P1) with
+/// `StockSystemPlanDriver`. Tests use a fake.
 ///
 /// A connector reads stock and locations, and writes only what a `PartsUsedWritePlan` holds: part
 /// lines on a job, or adjustments with a reason (`Contracts/stock-systems.md`). It reads back

@@ -125,9 +125,13 @@ enum StockSystemOutRefusal: Error, Equatable, Sendable {
     case fractional
     /// Nothing, or more than the phone keeps.
     case outOfRange
+    /// More decimal places than the system keeps for that item (`StockSystemSnapshot.Line
+    /// .decimalPlaces`). Never rounded to fit.
+    case tooManyDecimals
 
-    /// "Fixture Till keeps whole numbers only, so 0.5 litres can't be sent."
-    func sentence(system: String, quantity: StockQuantity, unit: VanStockUnit) -> String {
+    /// "Fixture Till keeps whole numbers only, so 0.5 litres can't be sent." `decimalPlaces` is the
+    /// item's limit, for `tooManyDecimals`.
+    func sentence(system: String, quantity: StockQuantity, unit: VanStockUnit, decimalPlaces: Int? = nil) -> String {
         let amount = unit.spoken(quantity)
         switch self {
         case .unitNotKept:
@@ -136,6 +140,13 @@ enum StockSystemOutRefusal: Error, Equatable, Sendable {
             return "\(system) keeps whole numbers only, so \(amount) can't be sent."
         case .outOfRange:
             return "\(amount) is not an amount that can be sent."
+        case .tooManyDecimals:
+            switch decimalPlaces {
+            case 0?: return "\(system) keeps that item in whole numbers, so \(amount) can't be sent."
+            case 1?: return "\(system) keeps that item to 1 decimal place, so \(amount) can't be sent."
+            case let places?: return "\(system) keeps that item to \(places) decimal places, so \(amount) can't be sent."
+            case nil: return "\(system) keeps that item to fewer decimal places, so \(amount) can't be sent."
+            }
         }
     }
 }
@@ -168,13 +179,32 @@ enum StockSystemQuantityConversion {
 
     /// Out: a staged quantity as the decimal text the system is sent (`StockQuantity.decimalString`).
     /// Refused when the system keeps the item in another unit (or its unit could not be mapped),
-    /// when the system keeps whole numbers only and the quantity is part of one, and when it is
-    /// zero or out of range.
+    /// when the system keeps whole numbers only and the quantity is part of one, when it is zero or
+    /// out of range, and when it has more decimal places than the system keeps for the item
+    /// (`decimalPlaces`, when the system says; three or more is no limit beyond the phone's own).
+    /// Never rounded to fit.
     static func outgoing(_ quantity: StockQuantity, unit: VanStockUnit, itemUnit: VanStockUnit?,
-                         wholeNumbersOnly: Bool) -> Result<String, StockSystemOutRefusal> {
+                         wholeNumbersOnly: Bool, decimalPlaces: Int? = nil) -> Result<String, StockSystemOutRefusal> {
         guard let itemUnit, itemUnit == unit else { return .failure(.unitNotKept) }
         guard quantity > .zero, quantity.fits(unit) else { return .failure(.outOfRange) }
         if wholeNumbersOnly, !quantity.isWhole { return .failure(.fractional) }
+        if let places = decimalPlaces, places < StockQuantity.scale, quantity.decimalPlaces > max(places, 0) {
+            return .failure(.tooManyDecimals)
+        }
         return .success(quantity.decimalString)
+    }
+}
+
+extension StockQuantity {
+    /// How many decimal places the amount needs: 0 for a whole number, up to `scale`.
+    var decimalPlaces: Int {
+        var rest = scaled % StockQuantity.perUnit
+        guard rest != 0 else { return 0 }
+        var places = StockQuantity.scale
+        while rest % 10 == 0 {
+            rest /= 10
+            places -= 1
+        }
+        return places
     }
 }

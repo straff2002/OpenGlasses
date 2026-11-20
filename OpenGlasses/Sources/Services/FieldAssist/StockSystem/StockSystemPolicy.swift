@@ -2,7 +2,8 @@ import Foundation
 
 /// The choices Plan MM leaves to the owner, each taken at the plan's recommendation and kept here
 /// so that changing one is a one-line edit (Plan MM, "Decisions for Greig"). Decision 1 (which
-/// system comes first) is not taken: nothing in this folder names a vendor.
+/// system comes first) is taken, and its adapter lives in a subfolder of its own: nothing directly
+/// in this folder names a vendor (`StockSystemAdapterSeamTests`).
 ///
 /// Where a decision is enforced by the shape of a type rather than by a value, the comment says
 /// which type, so the place to change it is still one obvious place.
@@ -57,6 +58,11 @@ enum StockSystemPolicy {
 
     /// The most lines a snapshot holds (HF's cap).
     static let lineCap = 20_000
+
+    /// The decimal places a system may say it keeps for an item. A value outside this is not one a
+    /// system means, and is dropped rather than trusted; three or more is no limit beyond the
+    /// phone's own scale.
+    static let decimalPlacesRange = 0...9
 
     /// Text is cut to these lengths; an identifier longer than its cap makes the row unreadable
     /// instead, because a cut identifier could name another item.

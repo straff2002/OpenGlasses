@@ -1,0 +1,206 @@
+{
+  "cursor": "CUR-CATALOG-PAGE-2",
+  "objects": [
+    {
+      "id": "MU-LITRE-2",
+      "is_deleted": false,
+      "measurement_unit_data": {
+        "measurement_unit": {
+          "type": "TYPE_VOLUME",
+          "volume_unit": "METRIC_LITER"
+        },
+        "precision": 2
+      },
+      "present_at_all_locations": true,
+      "type": "MEASUREMENT_UNIT",
+      "version": 1
+    },
+    {
+      "id": "MU-KG-5",
+      "is_deleted": false,
+      "measurement_unit_data": {
+        "measurement_unit": {
+          "type": "TYPE_WEIGHT",
+          "weight_unit": "METRIC_KILOGRAM"
+        },
+        "precision": 5
+      },
+      "present_at_all_locations": true,
+      "type": "MEASUREMENT_UNIT",
+      "version": 1
+    },
+    {
+      "id": "MU-TIN",
+      "is_deleted": false,
+      "measurement_unit_data": {
+        "measurement_unit": {
+          "custom_unit": {
+            "abbreviation": "tn",
+            "name": "Tin"
+          },
+          "type": "TYPE_CUSTOM"
+        },
+        "precision": 0
+      },
+      "present_at_all_locations": true,
+      "type": "MEASUREMENT_UNIT",
+      "version": 1
+    },
+    {
+      "fixture_member_this_build_does_not_know": {
+        "nested": [
+          1,
+          2,
+          3
+        ]
+      },
+      "id": "VAR-CAP-455",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-CAP",
+        "location_overrides": [
+          {
+            "inventory_alert_threshold": 2,
+            "inventory_alert_type": "LOW_QUANTITY",
+            "location_id": "LOC-FIX-MAIN",
+            "track_inventory": true
+          },
+          {
+            "inventory_alert_threshold": 2,
+            "inventory_alert_type": "LOW_QUANTITY",
+            "location_id": "LOC-FIX-VAN"
+          }
+        ],
+        "name": "Regular",
+        "ordinal": 1,
+        "price_money": {
+          "amount": 1850,
+          "currency": "AUD"
+        },
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "ZX-455",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-COOL-5L",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-COOL",
+        "measurement_unit_id": "MU-LITRE-2",
+        "name": "Bulk",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "CL-50",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-WELD",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-WELD",
+        "measurement_unit_id": "MU-KG-5",
+        "name": "0.9 mm",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "WW-09",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-POSTER",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-POSTER",
+        "name": "Regular",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "PO-1",
+        "stockable": true,
+        "track_inventory": false
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-BAD",
+      "is_deleted": false,
+      "type": "ITEM_VARIATION"
+    },
+    {
+      "is_deleted": false,
+      "item_variation_data": {
+        "name": "No id"
+      },
+      "type": "ITEM_VARIATION"
+    }
+  ],
+  "related_objects": [
+    {
+      "id": "ITEM-CAP",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Run capacitor 45/5",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-COOL",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Coolant concentrate",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-WELD",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Welding wire",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-POSTER",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Window poster",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "category": "API_ERROR",
+      "code": "INTERNAL_SERVER_ERROR",
+      "detail": "Fixture text that must never be repeated."
+    }
+  ]
+}

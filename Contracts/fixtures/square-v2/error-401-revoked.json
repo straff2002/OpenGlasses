@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "category": "AUTHENTICATION_ERROR",
+      "code": "ACCESS_TOKEN_REVOKED",
+      "detail": "Fixture text that must never be repeated."
+    }
+  ]
+}

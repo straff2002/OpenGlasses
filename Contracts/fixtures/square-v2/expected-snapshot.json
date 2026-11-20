@@ -1,0 +1,161 @@
+{
+  "asOf": 1795168800,
+  "lines": [
+    {
+      "decimalPlaces": 0,
+      "description": "Run capacitor 45/5",
+      "itemID": "VAR-CAP-455",
+      "levels": [
+        {
+          "location": "LOC-FIX-MAIN",
+          "onHandScaled": 3000
+        },
+        {
+          "location": "LOC-FIX-VAN",
+          "onHandScaled": 1000
+        }
+      ],
+      "part": "ZX-455",
+      "provenance": "system",
+      "reorderPointScaled": 2000,
+      "systemUnit": "each",
+      "unit": "each"
+    },
+    {
+      "decimalPlaces": 2,
+      "description": "Coolant concentrate, Bulk",
+      "itemID": "VAR-COOL-5L",
+      "levels": [
+        {
+          "location": "LOC-FIX-MAIN",
+          "onHandScaled": 12500
+        },
+        {
+          "known": false,
+          "location": "LOC-FIX-VAN",
+          "reason": "no_count"
+        }
+      ],
+      "part": "CL-50",
+      "provenance": "system",
+      "systemUnit": "l",
+      "unit": "l"
+    },
+    {
+      "decimalPlaces": 5,
+      "description": "Welding wire, 0.9 mm",
+      "itemID": "VAR-WELD",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-FIX-MAIN",
+          "reason": "too_many_decimals"
+        },
+        {
+          "known": false,
+          "location": "LOC-FIX-VAN",
+          "reason": "no_count"
+        }
+      ],
+      "part": "WW-09",
+      "provenance": "system",
+      "systemUnit": "kg",
+      "unit": "kg"
+    },
+    {
+      "decimalPlaces": 0,
+      "description": "Grease",
+      "itemID": "VAR-GREASE",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-FIX-MAIN",
+          "reason": "unmapped_unit",
+          "systemUnit": "Tin"
+        },
+        {
+          "known": false,
+          "location": "LOC-FIX-VAN",
+          "reason": "unmapped_unit",
+          "systemUnit": "Tin"
+        }
+      ],
+      "part": "GR-400",
+      "provenance": "system",
+      "systemUnit": "Tin"
+    },
+    {
+      "decimalPlaces": 0,
+      "description": "Oil filter",
+      "itemID": "VAR-FILTER",
+      "levels": [
+        {
+          "location": "LOC-FIX-MAIN",
+          "onHandScaled": 6000
+        },
+        {
+          "location": "LOC-FIX-VAN",
+          "onHandScaled": 2000
+        }
+      ],
+      "part": "OF-12",
+      "provenance": "system",
+      "systemUnit": "pack",
+      "unit": "pack"
+    },
+    {
+      "decimalPlaces": 1,
+      "description": "Heater hose, 16 mm",
+      "itemID": "VAR-HOSE",
+      "levels": [
+        {
+          "location": "LOC-FIX-MAIN",
+          "onHandScaled": 7500
+        }
+      ],
+      "provenance": "system",
+      "systemUnit": "m",
+      "unit": "m"
+    },
+    {
+      "decimalPlaces": 0,
+      "description": "Brake fluid DOT 4",
+      "itemID": "VAR-BRAKE",
+      "levels": [
+        {
+          "known": false,
+          "location": "LOC-FIX-MAIN",
+          "reason": "unmapped_unit",
+          "systemUnit": "milliliter"
+        },
+        {
+          "known": false,
+          "location": "LOC-FIX-VAN",
+          "reason": "unmapped_unit",
+          "systemUnit": "milliliter"
+        }
+      ],
+      "part": "BF-4",
+      "provenance": "system",
+      "systemUnit": "milliliter"
+    }
+  ],
+  "locations": [
+    {
+      "class": "base",
+      "id": "LOC-FIX-MAIN",
+      "name": "Harbour Street Workshop"
+    },
+    {
+      "class": "van",
+      "id": "LOC-FIX-VAN",
+      "name": "Service Van 2"
+    }
+  ],
+  "quantityScale": 3,
+  "source": {
+    "account": "Fixture Motors",
+    "connector": "square",
+    "name": "Square"
+  }
+}

@@ -168,6 +168,27 @@ struct StockSystemSnapshot: Codable, Equatable, Sendable {
         let price: StockSystemPrice?
         /// The system's own reorder point, when it has one.
         let reorderPoint: StockQuantity?
+        /// The most decimal places the system keeps for this item, when it says (a till's
+        /// measurement-unit precision, say): checked before a quantity is sent, and never rounded
+        /// to. Nil is no limit beyond the phone's own scale. Encoded as `decimalPlaces`; a value
+        /// outside `StockSystemPolicy.decimalPlacesRange` is dropped on decode.
+        var decimalPlaces: Int?
+
+        init(itemID: String, part: String?, description: String, unit: VanStockUnit?, systemUnit: String,
+             levels: [Level], provenance: StockSystemProvenance, lineAsOf: Date?, price: StockSystemPrice?,
+             reorderPoint: StockQuantity?, decimalPlaces: Int? = nil) {
+            self.itemID = itemID
+            self.part = part
+            self.description = description
+            self.unit = unit
+            self.systemUnit = systemUnit
+            self.levels = levels
+            self.provenance = provenance
+            self.lineAsOf = lineAsOf
+            self.price = price
+            self.reorderPoint = reorderPoint
+            self.decimalPlaces = decimalPlaces.flatMap { StockSystemPolicy.decimalPlacesRange.contains($0) ? $0 : nil }
+        }
 
         /// "Capacitor 45/5 (ZX-1001)", or the bare number, or the description.
         var name: String {
@@ -238,7 +259,7 @@ struct StockSystemSnapshot: Codable, Equatable, Sendable {
             kept.append(pricesEnabled ? line : Line(itemID: line.itemID, part: line.part, description: line.description,
                                                    unit: line.unit, systemUnit: line.systemUnit, levels: line.levels,
                                                    provenance: line.provenance, lineAsOf: line.lineAsOf, price: nil,
-                                                   reorderPoint: line.reorderPoint))
+                                                   reorderPoint: line.reorderPoint, decimalPlaces: line.decimalPlaces))
         }
         lines = kept
         droppedLineCount = dropped
@@ -283,7 +304,8 @@ private struct StoredLine: Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case itemID, part, description, unit, systemUnit, levels, provenance, lineAsOf, price, reorderPointScaled
+        case itemID, part, description, unit, systemUnit, levels, provenance, lineAsOf, price, reorderPointScaled,
+             decimalPlaces
     }
 
     struct StoredLevel: Codable {
@@ -340,10 +362,13 @@ private struct StoredLine: Codable {
         }
         let lineAsOf = try container.decodeIfPresent(Int.self, forKey: .lineAsOf).map { Date(timeIntervalSince1970: TimeInterval($0)) }
         let price = try? container.decodeIfPresent(StockSystemPrice.self, forKey: .price)
+        // Absent is no extra limit; a value that is not a small whole number is dropped, never trusted.
+        let places = (try? container.decodeIfPresent(Int.self, forKey: .decimalPlaces)) ?? nil
 
         line = StockSystemSnapshot.Line(itemID: itemID, part: part?.isEmpty == true ? nil : part, description: description,
                                         unit: unit, systemUnit: systemUnit, levels: levels, provenance: provenance,
-                                        lineAsOf: lineAsOf, price: price ?? nil, reorderPoint: reorderPoint)
+                                        lineAsOf: lineAsOf, price: price ?? nil, reorderPoint: reorderPoint,
+                                        decimalPlaces: places)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -367,5 +392,6 @@ private struct StoredLine: Codable {
         try container.encodeIfPresent(line.lineAsOf.map { Int($0.timeIntervalSince1970.rounded(.down)) }, forKey: .lineAsOf)
         try container.encodeIfPresent(line.price, forKey: .price)
         try container.encodeIfPresent(line.reorderPoint?.scaled, forKey: .reorderPointScaled)
+        try container.encodeIfPresent(line.decimalPlaces, forKey: .decimalPlaces)
     }
 }

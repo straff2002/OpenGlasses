@@ -1,0 +1,72 @@
+{
+  "confirmation": "voice",
+  "jobID": "JOB-SQ-FIX-1",
+  "jobNumber": "J-501",
+  "lines": [
+    {
+      "description": "Coolant concentrate, Bulk",
+      "id": "S1",
+      "itemID": "VAR-COOL-5L",
+      "part": "CL-50",
+      "quantityScaled": 500,
+      "source": "spoken",
+      "unit": "l"
+    },
+    {
+      "description": "Run capacitor 45/5",
+      "id": "S2",
+      "itemID": "VAR-CAP-455",
+      "part": "ZX-455",
+      "quantityScaled": 1000,
+      "source": "scanned",
+      "unit": "each"
+    },
+    {
+      "description": "Coolant concentrate, Bulk",
+      "id": "S3",
+      "itemID": "VAR-COOL-5L",
+      "part": "CL-50",
+      "quantityScaled": 125,
+      "source": "typed",
+      "unit": "l"
+    },
+    {
+      "description": "Grease",
+      "id": "S4",
+      "itemID": "VAR-GREASE",
+      "part": "GR-400",
+      "quantityScaled": 1000,
+      "source": "spoken",
+      "unit": "each"
+    },
+    {
+      "description": "Mystery part",
+      "id": "S5",
+      "itemID": null,
+      "part": "ZZ-1",
+      "quantityScaled": 1000,
+      "source": "spoken",
+      "unit": "each"
+    },
+    {
+      "description": "Heater hose, 16 mm",
+      "id": "S6",
+      "itemID": "VAR-HOSE",
+      "part": null,
+      "quantityScaled": 250,
+      "source": "spoken",
+      "unit": "m"
+    },
+    {
+      "description": "Oil filter",
+      "id": "S7",
+      "itemID": "VAR-FILTER",
+      "part": "OF-12",
+      "quantityScaled": 2000,
+      "source": "scanned",
+      "unit": "pack"
+    }
+  ],
+  "locationID": "LOC-FIX-MAIN",
+  "reference": null
+}

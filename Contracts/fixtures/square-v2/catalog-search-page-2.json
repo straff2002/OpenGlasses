@@ -1,0 +1,226 @@
+{
+  "objects": [
+    {
+      "id": "MU-BOX",
+      "is_deleted": false,
+      "measurement_unit_data": {
+        "measurement_unit": {
+          "custom_unit": {
+            "abbreviation": "bx",
+            "name": "Box"
+          },
+          "type": "TYPE_CUSTOM"
+        },
+        "precision": 0
+      },
+      "present_at_all_locations": true,
+      "type": "MEASUREMENT_UNIT",
+      "version": 1
+    },
+    {
+      "id": "MU-METRE-1",
+      "is_deleted": false,
+      "measurement_unit_data": {
+        "measurement_unit": {
+          "length_unit": "METRIC_METER",
+          "type": "TYPE_LENGTH"
+        },
+        "precision": 1
+      },
+      "present_at_all_locations": true,
+      "type": "MEASUREMENT_UNIT",
+      "version": 1
+    },
+    {
+      "id": "MU-ML",
+      "is_deleted": false,
+      "measurement_unit_data": {
+        "measurement_unit": {
+          "type": "TYPE_VOLUME",
+          "volume_unit": "METRIC_MILLILITER"
+        },
+        "precision": 0
+      },
+      "present_at_all_locations": true,
+      "type": "MEASUREMENT_UNIT",
+      "version": 1
+    },
+    {
+      "id": "VAR-GREASE",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-GREASE",
+        "measurement_unit_id": "MU-TIN",
+        "name": "Regular",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "GR-400",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-FILTER",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-FILTER",
+        "measurement_unit_id": "MU-BOX",
+        "name": "Regular",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "OF-12",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-HOSE",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-HOSE",
+        "location_overrides": [
+          {
+            "location_id": "LOC-FIX-MAIN",
+            "track_inventory": true
+          }
+        ],
+        "measurement_unit_id": "MU-METRE-1",
+        "name": "16 mm",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "",
+        "stockable": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-BRAKE",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-BRAKE",
+        "measurement_unit_id": "MU-ML",
+        "name": "Regular",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "BF-4",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-GONE",
+      "is_deleted": true,
+      "item_variation_data": {
+        "item_id": "ITEM-GONE",
+        "name": "Regular",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "GN-1",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    },
+    {
+      "id": "VAR-NORTH",
+      "is_deleted": false,
+      "item_variation_data": {
+        "item_id": "ITEM-NORTH",
+        "name": "Regular",
+        "ordinal": 1,
+        "pricing_type": "FIXED_PRICING",
+        "sellable": true,
+        "sku": "DS-1",
+        "stockable": true,
+        "track_inventory": true
+      },
+      "present_at_all_locations": false,
+      "present_at_location_ids": [
+        "LOC-FIX-NORTH"
+      ],
+      "type": "ITEM_VARIATION",
+      "updated_at": "2026-11-18T22:00:00Z",
+      "version": 1
+    }
+  ],
+  "related_objects": [
+    {
+      "id": "ITEM-GREASE",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Grease",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-FILTER",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Oil filter",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-HOSE",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Heater hose",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-BRAKE",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Brake fluid DOT 4",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    },
+    {
+      "id": "ITEM-NORTH",
+      "is_deleted": false,
+      "item_data": {
+        "name": "Shop display stand",
+        "product_type": "REGULAR"
+      },
+      "present_at_all_locations": true,
+      "type": "ITEM",
+      "version": 1
+    }
+  ]
+}
