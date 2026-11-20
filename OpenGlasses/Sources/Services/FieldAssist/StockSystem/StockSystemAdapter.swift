@@ -302,6 +302,12 @@ protocol StockSystemAdapter: Sendable {
     func snapshotPlan(locationIDs: [String], pulledAt: Date, accountLabel: String?,
                       pricesEnabled: Bool) -> any StockSystemPullPlan<StockSystemSnapshotPull>
 
+    /// The current figures for just `itemIDs` at `locationIDs`, for a `check` while the snapshot
+    /// is old (Plan MM P3, Decision 10): one read of the system's stock endpoint, filtered to those
+    /// items, paged like the snapshot's. Reads only. Throws `StockSystemRequestRefusal.notAllowed`
+    /// for more items than the system takes in one read, or an id the system could not have made.
+    func linesPlan(itemIDs: [String], locationIDs: [String]) throws -> any StockSystemPullPlan<StockSystemFreshLines>
+
     /// The plan's steps as the system's write requests, in order. `occurredAt` is when the person
     /// confirmed the batch and `now` the time of sending, for a system that limits how old a write
     /// may say it is. Throws `StockSystemRequestRefusal.notAllowed` for a step the system cannot take.

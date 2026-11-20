@@ -47,6 +47,10 @@ struct StockSystemHTTPConnector: StockSystemConnector {
         try await pull(locationIDs: locationIDs, pulledAt: pulledAt).snapshot
     }
 
+    func pullLines(itemIDs: [String], locationIDs: [String]) async throws -> StockSystemFreshLines {
+        try await run(try adapter.linesPlan(itemIDs: itemIDs, locationIDs: locationIDs))
+    }
+
     func probe() async throws -> StockSystemProbe {
         let locations = try await locations()
         let checks = try await run(StockSystemProbePlan(adapter: adapter, requests: try adapter.probeRequests()))

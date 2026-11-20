@@ -22,6 +22,9 @@ struct SquareStockAdapter: StockSystemAdapter {
     static let changesPerWrite = 100
     /// At most this many items are named in one history read (Square's limit).
     static let itemsPerHistoryRead = 500
+    /// At most this many items are asked for in one check of a few lines: a check names one or a
+    /// handful, so anything more is refused rather than paged.
+    static let itemsPerLinesRead = 100
     /// The page size asked for on every paged read (Square's maximum).
     static let pageLimit = 1000
     /// The most pages one paged read may take before the pull is refused as too large.
@@ -81,6 +84,13 @@ struct SquareStockAdapter: StockSystemAdapter {
                       pricesEnabled: Bool) -> any StockSystemPullPlan<StockSystemSnapshotPull> {
         SquareSnapshotPlan(adapter: self, locationIDs: locationIDs, pulledAt: pulledAt, accountLabel: accountLabel,
                            pricesEnabled: pricesEnabled)
+    }
+
+    /// `POST /v2/inventory/counts/batch-retrieve` for just these variations' `IN_STOCK` counts at
+    /// the chosen locations: the snapshot's stock endpoint with `catalog_object_ids`, so still one
+    /// of the five.
+    func linesPlan(itemIDs: [String], locationIDs: [String]) throws -> any StockSystemPullPlan<StockSystemFreshLines> {
+        try SquareLinesPlan(adapter: self, itemIDs: itemIDs, locationIDs: locationIDs)
     }
 
     func readBackPlan(_ plan: PartsUsedWritePlan, queuedAt: Date) -> any StockSystemPullPlan<StockSystemReadBack> {

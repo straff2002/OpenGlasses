@@ -37,11 +37,17 @@ final class StockSystemAdapterSeamTests: XCTestCase {
             if isAdapter { vendorFolders.append(entry.lastPathComponent); continue }
             common += files
         }
-        let elsewhere = ["OpenGlasses/Sources/App/Views/StockSystemSettingsView.swift"]
+        let elsewhere = ["OpenGlasses/Sources/App/Views/StockSystemSettingsView.swift",
+                         // Plan MM P3: van stock speaking for a system-held place, and its screen.
+                         "OpenGlasses/Sources/App/Views/Job/StockSystemStockSection.swift",
+                         "OpenGlasses/Sources/Services/FieldAssist/VanStock/VanStockService.swift",
+                         "OpenGlasses/Sources/Services/NativeTools/VanStockTool.swift"]
         common += elsewhere.map { repo.appendingPathComponent($0) }
-        XCTAssertGreaterThanOrEqual(common.count, 17, "the common files are there to scan")
+        XCTAssertGreaterThanOrEqual(common.count, 24, "the common files are there to scan")
         for required in ["StockSystemConnectionStore", "StockSystemTransport", "StockSystemHTTPConnector",
-                         "StockSystemSnapshotStore", "StockSystemService", "StockSystemSettingsView"] {
+                         "StockSystemSnapshotStore", "StockSystemService", "StockSystemSettingsView",
+                         "StagedStockUseStore", "StockSystemFreshLines", "StockSystemVanStock", "StockSystemScreenModel",
+                         "StockSystemStockSection", "VanStockService", "VanStockTool"] {
             XCTAssertTrue(common.contains { $0.lastPathComponent == required + ".swift" }, "\(required) is scanned")
         }
         for file in common {

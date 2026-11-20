@@ -367,6 +367,72 @@ struct SquareSnapshotPlan: StockSystemPullPlan {
     }
 }
 
+// MARK: - A few lines
+
+/// The current `IN_STOCK` counts of a few variations at the chosen locations, for a `check` while
+/// the snapshot is old: `POST /v2/inventory/counts/batch-retrieve` with `catalog_object_ids`, page
+/// by page. A count for anything not asked, at a location not asked, or in another state is not
+/// this read's and is left out; the first figure for an item and location stands, as in a pull.
+struct SquareLinesPlan: StockSystemPullPlan {
+
+    let adapter: SquareStockAdapter
+    let itemIDs: [String]
+    let locationIDs: [String]
+    private var cursor: String?
+    private var pages = 0
+    private var cursors = Set<String>()
+    private var counts: [String: [String: String]] = [:]
+    private(set) var result: StockSystemFreshLines?
+
+    init(adapter: SquareStockAdapter, itemIDs: [String], locationIDs: [String]) throws {
+        self.adapter = adapter
+        var seenItems = Set<String>(), seenLocations = Set<String>()
+        let items = itemIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { seenItems.insert($0).inserted }
+        let locations = locationIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { seenLocations.insert($0).inserted }
+        guard items.allSatisfy(SquareStockAdapter.isSquareID), locations.allSatisfy(SquareStockAdapter.isSquareID),
+              items.count <= SquareStockAdapter.itemsPerLinesRead, locations.count <= SquareStockAdapter.maximumLocations
+        else { throw StockSystemRequestRefusal.notAllowed }
+        guard !locations.isEmpty || items.isEmpty else { throw StockSystemFailure.notFound }
+        self.itemIDs = items
+        self.locationIDs = locations
+        if items.isEmpty { result = StockSystemFreshLines(itemIDs: [], locationIDs: locations, counts: [:]) }
+    }
+
+    mutating func next() throws -> StockSystemRequest? {
+        guard result == nil else { return nil }
+        var body: [String: Any] = [
+            "catalog_object_ids": itemIDs,
+            "location_ids": locationIDs,
+            "states": ["IN_STOCK"],
+            "limit": SquareStockAdapter.pageLimit,
+        ]
+        if let cursor { body["cursor"] = cursor }
+        return try adapter.request(SquareStockAdapter.Endpoint.inventoryCounts, body: body)
+    }
+
+    mutating func consume(_ response: StockSystemResponse) throws {
+        guard result == nil else { throw StockSystemFailure.malformedResponse }
+        if let failure = adapter.failure(response, endpoint: SquareStockAdapter.Endpoint.inventoryCounts) { throw failure }
+        let page = try SquareStockAdapter.decode(SquareWire.CountsPage.self, from: response.body)
+        let items = Set(itemIDs), places = Set(locationIDs)
+        for count in (page.counts ?? []).compactMap(\.value) {
+            guard count.state == "IN_STOCK", items.contains(count.catalogObjectId), places.contains(count.locationId),
+                  count.catalogObjectType == nil || count.catalogObjectType == "ITEM_VARIATION",
+                  counts[count.catalogObjectId]?[count.locationId] == nil else { continue }
+            counts[count.catalogObjectId, default: [:]][count.locationId] = count.quantity
+        }
+        pages += 1
+        if let next = try SquareStockAdapter.cursor(page.cursor) {
+            guard cursors.insert(next).inserted else { throw StockSystemFailure.malformedResponse }
+            guard pages < SquareStockAdapter.pageBudget else { throw StockSystemFailure.tooLarge }
+            cursor = next
+        } else {
+            result = StockSystemFreshLines(itemIDs: itemIDs, locationIDs: locationIDs, counts: counts)
+        }
+    }
+}
+
 // MARK: - Read-back
 
 /// Which of the plan's adjustments Square already shows: `POST /v2/inventory/changes/batch-retrieve`

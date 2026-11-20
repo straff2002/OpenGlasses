@@ -158,4 +158,60 @@ final class StockSystemAnswerComposerTests: XCTestCase {
         XCTAssertEqual(composer.time(S.date(2026, 11, 2, 8, 0)), "2 November")
         XCTAssertEqual(composer.time(S.date(2025, 12, 31, 8, 0)), "31 December 2025")
     }
+
+    // MARK: - Plan MM P3: low, list, notes and refusals
+
+    func testLowIsAtOrBelowTheReorderPointOtherwiseNone() {
+        let snapshot = S.snapshot([S.row("1001", [("L1", "2")], reorderPoint: "2"),
+                                   S.row("1002", [("L1", "3")], reorderPoint: "2"),
+                                   S.row("1003", [("L1", "0")]),
+                                   S.row("1004", [("L1", "5")]),
+                                   S.row("1005", [("L1", nil)])])
+        let low = composer().low(in: snapshot, here: ["L1"])
+        XCTAssertEqual(low, "In Sample System, as of 09:10, at or below its reorder point or at none: 2 Capacitor 45/5 "
+            + "(ZX-1001) (reorder at 2); none of Capacitor 45/5 (ZX-1003). Sample System has no count for 1 line, so "
+            + "it is not in this answer.")
+        let stale = composer(now: S.date(2026, 11, 22, 9, 0)).low(in: S.snapshot([S.row("1004", [("L1", "5")])]), here: ["L1"])
+        XCTAssertEqual(stale, "As of Friday at 09:10, in Sample System, nothing in stock is at its reorder point or at none.")
+    }
+
+    func testListReadsTheSystemsFiguresAndNeverAnUnknownAsANumber() {
+        let snapshot = S.snapshot([S.row("1001", [("L1", "2")]), S.row("1002", unit: "litre", [("L1", "4.25")]),
+                                   S.row("1003", [("L1", nil)])])
+        let list = composer(.store).list(snapshot, here: ["L1"], bin: nil)
+        XCTAssertEqual(list, "In Sample System, as of 09:10, in the store: Capacitor 45/5 (ZX-1001): 2; Capacitor 45/5 "
+            + "(ZX-1002): 4.25 litres; Capacitor 45/5 (ZX-1003): no count.")
+        let capped = composer().list(snapshot, here: ["L1"], bin: nil, limit: 1)
+        XCTAssertTrue(capped.hasSuffix("And 2 more lines."), capped)
+    }
+
+    @MainActor
+    func testEveryNewSentenceKeepsToThePlacesWordsAndNeverSaysCounted() {
+        let snapshot = S.snapshot([S.row("1001", [("L1", "0"), ("L2", "2")]), S.row("1002", [("L1", nil)])])
+        let entry = StagedStockUseEntry(scope: .job("S1"), jobReference: nil, connectorID: "sample-system",
+                                        locationID: "L1",
+                                        use: StagedStockUse(itemID: "1001", part: "ZX-1001", description: "Capacitor 45/5",
+                                                            quantity: .whole(1), unit: .each, source: .spoken),
+                                        reason: nil, stagedAt: S.pulledAt, call: "C1")
+        for kind in StockPlace.Kind.allCases {
+            let composer = composer(kind)
+            let said = [
+                composer.noFigures(), composer.candidates(snapshot.lines), composer.low(in: snapshot, here: ["L1"]),
+                composer.list(snapshot, here: ["L1"], bin: "shelf"),
+                composer.stagedWrittenOff(.whole(1), of: snapshot.lines[0], jobReference: "J-1", onJob: true),
+                composer.stagedWrittenOff(.whole(1), of: snapshot.lines[0], jobReference: nil, onJob: false),
+                composer.notStaged(snapshot.lines[0], .fractional, quantity: StockQuantity(scaled: 500), unit: .each),
+                composer.unstaged([entry]), composer.nothingToUnstage(), composer.removalNotKept(keepsDamage: true),
+                composer.notSaved(), composer.stagedForToday(.whole(1), of: snapshot.lines[0]),
+                VanStockTool.description(for: kind, system: "Sample System"),
+            ]
+            for sentence in said {
+                XCTAssertNil(sentence.range(of: "\\bcounted\\b", options: [.regularExpression, .caseInsensitive]),
+                             "\(kind): \(sentence)")
+                XCTAssertNil(sentence.range(of: "\\bsold\\b", options: [.regularExpression, .caseInsensitive]),
+                             "never a sale: \(kind): \(sentence)")
+                XCTAssertEqual(StockPlaceWordCheck.violations(sentence, kind: kind), [], "\(kind): \(sentence)")
+            }
+        }
+    }
 }

@@ -24,11 +24,16 @@ final class StockSystemService: ObservableObject {
 
     let connection: StockSystemConnectionStore
     let store: StockSystemSnapshotStore
+    /// The parts noted for the system and not yet confirmed (Plan MM P3).
+    let staged: StagedStockUseStore
     private let registry: (String) -> StockSystemRegistration?
     private let makeConnector: ConnectorFactory
     private let now: () -> Date
     private let medicalBlocks: (NetworkRoute) -> Bool
     private let placeName: @MainActor () -> String?
+    private let isOnline: @MainActor () -> Bool
+    private let checkBudget: TimeInterval
+    private let wait: @Sendable (TimeInterval) async -> Void
 
     @Published private(set) var pulling = false
     @Published private(set) var testing = false
@@ -50,9 +55,18 @@ final class StockSystemService: ObservableObject {
          now: @escaping () -> Date = { Date() },
          medicalBlocks: @escaping (NetworkRoute) -> Bool = { MedicalEgressGuard.blocks($0) },
          placeName: @escaping @MainActor () -> String? = { VanStockStore.shared.van?.name },
+         staged: StagedStockUseStore? = nil,
+         isOnline: @escaping @MainActor () -> Bool = { true },
+         checkBudget: TimeInterval = StockSystemPolicy.checkNowBudget,
+         wait: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
          makeConnector: @escaping ConnectorFactory) {
         self.connection = connection
         self.store = store
+        // Beside the snapshots' folder, never in it: retiring a snapshot keeps every staged line.
+        self.staged = staged ?? StagedStockUseStore(directory: store.folder.deletingLastPathComponent())
+        self.isOnline = isOnline
+        self.checkBudget = checkBudget
+        self.wait = wait
         self.registry = registry
         self.now = now
         self.medicalBlocks = medicalBlocks
@@ -62,13 +76,14 @@ final class StockSystemService: ObservableObject {
         // store's changes through.
         connection.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         store.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        self.staged.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
     }
 
     /// The app's service: the Keychain connection, the store in Application Support and the
     /// common transport.
-    static func forApp() -> StockSystemService {
+    static func forApp(isOnline: @escaping @MainActor () -> Bool = { true }) -> StockSystemService {
         StockSystemService(connection: StockSystemConnectionStore(), store: StockSystemSnapshotStore(),
-                           makeConnector: httpConnector(transport: URLSessionStockSystemTransport()))
+                           isOnline: isOnline, makeConnector: httpConnector(transport: URLSessionStockSystemTransport()))
     }
 
     /// Connectors over the common transport.
@@ -88,6 +103,15 @@ final class StockSystemService: ObservableObject {
     var displayName: String { registration?.displayName ?? String(localized: "the stock system") }
     var isRunning: Bool { connection.isRunning && registration != nil }
     var isBlockedByMedical: Bool { registration.map { medicalBlocks($0.route) } ?? false }
+
+    /// Who holds the count for this phone's place (Plan MM §1): the office route first, then a
+    /// running connection with at least one location, then the phone.
+    var authority: StockAuthority {
+        StockAuthority.resolve(officeRoute: connection.officeRoute, connection: connection.authorityConnection)
+    }
+
+    /// What the system can take back, with the organisation's reason; nil with no system chosen.
+    var capabilities: StockSystemCapabilities? { registration?.adapter.capabilities(chosenReason: connection.reason) }
 
     /// The chosen system's last good snapshot, kept with its age whatever happens to a pull.
     var snapshot: StockSystemSnapshot? { store.snapshot(for: connection.selectedConnectorID) }
@@ -160,6 +184,57 @@ final class StockSystemService: ObservableObject {
         guard isRunning, let current = connection.record else { return false }
         return current.generation == record.generation && current.environment == record.environment
             && current.locationIDs == record.locationIDs
+    }
+
+    // MARK: - Check now (Decision 10)
+
+    /// For a `check`: ask the system for just `itemIDs` when their figures are older than
+    /// `StockSystemPolicy.checkNowAfter`, there is signal and Medical Local Only does not hold the
+    /// route, and wait at most the budget (3 seconds). A reply in time is merged into the store
+    /// before this returns. A reply after it only refreshes the store: the read is not cancelled
+    /// when the budget runs out, only no longer waited for. Never more than one read per call.
+    func checkNow(itemIDs: [String]) async -> StockSystemCheckNow {
+        enforceRoute()
+        guard isRunning, let record = connection.record, let registration, !record.locationIDs.isEmpty,
+              let snapshot else { return .skipped(.notConnected) }
+        let asked = itemIDs.filter { id in snapshot.lines.contains { $0.itemID == id } }
+        guard !asked.isEmpty else { return .skipped(.nothingAsked) }
+        guard snapshot.isOlder(than: StockSystemPolicy.checkNowAfter, for: asked, now: now()) else {
+            return .skipped(.recent)
+        }
+        guard !medicalBlocks(registration.route) else { return .skipped(.localOnly) }
+        guard isOnline() else { return .skipped(.offline) }
+        guard let connector = makeConnector(record, registration, connection.reason) else { return .skipped(.notConnected) }
+
+        let locations = record.locationIDs
+        // Unstructured on purpose: when the budget wins, the read carries on and refreshes the store.
+        let read = Task { @MainActor [weak self] () -> Bool in
+            guard let self else { return false }
+            do {
+                let fresh = try await connector.pullLines(itemIDs: asked, locationIDs: locations)
+                guard self.isCurrent(record) else { return false }
+                self.store.merge(fresh, into: record.connectorID, readAt: self.now())
+                return true
+            } catch {
+                return false
+            }
+        }
+        // The race: whichever of the read and the budget ends first answers; the other is
+        // ignored, and the budget's timer is cancelled once the read has won.
+        let budget = checkBudget
+        let wait = self.wait
+        var timer: Task<Void, Never>?
+        let outcome: StockSystemCheckNow = await withCheckedContinuation { continuation in
+            let race = CheckNowRace(continuation)
+            Task { @MainActor in race.finish(await read.value ? .fresh : .failed) }
+            timer = Task { @MainActor in
+                await wait(budget)
+                guard !Task.isCancelled else { return }
+                race.finish(.late)
+            }
+        }
+        timer?.cancel()
+        return outcome
     }
 
     // MARK: - Test connection and the locations
@@ -268,6 +343,8 @@ final class StockSystemService: ObservableObject {
         stopWork()
         try? connection.removeAll()
         store.retireAll()
+        // The organisation's parts noted and not yet sent are its own, and go with it.
+        staged.removeAll()
         pullMessage = connection.problem
     }
 
@@ -300,5 +377,20 @@ final class StockSystemService: ObservableObject {
             return String(localized: "The phone stopped a request to \(system) that it shouldn't send. Nothing was sent.")
         }
         return StockSystemFailure.unreachable.sentence(system: system)
+    }
+}
+
+/// The first of a check's read and its budget to end, once (Plan MM P3).
+@MainActor
+private final class CheckNowRace {
+    private var continuation: CheckedContinuation<StockSystemCheckNow, Never>?
+
+    init(_ continuation: CheckedContinuation<StockSystemCheckNow, Never>) {
+        self.continuation = continuation
+    }
+
+    func finish(_ outcome: StockSystemCheckNow) {
+        continuation?.resume(returning: outcome)
+        continuation = nil
     }
 }

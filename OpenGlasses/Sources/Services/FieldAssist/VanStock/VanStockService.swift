@@ -84,6 +84,21 @@ final class VanStockService {
             unrecorded: { FieldSessionService.shared.unrecordedVanParts })
     }
 
+    /// The business's own stock system, as van stock needs it (Plan MM P3): the connection, its
+    /// snapshot and its staged uses, and the book its figures are joined against.
+    @MainActor
+    struct SystemLink {
+        var service: @MainActor () -> StockSystemService?
+        /// The book for the join, by Plan MK §4's order; `namedVaultID` is the list's own choice.
+        var book: @MainActor (_ namedVaultID: String?) -> StockSystemBook?
+
+        static let none = SystemLink(service: { nil }, book: { _ in nil })
+        static let shared = SystemLink(service: { AppStateProvider.shared?.stockSystem },
+                                       book: { FieldSessionService.shared.stockSystemBook(namedVaultID: $0) })
+    }
+
+    private let systemLink: SystemLink
+
     private var lastWrite: (signature: String, at: Date, answer: String)?
 
     init(store: VanStockStore? = nil,
@@ -95,7 +110,8 @@ final class VanStockService {
          now: @escaping () -> Date = Date.init,
          calendar: Calendar = .current,
          makeID: @escaping () -> String = { UUID().uuidString },
-         jobUses: JobUses? = nil) {
+         jobUses: JobUses? = nil,
+         stockSystem: SystemLink? = nil) {
         let resolvedStore = store ?? .shared
         self.store = resolvedStore
         self.legacyVerify = verify
@@ -111,6 +127,58 @@ final class VanStockService {
         self.makeID = makeID
         // A service built for a test with its own store speaks to no job unless it is given one.
         self.jobUses = jobUses ?? (store == nil ? .shared : .none)
+        // Nor to a stock system.
+        self.systemLink = stockSystem ?? (store == nil ? .shared : .none)
+    }
+
+    // MARK: - Who holds the count (Plan MM P3)
+
+    /// Who answers for the place: a connected system, or the phone (`StockAuthority.resolve`).
+    var authority: StockAuthority { systemLink.service()?.authority ?? .phone }
+
+    /// The system's name while it holds the count; nil while the phone does.
+    var systemName: String? {
+        guard authority.isSystem, let service = systemLink.service() else { return nil }
+        return service.snapshot?.source.displayName ?? service.displayName
+    }
+
+    /// `van_stock` as the system answers it, while a system holds the count. The phone's own list
+    /// is then the previous list: kept, read-only, and never written (Decision 3).
+    var systemDesk: StockSystemVanStock? {
+        let authority = self.authority
+        guard case .system(let connectorID, let here) = authority, let service = systemLink.service() else { return nil }
+        let snapshot = service.snapshot.flatMap { $0.source.connectorID == connectorID ? $0 : nil }
+        return StockSystemVanStock(
+            snapshot: snapshot, system: snapshot?.source.displayName ?? service.displayName, connectorID: connectorID,
+            here: here, capabilities: service.capabilities, staged: service.staged, kind: place,
+            job: activeJob().map { .init(sessionID: $0.sessionID, reference: $0.reference) },
+            book: systemLink.book(store.van?.checkVaultID), now: now(), calendar: calendar, makeID: makeID)
+    }
+
+    /// A check that may first ask the system for just the lines asked about (Decision 10): when
+    /// a system holds the count and its figures for them are over ten minutes old, with signal,
+    /// within three seconds. Otherwise, and after, the same answer as `check(_:)`.
+    func checkNow(_ line: Line) async -> String {
+        if let desk = systemDesk, let service = systemLink.service() {
+            let ids = desk.itemIDs(for: line)
+            if !ids.isEmpty { _ = await service.checkNow(itemIDs: ids) }
+        }
+        return check(line)
+    }
+
+    /// One noting of uses while the system holds the count, with the same retry guard as a write.
+    private func stage(_ action: String, _ lines: [Line], _ run: () -> (answer: String, done: [String])) -> String {
+        let at = now()
+        let signature = "system:" + action + "|" + lines.map {
+            "\($0.part ?? "")~\($0.description ?? "")~\($0.quantity.map { String($0.scaled) } ?? "")~\($0.unit ?? "")~\($0.code ?? "")"
+        }.joined(separator: "|")
+        if let last = lastWrite, last.signature == signature, at.timeIntervalSince(last.at) < Self.duplicateWindow {
+            return "Already noted a moment ago, not noted twice. " + last.answer
+        }
+        let result = run()
+        let answer = Self.saying(result.answer, result.done)
+        lastWrite = result.done.isEmpty ? nil : (signature, at, answer)
+        return answer
     }
 
     /// The place in force for this list (Plan MK §2), read fresh each time so a place changed on
@@ -133,6 +201,7 @@ final class VanStockService {
     // MARK: - Reading
 
     func check(_ line: Line) -> String {
+        if let desk = systemDesk { return desk.check(line) }
         guard !store.isUnreadable else { return unreadable }
         let log = store.log
         guard !log.isEmpty else { return composer.emptyVan() }
@@ -148,11 +217,13 @@ final class VanStockService {
     /// What is there: everything, or the lines in the bins `bin` names (Plan MK §8). Writes
     /// nothing.
     func list(bin: String?) -> String {
+        if let desk = systemDesk { return desk.list(bin: bin) }
         guard !store.isUnreadable else { return unreadable }
         return composer.list(store.log, bin: bin)
     }
 
     func low() -> String {
+        if let desk = systemDesk { return desk.low() }
         guard !store.isUnreadable else { return unreadable }
         let log = store.log
         guard !log.isEmpty else { return composer.emptyVan() }
@@ -163,7 +234,8 @@ final class VanStockService {
     // MARK: - Writing
 
     func load(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
-        write("load", lines) { log, line, batch, at in
+        if let desk = systemDesk { return desk.composer.refused(.load) }
+        return write("load", lines) { log, line, batch, at in
             let quantity = line.quantity ?? StockQuantity(whole: 1)
             guard quantity > .zero else { return ("Nothing loaded for \(line.reference): the quantity has to be at least 1.", nil) }
             guard quantity.isInRange else { return ("Nothing loaded for \(line.reference): \(Self.tooLarge).", nil) }
@@ -184,7 +256,9 @@ final class VanStockService {
     }
 
     func use(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
-        write("use", lines) { log, line, batch, at in
+        // A system-held place notes the use for the system and writes no movement of its own.
+        if let desk = systemDesk { return stage("use", lines) { desk.use(lines, source: source) } }
+        return write("use", lines) { log, line, batch, at in
             let quantity = line.quantity ?? StockQuantity(whole: 1)
             guard quantity > .zero else { return ("Nothing recorded for \(line.reference): the quantity has to be at least 1.", nil) }
             guard quantity.isInRange else { return ("Nothing recorded for \(line.reference): \(Self.tooLarge).", nil) }
@@ -211,7 +285,13 @@ final class VanStockService {
 
     func remove(_ lines: [Line], reason: VanStockMovement.RemovalReason,
                 source: VanStockMovement.Source = .spoken) -> String {
-        write("remove:\(reason.rawValue)", lines) { log, line, batch, at in
+        if let desk = systemDesk {
+            guard let kept = desk.keptReason(for: reason) else {
+                return desk.composer.removalNotKept(keepsDamage: desk.keptReason(for: .damaged) != nil)
+            }
+            return stage("remove:\(reason.rawValue)", lines) { desk.use(lines, source: source, writeOff: kept) }
+        }
+        return write("remove:\(reason.rawValue)", lines) { log, line, batch, at in
             let quantity = line.quantity ?? StockQuantity(whole: 1)
             guard quantity > .zero else { return ("Nothing removed for \(line.reference): the quantity has to be at least 1.", nil) }
             guard quantity.isInRange else { return ("Nothing removed for \(line.reference): \(Self.tooLarge).", nil) }
@@ -230,7 +310,8 @@ final class VanStockService {
     }
 
     func count(_ lines: [Line], source: VanStockMovement.Source = .spoken) -> String {
-        write("count", lines) { log, line, batch, at in
+        if let desk = systemDesk { return desk.composer.refused(.count) }
+        return write("count", lines) { log, line, batch, at in
             guard let quantity = line.quantity else { return ("Say how many \(line.reference) were counted.", nil) }
             guard quantity >= .zero else { return ("Nothing counted for \(line.reference): a count cannot be below zero.", nil) }
             guard quantity.isInRange else { return ("Nothing counted for \(line.reference): \(Self.tooLarge).", nil) }
@@ -251,6 +332,11 @@ final class VanStockService {
 
     /// Take back the most recent batch.
     func undo(source: VanStockMovement.Source = .spoken) -> String {
+        if let desk = systemDesk {
+            lastWrite = nil
+            let result = desk.undo()
+            return Self.saying(result.answer, result.done)
+        }
         guard !store.isUnreadable else { return unreadable }
         lastWrite = nil
         let at = now()
@@ -292,11 +378,12 @@ final class VanStockService {
     // MARK: - From the screen
 
     /// Whether there is an entry to take back.
-    var canUndo: Bool { !store.isUnreadable && store.log.canUndo }
+    var canUndo: Bool { !authority.isSystem && !store.isUnreadable && store.log.canUndo }
 
     /// A count typed on the Van Stock screen. False when nothing was recorded.
     @discardableResult
     func setCount(itemID: String, to quantity: StockQuantity) -> Bool {
+        guard !authority.isSystem else { return false }
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -312,6 +399,7 @@ final class VanStockService {
     /// change of unit that `unitChangeRefusal` refuses is left out, and the rest still apply.
     @discardableResult
     func edit(itemID: String, _ changes: [VanStockLog.Change]) -> Bool {
+        guard !authority.isSystem else { return false }
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -351,6 +439,7 @@ final class VanStockService {
 
     /// What it takes to bring the van back to its standard load: at premises, its par level.
     func topUp() -> String {
+        if let desk = systemDesk { return desk.composer.refused(.topUp) }
         guard !store.isUnreadable else { return unreadable }
         let w = wording
         let log = store.log
@@ -373,6 +462,7 @@ final class VanStockService {
     /// "Topped up everything except the flame sensors": every short line but those is brought to
     /// its standard load, as one batch that one undo takes back.
     func loadToStandard(except exceptions: [Line] = [], source: VanStockMovement.Source = .spoken) -> String {
+        if let desk = systemDesk { return desk.composer.refused(.topUp) }
         guard !store.isUnreadable else { return unreadable }
         let w = wording
         lastWrite = nil
@@ -423,6 +513,7 @@ final class VanStockService {
 
     /// Set what the van should carry of one line. Set by the technician, so it is this truck's own.
     func setStandard(_ line: Line) -> String {
+        if let desk = systemDesk { return desk.composer.refused(.setStandard) }
         guard !store.isUnreadable else { return unreadable }
         let w = wording
         guard let quantity = line.quantity, quantity >= .zero else { return "Say how many \(line.reference) \(w.shouldHold)." }
@@ -489,6 +580,7 @@ final class VanStockService {
 
     /// Take a van over from a workbook: its list replaces the phone's.
     func takeOver(_ takeover: VanStockHandover.Takeover) {
+        guard !authority.isSystem else { return }
         lastWrite = nil
         store.replace(with: takeover.log, van: takeover.van)
     }
@@ -501,6 +593,7 @@ final class VanStockService {
     /// Apply base's baseline to this van's standards, as one batch.
     @discardableResult
     func apply(baseline changes: [VanStockHandover.BaselineChange], takingBaseFigure: Set<String> = []) -> Bool {
+        guard !authority.isSystem else { return false }
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -537,6 +630,7 @@ final class VanStockService {
     /// Apply a reviewed workbook as one batch, so one undo takes the whole import back.
     @discardableResult
     func apply(_ proposal: VanStockSheet.Proposal, keepingPhoneFigure: Set<String> = []) -> Bool {
+        guard !authority.isSystem else { return false }
         lastWrite = nil
         let at = now()
         let batch = makeID()
@@ -554,7 +648,8 @@ final class VanStockService {
     /// thousandths. An order for more than a million is not noted.
     @discardableResult
     func noteOrdered(number: String, quantity: Int, requestID: String) -> String? {
-        guard !store.isUnreadable, quantity <= StockQuantity.maximumUnits else { return nil }
+        // A system-held place's orders are the system's: the previous list is never written.
+        guard !authority.isSystem, !store.isUnreadable, quantity <= StockQuantity.maximumUnits else { return nil }
         let ordered = StockQuantity(whole: max(quantity, 1))
         let at = now()
         let batch = makeID()
@@ -581,6 +676,7 @@ final class VanStockService {
     /// `mayCreate` is true for a load or a count, which match a line said to be new by its number
     /// or code only, as `target` does. Writes nothing.
     func quantityUnit(for line: Line, mayCreate: Bool) -> (unit: VanStockUnit, name: String) {
+        if let desk = systemDesk { return desk.quantityUnit(for: line) }
         guard !store.isUnreadable else {
             return (line.unit.flatMap(VanStockUnit.init(spoken:)) ?? .each, line.reference)
         }

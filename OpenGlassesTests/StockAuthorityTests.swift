@@ -56,4 +56,30 @@ final class StockAuthorityTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Plan MM P3: the connection on this phone
+
+    /// The service resolves its own connection: a system once a location is chosen, the phone's
+    /// list read-only meanwhile, and the phone again (its list unchanged) once the connection goes.
+    @MainActor
+    func testTheServiceGivesThePhoneItsListBackWhenTheConnectionIsRemoved() throws {
+        PolicyEnvelope.clear()
+        defer { PolicyEnvelope.clear() }
+        let h = StockSystemVanStockHarness()
+        defer { h.cleanUp() }
+        _ = h.vanStock.load([.init(part: "ZX-455", description: "Run capacitor 45/5", quantity: StockQuantity(whole: 7))])
+        let before = h.vanStore.log
+
+        let unchosen = try h.connect(locations: [])
+        XCTAssertEqual(unchosen.authority, .phone, "no location chosen: the phone still counts")
+        let service = try h.connect()
+        XCTAssertEqual(service.authority.phoneList, .previous)
+        _ = h.vanStock.count([.init(part: "ZX-455", quantity: StockQuantity(whole: 1))])
+        XCTAssertEqual(h.vanStore.log, before, "the previous list is read-only")
+
+        service.remove()
+        XCTAssertEqual(service.authority, .phone)
+        XCTAssertEqual(service.authority.phoneList, .counting)
+        XCTAssertEqual(h.vanStore.log, before, "and comes back unchanged")
+    }
 }

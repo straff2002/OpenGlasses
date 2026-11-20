@@ -53,6 +53,10 @@ protocol StockSystemConnector: Sendable {
     /// A whole snapshot of the chosen locations' stock.
     func pullSnapshot(locationIDs: [String], pulledAt: Date) async throws -> StockSystemSnapshot
 
+    /// The current figures for just `itemIDs` at `locationIDs` (Plan MM P3): what a `check` asks
+    /// for while the snapshot is old. Reads only.
+    func pullLines(itemIDs: [String], locationIDs: [String]) async throws -> StockSystemFreshLines
+
     /// Test connection (Plan MM P2): the locations, then the smallest read of each kind the
     /// snapshot needs. Reads only. A missing permission is reported per kind, not thrown.
     func probe() async throws -> StockSystemProbe
@@ -65,6 +69,22 @@ protocol StockSystemConnector: Sendable {
     /// Which of the plan's steps the system already shows, read from its history since
     /// `queuedAt`, when the batch was queued.
     func readBack(_ plan: PartsUsedWritePlan, queuedAt: Date) async throws -> StockSystemReadBack
+}
+
+extension StockSystemConnector {
+    /// A connector with no read of its own for a few lines pulls the whole snapshot and keeps
+    /// theirs: slower, and an unknown figure comes back as no figure, which the merge reads as
+    /// keeping the reason it already had.
+    func pullLines(itemIDs: [String], locationIDs: [String]) async throws -> StockSystemFreshLines {
+        let snapshot = try await pullSnapshot(locationIDs: locationIDs, pulledAt: Date())
+        var counts: [String: [String: String]] = [:]
+        for line in snapshot.lines where itemIDs.contains(line.itemID) {
+            for level in line.levels where locationIDs.contains(level.locationID) {
+                if let quantity = level.value.quantity { counts[line.itemID, default: [:]][level.locationID] = quantity.decimalString }
+            }
+        }
+        return StockSystemFreshLines(itemIDs: itemIDs, locationIDs: locationIDs, counts: counts)
+    }
 }
 
 /// What Test connection found (Plan MM P2): the system's locations, and for each kind of read the
