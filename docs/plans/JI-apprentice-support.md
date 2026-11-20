@@ -3,7 +3,9 @@
 **Status:** 📝 Drafted 2026-10-19 — nothing implemented. Revised the same day with the owner's
 logbook sign-off design: "journeyman" throughout, the customer sign-off sheet reused, by the day,
 the signer chosen from staff, bound to the entries by a fingerprint, and three levels of
-self-signing protection (§9).
+self-signing protection (§9). Amended 2026-11-20 with **talk-through** (§7a, P6b): the apprentice
+says what they are doing, the app works out the step and shows that step's authored hint, with
+signal or without. It is written to be built now, ahead of the rest of JI, on code that exists.
 **Track:** Field Assist (B2B): apprentices in the regulated trades, HVAC/R and electrical first. The
 first organisation is in Winnipeg, Manitoba, so Manitoba's rules are the worked case; nothing in the
 design is Manitoba-only.
@@ -26,6 +28,11 @@ Plan [IM](IM-experience-recordings.md) (experience recordings), Plan
 (organisation feature switches), Plans [HO](HO-office-delivery-phone-half.md) /
 [FX](FX-desktop-office-and-device-sync.md) (the office transport and Avenkin Office), Plan
 [CP](CP-outbound-frame-privacy.md) (outbound frames), [EU AI Act review](../eu-ai-act-review-2026-10.md).
+For talk-through (§7a): Plan [JX](JX-journeyman-engine.md) §4 (procedure state from evidence),
+Plan [JL](JL-procedure-deviations-and-learning-round-trip.md) (deviation phrases), Plan
+[MI](MI-steps-you-can-see.md) (step figures), Plan [GE](GE-automatic-offline-handoff.md) (the
+offline handoff), the [teleprompter](teleprompter.md) (`ScriptAligner`), and Plan [MO](MO-live-hints.md) (live
+hints), which shares the hint card and the ear policy.
 **Origin:** The owner, 2026-10-19, after drafting JG: everything else that helps an apprentice,
 nine features, "add those in". On calling a journeyman: "all of them won't use glasses yet so it
 would only be voice call, or FaceTime". Glasses are not the primary device. Every feature here works
@@ -502,6 +509,126 @@ this job." (For a final-level apprentice that line is part of how s. 1(1.1) supe
   the instruction. Apprentice mode adds, never removes.
 - **Scope notices (§5) sit before the instruction**, after the safety note.
 - The vault guide's procedure section gains the `why` and `requires` fields, with an example.
+
+### 7a · Talk-through: hints that follow what the apprentice says (amendment, 2026-11-20)
+
+**The idea.** While a procedure runs, the apprentice says out loud what they are doing ("isolating
+the unit… gauges on… pulling it down now"). The app works out which step they are on from what they
+say and puts that step's hint where they can use it: on the lens, in their ear, or on the phone. The
+hint is what the procedure's author wrote for that step: the safety note, the reading to expect, the
+calculation result and, once P6 lands, the reason. It works with signal and without, and nothing the
+apprentice depends on needs a network or a model.
+
+**Built now, ahead of the rest of JI.** This slice stands only on code that exists today (listed
+below). It does not wait for JG's `PracticeRole`, the logbook, the organisation feature switches or
+P6's `why`. Until `PracticeRole` exists it is a per-procedure switch any technician can turn on
+("talk me through it"), on by default for nobody. When P6 lands, the apprentice role turns it on by
+default and the hint gains the step's reason. Talking through a job helps a qualified technician on
+an unfamiliar unit too, so the switch stays available to every role.
+
+**What it stands on (verified 2026-11-20 on `main` @ `727c8a944`):**
+- `ProcedureRunner` (`currentStepId`, `currentStep`, `advance(choice:)`) and `Procedure.Step`'s
+  `title`, `instruction`, `expectedInput`, `safetyNote`, `calcRef`, `citations`, `branches`.
+- `AmbientCaptionService` for the narration, and `OnDeviceASREngine` for recognition on the phone.
+- `DictationVocabulary`, the recogniser's custom vocabulary (`contextualStrings`), used today for
+  dictation and the wake word but not for captions.
+- `PrivateRecognitionPolicy`, which already forces recognition onto the phone for a private turn.
+- `ScriptAligner` (the teleprompter's pure tracker: anchors on recent words, holds through silence
+  and off-script speech, resists backward jumps). Its rules are the pattern; its word-by-word
+  matching is not, because a step is a description, not a script.
+- `Embedder` (sentence embeddings on the phone) and `DocumentStore` (vault search on the phone).
+- `ConnectivityHandoffController` / `ConnectivityHandoffPolicy` (Plan GE) for the move between cloud
+  and phone, the status chip and the held question, and `VaultOnlyPolicy`.
+- `LocalLLMService` for an answer written on the phone. It runs only in the foreground: the GPU is
+  off-limits to a backgrounded app, and a locked phone in a pocket is the normal case on a job.
+
+**Shared with Plan [MO](MO-live-hints.md) (live hints).** The hint card on the lens, the
+"speak when quiet" ear policy, the voice gate that keeps the app's own speech out of the captions,
+and the free-question path are the same pieces. Whichever plan is built first builds them; the other
+reuses them. If this slice goes first, those pieces are built here and MO points at them.
+
+#### Where they are: `TalkThroughLocator` (pure)
+
+Input: the procedure, the runner's current step, the last few finished caption sentences (never
+partials), and the time. Output: `.stay`, `.propose(stepId)` or `.offOrder(stepId)`, with a reason
+for the log.
+
+- **Candidates:** the current step, the next two along `defaultNext` and branches, and the previous
+  one. Never the whole procedure, so a word that recurs across steps cannot jump the apprentice
+  forward.
+- **Score:** overlap with the step's own words (title, instruction, expected input, the names in
+  `calcRef`) plus sentence similarity from `Embedder`. Both run on the phone.
+- **Agreement:** a step is proposed only after two finished sentences in a row point at it. Silence
+  and talk about something else hold the position, as `ScriptAligner` does.
+- **Proposes, never advances.** "Sounds like you're on step six?" A yes advances the runner through
+  `advance(choice:)` as a spoken "next" would. "Just go" turns proposals into spoken advances for the
+  rest of the job (JX §4's rule). The runner's state is never changed by narration alone.
+- **Out of order:** narration that points at a later step while a step with `requiresConfirmation`
+  or an `expectedInput` is still open offers Plan JL's deviation phrase ("skipped it", "did it
+  differently"). It never blocks.
+- **The apprentice's own voice:** this is the one place where the glasses' microphone is the right
+  one, because the input is the wearer and a phone in a pocket hears them muffled. On glasses with
+  no display that costs call-quality playback, which short hints can live with. On Ray-Ban Display
+  glasses the hands-free microphone covers the lens with the call screen and is reported to end the
+  Display session, so the default there stays the phone or a wired headset microphone. The session
+  sheet shows the choice.
+
+#### The hints: authored, never generated
+
+For the step the apprentice is on, in this order and only what the step carries:
+
+1. Its safety note (read for every role, as today).
+2. What to expect: `expectedInput` ("expect under 500 microns").
+3. The calculation result when `calcRef` resolves.
+4. Once P6 lands, `why` and its citation, by JI §7's rules: the author's or the manual's reason,
+   always cited, **never a model's**.
+5. Once Plan MI is built, the step's figure.
+
+On the lens, two lines with the step's title dimmed above them. In the ear, the first item that
+applies, about 5–7 words, spoken only after a pause in the apprentice's own speech and cut off if
+they start talking again. On the phone, the whole step. A step with nothing authored gets no hint.
+
+**Words to catch.** A step may carry an optional `cautionPhrases: [String]` written by the
+procedure's author ("vent to atmosphere", "skip the nitrogen"). When the narration contains one, the
+step's safety note is shown and spoken at once, whatever the pause. Matching is whole words and
+ignores case. **A model never decides on its own that an apprentice is doing something dangerous**;
+only an author's phrase triggers this. The vault guide's procedure section gains the field with an
+example.
+
+#### Questions in the middle of the job
+
+"What torque on these?" goes through the free-question path shared with MO: the vault is searched on
+the phone, and the best passage, trimmed, with its document and page, shows **at once**. A better
+answer replaces it if it arrives within about 3 s:
+
+| | With signal | Without signal |
+|---|---|---|
+| Recognition | Server recognition (better on trade words), unless a rule below forces the phone | On the phone, with the procedure's vocabulary |
+| Where they are | **On the phone** | Same |
+| Authored hints, words to catch | **On the phone** | Same |
+| A free question | Vault search on the phone, then the cloud model writes the answer from the passages | Vault search on the phone, then the phone's model in the foreground, or the passage alone on a locked phone |
+| A question the phone couldn't answer well | — | Held, and answered when the signal returns, through GE's held question |
+
+- **Switching** happens at the end of a sentence, keeping what was heard. The phone's recogniser
+  stays loaded, so a dropout leaves no gap.
+- **The phone is forced** even with signal when the vault or organisation says so (`VaultOnlyPolicy`),
+  in HIPAA mode, in Medical Local Only and in a Private Conversation.
+- **No web answers.** With signal, the answer is a better model over the same vault, never a search.
+- **The recogniser gets the job's words.** For the session, `DictationVocabulary` is filled from the
+  procedure: step titles, the names in `calcRef`, the equipment's model, and refrigerant and part
+  names found in the cited passages. On-device recognition is weakest on trade words, so this is the
+  biggest single gain offline.
+- **The status chip** shows online or offline, so a shorter answer has a visible reason.
+
+#### What is kept
+
+Nothing new. The narration is captions in memory and goes at the end of the job unless the
+technician already keeps caption sessions. Where the apprentice was, how often they were "off
+order" and which words were caught **never leave the phone and are never recorded**: like the scope
+guard's notices (§5), they would turn a help into a monitor of the apprentice. A test pins that
+nothing from talk-through is in any office payload, work record, logbook entry or team-learning
+candidate. A step the apprentice confirms is recorded exactly as a spoken "next" is today, and no
+differently.
 
 ### 8 · The post-job debrief, for an apprentice (an amendment to FO §6, carried here)
 
@@ -1110,6 +1237,30 @@ and as-at date).
 neither; the safety note first; the scope notice after it); **no model call is made for a reason**;
 the qualified role hears no reason unless asked; older procedures without the fields read as today.
 
+### P6b — Talk-through (buildable now, ahead of P0)
+
+Depends only on built code (§7a), not on JG, the logbook or IP. `TalkThroughLocator`, the authored
+hint order, `cautionPhrases` on `Procedure.Step` (optional, older procedures decode unchanged), the
+session vocabulary from the procedure, the mic choice by setup, and the online/offline table through
+GE's controller. The shared hint card, ear policy, caption voice gate and free-question path are
+built here unless Plan MO has already built them. The per-procedure "talk me through it" switch;
+the apprentice-role default waits for JG's `PracticeRole`.
+
+**Exit tests:** `TalkThroughLocatorTests` (candidates limited to previous, current and the next two;
+two agreeing sentences before a proposal; silence and off-topic talk hold; partials ignored; never
+moves the runner; "just go"; a later step past an open confirmation offers the deviation phrase);
+`TalkThroughHintTests` (the authored order; a step with nothing authored gets no hint; the ear
+length; **no model call for a hint**); `CautionPhraseTests` (whole words, case, fires at once, only
+authored phrases); `TalkThroughConnectivityTests` (the same narration with the network dropping
+mid-step gives the same step positions and the same hints; the phone forced under `VaultOnlyPolicy`,
+HIPAA, Medical Local Only and a Private Conversation; no web search either way);
+`TalkThroughPrivacyTests` (nothing from talk-through in an office payload, work record, logbook
+entry or learning candidate).
+
+**Device pass (owed):** a narrated job with the phone in a pocket and on the glasses' microphone
+(Ray-Ban Meta), offline and online; how often the locator agrees with the steps actually done; the
+time from a caught phrase to the spoken safety note.
+
 ### P7 — The apprentice debrief and the logbook read-back
 
 `ApprenticeDebrief`, the three fixed prompts after FO's save or alone, the logbook read-back and
@@ -1244,6 +1395,23 @@ G. **Legal framing**: s. 7(b) puts verification on the employer, which reports h
 18. **An employee-records notice** before the first send, whichever privacy law applies, on JG's
     pattern: suggested wording for the employer and a plain notice for the apprentice.
 
+19. **Talk-through is a slice of JI built ahead of the rest** (§7a, P6b): it stands on built code
+    only, is a per-procedure switch for every role now, and becomes the apprentice role's default
+    when JG's `PracticeRole` exists.
+20. **Narration proposes a step, never moves the runner**; "just go" turns proposals into spoken
+    advances for the rest of the job; a step out of order offers JL's deviation phrase and never
+    blocks.
+21. **Hints are authored, never generated**: safety note, expected reading, calculation, then the
+    cited reason (P6) and the figure (MI). A danger warning fires only on an author's
+    `cautionPhrases`, never on a model's judgment.
+22. **Online and offline give the same position and the same hints**; signal improves recognition
+    and the wording of free answers only. The passage shows first; a better answer may replace it
+    within about 3 s; a weak offline answer is held for the signal's return (GE).
+23. **Talk-through records nothing about the apprentice**: no position, no "off order", no caught
+    phrase leaves the phone or is kept.
+24. **Mic by setup**: the glasses' microphone on glasses without a display, the phone or a wired
+    headset microphone on Ray-Ban Display glasses; shown and changeable on the session sheet.
+
 ## Open questions for the owner
 
 1. **The record book's format, a partner question (IQ's, carried over).** Does Apprenticeship
@@ -1325,6 +1493,12 @@ G. **Legal framing**: s. 7(b) puts verification on the employer, which reports h
 - **Shared phones.** A pool phone shared between apprentices would mix records. CT's rule applies:
   identity is per person; until the app has sign-in, the Apprenticeship screen says the records belong
   to the phone's current technician name and asks before changing it.
+
+- **Talk-through as a monitor.** Narration matched to steps would show an employer how an apprentice
+  works, step by step. Nothing from it leaves the phone or is kept, and a test pins it (§7a).
+- **A wrong step, said with confidence.** The locator only proposes; the runner moves on a yes, and a
+  hint is always the author's text for the step it names, so a wrong guess shows the wrong step's
+  title, which the apprentice can see and refuse.
 
 ## Out of scope
 
