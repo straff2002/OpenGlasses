@@ -1,0 +1,149 @@
+{
+  "capabilities": {
+    "adjustmentNote": false,
+    "adjustmentReasons": [
+      "internal_use",
+      "damage"
+    ],
+    "chosenReason": "internal_use",
+    "hasJobs": false,
+    "wholeNumbersOnly": true
+  },
+  "locations": [
+    {
+      "class": "base",
+      "id": "LOC-A",
+      "name": "Front Counter"
+    },
+    {
+      "class": "something-new",
+      "id": "LOC-B",
+      "name": "North Bay"
+    }
+  ],
+  "pricesEnabled": true,
+  "pulledAt": "2026-11-20T09:30:00Z",
+  "rows": [
+    {
+      "asOf": "2026-11-20T09:05:00Z",
+      "currency": "nzd",
+      "description": "Wire nuts",
+      "itemID": "SKU-2001",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "12"
+        },
+        {
+          "location": "LOC-B",
+          "quantity": "4"
+        }
+      ],
+      "part": "ZX-2001",
+      "price": "3.40",
+      "unit": "pack"
+    },
+    {
+      "asOf": "2026-11-19T16:10:00Z",
+      "description": "Cable tie",
+      "itemID": "SKU-2002",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "2.5"
+        }
+      ],
+      "part": "ZX-2002",
+      "unit": "each"
+    },
+    {
+      "description": "Fuse 10A",
+      "itemID": "SKU-2003",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "-2"
+        }
+      ],
+      "part": "ZX-2003",
+      "price": "a lot",
+      "unit": "each"
+    },
+    {
+      "asOf": "2026-11-20T08:00:00.250Z",
+      "description": "Spray cleaner",
+      "itemID": "SKU-2004",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "0"
+        },
+        {
+          "location": "LOC-B",
+          "quantity": "6"
+        }
+      ],
+      "part": "ZX-2004",
+      "unit": "each"
+    },
+    {
+      "description": "Cleaning fluid",
+      "itemID": "SKU-2007",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "5"
+        }
+      ],
+      "part": "ZX-2007",
+      "unit": "l"
+    },
+    {
+      "description": "Wire nuts, listed twice",
+      "itemID": "SKU-2001",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "99"
+        }
+      ],
+      "part": "ZX-2001",
+      "unit": "pack"
+    },
+    {
+      "asOf": "yesterday",
+      "description": "Undated badly",
+      "itemID": "SKU-2005",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "1"
+        }
+      ],
+      "part": "ZX-2005",
+      "unit": "each"
+    },
+    {
+      "description": "",
+      "itemID": "SKU-2006",
+      "levels": [
+        {
+          "location": "LOC-A",
+          "quantity": "1"
+        }
+      ],
+      "part": " ",
+      "unit": "each"
+    }
+  ],
+  "source": {
+    "account": "Sample Shop",
+    "connector": "fixture-till",
+    "name": "Fixture Till"
+  },
+  "unitMap": {
+    "each": "each",
+    "l": "l",
+    "pack": "pack"
+  }
+}
