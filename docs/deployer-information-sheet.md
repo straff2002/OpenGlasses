@@ -65,6 +65,7 @@ An organisation profile is a signed document we prepare with you. Each phone enr
 | No recording sent over mobile data | `organizationForbidsRecordingSyncOnCellular` | On only |
 | No van stock kept on the phone | `organizationForbidsVanStock` | On only |
 | Where stock is kept, which sets the words the assistant and the Stock screen use | `organizationStockPlace` | Set and locked to one of `van`, `truck`, `store`, `warehouse` or `stock` (any other place). Any other value is refused. |
+| The business's own stock system: on or off, which system, whether parts used go back and under which reason | `stockSystemEnabled`, `stockSystemConnector`, `stockSystemSendBack`, `stockSystemAdjustmentReason` | Set and locked. The system must be one this version offers (`square`), and the reason one of `internal_use`, `waste` or `damage`. A profile never carries the key: it is pasted on the phone, behind the administrator's passcode on a managed phone. |
 | Tables read from a picture give no value until checked against the page | `organizationRequiresTableChecks` | On only |
 | Procedures run without the assistant: the phone's step screen, the rules and its own voice, never a model choosing a route | `organizationRunsProceduresWithoutAssistant` | On only |
 

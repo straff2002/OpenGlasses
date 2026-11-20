@@ -147,6 +147,8 @@ subject column distinguishes the wearer from a third party who never installed t
 | speakerNames | `SpeakerRegistry` | biometric | thirdPartySubject | platformDefault | no | none | none — names are cleared per speaker | `SpeakerRegistry.setName(nil, for:)` |
 | spotlightIndex | `SpotlightIndexService` | derivedIndex | wearer | operatingSystemManaged | no | none | `SpotlightIndexService.purgeAll()` | `SpotlightIndexing.delete(ids:)` |
 | stagedExports | `StagedExportCoordinator` | exportArtifact | wearer | complete | yes | TTL sweep | `StagedExportCoordinator.revokeAll()` | none — an export is a lease, released rather than searched |
+| stockSystemConnection | `StockSystemConnectionStore` | credential | wearer | keychainAfterFirstUnlockThisDeviceOnly | yes | none | `StockSystemConnectionStore.removeAll()` | n/a — no subject linkage |
+| stockSystemSnapshot | `StockSystemSnapshotStore` | operationalAudit | none | completeUntilFirstUserAuthentication | yes | replaced by each pull; the one before kept until then | `StockSystemSnapshotStore.retireAll()` | n/a — no subject linkage |
 | studyDecks | `StudyStore` | personalMemory | wearer | platformDefault | no | none | none — decks are the wearer's authored content, removed individually | n/a — no subject linkage |
 | tableChecks | `TableCheckStore` | documentCorpus | wearer | completeUntilFirstUserAuthentication | yes | removed with the manual it checks, and with its vault | `TableCheckStore.removeAll()` | `TableCheckStore.forget(documentHashes:vaultId:)` |
 | teleprompterScripts | `TeleprompterScriptStore` | personalMemory | wearer | platformDefault | no | none | none — scripts are the wearer's authored content, removed individually | n/a — no subject linkage |

@@ -274,7 +274,7 @@ private struct JobTabContent: View {
                             // Started: this page is the job now, and Back is still the list.
                             onStarted: { _ in path = [.currentJob] })
         case .vanStock:
-            VanStockView(store: .shared, onOpen: { path.append(.vanStockItem(id: $0)) })
+            VanStockView(store: .shared, stockSystem: appState.stockSystem, onOpen: { path.append(.vanStockItem(id: $0)) })
         case .vanStockItem(let id):
             VanStockItemView(store: .shared, itemID: id)
         }

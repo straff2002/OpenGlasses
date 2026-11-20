@@ -456,6 +456,7 @@ struct OpenGlassesApp: App {
             .task {
                 appState.enforceWorkizRoute()
                 if scenePhase != .background { appState.officeField.appBecameActive(); await appState.workiz.refresh(); if appState.workizConnection.isRunning { await appState.syncEngine.flush() } }
+                if scenePhase != .background { await appState.stockSystem.appBecameActive() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .orgPolicyDidChange)) { _ in appState.enforceWorkizRoute() }
             .onAppear {
@@ -740,6 +741,8 @@ struct OpenGlassesApp: App {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active { Task { await appState.workiz.refresh(); if appState.workizConnection.isRunning { await appState.syncEngine.flush() } } }
+            // Plan MM P2: the business's stock system, at most every 10 minutes; no background fetch.
+            if newPhase == .active { Task { await appState.stockSystem.appBecameActive() } }
             // Plan W: feed foreground state into the presence throttle (background ⇒ away ⇒ paused).
             appState.notePresenceForeground(newPhase == .active)
             // W04.1: the blur pass is unavailable while backgrounded and through the lock-screen
@@ -1608,8 +1611,12 @@ class AppState: ObservableObject, AppStateProtocol {
             await self.syncEngine.flush()
         }
     }
+    /// The connected stock system (Plan MM P2): its connection, last good snapshot and pulls.
+    lazy var stockSystem: StockSystemService = StockSystemService.forApp()
+    /// The office route ceiling stops every direct connector: Workiz's and the stock system's.
     func enforceWorkizRoute() {
         workiz.enforceRoute()
+        stockSystem.enforceRoute()
         if workizConnection.officeRoute {
             workizRetryTask?.cancel(); workizRetryTask = nil; workizRetryDate = nil
             workizSink.endForOffice()

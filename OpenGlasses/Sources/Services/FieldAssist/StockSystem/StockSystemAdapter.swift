@@ -283,12 +283,20 @@ protocol StockSystemAdapter: Sendable {
     var allowedEndpoints: [StockSystemEndpoint] { get }
     /// The system's unit words that map onto the phone's units; anything else is not kept.
     var unitMap: StockSystemUnitMap { get }
+    /// The largest response body the transport reads from this system; anything larger is refused
+    /// as too large before it is decoded (Plan MM P2).
+    var maximumResponseBytes: Int { get }
 
     /// What the system can take back, with the organisation's chosen reason.
     func capabilities(chosenReason: StockAdjustmentReason?) -> StockSystemCapabilities
 
     /// The system's locations, for "Which stock is here?".
     func locationsPlan() -> any StockSystemPullPlan<[StockSystemLocation]>
+
+    /// The smallest read on each endpoint the snapshot needs besides the locations (a catalogue
+    /// page of one, a stock page of one), for Test connection (Plan MM P2): reads only, so a key
+    /// that lacks a permission is named without anything being pulled or changed.
+    func probeRequests() throws -> [StockSystemRequest]
 
     /// A whole snapshot of the chosen locations' stock.
     func snapshotPlan(locationIDs: [String], pulledAt: Date, accountLabel: String?,

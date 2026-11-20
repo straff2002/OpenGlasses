@@ -279,6 +279,7 @@ final class OrgProfileManager: ObservableObject {
             seams.updatePack = { await OrgPackInstaller.install(packId: $0) }
             seams.beginDeparture = { reason, record, profile in
                 AppStateProvider.shared?.workiz.remove()
+                AppStateProvider.shared?.stockSystem.removeAll()
                 OrgCredentialSync.shared.forget()
                 PilotReportStore.shared.clear()
                 AppStateProvider.shared?.pilotReportDays = []
@@ -1158,6 +1159,10 @@ extension SettingKey {
         case .expertHandoverRetentionDays: return String(localized: "How long an expert's app keeps a job sent to them")
         case .customerReportShowsExpertTime: return String(localized: "Whether the customer's report shows an expert's time and name")
         case .organizationStockPlace: return String(localized: "Where stock is kept")
+        case .stockSystemEnabled: return String(localized: "Whether this phone connects to the business's stock system")
+        case .stockSystemConnector: return String(localized: "Which stock system the business uses")
+        case .stockSystemSendBack: return String(localized: "Whether parts used are sent back to the stock system")
+        case .stockSystemAdjustmentReason: return String(localized: "The reason parts used are written off under")
         default: return rawValue
         }
     }

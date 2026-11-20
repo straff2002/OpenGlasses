@@ -5,9 +5,10 @@ or a till or inventory system without them), the phone does not keep a second co
 system's figures into a snapshot and sends back the parts used on a job, once a person has
 confirmed them. This contract lists what a phone-side connector may write, so that an
 office-side connector, or anyone reading the system's audit trail, can recognise what a phone wrote.
-The first adapter is Square's (below), pure and headless: nothing connects to it yet. The synthetic
-fixtures are in [`fixtures/stock-systems/`](fixtures/stock-systems/) (one system with jobs, one
-without, vendor-neutral) and [`fixtures/square-v2/`](fixtures/square-v2/) (Square's response shapes).
+The first adapter is Square's (below); since Plan MM P2 a phone can connect to it from Settings and
+read its stock, and nothing is written yet. The synthetic fixtures are in
+[`fixtures/stock-systems/`](fixtures/stock-systems/) (one system with jobs, one without,
+vendor-neutral) and [`fixtures/square-v2/`](fixtures/square-v2/) (Square's response shapes).
 
 ## The snapshot
 
@@ -101,7 +102,9 @@ A new system is a thin adapter in its own folder under `Services/FieldAssist/Sto
 conforming to `StockSystemAdapter`. It supplies five things, and only these:
 
 1. **Requests**: its endpoints as a closed list (method, path, purpose, the system's permission
-   name) and every request built from them, with no host and no key.
+   name) and every request built from them, with no host and no key; its hosts (production and,
+   where it has one, a sandbox); the most bytes a reply may be; and Test connection's smallest
+   reads (a page of one of each kind the snapshot needs besides the locations).
 2. **Decoding**: its responses read into the common types (locations, the raw rows the snapshot
    builder takes, a read-back), closed and bounded, with its paging as small pure plans.
 3. **Units**: its table onto the phone's closed unit list, with its own tests.
@@ -113,9 +116,29 @@ It gets from the common layer, which names no vendor: the request value and its 
 the driver that runs a plan, the failure categories with their sentences (which stop retrying and
 which back off), the snapshot and its builder, the conversion into the phone's quantities, the join,
 the answer sentences, the parts-used write plan and its idempotency keys, the batch key rule and the
-write-time rule. Those exist today. Still to be built by the common layer, once, for every system:
-the connection in Settings › Field Assist › Stock system and its Keychain storage, the network route
-and its pinned-host transport, the snapshot store and the pull triggers, `van_stock` answering from
-the system, the staging and the person's confirmation, and the queued sink with its read-back
-before retry.
+write-time rule, and (since P2) the connection in Settings › Field Assist › Stock system with its
+device-only Keychain item, the pinned-host transport, the connector that drives any adapter, the
+snapshot store and the pull triggers. Still to be built by the common layer, once, for every
+system: `van_stock` answering from the system, the staging and the person's confirmation, and the
+queued sink with its read-back before retry.
+
+Beside its folder, a new system needs only: one `NetworkRoute` case (its purpose, `credential` and
+`promptText`, blocked under Medical Local Only, owned by `URLSessionStockSystemTransport`), one entry
+in `StockSystem/Registry/StockSystemAdapterRegistry.swift` (the adapter, the route, what the system
+calls its key and where it is made), and its row in the privacy copy. Nothing else in the common
+layer changes.
+
+## The connection on the phone
+
+One device-only Keychain item per system (`stockSystemConnection.<connector>`,
+`…AfterFirstUnlockThisDeviceOnly`) holds the key and every choice: the environment (the business's
+account or a sandbox), the locations that are this place, sending back on or off, the reason, and
+an optional external user id for a system with jobs. A profile may switch the connection off
+(`stockSystemEnabled`), choose the system (`stockSystemConnector`), and set sending back
+(`stockSystemSendBack`) and the reason (`stockSystemAdjustmentReason`), each locking its control. It
+never carries a key. Every request goes to the adapter's pinned host for the chosen environment over
+HTTPS, for an endpoint on the adapter's list, with the key added as a bearer header by the
+transport alone; redirects are refused and the reply is capped at the adapter's size. The last good
+snapshot per system is kept outside vault content and out of backup, and a new one replaces it
+only once written. Test connection reads only.
 

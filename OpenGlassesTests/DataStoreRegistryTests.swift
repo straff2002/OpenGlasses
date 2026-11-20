@@ -309,6 +309,14 @@ final class DataStoreRegistryTests: XCTestCase {
         }
     }
 
+    /// Plan MM P2: the business's figures are protected and kept out of backup, file and folder.
+    @MainActor
+    func testStockSystemSnapshotAttributesMatchTheRegistry() throws {
+        let store = StockSystemSnapshotStore(directory: workspace, connectorIDs: ["square"])
+        XCTAssertTrue(store.replace(StockSystemConnectionSamples.snapshot()))
+        try assertAttributes(of: store.currentURL("square"), match: .stockSystemSnapshot)
+    }
+
     @MainActor
     func testConversationStoreAttributesMatchTheRegistry() throws {
         let store = ConversationStore(directory: workspace)
@@ -343,6 +351,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.learningCandidates, LearningCandidateStore.fileProtection),
             (.learningEntries, LearningEntryStore.fileProtection),
             (.vanStock, VanStockStore.fileProtection),
+            (.stockSystemSnapshot, StockSystemSnapshotStore.fileProtection),
             (.goals, GoalStore.fileProtection),
             (.preparedCards, PreparedCardStore.fileProtection),
             (.writingStyle, WritingStyleStore.fileProtection),

@@ -113,7 +113,9 @@
 				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
 			</array>
 		</dict>
-		<!-- Prompts, notes, meeting summaries, message drafts sent to LLM providers -->
+		<!-- Prompts, notes, meeting summaries, message drafts sent to LLM providers; and, when Field
+		     Assist connects the business's own stock system (Square), part numbers, quantities and the
+		     chosen locations sent to that business's own account with the key pasted on the phone -->
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>

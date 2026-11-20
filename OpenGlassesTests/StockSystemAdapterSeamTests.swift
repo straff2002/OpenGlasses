@@ -13,21 +13,47 @@ final class StockSystemAdapterSeamTests: XCTestCase {
 
     // MARK: - The common folder names no vendor
 
-    /// Every Swift file directly in `StockSystem/` (not a vendor's subfolder), comments included.
-    func testTheCommonFolderNamesNoVendor() throws {
-        let folder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("OpenGlasses/Sources/Services/FieldAssist/StockSystem")
-        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey])
-            .filter { $0.pathExtension == "swift" }
-        XCTAssertGreaterThanOrEqual(files.count, 11, "the common files are there to scan")
-        for file in files {
+    /// Every common file, comments included: everything under `StockSystem/` except a vendor's own
+    /// adapter folder (one holding a type that conforms to `StockSystemAdapter`) and `Registry/`,
+    /// which is the one place adapters are listed by name; and the common files elsewhere (Plan MM
+    /// P2's settings view). Only these may name a vendor: an adapter's folder, the registry, the
+    /// network route, the privacy manifest and copy, tests and docs.
+    func testTheCommonFilesNameNoVendor() throws {
+        let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let folder = repo.appendingPathComponent("OpenGlasses/Sources/Services/FieldAssist/StockSystem")
+        let manager = FileManager.default
+        var common: [URL] = []
+        var vendorFolders: [String] = []
+        for entry in try manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey]) {
+            let isFolder = (try entry.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true
+            guard isFolder else {
+                if entry.pathExtension == "swift" { common.append(entry) }
+                continue
+            }
+            let files = (manager.enumerator(at: entry, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? [])
+                .filter { $0.pathExtension == "swift" }
+            if entry.lastPathComponent == "Registry" { continue }
+            let isAdapter = try files.contains { try String(contentsOf: $0, encoding: .utf8).contains(": StockSystemAdapter {") }
+            if isAdapter { vendorFolders.append(entry.lastPathComponent); continue }
+            common += files
+        }
+        let elsewhere = ["OpenGlasses/Sources/App/Views/StockSystemSettingsView.swift"]
+        common += elsewhere.map { repo.appendingPathComponent($0) }
+        XCTAssertGreaterThanOrEqual(common.count, 17, "the common files are there to scan")
+        for required in ["StockSystemConnectionStore", "StockSystemTransport", "StockSystemHTTPConnector",
+                         "StockSystemSnapshotStore", "StockSystemService", "StockSystemSettingsView"] {
+            XCTAssertTrue(common.contains { $0.lastPathComponent == required + ".swift" }, "\(required) is scanned")
+        }
+        for file in common {
             let text = try String(contentsOf: file, encoding: .utf8).lowercased()
             for vendor in ["square", "simpro", "shopify", "lightspeed"] {
                 XCTAssertFalse(text.contains(vendor), "\(file.lastPathComponent) names \(vendor)")
             }
         }
-        // The vendor's adapter lives in its own subfolder.
-        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("Square/SquareStockAdapter.swift").path))
+        // The vendor's adapter lives in its own subfolder, and the registry lists it.
+        XCTAssertEqual(vendorFolders, ["Square"])
+        XCTAssertTrue(manager.fileExists(atPath: folder.appendingPathComponent("Square/SquareStockAdapter.swift").path))
+        XCTAssertTrue(manager.fileExists(atPath: folder.appendingPathComponent("Registry/StockSystemAdapterRegistry.swift").path))
     }
 
     // MARK: - The request value

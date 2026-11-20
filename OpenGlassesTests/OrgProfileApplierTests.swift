@@ -30,6 +30,12 @@ final class OrgProfileApplierTests: XCTestCase {
         let settable = Set(SettingKey.allCases.map(\.rawValue))
         XCTAssertTrue(settable.isDisjoint(with: secrets),
                       "secret keys in SettingKey: \(settable.intersection(secrets).sorted())")
+        // The Keychain items that hold a key pasted on the phone (Plan MM P2's stock systems, Plan
+        // JR's Workiz) are not settable either, whatever system is added.
+        let keychainItems = Set(StockSystemAdapterRegistry.connectorIDs.map(StockSystemConnectionStore.keychainAccount)
+            + [WorkizConnection.keychainAccount])
+        XCTAssertTrue(settable.isDisjoint(with: keychainItems))
+        XCTAssertFalse(settable.contains { $0.hasPrefix(StockSystemConnectionStore.keychainAccountPrefix) })
     }
 
     func testUnknownKeyIsDroppedByName() {

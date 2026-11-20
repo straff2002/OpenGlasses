@@ -12,6 +12,9 @@ import UniformTypeIdentifiers
 struct VanStockView: View {
     @ObservedObject var store: VanStockStore
     var service: VanStockService = .shared
+    /// The business's own stock system, when one is connected (Plan MM P2): the screen pulls its
+    /// figures when it opens (at most every 10 minutes) and on pull-to-refresh.
+    var stockSystem: StockSystemService? = nil
     /// Open one line's page.
     let onOpen: (String) -> Void
 
@@ -27,6 +30,9 @@ struct VanStockView: View {
 
     var body: some View {
         List {
+            if let stockSystem {
+                StockSystemStatusSection(service: stockSystem)
+            }
             if store.isUnreadable {
                 unreadableSection
             } else if store.log.isEmpty {
@@ -47,6 +53,7 @@ struct VanStockView: View {
             }
         }
         .ogFormStyle()
+        .modifier(StockSystemPull(service: stockSystem))
         .searchable(text: $search, prompt: Text("Part number or description"))
         .navigationTitle(store.screenTitle)
         .toolbar {
@@ -153,6 +160,43 @@ struct VanStockView: View {
             Button("Start the list again", role: .destructive) { confirmingReset = true }
         } footer: {
             Text("Nothing has been changed. The assistant won't guess any figures.")
+        }
+    }
+}
+
+/// Where the connected system's figures stand (Plan MM P2): "From <system> at 09:10", and why the
+/// last pull did not refresh them. Nothing while no system is connected. The figures themselves
+/// join the screen with `van_stock` answering from the system.
+private struct StockSystemStatusSection: View {
+    @ObservedObject var service: StockSystemService
+
+    var body: some View {
+        if service.isRunning || service.snapshot != nil {
+            if service.statusLine != nil || service.pullMessage != nil || service.pulling {
+                Section {
+                    if let line = service.statusLine { Text(line).font(.footnote) }
+                    if service.pulling { Text("Reading the figures…").font(.footnote).foregroundStyle(.secondary) }
+                    if let message = service.pullMessage {
+                        Text(message).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The screen's pulls: on opening (the service keeps them at most every 10 minutes) and
+/// pull-to-refresh, only while a system is connected.
+private struct StockSystemPull: ViewModifier {
+    let service: StockSystemService?
+
+    func body(content: Content) -> some View {
+        if let service, service.isRunning {
+            content
+                .task { await service.stockScreenOpened() }
+                .refreshable { await service.refresh() }
+        } else {
+            content
         }
     }
 }
