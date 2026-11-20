@@ -3231,6 +3231,10 @@ class AppState: ObservableObject, AppStateProtocol {
 
         // Wire Tier 1 services
         ambientCaptions.wakeWordService = wakeWordService
+        // Plan MO §6: captions never hear the assistant's own voice on the phone speaker, whatever
+        // "Include Assistant Voice" says. The same decision the recorder's gate uses, from the
+        // capture router's one speaking subscription, with the setting treated as off.
+        ambientCaptions.assistantVoiceGate = captureAudioRouter.captionGate
         ambientCaptions.glassesDisplay = glassesDisplay
         // BY P3: on-device translation tier — the Apple Translation engine is hosted in the app
         // root (`TranslationEngineHost`); reachability drives the offline → on-device tier rule.
