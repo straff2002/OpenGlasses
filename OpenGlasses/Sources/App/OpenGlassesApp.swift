@@ -4243,15 +4243,10 @@ class AppState: ObservableObject, AppStateProtocol {
                     // manager's `RealtimeAudioEngine` holds a `.playAndRecord` session through
                     // `AudioSessionCoordinator`/`AudioSessionActivator` for as long as the
                     // session is up, which is what keeps capture and playback alive off-screen.
-                    // Start visual input only when the selected live protocol can accept it.
-                    guard Config.realtimeModel(for: target)?.capabilities?.vision != false,
-                          !Config.audioOnlyMode,
-                          geminiLiveSession.interpreterRequest == nil else { break }
-                    do {
-                        try await cameraService.startStreaming()
-                    } catch {
-                        PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
-                    }
+                    // Nor for the camera: the session claims it when one starts and gives it back
+                    // when it ends (`LiveSessionCameraPolicy`). Starting it here, with no owner,
+                    // left the capture LED on for as long as the mode stayed selected.
+                    break
                 }
 
             case .startSession(let target):
@@ -4376,23 +4371,12 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// What the current mode needs running when no live session is being started for it: the
-    /// wake-word listener in Direct mode, the camera in a realtime one.
+    /// wake-word listener in Direct mode. A realtime mode needs nothing until a session starts —
+    /// the session claims the glasses camera itself (`LiveSessionCameraPolicy`), so launching
+    /// into a live mode no longer turns the capture LED on with nobody talking to it.
     private func startModeSubstrateOnLaunch() {
         if currentMode == .direct {
             autoStartListening()
-        } else if currentMode.isRealtime {
-            Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                do {
-                    // Nobody pressed anything: a camera permission that is not granted is read
-                    // and reported, never asked for, because asking leaves for Meta AI.
-                    _ = try await CameraPermissionRequestPolicy.startedByApp {
-                        try await self.cameraService.startStreaming()
-                    }
-                } catch {
-                    PrivacyLog.camera(.glasses, .sessionAttemptFailed, error: SafeErrorSummary(error))
-                }
-            }
         }
     }
 

@@ -188,15 +188,17 @@ final class CameraPermissionRequestPolicyTests: XCTestCase {
                       "the start must fail here, not go round the retry loop")
     }
 
-    /// The camera start a live mode makes at launch is the app's own.
-    func testTheLaunchCameraStartIsMarkedAsTheApps() throws {
+    /// A live mode makes no camera start at launch (`LiveSessionCameraPolicy`); a session started
+    /// at launch is the one that claims it, and it is marked where it starts. Should a launch start
+    /// ever come back, it must be the app's own.
+    func testTheLaunchMakesNoUnmarkedCameraStart() throws {
         let appState = try code("OpenGlasses/Sources/App/OpenGlassesApp.swift")
         let launch = try slice(of: appState, from: "private func startModeSubstrateOnLaunch() {",
                                to: "\n    }\n", "`startModeSubstrateOnLaunch()`")
+        guard let start = launch.range(of: "startStreaming()") else { return }
         let mark = try XCTUnwrap(launch.range(of: "CameraPermissionRequestPolicy.startedByApp {"),
-                                 "the launch camera start is no longer marked as the app's own: "
+                                 "the launch camera start is not marked as the app's own: "
                                      + "with the permission missing it opens Meta AI unasked")
-        let start = try XCTUnwrap(launch.range(of: "cameraService.startStreaming()"))
         XCTAssertLessThan(mark.lowerBound, start.lowerBound)
     }
 }
