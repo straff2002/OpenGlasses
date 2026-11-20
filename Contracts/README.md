@@ -21,8 +21,9 @@ build) and [office check-in, renewal and removal](office-check-in.md) (team lear
 folders carry managed jobs and check-in in the opt-in phone build; check-in has its messages,
 key-holder operations and fixtures, the phone's half in that build, and no office app caller),
 and [stock systems](stock-systems.md) (the only writes a phone's connector to a business's own
-stock system may make, their idempotency keys and read-back; Plan MM P0, fixtures and the phone's
-pure core, no connector yet).
+stock system may make, their idempotency keys and read-back, and what a new system's adapter
+supplies; Plan MM P0–P1, fixtures, the phone's pure core and Square's pure adapter, nothing
+connected yet).
 
 This is a tested draft and import preflight, not production commissioning or delivery. The
 Swift phone verifier and Go implementation agree on the same public, fictional signed vault

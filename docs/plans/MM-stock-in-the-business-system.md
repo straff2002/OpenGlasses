@@ -7,8 +7,12 @@ connector protocol), two invented fixture sets and `Contracts/stock-systems.md`;
 the recommendations for decisions 2–9 and 11, each kept in one place (`StockSystemPolicy`), which
 remain the owner's to change. **Decision 1 taken 2026-11-20: Square and Simpro**, one system without
 jobs and one with, built against fixtures from each vendor's public reference and checked against a
-live account later, as Workiz was. P1–P4 not built; P5 owed. Quantities are Plan
-[ML](ML-measured-quantities.md)'s.
+live account later, as Workiz was. **P1 built 2026-11-20 (headless): Square only**, by the owner's
+direction: the vendor-neutral adapter seam in the same folder (requests from a closed endpoint
+list, paged pull plans, the driver, common failure categories and their sentences), an item's
+`decimalPlaces` in the snapshot, and Square's thin adapter in `StockSystem/Square/` over synthetic
+fixtures; 57 new tests. Simpro is not built (no public reference). Square's live qualification
+is owed. P2–P4 not built; P5 owed. Quantities are Plan [ML](ML-measured-quantities.md)'s.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own movement log, the `van_stock` tool, the Stock screen,
@@ -365,6 +369,39 @@ description. *Gate before the build:* the vendor's reference (and, for a system 
 one, the vendor's written permission) and a test account. A short qualification against that
 account confirms the facts the table marks as to-confirm, and the results are recorded in this
 plan.
+✅ **Built 2026-11-20 for Square** (headless). The owner chose to build from Square's public
+reference and synthetic fixtures and qualify against a live account later, as Workiz was, rather
+than wait for a test account; Simpro is not built, because its reference is not public and nothing
+is built from anyone's client code. As built, **as much as possible is common**, so the
+organisation's own choice of system plugs in without reshaping: `StockSystemAdapter` and
+`StockSystemRequest` (a request only for an endpoint on the adapter's closed list, with no host,
+no key, and descriptions that never show a header value or the body), `StockSystemPullPlan` (each
+paged read a small pure state machine) and `StockSystemPlanDriver` (the one loop, with a request
+budget), `StockSystemFailure` (unauthorized expired/revoked/invalid, missing scope, rate limited
+with `Retry-After`, server, rejected with only a short plain code, not found, malformed, too large,
+unreachable; `isTerminal`/`isRetryable`; one sentence each, naming the system and Settings › Field
+Assist › Stock system), and `StockSystemIdempotency` (the batch key: SHA-256 over the sorted step
+keys; the write-time clamp). A guard test fails if any file directly in the common folder names a
+vendor. The Square adapter is only its five endpoints, decoding, unit table, capabilities (no jobs,
+`waste` only, no note, per-item decimals) and read-back matcher; the one write is an `ADJUSTMENT`
+from `IN_STOCK` to `WASTE` with the same from and to location, `reference_id` the step's key, at
+most 100 per request, `occurred_at` the confirmation time unless it is over 23 hours old.
+Decided in the build: an untracked variation is left out of the snapshot, not kept unknown (the
+snapshot holds tracked items); Square's `calculated_at` is when a count last changed, so it does
+not date a line and `asOf` is the pull; a variation not offered at a chosen location is left out;
+the reorder point is kept only when every chosen location's `LOW_QUANTITY` threshold agrees; a
+write under a step's key that is not that step (or the key twice) is a mismatch, neither applied
+nor resent (`StockSystemReadBack.mismatched`, `PartsUsedWritePlan.needsAttention(after:)`); a
+quantity finer than the item's `decimalPlaces` is `too_many_decimals`, never rounded. Prices, when
+enabled, are read only in a currency whose minor unit the adapter knows. Square's adjustment
+reasons (`reason_id`, beta in `2026-07-15`) are not used.
+*Owed (live account):* a Square sandbox account and a seller's own account with a personal access
+token, confirming each fact `Contracts/fixtures/square-v2/README.md` lists as not yet confirmed
+(`Retry-After`, related objects across pages, the precision default, count spelling, presence
+default, never-moved counts, the `occurred_at` window, `updated_after`'s field and margin, the
+pinned version and a reused idempotency key, the batch-create response's `changes`, the scopes).
+Open question 1 for Square: a sale is taken out at the till; a `WASTE` adjustment is taken out
+when Square accepts it. *Owed (device):* nothing yet (nothing is connected until P2).
 
 **P2 — The connection, the store and the routes.** Settings › Stock system (§3), the Keychain
 storage, the `NetworkRoute` and its transport, `MedicalEgressGuard`, the manifest, inventory and
