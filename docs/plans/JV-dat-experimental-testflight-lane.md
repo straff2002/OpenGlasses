@@ -2,7 +2,11 @@
 
 **Status:** 🚧 P0 + P1 built 2026-11-17 (headless; one branch). P2's Inputs probe built 2026-11-17
 (headless; stacked on it); its device run is owed with P3, and the gesture map waits for it. The
-probe also listens to the Neural Band (2026-11-19), so the same run answers Plan MG P5. Owed:
+probe also listens to the Neural Band (2026-11-19), so the same run answers Plan MG P5. **First
+device run 2026-11-19, on a Ray-Ban Display with its Neural Band (flagged build 737):** band swipes
+and pinches reach the app cleanly, a drag arrives only as short bursts, the touchpad sent nothing,
+each run ended when the glasses ended the session, and "Hey Meta" failed with `channelError` on that
+pair (P3, *First results*). The Gen 2 run is still owed. Owed:
 P1's device questions and the probe run (P3), the flagged builds' own TestFlight group, a catalog
 sync for the new strings (the resolver's six failure sentences in every build; the Settings toggle
 and its footer, and the probe's section, only in a flagged one), then P2's map. Drafted 2026-10-26;
@@ -243,7 +247,37 @@ Run together with GJ P2, which needs the same person and glasses:
   own lens view moves as well.
 
 The tester reports through a support report from a flagged build; its first line identifies the
-build. Nothing ships to the store from this phase.
+build. Nothing ships to the store from this phase. The probe's runs are in the full support report
+only (Send Last Conversation, or Report this reply): the short Report a Problem leaves them out, and
+they are kept in memory, so a run must be sent before the app is closed.
+
+### First results (2026-11-19, Ray-Ban Display with the Neural Band, flagged build 737)
+
+One support report from a partner's tester: seven probe runs, three of them with inputs, 154 inputs
+in all, read from the report's probe section and its app events.
+
+- **Swipes:** `nav` up 19, down 10, left 8, right 11, all from `neuralBand`. Each swipe is one event,
+  about half a second apart in a series, none lost or doubled.
+- **Pinch:** `select` 6, from `neuralBand`. Each pinch is preceded, about 300 ms earlier, by a short
+  `neuralBandDrag` burst (down, two or three moves, up). A pinch therefore also looks like a drag.
+- **Drag:** 13 drags, each 40–140 ms with 2–5 moves (about 30 moves a second), 75 moves in all. No
+  long, slow drag appears. Either none was made, or the band sends a drag only as short bursts.
+- **Touchpad:** no `captouch` event in any run. Not yet known whether it was tried or whether Meta
+  keeps the touchpad on this pair.
+- **Every run with inputs ended the same way:** the glasses ended the device session
+  (`sessionEndedByDevice`, then `deviceDisconnected` on the probe), 1–6 s after the last recorded
+  input, and the lens session ended with it (20:53:47, 20:55:22, 20:58:26). That fits the Back
+  gesture, which Meta keeps (`consumeBack: false`) and which ends a Display session in 1.0.x (Meta
+  field report, dat-conventions). Not confirmed.
+- **Battery:** 98 % at 20:53 to 92 % at 21:04, with the lens and conversations in use between runs,
+  so it says nothing about a standby session's cost. P2's battery question is still open.
+- **"Hey Meta, open Avenkin" on this pair:** at both connections the voice invocations stream
+  started and failed at once with `channelError`, and no invocation arrived. This is P1's first
+  device answer: on a Ray-Ban Display, in this release channel, the stream does not open. Whether
+  that is the release-channel question (Owed 1), the pair, or the app's registration is not known.
+- **Still to ask the tester:** whether Meta's own lens view also moved on each swipe and pinch; whether
+  the touchpad was tried; what was done just before each session ended; and whether a slow drag was
+  made. P2's map and Plan MG P5 wait on the first answer.
 
 ## Not in this plan
 
@@ -257,7 +291,9 @@ build. Nothing ships to the store from this phase.
 ## Owed / open
 
 1. **Meta's developer centre:** do experimental features work for testers in the app's release
-   channel, or only on glasses with Developer Mode on? If only the latter, P1 and P2 reach the owner's
+   channel, or only on glasses with Developer Mode on? (2026-11-19: Inputs worked on a tester's Ray-Ban
+   Display in a flagged TestFlight build, while voice invocations failed with `channelError`. So at
+   least Inputs reaches a tester's glasses, and the question now applies to voice invocations.) If only the latter, P1 and P2 reach the owner's
    own glasses and nobody else's, and this plan stops at P0 + P1 until that changes.
 2. **TestFlight lanes:** confirm a separate external group for flagged builds (recommended), rather
    than sending flagged builds to every tester.

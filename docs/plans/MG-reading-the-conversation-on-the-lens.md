@@ -15,7 +15,11 @@ Display an answer is one view the band scrolls — its rows, its buttons, and th
 again from there, a press on an earlier answer opens it with **‹ Latest**, and "earlier", "latest"
 and "say that again" work by voice. The page view draws the whole page as nine tiles to point at,
 a zoomed view as a strip the lens scrolls, the next views ahead, and takes "zoom in on the bottom
-right". P5 waits on JV's probe; P6 is the device pass.
+right". P5 waits on JV's probe; P6 is the device pass. **JV's first probe run on a Ray-Ban Display
+(2026-11-19, flagged build 737):** band swipes arrive as clean `nav` events and pinches as `select`, but
+a drag arrives only as short bursts, and every pinch also sends one, so §6's drag-to-pan is not
+buildable as drafted. P5 now waits on one answer: whether Meta's own lens view also moves on a swipe
+(§6).
 All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
 live answer on the lens, and the manual-page view. P0, P2 and P3 are headless. P1 and P4 run on the
@@ -257,6 +261,21 @@ Display gives the drag rate this needs:
 - `drag` pans the page view continuously, limited to about 4 frames a second, with the zoom kept;
 - `nav(.left/.right)` steps the page view without the arrow row;
 - nothing else is mapped. Back stays Meta's (`consumeBack: false`, JV's rule).
+
+**What the first probe run changed (2026-11-19, Ray-Ban Display, flagged build 737; JV P3).**
+- **Drag is out.** The band sent drags only as bursts of 40–140 ms with 2–5 moves, and a pinch is
+  preceded by one of those bursts about 300 ms before its `select`. A drag-driven pan would move the
+  page on every press, and a burst is too short to pan with. Unless a later run shows a long drag,
+  `drag` stays unmapped.
+- **`nav` is the candidate.** Each swipe arrived as one `nav` event in all four directions, with none
+  lost or doubled. `nav(.left/.right)` stepping the page view stays the proposal, and
+  `nav(.up/.down)` could step the reading view's rows.
+- **It is gated on one answer:** whether Meta's own lens view also moves on the same swipe. P1 showed
+  the native view moving focus one row per band move. If the swipe moves both, mapping it would move
+  the page twice, and P5 adds nothing beyond the stable view.
+- **The session ends under the probe.** Each run with inputs ended when the glasses ended the device
+  session, which also takes the lens down. That is most likely the Back gesture (Meta field report,
+  dat-conventions). §7's "show that again" is the way back either way.
 
 The code goes under `Sources/Glasses/Experimental/` inside `#if DAT_EXPERIMENTAL` and is listed in
 `DATExperimentalGuardTests`' roster. A store build has the stable view and nothing more.
@@ -728,7 +747,9 @@ from the button row into the grid; the 31-character row line on a real lens.
 ### P5 — drag and nav in flagged builds (TestFlight only; after JV P3)
 
 §6. Owed to JV's probe results; the probe asks for the band since 2026-11-19, so one run on the
-tester's Display answers it.
+tester's Display answers it. **First run 2026-11-19** (JV P3, *First results*): drag is ruled out as
+drafted, and `nav` waits on whether Meta also moves its own view on a swipe. Nothing is built until
+that is answered.
 
 ### P6 — device pass (the tester's Display; folded in with KP P6, KV P5 and LC)
 
@@ -762,6 +783,8 @@ throwaway builds; strings synced to the catalog; no plan letters or beta wording
 ## Open
 
 - What drives the native scroll, and where focus lands after a send (P1, then P6).
+- Whether Meta's own lens view also moves on a band swipe or pinch while the app has Inputs (JV P3's
+  first run could not show it; the tester is asked). It decides whether P5 maps `nav` at all.
 - The real character advance on the lens (KV P5), which could widen lines past 32.
 - Whether a new `send()` wakes a dimmed or sleeping lens, and whether our frame survives a wake by touch
   or pinch (unconfirmed; dat-conventions; §8; the simulator can't show it, so P6). If a send doesn't wake it, a redraw
