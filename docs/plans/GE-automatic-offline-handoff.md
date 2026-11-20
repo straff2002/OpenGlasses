@@ -116,7 +116,10 @@ available wins, decided by a pure `OfflineBrainSelector(appActive:available:)`:
 1. **Apple on-device model** (`appleOnDevice`) — *device-unverified* whether it serves a
    background app; P3 measures it. Used only if verified. (2026-11-20: [Plan MP](MP-apple-intelligence-manual-answers.md)
    adds an offline manual-reading turn on this model. Apple's Private Cloud Compute model needs the
-   network, so this plan treats it as a cloud model: it is never an offline rung.)
+   network, so this plan treats it as a cloud model: it is never an offline rung. On a downloaded
+   MLX or GGUF model the offline tool set is filtered from `localSafeTools`, so no Field Assist job
+   tool reaches it, though this plan marks them offline-safe. [Plan MQ](MQ-local-model-tool-harness-and-qualification.md)
+   §D adds them.)
 2. **llama.cpp, CPU only** (`gpuLayers: 0`, a ≤1.5 B GGUF already installed) — CPU work is
    allowed while the audio background mode keeps the app alive; risk is the background CPU
    budget and heat. *Device-unverified*; off unless P3 shows it is safe.

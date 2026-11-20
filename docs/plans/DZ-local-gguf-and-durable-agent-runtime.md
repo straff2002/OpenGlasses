@@ -922,7 +922,8 @@ The app's own `<tool_call>` markup and `LocalOutputPolicy` are all a GGUF model 
 GBNF grammars (`llama_sampler_init_grammar`) are available for constraining a call once one
 starts. Before any GGUF entry earns `.toolFriendly`, decide between linking `common/chat` and
 keeping the app's parser. Run the tool-call fixture through the path that ships, not a desktop
-llama.cpp.
+llama.cpp. [Plan MQ](MQ-local-model-tool-harness-and-qualification.md) P2 takes this up and
+recommends linking `common/chat`.
 
 ## Rollout and rollback
 

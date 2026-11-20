@@ -194,6 +194,7 @@ the way [Plan FC](FC-local-model-remediation.md) asks of every local model.
 - Vision on either Apple model.
 - Training a Foundation Models adapter: it must be retrained for every system model update and
   needs its own entitlement.
-- Changing the MLX or GGUF tool paths (see the research report's recommendations and
-  [Plan FC](FC-local-model-remediation.md) / [Plan DZ](DZ-local-gguf-and-durable-agent-runtime.md)).
+- Changing the MLX or GGUF tool paths: that is [Plan MQ](MQ-local-model-tool-harness-and-qualification.md).
+  MQ reuses this plan's `ManualPassageFitter` and `ManualReadingCheck`, so a downloaded model's
+  manual answers are checked the same way.
 - Using PCC as a general cloud brain for the app.
