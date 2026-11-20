@@ -4922,6 +4922,15 @@ struct Config {
     /// AI sending messages and email on the wearer's behalf. External actuation.
     @UserDefaultsBacked("aiMessagingEnabled", default: true) static var aiMessagingEnabled: Bool
 
+    /// Live hints (Plan MO): a session that listens to the room and, when someone asks the wearer a
+    /// question, puts a short answer from their own documents on the lens or in their ear. On by
+    /// default as a feature; a session only ever starts on the wearer's word.
+    @UserDefaultsBacked("liveHintsEnabled", default: true) static var liveHintsEnabled: Bool
+
+    /// Live hints' first-run sheet (where audio goes, that nothing is kept) has been shown and
+    /// acknowledged. It shows once; the one-line capture notice shows at every start.
+    @UserDefaultsBacked("liveHintsFirstRunAcknowledged", default: false) static var liveHintsFirstRunAcknowledged: Bool
+
     /// Master toggle for the Accessibility Tier (A1 Reading Accessibility). When off, the
     /// ReadingAccessibilityTool is not registered.
     @UserDefaultsBacked("accessibilityModeEnabled", default: false) static var accessibilityModeEnabled: Bool

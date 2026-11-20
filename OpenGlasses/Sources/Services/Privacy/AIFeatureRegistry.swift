@@ -44,6 +44,10 @@ enum AIFeature: String, CaseIterable {
     // Neither, but AI and worth inventorying
     case ambientCaptions
     case myManuals
+    /// Live hints (Plan MO): a short answer from the wearer's documents when someone asks them a
+    /// question. Screened `.none`: it answers the question asked and never identifies, describes or
+    /// judges the person asking.
+    case liveHints
 
     // MARK: - Facets
 
@@ -289,6 +293,21 @@ enum AIFeature: String, CaseIterable {
                           stores: [.captionSessions],
                           dataRetainedWhenDisabled: "Kept caption sessions, if Keep caption sessions was turned on: each stays on this phone for seven days from when it began, or until it is deleted. With that switch off, as it is by default, captions are held for the session and are not written to disk.",
                           erasure: .api("CaptionSessionStore.deleteAll()"))
+
+        case .liveHints:
+            // Plan MO §9–§10. The session's captions are the caption service's, kept only under its
+            // own Keep caption sessions switch; the hints themselves are never written.
+            return Record(feature: self, title: "Live hints",
+                          sensitiveCategories: [.none],
+                          disableSwitch: Switch(key: "liveHintsEnabled",
+                                                isEnabled: { Config.liveHintsEnabled },
+                                                setEnabled: { Config.liveHintsEnabled = $0 },
+                                                preexisting: false),
+                          toolNames: [],
+                          stores: [],
+                          dataRetainedWhenDisabled: "Nothing. Hints, the questions they answer and their passages are held in memory for the session and go when it stops; none is written to the conversation, memory or disk.",
+                          erasure: .notSubjectLinked,
+                          screeningNote: "Not biometric: voices are told apart only by the transcription service's per-session speaker cluster, and the wearer's own voice is a tap held in memory for the session, never written to the speaker names. No voiceprint, embedding or cross-session voice match exists. A hint answers the question asked from the wearer's documents and never describes or judges the person asking.")
         }
     }
 }

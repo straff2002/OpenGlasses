@@ -353,6 +353,10 @@ struct OpenGlassesApp: App {
                 // Add-on sheets (Plan GF P2) — invisible until a link, a file or an edit raises one.
                 AddOnInstallOverlay(service: appState.addOnInstall)
 
+                // Live hints (Plan MO P1): the capture notice at every start and the first-run sheet,
+                // invisible until a session is started.
+                LiveHintsNoticeOverlay(service: appState.liveHints)
+
                 // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
                 OrgEnrolmentOverlay(service: appState.orgEnrolment)
                     .environmentObject(appState)
@@ -1455,6 +1459,49 @@ class AppState: ObservableObject, AppStateProtocol {
         transcriber: recordingTranscriber
     )
     let meetingAssistant = MeetingAssistantService()
+    /// Plan MO P1: the phone's list of a live-hints session's last hints, in memory only.
+    let liveHintsList = LiveHintsPhoneList()
+    /// Plan MO P1: live hints. Lazy because its carriers need the services below. The root view's
+    /// notice overlay observes it from launch; a session starts only from `startLiveHints`.
+    lazy var liveHints: LiveHintsService = {
+        let service = LiveHintsService(carriers: .init(
+            captions: AmbientCaptionHintSource(service: ambientCaptions),
+            documents: DocumentStoreHintSearch(store: documentStore, namespace: {
+                ProjectContextService.shared.activeProjectId?() ?? "global"
+            }),
+            model: LLMServiceHintModel(llm: llmService, isOnline: { [weak self] in
+                self?.reachability.isOnline ?? true
+            }),
+            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard),
+            ear: TTSHintEar(tts: speechService),
+            voiceActivity: MicLevelHintVoiceActivity(wakeWordService: wakeWordService),
+            phoneList: liveHintsList,
+            clock: SystemHintClock(),
+            // No app-wide daily allowance exists yet; the session obeys one through this seam.
+            allowance: UnlimitedHintAllowance()))
+        service.onRunningChanged = { [weak self] running in
+            guard let self else { return }
+            self.liveHintsRunning = running
+            // The idle session moves to the phone's mic in the hints shape, and back (Plan MO §7).
+            self.wakeWordService.liveHintsSessionChanged()
+        }
+        return service
+    }()
+    /// Mirrors `liveHints.isRunning` for the idle listener's plan, without creating the service.
+    private(set) var liveHintsRunning = false
+
+    /// Start a live-hints session (Plan MO). The entry point P2's Home card, session sheet and voice
+    /// command call. The first start ever raises the first-run sheet and starts from it.
+    @discardableResult
+    func startLiveHints(_ settings: LiveHintsService.Settings = .init()) -> LiveHintsService.StartOutcome {
+        liveHints.start(settings)
+    }
+
+    /// Stop the live-hints session, if one is running.
+    func stopLiveHints() {
+        guard liveHintsRunning else { return }
+        liveHints.stop()
+    }
     let broadcastService = BroadcastService()
     /// Broadcast chat read-aloud (Plan CI) — lives and dies with the broadcast session.
     let chatReadback = BroadcastChatReadbackService()
@@ -5230,7 +5277,8 @@ class AppState: ObservableObject, AppStateProtocol {
                 wakeListenMic: Config.wakeListenMic,
                 micRoute: Config.conversationMicRoute,
                 posture: PowerPolicyService.shared.posture,
-                speechGateEnabled: Config.wakeSpeechGateEnabled)
+                speechGateEnabled: Config.wakeSpeechGateEnabled,
+                liveHintsActive: self?.liveHintsRunning ?? false)
         }
         wakeWordService.glassesTurnState = { [weak self] in
             (stoodDown: self?.glassesStoodDown ?? false, worn: self?.glassesService.isWorn)
@@ -10418,6 +10466,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.speechService.stopSpeaking()
                 if self.audioRecorder.isRecording { _ = await self.audioRecorder.stopRecording() }
                 if self.videoRecorder.isRecording { _ = await self.videoRecorder.stopRecording() }
+                self.stopLiveHints()
                 if self.ambientCaptions.isActive { self.ambientCaptions.stop() }
                 if self.liveTranslation.isActive { self.liveTranslation.stop() }
             }
@@ -10784,6 +10833,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // the mic falls back to the phone so the meeting capture keeps going.
 
         // Stop ambient features that use mic/speakers
+        stopLiveHints()
         if ambientCaptions.isActive { ambientCaptions.stop() }
 
         // End conversation thread — through the job chokepoint, because putting the glasses down
