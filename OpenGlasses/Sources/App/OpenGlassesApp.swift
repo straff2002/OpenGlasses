@@ -1609,7 +1609,8 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
     /// The connected stock system (Plan MM P2): its connection, last good snapshot and pulls.
-    lazy var stockSystem: StockSystemService = StockSystemService.forApp()
+    lazy var stockSystem: StockSystemService = StockSystemService.forApp(
+        isOnline: { [weak self] in self?.reachability.isOnline ?? true })
     /// The office route ceiling stops every direct connector: Workiz's and the stock system's.
     func enforceWorkizRoute() {
         workiz.enforceRoute()

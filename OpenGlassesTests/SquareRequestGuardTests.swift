@@ -53,7 +53,16 @@ final class SquareRequestGuardTests: XCTestCase {
         requests += writes.map(\.request)
         XCTAssertFalse(writes.isEmpty)
 
-        XCTAssertGreaterThanOrEqual(requests.count, 14)
+        // A check's few lines (Plan MM P3): the stock endpoint again, reads only.
+        let linesTransport = F.Transport()
+        _ = try await StockSystemPlanDriver.run(try adapter.linesPlan(itemIDs: ["VAR-CAP-455", "VAR-FILTER"],
+                                                                      locationIDs: [F.main, F.van]),
+                                                allowed: adapter.allowedEndpoints) { try linesTransport.send($0) }
+        XCTAssertFalse(linesTransport.sent.isEmpty)
+        XCTAssertTrue(linesTransport.sent.allSatisfy { $0.endpoint == SquareStockAdapter.Endpoint.inventoryCounts })
+        requests += linesTransport.sent
+
+        XCTAssertGreaterThanOrEqual(requests.count, 16)
         for request in requests {
             XCTAssertTrue(Self.allowed.contains("\(request.method.rawValue) \(request.path)"), request.description)
             XCTAssertEqual(request.path, request.endpoint.path)
@@ -177,6 +186,63 @@ final class SquareRequestGuardTests: XCTestCase {
             XCTAssertEqual(Set(adjustment.keys), ["reference_id", "catalog_object_id", "from_state", "to_state",
                                                   "from_location_id", "to_location_id", "quantity", "occurred_at"],
                            file: file, line: line)
+        }
+    }
+
+    // MARK: - A check's few lines (Plan MM P3)
+
+    func testTheLinesPlanAsksOnlyForTheAskedItemsAndKeepsOnlyTheirFigures() async throws {
+        let transport = F.Transport()
+        let fresh = try await StockSystemPlanDriver.run(
+            try adapter.linesPlan(itemIDs: ["VAR-CAP-455", " VAR-CAP-455", "VAR-FILTER"], locationIDs: [F.main, F.van]),
+            allowed: adapter.allowedEndpoints) { try transport.send($0) }
+        // Both pages of the fixture's counts, followed by their cursor.
+        XCTAssertEqual(transport.sent.count, 2)
+        let first = try XCTUnwrap(transport.sent.first?.jsonBody)
+        XCTAssertEqual(first["catalog_object_ids"] as? [String], ["VAR-CAP-455", "VAR-FILTER"])
+        XCTAssertEqual(first["location_ids"] as? [String], [F.main, F.van])
+        XCTAssertEqual(first["states"] as? [String], ["IN_STOCK"])
+        XCTAssertEqual(transport.sent.last?.jsonBody?["cursor"] as? String, "CUR-COUNTS-PAGE-2")
+        // The fixture answers with every item; only the asked ones, at the asked places, in stock.
+        XCTAssertEqual(fresh.itemIDs, ["VAR-CAP-455", "VAR-FILTER"])
+        XCTAssertEqual(fresh.counts, ["VAR-CAP-455": [F.main: "3", F.van: "1"], "VAR-FILTER": [F.main: "6", F.van: "2"]],
+                       "the north location is not asked, and the first figure for an item and place stands")
+    }
+
+    func testTheLinesPlanRefusesWhatItCouldNotHaveBeenAskedFor() throws {
+        let tooMany = (0...SquareStockAdapter.itemsPerLinesRead).map { "VAR-\($0)" }
+        for (items, locations) in [(tooMany, [F.main]), (["VAR 1"], [F.main]), (["VAR-1"], ["LOC MAIN"])] {
+            XCTAssertThrowsError(try adapter.linesPlan(itemIDs: items, locationIDs: locations)) {
+                XCTAssertEqual($0 as? StockSystemRequestRefusal, .notAllowed)
+            }
+        }
+        XCTAssertThrowsError(try adapter.linesPlan(itemIDs: ["VAR-1"], locationIDs: [])) {
+            XCTAssertEqual($0 as? StockSystemFailure, .notFound)
+        }
+        var empty = try adapter.linesPlan(itemIDs: [], locationIDs: [F.main])
+        XCTAssertNil(try empty.next(), "nothing asked, nothing sent")
+        XCTAssertEqual(empty.result?.counts, [:])
+    }
+
+    func testTheLinesPlanStopsOnAFailureOrALoop() async throws {
+        let transport = F.Transport()
+        transport.overrides["/v2/inventory/counts/batch-retrieve"] = try F.response("error-401-expired.json", status: 401)
+        do {
+            _ = try await StockSystemPlanDriver.run(try adapter.linesPlan(itemIDs: ["VAR-CAP-455"], locationIDs: [F.main]),
+                                                    allowed: adapter.allowedEndpoints) { try transport.send($0) }
+            XCTFail("an expired key is a failure")
+        } catch {
+            XCTAssertEqual(error as? StockSystemFailure, .unauthorized(.expired))
+        }
+        let looping = F.Transport()
+        looping.overrides["/v2/inventory/counts/batch-retrieve"] = StockSystemResponse(
+            status: 200, body: try F.json(["counts": [], "cursor": "SAME"]))
+        do {
+            _ = try await StockSystemPlanDriver.run(try adapter.linesPlan(itemIDs: ["VAR-CAP-455"], locationIDs: [F.main]),
+                                                    allowed: adapter.allowedEndpoints) { try looping.send($0) }
+            XCTFail("a repeated cursor is refused")
+        } catch {
+            XCTAssertEqual(error as? StockSystemFailure, .malformedResponse)
         }
     }
 }

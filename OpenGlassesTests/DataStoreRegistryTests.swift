@@ -317,6 +317,18 @@ final class DataStoreRegistryTests: XCTestCase {
         try assertAttributes(of: store.currentURL("square"), match: .stockSystemSnapshot)
     }
 
+    /// Plan MM P3: the parts noted for the system are protected and kept out of backup.
+    @MainActor
+    func testStagedStockUseAttributesMatchTheRegistry() throws {
+        let store = StagedStockUseStore(directory: workspace)
+        let use = StagedStockUse(itemID: "ITEM-1", part: "ZX-1", description: "Capacitor", quantity: .whole(1),
+                                 unit: .each, source: .spoken)
+        XCTAssertTrue(store.stage([StagedStockUseEntry(scope: .job("S1"), jobReference: nil, connectorID: "sample",
+                                                       locationID: "L1", use: use, reason: nil, stagedAt: Date(),
+                                                       call: "C1")]))
+        try assertAttributes(of: store.fileURL, match: .stagedStockUse)
+    }
+
     @MainActor
     func testConversationStoreAttributesMatchTheRegistry() throws {
         let store = ConversationStore(directory: workspace)
@@ -352,6 +364,7 @@ final class DataStoreRegistryTests: XCTestCase {
             (.learningEntries, LearningEntryStore.fileProtection),
             (.vanStock, VanStockStore.fileProtection),
             (.stockSystemSnapshot, StockSystemSnapshotStore.fileProtection),
+            (.stagedStockUse, StagedStockUseStore.fileProtection),
             (.goals, GoalStore.fileProtection),
             (.preparedCards, PreparedCardStore.fileProtection),
             (.writingStyle, WritingStyleStore.fileProtection),

@@ -902,6 +902,23 @@ final class FieldSessionService: ObservableObject {
         return VanStockBook(name: manifest.name, verify: { verifier.verify($0) })
     }
 
+    /// The parts table a business's own system's figures are joined against (Plan MM §5): the
+    /// open job's vault, else the vault the list names, else none (`StockSystemJoin.book`). A
+    /// vault with no parts table is no book.
+    func stockSystemBook(namedVaultID: String?) -> StockSystemBook? {
+        let job: (parts: VaultPartsIndex, name: String)? = activeSession != nil
+            ? activeVault.map { (partsIndex, $0.manifest.name) } : nil
+        var named: (parts: VaultPartsIndex, name: String)?
+        if job?.parts.isEmpty != false, let id = namedVaultID, !id.isEmpty {
+            let registry = VaultRegistry.shared
+            if let manifest = registry.manifest(id: id), registry.isUnlocked(manifest) {
+                named = (namedVaultPartsIndex(registry.store(for: manifest)), manifest.name)
+            }
+        }
+        guard let parts = StockSystemJoin.book(job: job?.parts, named: named?.parts) else { return nil }
+        return StockSystemBook(parts: parts, name: parts == job?.parts ? job?.name : named?.name)
+    }
+
     /// The parts table of a vault named outside a session, read once per vault store and kept
     /// while the registry keeps the same store.
     private var namedVaultPartsIndexes: [String: (store: VaultStore, index: VaultPartsIndex)] = [:]

@@ -1,8 +1,8 @@
 import Foundation
 
 /// The fields that describe one part, shared by a single-part call and each entry of `items`.
-private func vanStockLineProperties(_ w: StockPlaceWording) -> [String: Any] {
-    [
+private func vanStockLineProperties(_ w: StockPlaceWording, system: String? = nil) -> [String: Any] {
+    var properties: [String: Any] = [
         "part": [
             "type": "string",
             "description": "The part number, exactly as the label or the manual prints it."
@@ -13,7 +13,9 @@ private func vanStockLineProperties(_ w: StockPlaceWording) -> [String: Any] {
         ],
         "quantity": [
             "type": "number",
-            "description": "How much, in the line's unit. Up to 3 decimal places for m, ft, kg, lb and l (4.25 litres is 4.25); whole numbers for each and pack. Defaults to 1 for 'load', 'use' and 'remove'; required for 'count'."
+            "description": system == nil
+                ? "How much, in the line's unit. Up to 3 decimal places for m, ft, kg, lb and l (4.25 litres is 4.25); whole numbers for each and pack. Defaults to 1 for 'load', 'use' and 'remove'; required for 'count'."
+                : "How much, in the line's unit. Up to 3 decimal places for m, ft, kg, lb and l (4.25 litres is 4.25); whole numbers for each and pack. Defaults to 1 for 'use' and 'remove'."
         ],
         "unit": [
             "type": "string",
@@ -24,11 +26,16 @@ private func vanStockLineProperties(_ w: StockPlaceWording) -> [String: Any] {
             "type": "string",
             "description": "A barcode or QR code read by scan_code, verbatim."
         ],
-        "new_line": [
+    ]
+    // While a business's own system holds the count nothing is loaded or counted on the phone,
+    // so the field that only those take is not offered.
+    if system == nil {
+        properties["new_line"] = [
             "type": "boolean",
             "description": "For 'load' or 'count': true when \(w.person) says this is a different part from a similar line already \(w.location)."
         ]
-    ]
+    }
+    return properties
 }
 
 /// What is on the technician's own van or truck, kept by voice (Plan IH §3), or in the store,
@@ -52,9 +59,62 @@ final class VanStockTool: NativeTool {
     static let actions = ["check", "list", "low", "load", "use", "remove", "count", "undo", "unrecorded",
                           "not_from_van", "top_up", "set_standard", "send_to_base"]
 
-    var description: String { Self.description(for: service.place) }
+    var description: String { Self.description(for: service.place, system: service.systemName) }
 
-    var parametersSchema: [String: Any] { Self.parametersSchema(for: service.place) }
+    var parametersSchema: [String: Any] { Self.parametersSchema(for: service.place, system: service.systemName) }
+
+    /// The description while a business's own system holds the count (Plan MM §5): its figures,
+    /// read-only, with their as-of time; a use noted on the job, or at premises on the day's list,
+    /// and sent only when a person confirms; nothing received, counted, set, topped up or handed
+    /// over on the phone, and never a sale. Worded for the place, naming the system.
+    static func description(for kind: StockPlace.Kind, system: String?) -> String {
+        guard let system else { return description(for: kind) }
+        let w = StockPlaceWording(kind)
+        let noJob = kind.family == .premises
+            ? "on the open job, or on today's list when no job is open"
+            : "on the open job; with no job open nothing is noted"
+        return "The stock \(w.location), as \(system) holds it: the figures are \(system)'s, read-only, each with the "
+            + "time it is as of. Use it whenever \(w.person) asks what is \(w.location), or says a part was used. Without "
+            + "signal it answers from the last figures, with their age. Pass 'action': 'check' (how many of one part; "
+            + "pass 'part' and/or 'description'), 'list' (\(system)'s figures for this place), 'low' (lines at or "
+            + "below \(system)'s reorder point, or at none), 'use' (\(w.goods) used, noted \(noJob); it goes to "
+            + "\(system) only when \(w.person) confirms the parts, and \(system)'s figure does not change until then), "
+            + "'remove' (\(w.goods) written off; pass 'reason' 'damaged'; noted the same way), 'undo' (takes back the "
+            + "last note), 'unrecorded' (parts on this job's finished tasks with nothing noted), or 'not_from_van' (a "
+            + "part on this job that did not \(w.comeFrom); pass 'part'). Receiving stock, stocktakes, \(w.usualFigure)s "
+            + "and reordering are done in \(system), not on the phone: do not offer them. A sale is never recorded "
+            + "here: the till takes it off \(system)'s figure. For one part pass 'part' (the number exactly as "
+            + "printed), 'description', 'quantity' and optionally 'unit'; for several parts in one sentence pass "
+            + "'items', each with the same fields. A scanned barcode goes in 'code'. Read the result back to "
+            + "\(w.person) as given: it names \(system) and the time of its figure, and a figure it says is unknown "
+            + "is never a number. Never state a quantity this tool did not return. When more than one line fits, ask "
+            + "which one."
+    }
+
+    /// The schema while a system holds the count: the same actions (contract strings), without
+    /// the fields only receiving, top-ups and the handover take.
+    static func parametersSchema(for kind: StockPlace.Kind, system: String?) -> [String: Any] {
+        guard let system else { return parametersSchema(for: kind) }
+        let w = StockPlaceWording(kind)
+        var properties = vanStockLineProperties(w, system: system)
+        properties["action"] = ["type": "string", "enum": actions, "description": "What to do."]
+        properties["items"] = [
+            "type": "array",
+            "description": "Several parts said in one sentence. Use instead of the single-part fields.",
+            "items": ["type": "object", "properties": vanStockLineProperties(w, system: system)] as [String: Any]
+        ]
+        properties["bin"] = ["type": "string", "description": "For 'list': ignored; \(system)'s figures carry no bins."]
+        properties["reason"] = [
+            "type": "string",
+            "enum": VanStockMovement.RemovalReason.allCases.map(\.rawValue),
+            "description": "For 'remove': why it \(w.cameFrom). Only 'damaged' is noted for \(system)."
+        ]
+        return ["type": "object", "properties": properties, "required": ["action"]]
+    }
+
+    /// Words a model might send as an action for a sale. While a system holds the count they are
+    /// answered with the till's sentence rather than as an unknown action.
+    private static let saleActions: Set<String> = ["sell", "sale", "sold", "sell_stock", "record_sale"]
 
     /// The description for a place, leading with it (Plan MK §3).
     static func description(for kind: StockPlace.Kind) -> String {
@@ -134,6 +194,22 @@ final class VanStockTool: NativeTool {
             return "Your organisation has switched \(w.stockName) off on this phone. Nothing was looked up or changed."
         }
         let action = (args["action"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        // While a business's own system holds the count (Plan MM §5): what the system does is
+        // refused before any figure is read, and what the phone never does is not offered.
+        if let desk = service.systemDesk {
+            switch action {
+            case "load": return desk.composer.refused(.load)
+            case "count": return desk.composer.refused(.count)
+            case "set_standard": return desk.composer.refused(.setStandard)
+            case "top_up": return desk.composer.refused(.topUp)
+            case "send_to_base": return desk.composer.handoverNotOffered()
+            case let sale where Self.saleActions.contains(sale): return desk.composer.noSale()
+            case "check", "list", "low", "use", "remove", "undo", "unrecorded", "not_from_van":
+                break
+            default:
+                return "Pass 'action': check, list, low, use, remove, undo, unrecorded or not_from_van."
+            }
+        }
         let lines: [VanStockService.Line]
         if let verb = Self.quantityVerbs[action], (args["to_standard"] as? Bool) != true {
             // Each figure is read against its own line's unit; one that does not fit refuses the
@@ -151,7 +227,7 @@ final class VanStockTool: NativeTool {
         switch action {
         case "check":
             guard let line = lines.first else { return "Say which part to check, by number or description." }
-            return service.check(line)
+            return await service.checkNow(line)
         case "list":
             return service.list(bin: Self.text(args["bin"]))
         case "low":

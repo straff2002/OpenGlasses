@@ -81,6 +81,16 @@ final class StockSystemSnapshotStore: ObservableObject {
         return true
     }
 
+    /// A `check`'s fresh lines merged into the connector's snapshot (Plan MM P3): only those lines'
+    /// figures and their as-of time; the snapshot's own `asOf` stays the pull's. Written the same
+    /// way as a pull. False when there is no snapshot to merge into, nothing changed, or it could
+    /// not be written.
+    @discardableResult
+    func merge(_ fresh: StockSystemFreshLines, into connectorID: String, readAt: Date) -> Bool {
+        guard let current = snapshots[connectorID], let merged = current.merging(fresh, readAt: readAt) else { return false }
+        return replace(merged)
+    }
+
     // MARK: - Retiring
 
     /// Remove a connector's snapshots, current and previous: Remove connection, a new key, the

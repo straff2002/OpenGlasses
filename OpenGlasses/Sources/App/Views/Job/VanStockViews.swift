@@ -29,6 +29,47 @@ struct VanStockView: View {
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
 
     var body: some View {
+        if let stockSystem {
+            StockAuthorityReader(service: stockSystem) { systemHolds in
+                if systemHolds { heldScreen(stockSystem) } else { phoneScreen }
+            }
+        } else {
+            phoneScreen
+        }
+    }
+
+    /// While the business's own system holds the count (Plan MM P3): its figures, read-only, the
+    /// uses noted for it, and the phone's own list kept, read-only, as the previous list. Nothing
+    /// here loads, counts, adjusts, imports or takes over: the system holds the count.
+    private func heldScreen(_ stockSystem: StockSystemService) -> some View {
+        List {
+            StockSystemStatusSection(service: stockSystem)
+            StockSystemHeldSections(service: stockSystem, search: search, kind: store.resolvedPlace.kind,
+                                    job: FieldSessionService.shared.activeSession.map { ($0.id, $0.jobReference) })
+            if !store.isUnreadable, !store.log.isEmpty {
+                PreviousListSection(store: store)
+            }
+        }
+        .ogFormStyle()
+        .modifier(StockSystemPull(service: stockSystem))
+        .searchable(text: $search, prompt: Text("Part number or description"))
+        .navigationTitle(store.screenTitle)
+        .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    namingPlace = true
+                } label: {
+                    Label("Name and place…", systemImage: "pencil")
+                }
+                .disabled(store.isUnreadable)
+            }
+        }
+        .sheet(isPresented: $namingPlace) {
+            VanStockPlaceSheet(store: store, books: VanStockPlaceSheet.installedBooks())
+        }
+    }
+
+    private var phoneScreen: some View {
         List {
             if let stockSystem {
                 StockSystemStatusSection(service: stockSystem)
@@ -160,6 +201,28 @@ struct VanStockView: View {
             Button("Start the list again", role: .destructive) { confirmingReset = true }
         } footer: {
             Text("Nothing has been changed. The assistant won't guess any figures.")
+        }
+    }
+}
+
+/// The phone's own list while a business's own system holds the count (Plan MM P3): kept as it
+/// was, read-only and collapsed, and counting again once the connection is removed.
+private struct PreviousListSection: View {
+    @ObservedObject var store: VanStockStore
+    @State private var expanded = false
+
+    var body: some View {
+        Section {
+            DisclosureGroup(isExpanded: $expanded) {
+                ForEach(VanStockRows.rows(store.log)) { row in
+                    VanStockRowLabel(row: row)
+                        .accessibilityRemoveTraits(.isButton)
+                }
+            } label: {
+                Text("Previous list")
+            }
+        } footer: {
+            Text("The list kept on this phone before the stock system held the count. It isn't changed, and it counts again if the connection is removed.")
         }
     }
 }

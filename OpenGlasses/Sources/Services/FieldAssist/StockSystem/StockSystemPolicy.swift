@@ -47,6 +47,16 @@ enum StockSystemPolicy {
     /// Prices are dropped when a snapshot is built or decoded unless the organisation enables them.
     static let pricesEnabledByDefault = false
 
+    // MARK: Decision 10 — the live check
+
+    /// A `check` asks the system for just the asked-about lines once the snapshot is older than
+    /// this, when there is signal (Plan MM §2).
+    static let checkNowAfter: TimeInterval = 10 * 60
+
+    /// How long a `check` waits for those lines. A later reply only refreshes the store, and the
+    /// answer comes from the snapshot with its age.
+    static let checkNowBudget: TimeInterval = 3
+
     // MARK: Decision 11 — the provenance word
 
     // `StockSystemProvenance` has the one case `system`, said as "in <system>", never "counted".

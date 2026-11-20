@@ -132,6 +132,84 @@ struct StockSystemAnswerComposer {
             + "unless \(w.person) gives one."
     }
 
+    /// The system holds the count and no figures from it are on the phone yet.
+    func noFigures() -> String {
+        "Stock \(w.location) is kept in \(system), and no figures from \(system) are on this phone yet, so there is "
+            + "no figure to give. Do not guess one; \(StockPlaceWording.capitalised(w.person)) can open \(w.screen) "
+            + "with signal to read them."
+    }
+
+    /// Several of the system's lines fit what was said: they are asked about, never picked.
+    func candidates(_ lines: [StockSystemSnapshot.Line]) -> String {
+        "More than one line in \(system) fits that: " + lines.prefix(6).map(\.name).joined(separator: "; ")
+            + ". Ask \(w.person) which one they mean."
+    }
+
+    /// The opening of a sentence about the snapshot's age: "In Fixture Till, as of 09:10" or, once
+    /// stale, "As of yesterday at 16:10, in Fixture Till".
+    private func asOfLead(_ snapshot: StockSystemSnapshot) -> String {
+        let stale = now.timeIntervalSince(snapshot.asOf) > StockSystemPolicy.staleAfter
+        return stale ? "As of \(time(snapshot.asOf)), in \(system)" : "In \(system), as of \(time(snapshot.asOf))"
+    }
+
+    // MARK: - Low
+
+    /// The lines at or below the system's own reorder point, where it has one, and otherwise the
+    /// lines at nothing, as the system's figures with the as-of time. A line with no figure is
+    /// never counted as low or as not low: it is named as having no count.
+    func low(in snapshot: StockSystemSnapshot, here: [String]) -> String {
+        var short: [String] = []
+        var unknown: [String] = []
+        for line in snapshot.lines {
+            let values = here.map { line.level(at: $0) ?? .unknown(.noCount) }
+            let known = values.compactMap(\.quantity)
+            guard !known.isEmpty else {
+                unknown.append(line.name)
+                continue
+            }
+            let total = known.reduce(StockQuantity.zero, +)
+            if let point = line.reorderPoint {
+                if total <= point { short.append("\(figure(line, total)) \(line.name) (reorder at \(figure(line, point)))") }
+            } else if total == .zero {
+                short.append("none of \(line.name)")
+            }
+        }
+        var lines: [String] = []
+        if short.isEmpty {
+            lines.append("\(asOfLead(snapshot)), nothing \(w.location) is at its reorder point or at none.")
+        } else {
+            lines.append("\(asOfLead(snapshot)), at or below its reorder point or at none: "
+                + short.joined(separator: "; ") + ".")
+        }
+        if !unknown.isEmpty {
+            lines.append(unknown.count == 1
+                ? "\(system) has no count for 1 line, so it is not in this answer."
+                : "\(system) has no count for \(unknown.count) lines, so they are not in this answer.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    // MARK: - List
+
+    /// What the system holds for the place, as its figures with the as-of time. At most `limit`
+    /// lines are read out. The system's figures carry no bins on the phone.
+    func list(_ snapshot: StockSystemSnapshot, here: [String], bin: String?, limit: Int = 30) -> String {
+        guard !snapshot.lines.isEmpty else {
+            return "\(asOfLead(snapshot)), there are no tracked lines \(w.location)."
+        }
+        let read = snapshot.lines.prefix(limit).map { line -> String in
+            let known = here.compactMap { line.level(at: $0)?.quantity }
+            guard !known.isEmpty else { return "\(line.name): no count" }
+            return "\(line.name): \(figure(line, known.reduce(StockQuantity.zero, +)))"
+        }
+        var answer = "\(asOfLead(snapshot)), \(w.location): " + read.joined(separator: "; ") + "."
+        if snapshot.lines.count > limit { answer += " And \(snapshot.lines.count - limit) more lines." }
+        if let bin, !bin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            answer = "\(system)'s figures carry no bins on the phone, so this is everything. " + answer
+        }
+        return answer
+    }
+
     // MARK: - Use
 
     /// A use noted on the open job, and what happens next.
@@ -143,8 +221,51 @@ struct StockSystemAnswerComposer {
 
     /// A use noted on the day's list for a place with no job open (premises).
     func stagedForToday(_ quantity: StockQuantity, of line: StockSystemSnapshot.Line) -> String {
-        "I've noted \(phrase(line, quantity)) \(w.takenVerb) today. It goes to \(system) when \(w.person) confirms "
+        // "Used", never "sold": the till records a sale, and the phone never does (Decision 7).
+        "I've noted \(phrase(line, quantity)) used today. It goes to \(system) when \(w.person) confirms "
             + "today's list, and \(system)'s count does not change until then."
+    }
+
+    /// A line written off for a reason the system keeps, noted like a use.
+    func stagedWrittenOff(_ quantity: StockQuantity, of line: StockSystemSnapshot.Line, jobReference: String?,
+                          onJob: Bool) -> String {
+        let job = onJob ? (jobReference.map { "job \($0)" } ?? "this job") : "today's list"
+        let confirm = onJob ? "the job's parts" : "today's list"
+        return "I've noted \(phrase(line, quantity)) written off as damaged, on \(job). It goes to \(system) when "
+            + "\(w.person) confirms \(confirm), and \(system)'s count does not change until then."
+    }
+
+    /// A quantity the system cannot take for the item, refused before anything is noted.
+    func notStaged(_ line: StockSystemSnapshot.Line, _ refusal: StockSystemOutRefusal, quantity: StockQuantity,
+                   unit: VanStockUnit) -> String {
+        "Nothing noted for \(line.name): "
+            + refusal.sentence(system: system, quantity: quantity, unit: unit, decimalPlaces: line.decimalPlaces)
+            + " Ask \(w.person) for the amount again."
+    }
+
+    /// What one undo took back, before anything was sent.
+    func unstaged(_ entries: [StagedStockUseEntry]) -> String {
+        let names = entries.map { $0.use.unit.spoken($0.use.quantity, of: $0.use.name) }
+        return "Taken back: " + names.joined(separator: "; ") + ". Nothing goes to \(system) for "
+            + (entries.count == 1 ? "it" : "them") + "."
+    }
+
+    /// Nothing noted to take back.
+    func nothingToUnstage() -> String {
+        "Nothing is noted on the phone to take back. " + refused(.undoLoad)
+    }
+
+    /// A removal for a reason the system does not keep.
+    func removalNotKept(keepsDamage: Bool) -> String {
+        let tail = keepsDamage
+            ? " Only stock written off as damaged is noted here, to go to \(system) when the parts are confirmed."
+            : ""
+        return refused(.load) + tail
+    }
+
+    /// The phone could not keep the note.
+    func notSaved() -> String {
+        "The note couldn't be kept on this phone, so nothing was noted for \(system). Tell \(w.person)."
     }
 
     /// A use on a vehicle with no job open: every use from a vehicle belongs to a job.
@@ -182,7 +303,7 @@ struct StockSystemAnswerComposer {
 
     /// "3 × Capacitor 45/5 (ZX-1001)", "4.25 litres of Coolant", or the bare item name when the
     /// phone could not map the line's unit.
-    private func phrase(_ line: StockSystemSnapshot.Line, _ quantity: StockQuantity) -> String {
+    func phrase(_ line: StockSystemSnapshot.Line, _ quantity: StockQuantity) -> String {
         guard let unit = line.unit else { return "\(quantity.decimalString) × \(line.name)" }
         return unit.spoken(quantity, of: line.name)
     }

@@ -105,6 +105,8 @@ enum SensitiveStore: String, CaseIterable {
     case stockSystemConnection
     /// The last good stock figures pulled from that system (Plan MM P2).
     case stockSystemSnapshot
+    /// Parts noted on the phone for that system and not yet confirmed (Plan MM P3).
+    case stagedStockUse
     case learningCandidates
     case capturedManuals
     /// The My Manuals new-manual allowance (Plan JK §8): the iCloud copy of the history.
@@ -908,6 +910,23 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "StockSystemSnapshotStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/StockSystem/StockSystemSnapshotStore.swift"],
                           location: "Application Support/FieldAssist/stock-system/<system>.json and <system>-previous.json")
+
+        case .stagedStockUse:
+            // Parts noted as used where a business's own system holds the count (Plan MM P3): the
+            // system's item ids, part numbers and descriptions from its figures, quantities, the
+            // job's session id and number, and when each was noted. Nothing about a person.
+            // Waits on the phone for a person to confirm it; nothing here is sent until then.
+            // Protected, and excluded from backup: a restored copy of writes waiting to go could
+            // send them twice. Kept when a snapshot is retired; cleared when the phone leaves its
+            // organisation.
+            return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("kept until the parts are confirmed and sent, or discarded"),
+                          deleteAll: .api("StagedStockUseStore.removeAll()"),
+                          deleteSubject: .notSubjectLinked,
+                          owner: "StagedStockUseStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/FieldAssist/StockSystem/StagedStockUseStore.swift"],
+                          location: "Application Support/FieldAssist/stock-system-staged.json")
 
         case .capturedManuals:
             return Record(store: self, dataClass: .documentCorpus, subjectLinkage: .thirdPartySubject,
