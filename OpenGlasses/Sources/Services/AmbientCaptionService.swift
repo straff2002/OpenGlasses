@@ -118,6 +118,14 @@ class AmbientCaptionService: ObservableObject {
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
 
+    /// Set by AppState to `CaptureAudioRouter.captionGate` (Plan MO §6): every caption consumer
+    /// hears silence while the assistant speaks on the phone speaker, whatever "Include Assistant
+    /// Voice" says, so a reply is never transcribed as if a person had said it.
+    weak var assistantVoiceGate: (any AssistantVoiceGating)?
+
+    /// The id every caption path registers its mic consumer under.
+    static let audioConsumerId = "ambient_captions"
+
     /// Set by AppState — the live caption line is mirrored to the in-lens HUD when the
     /// Glasses Display feature is on. No-ops on glasses without a display.
     weak var glassesDisplay: GlassesDisplayService?
@@ -274,7 +282,7 @@ class AmbientCaptionService: ObservableObject {
         self.recognitionRequest = request
 
         // Hook into the shared audio engine's buffer stream (named consumer)
-        wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+        addCaptionAudioConsumer { [weak self] buffer in
             Task { @MainActor in
                 self?.recognitionRequest?.append(buffer)
             }
@@ -363,7 +371,7 @@ class AmbientCaptionService: ObservableObject {
             }
             self.translator = translator
             translationDirection = direction
-            wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+            addCaptionAudioConsumer { [weak self] buffer in
                 Task { @MainActor in self?.translator?.sendAudio(buffer) }
             }
             return true
@@ -383,7 +391,7 @@ class AmbientCaptionService: ObservableObject {
             }
             onDeviceTranslator = provider
             translationDirection = direction
-            wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+            addCaptionAudioConsumer { [weak self] buffer in
                 Task { @MainActor in self?.onDeviceTranslator?.sendAudio(buffer) }
             }
             return true
@@ -438,9 +446,26 @@ class AmbientCaptionService: ObservableObject {
         self.diarizer = diarizer
         diarizer.start()
 
-        wakeWordService?.addAudioBufferConsumer(id: "ambient_captions") { [weak self] buffer in
+        addCaptionAudioConsumer { [weak self] buffer in
             Task { @MainActor in self?.diarizer?.sendAudio(buffer) }
         }
+    }
+
+    /// Registers a caption path's mic consumer, through the caption voice gate (Plan MO §6). The
+    /// only place captions take mic audio: `CaptionAudioGateTests` fails on any other registration.
+    private func addCaptionAudioConsumer(_ append: @escaping @Sendable (AVAudioPCMBuffer) -> Void) {
+        wakeWordService?.addAudioBufferConsumer(
+            id: Self.audioConsumerId,
+            handler: Self.captionAudioConsumer(gate: assistantVoiceGate, append: append))
+    }
+
+    /// A caption consumer behind the gate: each buffer, or a silent one of the same shape, on to
+    /// `append`. The recorder's wrapper, so both paths treat a buffer identically.
+    nonisolated static func captionAudioConsumer(
+        gate: (any AssistantVoiceGating)?,
+        append: @escaping @Sendable (AVAudioPCMBuffer) -> Void
+    ) -> @Sendable (AVAudioPCMBuffer) -> Void {
+        AudioRecordingService.gatedConsumer(gate: gate, append: append)
     }
 
     /// Plan LC §6: the live text as the lens's caption frame (`HUDCaptionBuilder`): up to three
@@ -484,7 +509,7 @@ class AmbientCaptionService: ObservableObject {
         onDeviceTranslator?.stop()
         onDeviceTranslator = nil
         translationDirection = nil
-        wakeWordService?.removeAudioBufferConsumer(id: "ambient_captions")
+        wakeWordService?.removeAudioBufferConsumer(id: Self.audioConsumerId)
     }
 
     private func restartAfterDelay() {

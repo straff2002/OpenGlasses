@@ -33,7 +33,11 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding, Assis
     var onDebugEvent: ((String) -> Void)?
 
     private var consumers: [String: @Sendable (AVAudioPCMBuffer) -> Void] = [:]
-    private let fanout = CaptureAudioFanout()
+    private let fanout: CaptureAudioFanout
+    /// The gate every caption consumer goes through (Plan MO §6): this router's decision with
+    /// "Include Assistant Voice" treated as off. Owned here, so `AmbientCaptionService` can hold it
+    /// weakly as the recorder holds the router.
+    let captionGate: CaptionAudioGate
     /// Holds every source's buffers to one format for the life of a capture. Without this a
     /// handover changes the sample format under the recorder's asset writer, which fails the
     /// writer outright — video track included.
@@ -58,6 +62,9 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding, Assis
         self.standalone = standalone
         self.isPhoneSpeakerOutput = isPhoneSpeakerOutput
         self.includeAssistantVoice = includeAssistantVoice
+        let fanout = CaptureAudioFanout()
+        self.fanout = fanout
+        self.captionGate = CaptionAudioGate(fanout: fanout)
     }
 
     // MARK: - Inputs
@@ -198,6 +205,14 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding, Assis
         )
         fanout.setSilenced(decision == .silence)
         isCaptureSilenced = decision == .silence
+        // Captions never hear the assistant, whatever the setting says (Plan MO §6): a reply on
+        // the phone speaker would otherwise be transcribed as if a person had said it.
+        let captionDecision = AssistantAudioGate.decide(
+            ttsSpeaking: assistantSpeaking,
+            ttsOnPhoneSpeaker: onSpeaker,
+            includeAssistantVoice: false
+        )
+        fanout.setCaptionSilenced(captionDecision == .silence)
     }
 
     private func publishConsumers() {
@@ -214,6 +229,12 @@ final class CaptureAudioRouter: ObservableObject, BroadcastAudioProviding, Assis
     /// The gate's current decision, for a recorder fed by another source.
     nonisolated func gatedBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
         fanout.gate(buffer)
+    }
+
+    /// The caption path's decision (Plan MO §6): silent while the assistant speaks on the phone
+    /// speaker, even with "Include Assistant Voice" on.
+    nonisolated func captionGatedBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        captionGate.gatedBuffer(buffer)
     }
 
     /// Whether the shared session's current output route is the phone's own speaker (or receiver) —

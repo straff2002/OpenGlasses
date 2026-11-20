@@ -16,6 +16,9 @@ final class CaptureAudioFanout: @unchecked Sendable {
         /// When true, consumers receive a zero-filled buffer of the same shape instead of the real
         /// one (see `AssistantAudioGate`).
         var silenced = false
+        /// The caption path's own decision (Plan MO §6): the same rule with "Include Assistant
+        /// Voice" treated as off, because a caption never wants the assistant.
+        var captionSilenced = false
     }
 
     /// Publish the current consumer set. Called from the main actor.
@@ -28,6 +31,11 @@ final class CaptureAudioFanout: @unchecked Sendable {
         lock.withLock { $0.silenced = silenced }
     }
 
+    /// Publish the caption path's gate decision. Called from the main actor.
+    func setCaptionSilenced(_ silenced: Bool) {
+        lock.withLock { $0.captionSilenced = silenced }
+    }
+
     /// Whether anything is registered — cheap enough to ask from the render thread.
     var isEmpty: Bool {
         lock.withLock { $0.consumers.isEmpty }
@@ -37,6 +45,12 @@ final class CaptureAudioFanout: @unchecked Sendable {
     /// by another source but must honour the same decision (`AssistantVoiceGating`).
     func gate(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
         let silenced = lock.withLock { $0.silenced }
+        return silenced ? (CaptureAudioSilencer.silence(like: buffer) ?? buffer) : buffer
+    }
+
+    /// Called from the audio thread: one buffer through the caption path's gate (Plan MO §6).
+    func captionGate(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        let silenced = lock.withLock { $0.captionSilenced }
         return silenced ? (CaptureAudioSilencer.silence(like: buffer) ?? buffer) : buffer
     }
 
