@@ -109,17 +109,49 @@ enum ProcedureReadiness: Equatable {
     /// Step id → why that step needs a model.
     case needsModel([String: String])
 
+    /// Why one step needs a model.
+    enum Reason: Equatable {
+        case choosesFromWords, asksInWords, unknownAnswerKind
+
+        /// The stable English wording: what `of(_:)` returns and the tests read.
+        var english: String {
+            switch self {
+            case .choosesFromWords: return "chooses its route from words"
+            case .asksInWords: return "asks for an answer in words that it can't record without an assistant"
+            case .unknownAnswerKind: return "has an answer of a kind this version of the app doesn't read"
+            }
+        }
+
+        /// The same words in the app's language, for the lines that show them ("Step 4 chooses its
+        /// route from words"). Kept word for word with `english`, which the tests check.
+        var localized: String {
+            switch self {
+            case .choosesFromWords:
+                return String(localized: "chooses its route from words",
+                              comment: "Completes \"Step 4 …\": why a procedure step needs an assistant to run")
+            case .asksInWords:
+                return String(localized: "asks for an answer in words that it can't record without an assistant",
+                              comment: "Completes \"Step 4 …\": why a procedure step needs an assistant to run")
+            case .unknownAnswerKind:
+                return String(localized: "has an answer of a kind this version of the app doesn't read",
+                              comment: "Completes \"Step 4 …\": why a procedure step needs an assistant to run")
+            }
+        }
+    }
+
     /// One step that stops a procedure running without a model.
     struct Blocker: Equatable {
         let stepId: String
         /// 1-based position in the procedure's step list.
         let stepNumber: Int
-        let reason: String
+        let kind: Reason
+        /// The English wording; a screen shows `kind.localized`.
+        var reason: String { kind.english }
     }
 
-    static let choosesFromWords = "chooses its route from words"
-    static let asksInWords = "asks for an answer in words that it can't record without an assistant"
-    static let unknownAnswerKind = "has an answer of a kind this version of the app doesn't read"
+    static let choosesFromWords = Reason.choosesFromWords.english
+    static let asksInWords = Reason.asksInWords.english
+    static let unknownAnswerKind = Reason.unknownAnswerKind.english
 
     static func of(_ procedure: Procedure) -> ProcedureReadiness {
         let found = blockers(procedure)
@@ -132,36 +164,54 @@ enum ProcedureReadiness: Equatable {
     /// The steps that need a model, in step order, one reason each.
     static func blockers(_ procedure: Procedure) -> [Blocker] {
         procedure.steps.enumerated().compactMap { index, step in
-            guard let reason = reason(step) else { return nil }
-            return Blocker(stepId: step.id, stepNumber: index + 1, reason: reason)
+            guard let kind = reason(step) else { return nil }
+            return Blocker(stepId: step.id, stepNumber: index + 1, kind: kind)
         }
     }
 
-    private static func reason(_ step: Procedure.Step) -> String? {
-        if let answer = step.answer, answer.kind == nil { return unknownAnswerKind }
-        if step.branches.count > 1, !step.isAppDecided { return choosesFromWords }
+    private static func reason(_ step: Procedure.Step) -> Reason? {
+        if let answer = step.answer, answer.kind == nil { return .unknownAnswerKind }
+        if step.branches.count > 1, !step.isAppDecided { return .choosesFromWords }
         if step.answer == nil, let expected = step.expectedInput,
            !expected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return asksInWords
+            return .asksInWords
         }
         return nil
     }
 
     /// The import summary line: "8 procedures, 6 run with no assistant; Line changeover step 4
-    /// chooses its route from words". Nil when there are none.
+    /// chooses its route from words". Nil when there are none. Shown after an import, so it is in
+    /// the app's language; each count's sentence is whole, for the catalog's plural forms.
     static func importSummary(_ procedures: [Procedure]) -> String? {
         guard !procedures.isEmpty else { return nil }
         let blocked = procedures.compactMap { procedure -> (Procedure, Blocker)? in
             blockers(procedure).first.map { (procedure, $0) }
         }
         let runs = procedures.count - blocked.count
-        let total = "\(procedures.count) procedure\(procedures.count == 1 ? "" : "s")"
-        let count = runs == 0 ? "none" : "\(runs)"
-        var line = "\(total), \(count) run\(runs == 1 ? "s" : "") with no assistant"
-        if !blocked.isEmpty {
-            let named = blocked.prefix(3).map { "\($0.0.title) step \($0.1.stepNumber) \($0.1.reason)" }
-            line += "; " + named.joined(separator: "; ")
-            if blocked.count > 3 { line += "; and \(blocked.count - 3) more" }
+        let total = procedures.count == 1
+            ? String(localized: "1 procedure", comment: "Vault import summary: how many procedures the vault has")
+            : String(localized: "\(procedures.count) procedures", comment: "Vault import summary: how many procedures the vault has")
+        var line: String
+        switch runs {
+        case 0:
+            line = String(localized: "\(total), none run with no assistant",
+                          comment: "Vault import summary: '3 procedures, none run with no assistant'")
+        case 1:
+            line = String(localized: "\(total), 1 runs with no assistant",
+                          comment: "Vault import summary: '3 procedures, 1 runs with no assistant'")
+        default:
+            line = String(localized: "\(total), \(runs) run with no assistant",
+                          comment: "Vault import summary: '3 procedures, 2 run with no assistant'")
+        }
+        for (procedure, blocker) in blocked.prefix(3) {
+            let named = String(localized: "\(procedure.title) step \(blocker.stepNumber) \(blocker.kind.localized)",
+                               comment: "Vault import summary: a procedure, the step that needs an assistant, and why")
+            line = String(localized: "\(line); \(named)", comment: "Vault import summary: the next part, after a semicolon")
+        }
+        if blocked.count > 3 {
+            let more = String(localized: "and \(blocked.count - 3) more",
+                              comment: "Vault import summary: how many more procedures need an assistant")
+            line = String(localized: "\(line); \(more)", comment: "Vault import summary: the next part, after a semicolon")
         }
         return line
     }
