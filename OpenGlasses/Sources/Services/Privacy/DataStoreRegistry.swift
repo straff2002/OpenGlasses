@@ -915,13 +915,15 @@ enum SensitiveStore: String, CaseIterable {
             // Parts noted as used where a business's own system holds the count (Plan MM P3): the
             // system's item ids, part numbers and descriptions from its figures, quantities, the
             // job's session id and number, and when each was noted. Nothing about a person.
-            // Waits on the phone for a person to confirm it; nothing here is sent until then.
+            // Waits on the phone for a person to confirm it; nothing here is sent until then. Since
+            // Plan MM P4 each line also says where it stands (queued, sent, not sent with a reason,
+            // needing a person), and a settled line is kept 30 days so the job shows where it went.
             // Protected, and excluded from backup: a restored copy of writes waiting to go could
             // send them twice. Kept when a snapshot is retired; cleared when the phone leaves its
             // organisation.
             return Record(store: self, dataClass: .operationalAudit, subjectLinkage: .none,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
-                          retention: .policy("kept until the parts are confirmed and sent, or discarded"),
+                          retention: .policy("kept until the parts are sent or kept on the phone for good, then 30 days"),
                           deleteAll: .api("StagedStockUseStore.removeAll()"),
                           deleteSubject: .notSubjectLinked,
                           owner: "StagedStockUseStore",

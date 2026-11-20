@@ -1708,8 +1708,42 @@ final class FieldSessionService: ObservableObject {
         var seen = Set<String>()
         let partsUsed = session.tasks.filter { $0.status == .done }.flatMap(\.parts)
             .filter { seen.insert($0.number).inserted }
+        // A part noted for a business's own system is accounted for too (Plan MM P4), so the
+        // close does not ask about it again once it is noted.
+        let noted = (session.stockSystemUses?.lines ?? []).compactMap(\.number)
         return VanStockReconciler.unrecorded(partsUsed: partsUsed, uses: session.vanStockUses ?? [],
-                                             notFromVan: session.vanStockNotFromVan ?? [])
+                                             notFromVan: session.vanStockNotFromVan ?? [], noted: noted)
+    }
+
+    /// The job's lines for a business's own stock system (Plan MM P4), as they stand: on the open
+    /// job, or on a finished one in the history, so a record built later says what went where. A
+    /// job locked for the organisation's departure is not changed. Returns whether the job holds
+    /// them.
+    @discardableResult
+    func recordStockSystemUses(_ uses: StockSystemJobUses?, sessionId: String) -> Bool {
+        guard !lockedSessionIDs.contains(sessionId) else { return false }
+        if var session = activeSession, session.id == sessionId, let logger {
+            guard session.stockSystemUses != uses else { return true }
+            session.stockSystemUses = uses
+            activeSession = session
+            history = history.replacingFirst(matching: session.id, with: session)
+            logger.updateSession { $0 = session }
+            return true
+        }
+        guard var session = history.first(where: { $0.id == sessionId }) ?? storedSession(id: sessionId) else { return false }
+        guard session.stockSystemUses != uses else { return true }
+        session.stockSystemUses = uses
+        let log = SessionLogger(session: session, root: sessionDirectory(sessionId: sessionId))
+        log.updateSession { $0 = session }
+        history = history.replacingFirst(matching: session.id, with: session)
+        return true
+    }
+
+    /// The open job's or a finished job's reference in another system, for parts sent to a
+    /// system with jobs (Plan MM §6).
+    func externalJobReference(sessionId: String) -> ExternalJobReference? {
+        let session = activeSession?.id == sessionId ? activeSession : history.first { $0.id == sessionId }
+        return session?.jobFile?.external
     }
 
     /// Record what base said. **Reported, never acted on**: it is attached to the request and

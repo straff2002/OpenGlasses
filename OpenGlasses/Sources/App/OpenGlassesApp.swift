@@ -1582,7 +1582,7 @@ class AppState: ObservableObject, AppStateProtocol {
     /// The queue's delivery target. `EndpointSyncSink` posts job records and stock checks to the
     /// organisation's endpoint when one is configured (Plan EM P2) and hands everything else — and
     /// everything, when no endpoint is set — to the local sink that was there before.
-    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: workizSink)
+    lazy var syncEngine = SyncEngine(queue: offlineQueue, sink: stockSystemSink)
     let workizConnection = WorkizConnection.forApp()
     lazy var workiz: WorkizController = {
         let controller = WorkizController(connection: workizConnection, jobs: upcomingJobs, started: {
@@ -1612,8 +1612,67 @@ class AppState: ObservableObject, AppStateProtocol {
         }
     }
     /// The connected stock system (Plan MM P2): its connection, last good snapshot and pulls.
-    lazy var stockSystem: StockSystemService = StockSystemService.forApp(
-        isOnline: { [weak self] in self?.reachability.isOnline ?? true })
+    lazy var stockSystem: StockSystemService = {
+        let service = StockSystemService.forApp(isOnline: { [weak self] in self?.reachability.isOnline ?? true })
+        // Plan MM P4: a removed connection, or the office route, ends what is queued for it.
+        service.onConnectionEnded = { [weak self] ending, connectorID in
+            self?.stockSystemSink.endAll(ending, connectorID: connectorID)
+        }
+        return service
+    }()
+    /// Parts sent to the stock system (Plan MM P4): the queue's sink for confirmed batches, ahead
+    /// of Workiz's and the office's, and the confirmation that feeds it.
+    lazy var stockSystemSink = StockSystemSyncSink(
+        queue: offlineQueue, fallback: workizSink,
+        seams: StockSystemSyncSink.Seams(
+            connection: { [weak self] connectorID in
+                self?.stockSystemConnection(for: connectorID) ?? .removed
+            },
+            officeRoute: { [weak self] in self?.stockSystem.connection.officeRoute ?? false },
+            retry: { [weak self] date in self?.scheduleStockSystemRetry(at: date) },
+            linesChanged: { [weak self] lines in self?.stockSystem.staged.setDelivery(lines) },
+            sent: { [weak self] _ in
+                guard let self else { return }
+                // The figures change once the system has the parts: read them again (one pull at a time).
+                Task { await self.stockSystem.pull(force: true) }
+            }))
+    lazy var stockParts = StockSystemPartsUsed(
+        service: stockSystem, sink: stockSystemSink,
+        seams: StockSystemPartsUsed.Seams(
+            reference: { FieldSessionService.shared.externalJobReference(sessionId: $0) },
+            recordOnJob: { id, uses in FieldSessionService.shared.recordStockSystemUses(uses, sessionId: id) },
+            flush: { [weak self] in await self?.syncEngine.flush() }))
+    private var stockSystemRetryTask: Task<Void, Never>?
+    private var stockSystemRetryDate: Date?
+
+    /// The connection a queued batch is delivered over: the connector for the chosen system, or
+    /// why there is none.
+    private func stockSystemConnection(for connectorID: String) -> StockSystemSyncSink.Connection {
+        let service = stockSystem
+        guard service.connection.selectedConnectorID == connectorID, let record = service.connection.record,
+              let registration = service.registration else { return .removed }
+        guard service.isRunning else { return .paused(StockSystemSyncSink.waitingLine) }
+        guard let connector = StockSystemService.httpConnector(transport: URLSessionStockSystemTransport())(
+            record, registration, service.effectiveReason) else { return .paused(StockSystemSyncSink.waitingLine) }
+        return .connected(connector: connector, generation: record.generation, route: registration.route)
+    }
+
+    private func scheduleStockSystemRetry(at date: Date) {
+        guard UIApplication.shared.applicationState == .active,
+              stockSystemRetryDate.map({ date < $0 }) ?? true else { return }
+        stockSystemRetryTask?.cancel(); stockSystemRetryDate = date
+        stockSystemRetryTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(max(1, date.timeIntervalSinceNow))) }
+            catch { return }
+            guard let self else { return }
+            self.stockSystemRetryDate = nil
+            guard UIApplication.shared.applicationState == .active else { return }
+            if self.syncEngine.isFlushing {
+                self.scheduleStockSystemRetry(at: Date().addingTimeInterval(1)); return
+            }
+            await self.syncEngine.flush()
+        }
+    }
     /// The office route ceiling stops every direct connector: Workiz's and the stock system's.
     func enforceWorkizRoute() {
         workiz.enforceRoute()
@@ -2201,7 +2260,18 @@ class AppState: ObservableObject, AppStateProtocol {
                 return await self.llmService.completeStructured(systemPrompt: system,
                                                                 userText: text, jsonSchema: schema)
             },
-            provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) }))
+            provenance: { AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources) },
+            // Plan MM P4 — the parts question at a voice close: the app asks, the person answers.
+            partsQuestion: { [weak self] id in self?.stockParts.question(for: .job(id)) },
+            answerParts: { [weak self] id, confirmation in
+                guard let self else { return "" }
+                guard let confirmation else {
+                    return "Kept on the job, not sent to \(self.stockParts.system). They can be sent from the job later."
+                }
+                let number = FieldSessionService.shared.activeSession?.jobReference
+                return self.stockParts.confirm(.job(id), by: confirmation, jobNumber: number).sentence
+            },
+            settlePartsAtClose: { [weak self] id in self?.stockParts.settleAtClose(sessionID: id) }))
         // Plan FO P3b — Direct mode's system prompt carries the debrief block while one runs.
         LLMService.debriefContext = { [weak self] in self?.guidedJobFlow.debriefBlock() }
         // Plan FY F3 — the device the identity line names. `isConnected` is the glasses link this
@@ -2213,6 +2283,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan KK P3 — the conversation timeline goes into cloud requests from the active thread.
         llmService.timelineThreadSource = { [weak self] in self?.timelineRequestThread() }
         guidedJobFlow.restoreOnLaunch()
+        // Plan MM P4: built at launch, so a part noted by voice reaches its job's record at once.
+        _ = stockParts
         configureJobSends()
         guidedJobFlow.connectUpcoming(upcomingJobs)
         // The organisation's key and its rule are CT stand-ins read at the moment a file is

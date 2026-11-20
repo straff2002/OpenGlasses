@@ -15,7 +15,8 @@ struct StockSystemAnswerComposer {
         enum State: Equatable, Sendable {
             /// Noted on the job, waiting for the person to confirm the job's parts.
             case staged
-            /// Confirmed and queued, not yet accepted by the system.
+            /// Confirmed and queued, or sent since the figure was read: the system's figure does
+            /// not show it yet (Plan MM P4).
             case sending
         }
         let quantity: StockQuantity
@@ -45,6 +46,13 @@ struct StockSystemAnswerComposer {
     /// are this place (`StockAuthority.locationIDs`).
     func check(_ outcome: StockSystemJoin.Outcome, in snapshot: StockSystemSnapshot, here: [String],
                unsent: Unsent? = nil) -> String {
+        check(outcome, in: snapshot, here: here, unsent: unsent.map { [$0] } ?? [])
+    }
+
+    /// The same, with every use of the line the system has not taken off yet: still being sent
+    /// (queued, or sent since the figure was read), and noted and not yet confirmed (Plan MM P4).
+    func check(_ outcome: StockSystemJoin.Outcome, in snapshot: StockSystemSnapshot, here: [String],
+               unsent: [Unsent]) -> String {
         switch outcome {
         case .inBoth(let line, _):
             return check(line, in: snapshot, here: here, unsent: unsent)
@@ -60,6 +68,11 @@ struct StockSystemAnswerComposer {
     /// A line's figure at this place, with where it came from and how old it is.
     func check(_ line: StockSystemSnapshot.Line, in snapshot: StockSystemSnapshot, here: [String],
                unsent: Unsent? = nil) -> String {
+        check(line, in: snapshot, here: here, unsent: unsent.map { [$0] } ?? [])
+    }
+
+    func check(_ line: StockSystemSnapshot.Line, in snapshot: StockSystemSnapshot, here: [String],
+               unsent: [Unsent]) -> String {
         let asOf = line.lineAsOf ?? snapshot.asOf
         let values = here.map { line.level(at: $0) ?? .unknown(.noCount) }
         let known = values.compactMap(\.quantity)
@@ -79,8 +92,10 @@ struct StockSystemAnswerComposer {
         if total == .zero, let elsewhere = elsewhere(line, in: snapshot, here: here) {
             lead += "; \(elsewhere)"
         }
-        if let unsent, unsent.quantity > .zero {
-            lead += ", and " + unsentPhrase(line, unsent)
+        // What is on its way first, then what is only noted.
+        for state in [Unsent.State.sending, .staged] {
+            let quantity = unsent.filter { $0.state == state }.reduce(StockQuantity.zero) { $0 + $1.quantity }
+            if quantity > .zero { lead += ", and " + unsentPhrase(line, Unsent(quantity: quantity, state: state)) }
         }
         lines.append(lead + ".")
 

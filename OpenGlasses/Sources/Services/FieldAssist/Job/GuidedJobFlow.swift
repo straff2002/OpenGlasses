@@ -55,6 +55,24 @@ final class GuidedJobFlow: ObservableObject {
         var provenance: () -> AIProvenance? = {
             AIProvenance.forActiveModel(promptSources: DebriefContract.promptSources)
         }
+        /// The question about the open job's parts for a business's own stock system, when it has
+        /// lines waiting and sending is offered (Plan MM P4); nil otherwise.
+        var partsQuestion: (_ sessionID: String) -> String? = { _ in nil }
+        /// The person's answer to it, heard by the app: a confirmation for a yes, nil for a no.
+        /// Returns what to say back.
+        var answerParts: (_ sessionID: String, StockUseConfirmation?) -> String = { _, _ in "" }
+        /// The job is about to close: lines that cannot be sent go on its record as not sent.
+        var settlePartsAtClose: (_ sessionID: String) -> Void = { _ in }
+    }
+
+    /// The parts question the voice close is held for (Plan MM P4): put by the app at the end of
+    /// the turn, answered by the person's own words before the model hears them, and the close
+    /// finished once it is answered. A yes sends; a no keeps the parts on the job, unsent.
+    struct PendingPartsSend: Equatable {
+        let sessionID: String
+        let outcome: FieldSession.Outcome
+        let question: String
+        var asked: Bool
     }
 
     /// Internal rather than private so the debrief half of the flow can live in its own file
@@ -85,6 +103,11 @@ final class GuidedJobFlow: ObservableObject {
     /// The setter is internal rather than private so the debrief half of the flow, which lives in
     /// `GuidedJobFlow+Debrief.swift`, can move it. Nothing outside the flow writes it.
     @Published var debrief: ActiveDebrief?
+
+    /// The parts question waiting on the person, while a voice close is held for it.
+    @Published private(set) var pendingPartsSend: PendingPartsSend?
+    /// Jobs whose parts question was answered (or put and not answered) on this close.
+    private var partsAnswered: Set<String> = []
 
     /// The jobs ahead (Plan FO P3c), once the app has connected its store. Internal so the
     /// job-ahead half of the flow (`GuidedJobFlow+Upcoming.swift`) can reach it; nil headless
@@ -148,6 +171,19 @@ final class GuidedJobFlow: ObservableObject {
         if let evidence { sessions.setEvidenceSelection(evidence) }
         let session = sessions.activeSession
         let unrecordedVanParts = VanStockReconciler.named(sessions.unrecordedVanParts)
+        // Plan MM P4: by voice, parts waiting for a business's own system are asked about once.
+        // Put and not answered, they stay on the job unsent: nothing goes without a yes.
+        var partsQuestion = ""
+        if route == .voice, let id = session?.id, !partsAnswered.contains(id), let question = seams.partsQuestion(id) {
+            if let pending = pendingPartsSend, pending.sessionID == id, pending.asked {
+                partsAnswered.insert(id)
+                pendingPartsSend = nil
+                sessions.logJobQuestion(pending.question, asked: false, answer: "no_answer",
+                                        detail: ["kind": AnyCodable("parts_send")])
+            } else {
+                partsQuestion = question
+            }
+        }
         let closeInputs = JobCloseSequence.Inputs(
             requestedOutcome: outcome,
             openVerifications: session?.openVerifications.map(\.title) ?? [],
@@ -158,17 +194,26 @@ final class GuidedJobFlow: ObservableObject {
             route: route,
             unrecordedVanParts: unrecordedVanParts,
             // Only read when there is a stock question to word (Plan MK §3).
-            stockPlace: unrecordedVanParts.isEmpty ? .default : VanStockStore.shared.resolvedPlace.kind)
+            stockPlace: unrecordedVanParts.isEmpty ? .default : VanStockStore.shared.resolvedPlace.kind,
+            partsToSend: partsQuestion)
         let finalOutcome: FieldSession.Outcome
         switch JobCloseSequence.decide(closeInputs) {
         case .proceed(let decided): finalOutcome = decided
-        case .ask(let question): throw FieldSessionError.jobCloseHeld(question)
+        case .ask(let question):
+            if question == JobCloseSequence.partsHeld, let id = session?.id {
+                pendingPartsSend = PendingPartsSend(sessionID: id, outcome: outcome, question: partsQuestion, asked: false)
+            }
+            throw FieldSessionError.jobCloseHeld(question)
         case .refuse(let reason): throw FieldSessionError.customerSignOffRequired(reason)
         }
+        // The record is taken as the job ends: its parts for a system say where they stand.
+        if let id = session?.id { seams.settlePartsAtClose(id) }
         let resolution = JobThreadPolicy.resolve(.jobClosed, inputs())
         let ended = try sessions.endSession(outcome: finalOutcome)
         apply(resolution)
         pendingUnitQuestion = nil
+        pendingPartsSend = nil
+        partsAnswered.remove(ended.id)
         return ended
     }
 
@@ -269,6 +314,13 @@ final class GuidedJobFlow: ObservableObject {
             }
         }
 
+        // The parts question (Plan MM P4), only once it has been put: a plain yes or no, read by
+        // the app and never by the model. Anything else reaches the model with it still open.
+        if let pending = pendingPartsSend, pending.asked, let yes = RemoteActionVoiceConsent.interpret(text) {
+            await answerPartsSend(pending, yes: yes)
+            return true
+        }
+
         if pendingUnitQuestion != nil, let answer = JobUnitChangeClassifier.classify(text) {
             await resolveUnitChange(answer, spoken: text)
             return true
@@ -278,6 +330,23 @@ final class GuidedJobFlow: ObservableObject {
         guard outcome.consumesUtterance else { return false }
         await commitSpeaking(outcome, spokenAnswer: text)
         return true
+    }
+
+    /// The person answered the parts question by voice: a yes is their confirmation, a no keeps
+    /// the parts on the job. Then the close they asked for finishes.
+    private func answerPartsSend(_ pending: PendingPartsSend, yes: Bool) async {
+        pendingPartsSend = nil
+        partsAnswered.insert(pending.sessionID)
+        sessions.logJobQuestion(pending.question, asked: false, answer: yes ? "send" : "keep",
+                                detail: ["kind": AnyCodable("parts_send")])
+        var line = seams.answerParts(pending.sessionID, yes ? .person(.voice) : nil)
+        do {
+            _ = try closeJob(outcome: pending.outcome, route: .voice)
+            line += (line.isEmpty ? "" : " ") + "The job is closed."
+        } catch {
+            line += (line.isEmpty ? "" : " ") + "The job is still open."
+        }
+        await seams.speak(line)
     }
 
     /// A typed message while the app's job-number question is open (Plan KD P0): the answer to it,
@@ -321,6 +390,14 @@ final class GuidedJobFlow: ObservableObject {
     @discardableResult
     func speakPendingQuestionIfDue() async -> Bool {
         guard sessions.activeSession?.isActive == true else { return false }
+
+        if var pending = pendingPartsSend, !pending.asked, sessions.activeSession?.id == pending.sessionID {
+            pending.asked = true
+            pendingPartsSend = pending
+            sessions.logJobQuestion(pending.question, asked: true, detail: ["kind": AnyCodable("parts_send")])
+            await seams.speak(pending.question)
+            return true
+        }
 
         if let question = pendingUnitQuestion,
            let pending = sessions.activeSession?.pendingUnitChange, pending.asked == 0 {

@@ -214,6 +214,40 @@ final class PartsUsedWritePlanTests: XCTestCase {
         let locations = try await connector.locations()
         XCTAssertEqual(locations.map(\.id), ["L1", "L2"])
     }
+
+    // MARK: - The reason sent
+
+    func testTheReasonSentIsTheChosenOneTheSystemsOnlyOneOrNone() {
+        typealias R = StockAdjustmentReason
+        // The system keeps one reason and none is chosen: that one.
+        XCTAssertEqual(R.effective(chosen: nil, kept: [.waste], locked: false), .waste)
+        // Chosen and kept: the chosen one, whatever else is kept.
+        XCTAssertEqual(R.effective(chosen: .internalUse, kept: [.internalUse, .waste], locked: false), .internalUse)
+        // Chosen and not kept: the system's only reason, else none.
+        XCTAssertEqual(R.effective(chosen: .damage, kept: [.waste], locked: false), .waste)
+        XCTAssertNil(R.effective(chosen: .damage, kept: [.internalUse, .waste], locked: false))
+        // Several kept and none chosen: none.
+        XCTAssertNil(R.effective(chosen: nil, kept: [.internalUse, .waste], locked: false))
+        // Keeps none: none.
+        XCTAssertNil(R.effective(chosen: .waste, kept: [], locked: false))
+        // Locked: a kept reason is used; one the system does not keep is never replaced.
+        XCTAssertEqual(R.effective(chosen: .waste, kept: [.waste], locked: true), .waste)
+        XCTAssertNil(R.effective(chosen: .damage, kept: [.waste], locked: true))
+        XCTAssertNil(R.effective(chosen: nil, kept: [.waste], locked: true))
+        XCTAssertEqual(R.ordered([.damage, .internalUse]), [.internalUse, .damage])
+    }
+
+    func testAOneReasonSystemWithTheEffectiveReasonSendsAdjustmentsNotNoReason() {
+        let caps = capabilities(hasJobs: false, reasons: [.waste],
+                                chosen: StockAdjustmentReason.effective(chosen: nil, kept: [.waste], locked: false))
+        let plan = PartsUsedWritePlan(batch: batch(), reference: nil, capabilities: caps, snapshot: snapshot)
+        XCTAssertTrue(plan.notSent.isEmpty, "\(plan.notSent)")
+        XCTAssertFalse(plan.steps.isEmpty)
+        for step in plan.steps {
+            guard case .adjustment(let adjustment) = step else { return XCTFail("only adjustments") }
+            XCTAssertEqual(adjustment.reason, .waste)
+        }
+    }
 }
 
 /// A connector that keeps its writes in memory and can fail part-way through a send, leaving the

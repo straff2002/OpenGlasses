@@ -64,6 +64,51 @@ final class StockSystemConnectionTests: XCTestCase {
         XCTAssertNil(connection.reason)
     }
 
+    func testTurningSendingBackOnStoresTheReasonSettingsShows() throws {
+        let connection = store()
+        try connection.pasteKey(C.key(), environment: .production, administrator: false, hasSandbox: true)
+        // A system that keeps one reason: that one is stored with the switch.
+        try connection.setSendingBack(true, kept: [.waste])
+        XCTAssertEqual(connection.record?.reason, .waste)
+        XCTAssertEqual(connection.effectiveReason(kept: [.waste]), .waste)
+        XCTAssertTrue(memory.items.values.contains { String(decoding: $0, as: UTF8.self).contains("\"reason\":\"waste\"") },
+                      "stored, not only shown")
+
+        // Several kept and none stored: the first Settings lists, so the screen and the store agree.
+        try connection.setReason(nil)
+        try connection.setSendingBack(false, kept: [.waste, .internalUse])
+        XCTAssertNil(connection.record?.reason, "turning it off stores nothing")
+        try connection.setSendingBack(true, kept: [.waste, .internalUse])
+        XCTAssertEqual(connection.record?.reason, .internalUse)
+
+        // A reason already stored that the system keeps is left as chosen.
+        try connection.setReason(.waste)
+        try connection.setSendingBack(true, kept: [.waste, .internalUse])
+        XCTAssertEqual(connection.record?.reason, .waste)
+    }
+
+    func testTurningSendingBackOnNeverOverridesALockedReason() throws {
+        let connection = store()
+        try connection.pasteKey(C.key(), environment: .production, administrator: false, hasSandbox: true)
+        var result = ProfileApplier.Result()
+        result.owned[.stockSystemAdjustmentReason] = .string("damage")
+        PolicyEnvelope.install(result, organizationName: "Locked firm")
+        try connection.setSendingBack(true, kept: [.waste])
+        XCTAssertNil(connection.record?.reason, "nothing stored under a lock")
+        XCTAssertEqual(connection.reason, .damage)
+        XCTAssertNil(connection.effectiveReason(kept: [.waste]), "a locked reason the system doesn't keep stays unusable")
+    }
+
+    func testTheServiceSendsWithTheEffectiveReason() throws {
+        let connection = store()
+        try connection.pasteKey(C.key(), environment: .production, administrator: false, hasSandbox: true)
+        let service = service(connection)
+        XCTAssertNil(connection.reason)
+        XCTAssertEqual(service.keptReasons, [.waste])
+        XCTAssertEqual(service.effectiveReason, .waste)
+        XCTAssertEqual(service.capabilities?.chosenReason, .waste)
+    }
+
     func testANewKeyKeepsTheChoicesAndAnotherAccountStartsAgain() throws {
         let connection = store()
         try connection.pasteKey(C.key("a"), environment: .production, administrator: false, hasSandbox: true)

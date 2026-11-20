@@ -18,8 +18,12 @@ snapshot store and the pull triggers, the office-route erase, the profile keys);
 **P3 built 2026-11-20 (headless): `van_stock` answers from the system** (who holds the count in the
 service and the tool, the §5 table, the description per authority, check-now within 3 seconds,
 uses staged per job or premises day, the Stock screen's read-only figures and the previous list);
-a day of spoken checks against a real account owed. P4 not built; P5 owed. Quantities are Plan
-[ML](ML-measured-quantities.md)'s.
+a day of spoken checks against a real account owed. **P4 built 2026-11-21 (headless): parts used,
+out per job** (one yes per batch by voice or on screen, the premises day list, the common queued
+sink with read-back before retry, the job's states, the record's members); ten closed jobs and the
+offline, revoked-permission and killed-mid-send cases owed on a device against a real account. P5
+(the pilot) owed; the plan stays 🚧 for those device checks and Square's live qualification.
+Quantities are Plan [ML](ML-measured-quantities.md)'s.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own movement log, the `van_stock` tool, the Stock screen,
@@ -505,9 +509,63 @@ catalog sync of the new Stock screen strings (separate PR).
 **P4 — Parts used, out per job.** Staging, the close-of-job confirmation by voice and on screen,
 the premises day list, `PartsUsedWritePlan` through the connector's sink, read-back reconcile, the
 job row's states, and the `van_stock` block's new fields.
+✅ **Built 2026-11-21** (headless). As built, all of it common, driving any adapter through
+`StockSystemConnector` and naming the system by its display name (the vendor guard now scans the
+new files and the close, the flow, the Job tab and the parts step). **Confirmation**
+(`StockSystemPartsUsed`): `confirm(scope, by: StockUseConfirmation)` reads the noted lines in a job
+or a premises day, groups them by location and reason, builds each `ConfirmedStockUseBatch` and
+`PartsUsedWritePlan`, marks a line the plan cannot send `not_sent` with its sentence, and queues
+the rest. It is called from two places only: by voice, `JobCloseSequence` holds a voice close
+(after IH's question for parts on finished tasks, which now counts a noted part as accounted for)
+with a line telling the model to stand back; `GuidedJobFlow` puts the question itself at the end of
+the turn (*"Two parts used on this job: one Run capacitor 45/5, half a litre of Coolant. Send them
+to Square?"*), takes the person's plain yes or no (`RemoteActionVoiceConsent`) before the model
+hears anything, and finishes the close; on the screen the Job tab's close opens the parts step
+first (a stepper per line moving by the item's unit and `decimalPlaces`, never to nothing; swipe to
+discard; Send, or Not now). A question put and not answered keeps the parts unsent; a no keeps them
+on the job with *"N parts not sent to Square"* until sent from the job's page or discarded. No tool
+or agent surface can confirm or send (`StockSystemConfirmationGuardTests` scans every source file
+for a confirmation outside those two places, and the tool, agent, Apple Intelligence, gateway and
+intent folders for any path to the confirmation, the sink or the queue kind). Sending is offered
+only while the connection runs, sending back is on, Medical Local Only does not hold the route and
+the office does not post stock; otherwise, at close, the job's noted lines go on its record as
+`not_sent` with that reason. **The premises day list**: the Stock screen, at premises with no job
+open, shows today's states and *Review and send*, confirmed on the screen only. **The sink**
+(`StockSystemSyncSink`, one for every system, ahead of Workiz's on the queue): the queue item
+(`OpKind.stockSystemParts`, `StockSystemQueuedBatch`) holds the plan, the connector id, the
+system's name, the confirmed-at and queued-at times and the delivery's progress, never the key;
+a write is marked uncertain before it is sent, and the next attempt after a timeout, a dropped
+connection, a `5xx`, an unreadable reply or a kill reads back first and sends only what is
+missing; a mismatched key is `needs_attention` and never resent; `401`/`403` stop with the failure's
+sentence until a new key's generation; `429` honours `Retry-After`, else 30 s doubling to an hour;
+no signal waits without counting an attempt; running out of attempts needs attention and can be
+tried again. The office route arriving, or Remove connection, ends a queued batch and leaves its
+lines on the record as `not_sent` (`office_route`, `disconnected`) — the decision recommended in the
+brief. A send asks for a fresh pull (one at a time), and until a newer figure a `check` says
+*"…and 1 used on this job is still being sent."* **States**: each staged line now carries where it
+stands (`staged`, `queued`, `sent`, `not_sent` with a reason code, `needs_attention`), shown as
+*Sent to Square*, *Waiting for a connection*, *Needs attention — …*, *N parts not sent to Square*
+and *N not sent: …* on the job's row, its page and the parts step; settled lines are kept 30 days.
+**The record**: the job's lines are kept on the session (`stockSystemUses`, for the open job or a
+finished one), so `van_stock` gains, per system line, `itemID`, `delivery` and `deliveryReason`, and
+the record names the system in `van_stock_system`; phone-held lines and a job that used nothing are
+unchanged (`Contracts/office-reports.md`, `Contracts/tests/test_van_stock_record.py` and a second
+fixture). **P3's gap closed**: a workbook opened while the system holds the count is refused with
+*"Stock is kept in Square, so this list was kept as the previous list and not loaded."* Decided in
+the build: the record carries each line's state when the record is taken, and a record taken later
+(the report sent from the job's page) carries the later state; a batch is one location and one
+reason; a line noted for another system than the one connected is `not_sent` (`disconnected`); a
+reason not chosen never settles a line: the reason sent is the one chosen when the system keeps
+it, else the system's only reason (Square keeps only `waste`, so it needs no choice), else none, and
+a profile-locked reason is never replaced; turning sending back on stores the reason Settings
+shows. With none (several kept and none chosen, or a profile locked to one the system doesn't
+keep), sending is not offered (`no_reason`) and the lines stay noted on the job, waiting to send,
+rather than closing as `not_sent`. A plan built with no reason still marks its lines `no_reason`, as
+P0's does, and a line's own reason (written off as damaged) is kept as said.
 *Owed (device):* ten jobs closed with parts sent, one with the phone offline until the next morning,
 one with the key's write permission removed, and one resend after a forced kill mid-send. In the
-system: each line appears once, on the right job or as the right adjustment.
+system: each line appears once, on the right job or as the right adjustment. *Owed (build):* a
+catalog sync of the parts step's and the Job tab's new strings (separate PR).
 
 **P5 — The pilot pass (owed).** A week in the pilot business. Measure answers given from the system
 against the shelf, parts sent against parts fitted, every *Needs attention*, and every answer that
@@ -536,9 +594,12 @@ said "van", "counted" or a number for an unknown.
   same batch.
 - `VanStockToolTests` additions, per authority: `load`/`count` refused with the sentence; `use`
   stages and says so; no sale at a POS; the description per authority.
-- `StockSystemSinkTests` (P4): read-back before retry; `401`/`403` stop; back-off; survives a
-  relaunch; an office-route ceiling ends a queued batch with its sentence and leaves it on the
-  record.
+- `StockSystemSinkTests` (P4): read-back before retry; only the remaining steps resent;
+  `401`/`403` stop; `429` with and without `Retry-After`; back-off; survives a relaunch with no key;
+  an office-route ceiling ends a queued batch with its sentence and leaves it on the record; a
+  mismatch needs attention and is never resent; end to end over Square's fixtures. With
+  `StockSystemPartsUsedTests`, `StockSystemPartsVoiceCloseTests` and
+  `StockSystemConfirmationGuardTests` (no agent path confirms or sends).
 - `NetworkRouteRegistryTests`, `PrivacyManifestReconciliationTests`, `DataStoreRegistryTests` and
   the profile secret-disjointness test updated for the new route, store and key.
 

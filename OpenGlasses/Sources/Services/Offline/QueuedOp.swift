@@ -12,6 +12,10 @@ enum OpKind: String, Codable {
     case auditExport    // generate / upload the session audit export
     case captureRecord  // a finished capture-flow record (Plan U) — typed so a networked sink can route it
     case workizReport
+    /// Parts used, confirmed by a person and on their way to a business's own stock system (Plan
+    /// MM P4): the write plan and how far its delivery has got (`StockSystemQueuedBatch`), never
+    /// the key.
+    case stockSystemParts
     case workRecord     // the deterministic record of one visit (Plan EM) — what base is sent at the end
     case partsRequest   // a stock check (Plan EM) — leaves on its own, before the job is finished
     /// A subject the wearer erased locally, queued so a peer that holds a copy is told to erase it

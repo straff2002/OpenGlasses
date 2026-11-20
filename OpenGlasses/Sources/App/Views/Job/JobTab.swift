@@ -38,6 +38,9 @@ private struct JobTabContent: View {
     /// said out loud, has to appear on this screen without a navigation.
     @ObservedObject var upcoming: UpcomingJobStore
     @ObservedObject var workizDeliveries: WorkizSyncSink
+    /// Parts for the business's own stock system (Plan MM P4): their states on each row, and the
+    /// parts step before a close.
+    @ObservedObject var stockParts: StockSystemPartsUsed
     @EnvironmentObject private var strip: TabStripModel
     @StateObject private var sessions = FieldSessionService.shared
     /// The list's facts, composed (Plan HC).
@@ -53,6 +56,7 @@ private struct JobTabContent: View {
         self.sends = sends
         self.upcoming = upcoming
         workizDeliveries = appState.workizSink
+        stockParts = appState.stockParts
         self.embedded = embedded
         self.focusesEvidence = focusesEvidence
         _path = State(initialValue: embedded ? [.currentJob] : [])
@@ -85,6 +89,10 @@ private struct JobTabContent: View {
     /// the audit log as it produces it.
     @State private var leaveThread: JobTabModel.ThreadQuestionCard?
     @State private var confirmingClose = false
+    /// The parts step, before a close whose job has parts waiting for the stock system (Plan MM P4).
+    @State private var partsStep: String?
+    /// Jobs whose parts step was answered on this close, so it is shown once.
+    @State private var partsAnswered: Set<String> = []
     /// Non-nil while the evidence review is in front of the technician (Plan FO P2a). It holds the
     /// selection being edited, so nothing is written onto the session until they finish.
     @State private var reviewingEvidence: EvidenceSelection?
@@ -138,8 +146,17 @@ private struct JobTabContent: View {
                         onReportDay: { appState.openSupportReport(.day($0)) },
                         onSendToday: { appState.openSupportReport(.day(Date())) },
                         deliveryStatus: { route in
-                            if case .pastJob(let id) = route { return workizDeliveries.status(sessionID: id) }
-                            return nil
+                            var lines: [String] = []
+                            switch route {
+                            case .pastJob(let id):
+                                if let status = workizDeliveries.status(sessionID: id) { lines.append(status) }
+                                lines += stockParts.rowLines(for: .job(id))
+                            case .currentJob:
+                                if let id = sessions.activeSession?.id { lines += stockParts.rowLines(for: .job(id)) }
+                            default:
+                                break
+                            }
+                            return lines.isEmpty ? nil : lines.joined(separator: "\n")
                         }, workizStatus: WorkizJobsStatus(controller: appState.workiz, store: upcoming))
                 .refreshable { await appState.workiz.refresh(force: true) }
                 .task { await appState.workiz.refresh() }
@@ -171,6 +188,21 @@ private struct JobTabContent: View {
         }
         .sheet(isPresented: Binding(get: { readBack != nil }, set: { if !$0 { readBack = nil } })) {
             ReadBackSheet(lines: readBack ?? []) { readBack = nil }
+        }
+        // The parts step (Plan MM P4): the job's parts for the stock system, read back with a
+        // stepper each and one Send, before the close carries on as it always has.
+        .sheet(isPresented: Binding(get: { partsStep != nil }, set: { shown in
+                   // Swiped away is Not now: the parts stay on the job, and the close carries on.
+                   if !shown, let id = partsStep { partsAnswered.insert(id); partsStep = nil }
+               }),
+               onDismiss: { startClosing() }) {
+            if let id = partsStep {
+                StockSystemPartsSendSheet(parts: stockParts, scope: .job(id),
+                                          jobNumber: sessions.activeSession?.jobReference) {
+                    partsAnswered.insert(id)
+                    partsStep = nil
+                }
+            }
         }
         // A job with no photos on it closes the way it always has: one question, one tap.
         .confirmationDialog("Close this job?", isPresented: $confirmingClose, titleVisibility: .visible) {
@@ -264,6 +296,9 @@ private struct JobTabContent: View {
         case .pastJob(let id):
             PastJobView(sessionId: id, model: model,
                         onOpenTranscript: { path.append(.transcript(threadId: $0)) })
+                .safeAreaInset(edge: .bottom) {
+                    StockSystemJobPartsCard(parts: stockParts, sessionID: id, jobNumber: nil)
+                }
         case .transcript(let id):
             JobTranscriptView(threadId: id)
         case .upcomingJob(let id):
@@ -391,6 +426,12 @@ private struct JobTabContent: View {
     /// Closing a job that took photos asks which of them go out first; one that took none closes
     /// the way it always has.
     private func startClosing() {
+        // Parts waiting for the stock system are read back first, once per close (Plan MM P4).
+        if let id = sessions.activeSession?.id, !partsAnswered.contains(id),
+           stockParts.question(for: .job(id)) != nil {
+            partsStep = id
+            return
+        }
         guard let review = model.evidenceReview, !review.isEmpty else {
             confirmingClose = true
             return

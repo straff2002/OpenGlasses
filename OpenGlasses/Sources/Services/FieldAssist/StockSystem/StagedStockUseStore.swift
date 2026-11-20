@@ -53,13 +53,52 @@ struct StagedStockUseEntry: Codable, Equatable, Identifiable, Sendable {
     let stagedAt: Date
     /// The call that noted it, so one undo takes back everything one call noted.
     let call: String
+    /// Where the line stands on its way to the system (Plan MM P4): noted and waiting for a
+    /// person, queued, sent, kept on the phone with a reason, or waiting for a person to look.
+    /// Absent in a file written before P4, which reads as noted.
+    var delivery: StockSystemLineDelivery
 
     var id: String { use.id }
+
+    init(scope: Scope, jobReference: String?, connectorID: String, locationID: String, use: StagedStockUse,
+         reason: StockAdjustmentReason?, stagedAt: Date, call: String, delivery: StockSystemLineDelivery = .staged) {
+        self.scope = scope
+        self.jobReference = jobReference
+        self.connectorID = connectorID
+        self.locationID = locationID
+        self.use = use
+        self.reason = reason
+        self.stagedAt = stagedAt
+        self.call = call
+        self.delivery = delivery
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case scope, jobReference, connectorID, locationID, use, reason, stagedAt, call, delivery
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        scope = try c.decode(Scope.self, forKey: .scope)
+        jobReference = try c.decodeIfPresent(String.self, forKey: .jobReference)
+        connectorID = try c.decode(String.self, forKey: .connectorID)
+        locationID = try c.decode(String.self, forKey: .locationID)
+        use = try c.decode(StagedStockUse.self, forKey: .use)
+        reason = try c.decodeIfPresent(StockAdjustmentReason.self, forKey: .reason)
+        stagedAt = try c.decode(Date.self, forKey: .stagedAt)
+        call = try c.decode(String.self, forKey: .call)
+        delivery = try c.decodeIfPresent(StockSystemLineDelivery.self, forKey: .delivery) ?? .staged
+    }
+
+    /// Noted, and waiting for a person to confirm it.
+    var isAwaitingConfirmation: Bool { delivery.state == .staged }
 }
 
-/// The parts noted on the phone for a business's own stock system and not yet confirmed (Plan MM
-/// P3): per job, and per day for premises with no job open. P4 reads them per job and per day to
-/// confirm and send them; until then nothing here leaves the phone.
+/// The parts noted on the phone for a business's own stock system (Plan MM P3): per job, and per
+/// day for premises with no job open. Since P4 each line also carries where it stands on its way
+/// to the system (`StockSystemLineDelivery`): a line leaves the phone only once a person has
+/// confirmed it, and a sent or settled line is kept for `settledRetention` so the job still shows
+/// where its parts went.
 ///
 /// One JSON file beside the delivery queue, outside the snapshot's folder so retiring a snapshot
 /// never takes a staged line with it. First-unlock protection (a use is said with the phone in a
@@ -73,6 +112,8 @@ final class StagedStockUseStore: ObservableObject {
     nonisolated static let fileProtection = FileProtectionType.completeUntilFirstUserAuthentication
     nonisolated static let fileName = "stock-system-staged.json"
     nonisolated static let formatVersion = 1
+    /// How long a line that was sent, or kept on the phone for good, stays after it settled.
+    nonisolated static let settledRetention: TimeInterval = 30 * 24 * 3600
 
     private struct File: Codable {
         var version: Int
@@ -89,7 +130,7 @@ final class StagedStockUseStore: ObservableObject {
 
     let fileURL: URL
 
-    init(directory: URL? = nil) {
+    init(directory: URL? = nil, now: Date = Date()) {
         let folder = directory ?? DeliveryQueueStore.defaultDirectory()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         fileURL = folder.appendingPathComponent(Self.fileName)
@@ -103,6 +144,10 @@ final class StagedStockUseStore: ObservableObject {
             return
         }
         entries = file.entries
+        // Settled lines past their keeping time go; a line still waiting is never dropped.
+        let cutoff = now.addingTimeInterval(-Self.settledRetention)
+        let kept = entries.filter { !($0.delivery.isSettled && ($0.delivery.changedAt ?? $0.stagedAt) < cutoff) }
+        if kept.count != entries.count, save(kept) { entries = kept }
     }
 
     // MARK: - Reading
@@ -140,12 +185,15 @@ final class StagedStockUseStore: ObservableObject {
         return true
     }
 
-    /// Take back what the most recent call in `scope` noted. Nil when there is nothing there.
+    /// Take back what the most recent call in `scope` noted, while it is still only noted. Nil
+    /// when there is nothing there to take back.
     @discardableResult
     func undoLastCall(in scope: StagedStockUseEntry.Scope) -> [StagedStockUseEntry]? {
-        guard !isUnreadable, let last = entries.last(where: { $0.scope == scope }) else { return nil }
-        let taken = entries.filter { $0.scope == scope && $0.call == last.call }
-        let kept = entries.filter { !($0.scope == scope && $0.call == last.call) }
+        guard !isUnreadable, let last = entries.last(where: { $0.scope == scope && $0.isAwaitingConfirmation })
+        else { return nil }
+        let taken = entries.filter { $0.scope == scope && $0.call == last.call && $0.isAwaitingConfirmation }
+        let takenIDs = Set(taken.map(\.id))
+        let kept = entries.filter { !takenIDs.contains($0.id) }
         guard save(kept) else { return nil }
         entries = kept
         return taken
@@ -159,6 +207,45 @@ final class StagedStockUseStore: ObservableObject {
         guard kept.count != entries.count else { return true }
         guard save(kept) else { return false }
         entries = kept
+        return true
+    }
+
+    /// Set where lines stand (Plan MM P4), by staged line id. False, and nothing changed, when the
+    /// file cannot be read or written.
+    @discardableResult
+    func setDelivery(_ updates: [String: StockSystemLineDelivery]) -> Bool {
+        guard !isUnreadable, !updates.isEmpty else { return !isUnreadable }
+        var next = entries
+        var changed = false
+        for index in next.indices {
+            if let delivery = updates[next[index].id], next[index].delivery != delivery {
+                next[index].delivery = delivery
+                changed = true
+            }
+        }
+        guard changed else { return true }
+        guard save(next) else { return false }
+        entries = next
+        return true
+    }
+
+    /// Change a noted line's amount before it is confirmed (the parts step's stepper). Only a line
+    /// still waiting for a person; its id, and so its writes' keys, stay the same.
+    @discardableResult
+    func setQuantity(_ quantity: StockQuantity, for id: String) -> Bool {
+        guard !isUnreadable, let index = entries.firstIndex(where: { $0.id == id }),
+              entries[index].isAwaitingConfirmation else { return false }
+        let old = entries[index]
+        guard old.use.quantity != quantity else { return true }
+        let use = StagedStockUse(id: old.use.id, itemID: old.use.itemID, part: old.use.part,
+                                 description: old.use.description, quantity: quantity, unit: old.use.unit,
+                                 verification: old.use.verification, source: old.use.source)
+        var next = entries
+        next[index] = StagedStockUseEntry(scope: old.scope, jobReference: old.jobReference, connectorID: old.connectorID,
+                                          locationID: old.locationID, use: use, reason: old.reason,
+                                          stagedAt: old.stagedAt, call: old.call, delivery: old.delivery)
+        guard save(next) else { return false }
+        entries = next
         return true
     }
 

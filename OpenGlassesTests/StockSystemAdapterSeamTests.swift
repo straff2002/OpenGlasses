@@ -41,13 +41,22 @@ final class StockSystemAdapterSeamTests: XCTestCase {
                          // Plan MM P3: van stock speaking for a system-held place, and its screen.
                          "OpenGlasses/Sources/App/Views/Job/StockSystemStockSection.swift",
                          "OpenGlasses/Sources/Services/FieldAssist/VanStock/VanStockService.swift",
-                         "OpenGlasses/Sources/Services/NativeTools/VanStockTool.swift"]
+                         "OpenGlasses/Sources/Services/NativeTools/VanStockTool.swift",
+                         // Plan MM P4: the parts step, and the close and record it feeds.
+                         "OpenGlasses/Sources/App/Views/Job/StockSystemPartsSendSheet.swift",
+                         "OpenGlasses/Sources/App/Views/Job/JobTab.swift",
+                         "OpenGlasses/Sources/Services/FieldAssist/Job/JobCloseSequence.swift",
+                         "OpenGlasses/Sources/Services/FieldAssist/Job/GuidedJobFlow.swift",
+                         "OpenGlasses/Sources/Services/FieldAssist/VanStock/VanStockUse.swift",
+                         "OpenGlasses/Sources/Services/FieldAssist/VanStock/VanStockImportService.swift"]
         common += elsewhere.map { repo.appendingPathComponent($0) }
         XCTAssertGreaterThanOrEqual(common.count, 24, "the common files are there to scan")
         for required in ["StockSystemConnectionStore", "StockSystemTransport", "StockSystemHTTPConnector",
                          "StockSystemSnapshotStore", "StockSystemService", "StockSystemSettingsView",
                          "StagedStockUseStore", "StockSystemFreshLines", "StockSystemVanStock", "StockSystemScreenModel",
-                         "StockSystemStockSection", "VanStockService", "VanStockTool"] {
+                         "StockSystemStockSection", "VanStockService", "VanStockTool",
+                         "StockSystemPartsDelivery", "StockSystemPartsUsed", "StockSystemSyncSink",
+                         "StockSystemPartsSendSheet", "GuidedJobFlow", "JobCloseSequence"] {
             XCTAssertTrue(common.contains { $0.lastPathComponent == required + ".swift" }, "\(required) is scanned")
         }
         for file in common {

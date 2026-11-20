@@ -148,6 +148,10 @@ struct FieldSession: Codable, Identifiable, Equatable {
     /// Part numbers on this job the technician said did not come off the van — ordered in, or
     /// the customer's — so the close does not ask about them again.
     var vanStockNotFromVan: [String]?
+    /// Parts noted on this job for a business's own stock system (Plan MM P4), with where each
+    /// stands on its way there. Kept current from the noted lines, so the job's record says what
+    /// went where. Nil, and absent from the JSON, on a job that noted none.
+    var stockSystemUses: StockSystemJobUses?
     /// The handovers this job sent to experts (Plan KM P1), one per generation: to whom, by what,
     /// and what each carried — counts and photo ids, never pixels. The next "send the latest" reads
     /// it for its generation number. Nil, and absent from the JSON, on a job that sent none.
@@ -309,6 +313,7 @@ struct FieldSession: Codable, Identifiable, Equatable {
         case teamLearningAnswers
         case vaultOnly
         case vanStockUses, vanStockNotFromVan
+        case stockSystemUses
         case expertHandovers
         case expertReplies
         case expertCoaching
@@ -394,6 +399,8 @@ extension FieldSession {
         vaultOnly = try c.decodeIfPresent(Bool.self, forKey: .vaultOnly)
         vanStockUses = try c.decodeIfPresent([VanStockUse].self, forKey: .vanStockUses)
         vanStockNotFromVan = try c.decodeIfPresent([String].self, forKey: .vanStockNotFromVan)
+        // A block that no longer decodes loses the system's lines on the session, never the job.
+        stockSystemUses = (try? c.decodeIfPresent(StockSystemJobUses.self, forKey: .stockSystemUses)) ?? nil
         // A record that no longer decodes loses the handover history, never the job.
         expertHandovers = try? c.decodeIfPresent([ExpertHandoverSent].self, forKey: .expertHandovers)
         expertReplies = try? c.decodeIfPresent([ExpertReplyReceived].self, forKey: .expertReplies)

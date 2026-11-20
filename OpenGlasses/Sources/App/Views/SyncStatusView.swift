@@ -128,6 +128,7 @@ struct SyncStatusView: View {
         case .auditExport:   return "Audit export"
         case .captureRecord: return "Capture record"
         case .workizReport: return "Workiz report"
+        case .stockSystemParts: return "Parts for the stock system"
         case .workRecord:    return "Work record"
         case .partsRequest:  return "Parts request"
         case .subjectErasure: return "Deletion request"

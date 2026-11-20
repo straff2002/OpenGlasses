@@ -138,6 +138,16 @@ struct WorkRecord: Codable, Equatable {
     /// finished task does not carry. Nil, and absent from the JSON, on a job that recorded none,
     /// so an older record encodes exactly as it did.
     var vanStock: [VanStockUse]?
+    /// The business's own stock system the job's system-held lines were for (Plan MM P4): its
+    /// connector id and display name. Those lines are in `vanStock` with `itemID` and `delivery`.
+    /// Nil, and absent from the JSON, when no line was for a system, so a phone-held record
+    /// encodes exactly as it did.
+    var vanStockSystem: VanStockSystem?
+
+    struct VanStockSystem: Codable, Equatable {
+        let connector: String
+        let name: String
+    }
     /// Office-only references. Source serial, images and recognised text are never embedded.
     var capturedManuals: [CapturedManualReference]?
     /// Experts' coaching steps walked on this job (Plan KM P3): credited, each step as written, the
@@ -188,6 +198,7 @@ struct WorkRecord: Codable, Equatable {
         case teamLearnings = "team_learnings"
         case teamLearningAnswers = "team_learning_answers"
         case vanStock = "van_stock"
+        case vanStockSystem = "van_stock_system"
         case capturedManuals = "captured_manuals"
         case coachingWalkthroughs = "coaching_walkthroughs"
         case expertTime = "expert_time"
@@ -239,7 +250,13 @@ struct WorkRecord: Codable, Equatable {
         self.usage = Self.nonEmpty(usage)
         self.teamLearnings = (session.teamLearnings ?? []).isEmpty ? nil : session.teamLearnings
         self.teamLearningAnswers = (session.teamLearningAnswers ?? []).isEmpty ? nil : session.teamLearningAnswers
-        self.vanStock = (session.vanStockUses ?? []).isEmpty ? nil : session.vanStockUses
+        // The phone's own lines, then the lines noted for a business's own system (Plan MM P4).
+        let systemLines = session.stockSystemUses?.lines ?? []
+        let stockLines = (session.vanStockUses ?? []) + systemLines
+        self.vanStock = stockLines.isEmpty ? nil : stockLines
+        self.vanStockSystem = systemLines.isEmpty ? nil : session.stockSystemUses.map {
+            VanStockSystem(connector: $0.connectorID, name: $0.displayName)
+        }
         let walkthroughs = CoachingWalkthrough.build(session: session)
         self.coachingWalkthroughs = walkthroughs.isEmpty ? nil : walkthroughs
         let expertTime = ExpertTime.build(session: session)
@@ -289,6 +306,7 @@ struct WorkRecord: Codable, Equatable {
         teamLearnings = try c.decodeIfPresent([LearningCandidateReference].self, forKey: .teamLearnings)
         teamLearningAnswers = try c.decodeIfPresent([TeamLearningAnswer].self, forKey: .teamLearningAnswers)
         vanStock = try c.decodeIfPresent([VanStockUse].self, forKey: .vanStock)
+        vanStockSystem = try c.decodeIfPresent(VanStockSystem.self, forKey: .vanStockSystem)
         capturedManuals = try c.decodeIfPresent([CapturedManualReference].self,forKey:.capturedManuals)
         coachingWalkthroughs = try c.decodeIfPresent([CoachingWalkthrough].self, forKey: .coachingWalkthroughs)
         expertTime = try c.decodeIfPresent([ExpertTime].self, forKey: .expertTime)
