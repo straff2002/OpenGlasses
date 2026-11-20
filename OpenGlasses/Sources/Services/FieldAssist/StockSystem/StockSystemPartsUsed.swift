@@ -12,7 +12,8 @@ import Combine
 ///
 /// When sending is not offered (sending back off, Medical Local Only, the office posting stock, no
 /// connection), the job's noted lines go on its record as not sent, with the reason, when it
-/// closes. Vendor-neutral: the system's name comes from the connection.
+/// closes. With no reason the system keeps chosen, they stay noted on the job instead, waiting to
+/// send once one is. Vendor-neutral: the system's name comes from the connection.
 @MainActor
 final class StockSystemPartsUsed: ObservableObject {
 
@@ -57,10 +58,22 @@ final class StockSystemPartsUsed: ObservableObject {
 
     var system: String { service.snapshot?.source.displayName ?? service.displayName }
 
-    /// Whether sending is offered now for the chosen system.
-    var offer: StockSystemSendOffer {
-        StockSystemSendOffer.decide(officeRoute: service.connection.officeRoute, connected: service.isRunning,
-                                    sendingBack: service.connection.sendingBack, localOnly: service.isBlockedByMedical)
+    /// Whether sending is offered now for the chosen system, for parts not on a job of its own.
+    var offer: StockSystemSendOffer { offer(for: nil) }
+
+    /// Whether sending is offered now for the lines in `scope`: a job whose reference is the
+    /// system's own sends part lines, which need no reason; anything else needs one the system
+    /// keeps.
+    func offer(for scope: StagedStockUseEntry.Scope?) -> StockSystemSendOffer {
+        var reasonNeeded = true
+        if case .job(let id) = scope, let capabilities = service.capabilities,
+           case .jobPartLines = PartsUsedWritePlan.route(capabilities: capabilities, reference: seams.reference(id)) {
+            reasonNeeded = false
+        }
+        return StockSystemSendOffer.decide(officeRoute: service.connection.officeRoute, connected: service.isRunning,
+                                           sendingBack: service.connection.sendingBack,
+                                           localOnly: service.isBlockedByMedical,
+                                           reason: service.effectiveReason, reasonNeeded: reasonNeeded)
     }
 
     func entries(in scope: StagedStockUseEntry.Scope) -> [StagedStockUseEntry] { service.staged.entries(in: scope) }
@@ -79,7 +92,7 @@ final class StockSystemPartsUsed: ObservableObject {
     /// otherwise.
     func question(for scope: StagedStockUseEntry.Scope) -> String? {
         let waiting = awaiting(in: scope).filter { $0.connectorID == service.connection.selectedConnectorID }
-        guard !waiting.isEmpty, offer.isOffered else { return nil }
+        guard !waiting.isEmpty, offer(for: scope).isOffered else { return nil }
         if case .job = scope { return StockSystemPartsQuestion.question(waiting, system: system, onJob: true) }
         return StockSystemPartsQuestion.question(waiting, system: system, onJob: false)
     }
@@ -129,7 +142,7 @@ final class StockSystemPartsUsed: ObservableObject {
         let connectorID = service.connection.selectedConnectorID
         let waiting = awaiting(in: scope)
         guard !waiting.isEmpty else { return Outcome(sentence: "There are no parts waiting to send.", queued: 0, notSent: 0) }
-        if case .notOffered(let reason) = offer {
+        if case .notOffered(let reason) = offer(for: scope) {
             return Outcome(sentence: reason.sentence(system: system), queued: 0, notSent: 0)
         }
         guard let registration = service.registration, let snapshot = service.snapshot else {
@@ -171,7 +184,9 @@ final class StockSystemPartsUsed: ObservableObject {
         var kept: [String] = []
         for group in groups {
             guard let first = group.entries.first else { continue }
-            let capabilities = registration.adapter.capabilities(chosenReason: first.reason ?? service.connection.reason)
+            // A line's own reason (written off as damaged) is the person's and is kept as said;
+            // otherwise the reason parts used are sent with.
+            let capabilities = registration.adapter.capabilities(chosenReason: first.reason ?? service.effectiveReason)
             let batch = ConfirmedStockUseBatch(jobID: jobID, jobNumber: jobNumber ?? first.jobReference,
                                                locationID: first.locationID, lines: group.entries.map(\.use),
                                                confirmation: confirmation)
@@ -211,9 +226,11 @@ final class StockSystemPartsUsed: ObservableObject {
     }
 
     /// The job is closing. When sending is not offered, its noted lines go on the record as not
-    /// sent, with the reason; either way the record then carries every line as it stands.
+    /// sent, with the reason; either way the record then carries every line as it stands. With no
+    /// reason chosen they are not settled: they stay noted on the job, waiting to send, and are
+    /// offered again once a reason is set.
     func settleAtClose(sessionID: String) {
-        if case .notOffered(let reason) = offer {
+        if case .notOffered(let reason) = offer(for: .job(sessionID)), reason != .noReason {
             let now = seams.now()
             let system = self.system
             var updates: [String: StockSystemLineDelivery] = [:]

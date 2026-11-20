@@ -117,8 +117,18 @@ final class StockSystemService: ObservableObject {
         StockAuthority.resolve(officeRoute: connection.officeRoute, connection: connection.authorityConnection)
     }
 
-    /// What the system can take back, with the organisation's reason; nil with no system chosen.
-    var capabilities: StockSystemCapabilities? { registration?.adapter.capabilities(chosenReason: connection.reason) }
+    /// The adjustment reasons the chosen system keeps; none with no system chosen.
+    var keptReasons: Set<StockAdjustmentReason> {
+        registration?.adapter.capabilities(chosenReason: nil).adjustmentReasons ?? []
+    }
+
+    /// The reason parts used are sent with (`StockAdjustmentReason.effective`); nil when there is
+    /// none the system keeps.
+    var effectiveReason: StockAdjustmentReason? { connection.effectiveReason(kept: keptReasons) }
+
+    /// What the system can take back, with the reason parts used are sent with; nil with no system
+    /// chosen.
+    var capabilities: StockSystemCapabilities? { registration?.adapter.capabilities(chosenReason: effectiveReason) }
 
     /// The chosen system's last good snapshot, kept with its age whatever happens to a pull.
     var snapshot: StockSystemSnapshot? { store.snapshot(for: connection.selectedConnectorID) }
@@ -157,7 +167,7 @@ final class StockSystemService: ObservableObject {
             pullMessage = MedicalEgressRefusal.userMessage
             return
         }
-        guard let connector = makeConnector(record, registration, connection.reason) else { return }
+        guard let connector = makeConnector(record, registration, effectiveReason) else { return }
         lastAttempt = now()
         pulling = true
         // The task clears itself when it ends, so a caller that waited on it finds no pull under
@@ -211,7 +221,7 @@ final class StockSystemService: ObservableObject {
         }
         guard !medicalBlocks(registration.route) else { return .skipped(.localOnly) }
         guard isOnline() else { return .skipped(.offline) }
-        guard let connector = makeConnector(record, registration, connection.reason) else { return .skipped(.notConnected) }
+        guard let connector = makeConnector(record, registration, effectiveReason) else { return .skipped(.notConnected) }
 
         let locations = record.locationIDs
         // Unstructured on purpose: when the budget wins, the read carries on and refreshes the store.
@@ -260,7 +270,7 @@ final class StockSystemService: ObservableObject {
             connectionLine = MedicalEgressRefusal.userMessage
             return
         }
-        guard let connector = makeConnector(record, registration, connection.reason) else {
+        guard let connector = makeConnector(record, registration, effectiveReason) else {
             connectionLine = StockSystemFailure.unauthorized(.invalid).sentence(system: registration.displayName)
             return
         }
@@ -287,7 +297,7 @@ final class StockSystemService: ObservableObject {
     /// Read the system's locations again, for "Which stock is here?".
     func loadLocations() async {
         guard !loadingLocations, isRunning, let record = connection.record, let registration,
-              !medicalBlocks(registration.route), let connector = makeConnector(record, registration, connection.reason)
+              !medicalBlocks(registration.route), let connector = makeConnector(record, registration, effectiveReason)
         else { return }
         loadingLocations = true
         defer { loadingLocations = false }

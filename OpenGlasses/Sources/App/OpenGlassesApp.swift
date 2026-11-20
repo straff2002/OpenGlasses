@@ -1653,7 +1653,7 @@ class AppState: ObservableObject, AppStateProtocol {
               let registration = service.registration else { return .removed }
         guard service.isRunning else { return .paused(StockSystemSyncSink.waitingLine) }
         guard let connector = StockSystemService.httpConnector(transport: URLSessionStockSystemTransport())(
-            record, registration, service.connection.reason) else { return .paused(StockSystemSyncSink.waitingLine) }
+            record, registration, service.effectiveReason) else { return .paused(StockSystemSyncSink.waitingLine) }
         return .connected(connector: connector, generation: record.generation, route: registration.route)
     }
 

@@ -48,6 +48,22 @@ enum StockAdjustmentReason: String, Codable, Equatable, Hashable, Sendable, Case
     case internalUse = "internal_use"
     case waste
     case damage
+
+    /// The reasons a system keeps, in the order Settings lists them.
+    static func ordered(_ kept: Set<StockAdjustmentReason>) -> [StockAdjustmentReason] {
+        allCases.filter(kept.contains)
+    }
+
+    /// The reason parts used are recorded as, in one place: the chosen reason when the system keeps
+    /// it; otherwise, when the system keeps exactly one reason, that one; otherwise none, and parts
+    /// that need a reason are not offered for sending. A reason the organisation's profile has
+    /// locked is never replaced: locked to one the system does not keep, there is none. Pure.
+    static func effective(chosen: StockAdjustmentReason?, kept: Set<StockAdjustmentReason>,
+                          locked: Bool) -> StockAdjustmentReason? {
+        if let chosen, kept.contains(chosen) { return chosen }
+        guard !locked, kept.count == 1 else { return nil }
+        return kept.first
+    }
 }
 
 /// What a connected system can take back, as its connector declares it (Plan MM §6, §8).

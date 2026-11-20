@@ -555,7 +555,13 @@ fixture). **P3's gap closed**: a workbook opened while the system holds the coun
 the build: the record carries each line's state when the record is taken, and a record taken later
 (the report sent from the job's page) carries the later state; a batch is one location and one
 reason; a line noted for another system than the one connected is `not_sent` (`disconnected`); a
-reason not chosen makes every line `not_sent` (`no_reason`), as P0's plan does.
+reason not chosen never settles a line: the reason sent is the one chosen when the system keeps
+it, else the system's only reason (Square keeps only `waste`, so it needs no choice), else none, and
+a profile-locked reason is never replaced; turning sending back on stores the reason Settings
+shows. With none (several kept and none chosen, or a profile locked to one the system doesn't
+keep), sending is not offered (`no_reason`) and the lines stay noted on the job, waiting to send,
+rather than closing as `not_sent`. A plan built with no reason still marks its lines `no_reason`, as
+P0's does, and a line's own reason (written off as damaged) is kept as said.
 *Owed (device):* ten jobs closed with parts sent, one with the phone offline until the next morning,
 one with the key's write permission removed, and one resend after a forced kill mid-send. In the
 system: each line appears once, on the right job or as the right adjustment. *Owed (build):* a

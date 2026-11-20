@@ -63,6 +63,10 @@ enum StockSystemNotSentReason: String, CaseIterable, Sendable {
     case disconnected
     /// A person chose not to send it.
     case discarded
+    /// No reason for parts used is chosen that the system keeps (or the profile locked one it does
+    /// not keep). Never a settled line's reason: the lines stay noted on the job, waiting to send,
+    /// until a reason is chosen.
+    case noReason = "no_reason"
 
     func sentence(system: String) -> String {
         switch self {
@@ -77,24 +81,32 @@ enum StockSystemNotSentReason: String, CaseIterable, Sendable {
             return "\(system) was disconnected on this phone, so not sent. It stays on the job's record."
         case .discarded:
             return "Not sent to \(system): it was discarded on this phone. It stays on the job's record."
+        case .noReason:
+            return "No reason for parts used that \(system) keeps is chosen, so nothing is sent yet. Choose one in "
+                + "Settings › Field Assist › Stock system; the parts stay on the job, waiting to send."
         }
     }
 }
 
 /// Whether sending parts to the system is offered at all (Plan MM §6, §7): only while the
-/// connection runs, sending back is on, Medical Local Only does not hold the route and the office
-/// does not post stock. Pure.
+/// connection runs, sending back is on, Medical Local Only does not hold the route, the office
+/// does not post stock, and the parts have a way in: a reason the system keeps
+/// (`StockAdjustmentReason.effective`), unless they go as part lines on the system's own job
+/// (`reasonNeeded` false). A person is never asked to confirm a batch that can only end as not
+/// sent. Pure.
 enum StockSystemSendOffer: Equatable, Sendable {
     case offered
     case notOffered(StockSystemNotSentReason)
 
     var isOffered: Bool { self == .offered }
 
-    static func decide(officeRoute: Bool, connected: Bool, sendingBack: Bool, localOnly: Bool) -> StockSystemSendOffer {
+    static func decide(officeRoute: Bool, connected: Bool, sendingBack: Bool, localOnly: Bool,
+                       reason: StockAdjustmentReason?, reasonNeeded: Bool = true) -> StockSystemSendOffer {
         if officeRoute { return .notOffered(.officeRoute) }
         if !connected { return .notOffered(.disconnected) }
         if localOnly { return .notOffered(.localOnly) }
         if !sendingBack { return .notOffered(.sendingOff) }
+        if reasonNeeded, reason == nil { return .notOffered(.noReason) }
         return .offered
     }
 }

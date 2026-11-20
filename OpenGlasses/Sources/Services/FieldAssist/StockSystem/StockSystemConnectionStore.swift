@@ -184,6 +184,16 @@ final class StockSystemConnectionStore: ObservableObject {
         StockAdjustmentReason(rawValue: PolicyEnvelope.string(.stockSystemAdjustmentReason, stored: record?.reason?.rawValue ?? ""))
     }
 
+    /// The organisation's profile has locked the reason.
+    var reasonLocked: Bool { PolicyEnvelope.isLocked(.stockSystemAdjustmentReason) }
+
+    /// The reason parts used are sent with, for a system that keeps `kept`
+    /// (`StockAdjustmentReason.effective`): the one in force when the system keeps it, else the
+    /// system's only reason, else none. A locked reason is never replaced.
+    func effectiveReason(kept: Set<StockAdjustmentReason>) -> StockAdjustmentReason? {
+        StockAdjustmentReason.effective(chosen: reason, kept: kept, locked: reasonLocked)
+    }
+
     /// The connection as deciding who answers needs it (`StockAuthority.resolve`).
     var authorityConnection: StockSystemConnection? {
         guard isRunning, let record else { return nil }
@@ -236,11 +246,16 @@ final class StockSystemConnectionStore: ObservableObject {
         try commit(next)
     }
 
-    /// Sending back on or off. Refused while the profile has locked it.
-    func setSendingBack(_ on: Bool) throws {
+    /// Sending back on or off. Refused while the profile has locked it. Turned on with no reason
+    /// stored that the system keeps (`kept`), the reason Settings shows is stored with it, so what
+    /// the screen says and what is sent agree; a locked reason is left as the profile set it.
+    func setSendingBack(_ on: Bool, kept: Set<StockAdjustmentReason> = []) throws {
         guard !PolicyEnvelope.isLocked(.stockSystemSendBack) else { throw StockSystemConnectionError.locked }
         guard var next = record else { throw StockSystemConnectionError.noConnection }
         next.sendingBack = on
+        if on, !reasonLocked, !kept.isEmpty, next.reason.map(kept.contains) != true {
+            next.reason = effectiveReason(kept: kept) ?? StockAdjustmentReason.ordered(kept).first
+        }
         try commit(next)
     }
 

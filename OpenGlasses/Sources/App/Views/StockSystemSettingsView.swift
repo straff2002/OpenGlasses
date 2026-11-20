@@ -223,23 +223,35 @@ struct StockSystemSettingsView: View {
     private func goesBackSection(_ registration: StockSystemRegistration) -> some View {
         let sendLocked = PolicyEnvelope.isLocked(.stockSystemSendBack)
         let reasonLocked = PolicyEnvelope.isLocked(.stockSystemAdjustmentReason)
-        let reasons = StockAdjustmentReason.allCases.filter {
-            registration.adapter.capabilities(chosenReason: nil).adjustmentReasons.contains($0)
-        }
+        let kept = registration.adapter.capabilities(chosenReason: nil).adjustmentReasons
+        let reasons = StockAdjustmentReason.ordered(kept)
+        // What is shown is what is sent with (`StockAdjustmentReason.effective`), never a default
+        // the store does not hold.
+        let effective = connection.effectiveReason(kept: kept)
         Section {
             Toggle("Send parts used back to \(system)", isOn: Binding(get: { connection.sendingBack },
-                                                                     set: { try? connection.setSendingBack($0) }))
+                                                                     set: { try? connection.setSendingBack($0, kept: kept) }))
                 .disabled(sendLocked)
                 .accessibilityIdentifier("stockSystem.sendBack")
             if !reasons.isEmpty {
-                Picker("Recorded as", selection: Binding(get: { connection.reason ?? reasons[0] },
-                                                         set: { try? connection.setReason($0) })) {
+                Picker("Recorded as", selection: Binding(get: { effective },
+                                                         set: { if let reason = $0 { try? connection.setReason(reason) } })) {
+                    if effective == nil {
+                        Text("Not chosen").tag(StockAdjustmentReason?.none)
+                    }
                     ForEach(reasons, id: \.self) { reason in
-                        Text(Self.words(reason)).tag(reason)
+                        Text(Self.words(reason)).tag(StockAdjustmentReason?.some(reason))
                     }
                 }
                 .disabled(reasonLocked || !connection.sendingBack)
                 .accessibilityIdentifier("stockSystem.reason")
+                if connection.sendingBack, effective == nil {
+                    (reasonLocked
+                        ? Text("Your organisation chose a reason \(system) doesn't keep, so parts used are not sent.")
+                        : Text("Choose what parts used are recorded as. Until then nothing is sent."))
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("stockSystem.reasonMissing")
+                }
             }
             if sendLocked || reasonLocked { ManagedLockNote(organization: ManagedLockReason.organization) }
         } header: {

@@ -181,7 +181,13 @@ is kept: the lines stay on the job, noted and unsent, until someone sends or dis
 tool and no agent path can confirm or send (`StockSystemConfirmationGuardTests`). Sending is not
 offered while sending back is off, Medical Local Only holds the route, the office posts stock, or
 the system is not connected: the job's noted lines then go on its record as `not_sent` with that
-reason when it closes.
+reason when it closes. **The reason sent** is the one chosen when the system keeps it; otherwise,
+when the system keeps exactly one reason, that one; otherwise none. A reason the profile locked is
+never replaced. Turning sending back on in Settings stores the reason Settings shows. With no reason
+(the system keeps several and none is chosen, or the profile locked one it does not keep), sending
+is not offered for lines that need one — part lines on the system's own job do not — and the lines
+are **not** settled at the close: they stay noted on the job, waiting to send, until a reason is
+chosen.
 
 **The queued batch.** One offline-queue item (`stockSystemParts`) per batch — one location and one
 reason — holding the write plan (`PartsUsedWritePlan`, Codable), the connector id, the system's

@@ -25,7 +25,7 @@ struct StockSystemPartsSendSheet: View {
                     Section {
                         Text(question).font(.headline)
                     }
-                } else if case .notOffered(let reason) = parts.offer, !waiting.isEmpty {
+                } else if case .notOffered(let reason) = parts.offer(for: scope), !waiting.isEmpty {
                     Section {
                         Label(reason.sentence(system: system), systemImage: "tray.and.arrow.up")
                     }
@@ -84,7 +84,7 @@ struct StockSystemPartsSendSheet: View {
                         result = outcome.sentence
                         if outcome.queued > 0 || waiting.isEmpty { onDone() }
                     }
-                    .disabled(waiting.isEmpty || !parts.offer.isOffered)
+                    .disabled(waiting.isEmpty || !parts.offer(for: scope).isOffered)
                 }
             }
         }

@@ -39,13 +39,13 @@ final class StockSystemPartsUsedTests: XCTestCase {
     private let none = NoSink()
 
     /// The system connected with sending back on (or off), a job open, and the parts service.
-    private func make(sendingBack: Bool = true, kind: StockPlace.Kind = .van,
+    private func make(sendingBack: Bool = true, reason: StockAdjustmentReason? = .waste, kind: StockPlace.Kind = .van,
                       job: VanStockService.Job? = .init(sessionID: "S1", reference: "1027")) throws -> StockSystemPartsUsed {
         h.kind = kind
         h.job = job
         let service = try h.connect()
         try service.connection.setSendingBack(sendingBack)
-        try service.connection.setReason(.waste)
+        try service.connection.setReason(reason)
         let sink = StockSystemSyncSink(queue: queue, fallback: none, seams: .init(
             connection: { _ in .removed }, officeRoute: { false }, medicalBlocks: { _ in false },
             now: { [unowned self] in self.h.clock }))
@@ -158,16 +158,76 @@ final class StockSystemPartsUsedTests: XCTestCase {
     }
 
     func testTheSendOfferIsDecidedInOrder() {
-        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: true, connected: true, sendingBack: true, localOnly: false),
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: true, connected: true, sendingBack: true, localOnly: false, reason: .waste),
                        .notOffered(.officeRoute))
-        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: false, sendingBack: true, localOnly: false),
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: false, sendingBack: true, localOnly: false, reason: .waste),
                        .notOffered(.disconnected))
-        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: true, localOnly: true),
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: true, localOnly: true, reason: .waste),
                        .notOffered(.localOnly))
-        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: false, localOnly: false),
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: false, localOnly: false, reason: .waste),
                        .notOffered(.sendingOff))
-        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: true, localOnly: false),
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: true, localOnly: false, reason: .waste),
                        .offered)
+    }
+
+    func testWithNoUsableReasonSendingIsNotOffered() {
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: true, localOnly: false,
+                                                   reason: nil), .notOffered(.noReason))
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: false, localOnly: false,
+                                                   reason: nil), .notOffered(.sendingOff), "sending off is said first")
+        XCTAssertEqual(StockSystemSendOffer.decide(officeRoute: false, connected: true, sendingBack: true, localOnly: false,
+                                                   reason: nil, reasonNeeded: false), .offered,
+                       "part lines on the system's own job need no reason")
+    }
+
+    // MARK: - The reason sent
+
+    func testAOneReasonSystemWithNoStoredReasonSendsAdjustmentsWithThatReason() async throws {
+        let parts = try make(reason: nil)
+        XCTAssertNil(parts.service.connection.record?.reason, "nothing stored")
+        XCTAssertEqual(parts.service.effectiveReason, .waste, "the system keeps only one reason")
+        XCTAssertEqual(parts.offer, .offered)
+        try await stageTwo()
+        XCTAssertNotNil(parts.question(for: .job("S1")))
+        let outcome = parts.confirm(.job("S1"), by: .person(.screen), jobNumber: "1027")
+        XCTAssertEqual(outcome.queued, 2, outcome.sentence)
+        XCTAssertEqual(outcome.notSent, 0)
+        let op = try XCTUnwrap(queue.all(limit: 10).first { $0.kind == .stockSystemParts })
+        let batch = try XCTUnwrap(StockSystemSyncSink.decode(op.payload))
+        XCTAssertTrue(batch.plan.notSent.isEmpty, "never no_reason")
+        XCTAssertEqual(batch.plan.steps.count, 2)
+        for step in batch.plan.steps {
+            guard case .adjustment(let adjustment) = step else { return XCTFail("adjustments only") }
+            XCTAssertEqual(adjustment.reason, .waste)
+        }
+    }
+
+    func testALockedReasonTheSystemDoesNotKeepIsNotOfferedAndTheLinesStayWaitingAtTheClose() async throws {
+        let parts = try make(sendingBack: false, reason: nil)
+        var result = ProfileApplier.Result()
+        result.owned[.stockSystemSendBack] = .bool(true)
+        result.owned[.stockSystemAdjustmentReason] = .string("damage")
+        PolicyEnvelope.install(result, organizationName: "Locked firm")
+        XCTAssertTrue(parts.service.connection.sendingBack)
+        XCTAssertNil(parts.service.effectiveReason, "a locked reason is never replaced")
+        try await stageTwo()
+        XCTAssertEqual(parts.offer(for: .job("S1")), .notOffered(.noReason))
+        XCTAssertNil(parts.question(for: .job("S1")), "never asked to confirm a batch that can only end as not sent")
+        let refused = parts.confirm(.job("S1"), by: .person(.screen))
+        XCTAssertEqual(refused.queued, 0)
+        XCTAssertTrue(refused.sentence.contains("Settings › Field Assist › Stock system"), refused.sentence)
+        XCTAssertTrue(queue.all(limit: 10).isEmpty)
+        parts.settleAtClose(sessionID: "S1")
+        XCTAssertTrue(h.staged.allSatisfy { $0.delivery.state == .staged }, "kept to send once a reason is set")
+        XCTAssertEqual(recorded["S1"]??.lines.map(\.delivery), [.staged, .staged])
+        XCTAssertEqual(parts.rowLines(for: .job("S1")), ["2 parts not sent to Square"])
+
+        // The profile no longer locks a reason the system doesn't keep: the same lines are offered.
+        result.owned[.stockSystemAdjustmentReason] = nil
+        PolicyEnvelope.install(result, organizationName: "Locked firm")
+        XCTAssertEqual(parts.service.effectiveReason, .waste)
+        XCTAssertNotNil(parts.question(for: .job("S1")))
+        XCTAssertEqual(parts.confirm(.job("S1"), by: .person(.screen)).queued, 2)
     }
 
     // MARK: - The premises day list
