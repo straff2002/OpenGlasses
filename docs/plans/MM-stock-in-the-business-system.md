@@ -12,7 +12,10 @@ direction: the vendor-neutral adapter seam in the same folder (requests from a c
 list, paged pull plans, the driver, common failure categories and their sentences), an item's
 `decimalPlaces` in the snapshot, and Square's thin adapter in `StockSystem/Square/` over synthetic
 fixtures; 57 new tests. Simpro is not built (no public reference). Square's live qualification
-is owed. P2–P4 not built; P5 owed. Quantities are Plan [ML](ML-measured-quantities.md)'s.
+is owed. **P2 built 2026-11-20 (headless): the common connection** (Settings › Field Assist › Stock
+system, the device-only Keychain item, the pinned-host transport and `squareStockAPI` route, the
+snapshot store and the pull triggers, the office-route erase, the profile keys); device checks owed.
+P3–P4 not built; P5 owed. Quantities are Plan [ML](ML-measured-quantities.md)'s.
 **Track:** Field Assist (B2B).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own movement log, the `van_stock` tool, the Stock screen,
@@ -407,7 +410,46 @@ when Square accepts it. *Owed (device):* nothing yet (nothing is connected until
 storage, the `NetworkRoute` and its transport, `MedicalEgressGuard`, the manifest, inventory and
 privacy copy, `StockSystemSnapshotStore` in `SensitiveStore`, the pull triggers, the office-route
 erase (§4), and the profile keys that switch the connector on and set what goes back.
-*Owed (device):* Test connection and a pull on 4G and on Wi-Fi; aeroplane mode afterwards.
+✅ **Built 2026-11-20 for Square** (headless; 53 new tests). As built, everything but the adapter is
+common and reads the system's name, hosts, endpoints, permissions, reasons and reply cap from it:
+`StockSystemConnectionStore` (one device-only Keychain item per system,
+`stockSystemConnection.<connector>`, holding the key and every choice: the business's account or a
+sandbox, the chosen locations with their names, sending back, the reason, and an unused external
+user id for a system with jobs; the key pasted behind the administrator's passcode on a managed
+phone; an erase the locked phone refuses is kept pending and the item never read again),
+`URLSessionStockSystemTransport` (the one transport for every stock route: ephemeral, no cookies,
+cache or stored credentials, redirects refused, only the adapter's pinned host for the environment
+over HTTPS, the endpoint checked again, the bearer added only on the wire, the reply capped at the
+adapter's size, `Retry-After` passed back, any connection failure `unreachable`, and
+`MedicalEgressGuard.check` before every request), `StockSystemHTTPConnector` (any adapter through
+`StockSystemPlanDriver`; the write and read-back wired for P4 and called by nothing),
+`StockSystemSnapshotStore` (`SensitiveStore.stockSystemSnapshot`: one file per system in
+`Application Support/FieldAssist/stock-system/`, first-unlock protection, file and folder excluded
+from backup, a new snapshot written and read back before it replaces the current one, which is kept
+as the previous one and read when the current one cannot be) and `StockSystemService` (the
+triggers, Test connection, the locations). The adapters are listed by connector id in
+`StockSystem/Registry/StockSystemAdapterRegistry.swift` (adapter, route, what the system calls its
+key and where it is made); the guard test now scans every common file, the settings view included.
+The seam gained `maximumResponseBytes` and `probeRequests()` on the adapter (Square: one `IN_STOCK`
+count and one item variation, a page of one each) and `probe()` on the connector, whose `apply` and
+`readBack` now take the confirmation and queue times. `NetworkRoute.squareStockAPI` carries
+`promptText` and `credential` only. Profile keys (all profile-owned, each locking its control, none a
+key): `stockSystemEnabled`, `stockSystemConnector` (a connector this build offers),
+`stockSystemSendBack`, `stockSystemAdjustmentReason`. Erased on Remove connection, on leaving the
+organisation (beside Workiz's) and when the office route arrives (`enforceWorkizRoute` now enforces
+both); a new key, or another choice of locations, retires the snapshot. Settings › Field Assist ›
+Stock system is hidden under the office route; the Stock screen shows "From Square at 09:10" and
+why the last pull failed, pulls on opening and on pull-to-refresh. Decided in the build: the
+foreground pull keeps the same 10-minute interval as the Stock screen (JR's rule), measured from the
+last attempt; only pull-to-refresh, a good Test connection and a new choice of locations pull at
+once. One pull at a time: a second caller waits for the one under way. Test connection chooses the
+location whose name matches the list's when exactly one does. Square's personal access token is not
+scoped, so "How to make a key" lists the permissions the phone uses rather than ones to tick. OAuth
+with PKCE is not built: it needs an Avenkin application registered with each vendor.
+*Owed (device):* Test connection and a pull on 4G and on Wi-Fi; aeroplane mode afterwards (the last
+figures stay, with the unreachable sentence). *Owed (live account):* P1's Square qualification, now
+through Settings. *Owed (build):* OAuth with PKCE per vendor; a catalog sync of the new Settings and
+Stock screen strings (separate PR).
 
 **P3 — `van_stock` answers from the system.** `StockAuthority` in `VanStockService` and the tool;
 the per-action table in §5; the computed description per authority; the Stock screen showing the
