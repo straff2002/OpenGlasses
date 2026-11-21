@@ -7,6 +7,25 @@ import XCTest
 @MainActor
 final class OnDeviceToolSchemaTests: XCTestCase {
 
+    private var previousEntitlement: FieldAssistEntitlementProvider!
+    private var previousEnabled: Any?
+
+    /// The registry hands out Field Assist tools only while Field Assist is active, and the parity
+    /// check should cover them too.
+    override func setUp() {
+        super.setUp()
+        previousEnabled = UserDefaults.standard.object(forKey: "fieldAssistEnabled")
+        UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
+        previousEntitlement = EntitlementTestScope.grant()
+    }
+
+    override func tearDown() {
+        if let previousEnabled { UserDefaults.standard.set(previousEnabled, forKey: "fieldAssistEnabled") }
+        else { UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled") }
+        EntitlementTestScope.restore(previousEntitlement)
+        super.tearDown()
+    }
+
     private func registry() -> NativeToolRegistry {
         NativeToolRegistry(locationService: LocationService())
     }

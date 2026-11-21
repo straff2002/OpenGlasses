@@ -19,14 +19,23 @@ final class LocalToolEvalCorpusTests: XCTestCase {
     }
 
     private var registry: NativeToolRegistry!
+    private var previousEntitlement: FieldAssistEntitlementProvider!
+    private var previousEnabled: Any?
 
+    /// The registry hands out Field Assist tools only while Field Assist is active.
     override func setUp() {
         super.setUp()
+        previousEnabled = UserDefaults.standard.object(forKey: "fieldAssistEnabled")
+        UserDefaults.standard.set(true, forKey: "fieldAssistEnabled")
+        previousEntitlement = EntitlementTestScope.grant()
         registry = NativeToolRegistry(locationService: LocationService())
     }
 
     override func tearDown() {
         registry = nil
+        if let previousEnabled { UserDefaults.standard.set(previousEnabled, forKey: "fieldAssistEnabled") }
+        else { UserDefaults.standard.removeObject(forKey: "fieldAssistEnabled") }
+        EntitlementTestScope.restore(previousEntitlement)
         super.tearDown()
     }
 
@@ -48,7 +57,7 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         // Read once here, on the main actor: the registry's tools are main-actor types, and the
         // loop runs off it.
         var schemas: [String: OnDeviceToolSchema.Node] = [:]
-        for name in registry.toolNames { schemas[name] = schema(name) }
+        for name in Set(registry.toolNames).union(FieldAssistLocalToolSet.priority) { schemas[name] = schema(name) }
         let frozen = schemas
         return LocalToolEval.Environment(generate: generate, schema: { frozen[$0] },
                                          referenceModelID: "mlx-community/gemma-4-e2b-it-4bit")

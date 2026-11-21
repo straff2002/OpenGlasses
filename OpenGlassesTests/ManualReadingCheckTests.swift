@@ -79,6 +79,14 @@ final class ManualReadingCheckTests: XCTestCase {
         XCTAssertEqual(check("It runs 90 secs.", quote: "runs for 90 seconds", passage: "p3"), .accepted)
     }
 
+    func testABareSecondsUnitInATimingTableMatchesSecondsInTheAnswer() {
+        let timing = ["t": "Gas meter clocking, natural gas, 1 cu ft dial: -070 55 s, -090 41 s."]
+        let reading = ManualReading(found: true, answer: "41 seconds on the 090.", passage: "t", quote: "-090 41 s")
+        XCTAssertEqual(ManualReadingCheck.check(reading, passages: timing), .accepted)
+        let wrong = ManualReading(found: true, answer: "14 seconds on the 090.", passage: "t", quote: "-090 41 s")
+        XCTAssertEqual(ManualReadingCheck.check(wrong, passages: timing), .declined(.numberNotInPassage))
+    }
+
     func testTheUnitMaySitInATableHeading() {
         // "in. w.c." is in the column heading, not beside 10.5.
         XCTAssertEqual(check("Up to 10.5 in. w.c.", quote: "Natural | 4.5 – 10.5"), .accepted)

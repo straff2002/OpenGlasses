@@ -158,8 +158,8 @@ enum ManualReadingCheck {
         "%", "percent",
     ]
 
-    /// One-letter units and "inch", read only right after a number.
-    private static let adjacentOnlySpellings = ["inch", "in", "f", "c", "v", "a", "w", "g"]
+    /// One-letter units and "inch", read only right after a number ("41 s" in a timing table).
+    private static let adjacentOnlySpellings = ["inch", "in", "f", "c", "v", "a", "w", "g", "s", "h"]
 
     private static let scannedUnitPattern = "(" + scannedSpellings.joined(separator: "|") + ")(?![a-z])"
     private static let adjacentUnitPattern =
@@ -200,9 +200,9 @@ enum ManualReadingCheck {
         add("oz", ["oz"])
         add("kg", ["kg"])
         add("g", ["g"])
-        add("s", ["second", "seconds", "sec", "secs"])
+        add("s", ["s", "second", "seconds", "sec", "secs"])
         add("min", ["minute", "minutes", "min", "mins"])
-        add("h", ["hour", "hours", "hr", "hrs"])
+        add("h", ["h", "hour", "hours", "hr", "hrs"])
         add("%", ["%", "percent"])
         return table
     }()
