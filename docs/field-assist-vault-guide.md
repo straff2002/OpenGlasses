@@ -341,6 +341,28 @@ Each procedure is one JSON file in `procedures/`. The importer checks the graph 
 }
 ```
 
+### Talking a job through, and words to catch
+
+On the phone's step screen, **Talk me through it** lets the technician say out loud what they are doing as they work ("isolating the unit… meter on… reading zero"). The app works out which step they are on from what they say and asks before moving: *"Sounds like you're on Test for dead?"*. A yes (a tap on the glasses, the button, or the word) moves on exactly as *next* does; a step it hears them skip that asks for a reading or a confirmation gets *"skipped it, or did it differently?"*, and nothing is blocked. It works offline, and nothing about where the technician was is kept or sent.
+
+The hint it shows for each step is yours, never a model's: the step's `safety_note`, then its `expected_input`, then its `calc_ref` `hint`, in that order and only what the step has. On the lens that is two lines under the step's title; in the ear, the first of them in a few words. Write them the way you would want them read at a glance. A step with none of them gets no hint.
+
+A step can also list **`caution_phrases`**: words that, if the technician says them while talking the job through, bring up the step's `safety_note` at once, on the lens and in the ear, whatever they are in the middle of saying. Only your phrases do this: the app never decides on its own that what someone says is dangerous.
+
+```json
+{
+  "id": "test_dead",
+  "title": "Test for dead",
+  "instruction": "Lock out the disconnect, then test each terminal to ground with the meter.",
+  "expected_input": "zero volts on every terminal",
+  "safety_note": "Prove the meter on a known live source before and after the test.",
+  "caution_phrases": ["still live", "skip the lockout", "leave it on"],
+  "default_next": "remove_cover"
+}
+```
+
+A phrase matches as whole words with case ignored: "skip the lockout" matches *"I'll just skip the lockout"* but not *"skipping the lockouts"*. Keep each phrase to the few words someone would actually say, and give the step a `safety_note`, because a phrase with no note to show does nothing. An app that doesn't know the field ignores it, and the procedure runs as before.
+
 ### Answers and routes the app decides
 
 The procedure above needs the assistant at every branch: it hears "bubbling" and picks the branch whose `condition` matches. For a fixed check (a start-of-shift check, a sanitation round, a pass/fail quality step) the app can do that itself. Give a step a typed **`answer`**, and give every branch on it a **`when`** rule that reads the answer. The app then records the value, checks it, and takes the route, with no assistant at all. The phone runs the procedure offline, and the record says the rule decided.

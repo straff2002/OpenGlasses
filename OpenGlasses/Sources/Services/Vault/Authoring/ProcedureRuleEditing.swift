@@ -34,14 +34,16 @@ extension Procedure.Step {
         Procedure.Step(id: id, title: title, instruction: instruction, expectedInput: expectedInput,
                        safetyNote: safetyNote, calcRef: calcRef, citations: citations, branches: branches,
                        defaultNext: defaultNext, terminal: terminal, outcome: outcome,
-                       requiresConfirmation: requiresConfirmation, videoURL: videoURL, answer: answer)
+                       requiresConfirmation: requiresConfirmation, videoURL: videoURL, answer: answer,
+                       cautionPhrases: cautionPhrases)
     }
 
     func with(branches: [Procedure.Branch]) -> Procedure.Step {
         Procedure.Step(id: id, title: title, instruction: instruction, expectedInput: expectedInput,
                        safetyNote: safetyNote, calcRef: calcRef, citations: citations, branches: branches,
                        defaultNext: defaultNext, terminal: terminal, outcome: outcome,
-                       requiresConfirmation: requiresConfirmation, videoURL: videoURL, answer: answer)
+                       requiresConfirmation: requiresConfirmation, videoURL: videoURL, answer: answer,
+                       cautionPhrases: cautionPhrases)
     }
 }
 
