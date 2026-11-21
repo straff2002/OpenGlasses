@@ -149,7 +149,10 @@ final class LocalLLMService: ObservableObject {
             id: $0.descriptor.id.rawValue,
             name: $0.descriptor.displayName,
             estimatedSize: $0.estimatedSize,
-            hasVision: $0.descriptor.supportsVision,
+            // What the checkpoint is (it loads through the vision factory), not the badge: the
+            // descriptor's `.vision` waits for device evidence since Plan MQ P0.
+            hasVision: LocalModelCatalog.visionCapableModelIDs.contains($0.descriptor.id.rawValue),
+            // A claim, so it follows the descriptor, which grants it only on device evidence.
             hasToolCalling: $0.descriptor.supportsTools,
             notes: $0.notes,
             minimumRAMGB: $0.minimumRAMGB

@@ -652,7 +652,7 @@ struct LocalModelManagerView: View {
 
     private func isVisible(_ descriptor: LocalModelDescriptor) -> Bool {
         runtimeFilter.accepts(descriptor.runtime)
-            && capabilityFilter.accepts(descriptor.capabilities)
+            && capabilityFilter.accepts(LocalModelCatalog.filterCapabilities(for: descriptor))
     }
 
     private func filtered(_ rows: [ManagedModel]) -> [ManagedModel] {

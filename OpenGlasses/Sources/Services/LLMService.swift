@@ -5920,6 +5920,10 @@ class LLMService: ObservableObject {
         return askPhrases.contains { lowered.contains($0) }
     }
 
+    /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.
+    nonisolated static let localLocationCorrection = "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
+    nonisolated static let localIntentCorrection = "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
+
     /// The reduced tool block appended to the lean on-device prompt. Extracted (and pure)
     /// so the location nudge is testable: without it, a small model that has no USER
     /// LOCATION line answers "I can't find your location" instead of calling `where_am_i`.
@@ -6156,8 +6160,8 @@ class LLMService: ObservableObject {
            Self.announcesToolIntent(classification.text) || Self.asksUserForLocation(classification.text) {
             PrivacyLog.localModel(.stalled)
             let correction = Self.asksUserForLocation(classification.text)
-                ? "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
-                : "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
+                ? Self.localLocationCorrection
+                : Self.localIntentCorrection
             var correctiveHistory = history
             correctiveHistory.append((role: "assistant", content: classification.text))
             correctiveHistory.append((role: "user", content: correction))
@@ -6350,7 +6354,7 @@ class LLMService: ObservableObject {
     /// The one honest-miss line the local path speaks when a turn produced no answer it may say —
     /// a promise it never kept, or output that was nothing but broken tool protocol. It claims
     /// nothing happened and invites a retry, which is the only truthful thing left to say.
-    static let localMissMessage = "I couldn't get that information just now — please ask me again."
+    nonisolated static let localMissMessage = "I couldn't get that information just now — please ask me again."
 
     // MARK: - Local Agent Model
 

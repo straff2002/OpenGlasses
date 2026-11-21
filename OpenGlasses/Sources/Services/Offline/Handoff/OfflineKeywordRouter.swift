@@ -64,6 +64,49 @@ enum OfflineKeywordRouter {
         return nil
     }
 
+    // MARK: - Field Assist hints (Plan MQ P0)
+
+    /// The Field Assist tools a turn's own words point at, most specific first. Not a route — no
+    /// tool runs from it — but the order `FieldAssistLocalToolSet` offers a downloaded model its few
+    /// tools in, until an on-device intent classifier replaces both. Pure.
+    ///
+    /// Single words match whole words only ("unit" does not match "community"); phrases match as
+    /// written. A tool appears once, at the place of its first match.
+    static func fieldToolHints(_ utterance: String) -> [String] {
+        let text = normalise(utterance)
+        guard !text.isEmpty else { return [] }
+        let words = Set(text.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).map(String.init))
+        func matches(_ cue: String) -> Bool {
+            cue.contains(" ") ? text.contains(cue) : words.contains(cue)
+        }
+        var hinted: [String] = []
+        for (tool, cues) in fieldCues where !hinted.contains(tool) {
+            if cues.contains(where: matches) { hinted.append(tool) }
+        }
+        return hinted
+    }
+
+    /// Cues per tool, in the order a match is ranked. A calculation's words come before a reading's
+    /// ("work out the superheat from 118 psi" is a calculation that names a value), and showing a
+    /// page before the table it is on.
+    private static let fieldCues: [(String, [String])] = [
+        ("domain_calc", ["superheat", "subcool", "subcooling", "saturation", "voltage drop",
+                         "pt chart", "work out", "calculate"]),
+        ("procedure_runner", ["procedure", "next step", "previous step", "walk me through",
+                              "checklist", "step"]),
+        ("field_session", ["job", "work order", "start a job", "open a job", "new job", "end the job",
+                           "close the job", "pause", "resume", "next unit"]),
+        ("evidence", ["photo", "picture", "evidence", "attach", "snap"]),
+        ("show_source", ["show me the page", "show the page", "show me where", "where does it say",
+                         "source", "open the page"]),
+        ("table_lookup", ["table", "chart", "spec", "specs", "specification", "rating", "clearance",
+                          "what size", "sizing"]),
+        ("equipment_lookup", ["model number", "serial", "nameplate", "equipment", "unit", "furnace",
+                              "condenser", "boiler", "which model"]),
+        ("reading", ["reading", "readings", "psi", "psig", "volts", "amps", "inwc", "measured",
+                     "temperature", "pressure", "log", "record"]),
+    ]
+
     // MARK: - Rules
 
     /// "set a timer for five minutes", "timer for 90 seconds", "a 10 minute timer".
