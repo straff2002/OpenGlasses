@@ -85,6 +85,14 @@ final class MediaTriggerService {
     /// `evaluate(cause: .glassesChanged)` when either reading changes.
     var glassesPresent: () -> Bool = { false }
 
+    /// Plan MO P2: a live-hints session holds the taps while it runs, whether or not the temple-tap
+    /// setting is on, so a tap or a media button repeats and skips hints without the phone. The
+    /// setting's own state comes back when the session ends: the app calls `sessionHoldChanged()`.
+    var heldBySession: () -> Bool = { false }
+
+    /// Whether taps are wanted at all: the wearer's setting, or a session holding them.
+    private var tapsWanted: Bool { isEnabled() || heldBySession() }
+
     /// Posted (by `MusicControlTool`) just before a command is issued to the *user's* player,
     /// so we stand down pre-emptively instead of racing their playback for Now Playing.
     static let userPlaybackRequested = Notification.Name("MediaTriggerUserPlaybackRequested")
@@ -166,7 +174,7 @@ final class MediaTriggerService {
         let userAudio = isOtherAudioPlaying()
         if userAudio { yieldedToMedia = true }
         let conditions = MediaTriggerConditions(
-            triggerEnabled: isRunning && isEnabled(),
+            triggerEnabled: isRunning && tapsWanted,
             glassesPresent: glassesHere,
             userAudioPlaying: userAudio,
             yieldedToMedia: yieldedToMedia,
@@ -228,7 +236,7 @@ final class MediaTriggerService {
     @discardableResult
     func handleRemoteCommand(_ command: MediaRemoteCommand) -> TempleGesture? {
         guard isClaimed else { return drop(command, "notClaimed") }
-        guard isEnabled() else { return drop(command, "disabled") }
+        guard tapsWanted else { return drop(command, "disabled") }
         let now = clock()
         if claimedMode == .standby {
             let decision = standbyPolicy.handle(command, at: now)
@@ -260,7 +268,7 @@ final class MediaTriggerService {
     /// Start observing the audio environment and apply the policy. Idempotent; no-op unless the
     /// setting is enabled.
     func start() {
-        guard !isRunning, isEnabled() else { return }
+        guard !isRunning, tapsWanted else { return }
         isRunning = true
         let center = NotificationCenter.default
         let reevaluate: @Sendable (Notification) -> Void = { [weak self] _ in
@@ -298,6 +306,19 @@ final class MediaTriggerService {
         settleRecheck?.cancel()
         settleRecheck = nil
         releaseClaim(reason: "stopped")
+    }
+
+    /// A live-hints session started or stopped (Plan MO P2): start the service for the session if
+    /// the setting had it off, and stop it again at the end, so the wearer's own setting is exactly
+    /// what it was. With the setting on this is a fresh look at the claim and nothing more.
+    func sessionHoldChanged() {
+        if heldBySession() {
+            if isRunning { evaluate() } else { start() }
+        } else if !isEnabled() {
+            stop()
+        } else {
+            evaluate()
+        }
     }
 
     /// Re-apply the setting (call when the user toggles it in Settings). Switching it on is a

@@ -29,6 +29,9 @@ protocol HintLensSink: AnyObject {
     /// Put the hint up, replacing any hint before it. False when the lens would not take it (the
     /// wearer dismissed the lens, a task card or a menu holds it).
     func present(_ hint: LiveHint) -> Bool
+    /// Put the hint up again because the wearer asked ("show hints", a press on the Home card, a
+    /// repeat): over a lens they dismissed, unlike `present`. False when the lens would not take it.
+    func reshow(_ hint: LiveHint) -> Bool
     /// Take the hint `id` off the lens, if it is still the one there.
     func hide(hintID: Int)
 }

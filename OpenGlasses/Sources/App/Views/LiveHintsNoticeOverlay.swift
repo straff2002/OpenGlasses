@@ -5,6 +5,9 @@ import SwiftUI
 /// that says where the audio goes and that nothing is kept. Invisible otherwise.
 struct LiveHintsNoticeOverlay: View {
     @ObservedObject var service: LiveHintsService
+    /// Whether this overlay presents the first-run sheet. False while the live-hints sheet is up,
+    /// which shows it in its own place (Plan MO P2): two sheets cannot be presented at once.
+    var hostsFirstRun = true
 
     var body: some View {
         VStack {
@@ -20,7 +23,7 @@ struct LiveHintsNoticeOverlay: View {
         }
         .animation(.easeInOut(duration: 0.25), value: service.notice)
         .allowsHitTesting(false)
-        .sheet(isPresented: Binding(get: { service.firstRunPending },
+        .sheet(isPresented: Binding(get: { hostsFirstRun && service.firstRunPending },
                                     set: { if !$0 { service.dismissFirstRun() } })) {
             LiveHintsFirstRunSheet(service: service)
         }

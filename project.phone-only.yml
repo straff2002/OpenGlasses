@@ -32,6 +32,8 @@ targets:
       - path: GlassesActivityWidget/SharedAppState.swift
       - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
       - path: GlassesActivityWidget/PendingAskRequest.swift
+      # Shared with widget target — the Live Activity's live-hints buttons hand their press over.
+      - path: GlassesActivityWidget/LiveHintsActivityCommand.swift
       - path: GlassesActivityWidget/StartListeningFromWidgetIntent.swift
       - path: GlassesActivityWidget/SetListeningIntent.swift
       - path: Tools/LicenceIssuance/Sources/LicenceIssuance/VaultPackRules.swift

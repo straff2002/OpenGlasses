@@ -246,6 +246,11 @@ struct VoiceTab: View {
         .sheet(isPresented: $showPersonaPicker) {
             PersonaPickerSheet(appState: appState)
         }
+        // Plan MO P2: the live-hints sheet — setup, then the session screen.
+        .sheet(isPresented: $appState.liveHintsSheetPresented) {
+            LiveHintsSheet(service: appState.liveHints, demo: appState.liveHintsDemo)
+                .environmentObject(appState)
+        }
         // Plan GB P4: while the live preview is up, its own sheet presents the share item.
         .sheet(item: Binding(get: { showPreview ? nil : appState.pendingShareItem },
                              set: { appState.pendingShareItem = $0 })) { item in
@@ -437,6 +442,19 @@ struct VoiceTab: View {
                 if !showsContext, assisting.presence.homeCard != nil,
                    HomeSurfaceVisibility.showsMyDay(state: voiceState, captionsActive: captionsActive) {
                     AssistingHomeCard { appState.openSettings(.assisting) }
+                }
+
+                // Plan MO P2: live hints. Always there while a session runs (the way back to it and
+                // the Listening pill); otherwise it yields the zone as the day card does.
+                if LiveHintsHomeCardRule.shows(
+                    featureOn: Config.liveHintsEnabled, sessionRunning: appState.liveHintsSessionActive,
+                    surfaceFree: !showsContext && HomeSurfaceVisibility.showsMyDay(state: voiceState,
+                                                                                  captionsActive: captionsActive)) {
+                    LiveHintsHomeCard(service: appState.liveHints, demo: appState.liveHintsDemo) {
+                        // A press brings a dismissed hint back to the lens, and opens the session.
+                        appState.activeLiveHints?.showHintsAgain()
+                        appState.liveHintsSheetPresented = true
+                    }
                 }
 
                 if PersonalManualLibrary.canManage, !FieldAssistEntitlement.shared.has(.fieldWork), manualLibrary.manuals.isEmpty {

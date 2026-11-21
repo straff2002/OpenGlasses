@@ -27,6 +27,12 @@ struct GlassesActivityAttributes: ActivityAttributes {
         /// encoded by an earlier build still decodes; nil reads as not running.
         var instantReplayRunning: Bool? = nil
 
+        /// A live-hints session is running (Plan MO P2): the Lock Screen and the Dynamic Island show
+        /// it as listening, with repeat, skip and stop in place of the quick actions. Optional so a
+        /// state encoded by an earlier build still decodes; nil reads as not running. The hints
+        /// themselves never go on the activity.
+        var liveHintsRunning: Bool? = nil
+
         struct PersonaButton: Codable, Hashable {
             var id: String
             var name: String

@@ -7,24 +7,32 @@ import Foundation
 
 // MARK: - Documents
 
-/// The active project's documents (Plan AN), searched on the phone.
+/// The session's documents, searched on the phone: the active project's (Plan AN) by default, or
+/// the documents picked on the session sheet (P2, `HintDocumentScope`).
 @MainActor
 final class DocumentStoreHintSearch: HintDocumentSearch {
     private let store: DocumentStore
-    /// The session's scope: the active project's namespace, "global" for the unscoped default.
-    private let namespace: () -> String
+    /// The session's scope, read at each search.
+    private let scope: () -> HintDocumentScope
 
-    init(store: DocumentStore, namespace: @escaping () -> String) {
+    init(store: DocumentStore, scope: @escaping () -> HintDocumentScope) {
         self.store = store
-        self.namespace = namespace
+        self.scope = scope
     }
 
     func passages(for question: String, limit: Int) -> [HintPassage] {
-        store.query(question, limit: limit, namespace: namespace()).map(HintPassage.init)
+        let scope = scope()
+        return store.query(question, limit: limit, namespace: scope.namespace, documentIds: scope.documentIds)
+            .map(HintPassage.init)
     }
 
     func documentTitles() -> [String] {
-        store.list(namespace: namespace()).map(\.name)
+        let scope = scope()
+        if let ids = scope.documentIds {
+            let chosen = Set(ids)
+            return store.list().filter { chosen.contains($0.id) }.map(\.name)
+        }
+        return store.list(namespace: scope.namespace ?? "global").map(\.name)
     }
 }
 
@@ -82,6 +90,14 @@ final class GlassesHintLens: HintLensSink {
     }
 
     func present(_ hint: LiveHint) -> Bool {
+        present(hint, wearerLed: false)
+    }
+
+    func reshow(_ hint: LiveHint) -> Bool {
+        present(hint, wearerLed: true)
+    }
+
+    private func present(_ hint: LiveHint, wearerLed: Bool) -> Bool {
         let pages = HintLensCardBuilder.pages(for: hint, geometry: HUDAnswerCard.activeGeometry(),
                                               suggestion: Config.hipaaMode) { [weak self] action in
             self?.handle(action, hintID: hint.id)
@@ -91,7 +107,7 @@ final class GlassesHintLens: HintLensSink {
         // brought back by voice ("show that again").
         if answerCard.isHeld, !answerCard.answer.isEmpty { answerCard.close() }
         let index = shown?.id == hint.id ? min(shown?.index ?? 0, pages.count - 1) : 0
-        guard display.presentAnswerCard(pages[index], wearerLed: false, onSelect: selectionHandler) else {
+        guard display.presentAnswerCard(pages[index], wearerLed: wearerLed, onSelect: selectionHandler) else {
             if shown?.id == hint.id { shown = nil }
             return false
         }

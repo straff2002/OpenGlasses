@@ -684,6 +684,37 @@ class ConversationStore: ObservableObject {
         return .saved
     }
 
+    /// Plan MO §9 — a live-hints talk note: a finished conversation, never the active one, holding
+    /// the note's text as its one message and the note itself as that message's digest, so it is
+    /// listed, searched, retained, encrypted and deleted as every other conversation note is. The
+    /// room's captions are not in it: the transcript is **Keep caption sessions**'s to keep.
+    ///
+    /// The caller has already applied Medical Compliance mode and a Private Conversation; the
+    /// store re-checks what it owns (locked, a failed read, an organisation's pin on notes).
+    /// - Returns: the new thread's id when it was kept, or the refusal.
+    func saveTalkNote(title: String, text: String, points: [ConversationDigest.Point],
+                      endedAt: Date, tier: ConversationDigest.Tier,
+                      personaId: String? = nil) -> (outcome: DigestSaveOutcome, threadId: String?) {
+        guard isTimelineWritable else { return (.storeUnavailable, nil) }
+        guard !digestsPinnedOff() else { return (.orgPinnedOff, nil) }
+        var thread = ConversationThread(mode: Self.talkNoteMode, title: title, personaId: personaId)
+        let message = ConversationMessage(role: "assistant", content: text)
+        thread.messages = [message]
+        thread.summary = title
+        thread.updatedAt = endedAt
+        thread.digest = ConversationDigest(headline: title, points: points, coversThroughMessageID: message.id,
+                                           writtenAt: endedAt, tier: tier)
+        threads.insert(thread, at: 0)
+        _ = trimOldThreads()
+        saveAndProject(.storeReplaced)
+        PrivacyLog.conversation(.conversations, .threadStarted, thread: PrivateIdentifier(thread.id),
+                                detail: PrivacyToken("talkNote"))
+        return (.saved, thread.id)
+    }
+
+    /// The mode a talk note's conversation is listed under.
+    static let talkNoteMode = "live hints"
+
     /// Forget a thread's note: its text goes, its coverage stays and it is marked redacted, so it
     /// is not written again after a resume. The thread itself is untouched.
     /// - Returns: whether a note was there to forget and the store could write.

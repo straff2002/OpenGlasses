@@ -1,6 +1,7 @@
 import WidgetKit
 import SwiftUI
 import ActivityKit
+import AppIntents
 
 @main
 struct GlassesActivityWidgetBundle: WidgetBundle {
@@ -45,7 +46,9 @@ struct GlassesActivityWidget: Widget {
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        if context.state.isConnected {
+                        if context.state.liveHintsRunning == true {
+                            liveHintsButtons(compact: true)
+                        } else if context.state.isConnected {
                             actionButtons(for: context.state, compact: true)
                         } else {
                             // The one primary action while disconnected: a solid accent fill,
@@ -162,7 +165,11 @@ struct GlassesActivityWidget: Widget {
             // never two: the Lock Screen slot is a hard height and a 2 × 2 grid had its bottom row
             // cut off on a phone (`LockScreenActivityLayout`). Disconnected, Connect leads the
             // row in the place an action would have taken.
-            lockScreenActionRow(for: context.state, plan: plan)
+            if context.state.liveHintsRunning == true {
+                liveHintsButtons(compact: false)
+            } else {
+                lockScreenActionRow(for: context.state, plan: plan)
+            }
         }
         .padding(LockScreenActivityLayout.outerPadding)
         .background(Color.black.opacity(0.6))
@@ -232,6 +239,53 @@ struct GlassesActivityWidget: Widget {
         .accessibilityLabel(label)
     }
 
+    // MARK: - Live hints (Plan MO P2)
+
+    /// Repeat, skip and stop while a live-hints session runs, in the action row's place. Each is an
+    /// intent that runs in this extension and hands the press to the app (`PendingLiveHintsCommand`);
+    /// none opens the app.
+    @ViewBuilder
+    private func liveHintsButtons(compact: Bool) -> some View {
+        HStack(spacing: compact ? 6 : 8) {
+            liveHintsButton(RepeatLiveHintIntent(), title: "Repeat", icon: "arrow.counterclockwise",
+                            compact: compact)
+            liveHintsButton(SkipLiveHintIntent(), title: "Skip", icon: "forward.end", compact: compact)
+            liveHintsButton(StopLiveHintsIntent(), title: "Stop", icon: "stop.fill", compact: compact,
+                            strong: true)
+        }
+    }
+
+    @ViewBuilder
+    private func liveHintsButton<I: AppIntent>(_ intent: I, title: LocalizedStringKey, icon: String,
+                                                compact: Bool, strong: Bool = false) -> some View {
+        Button(intent: intent) {
+            Group {
+                if compact {
+                    Label(title, systemImage: icon)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.vertical, 5)
+                } else {
+                    HStack(spacing: 7) {
+                        Image(systemName: icon)
+                            .font(.callout.weight(.semibold))
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    .frame(minHeight: LockScreenActivityLayout.minimumButtonHeight
+                           - LockScreenActivityLayout.buttonVerticalPadding * 2)
+                    .padding(.vertical, LockScreenActivityLayout.buttonVerticalPadding)
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .background((strong ? AccentColors.aiCoral : .white).opacity(strong ? 0.30 : 0.16),
+                        in: RoundedRectangle(cornerRadius: compact ? 8 : 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Action Buttons
 
     /// A resolved button for the Live Activity (quick action, persona, or fallback).
@@ -290,7 +344,9 @@ struct GlassesActivityWidget: Widget {
 
     @ViewBuilder
     private func statusIcon(for state: GlassesActivityAttributes.ContentState) -> some View {
-        if state.isListening {
+        if state.liveHintsRunning == true {
+            Image(systemName: "ear")
+        } else if state.isListening {
             Image(systemName: "waveform")
         } else if state.isProcessing {
             Image(systemName: "brain")
@@ -304,6 +360,10 @@ struct GlassesActivityWidget: Widget {
     }
 
     private func statusText(for state: GlassesActivityAttributes.ContentState) -> String {
+        if state.liveHintsRunning == true {
+            return String(localized: "Live hints: listening",
+                          comment: "Live Activity: a live-hints session is running and listening to the room.")
+        }
         if state.isListening { return "Listening..." }
         if state.isProcessing { return "Thinking..." }
         if state.isSpeaking { return "Speaking..." }
@@ -312,6 +372,7 @@ struct GlassesActivityWidget: Widget {
     }
 
     private func statusColor(for state: GlassesActivityAttributes.ContentState) -> Color {
+        if state.liveHintsRunning == true { return AccentColors.aiCoral }
         if state.isListening { return AccentColors.aiCoral }
         if state.isProcessing { return .orange }
         if state.isSpeaking { return .green }

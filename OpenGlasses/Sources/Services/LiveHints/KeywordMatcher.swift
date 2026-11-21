@@ -56,6 +56,14 @@ struct KeywordMatcher: Equatable {
     /// Forget every hold (a new session).
     mutating func reset() { firedAt.removeAll() }
 
+    /// This matcher with `keyword` added ("hint me about …", P2), every hold kept. A blank or a
+    /// folded repeat adds nothing.
+    func adding(_ keyword: String) -> KeywordMatcher {
+        var matcher = KeywordMatcher(keywords: keywords + [keyword])
+        matcher.firedAt = firedAt
+        return matcher
+    }
+
     /// Where `phrase` first occurs in `words` as consecutive whole words.
     private static func firstPosition(of phrase: [String], in words: [String]) -> Int? {
         guard phrase.count <= words.count else { return nil }

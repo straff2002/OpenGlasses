@@ -123,6 +123,55 @@ final class MediaTriggerServiceTests: XCTestCase {
         return service
     }
 
+    // MARK: - A live-hints session holds the taps (Plan MO P2)
+
+    func testASessionHoldsTheTapsWithTheSettingOffAndGivesThemBackAtStop() {
+        world.enabled = false
+        var held = false
+        let service = makeService()
+        service.heldBySession = { held }
+        service.start()
+        XCTAssertFalse(service.isRunning, "the setting is off: no taps")
+
+        held = true
+        service.sessionHoldChanged()
+        XCTAssertTrue(service.isRunning)
+        XCTAssertTrue(service.isClaimed)
+        claimer.onCommand?(.pause)
+        XCTAssertEqual(claimer.claimCount, 1)
+
+        held = false
+        service.sessionHoldChanged()
+        XCTAssertFalse(service.isRunning, "the wearer's setting is back exactly as it was")
+        XCTAssertFalse(service.isClaimed)
+    }
+
+    func testWithTheSettingOnASessionEndingLeavesTheTapsRunning() {
+        var held = true
+        let service = makeService()
+        service.heldBySession = { held }
+        service.start()
+        service.sessionHoldChanged()
+        XCTAssertTrue(service.isClaimed)
+        held = false
+        service.sessionHoldChanged()
+        XCTAssertTrue(service.isRunning)
+        XCTAssertTrue(service.isClaimed)
+        service.stop()
+    }
+
+    func testAHeldSessionsTapsAreDeliveredWithTheSettingOff() {
+        world.enabled = false
+        let service = makeService()
+        service.heldBySession = { true }
+        var gestures: [TempleGesture] = []
+        service.onGesture = { gesture, _ in gestures.append(gesture) }
+        service.sessionHoldChanged()
+        XCTAssertEqual(service.handleRemoteCommand(.togglePlayPause), .one)
+        XCTAssertEqual(gestures, [.one])
+        service.stop()
+    }
+
     // MARK: - Claim / release transitions
 
     func testStartClaimsWhenIdle() {

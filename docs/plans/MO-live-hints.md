@@ -20,8 +20,26 @@ behind a `MeetingAnalysisSink` (recordings' notification unchanged, tested); `.l
 / `stopLiveHints`. **Needs a device (P3):** whether `.spokenAudio` with `.duckOthers` on the idle
 `.playAndRecord` session activates and ducks only as wanted (it ducks for the whole session as
 built), the barge-in thresholds, the soft tick, the lens paging and 20 s hide on a real Display.
-Remaining: P2 (the surfaces) and the P3 device pass. Decisions 1–10 have recommendations; P0 and
-P1 were built on them as recommended.
+**P2 built 2026-11-21 (headless):** a Home card (yielding like the day card, always there
+while a session runs) opening one sheet: setup (`LiveHintsSessionChoices`: Conversation / Lecture /
+On keyword with "Can't tell voices apart; hints for every question." without diarization, keywords,
+the active project's documents or a pick, hint language, lens when a Display is connected else ear,
+the phone's mic with the glasses' offered and its caveat, the talk note off by default, the
+phone-on-the-table line, a demo), then the session screen (the Listening pill, speaker chips and
+**That's me** into `markWearer`, the last 10 hints opening their passage by `documentId` and
+`chunkIndex`, Stop, "31 hints"). While a session runs it holds the temple taps and media buttons
+(`MediaTriggerService.heldBySession`, the setting on or off; `LiveHintsTapPolicy`: one tap repeats or
+skips a playing hint, two skip, three do nothing), and gives them back at stop; the Live Activity
+shows repeat, skip and stop (`PendingLiveHintsCommand`, the "Ask Avenkin" control's hand-over).
+"Start live hints", "stop hints", "show hints" and "hint me about …" (`LiveHintsVoiceCommand`) sit
+in the pre-model command chain. The demo (`LiveHintsDemo`: a two-voice garden-studio conversation
+and an invented sample document through `HintCaptionSource`, first question at 4 s, no mic, no
+allowance). The talk note (`LiveHintsTalkNote`): the meeting-summary prompt at stop, LQ's acceptance,
+kept as a finished conversation with its note (`ConversationStore.saveTalkNote`), never in Medical
+Compliance mode or a Private Conversation; the transcript stays **Keep caption sessions**'s. The
+session stops by `CaptionPresenceGate`'s rule when the app is away. Remaining: the catalog sync
+(P2's strings are English only) and the P3 device pass. Decisions 1–10 have recommendations; P0, P1
+and P2 were built on them as recommended.
 **Track:** Everyday assistant: conversations. Captions, documents, the lens, speech output.
 **Origin:** The owner, 2026-11-20, after surveying adjacent live-assistant products: a session that
 listens to a conversation and, when someone asks the wearer a question, puts a short answer from

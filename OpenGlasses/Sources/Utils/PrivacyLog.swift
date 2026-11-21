@@ -1436,6 +1436,11 @@ enum PrivacyLog {
         /// `characters` long. `limitWarned`: the long-session warning. `latencyReport`: at stop,
         /// `count` hints with p50 and p95 in `detail`, as milliseconds.
         case hintShown, hintReplaced, hintSkipped, hintSpoken, limitWarned, latencyReport
+        /// Plan MO P2. `talkNoteSaved`: the talk note was kept, `count` points long.
+        /// `talkNoteSkipped`: no note, `detail` why (a `LiveHintsTalkNote.Skip`, a refusal, or the
+        /// model's reply not kept). `controlHandled`: a tap, a Live Activity button or a voice
+        /// phrase acted on the session, `detail` which (`tap.repeatHint`, `activity.stop`, …).
+        case talkNoteSaved, talkNoteSkipped, controlHandled
     }
 
     /// `language` is a BCP-47 tag — a property of the session, not of what was said — so it is

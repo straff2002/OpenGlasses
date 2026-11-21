@@ -143,6 +143,9 @@ enum WakeListenPolicy {
         /// idle listener waits there whatever a caption consumer or the Microphone setting would
         /// otherwise hold, and the session takes the hints shape (`IdleAudioPlan.hintsShape`).
         var liveHintsActive: Bool = false
+        /// Plan MO P2: the mic the session sheet chose. The phone, unless the wearer took the
+        /// glasses' mic with its caveat (call-quality playback; on a Display, the lens covered).
+        var liveHintsMic: MicRoute = .phone
     }
 
     static func decide(_ inputs: Inputs) -> IdleAudioPlan {
@@ -170,7 +173,9 @@ enum WakeListenPolicy {
         //     caption consumer's Bluetooth hold (rule 4) and the wearer's idle choice (rule 5): the
         //     glasses' hands-free mic hears the other person poorly, drops playback to call
         //     quality, and on a Display covers the lens.
-        if inputs.liveHintsActive { return .phone }
+        if inputs.liveHintsActive {
+            return inputs.liveHintsMic == .phone ? .phone : .bluetooth(inputs.liveHintsMic)
+        }
         // 4. A consumer that wants the wearer's own voice, with a Bluetooth conversation mic: keep
         //    holding it — released when the consumer stops. Outranks the power override: a
         //    recording should not change microphone because the battery dipped.
