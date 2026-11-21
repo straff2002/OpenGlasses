@@ -106,9 +106,9 @@ class AmbientCaptionService: ObservableObject {
     /// while **Keep caption sessions** is on and never in Medical Compliance mode.
     var onSessionEnded: ((CaptionSession) -> Void)?
 
-    /// Whether sessions are being kept. Read at every final caption, so nothing beyond the capped
-    /// history is held in memory while the switch is off, and a switch turned on mid-session keeps
-    /// what follows. False in Medical Compliance mode.
+    /// Whether sessions are being kept. Read at every final caption, so no session is collected for
+    /// the disk while the switch is off (the in-memory `meetingTranscript` is not a kept session),
+    /// and a switch turned on mid-session keeps what follows. False in Medical Compliance mode.
     var keepsSessions: () -> Bool = { Config.keepCaptionSessions }
 
     /// The session being collected, while sessions are kept. A presence suspension is not a stop,
@@ -152,6 +152,13 @@ class AmbientCaptionService: ObservableObject {
     /// Max history entries to keep
     private let maxHistory = 50
 
+    /// Every final caption of this session, oldest first: what a meeting summary reads, so it
+    /// covers the whole meeting and not just the last `maxHistory` lines (`MeetingTranscriptBuffer`).
+    /// Memory only, like `captionHistory`: never written down, logged or kept past the process.
+    /// Emptied when captions start and by `clearHistory()`; kept through `stop()`, because the
+    /// summary is usually asked for after captions stop.
+    private(set) var meetingTranscript = MeetingTranscriptBuffer()
+
     /// Ever-increasing caption id. Never reset — a consumer holding an older `seq` must not have
     /// it silently reused, or it would stop seeing new captions.
     private var nextSeq: UInt64 = 0
@@ -187,6 +194,7 @@ class AmbientCaptionService: ObservableObject {
 
         isActive = true
         currentCaption = ""
+        meetingTranscript.removeAll()
         sessionRecorder = keepsSessions() ? CaptionSessionRecorder(startedAt: Date()) : nil
         startRecognitionSession()
         syncTranscribing()
@@ -261,6 +269,7 @@ class AmbientCaptionService: ObservableObject {
 
     func clearHistory() {
         captionHistory.removeAll()
+        meetingTranscript.removeAll()
     }
 
     // MARK: - Recognition Session
@@ -548,6 +557,7 @@ class AmbientCaptionService: ObservableObject {
         let note = "[Visual: \(description)]"
         let entry = CaptionEntry(text: note, timestamp: Date(), seq: makeSeq())
         captionHistory.insert(entry, at: 0)
+        meetingTranscript.append(.init(text: entry.text, timestamp: entry.timestamp))
         if captionHistory.count > maxHistory {
             captionHistory = Array(captionHistory.prefix(maxHistory))
         }
@@ -595,6 +605,8 @@ class AmbientCaptionService: ObservableObject {
         let entry = CaptionEntry(text: trimmed, timestamp: Date(), seq: makeSeq(),
                                  speaker: speaker, original: original, language: language)
         captionHistory.insert(entry, at: 0)
+        meetingTranscript.append(.init(text: entry.text, timestamp: entry.timestamp, speaker: entry.speaker,
+                                       original: entry.original, language: entry.language))
         recordForSession(entry)
 
         // Trim history
