@@ -363,34 +363,50 @@ licences are confirmed.
   alternative from decision 4), with the engine-reproducibility check updated.
 - **P3 — qualification:** the Mac screener and the device app, the shortlist run, new catalog
   entries for the models that pass, badges set from the records, and the flag's default decided
-  per model from the results.
+  per model from the results. Records are dated JSON in `reports/` (decision 8), and a test fails
+  if a catalog entry's evidence names a record that is not in git.
 - **P4 — device pass (owed, not automatable):** a field day on each RAM tier in airplane mode:
   open a job by voice, log readings, a calculation, a manual question answered and one declined,
   barge-ins, a locked phone (Plan GE's background ladder).
 
 ## Decisions
 
-1. **Ship P1 on all models at once, or per model?** *Recommend per model*, starting with Gemma 4
-   E2B, since its format had the most parser fixes.
-2. **Round cap.** *Recommend 3*: enough for look-up-then-calculate; the research's projects use 4
-   to 8, and every round costs a phone seconds.
-3. **Tools per turn.** *Recommend at most 5*, matching Apple's advice for its own 4K model and the
-   tool-retrieval designs in the survey.
+All eight decided by the owner on 2026-11-21.
+
+1. **Ship P1 on all models at once, or per model?** **Decided 2026-11-21: one model at a time,
+   starting with Gemma 4 E2B**, since its format had the most parser fixes. This is
+   `LocalNativeToolPolicy.allowlist` (P1). With the flag on, an allowlisted model is *under
+   qualification*: it is offered the Field Assist tools so the owner can try it on a job, while its
+   catalog badges stay evidence-only (`qualifiesForFieldAssistTools` is unchanged and still false
+   for every model).
+2. **Round cap.** **Decided 2026-11-21: 3, as built**: enough for look-up-then-calculate; the
+   research's projects use 4 to 8, and every round costs a phone seconds.
+3. **Tools per turn.** **Decided 2026-11-21: at most 5, as built**, matching Apple's advice for its
+   own 4K model and the tool-retrieval designs in the survey.
 4. **GGUF: link `common/chat`, or keep our parser with an app-rendered template and a GBNF grammar
-   for the call?** *Recommend linking `common/chat`*: it is the maintained per-family code, and
-   writing grammars per family is what it already does. Check the binary size and the
-   reproducibility workflow first.
-5. **Thresholds for `.toolFriendly`.** *Recommend proposing them after the first Mac screener run*
-   and fixing them before P3's device runs, so no model is judged by a bar set after seeing its
-   score. Restraint and not-in-the-manual get their own floors, not an average.
-6. **Does an unbadged model still get tools?** *Recommend yes, the everyday set only, with no Field
-   Assist tools until it is qualified*, and the badge hidden. Removing tools from shipped Gemma 4
-   and Qwen2.5-3B users without evidence would be a regression of its own.
+   for the call?** **Decided 2026-11-21: link llama.cpp's `common/chat` (P2)**, after checking the
+   binary size and the engine-reproducibility workflow. It is the maintained per-family code.
+   Why GGUF matters for the cost goal: MLX needs Metal, which iOS denies in the background, so a
+   CPU GGUF model is the only local path that could keep a job going with the phone locked in a
+   pocket.
+5. **Thresholds for `.toolFriendly`.** **Decided 2026-11-21**, judged on the Field Assist group, as
+   hard floors per category, never an average. Fixed now, before any model is run:
+   - not-in-the-manual declined ≥ 95%;
+   - no protocol markup reaching the voice: 100%;
+   - restraint (no tool when none applies) ≥ 90%.
+
+   Set after the first Mac screener run but before the device runs: tool choice (around 85%) and
+   two-step (around 70%).
+6. **Does an unbadged model still get tools?** **Decided 2026-11-21: yes, the everyday set only,
+   as built**, with no Field Assist tools until it is qualified (or, with the P1 flag on, while an
+   allowlisted model is under qualification), and the badge hidden.
 7. **Which licences are acceptable for a model we recommend to a paying Field Assist customer?**
-   *Recommend Apache 2.0 or MIT outright; Gemma terms and LFM's licence after review; no
-   non-commercial weights.*
-8. **Where the qualification records live.** *Recommend `reports/` as dated JSON beside the
-   existing benchmark results*, with the catalog's evidence naming the record.
+   **Decided 2026-11-21:** Apache 2.0 and MIT outright; the Gemma terms reviewed first (Gemma 4
+   E2B is the first candidate); LFM's revenue terms reviewed before LFM3 is shortlisted; no
+   non-commercial weights.
+8. **Where the qualification records live.** **Decided 2026-11-21:** dated JSON in `reports/`,
+   beside `reports/my-manuals-benchmark-2026-10-25.json`, with the catalog's evidence naming the
+   record. Added to P3's scope: a test fails if a catalog entry names a record that is not in git.
 
 ## Non-goals
 
