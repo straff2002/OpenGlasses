@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 📝 Drafted 2026-11-20 · nothing built · 8 decisions below, each with a recommendation
+**Status:** 🚧 P0 built 2026-11-21 (headless core; nothing wired live) · P1–P4 not built · P4 device pass owed · decisions 2, 3 and 6 built to their recommendations; 1, 4, 5, 7 and 8 open · the mlx-swift-lm pin is unchanged and moves with P1 (see [P0 as built](#p0-as-built-2026-11-21))
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -15,6 +15,148 @@ only measured evidence put a tool badge on a model.
 
 The Apple Intelligence path is out of scope. It already uses the framework's own `Tool` protocol
 with schema-constrained calls; its manual-answer gap is [Plan MP](MP-apple-intelligence-manual-answers.md).
+
+## P0 as built (2026-11-21)
+
+Everything below is pure and headless, and nothing calls it from a live turn yet: P1 wires it in
+behind `Config.localNativeToolCallsEnabled`.
+
+- **`LocalToolLoop`** (`Services/LLM/LocalToolLoop.swift`) drives a turn over injected `generate`
+  and `execute` closures. Each round appends the assistant's call (id `call_N`, name, canonical
+  arguments) and a `tool` message with the result, the tool's name and the same id. The cap is 3
+  rounds (decision 2); after the third, one last generation runs with tools withheld over the
+  results gathered. A call repeated by name and `AttemptToolLedger.canonicalArguments` ends the
+  loop: prose beside it stands, otherwise one tools-withheld answer runs. A call inside `<think>`
+  is taken. Round 0 keeps `sendLocal`'s "I'll check" correction, with the same words (now
+  `LLMService.localIntentCorrection` / `localLocationCorrection`, shared). Cancellation is checked
+  around every generation and tool and propagates unwrapped.
+- **`OnDeviceToolSchema`** (`Services/LLM/OnDeviceToolSchema.swift`) is `AppleToolSchema` moved, not
+  copied: the Apple path reads it through a `typealias`, so its conversion is byte-for-byte what it
+  was. Added for the local path: `localParameters` / `localToolSpec` (a `type` on every node,
+  containers past depth 2 rendered as text holding JSON) and `OnDeviceArgumentCoercion`, which
+  reads `"42"` as 42, `108` as `"108"`, `"true"` as true, a choice in the wrong case as the choice,
+  JSON text as its object, and refuses `"45 psi"`, `"about forty"`, `1` for a boolean or an
+  unlisted choice with a message naming the field and type only.
+- **`FieldAssistLocalToolSet`** (`Services/LLM/FieldAssistLocalToolSet.swift`): the eight-tool
+  priority list, narrowed by `OfflineToolPolicy`, ordered by `OfflineKeywordRouter.fieldToolHints`
+  (new: whole-word cues per tool), at most 5 (decision 3), then cut to
+  `LocalModelBudget.toolDefinitionBudget(for:)` — a quarter of the prompt budget, 864 tokens on a
+  4,096 window. Empty unless Field Assist is on **and** the model qualifies.
+- **`ManualReadingCheck`** (`Services/FieldAssist/ManualReadingCheck.swift`), MP's check, built here
+  so the graders use it: `found`, a known passage, a non-empty quote contained in that passage, and
+  every number-with-a-unit in the answer present in it (4.5 ≠ 45, 4.50 = 4.5; `in. w.c.` = `inWC` =
+  `inches of water`; a unit in a table heading counts; one-letter units only after a number).
+- **Badges follow evidence.** MLX entries carry `evidence` (all `fileMetadataOnly`) and
+  `pendingClaims`; `.vision` and `.toolFriendly` reach a descriptor only on `deviceVerified`, and
+  `validationError(for: Entry)` states the rule as the GGUF catalog does. `toolCapableModelIDs` is
+  gone; `toolCandidateModelIDs` lists what would be claimed, without Qwen2.5-0.5B. Rows read
+  `currentClaims`, so an installation record written with the old badges stops showing them.
+  `qualifiesForFieldAssistTools` is false for every model. **Decision 6:** nothing offered tools by
+  badge — `localToolNames` never read `.toolFriendly` — so every shipped model keeps exactly the
+  everyday set. **Vision:** the photo path, the vision factory and the picker's Vision filter read
+  the architectural `visionCapableModelIDs`, unchanged; only the badge went.
+- **Corpus, graders, CI runner.** `Scripts/local-tool-eval/corpus/local-tool-corpus.v2.jsonl`,
+  **generated** by `Scripts/local-tool-eval/generate-corpus.py` from the Lennox SLP99 example vault
+  (`python3 -I …` to write, `--check` to compare), so it regenerates when the vault changes. Its
+  header records the SHA-256 of every input (the generator included) and of the case lines, and
+  `LocalToolEvalCorpusTests` recomputes both: a vault edit without a regeneration, or a hand edit,
+  fails CI. It is mostly Field Assist, because that is the point (cost): every service value,
+  diagnostic code, part, model and size code and safety rule that can carry a question yields an
+  answered reading checked by `ManualReadingCheck`, most with a near-miss twin (the same unit with a
+  value the vault doesn't state, a code it doesn't list, a part for a model it doesn't fit) that must
+  be declined; service values become readings logged in and out of range and voltage readings
+  carried into `domain_calc`; codes become `table_lookup` turns with follow-ups; the three
+  procedures become start, next, repeat and answer turns; each model spelling an `equipment_lookup`.
+  The vault's `eval/calibration.jsonl` is the retrieval eval's answer key (pages per question); its
+  phrasings are reused here as reading cases — its in-scope questions answered from the vault's
+  passage, its out-of-scope ones as abstentions — without its page scoring. `LocalToolEvalCore.swift`
+  holds the format, ten graders (tool name, argument presence, types after coercion, values,
+  repeats, clean text, `ManualReadingCheck`, carry, cancellation, context fit) and a counts-only
+  report that puts **Field Assist first, as its own group** with its categories and graders, then the
+  everyday group, each with a bootstrap interval. `LocalToolEvalCorpusTests` plays every case's
+  `reference` output three times through the shipped loop against a scripted fake model, and shows
+  each grader failing a bad script.
+
+  | Group | Category | Cases |
+  |---|---|---:|
+  | Field Assist | toolChoice | 143 |
+  | Field Assist | manualAnswer | 229 |
+  | Field Assist | notInManual | 161 |
+  | Field Assist | multiTurn | 119 |
+  | Field Assist | twoStep | 12 |
+  | Field Assist | longPrompt | 4 |
+  | Field Assist | cleanOutput | 3 |
+  | Field Assist | cancellation | 2 |
+  | Everyday | restraint | 7 |
+  | Everyday | toolChoice | 2 |
+  | Everyday | cancellation | 1 |
+  | | **Total** (Field Assist 673, 98%) | **683** |
+
+  | Source | Cases |
+  |---|---:|
+  | `error_codes.md` | 204 |
+  | `service_values.md` | 198 |
+  | `models.md` | 81 |
+  | `parts.md` | 55 |
+  | `safety.md` | 26 |
+  | `procedures/slp99_no_ignition.json` | 24 |
+  | `procedures/slp99_pressure_switch_lockout.json` | 21 |
+  | `procedures/slp99_unit_size_code.json` | 16 |
+  | `eval/calibration.jsonl` (phrasings) | 24 |
+  | written in the generator (job flow, protocol, everyday) | 34 |
+
+  Writing the cases found two gaps in the check, fixed before it shipped: a timing table's bare `s`
+  wasn't read as seconds, and the manifold table states its unit only as the nameplate note's
+  `in. w.g.`, which is now read as inches of water. A part number such as `65W77` is no longer
+  mistaken for "65 W".
+- **The pin is unchanged.** The first revision with PR #812 (`4c21c84`, 2026-11-18) builds against
+  the installed SDK on paper: its `MLXFoundationModels` changes since `14414441` use only API in
+  the Xcode 27.2 SDK's `FoundationModels` interface and `.tbd` (attachments, `ContextOptions`,
+  `UnsupportedTranscriptContent`), and its switch over the now non-exhaustive `Attachment` has an
+  `@unknown default`. But it also carries the reasoning-event change: thinking now streams as
+  `Generation.reasoning`, not inside `.chunk`, and LFM2.5 resolves as always-thinking.
+  `LocalLLMService` reads `.chunk` alone and strips `<think>` assuming the template opened it, so
+  every LFM2.5 answer would come back empty. It also moves mlx-swift from 0.31.6 to 0.33.0. The
+  bump goes with P1, which rewrites that stream loop anyway. The root `Package.swift` and
+  `Package.resolved`, which still named `d6614025`, now name `14414441`.
+- **Found while building, for P1.** The pinned library already parses tool calls out of the text
+  stream when no tools are declared: its decoder accepts any tool name when `tools` is nil and
+  defaults to the Hermes (`json`) format. So for a model whose format resolves to `json` (Qwen 2.5,
+  whose template frames `<tool_call>`, and any model with no format), the `<tool_call>` the app asks
+  for arrives as a `.toolCall` event that `LocalLLMService` skips, and `LocalOutputPolicy` never
+  sees it. Read from the library's source, not seen on a phone; P1's first job is to take those
+  events.
+
+### `<field_assist_context>` size audit
+
+Measured by `FieldAssistContextAuditTests` on 2026-11-21: the Lennox SLP99 example vault's core
+files and procedures, a text manual made of its own service values and codes (the manufacturer's
+PDFs are not committed), job 1005 open, the nameplate read, four readings, the no-ignition
+procedure running and 30 conversation turns. Tokens are the local path's own estimate (four
+characters a token, `HandoffTranscriptBridge.estimatedTokens`), for the `<field_assist_context>`
+block alone. The lean on-device prompt includes that block whenever a job is open
+(`leanOnDevicePrompt` → `buildSystemPrompt`), so this is what a downloaded model is handed today
+before the persona, memory, tools and history.
+
+| State of the job | Tokens | Share of a 4,096 window's prompt budget (3,456) | LFM2.5 (2,944) | 8,192 window (7,552) |
+|---|---:|---:|---:|---:|
+| Job open | 7,792 | 225% | 265% | 103% |
+| + unit and 4 readings | 7,830 | 227% | 266% | 104% |
+| + a manual question (passages) | 8,690 | 251% | 295% | 115% |
+| + a running procedure | 8,959 | 259% | 304% | 119% |
+| + 30 conversation turns | 10,049 | 291% | 341% | 133% |
+
+The prompt budgets are `LocalModelBudget.promptBudget`: 3,456 for Gemma 4 E2B/E4B, SmolVLM2 2.2B
+and Qwen 2.5 3B; 2,944 for LFM2.5 (its larger thinking reserve); 7,552 for Qwen 2.5 0.5B and
+SmolVLM2 500M. **No catalog model can hold the job context of this vault**, before anything else
+is added: on a 4K model it is more than twice the whole budget. `sendLocal` trims history first and
+then refuses a prompt that still overflows, so with this vault open a downloaded model's turn
+cannot run at all. The vault's core tier (about 9k tokens of markdown) is most of it; the bound
+`VaultPromptBuilder.referenceByteLimit` gives every provider but ChatGPT, `.local` included, is the
+validator's whole core budget (`VaultValidator.coreBudgetCharacters`).
+P1 needs a local tier for this block — the Apple path's compact `JobSummary` is the model — before
+the loop is wired in, or the Field Assist tools have no room to be offered. (Recorded as a finding;
+not changed in P0.)
 
 ## What the local path does today (read from the code, 2026-11-20)
 
@@ -128,6 +270,10 @@ phone and cannot be granted by a list. Whether the tools stay *offered* to an un
 decision 6.
 
 ## Qualification
+
+The primary purpose is Field Assist on a downloaded model, because that is what saves the cloud
+cost, so the badge thresholds (decision 5) and each model's default-on decision are judged on the
+Field Assist group first, while restraint and not-in-the-manual keep their own floors.
 
 ### Corpus
 
