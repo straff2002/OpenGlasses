@@ -3,9 +3,25 @@
 **Status:** 🚧 P0 built 2026-11-20 (headless): the pure core (`HintTrigger` with `HintQueue`,
 `KeywordMatcher`, `HintReply`, `HintPromptBuilder`, `PassageHint`, `HintSpeechPolicy`, constants
 in `HintLimits`) and the caption voice gate (`CaptionAudioGate` on all four caption consumers,
-wired from the capture router). Nothing a wearer can start yet. Remaining: P1 (the session and
-delivery), P2 (the surfaces) and the P3 device pass. Decisions 1–10 have recommendations; P0 was
-built on them as recommended.
+wired from the capture router). **P1 built 2026-11-21 (headless):** `LiveHintsService` (start and
+stop on the wearer's word, captions owned only if it turned them on, `CaptionCursor`, one hint in
+flight, the three modes, a per-session cache, the 2 h limit warned at 1 h 55, a stop when the
+`HintSessionAllowance` seam says time is up, latency p50/p95 from `HintLatencyStats`) with every
+carrier behind a protocol; the answer path (passage card at once, then `completeStateless` through
+the medical routing rule, replacing the card only within 3 s); delivery to the lens
+(`HintLensCardBuilder`'s two pages through `presentAnswerCard(_:wearerLed: false)`, hidden after
+20 s), the ear (`HintSpeechPolicy` over `TextToSpeechService` without taking the conversation
+route, the idle session in a hints shape — phone mic preferred, A2DP only, `.duckOthers`,
+`.spokenAudio` — and barge-in from an ungated mic level) and the phone list
+(`LiveHintsPhoneList`, last 10, memory only); the session vocabulary through `DictationVocabulary`
+into the caption recogniser's `contextualStrings`; lecture mode through `MeetingAssistantService`
+behind a `MeetingAnalysisSink` (recordings' notification unchanged, tested); `.liveHints` in
+`AIFeatureRegistry`, the capture notice and a once-only first-run sheet; `AppState.startLiveHints`
+/ `stopLiveHints`. **Needs a device (P3):** whether `.spokenAudio` with `.duckOthers` on the idle
+`.playAndRecord` session activates and ducks only as wanted (it ducks for the whole session as
+built), the barge-in thresholds, the soft tick, the lens paging and 20 s hide on a real Display.
+Remaining: P2 (the surfaces) and the P3 device pass. Decisions 1–10 have recommendations; P0 and
+P1 were built on them as recommended.
 **Track:** Everyday assistant: conversations. Captions, documents, the lens, speech output.
 **Origin:** The owner, 2026-11-20, after surveying adjacent live-assistant products: a session that
 listens to a conversation and, when someone asks the wearer a question, puts a short answer from
