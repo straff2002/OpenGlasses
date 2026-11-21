@@ -401,5 +401,66 @@ enum LocalToolEval {
             }
             return lines
         }
+
+        /// The judged group's tally for one floor, or nil when no run measured it.
+        func tally(for floor: Floor) -> Tally? {
+            let group = groups[Floors.judgedGroup] ?? GroupTally()
+            let tally: Tally?
+            switch floor.measure {
+            case .category(let category): tally = group.byCategory[category]
+            case .grader(let grader): tally = group.byGrader[grader]
+            }
+            return tally.flatMap { $0.runs > 0 ? $0 : nil }
+        }
+
+        /// Decision 5's floors the report's runs fall below, in `Floors.all` order.
+        func floorShortfalls() -> [Floor] {
+            Floors.all.filter { floor in
+                guard let tally = tally(for: floor) else { return false }
+                return Double(tally.passed) < floor.minimum * Double(tally.runs)
+            }
+        }
+
+        /// The floors no run in the judged group measured. A model is not qualified on a floor it
+        /// was never judged on, so a qualification run needs this empty as well as the shortfalls.
+        func unjudgedFloors() -> [Floor] {
+            Floors.all.filter { tally(for: $0) == nil }
+        }
+
+        /// Whether the report clears every floor, each one judged.
+        var clearsFloors: Bool { floorShortfalls().isEmpty && unjudgedFloors().isEmpty }
+    }
+
+    // MARK: - The floors (decision 5)
+
+    /// One hard floor: a category's or a grader's pass rate in the judged group.
+    struct Floor: Equatable {
+        enum Measure: Equatable {
+            case category(Category)
+            case grader(Grader)
+        }
+        let name: String
+        let measure: Measure
+        /// The pass rate it must reach, 0 to 1.
+        let minimum: Double
+    }
+
+    /// The `.toolFriendly` floors the owner fixed on 2026-11-21, before any model was run. Judged
+    /// on the Field Assist group, each on its own, never an average. Tool choice (around 0.85) and
+    /// two-step (around 0.70) are set after the first Mac screener run and before the device runs.
+    enum Floors {
+        static let judgedGroup: Group = .fieldAssist
+        /// A question the manual does not answer is declined, not answered from memory.
+        static let notInManualDeclined = 0.95
+        /// No protocol or reasoning markup reaches the voice, on any case.
+        static let cleanOutput = 1.0
+        /// No tool is called when none applies.
+        static let restraint = 0.90
+
+        static let all: [Floor] = [
+            Floor(name: "not in the manual declined", measure: .category(.notInManual), minimum: notInManualDeclined),
+            Floor(name: "clean output", measure: .grader(.cleanText), minimum: cleanOutput),
+            Floor(name: "restraint", measure: .category(.restraint), minimum: restraint),
+        ]
     }
 }
