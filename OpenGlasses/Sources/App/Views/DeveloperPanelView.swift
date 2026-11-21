@@ -11,9 +11,8 @@ struct DeveloperPanelView: View {
     @AppStorage("fieldToolProfileEnabled") private var fieldToolProfileEnabled = true
     /// Plan GU §5 — `Config.wakeSpeechGateEnabled`, the same key and default (off until tuned).
     @AppStorage("wakeSpeechGateEnabled") private var wakeSpeechGateEnabled = false
-    /// Plan HZ P1 — `Config.directSentenceStreamingEnabled`, the same key and default (off until
-    /// measured on device).
-    @AppStorage("directSentenceStreamingEnabled") private var directSentenceStreamingEnabled = false
+    /// Plan HZ P1 — `Config.directSentenceStreamingEnabled`, the same key and default (on).
+    @AppStorage("directSentenceStreamingEnabled") private var directSentenceStreamingEnabled = true
     /// Plan JM P0 — `Config.dictationVoiceProcessingEnabled`, the same key and default (off until
     /// measured on device).
     @AppStorage("dictationVoiceProcessingEnabled") private var dictationVoiceProcessingEnabled = false
@@ -100,9 +99,7 @@ struct DeveloperPanelView: View {
 
             OGSection(
                 header: "Reply Speech",
-                footer: GlassesSupportPolicy.isSupported
-                    ? "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes. Off until it has been measured on the glasses."
-                    : "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes."
+                footer: "Starts speaking a reply at its first sentence while the rest is still being written, instead of waiting for the whole answer. The words are the same; only the timing changes."
             ) {
                 OGRow("Speak as it writes", isOn: $directSentenceStreamingEnabled,
                       icon: "text.bubble")
