@@ -355,7 +355,10 @@ struct OpenGlassesApp: App {
 
                 // Live hints (Plan MO P1): the capture notice at every start and the first-run sheet,
                 // invisible until a session is started.
-                LiveHintsNoticeOverlay(service: appState.liveHints)
+                LiveHintsNoticeOverlay(service: appState.liveHints,
+                                       hostsFirstRun: !appState.liveHintsSheetPresented)
+                // Plan MO P2: the demo's notice ("nothing is listening"), from the same overlay.
+                LiveHintsNoticeOverlay(service: appState.liveHintsDemo, hostsFirstRun: false)
 
                 // An organisation profile offered by link (Plan CT PR 2) — invisible until one arrives.
                 OrgEnrolmentOverlay(service: appState.orgEnrolment)
@@ -490,6 +493,10 @@ struct OpenGlassesApp: App {
                     Task { @MainActor in appState.takePendingAskRequest(trigger: "notification") }
                 }
                 appState.takePendingAskRequest(trigger: "launch")
+                // Plan MO P2: the Live Activity's live-hints buttons hand their presses over the same way.
+                LiveHintsCommandObserver.shared.start {
+                    Task { @MainActor in appState.takePendingLiveHintsCommand(trigger: "notification") }
+                }
             }
                 .onReceive(NotificationCenter.default.publisher(
                     for: UIApplication.protectedDataWillBecomeUnavailableNotification
@@ -803,6 +810,7 @@ struct OpenGlassesApp: App {
                 appState.prepareWaitingRecordings()
                 // A press of the "Ask Avenkin" control that brought the app forward.
                 appState.takePendingAskRequest(trigger: "active")
+                appState.takePendingLiveHintsCommand(trigger: "active")
                 // Plan KR P5: a reply that finished unheard while the app was away is mentioned.
                 appState.sayReplyWaitingIfAny()
                 // Plan FF P1/PR3: opening the app counts whether it was launched or merely
@@ -1466,8 +1474,10 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var liveHints: LiveHintsService = {
         let service = LiveHintsService(carriers: .init(
             captions: AmbientCaptionHintSource(service: ambientCaptions),
-            documents: DocumentStoreHintSearch(store: documentStore, namespace: {
-                ProjectContextService.shared.activeProjectId?() ?? "global"
+            // Plan MO P2: the active project's documents, or those picked on the session sheet.
+            documents: DocumentStoreHintSearch(store: documentStore, scope: { [weak self] in
+                HintDocumentScope.resolve(chosen: self?.liveHints.settings.documentIds,
+                                          activeProject: ProjectContextService.shared.activeProjectId?())
             }),
             model: LLMServiceHintModel(llm: llmService, isOnline: { [weak self] in
                 self?.reachability.isOnline ?? true
@@ -1484,9 +1494,26 @@ class AppState: ObservableObject, AppStateProtocol {
             self.liveHintsRunning = running
             // The idle session moves to the phone's mic in the hints shape, and back (Plan MO §7).
             self.wakeWordService.liveHintsSessionChanged()
+            // Plan MO P2: the taps, the Live Activity and its buttons follow the session.
+            self.liveHintsSessionChanged()
         }
+        // Plan MO P2: the talk note's captions name a voice as the captions do; the note is the
+        // app's to write, at stop.
+        let registry = ambientCaptions.speakerRegistry
+        service.speakerLabel = { registry.displayLabel(for: $0) }
+        service.onEnded = { [weak self] ending in self?.writeLiveHintsTalkNote(ending) }
         return service
     }()
+    /// Plan MO P2: the demo session's phone list, apart from a real session's.
+    let liveHintsDemoList = LiveHintsPhoneList()
+    /// Plan MO P2 (§11): the demo session — the same session code over a canned conversation and a
+    /// sample document. Lazy, and never the microphone.
+    lazy var liveHintsDemo: LiveHintsService = makeLiveHintsDemo()
+    /// Mirrors `liveHintsDemo.isRunning`, without creating the demo.
+    var liveHintsDemoRunning = false
+    /// Plan MO P2: the live-hints sheet (setup, then the session screen) is up. Opened by the Home
+    /// card; while it is up it hosts the first-run sheet itself, so the root overlay does not.
+    @Published var liveHintsSheetPresented = false
     /// Mirrors `liveHints.isRunning` for the idle listener's plan, without creating the service.
     private(set) var liveHintsRunning = false
 
@@ -5278,7 +5305,10 @@ class AppState: ObservableObject, AppStateProtocol {
                 micRoute: Config.conversationMicRoute,
                 posture: PowerPolicyService.shared.posture,
                 speechGateEnabled: Config.wakeSpeechGateEnabled,
-                liveHintsActive: self?.liveHintsRunning ?? false)
+                liveHintsActive: self?.liveHintsRunning ?? false,
+                // Plan MO P2: the mic the session sheet chose; the phone unless the wearer took
+                // the glasses' mic with its caveat.
+                liveHintsMic: (self?.liveHintsRunning ?? false) ? (self?.liveHints.settings.mic.route ?? .phone) : .phone)
         }
         wakeWordService.glassesTurnState = { [weak self] in
             (stoodDown: self?.glassesStoodDown ?? false, worn: self?.glassesService.isWorn)
@@ -5341,12 +5371,22 @@ class AppState: ObservableObject, AppStateProtocol {
         // lock screen, so the claim waits for connected glasses not known to be off.
         mediaTrigger.glassesPresent = { [weak self] in
             guard let self else { return false }
-            return self.isConnected && self.glassesService.isWorn != false
+            // Plan MO P2: during a live-hints session a headset's media button counts too.
+            return (self.isConnected && self.glassesService.isWorn != false)
+                || (self.liveHintsSessionActive && self.liveHintsHeadsetConnected)
         }
+        // Plan MO P2: while a live-hints session runs it holds the taps, the setting on or off.
+        mediaTrigger.heldBySession = { [weak self] in self?.liveHintsSessionActive ?? false }
         mediaTrigger.onGesture = { [weak self] gesture, command in
             Task { @MainActor in
                 guard let self else { return }
                 self.noteUserInteraction()
+                // Plan MO P2: a session's taps repeat and skip hints, never the wake word or the
+                // wearer's assignments; Settings' test screen still hears every tap.
+                if !self.templeTaps.testMode, self.handleLiveHintsTap(gesture) {
+                    self.mediaTrigger.recheckClaim(after: .tapAction)
+                    return
+                }
                 await self.templeTaps.handle(gesture, command: command)
                 // The action may have reshaped the shared session (the wake word reconfigures for
                 // a photo) and with it stopped the silent player that keeps the taps coming.
@@ -5872,7 +5912,8 @@ class AppState: ObservableObject, AppStateProtocol {
             lastResponse: lastResponse,
             deviceName: glassesService.deviceName,
             batteryLevel: glassesService.batteryLevel,
-            instantReplayRunning: instantReplay.isRunning
+            instantReplayRunning: instantReplay.isRunning,
+            liveHintsRunning: liveHintsSessionActive
         )
     }
 
@@ -7616,6 +7657,8 @@ class AppState: ObservableObject, AppStateProtocol {
             } else {
                 self.ambientCaptions.resumeForPresence()
             }
+            // Plan MO P2: a live-hints session ends by the same rule captions suspend by.
+            self.applyLiveHintsPresence(mode)
         }
         cancellables.append(captionToken)
 
@@ -8202,6 +8245,15 @@ class AppState: ObservableObject, AppStateProtocol {
                 guard let self, self.preparedCardSpeech.reading != nil,
                       await self.preparedCardSpeech.handle(text) else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("preparedCardReading"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // Plan MO P2: "start live hints", "stop hints", "show hints", "hint me about …". Whole
+            // utterances only; stop, show and a keyword only while a session runs, so anything
+            // else goes on to the assistant.
+            VoiceCommandHandler(label: "live-hints") { [weak self] text in
+                guard let self, await self.handleLiveHintsVoiceCommand(text) else { return false }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("liveHints"))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },
@@ -10466,7 +10518,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 self.speechService.stopSpeaking()
                 if self.audioRecorder.isRecording { _ = await self.audioRecorder.stopRecording() }
                 if self.videoRecorder.isRecording { _ = await self.videoRecorder.stopRecording() }
-                self.stopLiveHints()
+                self.stopActiveLiveHints()
                 if self.ambientCaptions.isActive { self.ambientCaptions.stop() }
                 if self.liveTranslation.isActive { self.liveTranslation.stop() }
             }
@@ -10833,7 +10885,7 @@ class AppState: ObservableObject, AppStateProtocol {
         // the mic falls back to the phone so the meeting capture keeps going.
 
         // Stop ambient features that use mic/speakers
-        stopLiveHints()
+        stopActiveLiveHints()
         if ambientCaptions.isActive { ambientCaptions.stop() }
 
         // End conversation thread — through the job chokepoint, because putting the glasses down
