@@ -111,6 +111,38 @@ final class RegistrationFlowTests: XCTestCase {
         }
     }
 
+    /// DAT 1.1.0's `.unauthorized`: Meta refused before Meta AI opened. On the published app the
+    /// credentials are the real ones, so it reads as the wearer not being let in; on any other
+    /// build it reads as that build's credentials, a broken one named first.
+    func testUnauthorizedReadsByWhoseBuildItIs() {
+        let published = RegistrationFlow.publishedBundleID
+        let other = "com.example.contributor"
+        XCTAssertEqual(RegistrationFlow.registrationErrorMessage(.unauthorized, bundleID: published),
+                       String(localized: "Meta hasn't approved \(RegistrationFlow.appName) for glasses yet."))
+        XCTAssertEqual(RegistrationFlow.registrationErrorMessage(.unauthorized, bundleID: other),
+                       "Meta refused this build's glasses credentials.")
+        for bundleID in [published, other] {
+            XCTAssertLessThanOrEqual(RegistrationFlow.registrationErrorMessage(.unauthorized, bundleID: bundleID).count, 80)
+        }
+
+        XCTAssertEqual(RegistrationFlow.registrationErrorNotice(.unauthorized, configStatus: .placeholder(key: "MetaAppID"),
+                                                                bundleID: published),
+                       RegistrationFlow.notApprovedMessage(), "the published app's credentials are never the suspect")
+        XCTAssertEqual(RegistrationFlow.registrationErrorNotice(.unauthorized, configStatus: .placeholder(key: "MetaAppID"),
+                                                                bundleID: other),
+                       MWDATConfigCheck.message(for: .placeholder(key: "MetaAppID")))
+        let generic = RegistrationFlow.registrationErrorNotice(.unauthorized, configStatus: .ok, bundleID: other)
+        XCTAssertTrue(generic.contains("TeamID") && generic.contains("release channel"), generic)
+    }
+
+    /// Every other failure's notice is the capsule's own line.
+    func testOtherRegistrationNoticesMatchTheirMessage() {
+        for error: RegistrationError in [.metaAINotInstalled, .networkUnavailable, .configurationInvalid, .unknown] {
+            XCTAssertEqual(RegistrationFlow.registrationErrorNotice(error, bundleID: "com.example.contributor"),
+                           RegistrationFlow.registrationErrorMessage(error, bundleID: "com.example.contributor"), "\(error)")
+        }
+    }
+
     // MARK: - A connect that gave up (Plan HX P3)
 
     private func failure(_ registration: GlassesRegistration, _ links: [GlassesLinkState] = [],

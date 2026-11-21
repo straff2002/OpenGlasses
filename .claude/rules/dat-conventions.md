@@ -221,8 +221,11 @@ Notes from the field:
 - **1.1.0 (2026-11-20) is additive for us.** `DeviceSessionError.notRegistered`: `createSession`
   throws it for an app Meta AI has not registered, and unregistering now stops every session —
   `CameraErrorPolicy` stops retrying with "Connect your glasses first." `RegistrationError
-  .unauthorized`: `startRegistration()` refuses without opening Meta AI — the capsule says Meta
-  hasn't approved the app and the notice carries `notApprovedMessage`. `DeviceSession.pause()` /
+  .unauthorized`: `startRegistration()` refuses without opening Meta AI. Meta doesn't say what it
+  checked (release-channel membership, or credentials that don't match the Developer Center
+  project), so `RegistrationFlow` splits it like `connectFailureMessage`: on the published bundle
+  the wearer wasn't let in (`notApprovedMessage`); on any other build its credentials are the
+  suspect (`MWDATConfigCheck` first). Developer Mode (empty `MetaAppID`) never hits it. `DeviceSession.pause()` /
   `resume()` (`started` → `paused` → `started`; a no-op from any other state) are unused so far.
   `RegistrationRequest.cancelRegistration(returnToMetaAI:)` is unused (we pass no
   `onRegistrationRequest`). Refused-to-start streams now report `.thermalHot` / `.batteryLow` /

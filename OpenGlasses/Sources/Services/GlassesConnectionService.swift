@@ -352,11 +352,12 @@ class GlassesConnectionService: ObservableObject {
             PrivacyLog.device(.glasses, .registrationFailed, error: SafeErrorSummary(error))
             let message = RegistrationFlow.registrationErrorMessage(error)
             connectionStatus = message
-            // A refusal has a fuller explanation than the capsule can hold (invite-only, or
-            // Developer Mode), so the notice carries it.
-            let notice: String
-            if case .unauthorized = error { notice = RegistrationFlow.notApprovedMessage() } else { notice = message }
-            NoticeCenter.shared.post(notice, severity: .error, source: .glasses)
+            // A refusal has a fuller explanation than the capsule can hold, so the notice
+            // carries it (see `RegistrationFlow.registrationErrorNotice`).
+            let configStatus = MWDATConfigCheck.validate(
+                Bundle.main.object(forInfoDictionaryKey: "MWDAT") as? [String: Any])
+            NoticeCenter.shared.post(RegistrationFlow.registrationErrorNotice(error, configStatus: configStatus),
+                                     severity: .error, source: .glasses)
         }
     }
     #else
