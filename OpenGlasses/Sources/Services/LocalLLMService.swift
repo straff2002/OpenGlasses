@@ -1491,13 +1491,6 @@ final class LockedFlag: @unchecked Sendable {
     }
 }
 
-/// What a vision turn's token drain observed, collected off the main actor and applied to the turn
-/// timeline once `container.perform` returns (Plan CU P1).
-///
-/// The drain runs inside a `@Sendable` closure, so it cannot touch `TurnRecorder` — which is
-/// main-actor isolated — and must not hop there mid-generation either: a suspension between MLX
-/// token pulls is exactly the kind of cost instrumentation is not allowed to add. So the two facts
-/// worth keeping are parked behind a lock and read back on the other side.
 /// The tool calls a drain running inside `container.perform` collected (Plan MQ P1).
 final class LockedToolCalls: @unchecked Sendable {
     private let lock = NSLock()
@@ -1513,6 +1506,13 @@ final class LockedToolCalls: @unchecked Sendable {
     }
 }
 
+/// What a vision turn's token drain observed, collected off the main actor and applied to the turn
+/// timeline once `container.perform` returns (Plan CU P1).
+///
+/// The drain runs inside a `@Sendable` closure, so it cannot touch `TurnRecorder` — which is
+/// main-actor isolated — and must not hop there mid-generation either: a suspension between MLX
+/// token pulls is exactly the kind of cost instrumentation is not allowed to add. So the two facts
+/// worth keeping are parked behind a lock and read back on the other side.
 final class LockedGenerationReport: @unchecked Sendable {
     private let lock = NSLock()
     private var first: Date?
