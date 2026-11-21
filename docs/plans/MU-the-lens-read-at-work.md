@@ -1,4 +1,4 @@
-# Plan MU — The Lens Read at Work (fuller tiles, sources on their own, fewer buttons, an answer that stays until you put it away, and a page that opens whole)
+# Plan MU — The Lens Read at Work (a page you get around in one move, fuller tiles, sources on their own, fewer buttons, and an answer that stays until you put it away)
 
 **Status:** 📝 Drafted 2026-11-21; nothing built; 10 decisions with recommendations.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
@@ -39,7 +39,9 @@ things:
    "show me the page" shows one corner of the page, cut off on the right, under **Next diagram ›** and
    **Close**, not the whole page. Two more photos follow the scroll up: first the page's top-left
    corner under "p.19" and "Zoom in for labels", then a larger part of a table under **Zoom in**,
-   **Whole page**, **Move** and **Close**, still cut off on the right.
+   **Whole page**, **Move** and **Close**, still cut off on the right. Then, with more photos: the zoom
+   works through the buttons and fine detail is readable, so picture quality is enough. The problem is
+   getting around the page, which is still too slow to use during real work.
 
 ## What the tester sees, and why
 
@@ -78,30 +80,34 @@ Display cannot scroll sideways (Meta's docs), so a row wider than the 576 px col
 cut off at both ends. In the first photo, two follow-up questions pushed the first label off the left
 and **Close** off the right.
 
-**Every picture is drawn bigger on the glasses than on the simulator.** This one cause explains all
-three page photos:
+**Pictures in a row don't fit on the glasses.** The page photos are explained by two things:
 
 - **The first photo is the tile grid.** The only page view whose buttons are exactly **Next diagram ›**
   and **Close** is the whole page as a 3 × 3 tile grid (`HUDPageScreenBuilder.items` with
   `showsTiles`, MG decision 7). A send opens scrolled to the button row at the bottom, so the wearer
   first sees the bottom row's first tile: the "bottom-left corner" they described. The simulated
   Display draws three 186 px tiles across. The glasses draw one tile across the whole view, cut off
-  on the right, so each row shows only its first tile.
-- **The second photo is the top of the same grid.** Scrolling up passes the middle row's first tile
-  and reaches the top-left tile under the citation ("p.19") and the hint.
-- **The third photo is a zoomed view, not the whole page.** **Zoom in**, **Whole page** and **Move**
-  are the buttons of a view between the whole page and the deepest zoom. On the Meta Display a zoomed
-  view's strip is drawn after the button row (`LensPageSession` puts the slices in `trailingFlow`),
-  which is why the buttons sit above the picture. Each slice is rendered exactly as wide as the
-  576 px column, yet the photo shows the table cut off on the right too.
+  on the right, so each row shows only its first tile. Scrolling up passes the middle row's first
+  tile and reaches the top-left one under the citation ("p.19") and the hint (the second photo).
+- **The zoomed photos are working as designed.** **Zoom in**, **Whole page** and **Move**, or
+  **←**, **→** and **Done** while moving, belong to a zoomed view. On the Meta Display a zoomed view's
+  strip is drawn after the button row (`LensPageSession` puts the slices in `trailingFlow`), which is
+  why the buttons sit above the picture. The strip is the crop's column of the page, so the table's
+  right-hand column is outside it until the wearer moves right. The tester confirmed the zoom works
+  and fine detail is readable: picture quality is enough.
 
-`MWDATDisplay`'s `Image` offers only `.icon` and `.fill`; the app can't give a picture a size.
-`.fill` on the simulated Display draws one image pixel per lens pixel (MG P1, which built the tile and
-strip sizes on that). On the glasses a picture comes out larger: in the photos, roughly 1.3–1.5 times.
-The text and the buttons are drawn at the sizes the frame budgets for, so it is the pictures, not the
-layout. Because even a full-width slice is cut off, this looks like a constant scale rather than
-"fill the container's width", but photos taken through a lens can't measure it. MG P6 already lists
-tile size as a device check, and the page report doesn't record what was drawn.
+`MWDATDisplay`'s `Image` offers only `.icon` and `.fill`; the app can't give a picture a size. On the
+simulated Display `.fill` draws one image pixel per lens pixel (MG P1 built the tile and strip sizes on
+that). A single full-width picture looks the same on the glasses. Three pictures in one row do not:
+on the glasses one of them takes the whole width. Photos taken through a lens can't tell whether the
+glasses scale the picture up or fill the row with it. MG P6 already lists tile size as a device check,
+and the page report doesn't record what was drawn.
+
+**Getting around a page takes too many steps.** To reach one cell in the table's right-hand column
+today, the wearer must: zoom in (one press, or a tile), step the band's focus to **Move**, press it,
+step to **→**, press it once or twice, then step to **Done**. Each press is a band pinch after one or
+more swipes to reach the button, and the view redraws after each. Scrolling up and down is the only
+thing that is quick, because the lens does it itself.
 
 **What Meta gives apps for pinch, drag and double tap.** In the stable SDK (1.0.1, and 1.1.0 from
 2026-11-20): nothing. `MWDATDisplay` has `FlexBox`, `Text`, `Image`, `Button`, `ButtonGroup`, `Icon`
@@ -117,22 +123,17 @@ aren't in what Inputs reports today.
 
 ## Scope
 
-0. **Pictures that fit the lens (§0).** One pure `LensPictureScale` gives the factor by which the
-   glasses enlarge a picture. Every picture rendered for the Meta Display is shrunk by it before it is
-   sent: the answer's thumbnail, the whole page, tiles, strip slices, figures and the phone-made
-   cards. So a picture meant to be 576 px across is drawn 576 px across, and the frame's budgets
-   (`LensPageFrame`, `LensPageTiles`) stay in lens pixels as now. The factor is measured, not guessed:
-   - **Fit check.** Display & HUD › **Fit check** (and the Developer panel) sends one screen with a
-     picture exactly 576 px wide. It carries numbers 1 to 12 across, one every 48 px, and a row of three
-     numbered tiles at the grid's tile size under them. The wearer says or picks on the phone the
-     highest number they can read whole, and whether all three tiles are side by side. That reading
-     sets the factor (12 → 1, 9 → 1.33, 8 → 1.5 and so on). It is kept per glasses model and goes in
-     the support report.
-   - **Default.** Until a fit check is done, the factor is the one measured on the tester's Ray-Ban
-     Display (decision 10). The simulated Display keeps 1.
-   - **Report.** `LensPageReport` records each sent picture's pixel size and the factor used.
-   If the tiles in a row don't sit side by side even at the right scale, they are sent as one picture
-   of all three with the press areas kept apart, or the grid stays off (decision 5).
+0. **One picture a row, checked on the glasses (§0).** Nothing sent to the Meta Display puts two
+   pictures side by side. The tile grid is off by default (decision 5), and any other row of pictures
+   becomes one picture. **Fit check** in Display & HUD (and the Developer panel) sends one screen with
+   one picture exactly 576 px wide, numbered 1 to 12 across (one number every 48 px), and under it a
+   row of three numbered 186 px tiles. The wearer says, or picks on the phone, the highest number they
+   can read whole and how many tiles they see. Twelve and three means the glasses match the simulator.
+   Fewer numbers means the glasses scale pictures up: `LensPictureScale` (pure) then shrinks every
+   picture by that factor before it is sent, kept per glasses model. Twelve and one tile means a row is
+   filled by its first picture. The reading goes in the support report, and `LensPageReport` records
+   each sent picture's pixel size. The default factor is 1, which matches the tester's single pictures
+   (decision 10).
 1. **Fuller tiles (§1).** A paragraph is one tile when it fits in `rowMaxLines` = **8** lines (from
    4). A longer one is cut at a sentence end at or before 8 lines, then at a word. A last piece of one
    line, or under about 20 characters, is joined to the tile before it when that tile then stays within
@@ -167,29 +168,36 @@ aren't in what Inputs reports today.
    closed (decision 2).
 5. **Say what Earlier is (§5).** The **Earlier** heading becomes "Earlier — press to open" (one meta
    line). A folded earlier answer shows its question and first **3** lines (from 2), ending in "…".
-6. **The page opens whole (§6).** "Show me the page" opens on **one picture of the whole page**,
-   fitted to the picture box (at §0's scale, so it is whole), as Pages mode always has, instead of
-   the tile grid. The grid is off by default until P8 shows it works on the glasses (decision 5).
-   From the whole page:
-   - **When the answer cites a figure or table**, the first button is that part's name or **Part**,
-     which opens it as a **strip at a readable zoom** (`LensPageTiles` strip, the right column of the
-     page for its rows). The band's up and down swipes scroll the strip with no send (MG P1: about
-     one slice per move). The strip's width is the part's width, so a table is never cut on the right
-     unless it is wider than the lens can read. Then the strip is the part's left half and **→**
-     shows the right half (one send).
-   - **Read it** stays where the page has the cited passage (reading mode).
-   - The zoom rungs (**Zoom in**, **Zoom out**, **Move** and the arrows) leave the lens's button row
-     and stay by voice: "zoom in", "zoom in on the bottom right", "zoom out", "whole page", "move
-     left". The voice words are MG's combined zoom words, unchanged.
-   - The row is then at most **Part**, **Read it** or **Next page ›**, and **Close**, held to §3's
-     budget. **Next diagram ›** moves to voice and Actions.
-   - The page report (`LensPageReport`) records each view's drawn picture and tile sizes, the row's
-     estimated width, and what the lens scrolled to, so the next support report says what the glasses
-     drew.
+6. **A page you get around in one or two moves (§6).** The aim is to remove the steps, not to make
+   them quicker: up and down are the lens's own scroll, and the only other move is one press.
+   - **It opens where the answer is.** "Show me the page" opens at **fit width**: the page as wide
+     as the lens (576 px), one tall strip the band scrolls up and down with no send, opened scrolled
+     to the cited part (the passage's mark, the figure or the table row the answer named:
+     `LensPageFocus`, `PageFigureLocator`). The wearer never sees a corner, and the whole width is
+     always in view. A page with no cited part opens at its top. The whole page fitted to the lens
+     (a short overview) is one press, **Whole page**.
+   - **A press is a close-up.** A pinch on the part of the strip in view (its slice, which the band's
+     focus is already on) opens a **close-up** of it at the next readable zoom (about 2×). A wide page
+     is cut into a left half and a right half, both stacked in one strip: the left half's rows, then a
+     "Right half" marker, then the right half's rows. So both are reached by scrolling, with no **Move**
+     and no arrows. **Back** (a button at the top, where focus opens) returns to fit width at the same
+     place.
+   - **A table can be read as text.** When the vault holds the page's table (`TableLookup`), the
+     button **Rows** shows the table one row per card: "E7 · Low supply voltage · Check the supply …",
+     with the column names on each card. The band scrolls the rows, and a row can be pressed to say
+     it aloud. Nothing is lost to the lens's width. This is the default for a table the answer cites,
+     with **Picture** one press away (decision 6).
+   - **Voice gets there directly:** "show E7", "go to the bottom", "close-up", "whole page", "right
+     half", "back". MG's combined zoom words stay.
+   - **The buttons are at most three:** fit width has **Whole page** (or **Rows**) and **Close**; a
+     close-up has **Back** and **Close**; **Read it** and **Next page ›** are added only where they
+     apply, within §3's budget. **Zoom in**, **Zoom out**, **Move**, the arrows, **Done** and **Next
+     diagram ›** leave the lens's buttons (the zoom and diagram words stay by voice and on Actions).
+   - The page report records each view's drawn picture sizes, where it opened and why (cited mark,
+     figure, table row, top), and every press, so a support report shows how many moves a page took.
 7. **Swipe and pinch in the TestFlight lane (§7, P6).** Under `DAT_EXPERIMENTAL` only, in
-   `Sources/Glasses/Experimental/`: on a strip, band `nav` **left/right** move the strip half a column
-   (one send). `select` with no focused button toggles between the whole page and the cited part at
-   readable zoom. Up and down stay the lens's own scroll, and `back` is never consumed. This lane is
+   `Sources/Glasses/Experimental/`: band `nav` **left/right** jump between a close-up's halves and, at
+   fit width, to the previous or next page (one send each), so no button is needed for either. Up and down stay the lens's own scroll, and `back` is never consumed. This lane is
    ready to move into the store build if Meta makes `MWDATInputs` stable. Until then the store build
    keeps §6's voice and buttons. Free drag and pinch-to-zoom are not attempted: Inputs doesn't report
    them (decision 8).
@@ -205,45 +213,49 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
 
 ## Phases
 
-- **P0 — Pictures that fit (§0).** First, because it breaks every page view today. Headless:
-  `LensPictureScale` (the reading → factor table, per-model storage, the simulator's 1), shrinking at
-  each picture's render step, the fit-check screen and its phone and voice answers, the report fields.
-  Tests: every picture path is sent at its lens size divided by the factor, at 1 nothing changes, the
-  reading table's ends, the report. Shipped with decision 10's default. One fit check on the tester's
-  glasses then sets the default for the next build.
-- **P1 — Fuller tiles, sources on their own, and Earlier (§1, §2, §5).** Headless:
+- **P0 — One picture a row, and the fit check (§0).** Small and first. Headless: the tile grid off by
+  default, any row of pictures sent as one, `LensPictureScale` (the reading → factor table, per-model
+  storage, default 1), the fit-check screen and its phone and voice answers, the report fields. Tests:
+  no screen sent to the Meta Display has two pictures in a row, every picture is sent at its lens
+  size divided by the factor, at 1 nothing changes. One fit check on the tester's glasses afterwards.
+- **P1 — A page you get around in one or two moves (§6).** The tester's main complaint, so it comes
+  next. Headless: fit width as the opening view, scrolled to the cited part (mark, figure, table row,
+  else the top); the close-up from a pressed slice, with both halves stacked in one strip and the
+  marker; **Back** to the same place; **Rows** from `TableLookup` as cards, the default for a cited
+  table; the voice words; the page view's buttons at most three; the report's opening reason and press
+  count. Tests: a cited row opens in view with no press; any cell is reachable by scrolling plus at
+  most one press; no **Move**, arrows or **Done** on any lens screen; the rows of an invented table;
+  pages with no table, no mark and no figure.
+- **P2 — Fuller tiles, sources on their own, and Earlier (§1, §2, §5).** Headless:
   `HUDReadingRows` (the 8-line rule, the join, the stride cut removed), a pure `LensSourceTile` that
   takes the `Source:` markers out of the answer's text for the lens with `CitationLineParser`, the
   builder's source tile and Earlier heading. Tests: the photo's two answers as fixtures (with invented
   model and page names), streaming stability, a sentence that runs one word over, an answer with two
   sources, a source in mid-sentence, a source with no page, the caps (`maxRows`, `maxCharacters`) with
   taller tiles.
-- **P2 — A button row that fits (§3).** Headless: `LensButtonRowBudget` with a provisional advance (from
+- **P3 — A button row that fits (§3).** Headless: `LensButtonRowBudget` with a provisional advance (from
   the simulated Display's 576 px column and the photos), the reading view's three-button rule, follow-ups
   only on Actions and by voice, the short-label table, the rule that Close is never dropped, and a test
   that runs every lens button row (reading view, card, Actions, page view, reading mode) through the
   budget in every one of the 13 complete languages, longest labels first.
-- **P3 — The answer stays (§4).** Headless: no idle timer for the reading view (the setting, default
+- **P4 — The answer stays (§4).** Headless: no idle timer for the reading view (the setting, default
   Until closed), "show that again" for the conversation's life, the hide words, the clearing rules
   unchanged (`LensConversationLog`), and a test that the paged card's 60 s is untouched.
-- **P4 — The page opens whole (§6).** Headless: whole-page opening without tiles (tiles behind the
-  setting, off), the cited part's button and strip at readable zoom, the strip's width from the part,
-  the right half for a wide table, the zoom rungs off the row and kept by voice, and the page report's
-  new fields.
 - **P5 — Measure on the simulated Display.** Through MG P1's lane: the advance per character of a
-  button label and the button's padding (to fix the P2 budget), an 8- and 9-line tile with the question
-  line, the source tile, a 3-button row in the longest language, the whole page fitted, the strip of a
-  wide table, and the fit-check screen (the simulator must read 12 and three tiles side by side). Evidence into the worktree's gitignored folder as before.
+  button label and the button's padding (to fix the P3 budget), an 8- and 9-line tile with the question
+  line, the source tile, a 3-button row in the longest language, the whole page fitted, fit width and a close-up with both
+  halves of a wide table, the rows view, and the fit-check screen (the simulator must read 12 and three tiles side by side). Evidence into the worktree's gitignored folder as before.
 - **P6 — Swipe and pinch (§7).** TestFlight only, `DAT_EXPERIMENTAL`, added to
   `DATExperimentalGuardTests`' roster. Takes over MG P5.
 - **P7 — Catalog sync.** The new strings ("Earlier — press to open", the source tile's label if any,
   Keep answers up and its two choices, the short labels) in the 13 complete languages, add-only.
-- **P8 — Device pass.** Takes over MG P6. On a Ray-Ban Display: an 8- and 9-line tile reads whole; the
-  source tile; the row of three in the longest language; the answer still there after 10 and 30
-  minutes with the lens asleep; Meta's display gesture hides it and brings it back as left; "show that
-  again" after Close; the whole page fitted; a strip scrolls with swipes; the fit check and every page view
-  whole at its factor; the tile grid as it really draws (from the new report fields), to decide decision 5 for good; the glasses' battery over an hour
-  with an answer held up.
+- **P8 — Device pass.** Takes over MG P6. On a Ray-Ban Display, with the tester at a real unit:
+  the fit check; a cited table opens on its row with no press; any cell is reached by scrolling plus at
+  most one press, counted from the page report, against today's count; **Rows** read at arm's length;
+  a close-up's right half by scrolling; an 8- and 9-line tile reads whole; the source tile; the row of
+  three buttons in the longest language; the answer still there after 10 and 30 minutes with the lens
+  asleep; Meta's display gesture hides it and brings it back as left; "show that again" after Close;
+  the glasses' battery over an hour with an answer held up.
 
 ## Decisions
 
@@ -256,21 +268,23 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
    `LensConversationLog`). (Alternative: keep 10 minutes.)
 4. **Follow-ups on the lens.** Recommend none in the row: on the Actions screen and by voice. With no
    page, one may sit before Actions. (Alternative: keep two and rely on the width budget alone.)
-5. **The tile grid.** Recommend off by default from P4, behind the page view's own setting, until P8
-   shows how it draws on the glasses. (Alternative: remove it.)
-6. **Where "show me the page" opens when the answer cites a part.** Recommend the whole page, with the
-   part one press away. This matches PR 1138's "opens whole". (Alternative: open straight on the part
-   as a readable strip, with **Whole page** one press away. That is quicker for a table, but the
-   tester asked to see the whole page first.)
-7. **The zoom rungs.** Recommend voice only, off the lens's buttons. (Alternative: keep **Zoom in** on
-   the whole page as the third button when there is no cited part.)
+5. **The tile grid.** Recommend off by default from P0 and dropped from the lens's page view once P1's
+   close-up replaces pointing at a ninth of the page. (Alternative: keep it behind a setting until P8
+   shows how it draws.)
+6. **How a cited table opens.** Recommend **Rows** (the table as text cards) when the vault holds the
+   table, with **Picture** one press away; otherwise fit width at the cited row. (Alternative: always
+   the picture at fit width, with **Rows** one press away.)
+7. **Where any other page opens.** Recommend fit width scrolled to the cited part, with **Whole page**
+   one press away. PR 1138's "opens whole" becomes the overview button. (Alternative: the whole page
+   first, as now, with fit width one press away. That adds a press to every look-up.)
 8. **The TestFlight lane.** Recommend building P6 now so the mapping is ready when Inputs becomes
-   stable. Left and right pan, `select` toggles whole page ↔ part, and `back` is never consumed.
-   (Alternative: wait for Meta.)
-9. **Ask Meta.** Recommend filing §8's request once P4 is built, from the owner's account.
-10. **The picture factor until a fit check.** Recommend shipping P0 with 1.4 (the middle of what the
-   photos suggest) and asking the tester for one fit check on that build, then making their reading
-   the default. (Alternative: ship 1 and wait for the reading; the page views stay cut off meanwhile.)
+   stable: left and right for the halves and the next page, and `back` never consumed. (Alternative:
+   wait for Meta.)
+9. **Ask Meta.** Recommend filing §8's request once P1 is built, from the owner's account.
+10. **The picture factor until a fit check.** Recommend 1: single pictures already look right on the
+   tester's glasses, and only rows of pictures misbehave, which P0 removes. The fit check then confirms
+   it or sets a factor. (Alternative: guess a factor from the photos; not worth it, since a wrong one
+   would make every picture smaller than it needs to be.)
 
 ## Tests and checks
 
