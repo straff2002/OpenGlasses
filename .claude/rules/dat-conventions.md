@@ -2,7 +2,7 @@
 description: Swift patterns, async/await, naming conventions, key types for DAT SDK iOS development
 ---
 
-# DAT SDK Conventions (iOS) — v1.0.1 (API as 1.0.0; 1.0.1 had no developer-facing changes)
+# DAT SDK Conventions (iOS) — v1.1.0 (1.0.1 had no developer-facing changes; 1.1.0 is additive, see Error Handling)
 
 ## Architecture
 
@@ -56,7 +56,10 @@ NOT SUBMIT`) before uploading it. The package stays pinned exact in `project.gla
   was asked for, long after its capture fell back to a frame. `PhotoCaptureLedger` matches photos to
   requests oldest first, lets a timer resolve only its own capture, drains a late photo instead of
   handing it to the next capture, and holds a new request (up to 5 s, then a fresh frame) while a
-  photo is still owed. Never resume a photo continuation without the ledger's token.
+  photo is still owed. Never resume a photo continuation without the ledger's token. **Since 1.1.0
+  the SDK gives up at 10 s** (`photoCaptureFailed`, was 30 s): our 8 s timeout still falls back
+  first, and the failure clears the owed photo through `aborted()`. Whether a photo can still land
+  after it is unverified on hardware; one that does is `.unexpected` and dropped.
 
 ## Naming Conventions
 
@@ -215,6 +218,21 @@ Notes from the field:
   `NavigationError` and `DeviceSessionError` are no longer `@frozen` — every switch over them needs
   `@unknown default` (or `default`). `DeviceState`'s memberwise init grew the new fields (all
   defaulted).
+- **1.1.0 (2026-11-20) is additive for us.** `DeviceSessionError.notRegistered`: `createSession`
+  throws it for an app Meta AI has not registered, and unregistering now stops every session —
+  `CameraErrorPolicy` stops retrying with "Connect your glasses first." `RegistrationError
+  .unauthorized`: `startRegistration()` refuses without opening Meta AI — the capsule says Meta
+  hasn't approved the app and the notice carries `notApprovedMessage`. `DeviceSession.pause()` /
+  `resume()` (`started` → `paused` → `started`; a no-op from any other state) are unused so far.
+  `RegistrationRequest.cancelRegistration(returnToMetaAI:)` is unused (we pass no
+  `onRegistrationRequest`). Refused-to-start streams now report `.thermalHot` / `.batteryLow` /
+  `.peakPowerLimit` instead of `.videoStreamingError`, which `CameraErrorPolicy` already stops on.
+  Mock: `MockGlassesServices.setDATAppUpdateRequirementEnabled(_:)` /
+  `setFirmwareUpdateRequirementEnabled(_:)` simulate the update prompts; `MockDeviceTestClient`'s
+  flat methods are deprecated for `.kit`; `MockVoiceInvocationKit.send*` → `simulate*`. Not in the
+  changelog (interfaces diffed): the `WiFiAwarePairing*` types and their handle's
+  `confirm()`/`cancel()` are gone (never used here), and Meta's interfaces now print module
+  selectors (`Swift::String`), which makes a raw diff noisy — normalise `::` to `.` first.
 - `NavigationError` (MWDATCore, the error `openFirmwareUpdate()`/`openDATGlassesAppUpdate()` throw)
   conforms to `DatError` as of 1.0.0. The app has its own `NavigationError` in
   `WalkingRouteService.swift`; within the app module ours shadows the SDK's, so qualify the SDK one
@@ -225,16 +243,18 @@ Notes from the field:
   collapsed into a generic pause.
 - **WiFi transport** is transparent — no app-facing API; the SDK negotiates it.
 - The DAT App Model (DAM) is always enabled as of 0.9.0 — the `MWDAT.DAMEnabled` Info.plist opt-out
-  key is ignored. Crash-reporting opt-out: `MWDAT > CrashReporting > OptOut` (Bool, default `false`).
+  key is ignored. Crash reporting follows `MWDAT > Analytics > OptOut` since 1.1.0; the old
+  `MWDAT > CrashReporting > OptOut` key is ignored from 1.1.0.
 - **Data collection is opt-out, and this app opts out.** `MWDATCore` POSTs `ar_wearables_sdk_*`
   event batches (session, stream, permission, display, crash) to a hard-coded
-  `api2.ar.meta.com/mwsdk/telemetry`. Both `MWDAT > Analytics > OptOut` and
-  `MWDAT > CrashReporting > OptOut` are `YES` in `OpenGlasses/Info.plist` and must stay that way —
-  absent or `NO` means opted **in**. `MetaTelemetryBlock` is the backstop: it registers a
+  `api2.ar.meta.com/mwsdk/telemetry`. `MWDAT > Analytics > OptOut` is `YES` in
+  `OpenGlasses/Info.plist` and must stay that way — absent or `NO` means opted **in**, and since
+  1.1.0 it governs crash reports too. `MWDAT > CrashReporting > OptOut` stays `YES` beside it as a
+  belt (1.1.0 ignores it; the guards still require it). `MetaTelemetryBlock` is the backstop: it registers a
   `URLProtocol` before `Wearables.configure()` that answers that endpoint locally and counts what
   it stopped. Attestation (`/wearables/attestation/challenge`) shares the host and is deliberately
-  **not** blocked — it gates device access. Re-checked against the 1.0.0 binaries: same two URLs,
-  same `ar_wearables_sdk_*` event names, same documented opt-out keys, no bundled privacy manifest. Repeat the
+  **not** blocked — it gates device access. Re-checked against the 1.1.0 binaries (2026-11-21): same
+  two URLs, same `ar_wearables_sdk_*` event names, no bundled privacy manifest. Repeat the
   `strings` diff on every bump.
 - **Telemetry posture for any newly linked SDK: off by default, disclosed by exception, never
   silent.** Before a new third-party dependency ships, review what it sends home by default and

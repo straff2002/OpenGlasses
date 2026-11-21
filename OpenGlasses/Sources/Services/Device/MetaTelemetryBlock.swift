@@ -55,7 +55,9 @@ enum MetaTelemetryBlock {
     /// Pure and dictionary-injected so the Developer panel can assert the *shipped* bundle
     /// really carries them. The keys live at `MWDAT/Analytics/OptOut` and
     /// `MWDAT/CrashReporting/OptOut`, and absent means opted **in** — so a missing key has to
-    /// read as `false` here, never as a benign default.
+    /// read as `false` here, never as a benign default. Since DAT 1.1.0 the Analytics key also
+    /// governs the SDK's crash reporter and the CrashReporting key is ignored; it is still
+    /// required, as a belt that costs nothing.
     static func plistOptOut(in infoDictionary: [String: Any]?) -> (analytics: Bool, crashReporting: Bool) {
         let mwdat = infoDictionary?["MWDAT"] as? [String: Any]
         func optOut(_ section: String) -> Bool {

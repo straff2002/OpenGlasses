@@ -28,6 +28,13 @@ import Foundation
 /// seen up to about 13 s after the request; past the horizon the request is assumed lost, so one
 /// dropped photo cannot hold every later capture to a frame for ever.
 ///
+/// **DAT 1.1.0 gives up at 10 s.** `capturePhoto` now reports `StreamError.photoCaptureFailed`
+/// when no photo arrives within 10 s (30 s before). Our 8 s timeout still falls back first; the
+/// failure then reaches ``aborted()`` through `CameraErrorPolicy.abortsCapture`, which forgets
+/// the owed photo, so a held capture asks again at 10 s instead of waiting out ``holdWait``. A
+/// photo that lands after that is `.unexpected` and dropped. Whether the glasses still deliver
+/// one past 10 s is unverified on hardware.
+///
 /// Pure value type, clock passed in: the backend owns the continuation and the timers, and calls
 /// this for every decision.
 struct PhotoCaptureLedger: Equatable, Sendable {

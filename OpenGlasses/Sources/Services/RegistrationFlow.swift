@@ -116,6 +116,11 @@ enum RegistrationFlow {
         // `@unknown default`, whose copy already says what to do.
         case .configurationInvalid:
             return MWDATConfigCheck.message(for: .ok) ?? "This build's Meta SDK configuration is invalid."
+        case .unauthorized:
+            // DAT 1.1.0: Meta refuses to let this app register at all, before Meta AI opens —
+            // the refusal the callback otherwise reports after a round trip. The capsule gets
+            // this short line; `connect()` posts `notApprovedMessage` as the notice.
+            return String(localized: "Meta hasn't approved \(appName) for glasses yet.")
         case .unknown:
             return String(localized: "Registration failed. Restart the glasses and try again.")
         @unknown default:

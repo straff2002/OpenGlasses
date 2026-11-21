@@ -352,7 +352,11 @@ class GlassesConnectionService: ObservableObject {
             PrivacyLog.device(.glasses, .registrationFailed, error: SafeErrorSummary(error))
             let message = RegistrationFlow.registrationErrorMessage(error)
             connectionStatus = message
-            NoticeCenter.shared.post(message, severity: .error, source: .glasses)
+            // A refusal has a fuller explanation than the capsule can hold (invite-only, or
+            // Developer Mode), so the notice carries it.
+            let notice: String
+            if case .unauthorized = error { notice = RegistrationFlow.notApprovedMessage() } else { notice = message }
+            NoticeCenter.shared.post(notice, severity: .error, source: .glasses)
         }
     }
     #else

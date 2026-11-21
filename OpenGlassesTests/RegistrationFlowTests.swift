@@ -101,7 +101,7 @@ final class RegistrationFlowTests: XCTestCase {
     func testEveryRegistrationMessageFitsTheStatusCapsule() {
         let cases: [RegistrationError] = [
             .alreadyRegistered, .metaAINotInstalled, .networkUnavailable,
-            .configurationInvalid, .unknown
+            .configurationInvalid, .unknown, .unauthorized
         ]
         for error in cases {
             let message = RegistrationFlow.registrationErrorMessage(error)
