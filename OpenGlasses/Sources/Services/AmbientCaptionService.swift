@@ -115,6 +115,20 @@ class AmbientCaptionService: ObservableObject {
     /// so it carries on through one.
     private var sessionRecorder: CaptionSessionRecorder?
 
+    /// Called with the session so far every `checkpointInterval`, when the app goes away and when
+    /// the mode changes, so a crash or a kill keeps what was said; with nil when a checkpoint
+    /// written earlier must go (the switch went off, Medical Compliance mode came on, or the
+    /// session ended with nothing to keep). AppState hands it to `CaptionSessionStore`, which
+    /// writes only under the same switch and never in Medical Compliance mode. Never called while
+    /// sessions are not kept, unless to remove a checkpoint this service caused.
+    var onSessionCheckpoint: ((CaptionSession?) -> Void)?
+
+    static let checkpointInterval: TimeInterval = 30
+
+    private var checkpointTask: Task<Void, Never>?
+    /// What the last checkpoint held, for `CaptionCheckpointPolicy`.
+    private var checkpointState = CaptionCheckpointPolicy.State()
+
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
 
@@ -196,6 +210,8 @@ class AmbientCaptionService: ObservableObject {
         currentCaption = ""
         meetingTranscript.removeAll()
         sessionRecorder = keepsSessions() ? CaptionSessionRecorder(startedAt: Date()) : nil
+        checkpointState = CaptionCheckpointPolicy.State()
+        startCheckpointing()
         startRecognitionSession()
         syncTranscribing()
         PrivacyLog.speech(.ambientCaptions, .started)
@@ -214,12 +230,57 @@ class AmbientCaptionService: ObservableObject {
     }
 
     /// Hand the finished session on, with each diarised line named as the registry names it now.
+    /// Keeping it replaces its checkpoint; with nothing to keep, a checkpoint this session wrote
+    /// is removed.
     private func endSession() {
-        guard let recorder = sessionRecorder else { return }
+        checkpointTask?.cancel()
+        checkpointTask = nil
+        let wroteCheckpoint = checkpointState.onDisk
+        checkpointState = CaptionCheckpointPolicy.State()
+        let recorder = sessionRecorder
         sessionRecorder = nil
         let registry = speakerRegistry
-        if let session = recorder.finish(at: Date(), speakerLabel: { registry.displayLabel(for: $0) }) {
+        if let session = recorder?.finish(at: Date(), speakerLabel: { registry.displayLabel(for: $0) }) {
             onSessionEnded?(session)
+        } else if wroteCheckpoint {
+            onSessionCheckpoint?(nil)
+        }
+    }
+
+    // MARK: - Checkpoint
+
+    private func startCheckpointing() {
+        checkpointTask?.cancel()
+        checkpointTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.checkpointInterval * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                self.checkpointSession()
+            }
+        }
+    }
+
+    /// Write the session so far, if sessions are kept and something new was said since the last
+    /// checkpoint; remove the last checkpoint if sessions are no longer kept. Called on the
+    /// interval, when the app goes to the background, on a presence suspension and on a mode
+    /// change. A no-op when captions are not running a session.
+    func checkpointSession() {
+        let keeps = keepsSessions()
+        if !keeps { sessionRecorder = nil }
+        let action = CaptionCheckpointPolicy.action(
+            keepsSessions: keeps, turns: sessionRecorder?.pending.count ?? 0, state: checkpointState)
+        switch action {
+        case .none:
+            return
+        case .clear:
+            checkpointState = CaptionCheckpointPolicy.State()
+            onSessionCheckpoint?(nil)
+        case .write(let turns):
+            guard let recorder = sessionRecorder, let last = recorder.pending.last else { return }
+            let registry = speakerRegistry
+            let session = recorder.finish(at: last.at, speakerLabel: { registry.displayLabel(for: $0) })
+            checkpointState = CaptionCheckpointPolicy.State(turns: turns, onDisk: true)
+            onSessionCheckpoint?(session)
         }
     }
 
@@ -234,6 +295,8 @@ class AmbientCaptionService: ObservableObject {
         glassesDisplay?.clear()
         syncTranscribing()
         PrivacyLog.speech(.ambientCaptions, .suspended, detail: PrivacyToken("presenceAway"))
+        // Away is when an app is most likely to be killed: keep what was said so far.
+        checkpointSession()
     }
 
     /// Resume a presence-suspended caption stream when the user returns. No-op otherwise.
@@ -261,6 +324,8 @@ class AmbientCaptionService: ObservableObject {
     /// closes deterministically instead of waiting for the next audio buffer. No-op when inactive
     /// or presence-suspended (the suspend path already picks the right backend on resume).
     func reconfigureForModeChange() {
+        // Medical Compliance mode turning on takes the checkpoint with it, at once.
+        if isActive { checkpointSession() }
         guard isActive, !presenceSuspended else { return }
         stopRecognitionSession()
         startRecognitionSession()
@@ -646,5 +711,31 @@ class AmbientCaptionService: ObservableObject {
                 }
             }
         }
+    }
+}
+
+/// When the caption service writes, replaces or removes its in-progress checkpoint (pure).
+enum CaptionCheckpointPolicy {
+
+    /// What the last checkpoint this session wrote held.
+    struct State: Equatable {
+        var turns = 0
+        var onDisk = false
+    }
+
+    enum Action: Equatable {
+        case none
+        /// Write the session so far, `turns` lines long.
+        case write(turns: Int)
+        /// Remove the checkpoint written earlier.
+        case clear
+    }
+
+    /// Sessions not kept: remove a checkpoint this session wrote, otherwise touch nothing.
+    /// Kept: write when there are lines the last checkpoint did not have.
+    static func action(keepsSessions: Bool, turns: Int, state: State) -> Action {
+        guard keepsSessions else { return state.onDisk ? .clear : .none }
+        guard turns > 0, turns != state.turns else { return .none }
+        return .write(turns: turns)
     }
 }
