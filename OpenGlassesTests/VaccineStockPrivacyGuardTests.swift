@@ -71,7 +71,8 @@ final class VaccineStockPrivacyGuardTests: XCTestCase {
                                 "newValue", "openingCounted", "openingUnreliable", "lotID", "wasteReason"])
         let lot = StockLot(id: "l", itemID: "flu", code: "ZZ1001", expiry: nil, firstReceived: Date(), createdBatch: "b")
         XCTAssertEqual(Set(Mirror(reflecting: lot).children.compactMap(\.label)),
-                       ["id", "itemID", "code", "expiry", "firstReceived", "createdBatch"])
+                       ["id", "itemID", "code", "expiry", "firstReceived", "createdBatch", "hidden"],
+                       "a lot's fields are its code, expiry, dates and the count's hidden flag; never free text")
     }
 
     func testTheClinicalDescriptionSaysItIsNotThePatientsRecord() {

@@ -77,7 +77,7 @@ final class VanStockTool: NativeTool {
 
     /// The actions a clinic's list adds (Plan MY §5): a dose given, wasted with its reason, and a
     /// delivery received. `give` and `receive` are `use` and `load` in the clinic's words.
-    static let clinicalActions = ["give", "waste", "receive"]
+    static let clinicalActions = ["give", "waste", "receive", "report"]
 
     var description: String {
         Self.description(for: service.place, system: service.systemName, clinical: service.isClinical)
@@ -184,7 +184,8 @@ final class VanStockTool: NativeTool {
             + "'give' (doses given), 'waste' (doses \(w.wastedVerb); pass 'waste_reason'), 'receive' (a delivery; "
             + "pass 'quantity' in doses or 'cartons'), 'remove' (returned to the supplier or moved elsewhere; pass "
             + "'reason'), 'count' (a stocktake of one \(w.lotNoun): sets its figure and says how it compares), or "
-            + "'undo' (takes back the last entry). Pass 'lot' when \(w.person) says it. When a vaccine has more than "
+            + "'undo' (takes back the last entry), or 'report' (one sentence on doses given, wasted and received, "
+            + "expiring lots and counts; pass 'period': 'today' or 'this_week'). Pass 'lot' when \(w.person) says it. When a vaccine has more than "
             + "one \(w.lotNoun) \(w.location), the result lists them oldest expiry first: ask which, and call again "
             + "with 'lot'. A \(w.lotNoun) that has expired is not recorded as given; the result offers to record it "
             + "as \(w.wastedVerb) instead, and only with \(w.person)'s yes. A scanned carton's code goes in 'code'. "
@@ -202,6 +203,11 @@ final class VanStockTool: NativeTool {
             "description": "What to do."
         ]
         if clinical {
+            properties["period"] = [
+                "type": "string",
+                "enum": VanStockService.ReportPeriod.allCases.map(\.rawValue),
+                "description": "For 'report': today, or this week."
+            ]
             properties["waste_reason"] = [
                 "type": "string",
                 "enum": VanStockMovement.WasteReason.allCases.map(\.rawValue),
@@ -309,6 +315,9 @@ final class VanStockTool: NativeTool {
             return service.waste(lines, reason: reason ?? .other, source: Self.source(lines))
         case "undo":
             return service.undo()
+        case "report" where service.isClinical:
+            let period = (args["period"] as? String).flatMap { VanStockService.ReportPeriod(rawValue: $0.lowercased()) }
+            return service.spokenReport(period ?? .thisWeek)
         case "top_up":
             return service.topUp()
         case "set_standard":

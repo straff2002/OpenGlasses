@@ -107,9 +107,12 @@ struct StockLot: Codable, Equatable, Identifiable, Sendable {
     let firstReceived: Date
     /// The batch that added the lot, so undoing that batch takes it away again.
     let createdBatch: String
+    /// Hidden from the weekly count once it is empty (Plan MY §6). Nil, and not written, for a
+    /// lot nobody hid; a hidden lot with something in it again is counted again.
+    var hidden: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, code, expiry
+        case id, code, expiry, hidden
         case itemID = "item_id"
         case firstReceived = "first_received"
         case createdBatch = "created_batch"

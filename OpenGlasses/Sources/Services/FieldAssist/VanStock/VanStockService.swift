@@ -1219,3 +1219,102 @@ private extension String {
 struct StockWriteRefusal: Error, Equatable {
     let sentence: String
 }
+
+// MARK: - The weekly count and the report (Plan MY §6, §7)
+
+extension VanStockService {
+
+    /// The weekly count's entries: every lot, oldest expiry first within its line.
+    func countRound() -> [StockCountRound.Entry] {
+        guard !store.isUnreadable else { return [] }
+        return StockCountRound.entries(store.log)
+    }
+
+    /// Record a count of several lots (or lines with no lots) as one entry, so one Undo takes the
+    /// whole count back, each compared with what the log held in it just before (Plan MY §6). Nil,
+    /// and nothing recorded, when any figure is not one the line can hold, an entry is no longer in
+    /// the round, or the business's own system holds the count.
+    func recordCounts(_ counts: [(entryID: String, quantity: StockQuantity)]) -> [StockCountRound.Result]? {
+        guard !authority.isSystem, !store.isUnreadable, !counts.isEmpty else { return nil }
+        let round = Dictionary(StockCountRound.entries(store.log).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for count in counts {
+            guard let entry = round[count.entryID], count.quantity >= .zero, count.quantity.isInRange,
+                  count.quantity.fits(entry.item.unit) else { return nil }
+        }
+        lastWrite = nil
+        let at = now()
+        let batch = makeID()
+        var results: [StockCountRound.Result] = []
+        let recorded = store.update { log -> Bool in
+            var working = log
+            for count in counts {
+                guard let entry = round[count.entryID] else { return false }
+                let before = working.level(of: entry.item.id)
+                let check: VanStockCountCheck?
+                if let lot = entry.lot {
+                    check = VanStockCountCheck(before: before.lots[lot.id] ?? StockLotLevel(lotID: lot.id), counted: count.quantity)
+                } else {
+                    check = VanStockCountCheck(before: before, counted: count.quantity)
+                }
+                guard working.record(.counted, itemID: entry.item.id, quantity: count.quantity, at: at, batch: batch,
+                                     source: .typed, id: makeID(), lotID: entry.lot?.id) != nil else { return false }
+                results.append(StockCountRound.Result(entry: entry, counted: count.quantity, check: check))
+            }
+            log = working
+            return true
+        }
+        return recorded == true ? results : nil
+    }
+
+    /// Hide an empty lot from the count (Plan MY §6). False for a lot with something in it, which
+    /// stays listed until it is empty.
+    @discardableResult
+    func hideLot(_ lotID: String) -> Bool {
+        guard !store.isUnreadable, let lot = store.log.lot(id: lotID),
+              (store.log.level(of: lot.itemID).lots[lotID]?.onHand ?? .zero) == .zero else { return false }
+        return store.update { $0.setLot(lotID, hidden: true) } ?? false
+    }
+
+    /// The report for `range` (Plan MY §7), with the latest check against the EMR. Nil while the
+    /// list can't be read.
+    func report(for range: StockReportRange) -> StockPeriodReport? {
+        guard !store.isUnreadable else { return nil }
+        return StockPeriodReport.make(store.log, range: range, now: now(), calendar: calendar, clinical: isClinical,
+                                      emrCheck: ImmunisationCheckSummary.stored())
+    }
+
+    /// The report as a spreadsheet in a temporary folder, for the share sheet; the caller removes
+    /// the folder when the share is done. Nothing is sent by itself.
+    func reportFile(for range: StockReportRange) -> URL? {
+        guard let report = report(for: range) else { return nil }
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stock-report-\(makeID())", isDirectory: true)
+        let url = folder.appendingPathComponent(report.fileName)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try report.spreadsheet(modified: now()).write(to: url, options: [.atomic, .completeFileProtection])
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// The periods the spoken report takes.
+    enum ReportPeriod: String, CaseIterable {
+        case today
+        case thisWeek = "this_week"
+    }
+
+    /// The report's one-sentence summary, for `van_stock`'s `report` action (Plan MY §7).
+    func spokenReport(_ period: ReportPeriod) -> String {
+        guard !store.isUnreadable else { return unreadable }
+        let range: StockReportRange
+        switch period {
+        case .today: range = .today(now: now(), calendar: calendar)
+        case .thisWeek: range = .thisWeek(now: now(), calendar: calendar)
+        }
+        guard let report = report(for: range) else { return unreadable }
+        return report.spokenSummary() + " Read this back as given. To share the full report, the person opens "
+            + "the stock report on the Stock screen; nothing is sent from here."
+    }
+}

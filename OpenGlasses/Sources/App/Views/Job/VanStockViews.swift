@@ -27,6 +27,8 @@ struct VanStockView: View {
     @State private var namingPlace = false
     @State private var confirmingRestore = false
     @State private var scanning = false
+    @State private var counting = false
+    @State private var reporting = false
 
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
 
@@ -122,6 +124,24 @@ struct VanStockView: View {
                     .disabled(store.isUnreadable)
                 }
             }
+            if store.resolvedClinical.clinical {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        counting = true
+                    } label: {
+                        Label("Count the stock…", systemImage: "checklist")
+                    }
+                    .disabled(store.isUnreadable || store.log.isEmpty)
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        reporting = true
+                    } label: {
+                        Label("Stock report…", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .disabled(store.isUnreadable)
+                }
+            }
             ToolbarItem(placement: .secondaryAction) {
                 Button {
                     importing = true
@@ -167,6 +187,12 @@ struct VanStockView: View {
         }
         .sheet(isPresented: $scanning) {
             StockScanSheet(store: store, service: service)
+        }
+        .sheet(isPresented: $counting) {
+            StockCountSheet(store: store, service: service)
+        }
+        .sheet(isPresented: $reporting) {
+            StockReportView(store: store, service: service)
         }
         .confirmationDialog("Go back to the list from before the last takeover?",
                             isPresented: $confirmingRestore, titleVisibility: .visible) {

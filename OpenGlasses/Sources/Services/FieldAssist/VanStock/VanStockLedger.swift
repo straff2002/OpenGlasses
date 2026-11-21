@@ -96,6 +96,17 @@ struct VanStockLog: Codable, Equatable, Sendable {
         return lot
     }
 
+    /// Hide a lot from the weekly count, or show it again (Plan MY §6). False for a lot the list
+    /// does not have, or one already so.
+    @discardableResult
+    mutating func setLot(_ lotID: String, hidden: Bool) -> Bool {
+        guard let index = lots.firstIndex(where: { $0.id == lotID }), (lots[index].hidden ?? false) != hidden else {
+            return false
+        }
+        lots[index].hidden = hidden ? true : nil
+        return true
+    }
+
     var isEmpty: Bool { items.isEmpty }
 
     func item(id: String) -> VanStockItem? { items.first { $0.id == id } }
