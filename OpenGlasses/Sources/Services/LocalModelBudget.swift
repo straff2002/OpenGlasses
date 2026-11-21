@@ -86,6 +86,16 @@ enum LocalModelBudget {
     /// Floor so a tiny/misconfigured window still admits the minimal system + turn prompt.
     static let minimumBudget = 512
 
+    /// The share of the prompt budget tool definitions may take on a downloaded model (Plan MQ P0):
+    /// a quarter, so the lean prompt, the job context and the conversation keep the rest. A 4,096
+    /// window gives 864 tokens — about five compact definitions.
+    static let toolDefinitionShare = 4
+
+    /// Tokens the turn's tool definitions may use together on this model.
+    static func toolDefinitionBudget(for modelId: String?) -> Int {
+        promptBudget(for: modelId) / toolDefinitionShare
+    }
+
     // MARK: - Backend-aware load admission (Plan DZ P0 item 6)
 
     /// Why a load is allowed but constrained.

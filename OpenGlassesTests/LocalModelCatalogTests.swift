@@ -19,6 +19,9 @@ final class LocalModelCatalogTests: XCTestCase {
 
     /// The list exactly as it was hard-coded in `LocalLLMService` before Plan DZ.
     /// Order included — the picker renders this array directly and first-run offers entry zero.
+    /// One deliberate change since (Plan MQ P0): `hasToolCalling` is a claim, and no MLX entry has
+    /// the device evidence a claim needs, so it is false throughout. `hasVision` is what the
+    /// checkpoint is (it loads through the vision factory) and is unchanged.
     private struct PreSeamModel: Equatable {
         let id: String
         let name: String
@@ -35,7 +38,7 @@ final class LocalModelCatalogTests: XCTestCase {
             name: "Gemma 4 E2B (Agent)",
             estimatedSize: "3.6 GB",
             hasVision: true,
-            hasToolCalling: true,
+            hasToolCalling: false,
             notes: "On-device agent — tool calling, 140+ languages, vision. Uses about 4 GB of memory while running.",
             minimumRAMGB: 8),
         PreSeamModel(
@@ -43,7 +46,7 @@ final class LocalModelCatalogTests: XCTestCase {
             name: "Gemma 4 E4B (Agent+)",
             estimatedSize: "5.2 GB",
             hasVision: true,
-            hasToolCalling: true,
+            hasToolCalling: false,
             notes: "Bigger Gemma 4 — tool calling and vision with more room for quality. Needs a high-memory device (12 GB).",
             minimumRAMGB: 12),
         PreSeamModel(
@@ -68,7 +71,7 @@ final class LocalModelCatalogTests: XCTestCase {
             name: "LFM2.5 2.6B (Reasoning)",
             estimatedSize: "1.6 GB",
             hasVision: false,
-            hasToolCalling: true,
+            hasToolCalling: false,
             notes: "Liquid AI hybrid reasoning model — thinks before every answer (expect a "
                 + "pause before speech starts), then answers with tool use and instruction "
                 + "following.",
@@ -78,7 +81,7 @@ final class LocalModelCatalogTests: XCTestCase {
             name: "Qwen 2.5 3B",
             estimatedSize: "1.7 GB",
             hasVision: false,
-            hasToolCalling: true,
+            hasToolCalling: false,
             notes: "General reasoning and tool use.",
             minimumRAMGB: 0),
         PreSeamModel(
@@ -86,7 +89,7 @@ final class LocalModelCatalogTests: XCTestCase {
             name: "Qwen 2.5 0.5B",
             estimatedSize: "0.29 GB",
             hasVision: false,
-            hasToolCalling: true,
+            hasToolCalling: false,
             notes: "Ultra-light, basic capability.",
             minimumRAMGB: 0),
     ]
@@ -162,8 +165,12 @@ final class LocalModelCatalogTests: XCTestCase {
     }
 
     func testVisionIsAssertedNotInferredFromTheName() {
-        // "Video" in the name, vision genuinely declared; "Instruct" in the name, no vision.
-        XCTAssertTrue(LocalModelCatalog.descriptor(
+        // "Video" in the name, vision genuinely declared; "Instruct" in the name, no vision. The
+        // architecture is the asserted set; the descriptor's `.vision` badge waits for device
+        // evidence (Plan MQ P0), so neither descriptor claims it.
+        XCTAssertTrue(LocalLLMService.isVisionCapable(modelId: "mlx-community/SmolVLM2-500M-Video-Instruct-mlx"))
+        XCTAssertFalse(LocalLLMService.isVisionCapable(modelId: "mlx-community/Qwen2.5-3B-Instruct-4bit"))
+        XCTAssertFalse(LocalModelCatalog.descriptor(
             for: LocalModelID("mlx-community/SmolVLM2-500M-Video-Instruct-mlx"))?.supportsVision == true)
         XCTAssertFalse(LocalModelCatalog.descriptor(
             for: LocalModelID("mlx-community/Qwen2.5-3B-Instruct-4bit"))?.supportsVision == true)
@@ -190,7 +197,8 @@ final class LocalModelCatalogTests: XCTestCase {
         let resolved = LocalModelCatalog.resolveDescriptor(
             forLegacyMLXModelID: "mlx-community/Qwen2.5-3B-Instruct-4bit")
         XCTAssertEqual(resolved.displayName, "Qwen 2.5 3B")
-        XCTAssertTrue(resolved.supportsTools)
+        XCTAssertFalse(resolved.supportsTools, "a tool claim needs device evidence (Plan MQ P0)")
+        XCTAssertEqual(resolved, LocalModelCatalog.descriptor(for: resolved.id))
     }
 
     func testRetiredCatalogEntryStillResolves() {

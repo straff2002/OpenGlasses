@@ -1,6 +1,6 @@
 # Plan MP — Apple Intelligence Answers From the Manuals
 
-**Status:** 📝 Drafted 2026-11-20 · nothing built · 9 decisions below, each with a recommendation
+**Status:** 📝 Drafted 2026-11-20 · `ManualReadingCheck` built 2026-11-21 under [Plan MQ](MQ-local-model-tool-harness-and-qualification.md) P0 (`Services/FieldAssist/ManualReadingCheck.swift`, with `ManualReading`); the rest of P0 and P1–P3 not built · 9 decisions below, each with a recommendation
 
 Apple Intelligence is the model a Field Assist technician should be able to use without a key, a
 download or a third-party processor. Today it cannot answer a manual question, by design. This plan
@@ -132,7 +132,7 @@ otherwise.
 - Confirm every row of "What iOS 27 adds" against Apple's documentation and the iOS 27 SDK
   headers; correct this plan where it differs.
 - `AppleManualRoute` (pure) with the table above as tests, including every refusal reason.
-- `ManualReadingCheck` (pure): quote containment, number-and-unit containment, `found == false`,
+- ✅ *(built under MQ P0, 2026-11-21)* `ManualReadingCheck` (pure): quote containment, number-and-unit containment, `found == false`,
   empty quote, quote from a different passage, near-miss numbers (`4.5` vs `45`), unit variants.
 - `ManualPassageFitter` (pure) over an injected token counter: keeps passages in rank order, trims
   the last one at a sentence boundary, reports what it dropped.
