@@ -1,7 +1,13 @@
 # Plan MU — The Lens Read at Work (a page you get around in one move, fuller tiles, sources on their own, fewer buttons, and an answer that stays until you put it away)
 
-**Status:** 📝 Drafted 2026-11-21; nothing built. **All 10 decisions taken 2026-11-21:** 1–8 and 10 as
-recommended (7 is the owner's own suggestion); 9 declined, so §8's request to Meta is not filed.
+**Status:** 🚧 P0 and P1 built headless 2026-11-21 (branch `feat/mu-p0-p1-page-view`): one picture a
+row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
+(Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
+highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
+halves in one strip) or fit width, **Back**, **Rows**, the voice words, three buttons at most; device
+checks owed in P8 (and the fit check's one reading in P0). P2–P8 not started. **All 10 decisions taken
+2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
+request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
 `chore/dat-1-1-0`, adds nothing to the Display). Every picture sent to the lens, the reading view
 (Plan MG §2), the answer card's lifetime (Plan KP §3, MG decision 4) and the page view (Plan KV,

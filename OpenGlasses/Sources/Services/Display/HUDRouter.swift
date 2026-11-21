@@ -25,6 +25,8 @@ final class HUDRouter: ObservableObject {
     /// The page view (Plan KV), whose words (`HUDPageCommand`) this router takes while it is on the
     /// glasses. Set by AppState.
     weak var pageView: LensPageSession?
+    /// Plan MU §0: the lens fit check, whose spoken answer this router takes while its screen is up.
+    weak var fitCheck: LensFitCheckSession?
 
     /// Whether the page view, or its **Show here** cue, is pushed over the HUD (Plan KV §4).
     @Published private(set) var isPresentingPage = false
@@ -130,6 +132,10 @@ final class HUDRouter: ObservableObject {
         // brings the card back, rather than moving the step under it.
         if display.showsVideo, Self.isStopClipCommand(text) {
             display.stopVideo()
+            return true
+        }
+        // Plan MU §0: the fit check's answer ("twelve and three"), only while its screen is up.
+        if let fitCheck, fitCheck.handleVoice(text) {
             return true
         }
         // Plan KV §3: the page view's words, consulted only while the view is on the glasses. A

@@ -66,6 +66,14 @@ final class LensPagePreviewTests: XCTestCase {
         }
     }
 
+    /// Every `.fill` image in a tree, nested boxes included (the whole page is a card, Plan MU §6).
+    private func fillImages(in tree: MWDATDisplay.FlexBox) -> Int {
+        tree.children.reduce(0) { count, child in
+            count + (((child as? MWDATDisplay.Image)?.sizePreset == .fill) ? 1 : 0)
+                + ((child as? MWDATDisplay.FlexBox).map(fillImages) ?? 0)
+        }
+    }
+
     private func buttons(in tree: MWDATDisplay.FlexBox) -> [MWDATDisplay.Button] {
         tree.children.flatMap { child -> [MWDATDisplay.Button] in
             if let group = child as? MWDATDisplay.ButtonGroup { return group.buttons }
@@ -85,14 +93,14 @@ final class LensPagePreviewTests: XCTestCase {
         let frame = try XCTUnwrap(rig.router.previewFrame)
         let shown = try XCTUnwrap(rig.session.shownScreen)
         XCTAssertNotNil(frame.picture, "the picture the lens got")
-        XCTAssertTrue(frame.picture === shown.picture?.image)
+        XCTAssertTrue(frame.picture === shown.block(id: ID.wholePicture)?.picture?.image)
         XCTAssertEqual(frame.itemIDs, shown.items.map(\.id), "the same buttons as the lens")
-        XCTAssertEqual(frame.itemIDs, [ID.zoomIn, ID.backToPart, ID.close], "the whole page, as it opens")
+        XCTAssertEqual(frame.itemIDs, [ID.close], "the whole page, as it opens")
         XCTAssertTrue(frame.isPressable)
 
         // The tree the preview draws: the picture, and the lens's button labels in order.
         let preview = GlassesDisplayService.previewFlexBox(for: frame.screen)
-        XCTAssertTrue(preview.children.contains { ($0 as? MWDATDisplay.Image)?.sizePreset == .fill })
+        XCTAssertEqual(fillImages(in: preview), 1)
         let lens = MetaDisplayBackend().makeScreenView(shown)
         XCTAssertEqual(buttons(in: preview).map(\.label), buttons(in: lens).map(\.label))
     }
@@ -101,14 +109,13 @@ final class LensPagePreviewTests: XCTestCase {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
-        XCTAssertTrue(rig.router.pressFromPreview(ID.backToPart))
+        XCTAssertTrue(rig.router.pressFromPreview(ID.wholePicture), "the picture is pressable there too")
         await drain(rig)
-        XCTAssertEqual(rig.router.previewFrame?.itemIDs, [ID.zoomIn, ID.wholePage, ID.move, ID.close])
-        XCTAssertTrue(rig.router.pressFromPreview(ID.move))
-        await drain(rig)
-        XCTAssertEqual(rig.router.previewFrame?.itemIDs, [ID.up, ID.down, ID.left, ID.right, ID.done],
-                       "the arrow row, as on the lens")
+        XCTAssertEqual(rig.router.previewFrame?.itemIDs, [ID.back, ID.close], "the close-up, as on the lens")
         XCTAssertEqual(rig.router.previewFrame?.itemIDs, rig.session.shownScreen?.items.map(\.id))
+        XCTAssertTrue(rig.router.pressFromPreview(ID.back))
+        await drain(rig)
+        XCTAssertEqual(rig.router.previewFrame?.itemIDs, [ID.close])
     }
 
     // MARK: - Presses
@@ -119,23 +126,23 @@ final class LensPagePreviewTests: XCTestCase {
         await drain(rig)
         let opening = try XCTUnwrap(rig.session.shownState)
 
-        XCTAssertTrue(rig.router.pressFromPreview(ID.zoomIn))
+        XCTAssertTrue(rig.router.pressFromPreview(ID.wholePicture))
         await drain(rig)
-        XCTAssertGreaterThan(try XCTUnwrap(rig.session.shownState).viewport.pixelsPerPoint,
-                             opening.viewport.pixelsPerPoint)
-        XCTAssertEqual(rig.session.stats["metaRayBan"].zooms, 1)
+        XCTAssertNotEqual(try XCTUnwrap(rig.session.shownState), opening)
+        XCTAssertEqual(rig.session.shownState?.view, .closeUp)
+        XCTAssertEqual(rig.session.stats["metaRayBan"].closeUps, 1)
 
         // Through the tree the preview draws: its buttons press the session too.
         let frame = try XCTUnwrap(rig.router.previewFrame)
         let router = rig.router
         let tree = GlassesDisplayService.previewFlexBox(for: frame.screen,
                                                         onSelect: { id in router.pressFromPreview(id) })
-        XCTAssertEqual(frame.itemIDs, [ID.zoomIn, ID.wholePage, ID.move, ID.close], "one rung in")
-        let index = try XCTUnwrap(frame.itemIDs.firstIndex(of: ID.wholePage))
+        XCTAssertEqual(frame.itemIDs, [ID.back, ID.close])
+        let index = try XCTUnwrap(frame.itemIDs.firstIndex(of: ID.back))
         buttons(in: tree)[index].onClick?()
         await drain(rig)
-        XCTAssertTrue(try XCTUnwrap(rig.session.shownState).viewport.isWholePage)
-        XCTAssertEqual(rig.session.stats["metaRayBan"].zooms, 2)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
+        XCTAssertEqual(rig.session.stats["metaRayBan"].backs, 1)
 
         XCTAssertTrue(rig.router.pressFromPreview(ID.close))
         await drain(rig)
@@ -157,7 +164,7 @@ final class LensPagePreviewTests: XCTestCase {
 
     func testOtherScreensStayViewOnly() async {
         let rig = makeRig()
-        XCTAssertFalse(rig.router.pressFromPreview(ID.zoomIn), "no page view")
+        XCTAssertFalse(rig.router.pressFromPreview(ID.wholePicture), "no page view")
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
         XCTAssertFalse(rig.router.pressFromPreview("kv.page.invented"), "an id the frame doesn't have")

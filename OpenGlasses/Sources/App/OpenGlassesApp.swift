@@ -1625,6 +1625,8 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var hudTurnState = HUDTurnState(display: glassesDisplay)
     /// The band check (Plan KP §5): Practise the band, on the lens and the phone page.
     lazy var bandPractice = BandPracticeSession(display: glassesDisplay)
+    /// Plan MU §0: the lens fit check (Display & HUD and the Developer panel).
+    lazy var lensFitCheck = LensFitCheckSession(display: glassesDisplay)
     /// The manual page on the lens (Plan KV): the view, zoomed by band or voice, and the
     /// **Show here** cue for a page the app put up by itself.
     lazy var lensPage = LensPageSession(display: glassesDisplay, router: hudRouter)
@@ -8894,9 +8896,15 @@ class AppState: ObservableObject, AppStateProtocol {
         }
         hudAnswerCard.pageCanOpen = { [weak self] in self?.lensPage.canOpenStaged ?? false }
         hudAnswerCard.openPage = { [weak self] in self?.lensPage.openStaged() }
-        // Plan MG §4: the whole page as tiles to point at, and a zoomed view as a strip the lens
-        // scrolls.
-        lensPage.tilesAndStrips = true
+        // Plan MU §6: the page's table for Rows and the row's words under the whole page, and a
+        // pressed row said aloud the way Repeat says an answer.
+        lensPage.pageTables = { FieldSessionService.shared.lensPageTables(for: $0) }
+        lensPage.speak = { [weak self] text in self?.repeatAnswerCard(text) }
+        // Plan MU §0: the fit check's reading is kept per glasses model, and every picture is sent
+        // shrunk by its factor.
+        LensPictureScale.activeModel = { [weak self] in self?.glassesDisplay.glassesModel }
+        lensFitCheck.router = hudRouter
+        hudRouter.fitCheck = lensFitCheck
     }
 
     private func wireAnswerCard() {

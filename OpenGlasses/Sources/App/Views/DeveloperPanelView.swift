@@ -37,6 +37,20 @@ struct DeveloperPanelView: View {
             SimulatedDisplaySection(appState: appState)
             #endif
 
+            #if !AVENKIN_PHONE_ONLY
+            // Plan MU §0: the lens fit check, also under Display & HUD.
+            OGSection(
+                header: "Lens Pictures",
+                footer: "Shows a ruler and three boxes on the in-lens display to check that pictures fit the lens as drawn. The reading sets how much pictures are shrunk on these glasses."
+            ) {
+                NavigationLink {
+                    LensFitCheckView(session: appState.lensFitCheck)
+                } label: {
+                    Label("Fit check", systemImage: "ruler")
+                }
+            }
+            #endif
+
             OGSection(
                 header: "Field Assist",
                 footer: "During a Field Assist job, only field tools are offered to the model, which cuts cost per request. Turn off to offer every tool."

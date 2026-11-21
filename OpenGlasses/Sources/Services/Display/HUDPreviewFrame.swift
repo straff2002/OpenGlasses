@@ -14,8 +14,9 @@ struct HUDPreviewFrame {
     /// The preview's buttons press the page view (or its cue).
     let isPressable: Bool
 
-    /// The picture the lens was sent, when the screen has one.
-    var picture: UIImage? { screen.picture?.image }
+    /// The picture the lens was sent, when the screen has one: its own, or (Plan MU §6, the whole
+    /// page as a card) its first block's.
+    var picture: UIImage? { screen.picture?.image ?? screen.allBlocks.lazy.compactMap(\.picture).first?.image }
     /// The buttons, by id, in the order the lens shows them.
     var itemIDs: [String] { screen.items.map(\.id) }
     var itemLabels: [String] { screen.items.map(\.label) }

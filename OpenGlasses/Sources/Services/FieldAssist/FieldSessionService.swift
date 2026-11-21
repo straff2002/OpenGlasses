@@ -3298,6 +3298,25 @@ final class FieldSessionService: ObservableObject {
 
     /// The PDF in the vault's read-only baseline that a staged figure's page comes from, or nil
     /// when the document was imported as text (or is no longer installed).
+    /// Plan MU §6: the tables of a staged page's document as `table_lookup` reads them (the vault's
+    /// table checks applied; a pictured table the organisation requires checked and not checked is
+    /// withheld), for the lens's **Rows**. Empty for a photographed manual, and without the store.
+    func lensPageTables(for figure: StagedFigure) -> [ManualTable] {
+        guard let documentStore, !figure.documentId.hasPrefix("captured:") else { return [] }
+        let tables = documentStore.tables(documentId: figure.documentId)
+        guard !tables.isEmpty, Config.fieldAssistActive, let vault = activeVault else { return tables }
+        let vaultId = vault.manifest.id
+        let checks = VaultTableChecks.checks(vaultId: vaultId)
+        let require = Config.organizationRequiresTableChecks
+        guard !checks.isEmpty || require else { return tables }
+        let stored = tables.map {
+            DocumentStore.StoredTable(documentId: figure.documentId, documentName: figure.documentTitle, table: $0)
+        }
+        return VaultTableChecks.applied(stored, checks: checks,
+                                        hashes: VaultTableChecks.documentHashes(VaultImporter.documentLedger(for: vaultId)),
+                                        requireChecked: require).map(\.table)
+    }
+
     func sourcePDFURL(for figure: StagedFigure) -> URL? {
         if !Config.fieldAssistActive {
             return PersonalManualLibrary.shared.sourceURL(for: figure)
@@ -3663,8 +3682,10 @@ final class FieldSessionService: ObservableObject {
             "backend": AnyCodable(line.backend),
         ]
         if let view = line.view { payload["view"] = AnyCodable(view.rawValue) }
-        // A picture's crop and scale; a cue and a reading-mode line (the words) carry neither.
-        if line.event != .cueShown, line.view != .reading {
+        // Plan MU §6: what the page highlighted and why (a reason, never the words).
+        if let highlight = line.highlight { payload["highlight"] = AnyCodable(highlight) }
+        // A picture's crop and scale; a cue, a reading-mode line (the words) and the rows carry neither.
+        if line.event != .cueShown, line.view != .reading, line.view != .rows {
             payload["crop"] = AnyCodable(line.cropText)
             payload["zoom"] = AnyCodable((line.zoom * 100).rounded() / 100)
         }

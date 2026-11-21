@@ -383,6 +383,8 @@ final class GlassesDisplayService: ObservableObject {
     /// Plan KV §6: whether the active backend draws a screen's picture (Meta Display) or only its
     /// text lines (Even G2; the phone-only build).
     var drawsPictures: Bool { testDrawsPicturesOverride ?? activeBackend.drawsPictures }
+    /// Plan MU §0: the connected glasses' model, which the fit check's reading is kept by.
+    var glassesModel: String? { activeBackend.glassesModel }
 
     /// Plan LC §5: whether a vision answer's thumbnail is worth drawing now — the HUD is on, a
     /// display is there and its backend draws pictures. Read before the phone spends a decode on it.

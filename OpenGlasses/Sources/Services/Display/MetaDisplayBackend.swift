@@ -39,6 +39,9 @@ protocol GlassesDisplayBackend: AnyObject {
     /// The size of the last picture sent, in bytes as it went to the transport, for the support
     /// report. Nil when the backend sent none or cannot say.
     var lastPictureBytes: Int? { get }
+    /// Plan MU §0: the connected glasses' model, which the fit check's reading is kept by. Nil when
+    /// the backend cannot say.
+    var glassesModel: String? { get }
 
     /// Plan LC §6: the caption frame (`HUDCaptionBuilder`). The default draws it as a heading (the
     /// speaker) and one body (the rows), which a text-cell backend wraps to its own panel; the Meta
@@ -58,6 +61,7 @@ protocol GlassesDisplayBackend: AnyObject {
 extension GlassesDisplayBackend {
     var drawsPictures: Bool { false }
     var lastPictureBytes: Int? { nil }
+    var glassesModel: String? { nil }
 
     func showCaption(_ caption: HUDCaption) async throws {
         try await showContent(title: caption.speaker, body: HUDCaptionBuilder.body(caption),
@@ -168,6 +172,17 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     /// Plan KV §6: `Image(image:sizePreset: .fill)` above the button row.
     var drawsPictures: Bool { true }
     private(set) var lastPictureBytes: Int?
+    /// Plan MU §0: how much every picture is shrunk before it is sent (`LensPictureScale`): the
+    /// fit check's factor for the glasses on now, 1 until one is taken. A seam for tests.
+    var pictureFactor: @MainActor () -> CGFloat = { LensPictureScale.activeFactor() }
+
+    /// The connected glasses' model (the SDK's device type), for the fit check's reading.
+    var glassesModel: String? {
+        guard testIsAvailable == nil, WearablesBootstrap.ensureConfigured(),
+              let id = deviceSelector.activeDevice,
+              let device = Wearables.shared.deviceForIdentifier(id) else { return nil }
+        return device.deviceType().rawValue
+    }
 
     /// Lazily initialized after `Wearables.configure()` has been called.
     private lazy var deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
@@ -279,7 +294,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // Plan LC §6: a screen replaces a clip; the service already knows it left.
         videoEnded = nil
         let view = makeScreenView(screen)
-        if screen.picture != nil { lastPictureBytes = Self.pictureBytes(in: view) }
+        if screen.hasPictures { lastPictureBytes = Self.pictureBytes(in: view) }
         // Plan LC §2.4: a send that has not come back in `HUDSendDeadline.seconds` has failed.
         try await HUDSendDeadline.run { try await display.send(view) }
     }
@@ -408,6 +423,10 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     /// `onItemSelected`: the phone preview's own presses (Plan KV P3). The lens never passes it.
     func makeScreenView(_ screen: HUDScreen,
                         onSelect: (@MainActor @Sendable (String) -> Void)? = nil) -> FlexBox {
+        // Plan MU §0: never two pictures side by side (real glasses drew a row's first picture
+        // across the whole view and nothing of the rest).
+        let screen = screen.onePictureARow()
+        let factor = pictureFactor()
         // Pre-shape all text and presentation here (MainActor context) so the
         // result-builder closure below never references anything actor-isolated.
         // Each button model carries only Sendable values — never the HUDItem, whose
@@ -432,7 +451,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // Sendable `Image`, never the `UIImage`. It is drawn at the box the frame leaves it
         // (`LensPageFrame.pictureBox`), the column's full width, so `.fill` draws it one lens pixel
         // per image pixel and the lines, the picture and the button row all fit on the lens.
-        let picture = screen.picture.map { Image(image: $0.image, sizePreset: .fill) }
+        let picture = screen.picture.map { Self.lensImage($0, factor: factor) }
         // Plan LC §6: a turn arrow leads its guidance line; everything else draws under the lines.
         let pictureLeads = screen.picture?.placement == .aboveLines
         // Under a button row, room for the focused button's glow (`LensPageFrame`): with the 12 px
@@ -445,8 +464,8 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 if let onSelect { onSelect(id) } else { self?.onItemSelected?(id) }
             }
         }
-        let flowComponents = Self.flowComponents(screen.flow, route: route)
-        let trailingComponents = Self.flowComponents(screen.trailingFlow, route: route)
+        let flowComponents = Self.flowComponents(screen.flow, factor: factor, route: route)
+        let trailingComponents = Self.flowComponents(screen.trailingFlow, factor: factor, route: route)
 
         return FlexBox(
             direction: .column,
@@ -509,7 +528,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     /// `FlexBox`es — on a card (`.background(.card)`, the only way the lens shows focus on a box) or
     /// plain (a strip's seamless slices). One block takes the column's width; several sit in a row
     /// 8 px apart, each at its picture's own size (`.fill` draws one image pixel per lens pixel).
-    private static func flowComponents(_ flow: [HUDFlowElement],
+    private static func flowComponents(_ flow: [HUDFlowElement], factor: CGFloat,
                                        route: @escaping @Sendable (String) -> Void) -> [any ViewComponent] {
         flow.map { element -> any ViewComponent in
             switch element {
@@ -517,7 +536,7 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
                 return Text(HUDTextShaper.condense(line.text), style: line.emphasis.textStyle,
                             color: line.emphasis.textColor)
             case .blocks(let blocks):
-                let boxes = blocks.map { blockComponent($0, stretch: blocks.count == 1, route: route) }
+                let boxes = blocks.map { blockComponent($0, stretch: blocks.count == 1, factor: factor, route: route) }
                 if boxes.count == 1, let only = boxes.first { return only }
                 return FlexBox(direction: .row, spacing: LensPageFrame.tileGapPixels, alignment: .start) {
                     for box in boxes { box }
@@ -526,12 +545,12 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         }
     }
 
-    private static func blockComponent(_ block: HUDBlock, stretch: Bool,
+    private static func blockComponent(_ block: HUDBlock, stretch: Bool, factor: CGFloat,
                                        route: @escaping @Sendable (String) -> Void) -> FlexBox {
         let texts = block.lines.map {
             Text(HUDTextShaper.condense($0.text), style: $0.emphasis.textStyle, color: $0.emphasis.textColor)
         }
-        let image = block.picture.map { Image(image: $0.image, sizePreset: .fill) }
+        let image = block.picture.map { lensImage($0, factor: factor) }
         let card = block.style == .card
         // A text block sits inside the card's padding; a picture tile fills its card, at the size
         // it was drawn for.
@@ -544,6 +563,14 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         if card { box = box.background(.card) }
         let id = block.id
         return box.onTap { route(id) }
+    }
+
+    /// Plan MU §0: the one place a picture becomes the lens's `Image`: shrunk by the glasses'
+    /// picture factor first (`LensPictureScale`), unless it is one the fit check measures with. At
+    /// factor 1 the image goes exactly as drawn.
+    static func lensImage(_ picture: HUDPicture, factor: CGFloat) -> Image {
+        let image = picture.scalesForLens ? LensPictureScale.scaled(picture.image, by: factor) : picture.image
+        return Image(image: image, sizePreset: .fill)
     }
 
     /// Test helper (Plan MG §2): the `onTap` actions of the tappable blocks in `screen`'s rendered

@@ -92,7 +92,7 @@ struct LensPageViewport: Equatable {
         }
     }
 
-    /// Plan MG §4: a press on a tile zooms this many rungs into its centre.
+    /// Plan MG §4: "zoom in on the bottom right" from the whole page zooms this many rungs in.
     static let pointZoomRungs = 2
 
     /// The page, in PDF points.

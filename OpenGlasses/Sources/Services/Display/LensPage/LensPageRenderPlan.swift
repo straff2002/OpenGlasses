@@ -42,6 +42,11 @@ struct LensPageRenderPlan: Equatable {
     static let positionFrameShare: CGFloat = 0.2
     /// Its distance from the output's edges, in pixels.
     static let positionFrameInset: CGFloat = 12
+    /// Plan MU §6: what the rest of the page is drawn at around a highlight: about half brightness,
+    /// so the highlighted part stands out on an additive lens.
+    static let dimLevel: CGFloat = 0.5
+    /// How far the bright area reaches past a highlighted part's outline, in output pixels.
+    static let brightPaddingPixels: CGFloat = 4
 
     let pageSize: CGSize
     /// The crop, in top-down page points (the output's shape; may reach past the page on an axis
@@ -51,6 +56,9 @@ struct LensPageRenderPlan: Equatable {
     let tone: Tone
     let marks: [Mark]
     let positionFrame: PositionFrame?
+    /// Plan MU §6: where the picture keeps full brightness, in output pixels; everything else is
+    /// drawn at `dimLevel`. Nil draws the whole picture at full brightness.
+    let brightRects: [CGRect]?
 
     /// Output pixels per page point.
     var scale: CGFloat { crop.width > 0 ? outputSize.width / crop.width : 0 }
@@ -59,9 +67,11 @@ struct LensPageRenderPlan: Equatable {
     var pageInOutput: CGRect { toOutput(CGRect(origin: .zero, size: pageSize)) }
 
     /// `outputSize` defaults to `defaultOutputWidth` across and the crop's shape.
+    /// `highlight`, when given, is the highlighted part in top-down page points: it is outlined
+    /// (with the marks) and kept bright, and the rest of the picture is dimmed (Plan MU §6).
     init(pageSize: CGSize, crop: CGRect, tone: Tone,
          passageMarks: LensPageMarks? = nil, pictureAreas: [CGRect] = [],
-         showsPosition: Bool, outputSize: CGSize? = nil) {
+         showsPosition: Bool, outputSize: CGSize? = nil, highlight: [CGRect]? = nil) {
         self.pageSize = pageSize
         self.crop = crop.standardized
         let size: CGSize
@@ -90,17 +100,42 @@ struct LensPageRenderPlan: Equatable {
             guard padded.intersects(visible) else { continue }
             placed.append(Mark(rect: Self.toOutput(padded, crop: visible, side: outputWidth), number: nil))
         }
+        // A highlighted part no mark already outlines (a drawing) is outlined too.
+        var bright: [CGRect]?
+        if let highlight {
+            var kept: [CGRect] = []
+            for part in highlight {
+                let padded = part.standardized.insetBy(dx: -Self.markPaddingPoints, dy: -Self.markPaddingPoints)
+                guard padded.intersects(visible) else { continue }
+                let rect = Self.toOutput(padded, crop: visible, side: outputWidth)
+                if !placed.contains(where: { $0.rect == rect }) { placed.append(Mark(rect: rect, number: nil)) }
+                kept.append(rect.insetBy(dx: -Self.brightPaddingPixels, dy: -Self.brightPaddingPixels))
+            }
+            bright = kept.isEmpty ? nil : kept
+        }
         marks = placed
+        brightRects = bright
         positionFrame = showsPosition
             ? Self.positionFrame(pageSize: pageSize, crop: visible, output: size)
             : nil
     }
 
     /// The plan for one viewport of a laid-out page: drawn at the viewport's picture box.
-    init(layout: LensPageLayout, viewport: LensPageViewport) {
+    init(layout: LensPageLayout, viewport: LensPageViewport, highlight: [CGRect]? = nil) {
         self.init(pageSize: layout.pageSize, crop: viewport.cropRect, tone: layout.tone,
                   passageMarks: layout.marks, pictureAreas: layout.pictureAreas,
-                  showsPosition: !viewport.isWholePage, outputSize: viewport.box)
+                  showsPosition: !viewport.isWholePage, outputSize: viewport.box, highlight: highlight)
+    }
+
+    /// Plan MU §6: whether the pixel at (`x`, `y`) of the output keeps full brightness.
+    func isBright(x: CGFloat, y: CGFloat) -> Bool {
+        guard let brightRects else { return true }
+        return brightRects.contains { $0.contains(CGPoint(x: x, y: y)) }
+    }
+
+    /// Plan MU §6: one channel at the dimmed level.
+    static func dimmed(_ value: UInt8) -> UInt8 {
+        UInt8((CGFloat(value) * dimLevel).rounded(.down))
     }
 
     /// A rectangle in top-down page points, in output pixels.

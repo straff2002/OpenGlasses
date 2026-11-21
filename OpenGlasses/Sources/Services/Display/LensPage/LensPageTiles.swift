@@ -2,60 +2,10 @@ import CoreGraphics
 import Foundation
 import UIKit
 
-// Plan MG §4 — the page view, quicker: the whole page as tiles to point at, and a zoomed view as a
-// strip the lens scrolls. Pure geometry here, and the slicing of a drawn picture into pieces.
-
-/// One tile of the whole page: which ninth of the page it shows, as a crop inside the page, and
-/// the size it is drawn at on the lens.
-struct LensPageTile: Equatable {
-    let area: LensPageViewport.Area
-    /// Top-down page points, inside the page.
-    let crop: CGRect
-    /// Lens pixels: `.fill` draws an image one pixel to one lens pixel and never shares a row, so
-    /// a tile is rendered at exactly this size.
-    let drawnSize: CGSize
-
-    var center: CGPoint { CGPoint(x: crop.midX, y: crop.midY) }
-}
-
-/// The whole page as a 3 × 3 grid of tappable tiles (Plan MG §4, decision 7). Each tile is a card
-/// (the only way the lens shows focus on a picture), and a press zooms
-/// `LensPageViewport.pointZoomRungs` rungs into its centre. The grid replaces **Zoom in** on the
-/// whole page.
-///
-/// **Sizes.** Three across with `LensPageFrame.tileGapPixels` between them fill the 576 px column:
-/// 186 px a tile at most (measured on the simulated Display). Three rows with the frame's gaps
-/// between them fit the picture box the frame leaves. A tile keeps its ninth of the page's shape,
-/// so the grid is as large as both limits allow.
-enum LensPageTileGrid {
-    static let rows = 3
-    static let columns = 3
-
-    /// The widest a tile can be: three across, two gaps, the column's width.
-    static var maxTileWidth: CGFloat {
-        ((LensPageFrame.contentWidthPixels - CGFloat(columns - 1) * LensPageFrame.tileGapPixels)
-            / CGFloat(columns)).rounded(.down)
-    }
-
-    /// The nine tiles, row by row, for a page of `pageSize` in a picture box `box`.
-    static func tiles(pageSize: CGSize, box: CGSize) -> [LensPageTile] {
-        let page = CGSize(width: max(pageSize.width, 1), height: max(pageSize.height, 1))
-        let cell = CGSize(width: page.width / CGFloat(columns), height: page.height / CGFloat(rows))
-        let maxHeight = max(1, (box.height - CGFloat(rows - 1) * LensPageFrame.gapPixels) / CGFloat(rows))
-        let scale = min(maxTileWidth / cell.width, maxHeight / cell.height)
-        let drawn = CGSize(width: max(1, (cell.width * scale).rounded(.down)),
-                           height: max(1, (cell.height * scale).rounded(.down)))
-        return LensPageViewport.Area.allCases.map { area in
-            LensPageTile(area: area, crop: area.rect(in: page), drawnSize: drawn)
-        }
-    }
-
-    /// The tile at `row`, `column`, if there is one.
-    static func tile(row: Int, column: Int, pageSize: CGSize, box: CGSize) -> LensPageTile? {
-        guard let area = LensPageViewport.Area(row: row, column: column) else { return nil }
-        return tiles(pageSize: pageSize, box: box).first { $0.area == area }
-    }
-}
+// Plan MG §4 — a zoomed view as a strip the lens scrolls, and the slicing of a drawn picture into
+// pieces. Plan MU §0 dropped MG's 3 × 3 tile grid of the whole page: the glasses drew a row of
+// pictures as its first picture across the whole view (decision 5), and MU §6's close-up replaced
+// pointing at a ninth of the page. The strip and its slices are what the close-up is drawn with.
 
 /// A zoomed view's strip (Plan MG §4): the crop's column of the page from the crop's top down, at
 /// the view's magnification, up to `maxHeightPixels`, cut into `sliceHeightPixels` slices. The
@@ -90,10 +40,17 @@ struct LensPageStrip: Equatable {
         let height = min(Self.maxHeightPixels, (rect.height * ppp).rounded())
         let output = CGSize(width: viewport.box.width.rounded(), height: max(1, height))
         outputSize = output
-        let count = max(1, Int((output.height / Self.sliceHeightPixels).rounded(.up)))
+        slices = Self.slices(of: output)
+    }
+
+    /// A picture `output` in size cut into slices about `sliceHeightPixels` tall, top to bottom,
+    /// in its own pixels (Plan MU §6: each close-up column is cut the same way).
+    static func slices(of output: CGSize) -> [CGRect] {
+        let count = max(1, Int((output.height / sliceHeightPixels).rounded(.up)))
         let sliceHeight = (output.height / CGFloat(count)).rounded(.up)
-        slices = (0..<count).map { index in
+        return (0..<count).compactMap { index in
             let top = CGFloat(index) * sliceHeight
+            guard top < output.height else { return nil }
             return CGRect(x: 0, y: top, width: output.width,
                           height: max(1, min(sliceHeight, output.height - top)))
         }

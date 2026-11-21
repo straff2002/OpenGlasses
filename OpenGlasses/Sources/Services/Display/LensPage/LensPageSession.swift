@@ -29,30 +29,34 @@ import UIKit
 /// **Back to part** goes to are drawn as soon as a page is staged, so the press that opens it (and
 /// the first press on it) doesn't wait for PDFKit.
 ///
-/// **Where it opens.** Every picture opens on the whole page, its controls in sight, with the part
-/// the turn was about — the cited passages' marks, the chosen drawing, the pictured table's area —
-/// kept for **Back to part** (`LensPageLayout.openingViewport`; a tester's build-728 report on a
-/// real Ray-Ban Display, where opening zoomed onto the part showed a corner of the page and left
-/// the buttons to be scrolled to). Reading mode still opens on the passage's words, and its
-/// **Page** still opens the picture on the passage's mark: that is an ask for the part.
+/// **Where it opens** (Plan MU §6, decision 7): always on the whole page, one picture fitted to
+/// the lens, the part the turn was about — the cited passages' marks (a table row), the chosen
+/// drawing, the pictured table's area — outlined in the highlight colour and the rest of the page
+/// at about half brightness (`LensPageHighlight`). Under the picture, the part's own words: the
+/// table row (`LensPageRows`) or the passage's first sentence. Focus opens on the picture, so one
+/// pinch opens the part's **close-up** (`LensPageCloseUp`): both halves of a wide part stacked in
+/// one strip the lens scrolls, then on down the page; a page with nothing highlighted opens at fit
+/// width. **Back** returns to the whole page. With the page's table in the vault, **Rows** shows it
+/// one row a card, the cited row first, and a press says a row aloud. Reading mode is one press
+/// away (**Read it**) on a page with a cited text passage.
 ///
 /// **Drawings (P1b).** Each page's drawings are found from its ink (`PageFigureLocator`, through
 /// `PageFigureAnalysis` and `PageFigureCache`, so a page is analysed once) and one is chosen by
 /// what the turn said (`PageFigureAsk`, read from `requestWords` at `stage`; `PageFigureChoice`).
-/// A turn that asked for a drawing makes it the part, ahead of any cited passage. **Next diagram ›** and
-/// "next diagram" cycle the page's drawings in reading order; "the bottom one" goes to the one a
-/// position names. Both are audited as moves.
+/// A turn that asked for a drawing makes it the highlight, ahead of any cited passage. "Next
+/// diagram" and "the bottom one" (by voice) open the close-up of that drawing and highlight it.
 ///
-/// **Reading mode (§1).** A page opened on a cited text passage (`LensPageLayout.reading`) opens on
-/// the passage's own words as lens text, paged with the backend's geometry (`readingGeometry`), with
-/// **Page** to see the picture (opened on the passage's mark) and, on that picture, **Read it** to
-/// come back. While reading mode is up, "next" and "back" page the text and are taken even with
-/// nowhere to go, so a task card under the view never takes a step it isn't showing.
+/// **Reading mode (§1).** A page with a cited text passage (`LensPageLayout.reading`) offers **Read
+/// it**: the passage's own words as lens text, paged with the backend's geometry
+/// (`readingGeometry`), with **Page** back to the whole page. While reading mode is up, "next" and
+/// "back" page the text and are taken even with nowhere to go, so a task card under the view never
+/// takes a step it isn't showing.
 ///
-/// **What is recorded.** Each view, zoom, move, reading page and close goes to the page audit trail
-/// (`audit`) as the page reference and the crop (reading mode's lines carry none); the support
-/// report counts views, reading views, zooms and moves and times renders and sends. Never the
-/// page's text or pixels.
+/// **What is recorded.** Each view, close-up, zoom, move, rows view, reading page and close goes to
+/// the page audit trail (`audit`) as the page reference, the crop and what was highlighted and why
+/// (reading mode's and the rows' lines carry no crop); the support report counts views, presses
+/// (per view), close-ups, rows, zooms and moves, what was highlighted, the size of every picture
+/// sent and the picture factor, and times renders and sends. Never the page's text or pixels.
 @MainActor
 final class LensPageSession: ObservableObject {
 
@@ -138,13 +142,13 @@ final class LensPageSession: ObservableObject {
     }
     /// Test seam: what "now" is for the render timings.
     var clock: () -> ContinuousClock.Instant = { ContinuousClock.now }
-    /// Plan MG §4: the whole page as tiles to point at (they replace **Zoom in**), and a zoomed
-    /// view as a strip of slices the lens scrolls (so **Move** keeps only ← · → · Done). AppState
-    /// turns it on; off, every view is one picture, as before.
-    var tilesAndStrips = false
-    /// Plan MG §4: how many of the views one press away (`LensPageViewport.neighbours()`) are drawn
-    /// ahead after each frame, most likely first. The cache holds `LensPageRenderCache.capacity`.
-    static let renderAheadLimit = 4
+    /// Plan MU §6: the tables printed in a staged page's document, as `table_lookup` reads them
+    /// (AppState: `FieldSessionService.lensPageTables`), for **Rows** and the row's words.
+    var pageTables: (FieldSessionService.StagedFigure) -> [ManualTable] = { _ in [] }
+    /// Plan MU §6: says a pressed row aloud (AppState: the answer card's Repeat path).
+    var speak: ((String) -> Void)?
+    /// Plan MU §0: the picture factor the Meta backend shrinks pictures by, for the report's sizes.
+    var pictureFactor: @MainActor () -> CGFloat = { LensPictureScale.activeFactor() }
 
     // MARK: State
 
@@ -162,6 +166,10 @@ final class LensPageSession: ObservableObject {
 
     let cache: LensPageRenderCache
     private var layouts: [String: LensPageLayout] = [:]
+    /// Plan MU §6: each laid-out page's table rows (nil: none), read once per page.
+    private var rowsByPage: [String: LensPageRows?] = [:]
+    /// Plan MU §6: presses on the open view, for the report's presses per view.
+    private var viewPresses = 0
     private var layoutTasks: [String: Task<LensPageLayout?, Never>] = [:]
     private var renderTasks: [String: Task<HUDPicture?, Never>] = [:]
     /// Bumped by every open and every press; a frame finished for an older one is not drawn.
@@ -317,7 +325,7 @@ final class LensPageSession: ObservableObject {
                 return
             }
             let state = Self.openingState(layout, page: page, hasNextPage: self.pageIndex + 1 < self.pages.count,
-                                          geometry: self.readingGeometry(), tilesAndStrips: self.tilesAndStrips)
+                                          geometry: self.readingGeometry(), rows: self.rows(for: page))
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request) else {
                 guard opening == self.generation else { return }
                 self.renderFailed(page)
@@ -331,10 +339,13 @@ final class LensPageSession: ObservableObject {
             self.held = .view
             self.shownState = state
             self.shownScreen = screen
+            self.viewPresses = 0
             self.stats.update(self.backend()) { entry in
                 entry.viewsOpened += 1
                 if state.isReading { entry.readingViews += 1 }
+                entry.highlights[state.highlight.reason.rawValue, default: 0] += 1
             }
+            self.noteSent(screen)
             PrivacyLog.device(.hud, .lensPageOpened, state: PrivacyToken(route.rawValue),
                               detail: PrivacyToken(self.backend()))
             self.recordWhenDelivered(.opened, screen: screen, page: page, state: state)
@@ -352,7 +363,7 @@ final class LensPageSession: ObservableObject {
             if let item = shown.items.first(where: { $0.id == id }) {
                 item.action()
             } else {
-                shown.block(id: id)?.action?()   // Plan MG §4: a tile or a slice
+                shown.block(id: id)?.action?()   // Plan MU §6: the whole page's picture, a row
             }
         }
     }
@@ -393,30 +404,47 @@ final class LensPageSession: ObservableObject {
             return
         }
         guard let shown = shownState else { return }
+        viewPresses += 1
+        stats.update(backend()) { $0.presses += 1 }
         var next = shown
         var event: LensPageAuditLine.Event?
         switch action {
+        case .closeUp:
+            guard shown.view == .whole else { return }
+            next = Self.closeUpState(shown)
+            event = .closeUp
+        case .back:
+            guard shown.view != .whole, shown.view != .reading else { return }
+            next = Self.wholeState(shown)
+            event = .whole
+        case .rows:
+            guard shown.rows != nil, shown.view != .rows else { return }
+            next.showsRows = true
+            next.closeUp = nil
+            next.isReading = false
+            event = .rows
+        case .speakRow(let index):
+            guard shown.view == .rows, let rows = shown.rows, rows.rows.indices.contains(index) else { return }
+            speak?(rows.rows[index].spoken)
+            stats.update(backend()) { $0.rowsSpoken += 1 }
+            return
         case .zoomIn:
+            next = Self.leavingCloseUp(shown)
             next.viewport.zoomIn(); event = .zoomed
         case .zoomOut:
+            next = Self.leavingCloseUp(shown)
             next.viewport.zoomOut(); event = .zoomed
         case .wholePage:
-            next.viewport.showWholePage(); event = .zoomed
-        case .backToPart:
-            next.viewport.reset(); event = .zoomed
-        case .move:
-            next.isMoving = true
-        case .doneMoving:
-            next.isMoving = false
+            next = Self.wholeState(shown); event = .whole
         case .step(let step):
+            next = Self.leavingCloseUp(shown)
             next.viewport.move(step); event = .moved
         case .nextPage:
             goToNextPage(issuedAgainst: revision)
             return
         case .nextDiagram:
-            guard let layout = currentLayout, let target = Self.nextDiagram(after: shown, in: layout),
-                  let viewport = layout.viewport(onDrawing: target) else { return }
-            next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
+            guard let layout = currentLayout, let target = Self.nextDiagram(after: shown, in: layout) else { return }
+            next = Self.state(shown, onDrawing: target, layout: layout)
             event = .moved
         case .close:
             close()
@@ -430,27 +458,15 @@ final class LensPageSession: ObservableObject {
             guard shown.isReading, shown.readingIndex > 0 else { return }
             next.readingIndex -= 1; event = .readPage
         case .showPicture:
-            guard shown.isReading, let layout = currentLayout else { return }
-            next = Self.pictureState(shown, layout: layout)
+            guard shown.isReading else { return }
+            next = Self.pictureState(shown)
             event = .picture
         case .readIt:
             guard !shown.isReading, shown.canRead else { return }
             next.isReading = true
-            next.isMoving = false
+            next.showsRows = false
+            next.closeUp = nil
             event = .reading
-        case .tile(let area):
-            guard shown.showsTiles else { return }
-            let tile = LensPageTileGrid.tiles(pageSize: shown.viewport.pageSize, box: shown.viewport.box)
-                .first { $0.area == area }
-            guard let tile else { return }
-            next.viewport.zoom(rungs: LensPageViewport.pointZoomRungs, around: tile.center)
-            event = .zoomed
-        case .slice(let index):
-            guard shown.showsStrip, shown.viewport.canZoomIn,
-                  let center = LensPageStrip(viewport: shown.viewport).center(ofSlice: index) else { return }
-            next.viewport.zoom(rungs: 1, around: center)
-            next.isMoving = false
-            event = .zoomed
         }
         next.isFirstFrame = false
         next = next.framed()
@@ -467,50 +483,42 @@ final class LensPageSession: ObservableObject {
         if shown.isReading { return handleWhileReading(command, shown: shown, revision: revision) }
         switch command {
         case .zoomIn:
-            guard shown.viewport.canZoomIn else { return false }
+            let from = Self.leavingCloseUp(shown)
+            guard from.viewport.canZoomIn else { return false }
             handle(.zoomIn, issuedAgainst: revision)
         case .zoomOut:
-            guard shown.viewport.canZoomOut else { return false }
+            let from = Self.leavingCloseUp(shown)
+            guard from.viewport.canZoomOut else { return false }
             handle(.zoomOut, issuedAgainst: revision)
         case .wholePage:
-            guard !shown.viewport.isWholePage else { return false }
+            guard shown.view != .whole else { return false }
             handle(.wholePage, issuedAgainst: revision)
         case .move(let step):
-            guard shown.viewport.canMove(step) else { return false }
+            guard Self.leavingCloseUp(shown).viewport.canMove(step) else { return false }
             handle(.step(step), issuedAgainst: revision)
         case .corner(let corner):
-            var next = shown
+            var next = Self.leavingCloseUp(shown)
             next.viewport.jump(to: corner)
-            next.isFirstFrame = false
-            next = next.framed()
-            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
-            draw(next, event: .moved, issuedAgainst: revision)
+            return drawSpoken(next, from: shown, event: .moved, revision: revision)
         case .nextPage:
             guard pageIndex + 1 < pages.count else { return false }
             handle(.nextPage, issuedAgainst: revision)
         case .nextDiagram:
-            guard shown.hasNextDiagram, !shown.isMoving else { return false }
+            guard shown.hasNextDiagram else { return false }
             handle(.nextDiagram, issuedAgainst: revision)
         case .diagram(let position):
             // "The bottom one": the drawing that position names, when it names one other than
-            // the one already shown at its opening.
+            // the one already shown.
             guard let layout = currentLayout,
                   let target = PageFigureChoice.index(for: position, in: layout.drawings),
-                  let viewport = layout.viewport(onDrawing: target) else { return false }
-            var next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
-            next.isFirstFrame = false
-            next = next.framed()
-            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
-            draw(next, event: .moved, issuedAgainst: revision)
+                  layout.drawings.indices.contains(target) else { return false }
+            return drawSpoken(Self.state(shown, onDrawing: target, layout: layout), from: shown,
+                              event: .moved, revision: revision)
         case .back:
-            if shown.isMoving {
-                handle(.doneMoving, issuedAgainst: revision)
-            } else if !shown.viewport.isAtPart {
-                // Off the part (the whole page the view opened on, or anywhere since): back to it,
-                // as **Back to part** does.
-                handle(.backToPart, issuedAgainst: revision)
+            if shown.view != .whole {
+                handle(.back, issuedAgainst: revision)     // to the whole page
             } else if shown.canRead {
-                handle(.readIt, issuedAgainst: revision)     // the picture of a passage: back to its words
+                handle(.readIt, issuedAgainst: revision)   // the whole page of a passage: its words
             } else {
                 return false
             }
@@ -523,30 +531,54 @@ final class LensPageSession: ObservableObject {
             // Picture words only in reading mode: "next" here is left to whatever is under the view.
             return false
         case .zoomInto(let area):
-            var next = shown
+            var next = Self.leavingCloseUp(shown)
             next.viewport.zoom(into: area)
-            next.isMoving = false
-            next.isFirstFrame = false
-            next = next.framed()
-            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
-            draw(next, event: .zoomed, issuedAgainst: revision)
-        case .zoomIntoTable, .zoomIntoDiagram:
-            guard let layout = currentLayout else { return false }
+            return drawSpoken(next, from: shown, event: .zoomed, revision: revision)
+        case .zoomIntoTable:
+            guard let layout = currentLayout, let viewport = layout.viewportOnTable() else { return false }
+            var next = Self.leavingCloseUp(shown)
+            next.viewport = viewport
+            return drawSpoken(next, from: shown, event: .zoomed, revision: revision)
+        case .zoomIntoDiagram:
+            guard let layout = currentLayout,
+                  let target = layout.figureIndex ?? (layout.drawings.isEmpty ? nil : 0) else { return false }
+            return drawSpoken(Self.state(shown, onDrawing: target, layout: layout), from: shown,
+                              event: .zoomed, revision: revision)
+        case .closeUp:
+            return drawSpoken(Self.closeUpState(Self.wholeState(shown)), from: shown, event: .closeUp, revision: revision)
+        case .half(let half):
+            var next = shown.view == .closeUp ? shown : Self.closeUpState(Self.wholeState(shown))
+            guard next.closeUp?.hasHalves == true else { return false }
+            next.closeUp?.only = half
+            return drawSpoken(next, from: shown, event: .closeUp, revision: revision)
+        case .bottom:
+            var next = Self.wholeState(shown)
+            next.closeUp = .fitWidth(pageSize: shown.viewport.pageSize, fromBottom: true)
+            return drawSpoken(next, from: shown, event: .closeUp, revision: revision)
+        case .rows:
+            guard shown.rows != nil, shown.view != .rows else { return false }
+            handle(.rows, issuedAgainst: revision)
+        case .showRow(let name):
+            guard let rows = shown.rows, let index = rows.index(matching: name) else { return false }
             var next = shown
-            if command == .zoomIntoTable {
-                guard let viewport = layout.viewportOnTable() else { return false }
-                next.viewport = viewport
-            } else {
-                guard let target = layout.figureIndex ?? (layout.drawings.isEmpty ? nil : 0),
-                      let viewport = layout.viewport(onDrawing: target) else { return false }
-                next = Self.state(shown, onDrawing: target, viewport: viewport, layout: layout)
-            }
-            next.isMoving = false
-            next.isFirstFrame = false
-            next = next.framed()
-            guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
-            draw(next, event: .zoomed, issuedAgainst: revision)
+            next.rows = LensPageRows(title: rows.title, rows: rows.rows, highlighted: index)
+            next.showsRows = true
+            next.closeUp = nil
+            return drawSpoken(next, from: shown, event: .rows, revision: revision)
         }
+        return true
+    }
+
+    /// A spoken word's view, drawn as a press would be: counted as one, never the first frame.
+    private func drawSpoken(_ state: HUDPageViewState, from shown: HUDPageViewState,
+                            event: LensPageAuditLine.Event, revision: UInt64) -> Bool {
+        var next = state
+        next.isFirstFrame = false
+        next = next.framed()
+        guard next != shown, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
+        viewPresses += 1
+        stats.update(backend()) { $0.presses += 1 }
+        draw(next, event: event, issuedAgainst: revision)
         return true
     }
 
@@ -559,14 +591,8 @@ final class LensPageSession: ObservableObject {
             handle(.nextText, issuedAgainst: revision)
         case .back:
             handle(.previousText, issuedAgainst: revision)
-        case .showPage:
+        case .showPage, .wholePage:
             handle(.showPicture, issuedAgainst: revision)
-        case .wholePage:
-            guard let layout = currentLayout, display.acceptsHeldScreenPress(issuedAgainst: revision) else { return false }
-            var next = Self.pictureState(shown, layout: layout)
-            next.viewport.showWholePage()
-            next.isFirstFrame = false
-            draw(next.framed(), event: .picture, issuedAgainst: revision)
         case .readIt:
             break   // already reading
         case .nextPage:
@@ -574,7 +600,8 @@ final class LensPageSession: ObservableObject {
             handle(.nextPage, issuedAgainst: revision)
         case .close:
             close()
-        case .zoomIn, .zoomOut, .move, .corner, .nextDiagram, .diagram, .zoomInto, .zoomIntoTable, .zoomIntoDiagram:
+        case .zoomIn, .zoomOut, .move, .corner, .nextDiagram, .diagram, .zoomInto, .zoomIntoTable, .zoomIntoDiagram,
+             .closeUp, .half, .bottom, .rows, .showRow:
             return false
         }
         return true
@@ -583,54 +610,96 @@ final class LensPageSession: ObservableObject {
     /// The open page's layout, once laid out.
     private var currentLayout: LensPageLayout? { currentPage.flatMap { layouts[$0.layoutKey] } }
 
-    /// The view's first state on a page: the whole page with its part kept for **Back to part**
-    /// (`LensPageLayout.openingViewport`), or the passage's words in reading mode, and its drawings
-    /// for **Next diagram ›**.
+    /// Plan MU §6: the page's table as rows, read once per page from the vault's tables.
+    private func rows(for page: Page) -> LensPageRows? {
+        if let known = rowsByPage[page.layoutKey] { return known }
+        let rows = LensPageRows.make(tables: pageTables(page.staged), page: page.staged.page,
+                                     cited: page.staged.citedPassages, figure: page.staged.figure)
+        rowsByPage[page.layoutKey] = .some(rows)
+        return rows
+    }
+
+    /// The view's first state on a page (Plan MU §6): the whole page, the part the turn was about
+    /// highlighted and its words under the picture, the passage's words one press away (**Read
+    /// it**), the page's table rows one press away (**Rows**), and its drawings for "next diagram".
     static func openingState(_ layout: LensPageLayout, page: Page, hasNextPage: Bool,
                              geometry: TeleprompterPaginator.Geometry = .raybanDisplay,
-                             tilesAndStrips: Bool = false) -> HUDPageViewState {
+                             rows: LensPageRows? = nil) -> HUDPageViewState {
         var state = HUDPageViewState(viewport: layout.openingViewport, legibility: layout.legibility,
                                      citation: citation(for: page.staged), hasNextPage: hasNextPage,
                                      diagramCount: layout.drawings.count, diagramIndex: layout.partDrawing)
-        state.tilesAndStrips = tilesAndStrips
+        state.rows = rows
+        state.highlight = LensPageHighlight.of(layout, cited: page.staged.citedPassages, page: page.staged.page,
+                                               rows: rows)
         if let reading = layout.reading {
             state.readingPages = reading.pages(geometry: geometry)
-            state.isReading = !state.readingPages.isEmpty
         }
         return state.framed()
     }
 
-    /// Reading mode's **Page**: the picture, opened on the mark of the passage the reading page
-    /// shows, fitted exactly. **Back to part** returns there.
-    static func pictureState(_ shown: HUDPageViewState, layout: LensPageLayout) -> HUDPageViewState {
+    /// The whole page from any view: the highlight kept, nothing over it but its words.
+    static func wholeState(_ shown: HUDPageViewState) -> HUDPageViewState {
         var next = shown
-        let number = layout.reading?.passageNumber(atPage: shown.readingIndex, of: shown.readingPages)
-        next.viewport = layout.viewport(onPassage: number)
-        next.legibility = LensLegibility(lineRects: layout.marks?.marks.first { $0.number == number }?.lineRects
-                                         ?? layout.marks?.lineRects ?? [])
+        next.closeUp = nil
+        next.showsRows = false
         next.isReading = false
-        next.isMoving = false
+        next.viewport.showWholePage()
+        return next
+    }
+
+    /// A pinch on the whole page: the highlighted part's close-up, or with no highlight the page at
+    /// fit width from its top.
+    static func closeUpState(_ shown: HUDPageViewState) -> HUDPageViewState {
+        var next = shown
+        next.showsRows = false
+        next.isReading = false
+        let pageSize = shown.viewport.pageSize
+        if let part = shown.highlight.part {
+            // The whole page's zoom in a frame with nothing over the picture, so the close-up is the
+            // same whichever frame it was opened from.
+            next.closeUp = .of(part: part, pageSize: pageSize, legibility: shown.highlight.legibility,
+                               wholePagePixelsPerPoint: LensPageViewport.fitPixelsPerPoint(
+                                   pageSize: pageSize, box: LensPageViewport.plainBox))
+        } else {
+            next.closeUp = .fitWidth(pageSize: pageSize)
+        }
+        return next
+    }
+
+    /// A spoken zoom word from a close-up carries on at the close-up's zoom, as a viewport; from
+    /// the rows, from the whole page.
+    static func leavingCloseUp(_ shown: HUDPageViewState) -> HUDPageViewState {
+        var next = shown
+        if let closeUp = shown.closeUp {
+            next.viewport = closeUp.viewport(box: shown.viewport.box)
+        }
+        next.closeUp = nil
+        next.showsRows = false
+        return next
+    }
+
+    /// Reading mode's **Page**: the whole page, the passage highlighted.
+    static func pictureState(_ shown: HUDPageViewState) -> HUDPageViewState {
+        var next = wholeState(shown)
         next.isFirstFrame = false
         return next.framed()
     }
 
-    /// **Next diagram ›**: the drawing after the one shown, in reading order, round to the first;
-    /// from a view not on a drawing, the one the request chose.
+    /// **Next diagram**: the drawing after the one highlighted, in reading order, round to the
+    /// first; from a view not on a drawing, the one the request chose.
     static func nextDiagram(after shown: HUDPageViewState, in layout: LensPageLayout) -> Int? {
         guard !layout.drawings.isEmpty else { return nil }
         guard let current = shown.diagramIndex else { return layout.figureIndex ?? 0 }
         return (current + 1) % layout.drawings.count
     }
 
-    /// `shown` moved onto drawing `index`: that drawing is now what **Back to part** returns to.
-    static func state(_ shown: HUDPageViewState, onDrawing index: Int, viewport: LensPageViewport,
-                      layout: LensPageLayout) -> HUDPageViewState {
-        var next = shown
-        next.viewport = viewport
+    /// `shown` on drawing `index`: it is highlighted now, and its close-up is up.
+    static func state(_ shown: HUDPageViewState, onDrawing index: Int, layout: LensPageLayout) -> HUDPageViewState {
+        var next = wholeState(shown)
+        next.highlight = .figure(layout.drawings[index], pageSize: layout.pageSize)
         next.legibility = LensPageLayout.legibility(of: layout.drawings[index])
         next.diagramIndex = index
-        next.isMoving = false
-        return next
+        return closeUpState(next)
     }
 
     private func draw(_ next: HUDPageViewState, event: LensPageAuditLine.Event?, issuedAgainst revision: UInt64) {
@@ -649,48 +718,66 @@ final class LensPageSession: ObservableObject {
             }
             self.shownState = next
             self.shownScreen = screen
-            switch event {
-            case .zoomed?: self.stats.update(self.backend()) { $0.zooms += 1 }
-            case .moved?: self.stats.update(self.backend()) { $0.moves += 1 }
-            default: break
-            }
-            switch event {
-            case .reading?: self.stats.update(self.backend()) { $0.readingViews += 1 }
-            case .readPage?: self.stats.update(self.backend()) { $0.readingPages += 1 }
-            default: break
+            self.noteSent(screen)
+            self.stats.update(self.backend()) { entry in
+                switch event {
+                case .zoomed?: entry.zooms += 1
+                case .moved?: entry.moves += 1
+                case .closeUp?:
+                    if next.closeUp?.kind == .fitWidth { entry.fitWidths += 1 } else { entry.closeUps += 1 }
+                case .rows?: entry.rowsViews += 1
+                case .whole?: entry.backs += 1
+                case .reading?: entry.readingViews += 1
+                case .readPage?: entry.readingPages += 1
+                default: break
+                }
             }
             if let event { self.recordWhenDelivered(event, screen: screen, page: page, state: next) }
             self.renderAhead(next, page: page, layout: layout, request: request)
         }
     }
 
-    /// Plan MG §4: draw the pictures of the views one press away while the wearer looks, so the
-    /// press only sends. Off the main actor (the renderer and the slicer run detached); timed into
-    /// the report's render times like any picture.
+    /// The pictures a frame's one press goes to, drawn while the wearer looks, so the press only
+    /// sends: from the whole page, its close-up (or fit width); from anywhere else, the whole page.
     private func renderAhead(_ state: HUDPageViewState, page: Page, layout: LensPageLayout,
                              request: LensPageRequest) {
-        guard tilesAndStrips, !state.isReading else { return }
-        let neighbours = state.viewport.neighbours().prefix(Self.renderAheadLimit)
+        guard state.view != .reading else { return }
+        var ahead = state.view == .whole ? Self.closeUpState(state) : Self.wholeState(state)
+        ahead.isFirstFrame = false
+        let plans = Self.renderPlans(ahead.framed(), layout: layout)
         track { [weak self] in
             guard let self else { return }
-            for viewport in neighbours {
-                var ahead = state
-                ahead.viewport = viewport
-                ahead.isFirstFrame = false
-                ahead.isMoving = false
-                _ = await self.picture(for: Self.renderPlan(ahead.framed(), layout: layout), page: page, request: request)
+            for plan in plans {
+                _ = await self.picture(for: plan, page: page, request: request)
             }
         }
     }
 
-    /// The picture a state draws from: the crop at its box, or for a zoomed view in a strip, the
-    /// crop's column of the page from its top down (`LensPageStrip`).
-    static func renderPlan(_ state: HUDPageViewState, layout: LensPageLayout) -> LensPageRenderPlan {
-        guard state.showsStrip else { return LensPageRenderPlan(layout: layout, viewport: state.viewport) }
-        let strip = LensPageStrip(viewport: state.viewport)
-        return LensPageRenderPlan(pageSize: layout.pageSize, crop: strip.rect, tone: layout.tone,
-                                  passageMarks: layout.marks, pictureAreas: layout.pictureAreas,
-                                  showsPosition: false, outputSize: strip.outputSize)
+    /// The pictures a state draws from, in column order: the whole page at its box (the highlight
+    /// outlined and kept bright, the rest dimmed); each close-up column; or for a spoken zoom, the
+    /// crop's column of the page from its top down (`LensPageStrip`). None for text views.
+    static func renderPlans(_ state: HUDPageViewState, layout: LensPageLayout) -> [LensPageRenderPlan] {
+        switch state.view {
+        case .reading, .rows:
+            return []
+        case .whole:
+            let highlight = state.highlight.isNone ? nil : state.highlight.rects
+            return [LensPageRenderPlan(layout: layout, viewport: state.viewport, highlight: highlight)]
+        case .closeUp:
+            guard let closeUp = state.closeUp else { return [] }
+            let outlined = state.highlight.isNone ? nil : state.highlight.rects
+            return closeUp.shownColumns.map { column in
+                LensPageRenderPlan(pageSize: layout.pageSize, crop: column.rect, tone: layout.tone,
+                                   passageMarks: layout.marks,
+                                   pictureAreas: layout.pictureAreas + (state.highlight.reason == .figure ? outlined ?? [] : []),
+                                   showsPosition: false, outputSize: closeUp.outputSize(of: column.rect))
+            }
+        case .zoomed:
+            let strip = LensPageStrip(viewport: state.viewport)
+            return [LensPageRenderPlan(pageSize: layout.pageSize, crop: strip.rect, tone: layout.tone,
+                                       passageMarks: layout.marks, pictureAreas: layout.pictureAreas,
+                                       showsPosition: false, outputSize: strip.outputSize)]
+        }
     }
 
     private func goToNextPage(issuedAgainst revision: UInt64) {
@@ -706,7 +793,7 @@ final class LensPageSession: ObservableObject {
             guard let self else { return }
             guard let layout = await self.layout(for: page, request: request) else { return }
             let state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count,
-                                          geometry: self.readingGeometry(), tilesAndStrips: self.tilesAndStrips)
+                                          geometry: self.readingGeometry(), rows: self.rows(for: page))
             guard let screen = await self.screen(for: state, page: page, layout: layout, request: request),
                   drawing == self.generation else { return }
             guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
@@ -719,7 +806,9 @@ final class LensPageSession: ObservableObject {
             self.stats.update(self.backend()) { entry in
                 entry.nextPages += 1
                 if state.isReading { entry.readingViews += 1 }
+                entry.highlights[state.highlight.reason.rawValue, default: 0] += 1
             }
+            self.noteSent(screen)
             self.recordWhenDelivered(.nextPage, screen: screen, page: page, state: state)
         }
     }
@@ -737,6 +826,8 @@ final class LensPageSession: ObservableObject {
         if held == .view, let page, wasOnLens {
             PrivacyLog.device(.hud, .lensPageClosed, state: PrivacyToken(route.rawValue))
             record(.closed, page: page, state: state)
+            let presses = viewPresses
+            stats.update(backend()) { $0.pressesPerView.append(presses) }
         }
     }
 
@@ -747,6 +838,7 @@ final class LensPageSession: ObservableObject {
         pages = []
         pageIndex = 0
         layouts = [:]
+        rowsByPage = [:]
         layoutTasks = [:]
         renderTasks = [:]
         cache.removeAll()
@@ -780,31 +872,27 @@ final class LensPageSession: ObservableObject {
 
     // MARK: - Drawing
 
-    /// Lay the page out (once) and draw the opening view, the whole page and the part ahead of the
-    /// press.
+    /// Lay the page out (once) and draw ahead of the first press: the opening whole page (under the
+    /// citation), the whole page on a later frame (what **Back** shows), and what the first pinch
+    /// opens (the close-up, or fit width).
     private func prepare(_ page: Page) {
         guard let request = page.request else { return }
         track { [weak self] in
             guard let self, let layout = await self.layout(for: page, request: request) else { return }
-            // The pictures the first presses want, each in the box its frame leaves: the opening
-            // view (the whole page under the citation; opening on the words, the picture **Page**
-            // shows), the whole page on a later frame, and the part **Back to part** goes to (in
-            // Scroll, drawn as its strip).
-            let opening = Self.openingState(layout, page: page, hasNextPage: false, geometry: self.readingGeometry(),
-                                            tilesAndStrips: self.tilesAndStrips)
-            let first = (opening.isReading ? Self.pictureState(opening, layout: layout) : opening).framed()
+            let first = Self.openingState(layout, page: page, hasNextPage: false, geometry: self.readingGeometry(),
+                                          rows: self.rows(for: page))
             var whole = first
             whole.isFirstFrame = false
-            whole.viewport.showWholePage()
-            var part = first
-            part.isFirstFrame = false
-            part.viewport.reset()
-            var states: [HUDPageViewState] = []
-            for state in [first, whole.framed(), part.framed()] where !states.contains(state) {
-                states.append(state)
+            var closeUp = Self.closeUpState(first)
+            closeUp.isFirstFrame = false
+            var plans: [LensPageRenderPlan] = []
+            for state in [first, whole.framed(), closeUp.framed()] {
+                for plan in Self.renderPlans(state, layout: layout) where !plans.contains(plan) {
+                    plans.append(plan)
+                }
             }
-            for state in states {
-                _ = await self.picture(for: Self.renderPlan(state, layout: layout), page: page, request: request)
+            for plan in plans {
+                _ = await self.picture(for: plan, page: page, request: request)
             }
         }
     }
@@ -850,37 +938,38 @@ final class LensPageSession: ObservableObject {
 
     private func screen(for state: HUDPageViewState, page: Page, layout: LensPageLayout,
                         request: LensPageRequest) async -> HUDScreen? {
-        // Reading mode is text: nothing to draw.
-        if state.isReading { return HUDPageScreenBuilder.screen(state, onAction: onAction) }
-        let plan = Self.renderPlan(state, layout: layout)
-        guard let picture = await picture(for: plan, page: page, request: request) else { return nil }
         var screen = HUDPageScreenBuilder.screen(state, onAction: onAction)
-        if state.showsTiles {
-            // Plan MG §4: the whole page as nine tiles, each cut from the whole page's picture at the
-            // size it is drawn on the lens.
-            let tiles = LensPageTileGrid.tiles(pageSize: layout.pageSize, box: state.viewport.box)
-            let pieces = tiles.map { (source: plan.toOutput($0.crop), size: $0.drawnSize) }
-            let images = await Self.slice(picture.image, plannedSize: plan.outputSize, pieces: pieces)
-            guard images.count == tiles.count else { return nil }
-            let entries = zip(tiles, images).enumerated().map { index, pair in
-                (tile: pair.0, picture: HUDPicture(image: pair.1, pixelSize: pair.0.drawnSize,
-                                                   contentKey: picture.contentKey + "#t\(index)"))
+        let plans = Self.renderPlans(state, layout: layout)
+        switch state.view {
+        case .reading, .rows:
+            // Text: nothing to draw. The rows view opens on its first card, the highlighted row.
+            return screen
+        case .whole:
+            // Plan MU §6: one picture of the whole page, a card the lens opens focused on, so one
+            // pinch reads the highlight closely; its words under it.
+            guard let plan = plans.first, let picture = await picture(for: plan, page: page, request: request) else { return nil }
+            screen.flow = HUDPageScreenBuilder.wholePageFlow(state, picture: picture, onAction: onAction)
+            screen.focusesFirstBlock = true
+            return screen
+        case .closeUp, .zoomed:
+            // Each column of the page in slices under the row (Plan MG §4's strip): a close-up's
+            // halves one after the other, the right half under its marker.
+            let rightHalves = state.closeUp?.shownColumns.map { $0.isRightHalf } ?? [false]
+            var columns: [(pictures: [HUDPicture], isRightHalf: Bool)] = []
+            for (index, plan) in plans.enumerated() {
+                guard let picture = await picture(for: plan, page: page, request: request) else { return nil }
+                let slices = LensPageStrip.slices(of: plan.outputSize)
+                let images = await Self.slice(picture.image, plannedSize: plan.outputSize,
+                                              pieces: slices.map { (source: $0, size: $0.size) })
+                guard images.count == slices.count else { return nil }
+                let pictures = zip(slices, images).enumerated().map { offset, pair in
+                    HUDPicture(image: pair.1, pixelSize: pair.0.size, contentKey: picture.contentKey + "#s\(offset)")
+                }
+                columns.append((pictures, index < rightHalves.count && rightHalves[index]))
             }
-            screen.flow = HUDPageScreenBuilder.tileRows(entries, onAction: onAction)
-        } else if state.showsStrip {
-            // Plan MG §4: a zoomed view as the crop's column of the page, in slices under the row.
-            let strip = LensPageStrip(viewport: state.viewport)
-            let pieces = strip.slices.map { (source: $0, size: $0.size) }
-            let images = await Self.slice(picture.image, plannedSize: plan.outputSize, pieces: pieces)
-            guard images.count == strip.slices.count else { return nil }
-            let slices = zip(strip.slices, images).enumerated().map { index, pair in
-                HUDPicture(image: pair.1, pixelSize: pair.0.size, contentKey: picture.contentKey + "#s\(index)")
-            }
-            screen.trailingFlow = HUDPageScreenBuilder.stripSlices(slices, onAction: onAction)
-        } else {
-            screen.picture = picture
+            screen.trailingFlow = HUDPageScreenBuilder.stripSlices(columns)
+            return screen
         }
-        return screen
     }
 
     /// Cut a drawn picture into pieces, off the main actor.
@@ -903,6 +992,20 @@ final class LensPageSession: ObservableObject {
     }
 
     // MARK: - Records
+
+    /// Plan MU §0: every picture a frame hands the lens, at the size it goes at (its drawn size
+    /// shrunk by the picture factor), for the report.
+    private func noteSent(_ screen: HUDScreen) {
+        let factor = pictureFactor()
+        let pictures = ([screen.picture].compactMap { $0 }) + screen.allBlocks.compactMap(\.picture)
+        guard !pictures.isEmpty else { return }
+        stats.update(backend()) { entry in
+            entry.pictureFactor = Double(factor)
+            entry.pictureSizes += pictures.map {
+                LensPictureScale.sizeText($0.scalesForLens ? LensPictureScale.sentSize($0.pixelSize, factor: factor) : $0.pixelSize)
+            }
+        }
+    }
 
     /// A picture reached the backend (`GlassesDisplayService.onPictureSent`).
     func notePictureSent(bytes: Int?, milliseconds: Int) {
@@ -935,13 +1038,36 @@ final class LensPageSession: ObservableObject {
     /// One audit line: the page reference, and for a picture its crop and scale. A reading-mode
     /// line says so and carries neither — and never the words.
     private func record(_ event: LensPageAuditLine.Event, page: Page, state: HUDPageViewState?) {
-        let picture = state.flatMap { $0.isReading ? nil : $0.viewport }
+        let view: LensPageAuditLine.View? = state.map { state in
+            switch state.view {
+            case .reading: return .reading
+            case .rows: return .rows
+            case .whole, .closeUp, .zoomed: return .picture
+            }
+        }
+        let shown = state.flatMap { Self.shownCrop($0) }
         audit?(LensPageAuditLine(event: event, documentTitle: page.staged.documentTitle, page: page.staged.page,
-                                 figure: page.staged.figure, crop: picture?.cropRect ?? .zero,
-                                 zoom: picture.map { Double($0.scale) } ?? 0,
+                                 figure: page.staged.figure, crop: shown?.crop ?? .zero,
+                                 zoom: shown?.zoom ?? 0,
                                  route: event == .cueShown ? Route.automatic.rawValue : route.rawValue,
-                                 backend: backend(),
-                                 view: state.map { $0.isReading ? .reading : .picture }))
+                                 backend: backend(), view: view,
+                                 highlight: state.map { $0.highlight.reason.rawValue }))
+    }
+
+    /// What a picture view shows of the page, for the audit: the crop (a close-up's columns
+    /// united) and the zoom relative to the whole page. Nil for a text view.
+    static func shownCrop(_ state: HUDPageViewState) -> (crop: CGRect, zoom: Double)? {
+        switch state.view {
+        case .reading, .rows:
+            return nil
+        case .closeUp:
+            guard let closeUp = state.closeUp, let first = closeUp.shownColumns.first?.rect else { return nil }
+            let crop = closeUp.shownColumns.dropFirst().reduce(first) { $0.union($1.rect) }
+            let whole = LensPageViewport.fitPixelsPerPoint(pageSize: closeUp.pageSize, box: state.viewport.box)
+            return (crop, Double(closeUp.pixelsPerPoint / max(whole, 1e-9)))
+        case .whole, .zoomed:
+            return (state.viewport.cropRect, Double(state.viewport.scale))
+        }
     }
 
     // MARK: - Tests

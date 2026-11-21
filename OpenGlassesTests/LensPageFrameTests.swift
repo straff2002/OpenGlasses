@@ -131,9 +131,10 @@ final class LensPageFrameTests: XCTestCase {
             for textHeight in [CGFloat(8), 40] {
                 let state = HUDPageViewState(viewport: whole, legibility: LensLegibility(textHeightPoints: textHeight),
                                              isFirstFrame: first, citation: "p. 3").framed()
+                // The citation over the picture, the hint (or the part's words) under it.
                 let lines = HUDPageScreenBuilder.lines(state)
                 let meta = lines.filter { $0.emphasis == .meta }.count
-                let body = lines.count - meta
+                let body = lines.count - meta + state.lineUnderPicture
                 XCTAssertEqual(state.viewport.box, LensPageFrame.pictureBox(metaLines: meta, bodyLines: body))
                 let content = LensPageFrame.Content(metaLines: meta, bodyLines: body, hasPicture: true)
                 XCTAssertEqual(LensPageFrame.height(content, pictureHeight: state.viewport.box.height), lens,
@@ -143,34 +144,31 @@ final class LensPageFrameTests: XCTestCase {
     }
 
     /// A tester's build-728 report: every picture opens on the whole page under the citation line,
-    /// usually with the hint, and the row in sight. Picture: 12 + 30 + 6 + 38 + 6 + 382 + 6 + 88 +
-    /// 32 = 600. Scroll's tiles: three rows of tiles and their gaps in the same 382 px.
-    func testTheWholePageOpeningFitsTheLensInBothModes() {
+    /// with the hint (or, Plan MU §6, the highlighted part's words, up to two lines) under it and
+    /// the row in sight: 12 + 30 + 6 + 382 + 6 + 38 + 6 + 88 + 32 = 600 with one line under it,
+    /// 338 px of picture with two. One picture, alone in its row (MU §0: no tiles).
+    func testTheWholePageOpeningFitsTheLens() {
         let page = CGSize(width: 612, height: 792)
         let part = LensPageViewport(pageSize: page, center: CGPoint(x: 300, y: 300), pixelsPerPoint: 2)
-        for tiles in [false, true] {
+        for words in [nil, "E7 · Low", "E7 · Low supply voltage · Check the supply"] as [String?] {
             var state = HUDPageViewState(viewport: part.startingOnWholePage(), legibility: LensLegibility(),
                                          citation: "Figure 9 · p. 3", hasNextPage: true, diagramCount: 2,
                                          diagramIndex: 0)
-            state.tilesAndStrips = tiles
+            if let words {
+                state.highlight = LensPageHighlight(reason: .tableRow, rects: [], part: nil,
+                                                    legibility: LensLegibility(), words: words)
+            }
             state = state.framed()
             XCTAssertTrue(state.showsCitation)
-            XCTAssertTrue(state.showsZoomHint)
-            XCTAssertEqual(state.viewport.box, CGSize(width: 576, height: 382))
-            let content = LensPageFrame.Content(metaLines: 1, bodyLines: 1, hasPicture: true, hasButtons: true)
+            XCTAssertEqual(state.showsZoomHint, words == nil)
+            let under = words.map { $0.count > 32 ? 2 : 1 } ?? 1
+            XCTAssertEqual(state.lineUnderPicture, under)
+            XCTAssertEqual(state.viewport.box, CGSize(width: 576, height: under == 1 ? 382 : 338))
+            let content = LensPageFrame.Content(metaLines: 1, bodyLines: under, hasPicture: true, hasButtons: true)
             XCTAssertEqual(LensPageFrame.height(content, pictureHeight: state.viewport.box.height), lens, accuracy: 0.001)
             let row = HUDPageScreenBuilder.items(state, { _ in })
             XCTAssertLessThanOrEqual(row.count, HUDPageScreenBuilder.maxButtons)
-            XCTAssertTrue(row.contains { $0.id == HUDPageScreenBuilder.ItemID.backToPart })
-            XCTAssertEqual(row.last?.id, HUDPageScreenBuilder.ItemID.close)
-            if tiles {
-                for size in [page, CGSize(width: 792, height: 612), CGSize(width: 400, height: 1200)] {
-                    let grid = LensPageTileGrid.tiles(pageSize: size, box: state.viewport.box)
-                    let height = 3 * grid[0].drawnSize.height + 2 * LensPageFrame.gapPixels
-                    XCTAssertLessThanOrEqual(height, state.viewport.box.height, "\(size)")
-                    XCTAssertLessThanOrEqual(LensPageFrame.fixedHeight(content) + height, lens, "\(size)")
-                }
-            }
+            XCTAssertEqual(row.map(\.id), [HUDPageScreenBuilder.ItemID.nextPage, HUDPageScreenBuilder.ItemID.close])
         }
     }
 

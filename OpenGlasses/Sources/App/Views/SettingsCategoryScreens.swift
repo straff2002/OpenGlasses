@@ -248,6 +248,12 @@ struct DisplayHUDSections: View {
             } label: {
                 Label("Practise the band", systemImage: "hand.tap")
             }
+            // Plan MU §0: whether pictures fit the lens as drawn.
+            NavigationLink {
+                LensFitCheckView(session: appState.lensFitCheck)
+            } label: {
+                Label("Fit check", systemImage: "ruler")
+            }
         } header: {
             Text("In-Lens Display")
         } footer: {

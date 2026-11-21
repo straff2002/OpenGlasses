@@ -50,6 +50,32 @@ final class HUDPageCommandTests: XCTestCase {
         XCTAssertNil(HUDPageCommand.parse("next step"))
     }
 
+    /// Plan MU §6: the words that get straight to a part of the page.
+    func testTheWordsThatGetThereDirectly() {
+        XCTAssertEqual(HUDPageCommand.parse("close-up"), .closeUp)
+        XCTAssertEqual(HUDPageCommand.parse("Close up."), .closeUp)
+        XCTAssertEqual(HUDPageCommand.parse("take a closer look"), .closeUp)
+        XCTAssertEqual(HUDPageCommand.parse("right half"), .half(.right))
+        XCTAssertEqual(HUDPageCommand.parse("the left half"), .half(.left))
+        XCTAssertEqual(HUDPageCommand.parse("go to the bottom"), .bottom)
+        XCTAssertEqual(HUDPageCommand.parse("Bottom of the page"), .bottom)
+        XCTAssertEqual(HUDPageCommand.parse("rows"), .rows)
+        XCTAssertEqual(HUDPageCommand.parse("show me the rows"), .rows)
+        XCTAssertEqual(HUDPageCommand.parse("show E7"), .showRow("e7"))
+        XCTAssertEqual(HUDPageCommand.parse("show row E 7"), .showRow("e 7"))
+        XCTAssertEqual(HUDPageCommand.parse("show me E9"), .showRow("e9"))
+        XCTAssertEqual(HUDPageCommand.parse("whole page"), .wholePage, "MG's words stay")
+        XCTAssertEqual(HUDPageCommand.parse("back"), .back)
+        XCTAssertEqual(HUDPageCommand.parse("zoom in on the bottom right"), .zoomInto(.bottomRight))
+        XCTAssertEqual(HUDPageCommand.parse("close"), .close, "close alone is still Close")
+        XCTAssertEqual(HUDPageCommand.parse("the bottom right"), .corner(.bottomRight), "a corner is still a corner")
+        XCTAssertEqual(HUDPageCommand.parse("the bottom one"), .diagram(.bottom))
+        XCTAssertNil(HUDPageCommand.parse("show me the wiring diagram"), "a request")
+        XCTAssertNil(HUDPageCommand.parse("show the fault codes for the outdoor unit"))
+        XCTAssertNil(HUDPageCommand.parse("show me"))
+        XCTAssertNil(HUDPageCommand.parse("close up the panel"))
+    }
+
     func testFillerIsTolerated() {
         XCTAssertEqual(HUDPageCommand.parse("ok, zoom in"), .zoomIn)
         XCTAssertEqual(HUDPageCommand.parse("um, next page please"), .nextPage)

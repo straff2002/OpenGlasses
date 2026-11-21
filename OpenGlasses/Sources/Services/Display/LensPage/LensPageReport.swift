@@ -20,12 +20,20 @@ struct LensPageAuditLine: Equatable {
         case readPage = "read_page"
         /// …or switched to the picture (**Page**).
         case picture
+        /// Plan MU §6: the close-up of the highlighted part, or fit width (a pinch on the page).
+        case closeUp = "close_up"
+        /// Plan MU §6: back to the whole page.
+        case whole
+        /// Plan MU §6: the page's table as rows.
+        case rows
     }
 
     /// What the lens showed: the page's picture, or a cited passage's words as text (reading mode).
     enum View: String, Equatable {
         case picture
         case reading
+        /// Plan MU §6: the page's table as text rows.
+        case rows
     }
 
     let event: Event
@@ -43,9 +51,12 @@ struct LensPageAuditLine: Equatable {
     let backend: String
     /// The picture or the words; nil for a cue.
     var view: View? = nil
+    /// Plan MU §6: what the page highlighted and why (`LensPageHighlight.Reason`: cited_mark,
+    /// table_row, table, figure, none); nil for a cue.
+    var highlight: String? = nil
 
     init(event: Event, documentTitle: String, page: Int, figure: String?, crop: CGRect, zoom: Double,
-         route: String, backend: String, view: View? = nil) {
+         route: String, backend: String, view: View? = nil, highlight: String? = nil) {
         self.event = event
         self.documentTitle = documentTitle
         self.page = page
@@ -55,6 +66,7 @@ struct LensPageAuditLine: Equatable {
         self.route = route
         self.backend = backend
         self.view = view
+        self.highlight = highlight
     }
 
     /// "x,y,w,h", whole page points.
@@ -83,6 +95,22 @@ struct LensPageStats: Equatable {
         var renderMs: [Int] = []
         var sentBytes: [Int] = []
         var sendMs: [Int] = []
+        /// Plan MU §6: every press on the view (the band's, the phone preview's, a page word).
+        var presses = 0
+        /// Presses from a view's opening to its close, one entry a view.
+        var pressesPerView: [Int] = []
+        var closeUps = 0
+        var fitWidths = 0
+        var rowsViews = 0
+        var rowsSpoken = 0
+        /// Back to the whole page.
+        var backs = 0
+        /// What each view opened highlighting (`LensPageHighlight.Reason`), counted.
+        var highlights: [String: Int] = [:]
+        /// Plan MU §0: each picture handed to the lens, at the size it was sent ("576×426").
+        var pictureSizes: [String] = []
+        /// The picture factor the last pictures went at.
+        var pictureFactor: Double = 1
     }
 
     /// Timings kept per backend, newest last.
@@ -100,6 +128,8 @@ struct LensPageStats: Equatable {
         entry.renderMs = Array(entry.renderMs.suffix(Self.keep))
         entry.sentBytes = Array(entry.sentBytes.suffix(Self.keep))
         entry.sendMs = Array(entry.sendMs.suffix(Self.keep))
+        entry.pressesPerView = Array(entry.pressesPerView.suffix(Self.keep))
+        entry.pictureSizes = Array(entry.pictureSizes.suffix(Self.keep))
         byBackend[backend] = entry
     }
 }
@@ -119,6 +149,15 @@ enum LensPageReport {
             lines.append("    Render: " + summary(entry.renderMs, unit: "ms"))
             lines.append("    Sent: " + summary(entry.sentBytes.map { ($0 + 512) / 1024 }, unit: "KB")
                          + "; send time " + summary(entry.sendMs, unit: "ms"))
+            // Plan MU: what each view highlighted and why, how many presses getting around took,
+            // and the pictures' sizes as sent.
+            let highlights = entry.highlights.keys.sorted().map { "\($0) \(entry.highlights[$0] ?? 0)" }
+            lines.append("    Highlighted: " + (highlights.isEmpty ? "none" : highlights.joined(separator: ", ")))
+            lines.append("    Presses: \(entry.presses) (close-ups \(entry.closeUps), fit width \(entry.fitWidths),"
+                         + " back \(entry.backs), rows \(entry.rowsViews), rows spoken \(entry.rowsSpoken));"
+                         + " per view " + summary(entry.pressesPerView, unit: "presses"))
+            lines.append("    Pictures sent: " + LensPictureScale.sizesSummary(entry.pictureSizes)
+                         + "; factor " + LensPictureScale.factorText(CGFloat(entry.pictureFactor)))
         }
         return lines
     }
