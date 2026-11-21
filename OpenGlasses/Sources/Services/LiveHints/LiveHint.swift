@@ -13,6 +13,8 @@ struct LiveHint: Identifiable, Equatable, Sendable {
         case model
         /// Lecture mode's key point.
         case keyPoint
+        /// A procedure step's own words, as its author wrote them (Plan JI §7a, talk-through).
+        case authored
     }
 
     /// A serial within the session: the lens card's number, and the phone list's id.

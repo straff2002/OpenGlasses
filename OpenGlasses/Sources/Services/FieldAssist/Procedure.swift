@@ -107,6 +107,12 @@ struct Procedure: Codable, Equatable, Identifiable {
         /// code. Optional in the schema; absent is a step that behaves exactly as before, and it is
         /// left out when encoding.
         let answer: StepAnswer?
+        /// Plan JI §7a (talk-through): words the procedure's author wants caught when the
+        /// technician says them while talking a job through ("vent to atmosphere"). A match shows
+        /// and speaks this step's `safetyNote` at once. Matched as whole words, case ignored; only
+        /// these author-written phrases ever trigger it. Optional in the schema; absent is none, and
+        /// it is left out when encoding.
+        let cautionPhrases: [String]?
 
         /// Whether completing here needs the technician's confirmation.
         var needsConfirmation: Bool { terminal && requiresConfirmation == true }
@@ -139,6 +145,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             case defaultNext = "default_next"
             case videoURL = "video_url"
             case answer
+            case cautionPhrases = "caution_phrases"
         }
 
         init(
@@ -155,7 +162,8 @@ struct Procedure: Codable, Equatable, Identifiable {
             outcome: String? = nil,
             requiresConfirmation: Bool? = nil,
             videoURL: String? = nil,
-            answer: StepAnswer? = nil
+            answer: StepAnswer? = nil,
+            cautionPhrases: [String]? = nil
         ) {
             self.id = id
             self.title = title
@@ -171,6 +179,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             self.requiresConfirmation = requiresConfirmation
             self.videoURL = videoURL
             self.answer = answer
+            self.cautionPhrases = cautionPhrases
         }
 
         init(from decoder: Decoder) throws {
@@ -189,6 +198,7 @@ struct Procedure: Codable, Equatable, Identifiable {
             requiresConfirmation = try c.decodeIfPresent(Bool.self, forKey: .requiresConfirmation)
             videoURL = try c.decodeIfPresent(String.self, forKey: .videoURL)
             answer = try c.decodeIfPresent(StepAnswer.self, forKey: .answer)
+            cautionPhrases = try c.decodeIfPresent([String].self, forKey: .cautionPhrases)
         }
     }
 

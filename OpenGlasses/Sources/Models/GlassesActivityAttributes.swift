@@ -33,6 +33,12 @@ struct GlassesActivityAttributes: ActivityAttributes {
         /// themselves never go on the activity.
         var liveHintsRunning: Bool? = nil
 
+        /// Talk-through is running on a procedure (Plan JI §7a). It sets `liveHintsRunning` too, so
+        /// the same repeat, skip and stop buttons show; this only changes the status line. Optional
+        /// so a state encoded by an earlier build still decodes; nil reads as not running. Nothing
+        /// of the job or the narration goes on the activity.
+        var talkThroughRunning: Bool? = nil
+
         struct PersonaButton: Codable, Hashable {
             var id: String
             var name: String

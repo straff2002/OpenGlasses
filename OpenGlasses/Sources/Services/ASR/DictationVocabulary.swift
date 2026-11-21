@@ -47,6 +47,9 @@ struct DictationVocabulary: Equatable, Sendable {
         /// The titles of the documents a live-hints session searches (Plan MO §8). Titles only:
         /// never the names a document mentions, which are about people, not the work.
         var documentTitles: [String]
+        /// A talk-through session's procedure words (Plan JI §7a): its step titles and the names
+        /// in its calculations. Right after a session's keywords: they are what the narration names.
+        var procedureWords: [String]
 
         init(activeEquipment: EquipmentIdentity? = nil,
              jobEquipment: [KnownEquipment] = [],
@@ -55,7 +58,8 @@ struct DictationVocabulary: Equatable, Sendable {
              wakePhrases: [String] = [],
              trades: [FieldTrade] = [],
              keywords: [String] = [],
-             documentTitles: [String] = []) {
+             documentTitles: [String] = [],
+             procedureWords: [String] = []) {
             self.activeEquipment = activeEquipment
             self.jobEquipment = jobEquipment
             self.vanStock = vanStock
@@ -64,6 +68,7 @@ struct DictationVocabulary: Equatable, Sendable {
             self.trades = trades
             self.keywords = keywords
             self.documentTitles = documentTitles
+            self.procedureWords = procedureWords
         }
     }
 
@@ -74,12 +79,13 @@ struct DictationVocabulary: Equatable, Sendable {
         phrases = Self.build(input)
     }
 
-    /// Order: a live-hints session's keywords, active equipment, job equipment, van stock, vault
+    /// Order: a live-hints session's keywords, a talk-through session's procedure words, active
+    /// equipment, job equipment, van stock, vault
     /// titles, the session's document titles, wake phrases, glossary. Trimmed, single characters
     /// and over-long entries dropped, de-duplicated case-insensitively keeping the first spelling,
     /// then capped.
     static func build(_ input: Input) -> [String] {
-        var candidates: [String] = input.keywords
+        var candidates: [String] = input.keywords + input.procedureWords
 
         if let equipment = input.activeEquipment {
             if let stated = equipment.statedModel { candidates.append(stated) }

@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: 5ecb17bd957bfdc3f525a76ac2724149e5a89ab7fc3688d76d23e87176ec84d0 -->
+     source-sha256: 66c7281fa1b7c575ca90cbe68b38888c7fdbb377c52d4b7da0e16d68d5c17c58 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -422,6 +422,21 @@ is the honest answer.</p>
   ]
 }
 </code></pre>
+<h3 id="talking-a-job-through-and-words-to-catch">Talking a job through, and words to catch</h3>
+<p>On the phone's step screen, <strong>Talk me through it</strong> lets the technician say out loud what they are doing as they work ("isolating the unit… meter on… reading zero"). The app works out which step they are on from what they say and asks before moving: <em>"Sounds like you're on Test for dead?"</em>. A yes (a tap on the glasses, the button, or the word) moves on exactly as <em>next</em> does; a step it hears them skip that asks for a reading or a confirmation gets <em>"skipped it, or did it differently?"</em>, and nothing is blocked. It works offline, and nothing about where the technician was is kept or sent.</p>
+<p>The hint it shows for each step is yours, never a model's: the step's <code>safety_note</code>, then its <code>expected_input</code>, then its <code>calc_ref</code> <code>hint</code>, in that order and only what the step has. On the lens that is two lines under the step's title; in the ear, the first of them in a few words. Write them the way you would want them read at a glance. A step with none of them gets no hint.</p>
+<p>A step can also list <strong><code>caution_phrases</code></strong>: words that, if the technician says them while talking the job through, bring up the step's <code>safety_note</code> at once, on the lens and in the ear, whatever they are in the middle of saying. Only your phrases do this: the app never decides on its own that what someone says is dangerous.</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;test_dead&quot;,
+  &quot;title&quot;: &quot;Test for dead&quot;,
+  &quot;instruction&quot;: &quot;Lock out the disconnect, then test each terminal to ground with the meter.&quot;,
+  &quot;expected_input&quot;: &quot;zero volts on every terminal&quot;,
+  &quot;safety_note&quot;: &quot;Prove the meter on a known live source before and after the test.&quot;,
+  &quot;caution_phrases&quot;: [&quot;still live&quot;, &quot;skip the lockout&quot;, &quot;leave it on&quot;],
+  &quot;default_next&quot;: &quot;remove_cover&quot;
+}
+</code></pre>
+<p>A phrase matches as whole words with case ignored: "skip the lockout" matches <em>"I'll just skip the lockout"</em> but not <em>"skipping the lockouts"</em>. Keep each phrase to the few words someone would actually say, and give the step a <code>safety_note</code>, because a phrase with no note to show does nothing. An app that doesn't know the field ignores it, and the procedure runs as before.</p>
 <h3 id="answers-and-routes-the-app-decides">Answers and routes the app decides</h3>
 <p>The procedure above needs the assistant at every branch: it hears "bubbling" and picks the branch whose <code>condition</code> matches. For a fixed check (a start-of-shift check, a sanitation round, a pass/fail quality step) the app can do that itself. Give a step a typed <strong><code>answer</code></strong>, and give every branch on it a <strong><code>when</code></strong> rule that reads the answer. The app then records the value, checks it, and takes the route, with no assistant at all. The phone runs the procedure offline, and the record says the rule decided.</p>
 <pre><code class="language-json">{

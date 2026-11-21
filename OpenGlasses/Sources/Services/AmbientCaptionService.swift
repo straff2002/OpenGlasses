@@ -128,6 +128,13 @@ class AmbientCaptionService: ObservableObject {
     /// every recognition (re)start, so a change applies from the next request. Empty by default.
     var sessionContextualStrings: [String] = []
 
+    /// Plan JI §7a: the session's captions must be recognised on the phone (a talk-through session
+    /// on a job sealed to its vault, in Medical Compliance mode, Medical Local Only or a Private
+    /// Conversation). While set, the plain recogniser is asked to stay on the device, and the
+    /// translated and diarized paths, which send audio to a server, are not taken. Read at every
+    /// recognition (re)start; set for the session and lifted at its stop. False by default.
+    var sessionRequiresOnDeviceRecognition = false
+
     /// The id every caption path registers its mic consumer under.
     static let audioConsumerId = "ambient_captions"
 
@@ -268,7 +275,7 @@ class AmbientCaptionService: ObservableObject {
         // route on-device, else cloud (`TranslationTierPolicy`). Takes precedence over
         // diarization (whether the two compose is an open BY decision, deferred with the
         // speaker-chip rail). An unavailable tier falls through to plain transcription.
-        if Config.translationCaptionsEnabled, startTranslationSession() {
+        if Config.translationCaptionsEnabled, !sessionRequiresOnDeviceRecognition, startTranslationSession() {
             onTranslationSessionStarted?()
             return
         }
@@ -276,7 +283,7 @@ class AmbientCaptionService: ObservableObject {
         // Diarized path (opt-in, keyed, non-HIPAA): label captions with speaker chips via
         // Deepgram. When off/unconfigured this is skipped entirely and the on-device
         // SFSpeechRecognizer path below runs exactly as before.
-        if Config.isDiarizationConfigured {
+        if Config.isDiarizationConfigured, !sessionRequiresOnDeviceRecognition {
             startDiarizedSession()
             return
         }
@@ -286,6 +293,9 @@ class AmbientCaptionService: ObservableObject {
         request.addsPunctuation = true
         if !sessionContextualStrings.isEmpty {
             request.contextualStrings = sessionContextualStrings
+        }
+        if sessionRequiresOnDeviceRecognition, recognizer?.supportsOnDeviceRecognition == true {
+            request.requiresOnDeviceRecognition = true
         }
         self.recognitionRequest = request
 
