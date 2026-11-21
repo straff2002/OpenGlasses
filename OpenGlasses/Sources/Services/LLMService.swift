@@ -505,7 +505,8 @@ class LLMService: ObservableObject {
         var prompt = await buildSystemPrompt(
             locationContext: locationContext, includeTools: false, includeOpenClaw: false,
             hasImage: hasImage, memoryContext: memoryContext, turn: turn,
-            compactMemoryRules: true, compactSpokenManners: true, localJobTier: tier, device: device).combined
+            compactMemoryRules: true, compactSpokenManners: true, localJobTier: tier, compactHead: true,
+            device: device).combined
         if let weatherContext {
             prompt += "\n\nCURRENT WEATHER (fetched just now — answer from this; do NOT call get_weather and do NOT say you will check): \(weatherContext)"
         }
@@ -684,11 +685,16 @@ class LLMService: ObservableObject {
     /// location, skills, job and manual context, …) — so a route that can place the tail after the
     /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
     /// single string, head first.
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, compactSpokenManners: Bool = false, localJobTier: LocalJobTier? = nil, device: AssistantIdentity.Device) async -> PromptLayout {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, compactSpokenManners: Bool = false, localJobTier: LocalJobTier? = nil, compactHead: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
             prompt = agentContext
+        } else if compactHead {
+            // Plan MQ P1: a downloaded model's persona — the shipped prompt's short form, or the
+            // wearer's own — without a camera section on a turn that has no photo.
+            prompt = Config.onDeviceSystemPrompt(device: device)
+            if !hasImage { prompt = AppleOnDeviceInstructions.personaWithoutCamera(prompt) }
         } else {
             prompt = Config.systemPrompt(device: device)
         }
@@ -713,7 +719,19 @@ class LLMService: ObservableObject {
         }
 
         // Ensure vision awareness is always present, even if user has a custom system prompt
-        if shouldInclude(.vision) && !prompt.lowercased().contains("vision") && !prompt.lowercased().contains("camera") {
+        if compactHead {
+            // Plan MQ P1: the full camera rules ride a photo turn; any other turn gets one line.
+            if hasImage, !prompt.contains("VISION & CAMERA:") {
+                prompt += """
+
+
+                VISION & CAMERA:
+                \(Config.visionAndCameraRules)
+                """
+            } else if !hasImage {
+                prompt += "\n\n" + SystemPromptBuilder.onDeviceCameraLine
+            }
+        } else if shouldInclude(.vision) && !prompt.lowercased().contains("vision") && !prompt.lowercased().contains("camera") {
             prompt += """
 
             VISION & CAMERA:
@@ -725,8 +743,10 @@ class LLMService: ObservableObject {
 
         // Where the assistant's own settings live. Unconditional and in the stable head: a question
         // about the app matches no classifier section, and the text never changes turn to turn.
-        prompt += "\n\n" + SystemPromptBuilder.appGuide(appName: RegistrationFlow.appName)
-        closeBlock("app guide")
+        prompt += "\n\n" + (compactHead
+            ? SystemPromptBuilder.onDeviceAppGuide(appName: RegistrationFlow.appName)
+            : SystemPromptBuilder.appGuide(appName: RegistrationFlow.appName))
+        closeBlock(compactHead ? "app guide (on-device)" : "app guide")
         // How a spoken reply is shaped, beside the app guide so a preset the user wrote carries it
         // too. Stable: its one variable, the reply-language line, moves only with the voice setting.
         let replyLanguage = ReplyLanguagePolicy.clause(for: ReplyLanguagePolicy.directModeVoice())
@@ -963,12 +983,15 @@ class LLMService: ObservableObject {
         }
         closeBlock("follow-ups")
         // Always append the prompt-injection / untrusted-content policy. This is a security
-        // baseline — it is never stripped by the classifier and applies in every mode.
-        prompt += PromptInjectionPolicy.systemPromptPolicy
-        closeBlock("safety policy")
+        // baseline — it is never stripped by the classifier and applies in every mode. A
+        // downloaded model gets its short form, which keeps every rule (Plan MQ P1).
+        let safetyPolicy = compactHead
+            ? "\n\n" + PromptInjectionPolicy.onDeviceSystemPromptPolicy
+            : PromptInjectionPolicy.systemPromptPolicy
+        prompt += safetyPolicy
+        closeBlock(compactHead ? "safety policy (on-device)" : "safety policy")
         TurnRecorder.notePromptBlocks(blocks)
-        return PromptLayout.split(prompt, stableHeadBytes: stableHeadBytes,
-                                  trailingStable: PromptInjectionPolicy.systemPromptPolicy)
+        return PromptLayout.split(prompt, stableHeadBytes: stableHeadBytes, trailingStable: safetyPolicy)
     }
 
     /// Frame a tool result before feeding it back to the model. Output from tools that return
