@@ -106,7 +106,7 @@ enum SystemPromptBuilder {
     static let onDeviceCameraLine = "CAMERA: \(Config.cameraSentence) When the user asks you to look at, read or "
         + "identify something, a photo is captured and sent to you with that turn; never say you lack camera access."
 
-    static let visionWordingLine ="Talk about what the user is looking at, never \"the image\" or \"the photo\"."
+    static let visionWordingLine = "Talk about what the user is looking at, never \"the image\" or \"the photo\"."
 
     /// When a cluttered view leaves the subject unclear: one specific guess, not an inventory.
     static let visionAmbiguityLine = "When it isn't clear what they mean, say so and give one specific guess "
