@@ -115,6 +115,11 @@ struct HUDPicture {
         case aboveLines
     }
     var placement: Placement = .belowLines
+
+    /// Plan MU §0: the picture is shrunk by the glasses' picture factor (`LensPictureScale`) before
+    /// it is sent to the Meta Display. Only the fit check's own pictures, which measure the glasses,
+    /// go as drawn.
+    var scalesForLens = true
 }
 
 /// Plan LC §6: a clip a Field Assist step points at, as the lens can play it — an HTTPS MP4 the
@@ -293,6 +298,29 @@ struct HUDScreen {
     /// buttons) the trailing flow's — for a backend that draws text only (Even, the web mirror).
     var linesBeforeItems: [HUDLine] { lines + flow.flatMap(\.lines) }
     var linesAfterItems: [HUDLine] { trailingFlow.flatMap(\.lines) }
+
+    /// Plan MU §0: no row on the Meta Display holds two pictures side by side (on real glasses the
+    /// first picture of a row took the whole width and the rest went unseen). Any row of blocks
+    /// with more than one picture is split into one row a block, top to bottom, so every picture is
+    /// still drawn and still pressable. A screen with no such row comes back as it is.
+    func onePictureARow() -> HUDScreen {
+        func split(_ elements: [HUDFlowElement]) -> [HUDFlowElement] {
+            elements.flatMap { element -> [HUDFlowElement] in
+                guard case .blocks(let blocks) = element,
+                      blocks.filter({ $0.picture != nil }).count > 1 else { return [element] }
+                return blocks.map { .blocks([$0]) }
+            }
+        }
+        var copy = self
+        copy.flow = split(flow)
+        copy.trailingFlow = split(trailingFlow)
+        return copy
+    }
+
+    /// Whether any row of the screen puts two pictures side by side.
+    var hasPicturesSideBySide: Bool {
+        (flow + trailingFlow).contains { $0.blocks.filter { $0.picture != nil }.count > 1 }
+    }
 
     /// Whether anything on the screen is a picture: its own, or a block's.
     var hasPictures: Bool { picture != nil || allBlocks.contains { $0.picture != nil } }

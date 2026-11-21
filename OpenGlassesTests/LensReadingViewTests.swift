@@ -52,14 +52,17 @@ final class LensReadingViewTests: XCTestCase {
     // MARK: - Rows
 
     func testEachParagraphIsARowAndALongOneIsSplitAtASentence() {
+        // Plan MU §1: past eight lines (it was four), so twice as long as MG's fixture.
         let long = "The nameplate says MOCP 30 A. So use a 30 A double-pole breaker on the condenser circuit. "
-            + "Wire it with 10 AWG copper. Check the disconnect is rated for it too. Torque the lugs to spec."
+            + "Wire it with 10 AWG copper. Check the disconnect is rated for it too. Torque the lugs to spec. "
+            + "Then label the panel schedule. Restore power at the disconnect last. Check the unit starts and "
+            + "the fan turns. Write the readings on the job sheet before you leave the roof."
         let text = "First, isolate the unit.\n\n\(long)\nDone."
         let rows = HUDReadingRows.rows(for: text, maxChars: chars)
         XCTAssertEqual(rows.first?.lines, ["First, isolate the unit."])
         XCTAssertEqual(rows.last?.lines, ["Done."])
         let middle = rows.filter { $0.paragraph == 1 }
-        XCTAssertGreaterThan(middle.count, 1, "a paragraph past four lines is split")
+        XCTAssertGreaterThan(middle.count, 1, "a paragraph past eight lines is split")
         XCTAssertTrue(middle.allSatisfy { $0.lines.count <= HUDReadingRows.rowMaxLines })
         XCTAssertTrue(middle[0].startsParagraph)
         XCTAssertFalse(middle[1].startsParagraph)
@@ -139,25 +142,28 @@ final class LensReadingViewTests: XCTestCase {
         XCTAssertNil(screen.resolvedFocusItemID, "no button takes focus, so the lens opens at the top")
     }
 
-    func testAnEarlierTurnIsItsQuestionAndFirstTwoLines() {
+    // Plan MU §5 changed MG's two lines to three.
+    func testAnEarlierTurnIsItsQuestionAndFirstThreeLines() {
         let answer = String(repeating: "word ", count: 40).trimmingCharacters(in: .whitespaces)
         let lines = HUDReadingViewBuilder.collapsedLines(for: turn(2, question: "You: refrigerant charge", answer: answer),
                                                          maxChars: chars)
-        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines.count, 4)
         XCTAssertEqual(lines[0].text, "You: refrigerant charge")
         XCTAssertEqual(lines[0].emphasis, .meta)
-        XCTAssertTrue(lines[2].text.hasSuffix("…"), "more follows")
+        XCTAssertTrue(lines[3].text.hasSuffix("…"), "more follows")
+        XCTAssertFalse(lines[2].text.hasSuffix("…"))
         XCTAssertTrue(lines.allSatisfy { $0.text.count <= chars })
         let short = HUDReadingViewBuilder.collapsedLines(for: turn(2, question: nil, answer: "R-410A, 7 lb."), maxChars: chars)
         XCTAssertEqual(short.map(\.text), ["R-410A, 7 lb."])
     }
 
-    func testTheButtonsArePageFirstThenFollowUpsActionsAndClose() {
+    // Plan MU §3 (decision 4) changed MG's row: no follow-ups beside Page, one with no page.
+    func testTheButtonsArePageOrOneFollowUpThenActionsAndClose() {
         typealias ID = HUDAnswerCardBuilder.ItemID
         let plain = build(state(text: "Done.", followUps: ["Why?", "What next?", "And then?"]))
-        XCTAssertEqual(plain.items.map(\.id), [ID.followUp(0), ID.followUp(1), ID.actions, ID.close])
+        XCTAssertEqual(plain.items.map(\.id), [ID.followUp(0), ID.actions, ID.close])
         let paged = build(state(text: "Done.", followUps: ["Why?", "What next?"], hasPage: true))
-        XCTAssertEqual(paged.items.map(\.id), [ID.page, ID.followUp(0), ID.actions, ID.close])
+        XCTAssertEqual(paged.items.map(\.id), [ID.page, ID.actions, ID.close])
         let streaming = build(state(text: "Done.", complete: false, followUps: ["Why?"]))
         XCTAssertEqual(streaming.items.map(\.id), [ID.actions, ID.close], "no follow-ups until the answer is final")
         for screen in [plain, paged, streaming] {

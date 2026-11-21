@@ -2,9 +2,10 @@
 import XCTest
 @testable import OpenGlasses
 
-/// Plan MG P4 — the page view, quicker: the whole page as tiles to point at (each a crop inside the
-/// page, a press two rungs in), a zoomed view as a strip the lens scrolls, the views one press away
-/// drawn ahead, and the words that combine a zoom and a place.
+/// Plan MG P4, as Plan MU left it — a zoomed view as a strip the lens scrolls, the views one press
+/// away, and the words that combine a zoom and a place. MU §0 dropped MG's 3 × 3 tile grid (the
+/// glasses drew a row of pictures as its first picture): the whole page is one picture, and a
+/// press on it reads the highlighted part closely (`LensPageAtWorkTests`).
 ///
 /// Headless: pure geometry, and the session through the display's seams (a fresh
 /// `GlassesDisplayService`, frames to `testRenderSink`, presses through the real
@@ -15,46 +16,7 @@ final class LensPageQuickZoomTests: XCTestCase {
     private let letter = LensPageFixtures.letter
     private let box = LensPageFrame.pictureBox(citation: false, hint: false)
 
-    // MARK: - Tiles
-
-    func testEveryTileIsANinthOfThePageInsideIt() {
-        let tiles = LensPageTileGrid.tiles(pageSize: letter, box: box)
-        XCTAssertEqual(tiles.count, 9)
-        let page = CGRect(origin: .zero, size: letter)
-        var area: CGFloat = 0
-        for tile in tiles {
-            XCTAssertTrue(page.insetBy(dx: -0.001, dy: -0.001).contains(tile.crop), "\(tile.area) leaves the page")
-            area += tile.crop.width * tile.crop.height
-        }
-        XCTAssertEqual(area, letter.width * letter.height, accuracy: 0.5, "together they are the whole page")
-        XCTAssertEqual(Set(tiles.map { "\($0.area)" }).count, 9)
-        XCTAssertEqual(tiles.first { $0.area == .bottomRight }?.crop.maxX ?? 0, letter.width, accuracy: 0.001)
-        XCTAssertEqual(tiles.first { $0.area == .bottomRight }?.crop.maxY ?? 0, letter.height, accuracy: 0.001)
-    }
-
-    func testTilesAreDrawnAtASizeThatFitsThreeAcrossAndThreeDown() {
-        for page in [letter, CGSize(width: 792, height: 612), CGSize(width: 400, height: 1200)] {
-            let tiles = LensPageTileGrid.tiles(pageSize: page, box: box)
-            let size = tiles[0].drawnSize
-            XCTAssertTrue(tiles.allSatisfy { $0.drawnSize == size })
-            XCTAssertLessThanOrEqual(size.width, LensPageTileGrid.maxTileWidth)
-            XCTAssertLessThanOrEqual(3 * size.width + 2 * LensPageFrame.tileGapPixels, LensPageFrame.contentWidthPixels)
-            XCTAssertLessThanOrEqual(3 * size.height + 2 * LensPageFrame.gapPixels, box.height)
-            XCTAssertEqual(size.width / size.height, page.width / page.height, accuracy: 0.02, "a ninth's own shape")
-        }
-        XCTAssertEqual(LensPageTileGrid.maxTileWidth, 186, "measured: 186 px three across with 8 px gaps")
-    }
-
-    func testAPressOnATileZoomsTwoRungsIntoItsCentre() throws {
-        let tile = try XCTUnwrap(LensPageTileGrid.tile(row: 2, column: 2, pageSize: letter, box: box))
-        var viewport = LensPageViewport(wholePage: letter, box: box)
-        viewport.zoom(rungs: LensPageViewport.pointZoomRungs, around: tile.center)
-        XCTAssertEqual(viewport.scale, LensPageViewport.zoomStep * LensPageViewport.zoomStep, accuracy: 0.001)
-        XCTAssertTrue(viewport.cropRect.contains(tile.center) || viewport.cropRect.maxX >= letter.width - 0.01,
-                      "the bottom right is on the lens")
-        XCTAssertEqual(viewport.cropRect.maxX, letter.width, accuracy: 0.01, "pushed against the page's edge")
-        XCTAssertEqual(viewport.cropRect.maxY, letter.height, accuracy: 0.01)
-    }
+    // MARK: - The words' places
 
     func testTwoRungsStopAtTheZoomCap() {
         let fit = LensPageViewport.fitPixelsPerPoint(pageSize: letter, box: box)
@@ -155,25 +117,13 @@ final class LensPageQuickZoomTests: XCTestCase {
 
     // MARK: - The builder
 
-    func testTheTilesReplaceZoomInAndAStripMovesOnlyAcross() {
+    /// A spoken zoom is drawn as a strip with Back · Close only: no Move, no arrows, no Done.
+    func testASpokenZoomIsAStripWithBackAndClose() {
         typealias ID = HUDPageScreenBuilder.ItemID
-        var whole = HUDPageViewState(viewport: LensPageViewport(wholePage: letter, box: box),
+        let state = HUDPageViewState(viewport: zoomed(center: CGPoint(x: 306, y: 396)),
                                      legibility: LensLegibility(lineRects: []))
-        whole.tilesAndStrips = true
-        XCTAssertTrue(whole.showsTiles)
-        XCTAssertFalse(HUDPageScreenBuilder.items(whole) { _ in }.map(\.id).contains(ID.zoomIn))
-        XCTAssertEqual(HUDPageScreenBuilder.items(whole) { _ in }.map(\.id).last, ID.close)
-
-        var moving = HUDPageViewState(viewport: zoomed(center: CGPoint(x: 306, y: 396)),
-                                      legibility: LensLegibility(lineRects: []))
-        moving.tilesAndStrips = true
-        moving.isMoving = true
-        XCTAssertTrue(moving.showsStrip)
-        XCTAssertEqual(HUDPageScreenBuilder.items(moving) { _ in }.map(\.id), [ID.left, ID.right, ID.done])
-
-        moving.tilesAndStrips = false
-        XCTAssertEqual(HUDPageScreenBuilder.items(moving) { _ in }.map(\.id), [ID.up, ID.down, ID.left, ID.right, ID.done],
-                       "without the strip, the four arrows as before")
+        XCTAssertTrue(state.showsStrip)
+        XCTAssertEqual(HUDPageScreenBuilder.items(state) { _ in }.map(\.id), [ID.back, ID.close])
     }
 
     // MARK: - The session
@@ -214,7 +164,6 @@ final class LensPageQuickZoomTests: XCTestCase {
         let router = HUDRouter(display: display)
         let session = LensPageSession(display: display, router: router)
         router.pageView = session
-        session.tilesAndStrips = true
         let drawn = Drawn()
         session.sourceURL = { _ in URL(fileURLWithPath: "/invented/guide.pdf") }
         let letter = self.letter
@@ -237,58 +186,36 @@ final class LensPageQuickZoomTests: XCTestCase {
         }
     }
 
-    func testTheWholePageOpensAsTilesAndAPressOnOneZoomsIntoIt() async throws {
+    /// Plan MU §0/§6: the whole page is one picture, alone in its row, a card focus opens on; a
+    /// press on it (nothing highlighted) opens the page at fit width, drawn as a strip of slices.
+    func testTheWholePageIsOnePictureAndAPressOpensFitWidth() async throws {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
         let screen = try XCTUnwrap(rig.session.shownScreen)
         XCTAssertTrue(try XCTUnwrap(rig.session.shownState).viewport.isWholePage)
-        XCTAssertNil(screen.picture, "the page is its tiles")
-        XCTAssertEqual(screen.flow.count, 3, "three rows")
-        XCTAssertEqual(screen.flow.flatMap(\.blocks).count, 9)
-        XCTAssertTrue(screen.flow.flatMap(\.blocks).allSatisfy { $0.style == .card && $0.picture != nil })
-        XCTAssertFalse(screen.items.map(\.id).contains(HUDPageScreenBuilder.ItemID.zoomIn))
-        let size = try XCTUnwrap(screen.flow.flatMap(\.blocks).first?.picture?.pixelSize)
-        XCTAssertLessThanOrEqual(size.width, LensPageTileGrid.maxTileWidth)
+        XCTAssertEqual(screen.flow.first?.blocks.count, 1, "one picture a row")
+        XCTAssertEqual(screen.allBlocks.filter { $0.picture != nil }.count, 1, "no tiles")
+        XCTAssertFalse(screen.hasPicturesSideBySide)
+        XCTAssertTrue(screen.focusesFirstBlock)
+        XCTAssertEqual(screen.flow.first?.blocks.first?.picture?.pixelSize, rig.session.shownState?.pictureBox)
 
-        // The bottom right tile, pressed as the band would.
-        rig.display.testInteractiveBlockActions(for: screen)[8]()
+        rig.display.testInteractiveBlockActions(for: screen)[0]()
         await drain(rig)
         let state = try XCTUnwrap(rig.session.shownState)
-        // Two rungs from the frame the press was made on; the later frame has no citation line, so
-        // its box (and the whole page's fit) is a little larger.
-        XCTAssertGreaterThan(state.viewport.scale, 1.9, "two rungs in")
-        XCTAssertEqual(state.viewport.cropRect.maxX, letter.width, accuracy: 0.01)
-        let zoomedScreen = try XCTUnwrap(rig.session.shownScreen)
-        XCTAssertNil(zoomedScreen.picture, "a zoomed view is its strip")
-        XCTAssertFalse(zoomedScreen.trailingFlow.isEmpty)
-        XCTAssertTrue(zoomedScreen.trailingFlow.flatMap(\.blocks).allSatisfy { $0.style == .plain })
-        XCTAssertGreaterThan(rig.session.stats["metaRayBan"].zooms, 0)
-    }
-
-    func testAZoomedViewMovesOnlyAcrossAndDrawsTheNextViewsAhead() async throws {
-        let rig = makeRig(pictureAreas: [CGRect(x: 100, y: 300, width: 300, height: 250)])
-        rig.session.stage([LensPageFixtures.staged(origin: .requested)])
-        await drain(rig)
-        XCTAssertTrue(try XCTUnwrap(rig.session.shownState).viewport.isWholePage, "opened on the whole page")
-        XCTAssertTrue(rig.session.press(itemID: HUDPageScreenBuilder.ItemID.backToPart))
-        await drain(rig)
-        XCTAssertFalse(try XCTUnwrap(rig.session.shownState).viewport.isWholePage, "on the table")
-        let before = rig.drawn.plans.count
-        XCTAssertTrue(rig.session.press(itemID: HUDPageScreenBuilder.ItemID.move))
-        await drain(rig)
-        XCTAssertEqual(rig.session.shownScreen?.items.map(\.id),
-                       [HUDPageScreenBuilder.ItemID.left, HUDPageScreenBuilder.ItemID.right,
-                        HUDPageScreenBuilder.ItemID.done])
-        XCTAssertGreaterThanOrEqual(rig.drawn.plans.count, before, "neighbours drawn ahead")
+        XCTAssertEqual(state.view, .closeUp)
+        XCTAssertEqual(state.closeUp?.kind, .fitWidth)
+        let fitScreen = try XCTUnwrap(rig.session.shownScreen)
+        XCTAssertFalse(fitScreen.trailingFlow.isEmpty)
+        XCTAssertTrue(fitScreen.trailingFlow.flatMap(\.blocks).allSatisfy { $0.style == .plain })
+        XCTAssertEqual(fitScreen.items.map(\.id), [HUDPageScreenBuilder.ItemID.back, HUDPageScreenBuilder.ItemID.close])
+        XCTAssertEqual(rig.session.stats["metaRayBan"].fitWidths, 1)
         XCTAssertTrue(rig.drawn.plans.contains { $0.outputSize.height > box.height }, "strips drawn taller than the box")
     }
 
-    /// A tester's build-728 report, Scroll on: a page with a part opens on the whole page as its
-    /// tiles, with the citation, the hint and the row — Back to part · Close — inside the lens's
-    /// 600 px, so no scrolling is needed to reach the buttons; Back to part goes to the table, drawn
-    /// ahead as its strip, so the press only sends.
-    func testAPageWithAPartOpensAsTilesWithBackToPartInSight() async throws {
+    /// A pictured table opens whole with the table highlighted; its close-up was drawn before the
+    /// press, so the press only sends; Back returns to the whole page.
+    func testAPageWithATableOpensWholeAndItsCloseUpIsDrawnAhead() async throws {
         typealias ID = HUDPageScreenBuilder.ItemID
         let table = CGRect(x: 100, y: 300, width: 300, height: 250)
         let rig = makeRig(pictureAreas: [table])
@@ -296,43 +223,56 @@ final class LensPageQuickZoomTests: XCTestCase {
         await drain(rig)
         let state = try XCTUnwrap(rig.session.shownState)
         let screen = try XCTUnwrap(rig.session.shownScreen)
-        XCTAssertTrue(state.showsTiles)
-        XCTAssertTrue(state.viewport.hasPart)
-        XCTAssertEqual(screen.items.map(\.id), [ID.backToPart, ID.close])
-        XCTAssertEqual(screen.flow.flatMap(\.blocks).count, 9)
-        XCTAssertEqual(screen.lines.map(\.text), ["Figure 9 · p. 3", "Zoom in for labels"])
-        // The frame: padding, the two lines, three rows of tiles with their gaps, the row, its glow.
-        let tile = try XCTUnwrap(screen.flow.flatMap(\.blocks).first?.picture?.pixelSize)
-        let rows = 3 * tile.height + 2 * LensPageFrame.gapPixels
-        XCTAssertLessThanOrEqual(rows, state.viewport.box.height)
-        let fixed = LensPageFrame.fixedHeight(.init(metaLines: 1, bodyLines: 1, hasPicture: true, hasButtons: true))
-        XCTAssertLessThanOrEqual(fixed + rows, CGFloat(HUDCanvas.metaDisplay.heightPixels))
-        XCTAssertLessThanOrEqual(3 * tile.width + 2 * LensPageFrame.tileGapPixels, LensPageFrame.contentWidthPixels)
+        XCTAssertEqual(state.view, .whole)
+        XCTAssertEqual(state.highlight.reason, .table)
+        XCTAssertEqual(screen.items.map(\.id), [ID.close])
+        XCTAssertEqual(screen.lines.map(\.text), ["Figure 9 · p. 3"])
+        // The frame: padding, the citation, the picture, the hint, the row and its glow, on the lens.
+        let picture = try XCTUnwrap(screen.allBlocks.first?.picture?.pixelSize)
+        let fixed = LensPageFrame.fixedHeight(.init(metaLines: 1, bodyLines: state.lineUnderPicture,
+                                                    hasPicture: true, hasButtons: true))
+        XCTAssertLessThanOrEqual(fixed + picture.height, CGFloat(HUDCanvas.metaDisplay.heightPixels))
 
-        let drawnBefore = rig.drawn.plans.count
-        XCTAssertTrue(rig.drawn.plans.contains { $0.outputSize.height > box.height }, "the part's strip drawn ahead")
-        XCTAssertTrue(rig.session.press(itemID: ID.backToPart))
+        let closeUp = LensPageSession.closeUpState(state)
+        let ahead = LensPageSession.renderPlans(closeUp, layout: LensPageLayout(pageSize: letter, marks: nil,
+                                                                                pictureAreas: [table], tone: .lineArt))
+        let drawnBefore = rig.drawn.plans
+        XCTAssertFalse(ahead.isEmpty)
+        XCTAssertTrue(ahead.allSatisfy { drawnBefore.contains($0) }, "the close-up was drawn before the press")
+        rig.display.testInteractiveBlockActions(for: screen)[0]()
         await drain(rig)
-        let part = try XCTUnwrap(rig.session.shownState)
-        XCTAssertTrue(part.showsStrip)
-        XCTAssertTrue(part.viewport.isAtPart)
-        XCTAssertTrue(part.viewport.cropRect.insetBy(dx: -0.01, dy: -0.01).contains(table))
-        XCTAssertFalse(try XCTUnwrap(rig.session.shownScreen).trailingFlow.isEmpty)
-        let strip = LensPageStrip(viewport: part.viewport)
-        XCTAssertTrue(rig.drawn.plans.prefix(drawnBefore).contains { $0.crop == strip.rect && $0.outputSize == strip.outputSize },
-                      "Back to part's strip was drawn before the press")
+        let shown = try XCTUnwrap(rig.session.shownState)
+        XCTAssertEqual(shown.view, .closeUp)
+        let columns = try XCTUnwrap(shown.closeUp?.columns)
+        XCTAssertLessThanOrEqual(columns.map(\.minX).min() ?? .infinity, table.minX)
+        XCTAssertGreaterThanOrEqual(columns.map(\.maxX).max() ?? 0, table.maxX)
+        XCTAssertTrue(rig.session.press(itemID: ID.back))
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
     }
 
     func testZoomInOnTheBottomRightByVoice() async throws {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
+        let whole = try XCTUnwrap(rig.session.shownState).viewport
+        XCTAssertTrue(whole.isWholePage)
         XCTAssertTrue(rig.session.handle(.zoomInto(.bottomRight)))
         await drain(rig)
-        let viewport = try XCTUnwrap(rig.session.shownState).viewport
-        XCTAssertGreaterThan(viewport.scale, 1.9)
+        let shown = try XCTUnwrap(rig.session.shownState)
+        let viewport = shown.viewport
+        // Two rungs in from the whole page as it was shown. (The strip's box is taller than the
+        // whole page's, which gives up lines to the citation and the words, so `scale`, which is
+        // against the strip's own fit, reads lower.)
+        XCTAssertGreaterThan(viewport.pixelsPerPoint, 1.9 * whole.pixelsPerPoint)
         XCTAssertEqual(viewport.cropRect.maxY, letter.height, accuracy: 0.01)
+        XCTAssertEqual(shown.view, .zoomed, "drawn as a strip")
+        XCTAssertEqual(rig.session.shownScreen?.items.map(\.id),
+                       [HUDPageScreenBuilder.ItemID.back, HUDPageScreenBuilder.ItemID.close])
         XCTAssertFalse(rig.session.handle(.zoomIntoTable), "no table on this page: the words go on")
+        XCTAssertTrue(rig.session.handle(.wholePage))
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .whole)
     }
 }
 #endif

@@ -80,12 +80,11 @@ final class LensPageReadingTests: XCTestCase {
         XCTAssertNil(onDrawing.reading, "a drawing asked for keeps the picture")
     }
 
-    /// A tester's build-728 report: a cited passage the lens shows as a picture (here a photographed
-    /// page, which keeps the picture) opens on the whole page with the passage kept; **Back to part**
-    /// lands on the passage's mark, fitted exactly. A cited text passage still opens as its words,
-    /// and their **Page** still opens the picture on the mark.
+    /// Plan MU §6: a cited passage opens on the whole page with its mark highlighted, whether the
+    /// lens can read it as words or not; a press opens the mark's close-up. A cited text passage
+    /// offers its words (**Read it**), and their **Page** comes back to the whole page.
     @MainActor
-    func testAPictureOfACitedPassageOpensWholeAndBackToPartLandsOnIt() {
+    func testACitedPassageOpensWholeHighlightedAndReadsOnePressAway() throws {
         let staged = LensPageFixtures.staged()
         let page = LensPageSession.Page(staged: staged, source: URL(fileURLWithPath: "/invented/guide.pdf"),
                                         identity: LensPageSession.identity(of: staged))
@@ -94,31 +93,30 @@ final class LensPageReadingTests: XCTestCase {
         let opening = LensPageSession.openingState(photographed, page: page, hasNextPage: false,
                                                    geometry: LensPageFrame.readingGeometry)
         XCTAssertFalse(opening.isReading)
+        XCTAssertFalse(opening.canRead, "a photographed page keeps the picture")
         XCTAssertTrue(opening.viewport.isWholePage)
-        XCTAssertTrue(opening.viewport.hasPart)
         XCTAssertTrue(opening.showsCitation)
-        XCTAssertTrue(HUDPageScreenBuilder.items(opening, { _ in }).map(\.id).contains(HUDPageScreenBuilder.ItemID.backToPart))
+        XCTAssertEqual(opening.highlight.reason, .citedMark)
+        XCTAssertEqual(opening.highlight.rects, [line])
+        XCTAssertEqual(HUDPageScreenBuilder.items(opening, { _ in }).map(\.id), [HUDPageScreenBuilder.ItemID.close])
 
-        var back = opening
-        back.viewport.reset()
-        back.isFirstFrame = false
-        back = back.framed()
-        XCTAssertTrue(back.viewport.isAtPart)
-        XCTAssertFalse(back.viewport.isWholePage)
-        XCTAssertTrue(back.viewport.cropRect.contains(line), "on the passage's mark")
-        XCTAssertTrue(back.viewport.showsSame(as: photographed.partViewport))
-        let padded = LensPageFocus.pick(pageSize: self.page, passageRects: [line]).padded ?? .zero
-        XCTAssertEqual(padded.width * back.viewport.pixelsPerPoint, back.viewport.box.width, accuracy: 0.01,
-                       "fitted exactly: the line fills the width, as the view used to open")
+        let closeUp = try XCTUnwrap(LensPageSession.closeUpState(opening).closeUp)
+        XCTAssertEqual(closeUp.kind, .part)
+        let covered = closeUp.columns.reduce(closeUp.columns[0]) { $0.union($1) }
+        XCTAssertTrue(covered.insetBy(dx: -0.01, dy: -0.01).contains(line), "the close-up is of the passage's mark")
 
         let reads = LensPageLayout(pageSize: self.page, marks: marks, pictureAreas: [], tone: .lineArt, reading: words)
-        let reading = LensPageSession.openingState(reads, page: page, hasNextPage: false,
-                                                   geometry: LensPageFrame.readingGeometry)
-        XCTAssertTrue(reading.isReading, "a cited text passage still opens as its words")
-        let picture = LensPageSession.pictureState(reading, layout: reads)
-        XCTAssertFalse(picture.viewport.isWholePage, "Page asks for the part: it opens on the mark")
-        XCTAssertTrue(picture.viewport.cropRect.contains(line))
-        XCTAssertTrue(picture.viewport.isAtStart)
+        let whole = LensPageSession.openingState(reads, page: page, hasNextPage: false,
+                                                 geometry: LensPageFrame.readingGeometry)
+        XCTAssertFalse(whole.isReading, "it opens on the whole page")
+        XCTAssertTrue(whole.canRead)
+        XCTAssertEqual(whole.wordsLine, "Invented words.", "the passage's first sentence under the picture")
+        XCTAssertTrue(HUDPageScreenBuilder.items(whole, { _ in }).map(\.id).contains(HUDPageScreenBuilder.ItemID.readIt))
+        var reading = whole
+        reading.isReading = true
+        let picture = LensPageSession.pictureState(reading)
+        XCTAssertEqual(picture.view, .whole, "Page comes back to the whole page")
+        XCTAssertEqual(picture.highlight, whole.highlight)
     }
 
     /// From an invented PDF: the cited line's words come from the page's text layer; a table row

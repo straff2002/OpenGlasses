@@ -276,6 +276,7 @@ enum LensPageRenderer {
         context.restoreGState()
 
         applyTone(plan.tone, to: context, width: width, height: height, page: plan.pageInOutput)
+        if let bright = plan.brightRects { dim(context, width: width, height: height, outside: bright) }
         drawOverlays(plan, in: context, height: height, accent: accent(highlight))
 
         guard let image = context.makeImage() else { return nil }
@@ -319,6 +320,26 @@ enum LensPageRenderer {
             pixels[p + 1] = turned.1
             pixels[p + 2] = turned.2
             pixels[p + 3] = 255
+        }
+    }
+
+    /// Plan MU §6: every pixel outside the highlighted part at about half brightness
+    /// (`LensPageRenderPlan.dimLevel`), so the part stands out on an additive lens. Run after the
+    /// tone, before the outlines (which stay at full brightness).
+    private static func dim(_ context: CGContext, width: Int, height: Int, outside bright: [CGRect]) {
+        guard let base = context.data else { return }
+        let pixels = base.bindMemory(to: UInt8.self, capacity: width * height * 4)
+        let rects = bright.map { $0.integral }
+        for y in 0..<height {
+            // The bitmap's rows run top down, as the plan's output coordinates do.
+            let spans = rects.filter { CGFloat(y) >= $0.minY && CGFloat(y) < $0.maxY }
+                .map { (max(0, Int($0.minX)), min(width, Int($0.maxX))) }
+            for x in 0..<width where !spans.contains(where: { x >= $0.0 && x < $0.1 }) {
+                let p = (y * width + x) * 4
+                pixels[p] = LensPageRenderPlan.dimmed(pixels[p])
+                pixels[p + 1] = LensPageRenderPlan.dimmed(pixels[p + 1])
+                pixels[p + 2] = LensPageRenderPlan.dimmed(pixels[p + 2])
+            }
         }
     }
 
@@ -421,5 +442,8 @@ final class LensPageRenderCache {
         let crop = plan.crop
         return "\(identity)@\(half(crop.minX)),\(half(crop.minY)),\(half(crop.width)),\(half(crop.height))"
             + ":\(plan.tone.rawValue):\(Int(plan.outputSize.width))x\(Int(plan.outputSize.height))"
+            + (plan.brightRects.map { rects in
+                ":lit" + rects.map { "\(Int($0.minX)),\(Int($0.minY)),\(Int($0.width)),\(Int($0.height))" }.joined(separator: ";")
+            } ?? "")
     }
 }

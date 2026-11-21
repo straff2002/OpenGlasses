@@ -119,7 +119,32 @@ final class LensPageReportTests: XCTestCase {
                 + " reading views 0 (pages turned 0), refused 0, stale presses dropped 0",
             "    Render: 3, median 60 ms, largest 90 ms",
             "    Sent: 2, median 3 KB, largest 4 KB; send time 1, median 200 ms, largest 200 ms",
+            "    Highlighted: none",
+            "    Presses: 0 (close-ups 0, fit width 0, back 0, rows 0, rows spoken 0); per view none",
+            "    Pictures sent: none; factor 1",
         ])
+    }
+
+    /// Plan MU: what each view highlighted, the presses getting around took (per view), and every
+    /// picture's size as sent, with the factor.
+    func testTheLinesSayWhatWasHighlightedThePressesAndThePictureSizes() {
+        var stats = LensPageStats()
+        stats.update("metaRayBan") {
+            $0.viewsOpened = 3
+            $0.highlights = ["table_row": 2, "none": 1]
+            $0.presses = 4
+            $0.closeUps = 2
+            $0.backs = 1
+            $0.rowsViews = 1
+            $0.pressesPerView = [1, 3]
+            $0.pictureSizes = ["576×338", "576×600", "576×338"]
+            $0.pictureFactor = 1.3333
+        }
+        let lines = LensPageReport.lines(for: stats)
+        XCTAssertTrue(lines.contains("    Highlighted: none 1, table_row 2"), "\(lines)")
+        XCTAssertTrue(lines.contains("    Presses: 4 (close-ups 2, fit width 0, back 1, rows 1, rows spoken 0);"
+                                     + " per view 2, median 2 presses, largest 3 presses"), "\(lines)")
+        XCTAssertTrue(lines.contains("    Pictures sent: 576×338 ×2, 576×600 ×1; factor 1.33"), "\(lines)")
     }
 
     func testTimingsAreKeptToTheLastFifty() {
@@ -153,6 +178,16 @@ final class LensPageReportTests: XCTestCase {
         XCTAssertEqual(reading.payload?["event"]?.value as? String, "read_page")
         XCTAssertNil(reading.payload?["crop"])
         XCTAssertNil(reading.payload?["zoom"])
+
+        // Plan MU §6: the rows view carries no crop either; a picture line says what it highlighted.
+        let rows = LensPageAuditLine(event: .rows, documentTitle: "Invented Unit Guide", page: 3, figure: nil,
+                                     crop: .zero, zoom: 0, route: "requested", backend: "metaRayBan", view: .rows,
+                                     highlight: "table_row")
+        let rowsEvent = FieldSessionService.pageOnGlassesEvent(rows, at: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(rowsEvent.payload?["view"]?.value as? String, "rows")
+        XCTAssertEqual(rowsEvent.payload?["highlight"]?.value as? String, "table_row")
+        XCTAssertNil(rowsEvent.payload?["crop"])
+        XCTAssertNil(zoomed.payload?["highlight"], "no reason given, none written")
     }
 }
 #endif

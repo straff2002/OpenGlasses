@@ -163,6 +163,7 @@ struct DisplayHUDSections: View {
     @AppStorage("hudMirrorEnabled") private var hudMirrorEnabled = false
     @AppStorage(LensHighlightColour.storageKey) private var highlightColour: LensHighlightColour = .standard
     @AppStorage(LensAnswerStyle.storageKey) private var answerStyle: LensAnswerStyle = .scroll
+    @AppStorage(LensAnswerLifetime.storageKey) private var answerLifetime: LensAnswerLifetime = .untilClosed
     @AppStorage("displayBackend") private var displayBackendRaw = DisplayBackendChoice.metaRayBan.rawValue
 
     var body: some View {
@@ -224,6 +225,16 @@ struct DisplayHUDSections: View {
                     Text("Answers on the lens")
                 }
                 .accessibilityHint(Text("Scroll shows an answer and the earlier ones in one view you move through with the band. Pages shows it a page at a time."))
+                // Plan MU §4 (decision 2): the scrolled answer stays until it is closed by default.
+                if answerStyle == .scroll {
+                    Picker(selection: $answerLifetime) {
+                        Text("Until closed").tag(LensAnswerLifetime.untilClosed)
+                        Text("3 minutes").tag(LensAnswerLifetime.threeMinutes)
+                    } label: {
+                        Text("Keep answers up")
+                    }
+                    .accessibilityHint(Text("Until closed keeps an answer on the lens until you press Close, say \"hide that\", or a new answer comes. The lens still dims and sleeps on its own. 3 minutes clears it after three minutes without a press."))
+                }
             }
             Picker(selection: $highlightColour) {
                 ForEach(LensHighlightColour.allCases) { colour in
@@ -247,6 +258,12 @@ struct DisplayHUDSections: View {
                 BandPracticeView(session: appState.bandPractice)
             } label: {
                 Label("Practise the band", systemImage: "hand.tap")
+            }
+            // Plan MU §0: whether pictures fit the lens as drawn.
+            NavigationLink {
+                LensFitCheckView(session: appState.lensFitCheck)
+            } label: {
+                Label("Fit check", systemImage: "ruler")
             }
         } header: {
             Text("In-Lens Display")

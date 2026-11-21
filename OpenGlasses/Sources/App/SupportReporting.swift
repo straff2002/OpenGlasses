@@ -263,6 +263,9 @@ extension AppState {
         // Show here cues, render and send timings and bytes sent, by backend. Counts and timings
         // only; never a page, its text or its pixels.
         phone += lensPage.reportLines
+        // Plan MU §0: the lens fit check for the glasses on now — the highest number read, the
+        // tiles seen and the picture factor they set. A model token and numbers only.
+        phone += lensFitCheck.reportLines
         // Plan MG §3: the answers on the lens — scroll or pages, how many earlier answers the lens
         // holds now, reading views drawn, row presses, earlier answers opened, rows and characters
         // per view. Counts and sizes only; never a question, an answer or a row.

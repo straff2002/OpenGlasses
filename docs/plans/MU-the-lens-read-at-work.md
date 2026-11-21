@@ -1,6 +1,21 @@
 # Plan MU — The Lens Read at Work (a page you get around in one move, fuller tiles, sources on their own, fewer buttons, and an answer that stays until you put it away)
 
-**Status:** 📝 Drafted 2026-11-21; nothing built; 10 decisions with recommendations.
+**Status:** 🚧 P0–P4 built headless (branch `feat/mu-p0-p1-page-view`). P0 and P1 2026-11-21: one picture
+a row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
+(Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
+highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
+halves in one strip) or fit width, **Back**, **Rows**, the voice words, three buttons at most. P2–P4
+2026-11-22: `HUDReadingRows` at 8 lines joined up to 9 with no orphan tile and the stride cut gone;
+`LensSourceTile` and the reading view's source tile; "Earlier — press to open" with three lines;
+`LensButtonRowBudget` (provisional constants: 15 px a character, 1.8× for a full-width character,
+32 px of padding a button, 8 px gaps, against the 576 px column) on the reading view, the paged card
+(Meta Display only), Actions, the page view and reading mode, with the 13-language test; the reading
+view's three-button row with follow-ups on Actions; Keep answers up (Until closed by default, or 3
+minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
+Not done: P5 (the budget's constants are estimates until measured), P6, P7 (the new strings are in
+English only) and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
+taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
+request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
 `chore/dat-1-1-0`, adds nothing to the Display). Every picture sent to the lens, the reading view
 (Plan MG §2), the answer card's lifetime (Plan KP §3, MG decision 4) and the page view (Plan KV,
@@ -210,11 +225,9 @@ aren't in what Inputs reports today.
    ready to move into the store build if Meta makes `MWDATInputs` stable. Until then the store build
    keeps §6's voice and buttons. Free drag and pinch-to-zoom are not attempted: Inputs doesn't report
    them (decision 8).
-8. **Ask Meta (§8).** File one request in Meta's DAT repository's discussions for: an image view
-   the wearer can zoom and pan with Meta's own gestures, an image size the app can set (or a
-   documented scale for `.fill`), horizontal scroll, and app-visible double tap.
-   This is a request, not a dependency. No source repositories are named in it, and nothing is
-   assumed about when Meta will answer.
+8. **Ask Meta (§8).** Not done (decision 9, declined 2026-11-21): Meta will add zoom, pan, an image
+   size, horizontal scroll and an app-visible double tap when it decides to. Each DAT
+   bump's interface diff looks for them.
 
 **Out of scope:** keeping the lens awake (MG §8 decided against a keep-awake loop; this plan only
 stops clearing the view), the phone's own page viewer, Even's lens (its paged card and 60 s are
@@ -270,30 +283,30 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
 
 ## Decisions
 
-1. **Tile height.** Recommend 8 lines, joined up to 9. (Alternatives: 6, which keeps more of the next
+1. **Tile height.** *Taken 2026-11-21: 8 lines, joined up to 9.* Recommend 8 lines, joined up to 9. (Alternatives: 6, which keeps more of the next
    tile in view; or no limit below the lens, which risks a tile losing its top.)
-2. **Default for keeping answers up.** Recommend Until closed on the Meta Display, with 3 minutes as the
+2. **Default for keeping answers up.** *Taken 2026-11-21: Until closed, 3 minutes the other choice.* Recommend Until closed on the Meta Display, with 3 minutes as the
    other choice in Display & HUD. (Alternative: a long fixed lifetime, such as 30 minutes, with no
    setting.)
-3. **Reopen window.** Recommend the whole conversation (cleared by the same rules as
+3. **Reopen window.** *Taken 2026-11-21: the whole conversation.* Recommend the whole conversation (cleared by the same rules as
    `LensConversationLog`). (Alternative: keep 10 minutes.)
-4. **Follow-ups on the lens.** Recommend none in the row: on the Actions screen and by voice. With no
+4. **Follow-ups on the lens.** *Taken 2026-11-21: none in the row; one before Actions when there is no page.* Recommend none in the row: on the Actions screen and by voice. With no
    page, one may sit before Actions. (Alternative: keep two and rely on the width budget alone.)
-5. **The tile grid.** Recommend off by default from P0 and dropped from the lens's page view once P1's
+5. **The tile grid.** *Taken 2026-11-21: off from P0, dropped once P1's close-up lands.* Recommend off by default from P0 and dropped from the lens's page view once P1's
    close-up replaces pointing at a ninth of the page. (Alternative: keep it behind a setting until P8
    shows how it draws.)
-6. **How a cited table is read.** Recommend the whole page with the row highlighted and its words
+6. **How a cited table is read.** *Taken 2026-11-21: whole page with the row highlighted and its words under it; **Rows** one press away.* Recommend the whole page with the row highlighted and its words
    under the picture, and **Rows** (the table as text cards, at that row) one press away when the
    vault holds the table. (Alternative: open straight on **Rows** and skip the picture.)
-7. **How "show me the page" opens.** Recommend the whole page with the answer highlighted, the rest
+7. **How "show me the page" opens.** *Taken 2026-11-21 (the owner's approach): the whole page, the answer highlighted, the rest dimmed, its words under it, one pinch for the close-up.* Recommend the whole page with the answer highlighted, the rest
    dimmed, its words under the picture, and one pinch for a readable close-up of the highlight
    (owner's suggestion). (Alternative: open at fit width already scrolled to the part. That gives
    readable text with no press, but the wearer loses the overview and has asked for the whole page.)
-8. **The TestFlight lane.** Recommend building P6 now so the mapping is ready when Inputs becomes
+8. **The TestFlight lane.** *Taken 2026-11-21: build P6 now.* Recommend building P6 now so the mapping is ready when Inputs becomes
    stable: left and right for the halves and the next page, and `back` never consumed. (Alternative:
    wait for Meta.)
-9. **Ask Meta.** Recommend filing §8's request once P1 is built, from the owner's account.
-10. **The picture factor until a fit check.** Recommend 1: single pictures already look right on the
+9. **Ask Meta.** *Declined 2026-11-21: no request; Meta will provide these when it decides to.* Recommend filing §8's request once P1 is built, from the owner's account.
+10. **The picture factor until a fit check.** *Taken 2026-11-21: 1.* Recommend 1: single pictures already look right on the
    tester's glasses, and only rows of pictures misbehave, which P0 removes. The fit check then confirms
    it or sets a factor. (Alternative: guess a factor from the photos; not worth it, since a wrong one
    would make every picture smaller than it needs to be.)

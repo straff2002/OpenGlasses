@@ -1,23 +1,19 @@
 import CoreGraphics
 import Foundation
 
-/// What a press on the page view asks for (Plan KV §3). The builder only reports the press; the
-/// caller (P1) changes the viewport and renders the next frame.
+/// What a press on the page view asks for (Plan KV §3, Plan MU §6). The builder only reports the
+/// press; the session changes the view and renders the next frame.
 enum HUDPageAction: Equatable {
-    case zoomIn
-    case zoomOut
-    case wholePage
-    /// To the part the view is about (the cited passage, the chosen drawing, the table's area):
-    /// from the whole page every picture opens on, or from anywhere since.
-    case backToPart
-    /// Push the arrow row.
-    case move
-    case step(LensPageViewport.Step)
-    /// Pop the arrow row.
-    case doneMoving
+    /// Plan MU §6: a press on the whole page's picture: the close-up of the highlighted part, or
+    /// fit width when nothing is highlighted.
+    case closeUp
+    /// Plan MU §6: **Back**: from a close-up, fit width, a spoken zoom or the rows, to the whole page.
+    case back
+    /// Plan MU §6: **Rows**: the page's table, one row a card.
+    case rows
+    /// Plan MU §6: a press on a row card: say the row aloud.
+    case speakRow(Int)
     case nextPage
-    /// Plan KV P1b: the page's next drawing, in reading order, round to the first.
-    case nextDiagram
     case close
     /// On the cue for a page the app put up by itself (§4): open the view.
     case showHere
@@ -25,52 +21,73 @@ enum HUDPageAction: Equatable {
     case nextText
     /// …the page before.
     case previousText
-    /// From reading mode to the picture, opened on the passage's mark (**Page**).
+    /// From reading mode to the picture (**Page**): the whole page, the passage highlighted.
     case showPicture
     /// From the picture back to reading mode (**Read it**).
     case readIt
-    /// Plan MG §4: a press on one of the whole page's tiles: zoom two rungs into its centre.
-    case tile(LensPageViewport.Area)
-    /// Plan MG §4: a press on a slice of a zoomed view's strip: one rung in, centred on it.
-    case slice(Int)
+    /// The spoken words only (MG's zoom words stay by voice, Plan MU §6): one rung in or out, the
+    /// whole page, half a crop in a direction, the page's next drawing.
+    case zoomIn
+    case zoomOut
+    case wholePage
+    case step(LensPageViewport.Step)
+    case nextDiagram
 }
 
-/// The page view's state, as far as its lines and buttons depend on it.
+/// The page view's state, as far as its lines, its buttons and its pictures depend on it.
+///
+/// **Which view is up** (`view`), first that applies:
+/// - **reading**: the cited passage's words as text (Plan KV §1), after **Read it**;
+/// - **rows**: the page's table, one row a card (Plan MU §6, **Rows**);
+/// - **close-up**: the highlighted part read closely, or the page at fit width (`closeUp`);
+/// - **zoomed**: a spoken zoom ("zoom in", "zoom in on the bottom right"), drawn as a strip;
+/// - **whole**: the whole page, one picture, the highlight outlined and the rest dimmed.
 struct HUDPageViewState: Equatable {
+
+    enum View: Equatable {
+        case whole, closeUp, zoomed, rows, reading
+    }
+
     var viewport: LensPageViewport
     var legibility: LensLegibility
-    /// The arrow row is pushed.
-    var isMoving: Bool = false
     /// The view's first frame: the citation line shows on it and on no later one (§5).
     var isFirstFrame: Bool = true
     /// "Figure 12 · p. 30" — shown in the meta style on the first frame.
     var citation: String?
     /// There is a further cited page after this one ("show me the relevant pages").
     var hasNextPage: Bool = false
-    /// How many drawings the page has (Plan KV P1b), and which one is the view's part (what **Back
-    /// to part** returns to; nil when the part is something else — a cited passage, a table's area
-    /// — or the page has none).
+    /// How many drawings the page has (Plan KV P1b), and which one is highlighted (nil when the
+    /// highlight is something else, or the page has none).
     var diagramCount: Int = 0
     var diagramIndex: Int?
     /// Reading mode (§1): the cited passage's words as lens text, paged; empty when the page has
-    /// none to read (it opened on a drawing, a table, a photographed page, the whole page).
+    /// none to read (a drawing, a table, a photographed page, a page asked for by number).
     var readingPages: [HUDAnswerPage] = []
     /// The reading page shown, or last shown.
     var readingIndex: Int = 0
     /// Reading mode is up (rather than the picture).
     var isReading: Bool = false
-    /// Plan MG §4: the whole page is drawn as tiles to point at (which replace **Zoom in**), and a
-    /// zoomed view as a strip the lens scrolls (so **Move** keeps only ← · → · Done).
-    var tilesAndStrips: Bool = false
+    /// Plan MU §6: what the whole page highlights, why, and its words.
+    var highlight: LensPageHighlight = .none()
+    /// Plan MU §6: the close-up (or fit width) that is up, when one is.
+    var closeUp: LensPageCloseUp?
+    /// Plan MU §6: the page's table as rows, when the vault holds it.
+    var rows: LensPageRows?
+    /// Plan MU §6: the rows view is up.
+    var showsRows: Bool = false
 
-    /// The whole page is drawn as its tiles.
-    var showsTiles: Bool { tilesAndStrips && !isReading && viewport.isWholePage }
-    /// A zoomed view is drawn as a strip.
-    var showsStrip: Bool { tilesAndStrips && !isReading && !viewport.isWholePage }
+    var view: View {
+        if isReading, !readingPages.isEmpty { return .reading }
+        if showsRows, rows != nil { return .rows }
+        if closeUp != nil { return .closeUp }
+        return viewport.isWholePage ? .whole : .zoomed
+    }
 
-    /// **Next diagram ›** has somewhere to go: from a view whose part is a drawing, the page has
-    /// another; from a view whose part is none (a page asked for by number, a cited passage), the
-    /// page has any.
+    /// A spoken zoom is drawn as a strip of the crop's column of the page (Plan MG §4).
+    var showsStrip: Bool { view == .zoomed }
+
+    /// **Next diagram** has somewhere to go: from a view on a drawing, the page has another; from
+    /// a view on none, the page has any.
     var hasNextDiagram: Bool { diagramIndex == nil ? diagramCount >= 1 : diagramCount >= 2 }
 
     /// The page has words to read, so its picture offers **Read it**.
@@ -83,15 +100,25 @@ struct HUDPageViewState: Equatable {
     }
 
     /// The citation line is over the picture: on the view's first frame only.
-    var showsCitation: Bool { !isReading && isFirstFrame && citation != nil }
+    var showsCitation: Bool { view == .whole && isFirstFrame && citation != nil }
 
-    /// "Zoom in for labels" is over the picture (not while moving).
+    /// Plan MU §6: the highlighted part's words, under the whole page's picture.
+    var wordsLine: String? { view == .whole ? highlight.words : nil }
+
+    /// "Zoom in for labels" under the whole page: only with no highlighted words to give and the
+    /// page's text too small to read there (a pinch on the picture is the zoom).
     var showsZoomHint: Bool {
-        !isReading && !isMoving && Self.needsZoomHint(viewport, legibility: legibility, citation: showsCitation)
+        view == .whole && wordsLine == nil
+            && Self.needsZoomHint(viewport, legibility: legibility, citation: showsCitation)
     }
 
-    /// The box the frame leaves the picture, from the lines over it (`LensPageFrame`).
-    var pictureBox: CGSize { LensPageFrame.pictureBox(citation: showsCitation, hint: showsZoomHint) }
+    /// The body lines the whole page's frame gives the line under its picture.
+    var lineUnderPicture: Int { wordsLine != nil ? highlight.wordsLineCount : (showsZoomHint ? 1 : 0) }
+
+    /// The box the frame leaves the picture, from the lines round it (`LensPageFrame`).
+    var pictureBox: CGSize {
+        LensPageFrame.pictureBox(metaLines: showsCitation ? 1 : 0, bodyLines: lineUnderPicture)
+    }
 
     /// The state with its viewport drawn into the box its own frame leaves the picture. Every
     /// state the session draws is framed, so two that show the same thing compare equal.
@@ -102,57 +129,37 @@ struct HUDPageViewState: Equatable {
     }
 
     /// Whether `viewport`'s text needs the hint. Judged in the box the frame would have with the
-    /// hint in it — the smaller box, so the decision can't flip once the hint takes its line: at
-    /// the whole page a smaller box only draws the text smaller, and zoomed in the box doesn't
-    /// change the magnification.
+    /// hint in it — the smaller box, so the decision can't flip once the hint takes its line.
     static func needsZoomHint(_ viewport: LensPageViewport, legibility: LensLegibility, citation: Bool) -> Bool {
         legibility.needsZoomHint(at: viewport.withBox(LensPageFrame.pictureBox(citation: citation, hint: true)))
     }
 }
 
-/// Builds the page view's lines and button row from its state (Plan KV §3). Pure: presses are
-/// reported through the injected `onAction`. The picture itself is not here — the session sets it
-/// on the screen — so the screen holds the lines over the picture and the row under it.
+/// Builds the page view's lines, its blocks and its button row from its state (Plan KV §3, Plan MU
+/// §6). Pure: presses are reported through the injected `onAction`. The pictures are the
+/// session's; the builder lays out where they go.
 ///
-/// | View | Buttons |
-/// |---|---|
-/// | the whole page (where every picture opens) | Zoom in · Back to part (when the page has a part) · Close |
-/// | zoomed (the part, or any magnification short of the cap) | Zoom in · Whole page · Move · Close |
-/// | at the zoom cap | Zoom out · Move · Close |
-/// | Move (pushed) | ↑ · ↓ · ← · → · Done |
-/// | Reading mode | Next › (while pages remain) · Page · ‹ Back (after the first page) · Close |
+/// | View | Over | Pictures | Buttons |
+/// |---|---|---|---|
+/// | whole | the citation (first frame) | the whole page, a card (focus opens on it); its words under it | Rows (a table) · Read it (words to read) · Next page › (another page) · Close |
+/// | close-up, fit width, a spoken zoom | – | a strip under the row | Back · Close |
+/// | rows | the table's name | a card a row, under the row | Back · Close |
+/// | reading | the citation (first page), the page's lines, "1/2" | – | Next › · Page · ‹ Back · Next page › · Close |
 ///
-/// In Scroll (Plan MG §4, `showsTiles`) the whole page is its tiles, which replace **Zoom in**: the
-/// opening row is Back to part (when there is a part) · Close.
-///
-/// **Next page ›** goes in before Close on the view the page opened on and on its part, while
-/// another cited page follows (in reading mode, on its last page). **Read it** goes in second on
-/// every picture row of a page with words to read (reading mode, §1). **Next diagram ›** goes in
-/// after them, on the part and on the whole page, while it has somewhere to go (`hasNextDiagram`:
-/// another drawing, or any drawing from a view on none; Plan KV P1b).
-/// A row holds at most four buttons (`maxButtons`, P4): over that, **Move**, then **Next
-/// diagram ›**, then **Whole page** give way (`capped`); each is still said by voice.
-/// The arrow row is always all four arrows, so a press always does the same thing; one against the
-/// page's edge does nothing.
-///
-/// Reading mode's lines are the citation (over the first reading page only), the page's lines and
-/// its "1/2" footer, as on the answer card.
+/// **Three buttons at most** (`maxButtons`; Plan MU §3–§6: a row wider than the lens is cut off at
+/// both ends, and the Display cannot scroll sideways). **Close** is always there and always last.
+/// Over three, **Next page ›**, then **Rows**, give way on the whole page (still said as "next
+/// page" and "rows"), and **‹ Back**, then **Next page ›**, in reading mode. **Zoom in**, **Zoom
+/// out**, **Whole page**, **Move**, the arrows, **Done**, **Back to part** and **Next diagram ›**
+/// are not on the lens: one press on the picture reads the part closely, and the zoom and diagram
+/// words stay by voice.
 enum HUDPageScreenBuilder {
 
     /// Stable item ids, so a band press routes back by id.
     enum ItemID {
-        static let zoomIn = "kv.page.zoom-in"
-        static let zoomOut = "kv.page.zoom-out"
-        static let wholePage = "kv.page.whole"
-        static let backToPart = "kv.page.part"
-        static let move = "kv.page.move"
-        static let up = "kv.page.up"
-        static let down = "kv.page.down"
-        static let left = "kv.page.left"
-        static let right = "kv.page.right"
-        static let done = "kv.page.done"
+        static let back = "kv.page.back"
+        static let rows = "kv.page.rows"
         static let nextPage = "kv.page.next"
-        static let nextDiagram = "kv.page.next-diagram"
         static let close = "kv.page.close"
         static let showHere = "kv.page.show-here"
         /// Reading mode (§1).
@@ -160,33 +167,60 @@ enum HUDPageScreenBuilder {
         static let previousText = "kv.page.text-back"
         static let showPicture = "kv.page.picture"
         static let readIt = "kv.page.read"
-        /// Plan MG §4: a tile of the whole page, and a slice of a zoomed view's strip.
-        static func tile(_ area: LensPageViewport.Area) -> String {
-            "mg.page.tile.\(area.cell.row)\(area.cell.column)"
-        }
+        /// Plan MU §6: the whole page's picture, a slice of a close-up's strip, a row card.
+        static let wholePicture = "mu.page.whole"
         static func slice(_ index: Int) -> String { "mg.page.slice.\(index)" }
+        static func row(_ index: Int) -> String { "mu.page.row.\(index)" }
     }
 
-    /// Plan MG §4: the whole page's tiles as three rows of tappable cards, from their pictures
-    /// (row by row, as `LensPageTileGrid.tiles` lists them).
-    static func tileRows(_ tiles: [(tile: LensPageTile, picture: HUDPicture)],
-                         onAction: @escaping (HUDPageAction) -> Void) -> [HUDFlowElement] {
-        stride(from: 0, to: tiles.count, by: LensPageTileGrid.columns).map { start in
-            let row = tiles[start..<min(start + LensPageTileGrid.columns, tiles.count)]
-            return .blocks(row.map { entry in
-                let area = entry.tile.area
-                return HUDBlock(id: ItemID.tile(area), picture: entry.picture, style: .card,
-                                action: { onAction(.tile(area)) })
-            })
+    /// The most buttons a page-view row holds.
+    static let maxButtons = 3
+
+    /// Plan MU §6: a close-up's strip, under the button row: each column's slices top to bottom,
+    /// and before the right half, its marker line. Slices take focus (so the lens steps and scrolls
+    /// through them) and do nothing when pressed.
+    static func stripSlices(_ columns: [(pictures: [HUDPicture], isRightHalf: Bool)]) -> [HUDFlowElement] {
+        var flow: [HUDFlowElement] = []
+        var index = 0
+        for column in columns {
+            if column.isRightHalf {
+                flow.append(.line(HUDLine(String(localized: "Right half",
+                                                 comment: "Glasses: marks where the right half of a wide part of a manual page starts, under its left half."),
+                                          emphasis: .meta)))
+            }
+            for picture in column.pictures {
+                flow.append(.blocks([HUDBlock(id: ItemID.slice(index), picture: picture, style: .plain)]))
+                index += 1
+            }
         }
+        return flow
     }
 
-    /// Plan MG §4: a zoomed view's strip as plain tappable slices, top to bottom.
-    static func stripSlices(_ pictures: [HUDPicture],
-                            onAction: @escaping (HUDPageAction) -> Void) -> [HUDFlowElement] {
-        pictures.enumerated().map { index, picture in
-            .blocks([HUDBlock(id: ItemID.slice(index), picture: picture, style: .plain,
-                              action: { onAction(.slice(index)) })])
+    /// Plan MU §6: the whole page's picture as one tappable card, alone in its row, and under it
+    /// the highlighted part's words (or the hint).
+    static func wholePageFlow(_ state: HUDPageViewState, picture: HUDPicture,
+                              onAction: @escaping (HUDPageAction) -> Void) -> [HUDFlowElement] {
+        var flow: [HUDFlowElement] = [
+            .blocks([HUDBlock(id: ItemID.wholePicture, picture: picture, style: .card,
+                              action: { onAction(.closeUp) })]),
+        ]
+        if let words = state.wordsLine {
+            flow.append(.line(HUDLine(words, emphasis: .secondary)))
+        } else if state.showsZoomHint {
+            flow.append(.line(HUDLine(String(localized: "Zoom in for labels"), emphasis: .secondary)))
+        }
+        return flow
+    }
+
+    /// Plan MU §6: the rows view's cards, the highlighted row first: the row's values, and under
+    /// them the names of their columns. A press says the row.
+    static func rowCards(_ rows: LensPageRows, onAction: @escaping (HUDPageAction) -> Void) -> [HUDFlowElement] {
+        rows.order.map { index in
+            let row = rows.rows[index]
+            return .blocks([HUDBlock(id: ItemID.row(index),
+                                     lines: [HUDLine(row.text, emphasis: .primary),
+                                             HUDLine(row.headings, emphasis: .meta)],
+                                     style: .card, action: { onAction(.speakRow(index)) })])
         }
     }
 
@@ -201,14 +235,22 @@ enum HUDPageScreenBuilder {
                                       .primary, .showHere, onAction)])
     }
 
+    /// The screen's lines and buttons, and for the rows view its cards. The session adds the
+    /// pictures (`wholePageFlow`, `stripSlices`).
     static func screen(_ state: HUDPageViewState,
                        onAction: @escaping (HUDPageAction) -> Void) -> HUDScreen {
-        HUDScreen(title: nil, lines: lines(state), items: items(state, onAction))
+        var screen = HUDScreen(title: nil, lines: lines(state), items: items(state, onAction))
+        if state.view == .rows, let rows = state.rows {
+            screen.trailingFlow = rowCards(rows, onAction: onAction)
+        }
+        return screen
     }
 
     static func lines(_ state: HUDPageViewState) -> [HUDLine] {
-        var lines: [HUDLine] = []
-        if let page = state.readingPage {
+        switch state.view {
+        case .reading:
+            guard let page = state.readingPage else { return [] }
+            var lines: [HUDLine] = []
             if page.index == 0, let citation = citationLine(state) { lines.append(citation) }
             lines += page.lines.enumerated().map { offset, text in
                 let isMoreLine = page.isCapped && offset == page.lines.count - 1
@@ -216,12 +258,14 @@ enum HUDPageScreenBuilder {
             }
             if let footer = page.footer { lines.append(HUDLine(footer, emphasis: .meta)) }
             return lines
+        case .rows:
+            let title = HUDTextShaper.condense(state.rows?.title ?? "", max: HUDTextShaper.maxTitleLength)
+            return title.isEmpty ? [] : [HUDLine(title, emphasis: .meta)]
+        case .whole:
+            return state.showsCitation ? citationLine(state).map { [$0] } ?? [] : []
+        case .closeUp, .zoomed:
+            return []
         }
-        if state.showsCitation, let citation = citationLine(state) { lines.append(citation) }
-        if state.showsZoomHint {
-            lines.append(HUDLine(String(localized: "Zoom in for labels"), emphasis: .secondary))
-        }
-        return lines
     }
 
     private static func citationLine(_ state: HUDPageViewState) -> HUDLine? {
@@ -230,74 +274,59 @@ enum HUDPageScreenBuilder {
         return text.isEmpty ? nil : HUDLine(text, emphasis: .meta)
     }
 
+    /// The view's buttons, three at most and fitted to the lens's width (`LensButtonRowBudget`,
+    /// Plan MU §3): a label with a short form takes it ("Next page ›" → "Next ›", "Back" → "‹"),
+    /// then the buttons in `givingWay(for:)` leave (still said by voice). **Close** stays.
     static func items(_ state: HUDPageViewState,
                       _ onAction: @escaping (HUDPageAction) -> Void) -> [HUDItem] {
-        if let page = state.readingPage {
-            return readingItems(state, page: page, onAction)
-        }
-        if state.isMoving, state.showsStrip {
-            // Plan MG §4: up and down are the lens's own scroll down the strip.
-            return [
-                item(ItemID.left, "←", .secondary, .step(.left), onAction),
-                item(ItemID.right, "→", .secondary, .step(.right), onAction),
-                item(ItemID.done, String(localized: "Done"), .outline, .doneMoving, onAction),
-            ]
-        }
-        if state.isMoving {
-            // The arrows are symbols, not words, so they are not localized.
-            return [
-                item(ItemID.up, "↑", .secondary, .step(.up), onAction),
-                item(ItemID.down, "↓", .secondary, .step(.down), onAction),
-                item(ItemID.left, "←", .secondary, .step(.left), onAction),
-                item(ItemID.right, "→", .secondary, .step(.right), onAction),
-                item(ItemID.done, String(localized: "Done"), .outline, .doneMoving, onAction),
-            ]
-        }
-
-        let viewport = state.viewport
-        var items: [HUDItem] = []
-        if viewport.isWholePage, state.showsTiles {
-            // Plan MG decision 7: the tiles are the zoom; a press on one goes two rungs in.
-            if viewport.hasPart {
-                items.append(item(ItemID.backToPart, String(localized: "Back to part"), .secondary,
-                                  .backToPart, onAction))
-            }
-        } else if viewport.isWholePage {
-            items.append(item(ItemID.zoomIn, String(localized: "Zoom in"), .primary, .zoomIn, onAction))
-            if viewport.hasPart {
-                items.append(item(ItemID.backToPart, String(localized: "Back to part"), .secondary,
-                                  .backToPart, onAction))
-            }
-        } else if viewport.isDeepest {
-            items.append(item(ItemID.zoomOut, String(localized: "Zoom out"), .primary, .zoomOut, onAction))
-            items.append(item(ItemID.move, String(localized: "Move"), .secondary, .move, onAction))
-        } else {
-            items.append(item(ItemID.zoomIn, String(localized: "Zoom in"), .primary, .zoomIn, onAction))
-            items.append(item(ItemID.wholePage, String(localized: "Whole page"), .secondary, .wholePage, onAction))
-            items.append(item(ItemID.move, String(localized: "Move"), .secondary, .move, onAction))
-        }
-        var after = min(1, items.count)
-        if state.canRead, !items.isEmpty || state.showsTiles {
-            items.insert(item(ItemID.readIt, String(localized: "Read it",
-                                                    comment: "Glasses: show the cited passage on the manual page as text."),
-                              .secondary, .readIt, onAction), at: after)
-            after += 1
-        }
-        if state.hasNextDiagram, viewport.isAtPart || viewport.isWholePage, !items.isEmpty || state.showsTiles {
-            items.insert(item(ItemID.nextDiagram, String(localized: "Next diagram ›",
-                                                         comment: "Glasses: show the page's next drawing."),
-                              .secondary, .nextDiagram, onAction), at: after)
-        }
-        if state.hasNextPage, viewport.isAtStart || viewport.isAtPart {
-            items.append(item(ItemID.nextPage, String(localized: "Next page ›"), .secondary, .nextPage, onAction))
-        }
-        items.append(item(ItemID.close, String(localized: "Close"), .outline, .close, onAction))
-        return capped(items)
+        LensButtonRowBudget.fit(rowItems(state, onAction), givingWay: givingWay(for: state)).row
     }
 
-    /// Reading mode's row: **Next ›** while pages remain, **Page** (the picture, on the passage's
-    /// mark), **‹ Back** after the first page, **Next page ›** on the last while another cited page
-    /// follows, and **Close**. Four at most.
+    /// The order a view's buttons give way in, least important first.
+    static func givingWay(for state: HUDPageViewState) -> [String] {
+        switch state.view {
+        case .reading: return [ItemID.previousText, ItemID.nextPage, ItemID.showPicture]
+        case .whole: return [ItemID.nextPage, ItemID.rows, ItemID.readIt]
+        case .closeUp, .zoomed, .rows: return [ItemID.back]
+        }
+    }
+
+    /// The view's buttons, three at most, before the width budget.
+    static func rowItems(_ state: HUDPageViewState,
+                         _ onAction: @escaping (HUDPageAction) -> Void) -> [HUDItem] {
+        switch state.view {
+        case .reading:
+            guard let page = state.readingPage else { return [closeItem(onAction)] }
+            return readingItems(state, page: page, onAction)
+        case .closeUp, .zoomed, .rows:
+            // Back where focus opens, at the top of the column (the pictures and cards are under
+            // the row).
+            return [item(ItemID.back, String(localized: "Back", comment: "Glasses: from a close look at a manual page back to the whole page."),
+                         .primary, .back, onAction),
+                    closeItem(onAction)]
+        case .whole:
+            var items: [HUDItem] = []
+            if state.rows != nil {
+                items.append(item(ItemID.rows, String(localized: "Rows", comment: "Glasses: show the manual page's table as text, one row at a time."),
+                                  .secondary, .rows, onAction))
+            }
+            if state.canRead {
+                items.append(item(ItemID.readIt, String(localized: "Read it",
+                                                        comment: "Glasses: show the cited passage on the manual page as text."),
+                                  .secondary, .readIt, onAction))
+            }
+            if state.hasNextPage {
+                items.append(item(ItemID.nextPage, String(localized: "Next page ›"), .secondary, .nextPage, onAction))
+            }
+            items.append(closeItem(onAction))
+            return capped(items, givingWay: [ItemID.nextPage, ItemID.rows])
+        }
+    }
+
+    /// Reading mode's row: **Next ›** while pages remain, **Page** (the whole page, the passage
+    /// highlighted), **‹ Back** after the first page, **Next page ›** on the last while another
+    /// cited page follows, and **Close**: three at most, **‹ Back** giving way first (still said
+    /// as "back").
     private static func readingItems(_ state: HUDPageViewState, page: HUDAnswerPage,
                                      _ onAction: @escaping (HUDPageAction) -> Void) -> [HUDItem] {
         var items: [HUDItem] = []
@@ -313,28 +342,21 @@ enum HUDPageScreenBuilder {
         if page.isLast, state.hasNextPage {
             items.append(item(ItemID.nextPage, String(localized: "Next page ›"), .secondary, .nextPage, onAction))
         }
-        items.append(item(ItemID.close, String(localized: "Close"), .outline, .close, onAction))
-        return capped(items)
+        items.append(closeItem(onAction))
+        return capped(items, givingWay: [ItemID.previousText, ItemID.nextPage])
     }
 
-    /// The most buttons a page-view row holds. Measured on the simulated Display (P4): five buttons,
-    /// two of them **Next diagram ›** and **Whole page**, came to more than the lens is wide, and DAT
-    /// cut both labels short.
-    static let maxButtons = 4
-
-    /// A row over `maxButtons` loses **Move** first (one **Zoom in** brings it back, and an arrow
-    /// row on the part is rarely what's wanted), then **Next diagram ›** (still said as
-    /// "next diagram"), then **Whole page** (still said as "whole page"; it gives way only on a
-    /// page with words to read, whose **Read it** has the place), then **‹ Back**, and last **Next
-    /// page ›** (still said as "next page"; only a whole page that started there with words to read
-    /// and a part to go back to would need it). **Close** always stays.
-    static func capped(_ items: [HUDItem]) -> [HUDItem] {
+    /// `items` cut to `maxButtons`, the ids in `givingWay` going first, in order. **Close** stays.
+    static func capped(_ items: [HUDItem], givingWay: [String]) -> [HUDItem] {
         var items = items
-        for id in [ItemID.move, ItemID.nextDiagram, ItemID.wholePage, ItemID.previousText, ItemID.nextPage]
-        where items.count > maxButtons {
+        for id in givingWay where items.count > maxButtons {
             items.removeAll { $0.id == id }
         }
         return items
+    }
+
+    private static func closeItem(_ onAction: @escaping (HUDPageAction) -> Void) -> HUDItem {
+        item(ItemID.close, String(localized: "Close"), .outline, .close, onAction)
     }
 
     private static func item(_ id: String, _ label: String, _ style: HUDButtonStyle,

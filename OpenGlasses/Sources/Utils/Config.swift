@@ -4219,6 +4219,13 @@ struct Config {
         set { UserDefaults.standard.set(newValue.rawValue, forKey: LensAnswerStyle.storageKey) }
     }
 
+    /// Display & HUD › Keep answers up (Plan MU §4, decision 2): on the Meta Display, the reading
+    /// view stays until it is closed (the default) or clears after 3 minutes without a press.
+    static var lensAnswerLifetime: LensAnswerLifetime {
+        get { LensAnswerLifetime.stored() }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: LensAnswerLifetime.storageKey) }
+    }
+
     /// Plan KP §4: the same follow-ups when only the web mirror shows answers (no display). Off by
     /// default (decision 5): the mirror is read-only, so its buttons can't be pressed there.
     @UserDefaultsBacked("followUpsOnMirrorEnabled", default: false) static var followUpsOnMirrorEnabled: Bool

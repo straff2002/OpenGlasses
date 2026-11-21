@@ -13,9 +13,10 @@ import WebKit
 /// with one line per step in walkthrough.log there. Only invented pages are drawn; nothing is
 /// pressed that sends, saves or asks the model anything.
 ///
-/// Plan MG: it then shows the whole page as tiles and presses one (the zoomed strip, Move's
-/// ← · → · Done), and the reading view: two answers, a press on an earlier one and ‹ Latest. A
-/// press on a tappable box goes through the mock by the identifier the SDK gave it, as a button's.
+/// Plan MU: the whole page opens with its part highlighted; a press on the picture opens the
+/// close-up (or fit width), Back returns. Then the reading view: two answers, a press on an earlier
+/// one and ‹ Latest. A press on a tappable box goes through the mock by the identifier the SDK gave
+/// it, as a button's.
 @MainActor
 struct SimulatedDisplayWalkthrough {
     let appState: AppState
@@ -59,7 +60,7 @@ struct SimulatedDisplayWalkthrough {
         await pageViewWalk()
         await otherPages()
         await staleFrameCheck()
-        await tileGridWalk()
+        await fitWidthWalk()
         await answerCardWalk()
         await readingViewWalk()
         write("done")
@@ -69,58 +70,46 @@ struct SimulatedDisplayWalkthrough {
 
     private func pageViewWalk() async {
         // "Show me the diagram on page 2": the page with two drawings and no captions. It opens on
-        // the whole page; Back to part goes to the chosen drawing.
+        // the whole page, the chosen drawing highlighted; a press on the picture opens its
+        // close-up, and Back returns to the whole page (Plan MU §6).
         await stage(SimulatedDisplayTestManual.staged(page: 2), words: "show me the diagram on page 2")
         await capture("page2-opening")
         dumpPreview()
-        await pressPage(HUDPageScreenBuilder.ItemID.backToPart, "back-to-part")
-        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "zoom-in-1")
-        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "zoom-in-2")
-        await pressPage(HUDPageScreenBuilder.ItemID.move, "move")
-        await pressPage(HUDPageScreenBuilder.ItemID.right, "move-right")
-        await pressPage(HUDPageScreenBuilder.ItemID.done, "move-done")
-        // Whole page is offered short of the deepest zoom; from the deepest, zoom out to it.
-        var outs = 0
-        while !offered(HUDPageScreenBuilder.ItemID.wholePage), offered(HUDPageScreenBuilder.ItemID.zoomOut), outs < 3 {
-            outs += 1
-            await pressPage(HUDPageScreenBuilder.ItemID.zoomOut, "zoom-out-\(outs)")
-        }
-        await pressPage(HUDPageScreenBuilder.ItemID.wholePage, "whole-page")
-        await pressPage(HUDPageScreenBuilder.ItemID.nextDiagram, "next-diagram")
-        await pressPage(HUDPageScreenBuilder.ItemID.nextDiagram, "next-diagram-again")
+        await pressPageBlock(HUDPageScreenBuilder.ItemID.wholePicture, "page2-close-up")
+        await pressPage(HUDPageScreenBuilder.ItemID.back, "page2-back")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "close")
     }
 
     private func otherPages() async {
-        // "Show me the page": the block diagram's page opens whole; Next diagram focuses it.
+        // "Show me the page": nothing highlighted; a press on the picture opens it at fit width.
         await stage(SimulatedDisplayTestManual.staged(page: 1, figure: "Figure 1"), words: "show me the page")
         await capture("page1-whole")
-        await pressPage(HUDPageScreenBuilder.ItemID.nextDiagram, "page1-next-diagram")
-        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page1-zoom-in")
+        await pressPageBlock(HUDPageScreenBuilder.ItemID.wholePicture, "page1-fit-width")
+        await pressPage(HUDPageScreenBuilder.ItemID.back, "page1-back")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page1-close")
-        // A cited passage on the text page: the view opens on its words (reading mode), pages them,
-        // shows the picture on its mark, and reads them again.
+        // A cited passage on the text page: the whole page, the passage highlighted and its first
+        // sentence under it; Read it pages its words, and Page goes back to the picture.
         await stage(SimulatedDisplayTestManual.staged(page: 4, cited: true), words: "how do I clear a latched fault")
-        await capture("page4-reading")
+        await capture("page4-whole")
+        await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-read-it")
         await pressPage(HUDPageScreenBuilder.ItemID.nextText, "page4-reading-next")
         await pressPage(HUDPageScreenBuilder.ItemID.showPicture, "page4-picture")
-        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page4-picture-zoom-in")
-        await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-read-it")
+        await pressPageBlock(HUDPageScreenBuilder.ItemID.wholePicture, "page4-close-up")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page4-close")
-        // Two cited passages on the page: numbered, one after the other.
+        // Two cited passages on the page: both outlined, numbered.
         await stage(SimulatedDisplayTestManual.staged(page: 4, citedTwice: true), words: "how do I clear a latched fault")
         await capture("page4-two-passages")
+        await pressPage(HUDPageScreenBuilder.ItemID.readIt, "page4-two-read-it")
         while offered(HUDPageScreenBuilder.ItemID.nextText) {
             await pressPage(HUDPageScreenBuilder.ItemID.nextText, "page4-two-next-\(lensPage.shownState?.readingIndex ?? 0)")
         }
         await pressPage(HUDPageScreenBuilder.ItemID.showPicture, "page4-two-picture")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page4-two-close")
-        // The table, outlined as a pictured table: it keeps the picture, opens on the whole page,
-        // and Back to part fills the width with the table.
+        // The table, outlined as a pictured table: highlighted on the whole page; its close-up is
+        // cut into halves when it is wider than the lens.
         await stage(SimulatedDisplayTestManual.staged(page: 3, figure: "Table 1", pictured: true), words: "show me table 1")
         await capture("page3-table")
-        await pressPage(HUDPageScreenBuilder.ItemID.backToPart, "page3-back-to-part")
-        await pressPage(HUDPageScreenBuilder.ItemID.zoomIn, "page3-zoom-in")
+        await pressPageBlock(HUDPageScreenBuilder.ItemID.wholePicture, "page3-close-up")
         await pressPage(HUDPageScreenBuilder.ItemID.close, "page3-close")
     }
 
@@ -128,12 +117,11 @@ struct SimulatedDisplayWalkthrough {
     private func staleFrameCheck() async {
         await stage(SimulatedDisplayTestManual.staged(page: 2), words: "show me the diagram on page 2")
         await capture("stale-opening")
-        let item = lensPage.shownScreen?.items.first { $0.id == HUDPageScreenBuilder.ItemID.zoomIn }
-        if let item {
-            let via = await click(item, on: lensPage.shownScreen)
+        if let picture = lensPage.shownScreen?.block(id: HUDPageScreenBuilder.ItemID.wholePicture) {
+            picture.action?()
             display.showNotification(title: "Invented alert", body: "Filter check due", icon: .warning, duration: 6)
             try? await Task.sleep(nanoseconds: 2_500_000_000)
-            await capture("stale-notification-wins", note: "pressed Zoom in (\(via)) then a notification")
+            await capture("stale-notification-wins", note: "pressed the page (direct) then a notification")
         }
         try? await Task.sleep(nanoseconds: 5_000_000_000)
         await capture("stale-after-notification")
@@ -142,21 +130,21 @@ struct SimulatedDisplayWalkthrough {
 
     // MARK: - The answer card
 
-    /// Plan MG §4: the whole page as nine tiles; a press on the bottom right one zooms two rungs
-    /// into it, drawn as a strip the lens scrolls; Move keeps only ← · → · Done.
-    private func tileGridWalk() async {
-        let tiles = lensPage.tilesAndStrips
-        lensPage.tilesAndStrips = true
+    /// Plan MU §6: a page by number at fit width, then "go to the bottom" and Back.
+    private func fitWidthWalk() async {
         await stage(SimulatedDisplayTestManual.staged(page: 1, figure: "Figure 1"), words: "show me the page")
-        await capture("tiles-whole-page", note: "blocks=\(lensPage.shownScreen?.allBlocks.count ?? 0)")
-        if let tile = lensPage.shownScreen?.allBlocks.last {
-            await pressBlock(tile.id, "tiles-bottom-right", screen: { lensPage.shownScreen }, state: { pageState() })
-        }
-        await pressPage(HUDPageScreenBuilder.ItemID.move, "strip-move")
-        await pressPage(HUDPageScreenBuilder.ItemID.left, "strip-move-left")
-        await pressPage(HUDPageScreenBuilder.ItemID.done, "strip-move-done")
-        await pressPage(HUDPageScreenBuilder.ItemID.close, "tiles-close")
-        lensPage.tilesAndStrips = tiles
+        await capture("fit-whole-page", note: "blocks=\(lensPage.shownScreen?.allBlocks.count ?? 0)")
+        await pressPageBlock(HUDPageScreenBuilder.ItemID.wholePicture, "fit-width")
+        _ = lensPage.handle(.bottom)
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        await capture("fit-bottom", note: pageState())
+        await pressPage(HUDPageScreenBuilder.ItemID.back, "fit-back")
+        await pressPage(HUDPageScreenBuilder.ItemID.close, "fit-close")
+    }
+
+    /// A press on the page view's block `id` (the whole page's picture) through the mock.
+    private func pressPageBlock(_ id: String, _ name: String) async {
+        await pressBlock(id, name, screen: { lensPage.shownScreen }, state: { pageState() })
     }
 
     /// Plan MG §2: two answers as the reading view; a press on the earlier one opens it at the top,
@@ -365,14 +353,17 @@ struct SimulatedDisplayWalkthrough {
         guard let state = lensPage.shownState else { return "held=\(String(describing: lensPage.held))" }
         let viewport = state.viewport
         let crop = viewport.cropRect.integral
-        let size = lensPage.shownScreen?.picture.map { "\(Int($0.pixelSize.width))x\(Int($0.pixelSize.height))" } ?? "none"
+        let pictures = lensPage.shownScreen?.allBlocks.compactMap(\.picture) ?? []
+        let size = pictures.isEmpty ? "none"
+            : pictures.map { "\(Int($0.pixelSize.width))x\(Int($0.pixelSize.height))" }.joined(separator: "+")
         let mode = state.isReading
             ? "reading=\(state.readingIndex + 1)/\(state.readingPages.count)"
             : String(format: "scale=%.2f px/pt=%.2f", Double(viewport.scale), Double(viewport.pixelsPerPoint))
                 + " crop=\(Int(crop.minX)),\(Int(crop.minY)),\(Int(crop.width))x\(Int(crop.height))"
         return "held=\(String(describing: lensPage.held)) \(mode) "
             + "whole=\(viewport.isWholePage) diagram=\(state.diagramIndex.map { "\($0 + 1)" } ?? "-")/\(state.diagramCount) "
-            + "moving=\(state.isMoving) buttons=\(labels(lensPage.shownScreen)) picture=\(size)"
+            + "view=\(state.view) highlight=\(state.highlight.reason.rawValue) halves=\(state.closeUp?.hasHalves ?? false) "
+            + "buttons=\(labels(lensPage.shownScreen)) picture=\(size)"
     }
 
     private func labels(_ screen: HUDScreen?) -> String {

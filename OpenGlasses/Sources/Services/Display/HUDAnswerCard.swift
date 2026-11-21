@@ -73,26 +73,37 @@ import Foundation
 /// lens scrolls (`HUDReadingViewBuilder`): its rows, its buttons, and this conversation's earlier
 /// answers under them (`LensConversationLog`, in memory only). It is sent at settle points while
 /// the answer streams and once it is complete (`ReadingRedrawPolicy`), then only on a press, a new
-/// answer or the lens coming back, and it lasts `readingIdleLifetime` (3 minutes) without a press
-/// (decision 4). A press on a row says the answer again from there (decision 3); a press on an
-/// earlier answer opens it at the top, with **‹ Latest**. The paged card and its Actions screen are
-/// unchanged, and Even keeps them; "previous answer" by voice opens an earlier answer as pages there.
+/// answer or the lens coming back. Plan MU §4: it stays until it is put away — **Close**, a new
+/// answer, the end of a private conversation, the HUD turning off or a long disconnect — unless
+/// Display & HUD › Keep answers up says 3 minutes (`readingIdleLifetime`). A press on a row says the
+/// answer again from there (decision 3); a press on an earlier answer opens it at the top, with
+/// **‹ Latest**. The paged card keeps its 60 s, and Even keeps it; "previous answer" by voice opens
+/// an earlier answer as pages there.
+///
+/// **Rows that fit (Plan MU §3).** On the Meta Display every button row goes through
+/// `LensButtonRowBudget` (`fitsLensRow`); the Actions screen then offers what the row it came from
+/// had no room for.
 @MainActor
 final class HUDAnswerCard {
     /// Plan KP §3: a card with no press for this long clears.
     static let defaultIdleLifetime: TimeInterval = 60
     /// Plan LC §5: a staged thumbnail no card has taken after this long belongs to no answer.
     static let stagedPictureLifetime: TimeInterval = 90
-    /// Plan MG decision 4: the reading view with no press for this long clears. The app can't see
-    /// the wearer scroll, so KP's 60 s would clear a view still being read.
-    static let defaultReadingIdleLifetime: TimeInterval = 180
+    /// Plan MG §3, unchanged by MU §4: glasses disconnected for this long make the lens forget a
+    /// reading view's conversation (the paged card's is its own lifetime). It was the reading view's
+    /// lifetime; the view no longer has one by default, and the forgetting rule stays as it was.
+    static let readingDisconnectWindow: TimeInterval = 180
 
     private let display: GlassesDisplayService
 
     /// Test seam: the idle lifetime.
     var idleLifetime: TimeInterval = HUDAnswerCard.defaultIdleLifetime
-    /// Test seam: the reading view's idle lifetime.
-    var readingIdleLifetime: TimeInterval = HUDAnswerCard.defaultReadingIdleLifetime
+    /// Plan MU §4: the reading view's idle lifetime, from Display & HUD › Keep answers up: none
+    /// (until closed) by default, or 3 minutes. Read each time a timer is armed. A test seam.
+    var readingIdleLifetime: () -> TimeInterval? = { Config.lensAnswerLifetime.idleLifetime }
+    /// Plan MU §3: whether button rows are fitted to the Meta Display's width. Off for Even, whose
+    /// lens lays its rows out itself. A test seam.
+    var fitsLensRow: () -> Bool = HUDAnswerCard.activeFitsLensRow
     /// Plan MG §2: whether a new answer is shown as the reading view. AppState wires
     /// `activeUsesReadingView` (the Meta Display, unless Display & HUD says Pages); nothing else
     /// gets the reading view, so a card left unwired keeps its pages.
@@ -234,6 +245,16 @@ final class HUDAnswerCard {
         return Config.displayBackend == .metaRayBan && Config.lensAnswerStyle == .scroll
         #else
         return false
+        #endif
+    }
+
+    /// Plan MU §3: rows are fitted to the lens's width everywhere but Even (the web mirror is the
+    /// Meta Display's shape).
+    static func activeFitsLensRow() -> Bool {
+        #if !AVENKIN_PHONE_ONLY
+        return Config.displayBackend != .evenG2
+        #else
+        return true
         #endif
     }
 
@@ -532,10 +553,12 @@ final class HUDAnswerCard {
         }
     }
 
-    /// How far `text` has settled into reading-view rows and paragraphs.
-    static func readingProgress(_ text: String, geometry: TeleprompterPaginator.Geometry,
+    /// How far `text` has settled into reading-view rows and paragraphs: the rows of its prose,
+    /// as the view lays it out (Plan MU §2, the `Source:` markers taken out).
+    static func readingProgress(_ answer: String, geometry: TeleprompterPaginator.Geometry,
                                 isComplete: Bool) -> ReadingRedrawPolicy.Progress {
         let chars = HUDReadingRows.maxChars(for: geometry)
+        let text = LensSourceTile.split(answer).prose
         return ReadingRedrawPolicy.Progress(
             settledRows: HUDReadingRows.settledRowCount(for: text, maxChars: chars, isComplete: isComplete),
             settledParagraphs: HUDReadingRows.settledParagraphCount(for: text, isComplete: isComplete),
@@ -679,11 +702,10 @@ final class HUDAnswerCard {
 
     // MARK: - Bringing the card back (Plan MG §7)
 
-    /// How long after it closed a card can still be brought back by voice. The card is in memory
-    /// only, and a new answer replaces it.
-    static let reopenLifetime: TimeInterval = 10 * 60
-
-    /// The last card closed (**Close**, its lifetime), for `reopen()`.
+    /// The last card closed (**Close**, its lifetime), for `reopen()`. Plan MU §4 (decision 3): kept
+    /// for as long as the conversation lasts, cleared by the same rules as `LensConversationLog`
+    /// (the conversation's end, a private conversation's end, the HUD turning off, a long
+    /// disconnect) and replaced by a new answer. In memory only.
     private struct ClosedCard {
         let answer: String
         let pages: [HUDAnswerPage]
@@ -701,12 +723,11 @@ final class HUDAnswerCard {
     private var closedCard: ClosedCard?
 
     /// Whether there is an answer `reopen()` could put back on the lens: the card it holds (the
-    /// glasses' Back gesture leaves it held but off the lens), or the last one closed inside
-    /// `reopenLifetime`.
+    /// glasses' Back gesture leaves it held but off the lens), or the last one closed in this
+    /// conversation.
     var canReopen: Bool {
         if !answer.isEmpty, !pages.isEmpty { return true }
-        guard let closedCard else { return false }
-        return now().timeIntervalSince(closedCard.closedAt) < Self.reopenLifetime
+        return closedCard != nil
     }
 
     /// The wearer asked, hands-free, to see the last answer again ("show that again",
@@ -774,20 +795,22 @@ final class HUDAnswerCard {
     }
 
     /// Plan MG §3: the glasses' link went down (or came back). Down for longer than the card's
-    /// lifetime, the lens forgets the conversation; back before that, nothing changes.
+    /// window (`readingDisconnectWindow` for the reading view, the paged card's lifetime), the lens
+    /// forgets the conversation; back before that, nothing changes.
     func glassesLinkChanged(_ connected: Bool) {
         linkGeneration += 1
         guard !connected else { return }
         let generation = linkGeneration
-        scheduleIdleTimer(currentLifetime) { [weak self] in
+        scheduleIdleTimer(isReadingView ? Self.readingDisconnectWindow : idleLifetime) { [weak self] in
             guard let self, generation == self.linkGeneration else { return }
             self.log.clear()
             self.closedCard = nil
         }
     }
 
-    /// The lifetime of the card as it is shown: the reading view's, or the paged card's.
-    private var currentLifetime: TimeInterval { isReadingView ? readingIdleLifetime : idleLifetime }
+    /// The lifetime of the card as it is shown: the reading view's (none until closed, by default),
+    /// or the paged card's.
+    private var currentLifetime: TimeInterval? { isReadingView ? readingIdleLifetime() : idleLifetime }
     private var forgetOnClose = false
 
     /// Plan KP §8 rule 4: the Display is ours again after another app had it. The held card shows
@@ -795,9 +818,11 @@ final class HUDAnswerCard {
     /// was made; an older one is dropped. The lifetime timer already running is left as it is.
     func displayReturned() {
         guard isShowing else { return }
-        guard let made = answerMadeAt, now().timeIntervalSince(made) < currentLifetime else {
-            close()
-            return
+        if let lifetime = currentLifetime {
+            guard let made = answerMadeAt, now().timeIntervalSince(made) < lifetime else {
+                close()
+                return
+            }
         }
         let screen = currentScreen()
         if display.presentAnswerCard(screen, onSelect: selectionHandler) { shownScreen = screen }
@@ -845,8 +870,11 @@ final class HUDAnswerCard {
     /// (a task card or a menu took the HUD).
     private func armIdleTimer() {
         idleGeneration += 1
+        // Plan MU §4: a reading view kept until closed has no timer (an older one finds a newer
+        // generation and does nothing).
+        guard let lifetime = currentLifetime else { return }
         let generation = idleGeneration
-        scheduleIdleTimer(currentLifetime) { [weak self] in
+        scheduleIdleTimer(lifetime) { [weak self] in
             guard let self, generation == self.idleGeneration, self.isShowing else { return }
             self.close()
         }
@@ -878,6 +906,7 @@ final class HUDAnswerCard {
     private func currentScreen() -> HUDScreen {
         let onAction = self.onAction
         let showsPage = hasPage && pageCanOpen()
+        let fits = fitsLensRow()
         if isReadingView, !isOnActions {
             var screen = HUDReadingViewBuilder.screen(readingState(hasPage: showsPage), geometry: geometry(),
                                                       onAction: onAction)
@@ -885,18 +914,40 @@ final class HUDAnswerCard {
             return screen
         }
         if isOnActions {
+            guard fits || isReadingView else {
+                return HUDAnswerCardBuilder.actions(pages, followUps: followUps, hasPage: showsPage,
+                                                    onAction: onAction)
+            }
+            // Plan MU §3: the Actions screen offers what the row the wearer came from had no room
+            // for, and Page when it lost it. The reading view's Actions lists every follow-up
+            // (decision 4: they live there and by voice); the paged card's, those its last page lost.
+            let row = actionsSourceRow(showsPage: showsPage, fits: fits)
+            let onRow = isReadingView ? 0 : row.filter { LensButtonRowBudget.isCuttable($0.id) }.count
+            let pageOnRow = row.contains { $0.id == HUDAnswerCardBuilder.ItemID.page }
             return HUDAnswerCardBuilder.actions(pages, followUps: followUps, hasPage: showsPage,
-                                                onAction: onAction)
+                                                followUpsOnRow: onRow, offersPage: showsPage && !pageOnRow,
+                                                fitsLensRow: fits, onAction: onAction)
         }
         let readable = max(1, min(visiblePageCount, pages.count))
         let screens = (0..<readable).compactMap {
             HUDAnswerCardBuilder.page(pages, index: $0, followUps: followUps, question: question,
-                                      picture: picture, hasPage: showsPage, onAction: onAction)
+                                      picture: picture, hasPage: showsPage, fitsLensRow: fits, onAction: onAction)
         }
         let index = min(pageIndex, readable - 1)
         var screen = screens.indices.contains(index) ? screens[index] : HUDScreen()
         screen.pageSet = HUDPageSet(pages: screens, index: index, card: cardSerial)
         return screen
+    }
+
+    /// The row the Actions screen was opened from, as drawn: the reading view's, or the last page's.
+    /// Only its follow-ups and its **Page** matter here, so no press is wired.
+    private func actionsSourceRow(showsPage: Bool, fits: Bool) -> [HUDItem] {
+        if isReadingView {
+            return HUDReadingViewBuilder.items(readingState(hasPage: showsPage), { _ in })
+        }
+        guard let last = pages.last else { return [] }
+        let row = HUDAnswerCardBuilder.rowItems(last, followUps: followUps, hasPage: showsPage, onAction: { _ in })
+        return fits ? LensButtonRowBudget.fit(row, givingWay: HUDAnswerCardBuilder.rowGivingWay).row : row
     }
 
     /// The reading view's state: the newest turn (or the earlier one open at the top) and the

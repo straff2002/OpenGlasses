@@ -42,6 +42,9 @@ final class HUDAnswerFollowUpTests: XCTestCase {
         let card = HUDAnswerCard(display: display)
         card.geometry = { .raybanDisplay }
         card.scheduleIdleTimer = { _, _ in }
+        // KP's rows as the card lays them out before the Meta Display's width budget (Plan MU §3):
+        // Even's rows, unchanged. The fitted rows are `LensReadAtWorkTests`'.
+        card.fitsLensRow = { false }
         return (display, card)
     }
 

@@ -32,6 +32,18 @@ enum HUDPageCommand: Equatable {
     case zoomIntoTable
     /// "Zoom in on the diagram": the page's drawing.
     case zoomIntoDiagram
+    /// Plan MU §6: "close-up" — the highlighted part read closely (fit width with no highlight),
+    /// as a press on the whole page does.
+    case closeUp
+    /// "Right half", "left half": that half of a close-up too wide for the lens.
+    case half(LensPageCloseUp.Half)
+    /// "Go to the bottom": the page at fit width, ending at its foot.
+    case bottom
+    /// "Rows", "show the rows": the page's table as rows.
+    case rows
+    /// "Show E7": that row of the page's table. The words after "show", as said; the page view
+    /// takes it only when the page's table has a row by that name.
+    case showRow(String)
 
     static func parse(_ text: String) -> HUDPageCommand? {
         let stripped = text.lowercased()
@@ -44,6 +56,7 @@ enum HUDPageCommand: Equatable {
 
         if let position = diagramPosition(core) { return .diagram(position) }
         if let zoom = zoomInto(core) { return zoom }
+        if let close = closeUpOrPlace(core) { return close }
 
         switch core.joined(separator: " ") {
         case "zoom in", "closer", "zoom closer", "get closer":
@@ -82,12 +95,58 @@ enum HUDPageCommand: Equatable {
             return .showPage
         case "read it", "read", "read that", "read the text", "show the text", "the text", "text":
             return .readIt
-        case "close", "close the page", "close page", "close it", "close that":
+        case "close", "close the page", "close page", "close it", "close that",
+             "hide that", "hide it", "put it away", "put that away":
             return .close
+        default:
+            return showRow(core)
+        }
+    }
+
+    /// Plan MU §6: "close-up", "right half", "go to the bottom", "rows".
+    private static func closeUpOrPlace(_ words: [String]) -> HUDPageCommand? {
+        switch words.joined(separator: " ") {
+        case "close up", "closeup", "a close up", "the close up", "show the close up", "show me the close up",
+             "closer look", "a closer look", "take a closer look", "read it closely", "read it close up":
+            return .closeUp
+        case "right half", "the right half", "show the right half", "right hand side", "the right hand side",
+             "go to the right half":
+            return .half(.right)
+        case "left half", "the left half", "show the left half", "left hand side", "the left hand side",
+             "go to the left half":
+            return .half(.left)
+        case "go to the bottom", "to the bottom", "the bottom", "bottom of the page", "the bottom of the page",
+             "go to the bottom of the page", "scroll to the bottom", "show the bottom", "show the bottom of the page":
+            return .bottom
+        case "rows", "the rows", "show the rows", "show me the rows", "show rows", "table rows", "the table rows",
+             "read the rows", "read the table", "show the table as rows":
+            return .rows
         default:
             return nil
         }
     }
+
+    /// "show E7", "show row E7", "show me E7": "show", then a short row name. Two words at most
+    /// after it, and never "the …" (that is a request), so "show me the wiring diagram" stays one.
+    /// Nor another view's own short words: "show me again" brings the answer back, "show menu",
+    /// "show my day" and "show briefing" are the HUD's.
+    private static func showRow(_ words: [String]) -> HUDPageCommand? {
+        guard words.first == "show" else { return nil }
+        var rest = Array(words.dropFirst())
+        if rest.first == "me" { rest.removeFirst() }
+        if rest.first == "row" { rest.removeFirst() }
+        guard (1...2).contains(rest.count), !notRowNames.contains(rest[0]),
+              !rest.contains(where: notRowWords.contains) else { return nil }
+        return .showRow(rest.joined(separator: " "))
+    }
+
+    /// A row name never starts with one of these.
+    private static let notRowNames: Set<String> = [
+        "the", "a", "an", "it", "that", "this", "page", "picture", "text", "more", "everything",
+        "my", "me", "us", "all", "menu", "briefing", "today", "answer", "conversation",
+    ]
+    /// Nor holds one of these anywhere ("show it again", "show me again").
+    private static let notRowWords: Set<String> = ["again", "menu", "briefing", "today"]
 
     /// Plan MG §4: "zoom in on the bottom right", "zoom into the table", "closer at the top",
     /// "get closer to the left". A zoom word, then a place; the whole utterance, so "zoom in on the
