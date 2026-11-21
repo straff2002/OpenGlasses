@@ -46854,6 +46854,88 @@
         }
       }
     },
+    "3 minutes" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 دقائق"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 minutos"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 minutes"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 perc"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 minuti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3分"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3분"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 minuten"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 minutos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 минуты"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 منٹ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 分钟"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "3 分鐘"
+          }
+        }
+      }
+    },
     "3 seconds" : {
       "localizations" : {
         "ar" : {
@@ -110578,6 +110660,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "兩者"
+          }
+        }
+      }
+    },
+    "Boxes seen" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المربعات الظاهرة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuadros vistos"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cases vues"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Látott dobozok"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riquadri visti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "見えた枠の数"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보이는 상자 수"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vakken gezien"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quadros vistos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видно квадратов"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نظر آنے والے خانے"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "看到的方框数"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "看到的方框數"
           }
         }
       }
@@ -189638,6 +189802,88 @@
         }
       }
     },
+    "Downloaded Models" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "النماذج التي تم تنزيلها"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos descargados"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèles téléchargés"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letöltött modellek"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelli scaricati"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済みモデル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다운로드한 모델"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gedownloade modellen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos baixados"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Загруженные модели"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ڈاؤن لوڈ شدہ ماڈلز"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下载的模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下載的模型"
+          }
+        }
+      }
+    },
     "Downloaded models run entirely on this device; camera frames and audio never leave it for these features." : {
       "localizations" : {
         "ar" : {
@@ -195108,6 +195354,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更早"
+          }
+        }
+      }
+    },
+    "Earlier — press to open" : {
+      "comment" : "Glasses: heading over the conversation's earlier answers on the lens; pressing one opens it.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سابقًا — اضغط للفتح"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anteriores — presiona para abrir"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plus tôt — appuyez pour ouvrir"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korábban — nyomja meg a megnyitáshoz"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Precedenti — premi per aprire"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以前 — 押して開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이전 — 눌러서 열기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eerder — druk om te openen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anteriores — pressione para abrir"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ранее — нажмите, чтобы открыть"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پہلے — کھولنے کے لیے دبائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更早 — 按下即可打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更早 — 按下即可開啟"
           }
         }
       }
@@ -209824,6 +210153,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每分鐘"
+          }
+        }
+      }
+    },
+    "Every picture sent to the display is made smaller by this much so it fits. The reading goes into your support report." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تُصغَّر كل صورة تُرسل إلى الشاشة بهذا المقدار لتتسع لها. وتُضاف القراءة إلى تقرير الدعم."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada imagen enviada a la pantalla se reduce en esta medida para que quepa. La lectura se incluye en tu reporte de soporte."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque image envoyée à l’affichage est réduite d’autant pour qu’elle tienne. La lecture est ajoutée à votre rapport de support."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A kijelzőre küldött minden kép ennyivel kisebb lesz, hogy elférjen. A mérés bekerül a támogatási jelentésbe."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni immagine inviata al display viene ridotta di questo fattore per farla entrare. La lettura viene inclusa nel tuo rapporto di supporto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ディスプレイに送るすべての画像を、収まるようにこの割合で縮小します。測定結果はサポートレポートに含まれます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "디스플레이로 보내는 모든 사진은 화면에 맞도록 이만큼 축소됩니다. 측정 결과는 지원 보고서에 포함됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elke afbeelding die naar het display wordt gestuurd, wordt zoveel kleiner gemaakt dat hij past. De meting komt in uw ondersteuningsrapport."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada imagem enviada para a tela é reduzida nessa proporção para caber. A leitura vai para o seu relatório de suporte."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждое изображение, отправляемое на дисплей, уменьшается на эту величину, чтобы поместиться. Результат проверки попадает в отчёт для поддержки."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ڈسپلے پر بھیجی جانے والی ہر تصویر اتنی چھوٹی کر دی جاتی ہے کہ وہ سما جائے۔ یہ پیمائش آپ کی سپورٹ رپورٹ میں شامل ہوتی ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发送到显示屏的每张图片都会按此比例缩小，以便完整显示。测量结果会写入你的支持报告。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳送到顯示器的每張圖片都會依此比例縮小，以便完整顯示。測量結果會寫入你的支援報告。"
           }
         }
       }
@@ -229226,6 +229637,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "急救檢傷分類"
+          }
+        }
+      }
+    },
+    "Fit check" : {
+      "comment" : "Glasses: the title of the screen that checks how pictures fit the lens.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فحص الملاءمة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prueba de ajuste"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérification de l’ajustement"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Illeszkedés-ellenőrzés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verifica dell’adattamento"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィットチェック"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "맞춤 확인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pascontrole"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teste de encaixe"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверка размера"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فٹ چیک"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适配检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適配檢查"
           }
         }
       }
@@ -259351,6 +259845,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "較高的閾值會丟棄更多（將更多影格視為「相同場景」）。即使沒有變化，心跳也會在這麼多秒後強制刷新影格，以避免 AI 的視圖過時。預設值：4 和 12 秒。"
+          }
+        }
+      }
+    },
+    "Highest number read" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أعلى رقم مقروء"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Número más alto leído"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plus grand nombre lu"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legnagyobb leolvasott szám"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Numero più alto letto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読めた最大の数字"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽은 가장 큰 숫자"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoogste gelezen getal"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maior número lido"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Наибольшее прочитанное число"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پڑھا گیا سب سے بڑا نمبر"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读到的最大数字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀到的最大數字"
+          }
+        }
+      }
+    },
+    "Highest number read whole" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أعلى رقم مقروء كاملًا"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Número más alto leído completo"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plus grand nombre lu en entier"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legnagyobb egészében olvasható szám"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Numero più alto letto per intero"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全体が読めた最大の数字"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "온전히 읽은 가장 큰 숫자"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoogste volledig gelezen getal"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maior número lido por inteiro"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Наибольшее число, прочитанное целиком"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پورا پڑھا گیا سب سے بڑا نمبر"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能完整读出的最大数字"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能完整讀出的最大數字"
           }
         }
       }
@@ -292805,6 +293463,88 @@
         }
       }
     },
+    "Keep answers up" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إبقاء الإجابات ظاهرة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener respuestas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Garder les réponses affichées"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Válaszok megtartása"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantieni le risposte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答の表示時間"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답변 표시 유지"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwoorden laten staan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manter respostas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Держать ответы"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جوابات دکھائے رکھیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答保留时间"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回答保留時間"
+          }
+        }
+      }
+    },
     "Keep Avenkin open while the check runs, then try again." : {
       "localizations" : {
         "ar" : {
@@ -300260,6 +301000,88 @@
         }
       }
     },
+    "Last reading for these glasses" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "آخر قراءة لهذه النظارات"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Última lectura de estos lentes"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière lecture pour ces lunettes"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legutóbbi mérés ennél a szemüvegnél"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ultima lettura per questi occhiali"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このメガネの前回の測定結果"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 안경의 마지막 측정 결과"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laatste meting voor deze bril"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Última leitura destes óculos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Последний результат для этих очков"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اس عینک کی آخری پیمائش"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这副眼镜的上次测量结果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這副眼鏡的上次測量結果"
+          }
+        }
+      }
+    },
     "Last Reasoning" : {
       "localizations" : {
         "ar" : {
@@ -302903,6 +303725,88 @@
         }
       }
     },
+    "Lens Pictures" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "صور العدسة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imágenes en el lente"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Images dans le verre"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Képek a lencsén"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immagini sulla lente"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レンズの画像"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "렌즈 사진"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afbeeldingen in de lens"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imagens na lente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Изображения на линзе"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لینز کی تصاویر"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "镜片图片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鏡片圖片"
+          }
+        }
+      }
+    },
     "Lens preview at the %@'s shape, %lld by %lld pixels." : {
       "localizations" : {
         "ar" : {
@@ -303479,6 +304383,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "允許網關代理請求 Avenkin 執行動作（說話、在眼鏡上顯示文字、檢查狀態——並且在啟用捕捉時，可拍照、錄音或回讀最近的文字記錄）。當代理模式關閉時一切操作皆被拒絕；捕捉操作總是要求確認，並在啟動感測器或回讀錄音前自我宣布。"
+          }
+        }
+      }
+    },
+    "Lets Gemma 4 E2B call tools in its own format, look things up more than once in a turn, and use the Field Assist job tools while it is being tested. Other downloaded models are unchanged. Applies from the next question." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتيح لـ Gemma 4 E2B استدعاء الأدوات بتنسيقه الخاص، والبحث أكثر من مرة في الدورة الواحدة، واستخدام أدوات الوظائف في Field Assist أثناء اختباره. لا تتغير النماذج الأخرى التي تم تنزيلها. يسري ذلك بدءًا من السؤال التالي."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite que Gemma 4 E2B llame herramientas en su propio formato, busque información más de una vez en un turno y use las herramientas de trabajo de Field Assist mientras se prueba. Los demás modelos descargados no cambian. Se aplica a partir de la siguiente pregunta."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permet à Gemma 4 E2B d’appeler des outils dans son propre format, de faire plus d’une recherche par tour et d’utiliser les outils de travail de Field Assist pendant qu’il est mis à l’essai. Les autres modèles téléchargés ne changent pas. S’applique à partir de la prochaine question."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lehetővé teszi, hogy a Gemma 4 E2B a saját formátumában hívjon eszközöket, egy fordulóban többször is keressen, és tesztelés közben használja a Field Assist munkaeszközeit. A többi letöltött modell nem változik. A következő kérdéstől érvényes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consente a Gemma 4 E2B di chiamare gli strumenti nel proprio formato, di cercare informazioni più di una volta in un turno e di usare gli strumenti di lavoro di Field Assist mentre è in prova. Gli altri modelli scaricati restano invariati. Si applica dalla prossima domanda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 E2B が独自の形式でツールを呼び出し、1 回のやり取りで複数回調べ、テスト中に Field Assist の作業ツールを使えるようにします。ほかのダウンロード済みモデルは変わりません。次の質問から適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 E2B가 자체 형식으로 도구를 호출하고, 한 번의 차례에서 여러 번 정보를 찾아보고, 테스트하는 동안 Field Assist 작업 도구를 사용할 수 있게 합니다. 다른 다운로드한 모델은 바뀌지 않습니다. 다음 질문부터 적용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laat Gemma 4 E2B gereedschappen aanroepen in zijn eigen formaat, meer dan eens per beurt iets opzoeken en de opdrachtgereedschappen van Field Assist gebruiken terwijl het wordt getest. Andere gedownloade modellen blijven ongewijzigd. Geldt vanaf de volgende vraag."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite que o Gemma 4 E2B chame ferramentas no próprio formato, pesquise mais de uma vez em um turno e use as ferramentas de trabalho do Field Assist enquanto está em teste. Os outros modelos baixados não mudam. Vale a partir da próxima pergunta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Позволяет Gemma 4 E2B вызывать инструменты в собственном формате, искать сведения больше одного раза за ход и использовать рабочие инструменты Field Assist, пока модель проходит испытания. Другие загруженные модели не меняются. Действует со следующего вопроса."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemma 4 E2B کو اپنے فارمیٹ میں ٹولز کال کرنے، ایک باری میں ایک سے زیادہ بار معلومات تلاش کرنے، اور جانچ کے دوران Field Assist کے کام کے ٹولز استعمال کرنے دیتا ہے۔ دیگر ڈاؤن لوڈ شدہ ماڈلز میں کوئی تبدیلی نہیں ہوتی۔ اگلے سوال سے لاگو ہوتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Gemma 4 E2B 以自己的格式调用工具，在一轮对话中多次查找信息，并在测试期间使用 Field Assist 的工作工具。其他已下载的模型不受影响。从下一个问题起生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Gemma 4 E2B 以自己的格式呼叫工具、在一輪對話中多次查詢資訊，並在測試期間使用 Field Assist 的工作工具。其他已下載的模型不受影響。從下一個問題起生效。"
           }
         }
       }
@@ -337295,6 +338281,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "播報模型切換"
+          }
+        }
+      }
+    },
+    "Native tool calls" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "استدعاءات الأدوات الأصلية"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamadas a herramientas nativas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appels d’outils natifs"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Natív eszközhívások"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamate native agli strumenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ネイティブのツール呼び出し"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "네이티브 도구 호출"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Native gereedschapsaanroepen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas de ferramentas nativas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Собственные вызовы инструментов"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مقامی ٹول کالز"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原生工具调用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原生工具呼叫"
           }
         }
       }
@@ -421647,6 +422715,88 @@
         }
       }
     },
+    "Pictures shrunk by" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نسبة تصغير الصور"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imágenes reducidas en"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Images réduites de"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Képek kicsinyítése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immagini ridotte di"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画像の縮小率"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진 축소 비율"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afbeeldingen verkleind met"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imagens reduzidas em"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уменьшение изображений"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تصاویر اتنی چھوٹی کی گئیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图片缩小比例"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖片縮小比例"
+          }
+        }
+      }
+    },
     "Pilot reports" : {
       "localizations" : {
         "ar" : {
@@ -475976,6 +477126,89 @@
         }
       }
     },
+    "Right half" : {
+      "comment" : "Glasses: marks where the right half of a wide part of a manual page starts, under its left half.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "النصف الأيمن"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitad derecha"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moitié droite"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jobb fele"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metà destra"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右半分"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오른쪽 절반"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechterhelft"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metade direita"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Правая половина"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دائیں آدھا حصہ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右半部分"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "右半部"
+          }
+        }
+      }
+    },
     "Right lens" : {
       "localizations" : {
         "ar" : {
@@ -477044,6 +478277,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "第 %lld 列"
+          }
+        }
+      }
+    },
+    "Rows" : {
+      "comment" : "Glasses: show the manual page's table as text, one row at a time.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الصفوف"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filas"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rangées"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorok"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Righe"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "행"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rijen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linhas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Строки"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قطاریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列"
           }
         }
       }
@@ -485506,6 +486822,88 @@
         }
       }
     },
+    "Save the reading" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حفظ القراءة"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar la lectura"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrer la lecture"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mérés mentése"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salva la lettura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "測定結果を保存"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "측정 결과 저장"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meting opslaan"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvar a leitura"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранить результат"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "پیمائش محفوظ کریں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存测量结果"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存測量結果"
+          }
+        }
+      }
+    },
     "Save the spot, then ask where you parked when you're back." : {
       "localizations" : {
         "ar" : {
@@ -489706,6 +491104,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "說出大意，檢查後由你自己傳送。"
+          }
+        }
+      }
+    },
+    "Say the highest number you can read whole, and how many boxes you see." : {
+      "comment" : "Glasses: the fit check's instruction.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قل أعلى رقم يمكنك قراءته كاملًا، وكم مربعًا تراه."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di el número más alto que puedas leer completo y cuántos cuadros ves."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dites le plus grand nombre que vous pouvez lire en entier, et combien de cases vous voyez."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mondja ki a legnagyobb számot, amelyet egészében el tud olvasni, és hogy hány dobozt lát."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di’ il numero più alto che riesci a leggere per intero e quanti riquadri vedi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全体が読める最大の数字と、見える枠の数を言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "온전히 읽을 수 있는 가장 큰 숫자와 보이는 상자 수를 말하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeg het hoogste getal dat u volledig kunt lezen, en hoeveel vakken u ziet."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diga o maior número que você consegue ler por inteiro e quantos quadros você vê."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Назовите наибольшее число, которое вы можете прочитать целиком, и сколько квадратов вы видите."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "وہ سب سے بڑا نمبر بتائیں جو آپ پورا پڑھ سکتے ہیں، اور یہ کہ آپ کو کتنے خانے نظر آتے ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请说出你能完整读出的最大数字，以及你看到几个方框。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請說出你能完整讀出的最大數字，以及你看到幾個方框。"
           }
         }
       }
@@ -513863,6 +515344,88 @@
         }
       }
     },
+    "Show on the glasses" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "العرض على النظارات"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en los lentes"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher sur les lunettes"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Megjelenítés a szemüvegen"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra sugli occhiali"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メガネに表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안경에 표시"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tonen op de bril"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar nos óculos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать на очках"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عینک پر دکھائیں"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在眼镜上显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在眼鏡上顯示"
+          }
+        }
+      }
+    },
     "Show only GGUF models" : {
       "localizations" : {
         "ar" : {
@@ -515172,6 +516735,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示全螢幕頁面供客戶閱讀並簽署。您可以隨時停止。"
+          }
+        }
+      }
+    },
+    "Shows a ruler and three boxes on the in-lens display to check that pictures fit the lens as drawn. The reading sets how much pictures are shrunk on these glasses." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يعرض مسطرة وثلاثة مربعات على الشاشة داخل العدسة للتحقق من أن الصور تتسع للعدسة كما رُسمت. تحدد القراءة مقدار تصغير الصور على هذه النظارات."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra una regla y tres cuadros en la pantalla de los lentes para comprobar que las imágenes quepan en el lente tal como se dibujan. La lectura define cuánto se reducen las imágenes en estos lentes."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche une règle et trois cases sur l’affichage dans les verres pour vérifier que les images tiennent dans le verre telles qu’elles sont dessinées. La lecture détermine à quel point les images sont réduites sur ces lunettes."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Egy vonalzót és három dobozt jelenít meg a lencsébe épített kijelzőn, hogy ellenőrizze, a képek rajzolt méretükben elférnek-e a lencsén. A mérés határozza meg, mennyivel kisebbek a képek ezen a szemüvegen."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra un righello e tre riquadri sul display nella lente per verificare che le immagini entrino nella lente così come sono disegnate. La lettura stabilisce quanto vengono ridotte le immagini su questi occhiali."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インレンズディスプレイに定規と 3 つの枠を表示し、画像が描画どおりにレンズに収まるか確認します。測定結果によって、このメガネで画像をどれだけ縮小するかが決まります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "렌즈 내 디스플레이에 자와 상자 세 개를 표시하여 사진이 그려진 그대로 렌즈에 맞는지 확인합니다. 측정 결과에 따라 이 안경에서 사진을 얼마나 축소할지 정해집니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toont een liniaal en drie vakken op het display in de lens om te controleren of afbeeldingen in de lens passen zoals ze getekend zijn. De meting bepaalt hoeveel afbeeldingen op deze bril worden verkleind."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra uma régua e três quadros na tela da lente para verificar se as imagens cabem na lente como foram desenhadas. A leitura define quanto as imagens são reduzidas nestes óculos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывает линейку и три квадрата на дисплее в линзах, чтобы проверить, помещаются ли изображения на линзе в нарисованном виде. Результат определяет, насколько уменьшаются изображения на этих очках."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لینز کے اندر ڈسپلے پر ایک پیمانہ اور تین خانے دکھاتا ہے تاکہ جانچا جا سکے کہ تصاویر جیسی بنائی گئی ہیں ویسی ہی لینز میں سما جاتی ہیں۔ پیمائش سے طے ہوتا ہے کہ اس عینک پر تصاویر کتنی چھوٹی کی جائیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在镜片内显示屏上显示一把标尺和三个方框，检查图片是否按绘制的大小完整显示在镜片中。测量结果决定这副眼镜上图片缩小的程度。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在鏡片內顯示器上顯示一把尺和三個方框，檢查圖片是否依繪製的大小完整顯示在鏡片中。測量結果決定這副眼鏡上圖片縮小的程度。"
           }
         }
       }
@@ -529377,6 +531022,89 @@
         }
       }
     },
+    "Source:" : {
+      "comment" : "Glasses: starts the line naming the document an answer came from.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المصدر:"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fuente:"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Source :"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forrás:"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonte:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出典:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "출처:"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bron:"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonte:"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Источник:"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ماخذ:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來源："
+          }
+        }
+      }
+    },
     "Source: %@" : {
       "localizations" : {
         "ar" : {
@@ -529701,6 +531429,89 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "來源（%lld）"
+          }
+        }
+      }
+    },
+    "Sources:" : {
+      "comment" : "Glasses: starts the line naming the documents an answer came from.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المصادر:"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fuentes:"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sources :"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Források:"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonti:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "出典:"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "출처:"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bronnen:"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fontes:"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Источники:"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ذرائع:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来源："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "來源："
           }
         }
       }
@@ -586470,6 +588281,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示器無法使用。請連接你的顯示眼鏡並戴上，然後再試一次。"
+          }
+        }
+      }
+    },
+    "The display shows a ruler numbered 1 to 12 and, under it, three numbered boxes. Pick, or say, the highest number you can read whole and how many boxes you see. Twelve and three means pictures fit the lens as drawn." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعرض الشاشة مسطرة مرقّمة من 1 إلى 12، وتحتها ثلاثة مربعات مرقّمة. اختر، أو قل، أعلى رقم يمكنك قراءته كاملًا وعدد المربعات التي تراها. اثنا عشر وثلاثة يعني أن الصور تتسع للعدسة كما رُسمت."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La pantalla muestra una regla numerada del 1 al 12 y, debajo, tres cuadros numerados. Elige, o di, el número más alto que puedas leer completo y cuántos cuadros ves. Doce y tres significa que las imágenes caben en el lente tal como se dibujan."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’affichage montre une règle numérotée de 1 à 12 et, en dessous, trois cases numérotées. Choisissez, ou dites, le plus grand nombre que vous pouvez lire en entier et combien de cases vous voyez. Douze et trois signifie que les images tiennent dans le verre telles qu’elles sont dessinées."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A kijelzőn egy 1-től 12-ig számozott vonalzó látható, alatta három számozott doboz. Válassza ki vagy mondja ki a legnagyobb számot, amelyet egészében el tud olvasni, és hogy hány dobozt lát. Tizenkettő és három azt jelenti, hogy a képek rajzolt méretükben elférnek a lencsén."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il display mostra un righello numerato da 1 a 12 e, sotto, tre riquadri numerati. Scegli, o di’, il numero più alto che riesci a leggere per intero e quanti riquadri vedi. Dodici e tre significa che le immagini entrano nella lente così come sono disegnate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ディスプレイに 1 から 12 までの目盛りが付いた定規と、その下に番号付きの枠が 3 つ表示されます。全体が読める最大の数字と、見える枠の数を選ぶか、声で伝えてください。12 と 3 なら、画像は描画どおりにレンズに収まっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "디스플레이에 1부터 12까지 번호가 매겨진 자가 표시되고, 그 아래에 번호가 매겨진 상자 세 개가 표시됩니다. 온전히 읽을 수 있는 가장 큰 숫자와 보이는 상자 수를 선택하거나 말하세요. 12와 3이면 사진이 그려진 그대로 렌즈에 맞는다는 뜻입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Het display toont een liniaal genummerd van 1 tot 12 en daaronder drie genummerde vakken. Kies of zeg het hoogste getal dat u volledig kunt lezen en hoeveel vakken u ziet. Twaalf en drie betekent dat afbeeldingen in de lens passen zoals ze getekend zijn."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tela mostra uma régua numerada de 1 a 12 e, abaixo dela, três quadros numerados. Escolha, ou diga, o maior número que você consegue ler por inteiro e quantos quadros você vê. Doze e três significa que as imagens cabem na lente como foram desenhadas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На дисплее показана линейка с делениями от 1 до 12, а под ней — три пронумерованных квадрата. Выберите или назовите наибольшее число, которое вы можете прочитать целиком, и сколько квадратов вы видите. Двенадцать и три означает, что изображения помещаются на линзе в нарисованном виде."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ڈسپلے پر 1 سے 12 تک نمبر والا ایک پیمانہ اور اس کے نیچے تین نمبر والے خانے دکھائے جاتے ہیں۔ وہ سب سے بڑا نمبر جو آپ پورا پڑھ سکتے ہیں اور نظر آنے والے خانوں کی تعداد منتخب کریں یا بتائیں۔ بارہ اور تین کا مطلب ہے کہ تصاویر جیسی بنائی گئی ہیں ویسی ہی لینز میں سما جاتی ہیں۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示屏上会显示一把标有 1 到 12 的标尺，下方有三个带编号的方框。请选择或说出你能完整读出的最大数字，以及你看到几个方框。十二和三表示图片按绘制的大小完整显示在镜片中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顯示器上會顯示一把標有 1 到 12 的尺，下方有三個編號方框。請選擇或說出你能完整讀出的最大數字，以及你看到幾個方框。十二和三表示圖片依繪製的大小完整顯示在鏡片中。"
           }
         }
       }
@@ -663532,6 +665425,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不支援的版本"
+          }
+        }
+      }
+    },
+    "Until closed" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حتى الإغلاق"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hasta cerrar"
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jusqu’à la fermeture"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bezárásig"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fino alla chiusura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "閉じるまで"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "닫을 때까지"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tot sluiten"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Até fechar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "До закрытия"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بند کرنے تک"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直到关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直到關閉"
+          }
+        }
+      }
+    },
+    "Until closed keeps an answer on the lens until you press Close, say \"hide that\", or a new answer comes. The lens still dims and sleeps on its own. 3 minutes clears it after three minutes without a press." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يُبقي خيار «حتى الإغلاق» الإجابة على العدسة إلى أن تضغط «إغلاق»، أو تقول «hide that»، أو تصل إجابة جديدة. تظل العدسة تخفت وتنام من تلقاء نفسها. أما «3 دقائق» فيزيلها بعد ثلاث دقائق دون أي ضغطة."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hasta cerrar mantiene una respuesta en el lente hasta que presiones Cerrar, digas “hide that” o llegue una nueva respuesta. El lente se atenúa y se apaga por sí solo de todos modos. 3 minutos la quita después de tres minutos sin presionar nada."
+          }
+        },
+        "fr-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jusqu’à la fermeture garde une réponse sur le verre jusqu’à ce que vous appuyiez sur Fermer, disiez « hide that » ou qu’une nouvelle réponse arrive. Le verre s’assombrit et se met en veille de lui-même malgré tout. 3 minutes l’efface après trois minutes sans pression."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Bezárásig beállítás a lencsén tartja a választ, amíg meg nem nyomja a Bezárás gombot, ki nem mondja, hogy „hide that”, vagy új válasz nem érkezik. A lencse ettől függetlenül magától elhalványul és alvó módba lép. A 3 perc beállítás három perc gombnyomás nélküli idő után eltünteti."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fino alla chiusura mantiene una risposta sulla lente finché non premi Chiudi, dici «hide that» o arriva una nuova risposta. La lente si attenua e va in standby comunque da sola. 3 minuti la rimuove dopo tre minuti senza pressioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「閉じるまで」では、「閉じる」を押すか、「hide that」と言うか、新しい回答が届くまで、回答がレンズに表示されたままになります。レンズはそれとは関係なく自動的に暗くなり、スリープします。「3分」では、3 分間何も押さないと消えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "'닫을 때까지'는 '닫기'를 누르거나, 'hide that'이라고 말하거나, 새 답변이 올 때까지 답변을 렌즈에 계속 표시합니다. 렌즈는 그래도 스스로 어두워지고 절전 상태가 됩니다. '3분'은 3분 동안 아무것도 누르지 않으면 답변을 지웁니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tot sluiten houdt een antwoord op de lens totdat u op Sluiten drukt, “hide that” zegt of er een nieuw antwoord komt. De lens dimt en slaapt nog steeds vanzelf. 3 minuten wist het na drie minuten zonder druk op een knop."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Até fechar mantém uma resposta na lente até você pressionar Fechar, dizer “hide that” ou chegar uma nova resposta. A lente ainda escurece e entra em repouso sozinha. 3 minutos a remove depois de três minutos sem pressionar nada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«До закрытия» оставляет ответ на линзе, пока вы не нажмёте «Закрыть», не скажете «hide that» или не придёт новый ответ. Линза всё равно сама тускнеет и засыпает. «3 минуты» убирает ответ через три минуты без нажатий."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“بند کرنے تک” جواب کو لینز پر اس وقت تک رکھتا ہے جب تک آپ “بند کریں” نہ دبائیں، “hide that” نہ کہیں، یا کوئی نیا جواب نہ آ جائے۔ لینز پھر بھی خود بخود مدھم ہو کر سو جاتا ہے۔ “3 منٹ” کسی دباؤ کے بغیر تین منٹ گزرنے پر اسے ہٹا دیتا ہے۔"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“直到关闭”会让回答一直留在镜片上，直到你按下“关闭”、说出“hide that”或收到新的回答。镜片仍会自行变暗并进入休眠。“3 分钟”会在三分钟内没有按下任何按钮后清除回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「直到關閉」會讓回答一直留在鏡片上，直到你按下「關閉」、說出「hide that」或收到新的回答。鏡片仍會自行變暗並進入睡眠。「3 分鐘」會在三分鐘內沒有按下任何按鈕後清除回答。"
           }
         }
       }

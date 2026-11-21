@@ -1,6 +1,8 @@
 # Plan MU — The Lens Read at Work (a page you get around in one move, fuller tiles, sources on their own, fewer buttons, and an answer that stays until you put it away)
 
-**Status:** 🚧 P0–P4 built headless (branch `feat/mu-p0-p1-page-view`). P0 and P1 2026-11-21: one picture
+**Status:** 🚧 P0–P4 built headless and merged (PR 1189, 2026-11-22); P7 catalog sync built 2026-11-22
+(branch `chore/mu-catalog-sync`: 22 new keys in the 13 complete languages, add-only, with Plan MQ
+P1's three Developer panel keys). P0 and P1 2026-11-21: one picture
 a row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
 (Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
 highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
@@ -12,8 +14,7 @@ halves in one strip) or fit width, **Back**, **Rows**, the voice words, three bu
 (Meta Display only), Actions, the page view and reading mode, with the 13-language test; the reading
 view's three-button row with follow-ups on Actions; Keep answers up (Until closed by default, or 3
 minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
-Not done: P5 (the budget's constants are estimates until measured), P6, P7 (the new strings are in
-English only) and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
+Not done: P5 (the budget's constants are estimates until measured), P6 and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
 taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
 request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
