@@ -69,4 +69,69 @@ enum LiveHintsCopy {
         String(localized: "Live hints stopped: today's free time is used up.",
                comment: "Live hints: spoken when the app-wide daily allowance runs out during a session.")
     }
+    /// The app was in the background past the rule captions follow, so the session ended.
+    static var backgroundStopped: String {
+        String(localized: "Live hints stopped while the app was in the background.",
+               comment: "Live hints: shown, and spoken, when a session ends because the app stayed in the background.")
+    }
+
+    // MARK: - The demo (§11)
+
+    /// The demo's notice in place of the capture notice: nothing is listening.
+    static var demoNotice: String {
+        String(localized: "This is a demo. Nothing is listening: the conversation is played inside the app.",
+               comment: "Live hints demo: the notice shown when the demo session starts.")
+    }
+
+    // MARK: - Spoken replies to the voice commands (P2)
+
+    static var started: String {
+        String(localized: "Live hints is on.", comment: "Live hints: spoken when the wearer starts a session by voice.")
+    }
+
+    static var stopped: String {
+        String(localized: "Live hints is off.", comment: "Live hints: spoken when the wearer stops a session by voice.")
+    }
+
+    static var alreadyRunning: String {
+        String(localized: "Live hints is already on.",
+               comment: "Live hints: spoken when the wearer asks to start a session that is already running.")
+    }
+
+    static var notRunning: String {
+        String(localized: "Live hints isn't on.",
+               comment: "Live hints: spoken when the wearer asks to stop or show hints with no session running.")
+    }
+
+    static var needsPhone: String {
+        String(localized: "Live hints needs a look at your phone before its first start.",
+               comment: "Live hints: spoken when a voice start raised the one-time sheet on the phone.")
+    }
+
+    static var switchedOff: String {
+        String(localized: "Live hints is switched off in Settings.",
+               comment: "Live hints: spoken when the wearer asks to start a session but the feature is turned off.")
+    }
+
+    static var noTimeLeft: String {
+        String(localized: "There's no free time left today for live hints.",
+               comment: "Live hints: spoken when the app-wide daily allowance has no time left at a voice start.")
+    }
+
+    static var noHintToShow: String {
+        String(localized: "There's no hint to show yet.",
+               comment: "Live hints: spoken when the wearer asks to show hints and none has arrived.")
+    }
+
+    /// Keyword mode: the keyword now puts its passage on the lens when anyone says it.
+    static func keywordAdded(_ keyword: String) -> String {
+        String(localized: "I'll hint you when someone says \(keyword).",
+               comment: "Live hints: spoken when the wearer adds a keyword by voice in keyword mode. The argument is the keyword.")
+    }
+
+    /// The other modes: the keyword helps the captions catch the word; it fires in keyword mode.
+    static func keywordListened(_ keyword: String) -> String {
+        String(localized: "I'll listen out for \(keyword).",
+               comment: "Live hints: spoken when the wearer adds a keyword by voice outside keyword mode. The argument is the keyword.")
+    }
 }

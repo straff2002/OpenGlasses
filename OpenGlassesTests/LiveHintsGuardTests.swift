@@ -76,15 +76,18 @@ final class LiveHintsGuardTests: XCTestCase {
 
     // MARK: - The inventory
 
-    func testLiveHintsIsInTheInventoryScreenedNoneAndStoringNothing() {
+    /// P2: the talk note, off by default, is the one thing kept, as a conversation; the hints
+    /// still never are.
+    func testLiveHintsIsInTheInventoryScreenedNoneAndStoringOnlyTheTalkNote() {
         let record = AIFeature.liveHints.record
         XCTAssertEqual(record.sensitiveCategories, [.none])
         XCTAssertEqual(record.disableSwitch.key, "liveHintsEnabled")
         XCTAssertFalse(record.disableSwitch.preexisting)
-        XCTAssertTrue(record.stores.isEmpty)
+        XCTAssertEqual(record.stores, [.conversationThreads])
         XCTAssertTrue(record.toolNames.isEmpty)
-        XCTAssertTrue(record.dataRetainedWhenDisabled.hasPrefix("Nothing"))
-        XCTAssertFalse(record.erasure.isAvailable)
+        XCTAssertTrue(record.dataRetainedWhenDisabled.hasPrefix("The talk notes"))
+        XCTAssertTrue(record.dataRetainedWhenDisabled.contains("none is written to the conversation, memory or disk"))
+        XCTAssertTrue(record.erasure.isAvailable)
         XCTAssertNotNil(record.screeningNote)
     }
 

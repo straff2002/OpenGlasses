@@ -63,11 +63,18 @@ final class FakeHintLens: HintLensSink {
     var isAvailable = true
     var accepts = true
     private(set) var presented: [LiveHint] = []
+    private(set) var reshown: [LiveHint] = []
     private(set) var hidden: [Int] = []
 
     func present(_ hint: LiveHint) -> Bool {
         guard accepts else { return false }
         presented.append(hint)
+        return true
+    }
+
+    /// The wearer asked for it: shown even where `present` was refused (a dismissed lens).
+    func reshow(_ hint: LiveHint) -> Bool {
+        reshown.append(hint)
         return true
     }
 

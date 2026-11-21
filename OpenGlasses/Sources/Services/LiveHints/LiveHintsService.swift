@@ -45,6 +45,14 @@ final class LiveHintsService: ObservableObject {
         var hintLanguageCode: String?
         /// Answer from general knowledge, marked so, when the documents don't hold it (decision 6).
         var allowGeneral = true
+        /// Where hints go: the lens while one is there, or the ear (P2's sheet; decision 3).
+        var delivery: HintDelivery = .lens
+        /// The mic the room is heard on (§7). Read by the idle listener's plan, not by the session.
+        var mic: HintMic = .phone
+        /// Keep a note of the talk at stop (§9). The session hands its captions out once, at stop.
+        var talkNote = false
+        /// The documents picked on the sheet; nil is the active project. Read by the search adapter.
+        var documentIds: [String]?
 
         init(mode: HintMode = .conversation, keywords: [String] = [], hintLanguageCode: String? = nil,
              allowGeneral: Bool = true) {
@@ -68,6 +76,22 @@ final class LiveHintsService: ObservableObject {
 
     enum StopReason: String, Equatable {
         case wearer, sessionLimit, allowance
+        /// The app stayed in the background past the presence rule captions follow (P2).
+        case background
+        /// The demo's conversation ended (§11).
+        case demoEnded
+    }
+
+    /// What a session leaves at stop for the talk note (§9): its captions, in memory, handed out
+    /// once and not kept by the session. Empty unless the talk note was switched on.
+    struct Ending: Equatable {
+        let settings: Settings
+        let startedAt: Date
+        let endedAt: Date
+        let reason: StopReason
+        /// The session's finished captions, oldest first, labelled by speaker where voices were
+        /// told apart.
+        let lines: [String]
     }
 
     /// Everything the session talks to.
@@ -98,6 +122,9 @@ final class LiveHintsService: ObservableObject {
     @Published private(set) var modelCalls = 0
     /// Cards this session.
     @Published private(set) var hintsShown = 0
+    /// The diarized voices heard this session, in the order first heard: the session screen's
+    /// speaker chips. Session memory only.
+    @Published private(set) var heardSpeakers: [Int] = []
     @Published private(set) var lastStopReason: StopReason?
     /// From each question's final to its first card, this session (and the last, after stop).
     private(set) var latency = HintLatencyStats()
@@ -112,10 +139,18 @@ final class LiveHintsService: ObservableObject {
     var setFirstRunAcknowledged: (Bool) -> Void = { Config.liveHintsFirstRunAcknowledged = $0 }
     /// Fired when `isRunning` changes: AppState moves the idle audio session to the hints shape.
     var onRunningChanged: ((Bool) -> Void)?
+    /// Fired once at stop, after the teardown, with what the talk note needs (P2).
+    var onEnded: ((Ending) -> Void)?
+    /// The line shown at every start. The demo says it is one (§11).
+    var captureNotice: String = LiveHintsCopy.captureNotice
+    /// The name a diarized voice goes by in the talk note's captions ("Speaker 2"). Read, never
+    /// written.
+    var speakerLabel: (Int) -> String? = { _ in nil }
 
     // MARK: - Session state
 
-    private var settings = Settings()
+    /// What the running session was started with (and, after stop, the last one).
+    private(set) var settings = Settings()
     private var pendingSettings: Settings?
     private var generation = 0
     private var cursor = CaptionCursor()
@@ -135,6 +170,10 @@ final class LiveHintsService: ObservableObject {
     private var previousContextualStrings: [String] = []
     private var cancelTick: (() -> Void)?
     private var lastChargeAt: Date?
+    /// The newest hint delivered, for "show hints" and a repeat on the lens.
+    private var lastDelivered: LiveHint?
+    /// The session's captions for the talk note, oldest first. Only kept with the switch on.
+    private var noteLines: [String] = []
     private var warned = false
     private let lectureAssistant = MeetingAssistantService()
 
@@ -210,6 +249,9 @@ final class LiveHintsService: ObservableObject {
         queue.reset()
         nextHintID = 0
         lensHint = nil
+        lastDelivered = nil
+        heardSpeakers = []
+        noteLines = []
         keywordMatcher = KeywordMatcher(keywords: settings.keywords)
 
         // The recogniser hears the session's words (§8), from its first request when captions start
@@ -241,7 +283,7 @@ final class LiveHintsService: ObservableObject {
         if settings.mode == .lecture { startLecture() }
 
         cancelTick = carriers.clock.repeating(every: HintLimits.tickInterval) { [weak self] in self?.tick() }
-        notice = LiveHintsCopy.captureNotice
+        notice = captureNotice
         isRunning = true
         PrivacyLog.speech(.liveHints, .started, detail: PrivacyToken(settings.mode.rawValue))
         onRunningChanged?(true)
@@ -280,7 +322,14 @@ final class LiveHintsService: ObservableObject {
         hintedQuestions = []
         earlierLines = []
         wearerSpeaker = nil
+        heardSpeakers = []
+        lastDelivered = nil
         keywordMatcher = KeywordMatcher(keywords: [])
+        let ending = startedAt.map {
+            Ending(settings: settings, startedAt: $0, endedAt: now, reason: reason,
+                   lines: settings.talkNote ? noteLines : [])
+        }
+        noteLines = []
 
         isRunning = false
         startedAt = nil
@@ -295,11 +344,14 @@ final class LiveHintsService: ObservableObject {
         case .wearer: nil
         case .sessionLimit: LiveHintsCopy.limitReached
         case .allowance: LiveHintsCopy.allowanceSpent
+        case .background: LiveHintsCopy.backgroundStopped
+        case .demoEnded: nil
         }
         if let line {
             notice = line
             if !carriers.ear.isPhoneSpeaker { carriers.ear.sayHint(line) }
         }
+        if let ending { onEnded?(ending) }
     }
 
     /// "That's me" (§3): the wearer's diarized speaker, in memory for this session only. Nil
@@ -309,14 +361,60 @@ final class LiveHintsService: ObservableObject {
         wearerSpeaker = speaker
     }
 
-    /// Repeat the last hint in the ear (a temple tap or a media button, P2).
+    /// Repeat the last hint (a temple tap, a media button or the Live Activity, P2): on the lens
+    /// when hints go there, brought back even if the wearer dismissed it; in the ear otherwise.
     func repeatLastHint() {
-        perform(speech.handle(.repeatRequested(at: carriers.clock.now)))
+        guard isRunning else { return }
+        if usesLens {
+            _ = showHintsAgain()
+        } else {
+            perform(speech.handle(.repeatRequested(at: carriers.clock.now)))
+        }
     }
 
     /// Skip the hint being spoken, or the one waiting.
     func skipHint() {
         perform(speech.handle(.skipRequested))
+    }
+
+    /// A hint is being spoken, or waits for quiet to be spoken: what a tap skips.
+    var isHintPlaying: Bool { speech.speaking != nil || speech.waiting != nil }
+
+    /// "Show hints", or a press on the Home card (§6): the newest hint back on a lens the wearer
+    /// dismissed. Asked for by the wearer, so it is put up even over their dismissal. False with no
+    /// hint yet, no lens, or a lens that would not take it.
+    @discardableResult
+    func showHintsAgain() -> Bool {
+        guard isRunning, carriers.lens.isAvailable, let hint = lastDelivered else { return false }
+        guard carriers.lens.reshow(hint) else { return false }
+        lensHint = (hint.id, carriers.clock.now)
+        return true
+    }
+
+    /// Whether there is a hint to show again.
+    var hasHint: Bool { lastDelivered != nil }
+
+    /// "Hint me about …" (P2): a keyword for the rest of the session. It fires in keyword mode and
+    /// helps the recogniser catch the word in every mode, from its next restart. Returns false for
+    /// a blank or a repeat.
+    @discardableResult
+    func addKeyword(_ keyword: String) -> Bool {
+        guard isRunning else { return false }
+        var choices = LiveHintsSessionChoices()
+        choices.keywords = settings.keywords
+        choices.addKeyword(keyword)
+        guard choices.keywords.count > settings.keywords.count else { return false }
+        settings.keywords = choices.keywords
+        keywordMatcher = keywordMatcher.adding(choices.keywords.last ?? keyword)
+        carriers.captions.contextualStrings = DictationVocabulary.build(
+            DictationVocabulary.Input(keywords: settings.keywords,
+                                      documentTitles: carriers.documents.documentTitles()))
+        return true
+    }
+
+    /// Whether hints go to the lens now: the session's choice and a lens to take them.
+    private var usesLens: Bool {
+        HintDelivery.usesLens(settings.delivery, lensAvailable: carriers.lens.isAvailable)
     }
 
     // MARK: - The clock
@@ -361,8 +459,19 @@ final class LiveHintsService: ObservableObject {
         guard isRunning else { return }
         let fresh = cursor.take(newestFirst: carriers.captions.captionHistory)
         guard !fresh.isEmpty else { return }
-        for entry in fresh { handleFinal(entry) }
+        for entry in fresh {
+            noteHeard(entry)
+            handleFinal(entry)
+        }
         if settings.mode == .lecture { lectureAssistant.ingest(fresh) }
+    }
+
+    /// The speaker chips and the talk note's captions. Neither is written anywhere.
+    private func noteHeard(_ entry: AmbientCaptionService.CaptionEntry) {
+        if let speaker = entry.speaker, !heardSpeakers.contains(speaker) { heardSpeakers.append(speaker) }
+        guard settings.talkNote, !entry.text.hasPrefix("[Visual:") else { return }
+        noteLines.append(LiveHintsTalkNote.line(entry.text, speakerLabel: entry.speaker.flatMap(speakerLabel)))
+        if noteLines.count > LiveHintsTalkNote.maximumLines { noteLines.removeFirst() }
     }
 
     private func handleFinal(_ entry: AmbientCaptionService.CaptionEntry) {
@@ -582,7 +691,8 @@ final class LiveHintsService: ObservableObject {
         // Key points are for the lens and the phone; the ear is kept for questions.
         carriers.phoneList.record(hint)
         hintsShown += 1
-        if carriers.lens.isAvailable, carriers.lens.present(hint) { lensHint = (hint.id, now) }
+        lastDelivered = hint
+        if usesLens, carriers.lens.present(hint) { lensHint = (hint.id, now) }
         PrivacyLog.speech(.liveHints, .hintShown, characters: line.count,
                           detail: PrivacyToken(LiveHint.Source.keyPoint.rawValue))
     }
@@ -595,7 +705,8 @@ final class LiveHintsService: ObservableObject {
             carriers.phoneList.record(hint)
             hintsShown += 1
         }
-        if carriers.lens.isAvailable {
+        lastDelivered = hint
+        if usesLens {
             // A lens the wearer dismissed stays dismissed: the hint is on the phone.
             guard carriers.lens.present(hint) else { return }
             lensHint = (hint.id, isUpdate ? (lensHint?.at ?? now) : now)

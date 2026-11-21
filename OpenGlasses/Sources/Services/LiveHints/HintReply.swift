@@ -42,14 +42,21 @@ struct HintReply: Equatable, Sendable {
 
     /// The first JSON object in the reply, bare, fenced or among prose.
     private static func jsonFields(_ raw: String) -> Fields? {
+        guard let object = jsonObject(in: raw) else { return nil }
+        return Fields(hint: string(object["hint"]), full: string(object["full"]),
+                      general: bool(object["general"]))
+    }
+
+    /// The first JSON object in a model's reply, bare, fenced or among prose. Shared with the talk
+    /// note, whose reply has the same habits.
+    static func jsonObject(in raw: String) -> [String: Any]? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         for candidate in [trimmed, unfenced(trimmed), firstObject(in: trimmed)].compactMap({ $0 }) {
             guard let data = candidate.data(using: .utf8),
                   let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                 continue
             }
-            return Fields(hint: string(object["hint"]), full: string(object["full"]),
-                          general: bool(object["general"]))
+            return object
         }
         return nil
     }
