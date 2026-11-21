@@ -1,0 +1,416 @@
+# Plan MY — Vaccine Stock (each dose given, by lot and expiry, waste kept apart, a weekly count, and a daily check against the clinic's own records)
+
+**Status:** 📝 Drafted 2026-11-22. Nothing is implemented. 12 decisions, each with a recommendation.
+The clinic's process details are due the week of 2026-11-23. The open questions below are what
+they should answer, and some decisions may change when they do.
+**Track:** Field Assist stock, for a medical clinic. The phone, not the glasses (Decision 10).
+**Builds on:**
+- Plan [IH](IH-van-stock.md): the phone's own stock list. That means the append-only movement log
+  (`VanStockMovement`: `loaded`, `used`, `removed`, `counted`, `reversed`…), the fold
+  (`VanStockLedger` → `VanStockLevel`), the count check (`VanStockCountCheck`: matches / short by /
+  over by), the matcher that tries a scanned code first (`VanStockMatcher`), the `van_stock` tool,
+  the Stock screen, the spreadsheet import (`XLSXReader`, `VanStockSheet`) and the export
+  (`XLSXWriter`).
+- Plan [MK](MK-stock-where-it-lives.md): the place (`StockPlace`, here the neutral `stock` kind
+  with the clinic's own name for the list) and its wording (`StockPlaceWording`).
+- Plan [ML](ML-measured-quantities.md): `StockQuantity`. Doses are whole numbers of `each`.
+- Plan [MM](MM-stock-in-the-business-system.md): the rule that where a business's own system
+  already counts the stock, the phone keeps no second count. If the clinic's records system has a
+  vaccine stock module, MM's pattern applies instead of this plan's count (Decision 9).
+- The medical compliance mode (`HIPAAComplianceService`, `Config.hipaaMode`, Plan
+  [DL](DL-medical-secret-and-export-lifecycle.md)): file protection, the audit log, no cloud
+  memory sync, and no web search or messaging tools.
+
+---
+
+## Trigger
+
+A partner talked with the owner and manager of a medical clinic on 2026-11-22. The clinic records
+each vaccination by hand: the patient's record in its records system (the EMR), a spreadsheet of
+doses, and a count of the fridge every so often. Entries get missed. Three things go wrong when
+they do:
+
+1. The stock figure is wrong.
+2. Doses given and doses wasted can't be told apart.
+3. A dose that never reached the EMR is never claimed, so the clinic is not paid for it.
+
+The clinic will pilot with us. The flow the partner proposed is ours to shape:
+
+- staff say or scan which vaccine was given, with its lot;
+- the app takes it off the stock and keeps waste separate;
+- daily and weekly reports;
+- a weekly count, with differences flagged.
+
+The partner's caution is the design constraint: **this must not become another separate log** of
+who was vaccinated.
+
+The clinic's second ask, an EMR help vault, needs no build. It is set out under
+[The other ask](#the-other-ask-an-emr-help-vault-no-build) at the end.
+
+## The point, said once
+
+**The EMR is the record of who was given what. The app is the record of the fridge.** The app
+never stores who a dose was given to. It keeps:
+
+1. **Every dose that left the fridge, and why:** given or wasted (with the reason), by vaccine,
+   lot and day.
+2. **What is in the fridge:** by vaccine and lot, with expiry dates, from deliveries in and counts.
+3. **The difference between the two records.** Each day, the app compares its doses given per
+   vaccine, lot and day with the EMR's own list of immunisations. A dose the app saw and the EMR
+   lacks is an entry someone missed, and so a claim nobody made. A dose the EMR has and the app
+   lacks is a stock entry someone missed. Staff then fix the EMR in the EMR. The app writes nothing
+   to it.
+
+That third job is what gets the clinic its money back, and it needs no patient data on the phone.
+
+## What exists today (verified 2026-11-22 on `origin/main` c96a18fa9)
+
+- **The ledger already has most of the verbs.** `VanStockMovement.Kind` has `loaded` (a delivery),
+  `used` (a dose given), `removed` with `RemovalReason` `returned` / `damaged` / `lent` / `other`,
+  `counted` (a stocktake sets the level) and `reversed` (a mistake is taken back, never deleted).
+  Movements carry no free text, and their own comment says the log holds *"nothing about a
+  person"*. That is the property this plan depends on.
+- **The count check exists.** `VanStockCountCheck` compares a count with the expected figure and
+  words the difference (*"2 short of the 18 expected"*), or says the old figure couldn't be
+  trusted.
+- **A line has no lot and no expiry.** `VanStockItem` has a number, description, unit, minimum,
+  standard, bin and scanned `codes`. `VanStockLevel` is one figure per line. Nothing in
+  `Services/FieldAssist/VanStock/` knows a lot, a batch or an expiry date.
+- **No clinical waste reasons.** Wastage would be filed as `removed · damaged` or `other`, which a
+  report can't break down.
+- **Scanning.**
+  - `NativeTools/BarcodeScannerTool.swift` reads a still from the camera chokepoint. Its `barcode`
+    filter leaves out `.dataMatrix`, and its default "any" mode detects every type.
+  - Nothing parses a GS1 element string, so a code's lot and expiry are thrown away.
+  - The phone-camera scanner the app already uses (`DataScannerViewController` in
+    `VaultLinkViews.swift` and `OrgCodeScannerView.swift`) is set to QR only.
+  - A line's `codes` are matched first, so a scanned product number already finds its line.
+- **Reports.** The Stock screen exports the list as a spreadsheet. There is no report by date
+  range: nothing reports doses given, waste, expiries and count differences for a day or a week.
+- **The spreadsheet reader reads `.xlsx` only.** There is no CSV reader in the stock code.
+- **Medical mode already shapes stock.** `van_stock`'s `send_to_base` refuses while
+  `Config.hipaaMode` is on, because a handover carries dictated descriptions. The person exports it
+  themselves instead.
+
+## Design
+
+### 1 · A lot on a line
+
+A line stays one product, as now (*"the flu vaccine, 10-dose carton"*, its product number in
+`codes`). A **lot** belongs to a line and has:
+
+- the lot code as printed;
+- the expiry date;
+- when it was first received.
+
+The level is folded **per lot** and summed for the line. A movement gains an optional `lotID`.
+Older movements have none and fold into the line as today. A line with no lots behaves exactly as
+an IH line does, so nothing changes for a van.
+
+Lot codes are kept exactly as read (case and leading zeros kept). A spoken lot is matched against
+the lots this line holds and never creates a new one by itself; a lot comes in on a delivery (a
+scan or the screen) or on a count.
+
+### 2 · Doses, and the carton they come in
+
+The unit is `each`, and each is a dose. A delivery is often counted in cartons, so a line
+remembers **doses per carton** once, the first time it is received. *"Two boxes in"* is then 20
+doses on a 10-dose line. A multi-dose vial is one carton of N doses, and the doses left in an
+opened vial that must be thrown out are wasted doses (§3).
+
+### 3 · Given, wasted, and the rest
+
+A new movement kind, **`wasted`**, with its own reasons:
+
+- expired;
+- cold chain (the fridge went out of range);
+- drawn up and not given;
+- broken or dropped;
+- opened vial discarded (doses left over);
+- other.
+
+`used` stays "given". `removed` stays for returns to the supplier and transfers. Three kinds make
+three columns in a report, and a count difference makes a fourth. Staff can't hide a waste as an
+ordinary removal, and a report never has to guess (Decision 3).
+
+### 4 · Expiry, checked when the dose is given
+
+- **Given from an expired lot:** not recorded as given. The answer offers to record it as
+  `wasted · expired` instead: *"Lot ABC123 expired on 3 November. I haven't recorded it as given.
+  Shall I record it as expired?"* (Decision 4).
+- **Given from a lot while an older one is in the fridge:** recorded. The read-back adds the older
+  lot and its date, once a day per line, so the fridge is used oldest first.
+- **Expiring soon:** a list of lots expiring within the clinic's chosen number of days (30 by
+  default), on the Stock screen and in every report.
+- **A GS1 day of `00`:** the expiry is the last day of that month.
+
+### 5 · Scanning a carton
+
+Most vaccine cartons carry a 2D GS1 code (Data Matrix) holding the product number (AI `01`, a
+GTIN-14), the expiry (AI `17`, YYMMDD) and the lot (AI `10`). Some also carry a serial number (AI
+`21`).
+
+- **`GS1ElementString` (pure).** It parses the code's text: the FNC1/GS separators, fixed-length and
+  variable-length fields, and the GTIN check digit. It refuses rather than guesses on a bad check
+  digit, an impossible date or a truncated field. The test fixtures are invented GTINs with valid
+  check digits.
+- **The scan sheet on the Stock screen.** It uses the phone-camera scanner already in the app, set
+  to `.dataMatrix` and GS1-128. A scan resolves to line + lot + expiry, then asks *Given · Wasted ·
+  Received · Count*.
+  - Given is the default.
+  - A product number not on the list starts a new line: its name, and doses per carton.
+  - A new lot on a known line is added on Received or Count, never on Given (§1).
+- **No double counts by accident.** The same code scanned again within 10 seconds asks *"Another
+  one?"* rather than recording it twice.
+- **Voice still works.** *"One flu dose given."* When the line has one lot in stock, that lot is
+  used. When it has more than one, the app asks which, oldest expiry first. A spoken lot is matched
+  only against the line's own lots (§1).
+
+### 6 · The weekly count
+
+A count goes lot by lot, oldest expiry first, on screen or by voice. Each count is a `counted`
+movement on the lot. It reuses `VanStockCountCheck` per lot, and the differences go into the
+week's report. An empty lot that is still listed is counted at zero and stays listed until the
+clinic hides it. A reminder on the clinic's chosen day is a local notification (Decision 11).
+
+### 7 · Reports
+
+A pure **`StockPeriodReport`** for any range, with today and this week one tap away. It lists:
+
+- doses given;
+- doses wasted, by reason;
+- received;
+- on hand, by line and lot with expiry;
+- lots expiring soon;
+- count differences;
+- the latest check against the EMR, if one was run (§8).
+
+It appears on screen and as a spreadsheet through the share sheet, and its spoken summary is one
+sentence. Nothing is sent by itself; under medical mode the person exports it, as with the
+handover today.
+
+### 8 · The check against the EMR
+
+The clinic exports its immunisation list for a date range from the EMR, as a spreadsheet or CSV.
+The app reads it and forgets it:
+
+- **Read only three columns:** date given, vaccine (or product code) and lot. The column mapping is
+  chosen once and remembered; it holds column names, never values.
+- **Every other column is dropped as the file is read.** The patient's name and number never reach
+  a model, a log, the support report or the disk. The file itself is not copied into the app
+  (`ImmunisationListReader`, pure over the reader's rows). A CSV reader is added beside
+  `XLSXReader` if the EMR exports only CSV.
+- **The EMR's vaccine names are mapped to lines once.** The mapping is kept as the line's aliases
+  in `codes` (an EMR product code) or as a named alias.
+- **Compare per day × line × lot (`ImmunisationReconciliation`, pure):**
+  - **Given here, not in the EMR:** *"3 flu doses on 24 November, lot ABC123, are not in the
+    EMR."* These are the likely missed claims.
+  - **In the EMR, not given here:** a stock entry missed, so the stock figure is high.
+  - **Same day, different lot:** listed on its own. It is usually a typo in one record.
+  - **A record one day either side:** shown as "nearby", not as missing, because an entry made
+    after midnight is common.
+- **What it gives back:** a list for staff to work through in the EMR. The app says which counts
+  differ, never which patient. Finding the patient is done in the EMR, by the people allowed to.
+
+This check runs only while medical mode is on, because the file in the person's hand carries
+patient data even though the app keeps none of it (Decision 8).
+
+### 9 · Wording
+
+A list marked as clinical says *given*, *doses*, *wasted*, *the fridge* (or the list's own name)
+and *lot*, through `StockPlaceWording`, in place of *used*, *parts* and *the van*. It is set by an
+organisation profile key, `organizationStockClinical` (locked), or on the list. No plan letters,
+vendor names or "beta" wording in the copy. The copy says plainly that this is a stock record, not
+the patient's immunisation record.
+
+### 10 · Privacy
+
+- **No patient identity, anywhere in this plan.** `van_stock` takes no patient argument.
+  Movements carry no free text. The read-back never repeats a name the person said.
+- **The spoken sentence still goes to the model** (*"gave Mrs Smith her flu shot"*). Under medical
+  mode a local model is preferred and memory sync is off. Scanning needs no model at all. The pilot
+  setup tells staff to say the vaccine, not the patient.
+- **The EMR file** is read once in memory, under medical mode, three columns only (§8).
+- **The stock store stays `SensitiveStore .vanStock`.** It holds no PHI, but it is a clinic's
+  operational record, so its protection is unchanged.
+- **No glasses camera in consult rooms for the pilot** (Decision 10). The Meta Acceptable Use Policy
+  forbids covert capture of anyone, and a patient's consent to a camera in the room is the clinic's
+  to manage, not ours to assume.
+
+## Phases
+
+The house rhythm puts P0–P3 in one PR, with the device-only edges named as owed.
+
+- **P0 — lots, waste and expiry (headless).**
+  - `StockLot` and the optional `lotID` on `VanStockMovement`, decoding older logs unchanged.
+  - The fold per lot, and the line total.
+  - The `wasted` kind and `WasteReason`.
+  - Doses per carton on the line.
+  - The expiry rules (expired, expiring within N days, oldest first, day `00`).
+  - `GS1ElementString`.
+  - `VanStockCountCheck` per lot.
+  - Every existing IH, MK, ML and MM test stays green, which shows nothing changed for a van.
+  - About 40 tests.
+- **P1 — scan and speak (headless + simulator).**
+  - The Stock screen's scan sheet (Data Matrix and GS1-128) and the Given / Wasted / Received /
+    Count choice.
+  - The new-line and new-lot flows, and the 10-second repeat guard.
+  - `van_stock` actions for give, waste, receive and count with an optional lot, and the
+    which-lot question.
+  - The expired refusal and the oldest-first line.
+  - The clinical wording and its profile key.
+  - `BarcodeScannerTool`'s `barcode` filter gains `.dataMatrix` and returns a parsed GS1 code when
+    it reads one.
+- **P2 — the count and the reports (headless + simulator).**
+  - The lot-by-lot count flow.
+  - `StockPeriodReport`, on screen, as a spreadsheet and as a spoken summary.
+  - The weekly reminder.
+- **P3 — the check against the EMR (headless).**
+  - `ImmunisationListReader` with its column mapping, the drop of every other column at read time,
+    and a CSV reader if needed.
+  - The line aliases.
+  - `ImmunisationReconciliation`.
+  - The medical-mode gate.
+  - A guard test that the reader's output type has no field for anything but date, vaccine and lot.
+  - Fixtures are invented rows with invented names in the dropped columns, and the test asserts
+    those names appear nowhere in the output.
+- **P4 — the catalog sync (its own PR).** The new English keys translated into the 13 complete
+  languages, add-only, as PRs 1128, 1133, 1140 and 1147 did.
+- **P5 — the pilot (owed, a report).** A real delivery received by scanning, a week of doses given
+  and wasted, a weekly count, and two checks against the clinic's own EMR export. Read every spoken
+  answer for a stray "van", "part" or "used". Count how many missing EMR entries the check found,
+  and whether staff found them correct.
+
+## Tests
+
+- **Older logs.** An IH log with no lots folds exactly as before (golden file).
+- **Lots.**
+  - Two lots on a line: a dose given from each folds to the right lot and the right total.
+  - A reversal of a given dose restores that lot.
+  - A spoken lot not held by the line is refused, and no lot is created.
+- **Waste and expiry.**
+  - `wasted` subtracts, is reported apart from given, and each reason is counted.
+  - An expired lot on Given is refused, and the offer creates `wasted · expired`.
+  - An expiry with day `00` is the month's last day.
+- **GS1.**
+  - Fixed and variable fields, with and without a GS separator.
+  - A bad check digit, a 13th month and a truncated lot are each refused.
+  - AI order doesn't matter.
+- **Counts and reports.**
+  - A count per lot gives matches / short / over.
+  - `StockPeriodReport` for a fixed log and range is a golden value.
+- **The EMR check.**
+  - The mapped columns only.
+  - A patient-name column's values never appear in any output, log line or error text.
+  - Day, nearby-day and wrong-lot cases.
+  - Refused with medical mode off.
+- **Wording.** No "van", "part" or "used" in any clinical sentence; the stock wording tests run per
+  place, as MK's do.
+- **Guards.**
+  - `van_stock`'s schema has no patient-like parameter.
+  - `check-privacy-logging.sh` passes.
+
+## Decisions for Greig
+
+1. **Patient identity.** *Recommend:* none in the app. The check against the EMR is by vaccine, lot
+   and day (§8). *Alternative:* an opaque encounter or appointment number from the EMR on each dose,
+   which matches dose by dose but puts an EMR identifier in the log and needs staff to read it out
+   or scan it.
+2. **Lots.** *Recommend:* a lot belongs to a line (§1). *Alternative:* a line per lot, which needs
+   no new model but makes every list and report repeat the product once per lot.
+3. **Waste.** *Recommend:* a new `wasted` kind with clinical reasons (§3). *Alternative:* more
+   `RemovalReason` cases, which is a smaller change but lets a report mix returns with waste.
+4. **An expired lot given.** *Recommend:* not recorded as given, with the offer to record it as
+   expired. *Alternative:* recorded with a warning. That keeps the stock right but hides a clinical
+   event inside an ordinary entry.
+5. **Doses.** *Recommend:* `each` is a dose, with doses per carton kept on the line (§2).
+6. **Funded and private stock.** Many clinics keep government-funded and privately bought stock of
+   the same vaccine apart. *Recommend:* two lines that share a product code, and a scan asks once
+   which, when both hold that lot. *Alternative:* leave this out until the clinic says it matters.
+7. **The place.** *Recommend:* MK's neutral `stock` kind with the clinic's own name for the list
+   ("Vaccine fridge"), with no new place kind. *Alternative:* a `fridge` kind, which earns its keep
+   only if a clinic has several fridges and wants them told apart by kind.
+8. **The EMR check's gate.** *Recommend:* allowed only while medical mode is on, three columns read,
+   the file never copied (§8). *Alternative:* allowed in any mode, since nothing is kept. Weaker,
+   because the model and logs are less constrained outside medical mode.
+9. **When the EMR already counts the stock.** *Recommend:* MM's pattern. The phone keeps no count
+   for that place, answers from the EMR and sends doses given and wasted back. That is an EMR
+   connector, a later plan, and only with the EMR vendor's documentation and permission. P0–P3 here
+   are for an EMR without a stock module, or one the clinic doesn't use.
+10. **Phone or glasses.** *Recommend:* the phone (and a shared iPad at the fridge, if they have
+    one) for the pilot. The glasses stay out of consult rooms. *Later:* scanning a carton by
+    looking at it, from a pair worn at the fridge only.
+11. **The weekly count reminder.** *Recommend:* a local notification on the day and time the clinic
+    chooses, off until chosen. *Alternative:* none, with the report only showing the last count's
+    date.
+12. **Clinical wording.** *Recommend:* a list-level clinical flag with a locked profile key
+    `organizationStockClinical` (§9). *Alternative:* follow the place kind alone, which can't tell
+    a clinic's storeroom from a shop's.
+
+## Open questions (for the clinic, the week of 2026-11-23)
+
+1. Which EMR, which version, cloud or installed? Does it have a vaccine stock module, and does the
+   clinic use it? (Decision 9.)
+2. Can it export the immunisations given for a date range, and in what format? A sample with the
+   patient columns emptied would settle §8's mapping.
+3. Who gives the doses, and who records them? Where in the day does an entry get missed?
+4. Which vaccines, carton sizes and multi-dose vials? Is funded stock kept apart from private
+   stock? (Decision 6.)
+5. Photos of a few cartons' labels, to confirm the 2D code is there and what it holds.
+6. How are doses claimed, and which waste or cold-chain events must be reported, to whom?
+7. A copy of the current spreadsheet with patient details removed, to import as the opening stock.
+8. What devices are at the fridge and in the treatment rooms? Who at the clinic approves a new app
+   handling clinic data?
+9. How many days ahead counts as "expiring soon" for them?
+
+## Not in scope
+
+- Any patient data: names, numbers, dates of birth, or a link from a dose to a person.
+- Writing to the EMR, the national immunisation register or a funder's claim system.
+- An EMR connector: appointments due against stock and expiry, or the EMR's own stock. That is a
+  later plan through MM's seam, once the EMR is known and its vendor's documentation and
+  permission are in hand.
+- Ordering vaccines from a supplier or a funder.
+- Fridge temperature logging and cold-chain alarms. A cold-chain *event* is recorded only as
+  waste.
+- Clinical advice: schedules, eligibility, contraindications or doses per patient.
+
+## Risks
+
+- **A second patient log by the back door.** Defended by construction: no patient parameter, no
+  free text on movements, three columns from the EMR file, and the guard tests above.
+- **A missed claim reported wrongly.** A late EMR entry looks missing on the day. The nearby-day
+  bucket and wording that says *"not in the EMR on that day"* keep it a prompt to check, not a
+  verdict.
+- **A misread code.** GS1's check digit and date checks, the read-back of vaccine, lot and expiry,
+  and the 10-second repeat guard.
+- **Being taken for the immunisation record.** The copy says it is the fridge's record, the export
+  is titled as stock, and the app never claims a patient was vaccinated.
+- **Licensed EMR manuals in a vault** (the other ask). They stay in the clinic's private company
+  vault, never in a published vault or the repository.
+
+UI copy never names plan letters. The person-facing words are "stock", "dose", "lot", "given",
+"wasted", the list's own name and "the EMR" (or its own name, once the clinic tells us).
+
+## The other ask: an EMR help vault (no build)
+
+The clinic also wants staff to ask *"How do I do this in the EMR?"* and *"Where is this screen?"*
+and be answered from the vendor's manuals, its web FAQs and the clinic's own instructions. That is
+a company vault, and it needs setup, not a build:
+
+- **Company vault from the portal** (Plan [LR](LR-company-vaults-from-the-portal.md)) or built on
+  the phone (Plan [LW](LW-vault-authoring.md)), with the vendor's user manuals as PDFs.
+- **Web FAQs** are saved as PDFs today. The app has no import from a web address.
+- **The clinic's own instructions** become guides (Plan [MJ](MJ-personal-guides.md)) or procedures
+  (Plan [MS](MS-editing-a-procedure-on-the-phone.md)).
+- **Software manuals are mostly screenshots,** so answers that show the figure matter (Plan
+  [MU](MU-the-lens-read-at-work.md) on the lens, and the phone's page view).
+- **Licensed material.** The vendor's manuals are licensed to the clinic. They live only in the
+  clinic's private company vault, never in a published vault (Plan
+  [LV](LV-published-vaults.md)) without the vendor's permission, and never in the repository or a
+  test fixture.
+- **No camera on the EMR screen.** The screen shows patient records, and the privacy filter blurs
+  faces, not text. Questions are asked in words.
+
+If the pilot shows a gap here (a screen-name vocabulary, or answers that point at a menu path), it
+gets its own plan then.
