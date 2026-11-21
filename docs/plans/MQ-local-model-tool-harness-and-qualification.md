@@ -351,7 +351,11 @@ licences are confirmed.
   `<field_assist_context>` size audit; the pin bump and `Package.resolved` agreement.
 - **P1 — MLX native tool calls**, behind `Config.localNativeToolCallsEnabled` (default off):
   `ToolSpec`s in, `.toolCall` events out, the inferred format logged, thinking off on tool turns,
-  and the loop wired into `sendLocal` in place of the single shot.
+  and the loop wired into `sendLocal` in place of the single shot. Added from P0's findings: the
+  `.toolCall` events the pinned library already emits for Hermes-format models are taken first; a
+  compact local tier for `<field_assist_context>` (on the model of the Apple path's `JobSummary`)
+  comes before the loop, since the audit found no catalog model can hold today's block; and the
+  mlx-swift-lm pin moves past PR #812 with the stream loop's `Generation.reasoning` handling.
 - **P2 — GGUF tool parsing**, behind the same flag: `common/chat` in the framework build (or the
   alternative from decision 4), with the engine-reproducibility check updated.
 - **P3 — qualification:** the Mac screener and the device app, the shortlist run, new catalog
