@@ -1,0 +1,373 @@
+import Foundation
+#if canImport(OpenGlasses)
+@testable import OpenGlasses
+#endif
+
+/// The local-model tool eval (Plan MQ P0): a versioned corpus, deterministic graders, and a runner
+/// that plays a case through the **shipped** `LocalToolLoop`, `LocalOutputPolicy` parser,
+/// `OnDeviceArgumentCoercion` and `ManualReadingCheck`.
+///
+/// One core, several runners. P0's runner is `LocalToolEvalCorpusTests`, which plays every case's
+/// `reference` output through a scripted fake model in CI. P3's Mac screener and device app will
+/// hand the same cases to a real model instead; the graders don't change.
+///
+/// **Nothing here prints a turn, a passage or an answer.** As in `RetrievalEval`: a report is
+/// counts per category and grader, and a bootstrap interval on each pass rate, so it can be pasted
+/// into a plan or a PR.
+enum LocalToolEval {
+
+    static let corpusVersion = 1
+    static let corpusFileName = "local-tool-corpus.v1.jsonl"
+
+    // MARK: - The corpus
+
+    enum Category: String, Decodable, CaseIterable, Sendable {
+        case toolChoice, restraint, notInManual, twoStep, longPrompt, multiTurn, cleanOutput, cancellation
+    }
+
+    struct Turn: Decodable, Equatable {
+        let role: String
+        let content: String
+    }
+
+    struct ExpectedCall: Decodable, Equatable {
+        let tool: String
+        /// Argument names that must be present.
+        let required: [String]
+        /// Argument values that must match, compared after coercion (a number by value, text
+        /// without regard to case or surrounding space).
+        let values: [String: String]
+    }
+
+    struct Carry: Decodable, Equatable {
+        let fromCall: Int
+        let fromArgument: String
+        let toCall: Int
+        let toArgument: String
+    }
+
+    struct Expectation: Decodable, Equatable {
+        /// The calls, in order. Empty: no tool should run.
+        let calls: [ExpectedCall]
+        /// For a reading case: whether `ManualReadingCheck` should accept the model's reading.
+        var readingAccepted: Bool?
+        /// For a two-step case: a value from one call carried into a later one.
+        var carry: Carry?
+    }
+
+    struct Reading: Decodable, Equatable {
+        let found: Bool
+        let answer: String
+        let passage: String
+        let quote: String
+
+        var manualReading: ManualReading {
+            ManualReading(found: found, answer: answer, passage: passage, quote: quote)
+        }
+    }
+
+    enum CancelPoint: String, Decodable, Sendable {
+        /// Before the first output: the barge-in lands while the prompt is still being read.
+        case decode
+        /// After the first round's tool ran, while the next answer is being generated.
+        case generation
+    }
+
+    struct Case: Decodable {
+        let id: String
+        let category: Category
+        let turn: String
+        var history: [Turn]?
+        let offered: [String]
+        let expect: Expectation
+        /// What each offered tool returns when the case runs it.
+        var results: [String: String]?
+        var passages: [String: String]?
+        var reading: Reading?
+        /// For a long-prompt case: the job context the prompt carries, in estimated tokens.
+        var contextTokens: Int?
+        var cancel: CancelPoint?
+        /// What a passing model emits, raw, one entry per generation.
+        var reference: [String]?
+    }
+
+    /// Reads JSON lines. Blank lines and `//` lines are skipped; a line that does not decode is
+    /// counted, not fatal, so a typo shows up as a number rather than a crash.
+    static func loadCorpus(_ text: String) -> (cases: [Case], undecodable: Int) {
+        var cases: [Case] = []
+        var bad = 0
+        for line in text.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("//") else { continue }
+            if let decoded = try? JSONDecoder().decode(Case.self, from: Data(trimmed.utf8)) {
+                cases.append(decoded)
+            } else {
+                bad += 1
+            }
+        }
+        return (cases, bad)
+    }
+
+    // MARK: - Graders
+
+    /// The deterministic graders. Each answers pass or fail for one property of one run.
+    enum Grader: String, CaseIterable, Sendable {
+        /// The expected tools were called, in order, and no others.
+        case toolName
+        /// Every required argument is present.
+        case argumentPresence
+        /// Every argument reads at its declared type (`OnDeviceArgumentCoercion` refused nothing).
+        case argumentTypes
+        /// The expected values, after coercion.
+        case argumentValues
+        /// No call was made twice or after the cap.
+        case noRepeats
+        /// Nothing in the spoken text is protocol or reasoning markup.
+        case cleanText
+        /// `ManualReadingCheck` accepted or declined the reading as expected.
+        case manualReading
+        /// A value from an earlier call reached the later call.
+        case carry
+        /// The turn stopped when cancelled, within the bound, running nothing after.
+        case cancellation
+        /// The prompt's job context fits the reference model's budget.
+        case contextFits
+    }
+
+    /// One run of one case.
+    struct Run {
+        let caseID: String
+        let category: Category
+        /// Grader → passed. Only the graders that apply to the case are present.
+        let grades: [Grader: Bool]
+
+        var passed: Bool { grades.values.allSatisfy { $0 } }
+    }
+
+    /// The markup no spoken answer may carry, whatever parser ran.
+    static let leftoverMarkup = ["<tool_call", "</tool_call", "<|tool_call", "<tool_call|>", "<think>", "</think>",
+                                 "<|channel", "<channel|>", "<|im_start", "<|im_end", "<start_of_turn", "<end_of_turn"]
+
+    static func isClean(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        guard !leftoverMarkup.contains(where: { lowered.contains($0) }) else { return false }
+        return LocalOutputPolicy.classify(text).kind == .prose
+    }
+
+    static func matches(_ value: Any?, expected: String) -> Bool {
+        guard let value else { return false }
+        if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+           let wanted = OnDeviceArgumentCoercion.plainNumber(expected) {
+            return abs(number.doubleValue - wanted) < 1e-9
+        }
+        if let bool = value as? Bool { return String(bool) == expected.lowercased() }
+        let text = "\(value)".trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let wanted = expected.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if text == wanted { return true }
+        if let a = OnDeviceArgumentCoercion.plainNumber(text), let b = OnDeviceArgumentCoercion.plainNumber(wanted) {
+            return abs(a - b) < 1e-9
+        }
+        return false
+    }
+
+    /// Grade a finished loop against its case. `schema` gives a tool's declared root, from the
+    /// registry, so types are checked against what the app really declares.
+    static func grade(_ testCase: Case, outcome: LocalToolLoop.Outcome,
+                      schema: (String) -> OnDeviceToolSchema.Node?) -> [Grader: Bool] {
+        var grades: [Grader: Bool] = [:]
+        let calls = outcome.executed.map(\.call)
+        grades[.toolName] = calls.map(\.name) == testCase.expect.calls.map(\.tool)
+
+        if !testCase.expect.calls.isEmpty {
+            var present = true
+            var typed = true
+            var valued = true
+            var coercedByCall: [[String: Any]] = []
+            for (index, expected) in testCase.expect.calls.enumerated() {
+                guard index < calls.count, calls[index].name == expected.tool else {
+                    present = false; typed = false; valued = false
+                    coercedByCall.append([:])
+                    continue
+                }
+                let call = calls[index]
+                var arguments = call.arguments
+                if let root = schema(call.name) {
+                    let coerced = OnDeviceArgumentCoercion.coerce(call.arguments, to: root)
+                    if !coerced.isDispatchable { typed = false }
+                    arguments = coerced.arguments
+                } else {
+                    typed = false
+                }
+                coercedByCall.append(arguments)
+                if !expected.required.allSatisfy({ arguments[$0] != nil }) { present = false }
+                for (name, wanted) in expected.values where !matches(arguments[name], expected: wanted) {
+                    valued = false
+                }
+            }
+            grades[.argumentPresence] = present
+            grades[.argumentTypes] = typed
+            grades[.argumentValues] = valued
+            if let carry = testCase.expect.carry {
+                let from = carry.fromCall < coercedByCall.count ? coercedByCall[carry.fromCall][carry.fromArgument] : nil
+                let to = carry.toCall < coercedByCall.count ? coercedByCall[carry.toCall][carry.toArgument] : nil
+                grades[.carry] = from.map { matches(to, expected: "\($0)") } ?? false
+            }
+        }
+        let signatures = calls.map(\.signature)
+        grades[.noRepeats] = Set(signatures).count == signatures.count && outcome.callsNotRun == 0
+        grades[.cleanText] = isClean(outcome.text)
+        return grades
+    }
+
+    // MARK: - The runner
+
+    /// What a runner needs besides the case: a model, and the size of the job context it renders.
+    struct Environment {
+        /// One generation: the case, the request, and which generation of the run this is (from 0).
+        let generate: (Case, LocalToolLoop.GenerationRequest, Int) async throws -> String
+        /// A tool's declared schema root, by name.
+        let schema: (String) -> OnDeviceToolSchema.Node?
+        /// The model whose window a long-prompt case is checked against.
+        let referenceModelID: String
+        /// The longest a cancelled turn may take to stop.
+        var cancellationBound: TimeInterval = 1.0
+    }
+
+    /// Run one case once and grade it.
+    static func run(_ testCase: Case, environment: Environment) async -> Run {
+        var grades: [Grader: Bool] = [:]
+
+        if let reading = testCase.reading, let expected = testCase.expect.readingAccepted {
+            let verdict = ManualReadingCheck.check(reading.manualReading, passages: testCase.passages ?? [:])
+            grades[.manualReading] = verdict.isAccepted == expected
+        }
+        if let tokens = testCase.contextTokens {
+            grades[.contextFits] = tokens <= LocalModelBudget.promptBudget(for: environment.referenceModelID)
+        }
+        guard testCase.reference != nil || testCase.reading == nil else {
+            return Run(caseID: testCase.id, category: testCase.category, grades: grades)
+        }
+
+        let history: [LocalToolLoop.Message] = (testCase.history ?? []).map {
+            $0.role == "assistant" ? .assistant($0.content) : .user($0.content)
+        }
+        let offered = Set(testCase.offered)
+        let results = testCase.results ?? [:]
+        let counter = Counter()
+        let executedAfterCancel = Counter()
+
+        let started = Date()
+        let task = Task { () -> Result<LocalToolLoop.Outcome, Error> in
+            do {
+                let outcome = try await LocalToolLoop.run(
+                    history: history, userMessage: testCase.turn,
+                    generate: { request in
+                        let index = counter.next()
+                        if testCase.cancel == .decode, index == 0 {
+                            withUnsafeCurrentTask { $0?.cancel() }
+                            try Task.checkCancellation()
+                        }
+                        return try await environment.generate(testCase, request, index)
+                    },
+                    execute: { call in
+                        if Task.isCancelled { _ = executedAfterCancel.next() }
+                        defer {
+                            if testCase.cancel == .generation { withUnsafeCurrentTask { $0?.cancel() } }
+                        }
+                        guard offered.contains(call.name) else {
+                            return .init(text: "Error: no tool named \(call.name) is available.", isError: true)
+                        }
+                        if let root = environment.schema(call.name) {
+                            let coerced = OnDeviceArgumentCoercion.coerce(call.arguments, to: root)
+                            if let refusal = coerced.refusalMessage { return .init(text: refusal, isError: true) }
+                        }
+                        return .init(text: results[call.name] ?? "Done.")
+                    })
+                return .success(outcome)
+            } catch {
+                return .failure(error)
+            }
+        }
+        let result = await task.value
+        let elapsed = Date().timeIntervalSince(started)
+
+        switch result {
+        case .success(let outcome):
+            grades.merge(grade(testCase, outcome: outcome, schema: environment.schema)) { $1 }
+            if testCase.cancel != nil { grades[.cancellation] = false }
+        case .failure(let error):
+            if testCase.cancel != nil {
+                grades[.cancellation] = error is CancellationError && elapsed <= environment.cancellationBound
+                    && executedAfterCancel.value == 0
+            } else {
+                grades[.toolName] = false
+            }
+        }
+        return Run(caseID: testCase.id, category: testCase.category, grades: grades)
+    }
+
+    /// A thread-safe count; the loop's closures are not `@Sendable`, but a task may hop threads.
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private(set) var value = 0
+        func next() -> Int {
+            lock.lock(); defer { lock.unlock() }
+            defer { value += 1 }
+            return value
+        }
+    }
+
+    /// The scripted fake model CI plays: each case's `reference`, one entry per generation, then
+    /// empty output.
+    static func referenceModel(_ testCase: Case, _ request: LocalToolLoop.GenerationRequest,
+                               _ index: Int) async throws -> String {
+        let script = testCase.reference ?? []
+        return index < script.count ? script[index] : ""
+    }
+
+    // MARK: - The report
+
+    struct Tally: Equatable {
+        var runs = 0
+        var passed = 0
+    }
+
+    struct Report {
+        var byCategory: [Category: Tally] = [:]
+        var byGrader: [Grader: Tally] = [:]
+        var overall = Tally()
+        /// 1 for each passing run, 0 for each failing one, for the interval.
+        var outcomes: [Double] = []
+
+        mutating func add(_ run: Run) {
+            byCategory[run.category, default: Tally()].runs += 1
+            overall.runs += 1
+            if run.passed {
+                byCategory[run.category, default: Tally()].passed += 1
+                overall.passed += 1
+            }
+            for (grader, passed) in run.grades {
+                byGrader[grader, default: Tally()].runs += 1
+                if passed { byGrader[grader, default: Tally()].passed += 1 }
+            }
+            outcomes.append(run.passed ? 1 : 0)
+        }
+
+        /// Counts only: categories, graders, and the overall pass rate's bootstrap interval.
+        func lines() -> [String] {
+            var lines = ["local-tool-eval corpus v\(LocalToolEval.corpusVersion): \(overall.passed)/\(overall.runs) runs passed"]
+            if let interval = EvalIntervals.bootstrapInterval(values: outcomes) {
+                lines.append("  pass rate \(interval.formatted())")
+            }
+            for category in Category.allCases {
+                guard let tally = byCategory[category] else { continue }
+                lines.append("  \(category.rawValue): \(tally.passed)/\(tally.runs)")
+            }
+            for grader in Grader.allCases {
+                guard let tally = byGrader[grader] else { continue }
+                lines.append("  grader \(grader.rawValue): \(tally.passed)/\(tally.runs)")
+            }
+            return lines
+        }
+    }
+}

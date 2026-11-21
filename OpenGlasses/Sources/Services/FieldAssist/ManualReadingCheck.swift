@@ -106,14 +106,14 @@ enum ManualReadingCheck {
 
     /// Each number in `text` that a unit follows, with the unit's canonical token.
     static func quantities(in text: String) -> [Quantity] {
-        let pattern = numberPattern + #"\s*(?:-\s*"# + numberPattern + #"\s*)?"# + adjacentUnitPattern
+        let pattern = numberPattern + #"\s*(?:(?:-|to|and)\s*"# + numberPattern + #"\s*)?"# + adjacentUnitPattern
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         var found: [Quantity] = []
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
             guard let whole = Range(match.range, in: text),
                   let unitRange = Range(match.range(at: match.numberOfRanges - 1), in: text),
                   let unit = canonicalUnit(String(text[unitRange])) else { continue }
-            // Both ends of a range ("4.5 - 10.5 in. w.c.") carry the unit.
+            // Both ends of a range ("4.5 - 10.5 in. w.c.", "4.5 to 10.5") carry the unit.
             for number in numbers(in: String(text[whole])) {
                 found.append(Quantity(value: number, unit: unit))
             }
