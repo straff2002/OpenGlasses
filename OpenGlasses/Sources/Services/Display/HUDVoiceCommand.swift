@@ -46,7 +46,7 @@ enum HUDVoiceCommand: Equatable {
 enum HUDAnswerVoiceCommand: Equatable {
     case next   // "next" / "next page"
     case back   // "back" / "previous"
-    case close  // "close" / "clear"
+    case close  // "close" / "clear" / "hide that" / "put it away"
 
     static func parse(_ text: String) -> HUDAnswerVoiceCommand? {
         let stripped = text.lowercased()
@@ -61,7 +61,9 @@ enum HUDAnswerVoiceCommand: Equatable {
             return .next
         case "back", "go back", "previous", "previous page":
             return .back
-        case "close", "clear", "close that", "clear that", "close it", "dismiss":
+        case "close", "clear", "close that", "clear that", "close it", "dismiss",
+             // Plan MU §4: the answer stays up until it is put away, so say so plainly.
+             "hide that", "hide it", "put it away", "put that away":
             return .close
         default:
             return nil

@@ -95,7 +95,8 @@ enum HUDPageCommand: Equatable {
             return .showPage
         case "read it", "read", "read that", "read the text", "show the text", "the text", "text":
             return .readIt
-        case "close", "close the page", "close page", "close it", "close that":
+        case "close", "close the page", "close page", "close it", "close that",
+             "hide that", "hide it", "put it away", "put that away":
             return .close
         default:
             return showRow(core)

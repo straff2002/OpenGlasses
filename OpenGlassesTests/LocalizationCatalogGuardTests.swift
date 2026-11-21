@@ -19,7 +19,8 @@ import XCTest
 final class LocalizationCatalogGuardTests: XCTestCase {
 
     /// Languages whose catalog is filled end to end, with the plural categories each requires.
-    private static let completeLanguages: [String: Set<String>] = [
+    /// Read by `LensButtonRowLanguageTests` too (Plan MU P3).
+    static let completeLanguages: [String: Set<String>] = [
         "ar": ["zero", "one", "two", "few", "many", "other"],
         "es-MX": ["one", "many", "other"],
         "fr-CA": ["one", "many", "other"],

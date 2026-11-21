@@ -45,6 +45,13 @@ enum HUDAnswerAction: Equatable {
 /// Page sizes are the caller's geometry: on the Meta Display, `LensPageFrame.answerGeometry` (10 ×
 /// 32), so 9 lines of text and the footer, 8 under the question.
 ///
+/// **On the Meta Display (Plan MU §3, `fitsLensRow`)** each row goes through `LensButtonRowBudget`:
+/// a follow-up is cut to fit, and a row still too wide sends its follow-ups, then **Page**, to the
+/// Actions screen (and ‹ Back, last, to voice). The Actions screen then lists every follow-up the
+/// row doesn't carry, and **Page** when the row lost it. Its own row can't move anything to Actions,
+/// so there the follow-ups, and the buttons that don't fit, are cards in the column over the row,
+/// pressed as the buttons would be. Even keeps its rows as they are (`fitsLensRow` false).
+///
 /// The question line ("You: what size breaker", `questionLine(for:maxChars:)`) is in the meta
 /// style, on the first page only, cut to one display line so it never wraps; the pager budgets
 /// that page one line shorter for it (`HUDAnswerPager.pages(firstPageReservedLines:)`).
@@ -104,6 +111,7 @@ enum HUDAnswerCardBuilder {
                      question: String? = nil,
                      picture: HUDPicture? = nil,
                      hasPage: Bool = false,
+                     fitsLensRow: Bool = false,
                      onAction: @escaping (HUDAnswerAction) -> Void) -> HUDScreen? {
         guard !pages.isEmpty else { return nil }
         let page = pages[min(max(index, 0), pages.count - 1)]
@@ -124,6 +132,25 @@ enum HUDAnswerCardBuilder {
             lines.append(HUDLine(page.body))
         }
 
+        let row = rowItems(page, followUps: followUps, hasPage: hasPage, onAction: onAction)
+        let items = fitsLensRow ? LensButtonRowBudget.fit(row, givingWay: rowGivingWay).row : row
+        var screen = HUDScreen(title: nil, lines: lines, items: items)
+        if page.index == 0, let picture, HUDAnswerThumbnail.fits(screen, picture: picture) {
+            screen.picture = picture
+        }
+        return screen
+    }
+
+    /// The order a page's row gives way in on the Meta Display: the follow-ups (the second first),
+    /// then **Page** (both to the Actions screen), then ‹ Back (still said as "back").
+    static let rowGivingWay = [ItemID.followUp(1), ItemID.followUp(0), ItemID.page, ItemID.back]
+    /// The order the Actions screen's buttons leave its row for the column on the Meta Display.
+    static let actionsGivingWay = [ItemID.followUp(2), ItemID.followUp(1), ItemID.followUp(0),
+                                   ItemID.send, ItemID.save, ItemID.repeatAnswer, ItemID.page, ItemID.more]
+
+    /// A page's buttons before any width budget (see the type's table).
+    static func rowItems(_ page: HUDAnswerPage, followUps: [String], hasPage: Bool,
+                         onAction: @escaping (HUDAnswerAction) -> Void) -> [HUDItem] {
         var items: [HUDItem] = []
         if page.isLast {
             for (offset, question) in followUps.prefix(followUpsOnLastPage(hasPage: hasPage)).enumerated() {
@@ -141,38 +168,54 @@ enum HUDAnswerCardBuilder {
                 items.append(item(ItemID.back, String(localized: "‹ Back"), .outline, .back, onAction))
             }
         }
-        var screen = HUDScreen(title: nil, lines: lines, items: items)
-        if page.index == 0, let picture, HUDAnswerThumbnail.fits(screen, picture: picture) {
-            screen.picture = picture
-        }
-        return screen
+        return items
     }
 
     /// The pushed Actions screen: the answer's first line as a reminder, the follow-ups the last
     /// page has no room for (the third; and the second too when `hasPage`, the turn having staged a
     /// page the lens can show, whose **Page** is on the last page), then More, Repeat, Save, Send,
     /// ‹ Answer (back to the page) and Close.
+    ///
+    /// Plan MU §3: `followUpsOnRow` is how many follow-ups the row the wearer came from carries (nil:
+    /// the last page's usual count), and `offersPage` puts **Page** here when that row lost it. With
+    /// `fitsLensRow` (the Meta Display), the follow-ups, and any button that doesn't fit the row, are
+    /// cards in the column over it.
     static func actions(_ pages: [HUDAnswerPage],
                         followUps: [String],
                         hasPage: Bool = false,
+                        followUpsOnRow: Int? = nil,
+                        offersPage: Bool = false,
+                        fitsLensRow: Bool = false,
                         onAction: @escaping (HUDAnswerAction) -> Void) -> HUDScreen {
         var lines: [HUDLine] = []
         if let first = pages.first?.lines.first, !first.isEmpty {
             lines.append(HUDLine(first, emphasis: .secondary))
         }
         var items: [HUDItem] = []
-        let onLastPage = followUpsOnLastPage(hasPage: hasPage)
-        let extra = Array(followUps.prefix(maxFollowUps).dropFirst(onLastPage))
+        let onRow = max(0, followUpsOnRow ?? followUpsOnLastPage(hasPage: hasPage))
+        let extra = Array(followUps.prefix(maxFollowUps).dropFirst(onRow))
         for (offset, question) in extra.enumerated() {
-            items.append(followUpItem(onLastPage + offset, question, onAction))
+            items.append(followUpItem(onRow + offset, question, onAction))
         }
+        if offersPage { items.append(pageItem(onAction)) }
         items.append(item(ItemID.more, String(localized: "More"), .primary, .more, onAction))
         items.append(item(ItemID.repeatAnswer, String(localized: "Repeat"), .secondary, .repeatAnswer, onAction))
         items.append(item(ItemID.save, String(localized: "Save"), .secondary, .save, onAction))
         items.append(item(ItemID.send, String(localized: "Send"), .secondary, .send, onAction))
         items.append(item(ItemID.answer, String(localized: "‹ Answer"), .outline, .answer, onAction))
         items.append(item(ItemID.close, String(localized: "Close"), .outline, .close, onAction))
-        return HUDScreen(title: nil, lines: lines, items: items)
+        guard fitsLensRow else { return HUDScreen(title: nil, lines: lines, items: items) }
+
+        // The Meta Display: follow-ups are questions, never a button's width; they and whatever
+        // else doesn't fit go in the column over the row, as cards pressed like the buttons.
+        let questions = items.filter { LensButtonRowBudget.isCuttable($0.id) }
+        let fitted = LensButtonRowBudget.fit(items.filter { !LensButtonRowBudget.isCuttable($0.id) },
+                                             givingWay: actionsGivingWay, protected: [ItemID.answer])
+        var screen = HUDScreen(title: nil, lines: lines, items: fitted.row)
+        screen.flow = (questions + fitted.moved).map { moved in
+            .blocks([HUDBlock(id: moved.id, lines: [HUDLine(moved.label)], style: .card, action: moved.action)])
+        }
+        return screen
     }
 
     /// Follow-ups on the last page: two, or one beside **Page**.

@@ -1,12 +1,20 @@
 # Plan MU — The Lens Read at Work (a page you get around in one move, fuller tiles, sources on their own, fewer buttons, and an answer that stays until you put it away)
 
-**Status:** 🚧 P0 and P1 built headless 2026-11-21 (branch `feat/mu-p0-p1-page-view`): one picture a
-row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
+**Status:** 🚧 P0–P4 built headless (branch `feat/mu-p0-p1-page-view`). P0 and P1 2026-11-21: one picture
+a row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
 (Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
 highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
-halves in one strip) or fit width, **Back**, **Rows**, the voice words, three buttons at most; device
-checks owed in P8 (and the fit check's one reading in P0). P2–P8 not started. **All 10 decisions taken
-2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
+halves in one strip) or fit width, **Back**, **Rows**, the voice words, three buttons at most. P2–P4
+2026-11-22: `HUDReadingRows` at 8 lines joined up to 9 with no orphan tile and the stride cut gone;
+`LensSourceTile` and the reading view's source tile; "Earlier — press to open" with three lines;
+`LensButtonRowBudget` (provisional constants: 15 px a character, 1.8× for a full-width character,
+32 px of padding a button, 8 px gaps, against the 576 px column) on the reading view, the paged card
+(Meta Display only), Actions, the page view and reading mode, with the 13-language test; the reading
+view's three-button row with follow-ups on Actions; Keep answers up (Until closed by default, or 3
+minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
+Not done: P5 (the budget's constants are estimates until measured), P6, P7 (the new strings are in
+English only) and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
+taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
 request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
 `chore/dat-1-1-0`, adds nothing to the Display). Every picture sent to the lens, the reading view

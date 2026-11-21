@@ -5,7 +5,7 @@ import XCTest
 
 /// Plan MG P3 — the reading view on the lens, wired: the answer card shows it on the Meta Display,
 /// sends it at settle points, says a row again on a press, opens and leaves an earlier answer,
-/// lasts three minutes, forgets the conversation when it should, and draws on every surface.
+/// stays until closed (or three minutes when chosen), forgets the conversation when it should, and draws on every surface.
 ///
 /// Headless, through the display's seams: a fresh `GlassesDisplayService` (never `.shared`), frames
 /// captured by `testRenderSink`, presses through the real `MetaDisplayBackend` tree
@@ -198,11 +198,17 @@ final class HUDReadingCardTests: XCTestCase {
 
     // MARK: - Lifetime and forgetting
 
-    func testTheReadingViewLastsThreeMinutesWithoutAPress() {
+    // Plan MU §4 changed MG decision 4: the reading view no longer clears after 3 minutes by
+    // default; it stays until closed, and 3 minutes is the other choice in Display & HUD.
+    func testTheReadingViewStaysUntilClosedOrLastsThreeMinutesWhenChosen() {
         let rig = makeRig()
+        rig.card.readingIdleLifetime = { LensAnswerLifetime.untilClosed.idleLifetime }
         answer(rig)
-        XCTAssertEqual(rig.timers.armed.last?.delay, HUDAnswerCard.defaultReadingIdleLifetime)
-        XCTAssertEqual(HUDAnswerCard.defaultReadingIdleLifetime, 180)
+        XCTAssertTrue(rig.timers.armed.isEmpty, "no idle timer for a view kept until closed")
+        let timed = makeRig()
+        timed.card.readingIdleLifetime = { LensAnswerLifetime.threeMinutes.idleLifetime }
+        answer(timed)
+        XCTAssertEqual(timed.timers.armed.last?.delay, 180)
         let paged = makeRig(reading: false)
         answer(paged)
         XCTAssertEqual(paged.timers.armed.last?.delay, HUDAnswerCard.defaultIdleLifetime)
@@ -237,7 +243,8 @@ final class HUDReadingCardTests: XCTestCase {
         rig.timers.fireAll()
         XCTAssertEqual(rig.card.log.count, 1, "back before the lifetime: nothing forgotten")
         rig.display.updateGlassesLink(connected: false, worn: nil)
-        XCTAssertEqual(rig.timers.armed.last?.delay, HUDAnswerCard.defaultReadingIdleLifetime)
+        XCTAssertEqual(rig.timers.armed.last?.delay, HUDAnswerCard.readingDisconnectWindow)
+        XCTAssertEqual(HUDAnswerCard.readingDisconnectWindow, 180, "the forgetting rule is unchanged")
         rig.timers.fireAll()
         XCTAssertTrue(rig.card.log.isEmpty)
     }

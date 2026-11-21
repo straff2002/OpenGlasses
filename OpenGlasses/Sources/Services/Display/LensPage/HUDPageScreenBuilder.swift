@@ -274,8 +274,26 @@ enum HUDPageScreenBuilder {
         return text.isEmpty ? nil : HUDLine(text, emphasis: .meta)
     }
 
+    /// The view's buttons, three at most and fitted to the lens's width (`LensButtonRowBudget`,
+    /// Plan MU §3): a label with a short form takes it ("Next page ›" → "Next ›", "Back" → "‹"),
+    /// then the buttons in `givingWay(for:)` leave (still said by voice). **Close** stays.
     static func items(_ state: HUDPageViewState,
                       _ onAction: @escaping (HUDPageAction) -> Void) -> [HUDItem] {
+        LensButtonRowBudget.fit(rowItems(state, onAction), givingWay: givingWay(for: state)).row
+    }
+
+    /// The order a view's buttons give way in, least important first.
+    static func givingWay(for state: HUDPageViewState) -> [String] {
+        switch state.view {
+        case .reading: return [ItemID.previousText, ItemID.nextPage, ItemID.showPicture]
+        case .whole: return [ItemID.nextPage, ItemID.rows, ItemID.readIt]
+        case .closeUp, .zoomed, .rows: return [ItemID.back]
+        }
+    }
+
+    /// The view's buttons, three at most, before the width budget.
+    static func rowItems(_ state: HUDPageViewState,
+                         _ onAction: @escaping (HUDPageAction) -> Void) -> [HUDItem] {
         switch state.view {
         case .reading:
             guard let page = state.readingPage else { return [closeItem(onAction)] }
