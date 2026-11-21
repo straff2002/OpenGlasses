@@ -516,6 +516,24 @@ final class LocalLLMService: ObservableObject {
         imageData: Data? = nil,
         onToken: ((String) -> Void)? = nil
     ) async throws -> String {
+        try await generateTurn(MLXTurnInput(userMessage: userMessage, systemPrompt: systemPrompt,
+                                            history: history, imageData: imageData, onToken: onToken,
+                                            toolTurn: nil)).text
+    }
+
+    /// One generation, keeping the tool calls mlx-swift-lm's parser took out of the stream (Plan
+    /// MQ P1). Until P1 they were skipped: for a model whose format resolves to Hermes JSON (the
+    /// library's default when a model declares none), the `<tool_call>` the prompt asks for arrived
+    /// as a `.toolCall` event and vanished, so `LocalOutputPolicy` never saw it. With `toolTurn`,
+    /// the turn's tools are rendered by the model's own chat template and the call-and-result
+    /// transcript is sent in template roles.
+    func generateTurn(_ turnInput: MLXTurnInput) async throws -> MLXTurnOutput {
+        let userMessage = turnInput.userMessage
+        let history = turnInput.history
+        let imageData = turnInput.imageData
+        let onToken = turnInput.onToken
+        let toolTurn = turnInput.toolTurn
+        var systemPrompt = turnInput.systemPrompt
         // On-device inference runs on the GPU via Metal, which iOS forbids in the
         // background: submitting a command buffer there raises
         // kIOGPUCommandBufferCallbackErrorBackgroundExecutionNotPermitted, which MLX
@@ -549,20 +567,36 @@ final class LocalLLMService: ObservableObject {
                         history: history, imageData: imageData,
                         container: container, onToken: onToken)
                 }
-                return try await generateVisionTurn(
+                return MLXTurnOutput(text: try await generateVisionTurn(
                     userMessage: userMessage, systemPrompt: systemPrompt,
                     history: history, imageData: imageData,
-                    container: container, onToken: onToken)
+                    container: container, onToken: onToken), toolCalls: [])
             }
             // Reachable despite the upstream guard: the first-ever photo question loads the
             // model DURING the turn, and the VLM→text demotion happens after the guard already
             // passed. Refuse honestly — silently answering text-only about an image the model
             // never saw is the exact hallucination the vision guard exists to prevent.
             PrivacyLog.localModel(.imageRefused, model: PrivacyToken(loadedModelId ?? "unknown"))
-            return Self.visionWeightsUnavailableMessage
+            return MLXTurnOutput(text: Self.visionWeightsUnavailableMessage, toolCalls: [])
         }
 
         let tokenizer = await container.tokenizer
+
+        // Plan MQ P1: what this turn renders. With no format inferred for the model, the tools are
+        // not handed to its template: today's Hermes instruction goes into the system prompt instead
+        // and the transcript is flattened, so the calls come back as `<tool_call>` text.
+        var renderedTools: [[String: any Sendable]]?
+        var flattenTranscript = false
+        if let toolTurn {
+            let format = await container.configuration.toolCallFormat
+            noteToolFormat(format.map(\.rawValue))
+            if format == nil {
+                flattenTranscript = true
+                if !toolTurn.tools.isEmpty { systemPrompt += toolTurn.fallbackInstructions }
+            } else if !toolTurn.tools.isEmpty {
+                renderedTools = toolTurn.tools.map(LocalToolTranscript.sendableSpec)
+            }
+        }
 
         // A Gemma 4 that loaded through the VLM factory takes its own path even for a text
         // turn: the VLM processor owns the model's chat template and the `LMInput` shape it
@@ -571,6 +605,38 @@ final class LocalLLMService: ObservableObject {
         // produces, so the count matches what the model will actually see.
         if loadedViaVLMFactory && Gemma4ChatPrompt.matches(modelId: loadedModelId) {
             let budget = LocalModelBudget.promptBudget(for: loadedModelId)
+            if let toolTurn {
+                // Measured with the template itself, tools included: the definitions are tokens too.
+                let system = systemPrompt
+                let earlier = toolTurn.history
+                let kept = try LocalModelBudget.historyFittingBudget(
+                    history: earlier.map { (role: $0.role.rawValue, content: $0.content) }, budget: budget
+                ) { hist in
+                    let messages = [["role": "system", "content": system] as [String: any Sendable]]
+                        + (Array(earlier.suffix(hist.count)) + toolTurn.turn).map(LocalToolTranscript.rawMessage)
+                    if let tokens = try? tokenizer.applyChatTemplate(
+                        messages: messages, tools: renderedTools,
+                        additionalContext: LocalToolTranscript.templateContext(thinkingOff: toolTurn.thinkingOff)) {
+                        return tokens.count
+                    }
+                    let flat = LocalToolTranscript.flattened(Array(earlier.suffix(hist.count)) + toolTurn.turn)
+                    return tokenizer.encode(text: Gemma4ChatPrompt.render(
+                        system: system + toolTurn.fallbackInstructions, history: Array(flat.dropLast()),
+                        userMessage: flat.last?.content ?? "", bosToken: tokenizer.bosToken),
+                                            addSpecialTokens: false).count
+                }
+                if kept.count < earlier.count {
+                    PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: earlier.count, tokens: budget)
+                }
+                return try await generateGemma4Turn(
+                    userMessage: userMessage, systemPrompt: systemPrompt,
+                    history: [], imageData: nil,
+                    container: container, onToken: onToken,
+                    toolTurn: LocalToolTurn(history: Array(earlier.suffix(kept.count)), turn: toolTurn.turn,
+                                            tools: toolTurn.tools, thinkingOff: toolTurn.thinkingOff,
+                                            fallbackInstructions: toolTurn.fallbackInstructions),
+                    renderedTools: renderedTools, flattenTranscript: flattenTranscript)
+            }
             let trimmedHistory = try LocalModelBudget.historyFittingBudget(
                 history: history, budget: budget
             ) { hist in
@@ -592,7 +658,28 @@ final class LocalLLMService: ObservableObject {
         // Tokenize a candidate history exactly as the model will — chat template, with the
         // no-system-role fallback some small models need. Used both to measure truncation
         // candidates and to produce the final token ids.
+        let system = systemPrompt
+        // Plan MQ P1: on a tool turn the trimmable history is the turn's earlier messages, and the
+        // rest of the turn (its user message, every call and result) is always sent.
+        let toolEarlier = toolTurn?.history ?? []
+        let tupleHistory = toolTurn == nil ? history
+            : toolEarlier.map { (role: $0.role.rawValue, content: $0.content) }
+        func tokenizeToolTurn(_ toolTurn: LocalToolTurn, keeping count: Int) throws -> [Int] {
+            let messages = Array(toolEarlier.suffix(count)) + toolTurn.turn
+            if !flattenTranscript {
+                let raw = [["role": "system", "content": system] as [String: any Sendable]]
+                    + messages.map(LocalToolTranscript.rawMessage)
+                return try tokenizer.applyChatTemplate(
+                    messages: raw, tools: renderedTools,
+                    additionalContext: LocalToolTranscript.templateContext(thinkingOff: toolTurn.thinkingOff))
+            }
+            let flat = LocalToolTranscript.flattened(messages)
+            let raw = [["role": "system", "content": system] as [String: any Sendable]]
+                + flat.map { ["role": $0.role, "content": $0.content] as [String: any Sendable] }
+            return try tokenizer.applyChatTemplate(messages: raw, tools: nil, additionalContext: nil)
+        }
         func tokenize(_ hist: [(role: String, content: String)]) throws -> [Int] {
+            if let toolTurn { return try tokenizeToolTurn(toolTurn, keeping: hist.count) }
             var messages: [[String: String]] = [["role": "system", "content": systemPrompt]]
             for turn in hist { messages.append(["role": turn.role, "content": turn.content]) }
             messages.append(["role": "user", "content": userMessage])
@@ -627,11 +714,11 @@ final class LocalLLMService: ObservableObject {
         // alone too big) throws `.promptTooLong` — catchable, so the caller can fall back to cloud.
         let budget = LocalModelBudget.promptBudget(for: loadedModelId)
         let trimmedHistory = try LocalModelBudget.historyFittingBudget(
-            history: history, budget: budget
+            history: tupleHistory, budget: budget
         ) { try tokenize($0).count }
-        if trimmedHistory.count < history.count {
+        if trimmedHistory.count < tupleHistory.count {
             PrivacyLog.localModel(.historyTrimmed, count: trimmedHistory.count,
-                                  total: history.count, tokens: budget)
+                                  total: tupleHistory.count, tokens: budget)
         }
         let tokens = try tokenize(trimmedHistory)
 
@@ -701,12 +788,15 @@ final class LocalLLMService: ObservableObject {
         // it doesn't cover. Captured here and applied below rather than from inside the closure,
         // which is deliberately kept free of anything that could suspend mid-generation.
         var reported: GenerateCompletionInfo?
+        var toolCalls: [LocalToolCallEvent] = []
         var iterator = stream.makeAsyncIterator()
         let output = try await Self.drainTokenStream(
             nextChunk: {
                 while let generation = await iterator.next() {
                     if case .chunk(let text) = generation { return text }
                     if case .info(let info) = generation { reported = info }
+                    // Plan MQ P1: taken, not skipped.
+                    if case .toolCall(let call) = generation { toolCalls.append(Self.toolCallEvent(call)) }
                 }
                 return nil
             },
@@ -743,10 +833,30 @@ final class LocalLLMService: ObservableObject {
             if let reasoning {
                 PrivacyLog.localModel(.reasoningProduced, characters: reasoning.count)
             }
-            return spoken
+            return MLXTurnOutput(text: spoken, toolCalls: toolCalls)
         }
         lastReasoning = nil
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return MLXTurnOutput(text: output.trimmingCharacters(in: .whitespacesAndNewlines), toolCalls: toolCalls)
+    }
+
+    /// The library's call as the seam carries it: name and canonical JSON arguments.
+    nonisolated static func toolCallEvent(_ call: ToolCall) -> LocalToolCallEvent {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = (try? encoder.encode(call.function.arguments)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return LocalToolCallEvent(name: call.function.name, argumentsJSON: json)
+    }
+
+    /// The model whose inferred tool-call format was last logged, so it is logged once per load.
+    private var toolFormatLoggedFor: String?
+
+    /// Log the format the library inferred for the loaded model, as a token (`none` when it
+    /// inferred nothing and the Hermes instruction is the fallback).
+    private func noteToolFormat(_ format: String?) {
+        guard toolFormatLoggedFor != loadedModelId else { return }
+        toolFormatLoggedFor = loadedModelId
+        PrivacyLog.localModel(.toolFormat, model: PrivacyToken(loadedModelId ?? "unknown"),
+                              detail: PrivacyToken(format ?? "none"))
     }
 
     /// One turn — text or photo — on a Gemma 4 that loaded through the VLM factory.
@@ -766,9 +876,13 @@ final class LocalLLMService: ObservableObject {
         history: [(role: String, content: String)],
         imageData: Data?,
         container: ModelContainer,
-        onToken: ((String) -> Void)?
-    ) async throws -> String {
+        onToken: ((String) -> Void)?,
+        toolTurn: LocalToolTurn? = nil,
+        renderedTools: [[String: any Sendable]]? = nil,
+        flattenTranscript: Bool = false
+    ) async throws -> MLXTurnOutput {
         let parameters = Self.generateParameters(for: loadedModelId)
+        let toolCalls = LockedToolCalls()
 
         // Same mid-generation backgrounding watch as the other paths, via a lock-guarded box
         // because the drain runs off the main actor inside `container.perform`.
@@ -841,7 +955,18 @@ final class LocalLLMService: ObservableObject {
                     chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
                 }
                 var resize: CGSize?
-                if let imageData {
+                if let toolTurn {
+                    // Plan MQ P1: the call-and-result transcript in the template's own roles, or
+                    // flattened with the Hermes instruction when no format was inferred.
+                    if flattenTranscript {
+                        // The system prompt already carries the Hermes instruction (`generateTurn`).
+                        for turn in LocalToolTranscript.flattened(toolTurn.history + toolTurn.turn) {
+                            chat.append(turn.role == "assistant" ? .assistant(turn.content) : .user(turn.content))
+                        }
+                    } else {
+                        chat.append(contentsOf: (toolTurn.history + toolTurn.turn).map(Self.chatMessage))
+                    }
+                } else if let imageData {
                     guard let ciImage = CIImage(data: imageData) else {
                         throw LocalLLMError.generationFailed("Couldn't decode the photo.")
                     }
@@ -860,17 +985,31 @@ final class LocalLLMService: ObservableObject {
                     chat.append(.user(userMessage))
                 }
 
+                let templateContext = toolTurn.flatMap {
+                    LocalToolTranscript.templateContext(thinkingOff: $0.thinkingOff)
+                }
                 let userInput = resize.map { UserInput(chat: chat, processing: .init(resize: $0)) }
-                    ?? UserInput(chat: chat)
+                    ?? UserInput(chat: chat, tools: flattenTranscript ? nil : renderedTools,
+                                 additionalContext: templateContext)
                 do {
                     lmInput = try await context.processor.prepare(input: userInput)
                 } catch {
                     // Only the text turn can be rescued by hand: a photo turn's soft tokens can
                     // only be produced by the processor, so a failure there has to surface.
                     guard imageData == nil, Gemma4ChatPrompt.isTemplateParseFailure(error) else { throw error }
-                    let text = Gemma4ChatPrompt.render(
+                    var text = Gemma4ChatPrompt.render(
                         system: effectiveSystem, history: effectiveHistory, userMessage: userMessage,
                         bosToken: context.tokenizer.bosToken)
+                    if let toolTurn {
+                        // The hand render cannot carry tool definitions: the Hermes instruction and
+                        // the flattened transcript stand in, and the calls come back as text.
+                        let flat = LocalToolTranscript.flattened(toolTurn.history + toolTurn.turn)
+                        text = Gemma4ChatPrompt.render(
+                            system: effectiveSystem
+                                + (toolTurn.tools.isEmpty || flattenTranscript ? "" : toolTurn.fallbackInstructions),
+                            history: Array(flat.dropLast()), userMessage: flat.last?.content ?? "",
+                            bosToken: context.tokenizer.bosToken)
+                    }
                     let tokens = context.tokenizer.encode(text: text, addSpecialTokens: false)
                     // VLM-factory shape: (1, L). The mask must be explicit — a nil mask reaches
                     // Metal as a null buffer.
@@ -914,6 +1053,8 @@ final class LocalLLMService: ObservableObject {
                     while let generation = await iterator.next() {
                         if case .chunk(let text) = generation { return text }
                         if case .info(let info) = generation { report.note(info) }
+                        // Plan MQ P1: taken, not skipped.
+                        if case .toolCall(let call) = generation { toolCalls.append(Self.toolCallEvent(call)) }
                     }
                     return nil
                 },
@@ -931,7 +1072,23 @@ final class LocalLLMService: ObservableObject {
         PrivacyLog.localModel(.generationCompleted, megabytes: Memory.activeMemory / 1_048_576,
                               cacheMegabytes: Memory.cacheMemory / 1_048_576,
                               detail: PrivacyToken("gemma4Turn"))
-        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return MLXTurnOutput(text: output.trimmingCharacters(in: .whitespacesAndNewlines), toolCalls: toolCalls.all)
+    }
+
+    /// One transcript message as the library's structured chat message, tool metadata included.
+    nonisolated static func chatMessage(_ message: LocalToolLoop.Message) -> Chat.Message {
+        switch message.role {
+        case .user:
+            return .user(message.content)
+        case .assistant:
+            guard let id = message.toolCallID, let name = message.toolName else { return .assistant(message.content) }
+            let data = Data((message.toolArguments ?? "{}").utf8)
+            let arguments = (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:]
+            return .assistant(message.content,
+                              toolCalls: [ToolCall(function: .init(name: name, arguments: arguments), id: id)])
+        case .tool:
+            return .tool(message.content, id: message.toolCallID, name: message.toolName)
+        }
     }
 
     /// One image turn through a VLM-factory model. The processor owns the chat template and
@@ -1341,6 +1498,21 @@ final class LockedFlag: @unchecked Sendable {
 /// main-actor isolated — and must not hop there mid-generation either: a suspension between MLX
 /// token pulls is exactly the kind of cost instrumentation is not allowed to add. So the two facts
 /// worth keeping are parked behind a lock and read back on the other side.
+/// The tool calls a drain running inside `container.perform` collected (Plan MQ P1).
+final class LockedToolCalls: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [LocalToolCallEvent] = []
+
+    func append(_ call: LocalToolCallEvent) {
+        lock.lock(); calls.append(call); lock.unlock()
+    }
+
+    var all: [LocalToolCallEvent] {
+        lock.lock(); defer { lock.unlock() }
+        return calls
+    }
+}
+
 final class LockedGenerationReport: @unchecked Sendable {
     private let lock = NSLock()
     private var first: Date?

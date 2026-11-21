@@ -36,4 +36,45 @@ enum LocalNativeToolPolicy {
                                        qualified: Bool) -> Bool {
         qualified || usesNativeToolCalls(modelID: modelID, runtime: runtime, flagOn: flagOn)
     }
+
+    /// Tools declared on one native turn (decision 3: at most five).
+    static let perTurnLimit = FieldAssistLocalToolSet.perTurnLimit
+
+    /// Whole-word cues that put an everyday tool ahead of the rest. Names only; an unlisted tool
+    /// keeps its place in the registry's order.
+    static let everydayCues: [String: [String]] = [
+        "get_weather": ["weather", "rain", "forecast", "temperature", "outside", "wind"],
+        "get_datetime": ["time", "date", "day", "today"],
+        "set_timer": ["timer"],
+        "set_alarm": ["alarm", "wake"],
+        "calendar": ["calendar", "meeting", "appointment", "schedule"],
+        "reminder": ["remind", "reminder"],
+        "calculate": ["calculate", "plus", "minus", "times", "divided", "percent"],
+        "where_am_i": ["where"],
+        "music_control": ["music", "song", "play", "pause", "skip"],
+        "flashlight": ["flashlight", "torch"],
+        "brightness": ["brightness", "brighter", "dimmer"],
+        "step_count": ["steps"],
+    ]
+
+    /// The names a native turn declares: the Field Assist set first (already ordered and cut by
+    /// `FieldAssistLocalToolSet`), then the everyday tools the turn's words name, then the rest in
+    /// the registry's order — at most `perTurnLimit`, each kept only while the definitions fit
+    /// `budgetTokens`. Pure.
+    static func nativeToolNames(field: [String], everyday: [String], utterance: String,
+                                estimatedTokens: (String) -> Int, budgetTokens: Int) -> [String] {
+        let words = Set(utterance.lowercased().split { !$0.isLetter }.map(String.init))
+        let remaining = everyday.filter { !field.contains($0) }
+        let hinted = remaining.filter { name in everydayCues[name]?.contains(where: words.contains) ?? false }
+        let ordered = field + hinted + remaining.filter { !hinted.contains($0) }
+        var used = 0
+        var kept: [String] = []
+        for name in ordered where kept.count < perTurnLimit {
+            let cost = estimatedTokens(name)
+            guard used + cost <= budgetTokens else { continue }
+            used += cost
+            kept.append(name)
+        }
+        return kept
+    }
 }

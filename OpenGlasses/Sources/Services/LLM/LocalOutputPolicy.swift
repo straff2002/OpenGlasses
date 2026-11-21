@@ -536,3 +536,15 @@ final class LocalProtocolStreamFilter {
         return 0
     }
 }
+
+extension LocalOutputPolicy {
+    /// Plan MQ P1: one generation read with the calls the runtime's parser took out of the stream.
+    /// A call in the text wins (the shipped protocol); otherwise the runtime's first call is the
+    /// turn's call. Until P1 those calls were skipped, so a Hermes-format model's call vanished.
+    /// Whatever protocol the text carried is still removed from what is spoken.
+    static func classify(_ raw: String, parsedCalls: [LocalToolCallEvent]) -> Classification {
+        let classification = classify(raw)
+        guard classification.invocation == nil, let first = parsedCalls.first else { return classification }
+        return Classification(kind: .toolCall, text: classification.text, invocation: first.invocation)
+    }
+}
