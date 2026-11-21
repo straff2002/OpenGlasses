@@ -63,6 +63,12 @@ enum LocalModelCatalog {
         let notes: String
         /// Minimum device RAM (GB) to offer this model. 0 = no restriction.
         let minimumRAMGB: Double
+        /// What backs this entry's capability claims (Plan MQ P0) — the GGUF catalog's rule, applied
+        /// here too: `.vision` and `.toolFriendly` reach the descriptor only on `deviceVerified`.
+        let evidence: Evidence
+        /// What the entry would claim once a device run backs it. Not a claim: the descriptor's
+        /// capabilities are this, filtered by `evidence` (`claimedCapabilities(_:evidence:)`).
+        let pendingClaims: Set<LocalModelCapability>
 
         var id: LocalModelID { descriptor.id }
 
@@ -76,6 +82,9 @@ enum LocalModelCatalog {
 
     /// Model ids whose checkpoints declare a vision tree. Factual, asserted here rather than
     /// inferred from the name, and the single source `LocalLLMService.visionModelIds` projects.
+    /// It decides which factory loads a model and where a photo turn goes, so it is unchanged by
+    /// Plan MQ: what changed is that the *badge* (`.vision` on the descriptor) now waits for device
+    /// evidence like every other claim.
     ///
     /// It is a superset of the catalog's vision entries: both hub casings of the Gemma 4 E-series
     /// appear in the wild, and a user who typed the other one must still get the VLM factory.
@@ -87,14 +96,78 @@ enum LocalModelCatalog {
         "mlx-community/gemma-4-e4b-it-4bit",
     ]
 
-    /// Catalog ids that emit usable `<tool_call>` markup.
-    static let toolCapableModelIDs: Set<String> = [
+    /// The entries that would wear the tool badge once a device run backs it: the checkpoints that
+    /// were trained for tool calls and were listed as tool-capable before Plan MQ. A wish list, not
+    /// a claim — `claimedCapabilities` lets `.toolFriendly` through only on `deviceVerified`
+    /// evidence, and no MLX entry has any. Qwen 2.5 0.5B is left off on purpose: tool calling at
+    /// 4-bit collapses at 1B and below, so it needs a device run before it is even a candidate.
+    static let toolCandidateModelIDs: Set<String> = [
         "mlx-community/gemma-4-e2b-it-4bit",
         "mlx-community/gemma-4-e4b-it-4bit",
         "LiquidAI/LFM2.5-2.6B-MLX-4bit",
         "mlx-community/Qwen2.5-3B-Instruct-4bit",
-        "mlx-community/Qwen2.5-0.5B-Instruct-4bit",
     ]
+
+    /// The capabilities an entry may carry: `.text`, plus whatever it would claim when the claim is
+    /// backed by a device run. The GGUF catalog's rule (`validationError(for: GGUFEntry)`), applied
+    /// by construction to the MLX entries.
+    static func claimedCapabilities(_ pending: Set<LocalModelCapability>,
+                                    evidence: Evidence) -> Set<LocalModelCapability> {
+        evidence == .deviceVerified ? pending.union([.text]) : [.text]
+    }
+
+    /// Why an MLX entry may not ship as built. Nil means it may. The same badge rule the GGUF
+    /// catalog enforces: a capability beyond `.text` needs device evidence.
+    static func validationError(for entry: Entry) -> String? {
+        guard entry.descriptor.runtime == .mlx else { return "runtime is not mlx" }
+        guard entry.descriptor.capabilities.contains(.text) else { return "no text capability" }
+        if entry.evidence != .deviceVerified {
+            let badged = entry.descriptor.capabilities.subtracting([.text])
+            guard badged.isEmpty else {
+                return "claims \(badged.map(\.rawValue).sorted().joined(separator: ", "))"
+                    + " without device evidence"
+            }
+        }
+        return nil
+    }
+
+    /// Whether a downloaded model has earned the Field Assist tool set (Plan MQ decision 6): its
+    /// catalog entry, MLX or GGUF, claims tool calls on device evidence. An uncatalogued model never
+    /// has. Until a model has, it keeps the everyday local tools and nothing more.
+    static func qualifiesForFieldAssistTools(_ id: LocalModelID,
+                                             ggufEntries: [GGUFEntry] = bundledGGUFEntries()) -> Bool {
+        if let entry = entry(for: id) {
+            return entry.evidence == .deviceVerified && entry.descriptor.supportsTools
+        }
+        if let entry = ggufEntries.first(where: { $0.id == id }) {
+            return entry.evidence == .deviceVerified && entry.descriptor.supportsTools
+        }
+        return false
+    }
+
+    /// The badges a row may show for `descriptor` today. An installation record keeps the
+    /// capabilities it was written with, and a record from before Plan MQ still says `.vision` and
+    /// `.toolFriendly`; the claim comes from the current catalog instead. An MLX model the catalog
+    /// doesn't know claims text alone. A GGUF descriptor keeps its own: the bundled catalog already
+    /// refused any badge without device evidence, and an import never grants one.
+    static func currentClaims(for descriptor: LocalModelDescriptor) -> Set<LocalModelCapability> {
+        switch descriptor.runtime {
+        case .mlx: return entry(for: descriptor.id)?.descriptor.capabilities ?? [.text]
+        case .llamaCpp: return descriptor.capabilities
+        }
+    }
+
+    /// What the picker's capability filter reads. The vision filter answers "which models can look
+    /// at photos" — an architectural fact (`visionCapableModelIDs`, the set that sends a photo turn
+    /// to the vision factory), not a badge — so it keeps listing those models while their vision
+    /// badge waits for device evidence.
+    static func filterCapabilities(for descriptor: LocalModelDescriptor) -> Set<LocalModelCapability> {
+        var capabilities = currentClaims(for: descriptor)
+        if descriptor.runtime == .mlx, visionCapableModelIDs.contains(descriptor.id.rawValue) {
+            capabilities.insert(.vision)
+        }
+        return capabilities
+    }
 
     // MARK: - Entries
 
@@ -194,12 +267,14 @@ enum LocalModelCatalog {
                               snapshot: VerifiedSnapshot,
                               quantization: String?,
                               notes: String,
-                              minimumRAMGB: Double = 0) -> Entry {
+                              minimumRAMGB: Double = 0,
+                              evidence: Evidence = .fileMetadataOnly) -> Entry {
         let weights = snapshot.weightsBytes
         let working = MemoryHeadroom.workingOverheadBytes
-        var capabilities: Set<LocalModelCapability> = [.text]
-        if visionCapableModelIDs.contains(rawID) { capabilities.insert(.vision) }
-        if toolCapableModelIDs.contains(rawID) { capabilities.insert(.toolFriendly) }
+        var pending: Set<LocalModelCapability> = [.text]
+        if visionCapableModelIDs.contains(rawID) { pending.insert(.vision) }
+        if toolCandidateModelIDs.contains(rawID) { pending.insert(.toolFriendly) }
+        let capabilities = claimedCapabilities(pending, evidence: evidence)
 
         let descriptor = LocalModelDescriptor(
             id: LocalModelID(rawID),
@@ -222,7 +297,9 @@ enum LocalModelCatalog {
         return Entry(descriptor: descriptor,
                      snapshot: snapshot,
                      notes: notes,
-                     minimumRAMGB: minimumRAMGB)
+                     minimumRAMGB: minimumRAMGB,
+                     evidence: evidence,
+                     pendingClaims: pending)
     }
 
     // MARK: - Lookup
@@ -249,12 +326,13 @@ enum LocalModelCatalog {
     /// retired after the user downloaded it (Gemma 2 2B is the live example).
     ///
     /// Deliberately conservative and never inventive: MLX runtime (the only runtime that could have
-    /// produced an existing installation), the id as its own display name, `.text` alone unless the
-    /// asserted vision set says otherwise, and the context window `LocalModelBudget` already
-    /// applies to unknown ids. No capability, size or licence is guessed.
+    /// produced an existing installation), the id as its own display name, `.text` alone, and the
+    /// context window `LocalModelBudget` already applies to unknown ids. No capability, size or
+    /// licence is guessed. (A vision checkpoint still loads through the vision factory: that reads
+    /// `visionCapableModelIDs`, not this descriptor. The `.vision` claim it used to carry waits for
+    /// device evidence, as every MLX badge does since Plan MQ P0.)
     static func compatibilityDescriptor(forLegacyMLXModelID rawID: String) -> LocalModelDescriptor {
-        var capabilities: Set<LocalModelCapability> = [.text]
-        if visionCapableModelIDs.contains(rawID) { capabilities.insert(.vision) }
+        let capabilities: Set<LocalModelCapability> = [.text]
         return LocalModelDescriptor(
             id: LocalModelID(rawID),
             displayName: rawID,

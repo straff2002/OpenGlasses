@@ -117,12 +117,14 @@ enum LocalModelPresentation {
     }
 
     /// Every badge a row wears, in drawing order: state first (it is what changed), then what the
-    /// model is.
+    /// model is. Capability badges are the catalog's current claims (`LocalModelCatalog.currentClaims`),
+    /// not whatever an installation record was written with: a record from before Plan MQ still
+    /// lists `.vision` and `.toolFriendly`, which no MLX entry may claim without device evidence.
     static func rowBadges(state: LocalModelRowState,
                           descriptor: LocalModelDescriptor) -> [LocalModelBadge] {
         var badges = [stateBadge(state), runtimeBadge(descriptor.runtime)]
         if let quantization = quantizationBadge(descriptor.quantization) { badges.append(quantization) }
-        badges.append(contentsOf: capabilityBadges(descriptor.capabilities))
+        badges.append(contentsOf: capabilityBadges(LocalModelCatalog.currentClaims(for: descriptor)))
         return badges
     }
 

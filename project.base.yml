@@ -77,6 +77,13 @@ packages:
     # fails on the shifted API (`LanguageModelCapabilities` is now unlabelled, `updateMetadata`
     # takes `[String: any ConvertibleToGeneratedContent]`); this revision retargets it. Chosen as
     # the minimal step — two commits past the previous pin — rather than upstream's tip.
+    #
+    # Not yet moved to upstream PR #812 (first in 4c21c84, 2026-11-18): every revision that has it
+    # also streams a model's thinking as a separate `Generation.reasoning` event instead of inside
+    # `.chunk`, and resolves LFM2.5 as an always-thinking model. `LocalLLMService` reads `.chunk`
+    # only and strips `<think>` assuming the template opened it, so every LFM2.5 answer would come
+    # back empty. The bump goes with the stream-loop change in Plan MQ P1, which reads `.toolCall`
+    # and `.reasoning` anyway.
     revision: 14414441fa44f45eee35a61e9fa0bab577cf9734
   swift-huggingface:
     # Same 0.x exposure as the DAT SDK, and it already drifted: the spec said `from: "0.1.0"` while

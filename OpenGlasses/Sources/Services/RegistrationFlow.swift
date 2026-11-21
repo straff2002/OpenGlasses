@@ -101,7 +101,8 @@ enum RegistrationFlow {
     /// `alreadyRegistered` is not in the failure set — `connect()` treats it as success, because
     /// it is the normal state on every connect after the first.
     #if !AVENKIN_PHONE_ONLY
-    static func registrationErrorMessage(_ error: RegistrationError) -> String {
+    static func registrationErrorMessage(_ error: RegistrationError,
+                                         bundleID: String? = Bundle.main.bundleIdentifier) -> String {
         switch error {
         case .alreadyRegistered:
             // Unreachable from `connect()`, which handles this as success. Mapped anyway so a
@@ -116,11 +117,39 @@ enum RegistrationFlow {
         // `@unknown default`, whose copy already says what to do.
         case .configurationInvalid:
             return MWDATConfigCheck.message(for: .ok) ?? "This build's Meta SDK configuration is invalid."
+        case .unauthorized:
+            // DAT 1.1.0: Meta refuses to let this app register at all, before Meta AI opens.
+            // Meta doesn't say what it checked. On the published app its credentials are the real
+            // ones, so the likely cause is a wearer outside the release channel; on any other
+            // build it is that build's credentials. Same split as `connectFailureMessage`.
+            // `registrationErrorNotice` carries the fuller sentence.
+            if bundleID == publishedBundleID {
+                return String(localized: "Meta hasn't approved \(appName) for glasses yet.")
+            }
+            // Contributor-facing, like `MWDATConfigCheck`'s diagnoses: plain English.
+            return "Meta refused this build's glasses credentials."
         case .unknown:
             return String(localized: "Registration failed. Restart the glasses and try again.")
         @unknown default:
             return String(localized: "Registration failed. Restart the glasses and try again.")
         }
+    }
+    #endif
+
+    /// The notice posted when registration fails: the capsule's line, except where there is more
+    /// to say than the capsule holds. For DAT 1.1.0's `.unauthorized` that is who to ask on the
+    /// published app, and what to check on any other build — a placeholder or unexpanded
+    /// credential first, when `MWDATConfigCheck` finds one.
+    #if !AVENKIN_PHONE_ONLY
+    static func registrationErrorNotice(_ error: RegistrationError,
+                                        configStatus: MWDATConfigCheck.Status = .ok,
+                                        bundleID: String? = Bundle.main.bundleIdentifier) -> String {
+        guard case .unauthorized = error else {
+            return registrationErrorMessage(error, bundleID: bundleID)
+        }
+        if bundleID == publishedBundleID { return notApprovedMessage() }
+        if let configProblem = MWDATConfigCheck.message(for: configStatus) { return configProblem }
+        return "Meta refused to register this build. Check that MWDAT.MetaAppID, ClientToken and TeamID match your project in Wearables Developer Center, and that your Meta account is in the release channel the project's current version is assigned to — or leave MetaAppID empty to use Developer Mode."
     }
     #endif
 

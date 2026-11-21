@@ -119,7 +119,9 @@ final class LocalModelRecordsMigrationTests: XCTestCase {
 
         let known = repository.installation(for: LocalModelID("mlx-community/Qwen2.5-3B-Instruct-4bit"))
         XCTAssertEqual(known?.descriptor.displayName, "Qwen 2.5 3B")
-        XCTAssertTrue(known?.descriptor.supportsTools == true)
+        XCTAssertEqual(known?.descriptor, LocalModelCatalog.descriptor(
+            for: LocalModelID("mlx-community/Qwen2.5-3B-Instruct-4bit")),
+                       "the record is the bundled descriptor (whose tool claim waits for device evidence)")
 
         let unknown = repository.installation(for: LocalModelID("someone/private-finetune"))
         XCTAssertEqual(unknown?.descriptor.runtime, .mlx, "unknown ids default to MLX")

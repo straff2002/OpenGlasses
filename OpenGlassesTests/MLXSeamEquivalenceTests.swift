@@ -254,10 +254,14 @@ final class MLXSeamEquivalenceTests: XCTestCase {
         let loaded = try await backend.load(installed, configuration: .init(contextLength: 4096))
 
         XCTAssertEqual(runtime.loadedIDs, ["mlx-community/gemma-4-e2b-it-4bit"])
-        XCTAssertTrue(installed.descriptor.supportsVision, "the catalog does claim vision")
+        XCTAssertTrue(LocalLLMService.isVisionCapable(modelId: installed.id.rawValue),
+                      "the checkpoint is a vision model")
+        XCTAssertFalse(installed.descriptor.supportsVision,
+                       "but the catalog's vision badge waits for device evidence (Plan MQ P0)")
         XCTAssertFalse(loaded.supportsVision,
                        "capability is reported as loaded — a demoted checkpoint is text-only")
-        XCTAssertTrue(loaded.capabilities.contains(.toolFriendly))
+        XCTAssertFalse(loaded.capabilities.contains(.toolFriendly),
+                       "no tool claim without device evidence")
     }
 
     func testLoadReportsVisionWhenTheVLMFactorySucceeded() async throws {
