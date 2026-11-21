@@ -85,12 +85,20 @@ final class DataStoreRegistryTests: XCTestCase {
             "each saved model's learned tokens-a-minute allowance (Plan KL P1): two numbers and a "
                 + "fingerprint of the provider, the model id and the endpoint — nothing of the key. "
                 + "Filed under the saved model's id; nothing about the wearer",
+        "OpenGlasses/Sources/Services/FieldAssist/VanStock/StockPeriodReport.swift":
+            "the last immunisation-export check's summary (Plan MY §8): when it ran, its first and "
+                + "last day, and five finding counts. No vaccine, lot, record or person from the file",
 
         // UI state with no content in it.
         "OpenGlasses/Sources/Services/NativeTools/PomodoroTool.swift":
             "a timer's start time and length",
         "OpenGlasses/Sources/Services/MyDay/MyDayDismissals.swift":
             "which cards the wearer dismissed today",
+        "OpenGlasses/Sources/Services/FieldAssist/VanStock/ImmunisationListReader.swift":
+            "which column names of the immunisation export hold the date, vaccine and lot, and a "
+                + "date-order token (Plan MY §8). Header names only, never a value from the file",
+        "OpenGlasses/Sources/Services/FieldAssist/VanStock/StockCountReminder.swift":
+            "the weekly count reminder's setting (Plan MY §6): on or off, a weekday and a minute",
         "OpenGlasses/Sources/Services/ShortcutsCatalog.swift":
             "the app's own shortcut definitions, not the wearer's data",
         "OpenGlasses/Sources/Services/Display/BandPractice.swift":
