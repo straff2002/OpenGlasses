@@ -3296,8 +3296,6 @@ final class FieldSessionService: ObservableObject {
                             page: page, figure: passage.figure, sourceFile: file)
     }
 
-    /// The PDF in the vault's read-only baseline that a staged figure's page comes from, or nil
-    /// when the document was imported as text (or is no longer installed).
     /// Plan MU §6: the tables of a staged page's document as `table_lookup` reads them (the vault's
     /// table checks applied; a pictured table the organisation requires checked and not checked is
     /// withheld), for the lens's **Rows**. Empty for a photographed manual, and without the store.
@@ -3317,6 +3315,8 @@ final class FieldSessionService: ObservableObject {
                                         requireChecked: require).map(\.table)
     }
 
+    /// The PDF in the vault's read-only baseline that a staged figure's page comes from, or nil
+    /// when the document was imported as text (or is no longer installed).
     func sourcePDFURL(for figure: StagedFigure) -> URL? {
         if !Config.fieldAssistActive {
             return PersonalManualLibrary.shared.sourceURL(for: figure)

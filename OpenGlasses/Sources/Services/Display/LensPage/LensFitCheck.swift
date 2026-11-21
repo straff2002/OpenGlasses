@@ -130,9 +130,18 @@ enum LensFitCheckAnswer {
     ]
     /// Words that count only as the second number ("twelve and no boxes", "nine and a box").
     private static let tileWords: [String: Int] = ["a": 1, "an": 1, "no": 0, "none": 0, "zero": 0]
+    /// The only other words an answer is made of ("I can read nine, and two boxes"). Anything else
+    /// ("what is on page four") is not an answer and goes on to the page view or the model, even
+    /// though it holds a number.
+    private static let fillerWords: Set<String> = [
+        "i", "m", "can", "could", "read", "see", "saw", "seeing", "it", "s", "is", "its", "that",
+        "the", "up", "to", "and", "of", "them", "all", "only", "just", "whole", "highest", "number",
+        "numbers", "box", "boxes", "tile", "tiles", "with", "plus", "there", "are", "um", "uh",
+        "ok", "okay", "so", "about",
+    ]
 
-    /// The numbers in `text`, in order; nil unless the first is a ruler number (1–12). A missing
-    /// second number is nil.
+    /// The numbers in `text`, in order; nil unless the first is a ruler number (1–12) and every
+    /// other word is one an answer is made of. A missing second number is nil.
     static func parse(_ text: String) -> (highest: Int, tiles: Int?)? {
         let tokens = text.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
@@ -143,6 +152,8 @@ enum LensFitCheckAnswer {
                 numbers.append(value)
             } else if numbers.count == 1, let value = tileWords[token] {
                 numbers.append(value)
+            } else if !fillerWords.contains(token), tileWords[token] == nil {
+                return nil
             }
         }
         guard let first = numbers.first, (1...LensFitCheck.numbers).contains(first) else { return nil }

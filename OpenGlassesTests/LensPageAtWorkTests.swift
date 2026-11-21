@@ -356,7 +356,7 @@ final class LensPageAtWorkTests: XCTestCase {
         let plain = makeRig(cited: false, table: false, marks: false)
         plain.session.stage([staged(cited: false)])
         await drain(plain)
-        XCTAssertEqual(plain.session.shownState?.highlight.reason, .none)
+        XCTAssertEqual(plain.session.shownState?.highlight.reason, LensPageHighlight.Reason.none)
         XCTAssertEqual(plain.session.shownScreen?.items.map(\.id), [ID.close], "no table, no Rows")
         await press(plain, ID.wholePicture)
         let fit = try XCTUnwrap(plain.session.shownState?.closeUp)

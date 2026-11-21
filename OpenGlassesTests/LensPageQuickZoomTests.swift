@@ -255,11 +255,16 @@ final class LensPageQuickZoomTests: XCTestCase {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
+        let whole = try XCTUnwrap(rig.session.shownState).viewport
+        XCTAssertTrue(whole.isWholePage)
         XCTAssertTrue(rig.session.handle(.zoomInto(.bottomRight)))
         await drain(rig)
         let shown = try XCTUnwrap(rig.session.shownState)
         let viewport = shown.viewport
-        XCTAssertGreaterThan(viewport.scale, 1.9)
+        // Two rungs in from the whole page as it was shown. (The strip's box is taller than the
+        // whole page's, which gives up lines to the citation and the words, so `scale`, which is
+        // against the strip's own fit, reads lower.)
+        XCTAssertGreaterThan(viewport.pixelsPerPoint, 1.9 * whole.pixelsPerPoint)
         XCTAssertEqual(viewport.cropRect.maxY, letter.height, accuracy: 0.01)
         XCTAssertEqual(shown.view, .zoomed, "drawn as a strip")
         XCTAssertEqual(rig.session.shownScreen?.items.map(\.id),

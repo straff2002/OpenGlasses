@@ -104,12 +104,17 @@ final class LensPictureScaleTests: XCTestCase {
         }
     }
 
-    /// The pixel size a `data:` URI's image decodes to, when it is one.
-    private func decodedSize(_ uri: String) -> CGSize? {
-        guard let comma = uri.firstIndex(of: ","), uri.hasPrefix("data:"),
-              let data = Data(base64Encoded: String(uri[uri.index(after: comma)...])),
-              let image = UIImage(data: data), let cg = image.cgImage else { return nil }
-        return CGSize(width: cg.width, height: cg.height)
+    /// The images `makeScreenView` hands the SDK for `screen`, in the order it builds the tree.
+    private func sentPictures(_ backend: MetaDisplayBackend, _ screen: HUDScreen) -> (tree: FlexBox, sent: [UIImage]) {
+        var sent: [UIImage] = []
+        MetaDisplayBackend.testSentPictureSink = { sent.append($0) }
+        defer { MetaDisplayBackend.testSentPictureSink = nil }
+        let tree = backend.makeScreenView(screen)
+        return (tree, sent)
+    }
+
+    private func pixelSize(_ image: UIImage) -> CGSize? {
+        image.cgImage.map { CGSize(width: $0.width, height: $0.height) }
     }
 
     func testAtFactorOneEveryPictureIsSentExactlyAsDrawn() {
@@ -118,10 +123,12 @@ final class LensPictureScaleTests: XCTestCase {
         let screen = pageScreen(picture)
         let backend = MetaDisplayBackend()
         backend.pictureFactor = { 1 }
-        let sent = images(in: backend.makeScreenView(screen)).map(\.uri)
-        let asDrawn = [screen.picture!, picture].map { MWDATDisplay.Image(image: $0.image, sizePreset: .fill).uri }
-        XCTAssertEqual(Set(sent), Set(asDrawn), "byte for byte")
+        let (tree, sent) = sentPictures(backend, screen)
+        XCTAssertEqual(images(in: tree).count, 2)
         XCTAssertEqual(sent.count, 2)
+        let asDrawn = [screen.picture!.image, drawn]
+        XCTAssertTrue(sent.allSatisfy { image in asDrawn.contains { $0 === image } }, "the very same images: byte for byte")
+        XCTAssertTrue(asDrawn.allSatisfy { image in sent.contains { $0 === image } })
     }
 
     func testAFactorShrinksThePageTheThumbnailAndTheSlicesButNotTheFitCheck() throws {
@@ -129,21 +136,31 @@ final class LensPictureScaleTests: XCTestCase {
         let picture = HUDPicture(image: drawn, pixelSize: CGSize(width: 576, height: 382), contentKey: "page")
         let backend = MetaDisplayBackend()
         backend.pictureFactor = { 1.5 }
-        let sent = images(in: backend.makeScreenView(pageScreen(picture)))
+        let (tree, sent) = sentPictures(backend, pageScreen(picture))
+        XCTAssertEqual(images(in: tree).count, 2)
         XCTAssertEqual(sent.count, 2)
-        let asDrawn = MWDATDisplay.Image(image: drawn, sizePreset: .fill).uri
-        XCTAssertFalse(sent.contains { $0.uri == asDrawn }, "the page went shrunk")
-        let sizes = sent.compactMap { decodedSize($0.uri) }
-        if sizes.count == 2 {
-            XCTAssertTrue(sizes.contains(CGSize(width: 384, height: 254)), "\(sizes)")
-            XCTAssertTrue(sizes.contains(CGSize(width: 80, height: 40)), "\(sizes)")
-        }
+        XCTAssertFalse(sent.contains { $0 === drawn }, "the page went shrunk")
+        let sizes = sent.compactMap(pixelSize)
+        XCTAssertEqual(sizes.count, 2)
+        XCTAssertTrue(sizes.contains(CGSize(width: 384, height: 254)), "\(sizes)")
+        XCTAssertTrue(sizes.contains(CGSize(width: 80, height: 40)), "\(sizes)")
 
         // The fit check measures the glasses, so its pictures go as drawn whatever the factor.
         let check = LensFitCheck.screen {}
-        let checkSent = images(in: backend.makeScreenView(check)).map(\.uri)
-        let checkDrawn = check.allBlocks.compactMap(\.picture).map { MWDATDisplay.Image(image: $0.image, sizePreset: .fill).uri }
-        XCTAssertEqual(checkSent, checkDrawn)
+        let checkSent = sentPictures(backend, check).sent
+        let checkDrawn = check.allBlocks.compactMap(\.picture).map(\.image)
+        XCTAssertEqual(checkSent.count, checkDrawn.count)
+        XCTAssertTrue(zip(checkSent, checkDrawn).allSatisfy { $0 === $1 }, "the fit check's own images")
+    }
+
+    /// Every picture reaches the SDK through `lensImage`, the one place the factor is applied.
+    func testTheBackendBuildsEveryImageAtTheOneChokepoint() throws {
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("OpenGlasses/Sources/Services/Display/MetaDisplayBackend.swift")
+        let source = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertEqual(source.components(separatedBy: "Image(image:").count - 1, 2,
+                       "one in lensImage, one in the drawsPictures doc comment")
+        XCTAssertFalse(source.contains("Image(image: $0.image"), "a picture sent around the factor")
     }
 
     // MARK: - One picture a row
@@ -210,6 +227,7 @@ final class LensPictureScaleTests: XCTestCase {
         XCTAssertNil(LensFitCheckAnswer.parse("eleven")?.tiles)
         XCTAssertNil(LensFitCheckAnswer.parse("what is the factory charge"))
         XCTAssertNil(LensFitCheckAnswer.parse("40 and 3"), "not a ruler number")
+        XCTAssertNil(LensFitCheckAnswer.parse("what is on page four"), "a question with a number in it is not an answer")
     }
 
     func testTheFitCheckKeepsTheReadingAndReportsIt() async {

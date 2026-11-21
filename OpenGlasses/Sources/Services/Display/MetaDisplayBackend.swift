@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 #if !AVENKIN_PHONE_ONLY
 import MWDATCore
 #endif
@@ -569,9 +570,21 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
     /// picture factor first (`LensPictureScale`), unless it is one the fit check measures with. At
     /// factor 1 the image goes exactly as drawn.
     static func lensImage(_ picture: HUDPicture, factor: CGFloat) -> Image {
-        let image = picture.scalesForLens ? LensPictureScale.scaled(picture.image, by: factor) : picture.image
+        let image = lensPicture(picture, factor: factor)
+        testSentPictureSink?(image)
         return Image(image: image, sizePreset: .fill)
     }
+
+    /// The image `lensImage` sends for `picture` at `factor`: the very same image at 1, or for a
+    /// picture that does not scale for the lens.
+    static func lensPicture(_ picture: HUDPicture, factor: CGFloat) -> UIImage {
+        picture.scalesForLens ? LensPictureScale.scaled(picture.image, by: factor) : picture.image
+    }
+
+    /// Test seam: every image the backend hands the SDK, in the order the tree is built. The SDK's
+    /// `Image` keeps its image to itself (its `uri` is empty off the glasses), so a test reads what
+    /// was sent here.
+    static var testSentPictureSink: ((UIImage) -> Void)?
 
     /// Test helper (Plan MG §2): the `onTap` actions of the tappable blocks in `screen`'s rendered
     /// tree, in column order.

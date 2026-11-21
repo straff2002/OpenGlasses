@@ -93,7 +93,8 @@ final class HUDPageScreenBuilderTests: XCTestCase {
         XCTAssertEqual(flow.count, 2)
         XCTAssertEqual(flow[0].blocks.map(\.id), [ID.wholePicture], "the picture alone in its row")
         XCTAssertEqual(flow[1].lines.map(\.text), ["E7 · Low supply voltage · Check the supply"], "under the picture")
-        let readable = whole(textHeight: 30)
+        // Text tall enough to read at the whole page (60 pt draws ~30 px there): no hint, no line.
+        let readable = whole(textHeight: 60)
         XCTAssertFalse(readable.showsZoomHint)
         XCTAssertEqual(HUDPageScreenBuilder.wholePageFlow(readable, picture: picture) { _ in }.count, 1)
     }

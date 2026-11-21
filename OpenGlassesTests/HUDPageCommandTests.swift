@@ -64,6 +64,9 @@ final class HUDPageCommandTests: XCTestCase {
         XCTAssertEqual(HUDPageCommand.parse("show E7"), .showRow("e7"))
         XCTAssertEqual(HUDPageCommand.parse("show row E 7"), .showRow("e 7"))
         XCTAssertEqual(HUDPageCommand.parse("show me E9"), .showRow("e9"))
+        for words in ["show me again", "show menu", "show my day", "show briefing", "show today"] {
+            XCTAssertNil(HUDPageCommand.parse(words), "\(words) is another view's")
+        }
         XCTAssertEqual(HUDPageCommand.parse("whole page"), .wholePage, "MG's words stay")
         XCTAssertEqual(HUDPageCommand.parse("back"), .back)
         XCTAssertEqual(HUDPageCommand.parse("zoom in on the bottom right"), .zoomInto(.bottomRight))

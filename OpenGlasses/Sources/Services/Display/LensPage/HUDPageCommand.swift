@@ -127,15 +127,25 @@ enum HUDPageCommand: Equatable {
 
     /// "show E7", "show row E7", "show me E7": "show", then a short row name. Two words at most
     /// after it, and never "the …" (that is a request), so "show me the wiring diagram" stays one.
+    /// Nor another view's own short words: "show me again" brings the answer back, "show menu",
+    /// "show my day" and "show briefing" are the HUD's.
     private static func showRow(_ words: [String]) -> HUDPageCommand? {
         guard words.first == "show" else { return nil }
         var rest = Array(words.dropFirst())
         if rest.first == "me" { rest.removeFirst() }
         if rest.first == "row" { rest.removeFirst() }
-        guard (1...2).contains(rest.count), !["the", "a", "an", "it", "that", "this", "page", "picture",
-                                              "text", "more", "everything"].contains(rest[0]) else { return nil }
+        guard (1...2).contains(rest.count), !notRowNames.contains(rest[0]),
+              !rest.contains(where: notRowWords.contains) else { return nil }
         return .showRow(rest.joined(separator: " "))
     }
+
+    /// A row name never starts with one of these.
+    private static let notRowNames: Set<String> = [
+        "the", "a", "an", "it", "that", "this", "page", "picture", "text", "more", "everything",
+        "my", "me", "us", "all", "menu", "briefing", "today", "answer", "conversation",
+    ]
+    /// Nor holds one of these anywhere ("show it again", "show me again").
+    private static let notRowWords: Set<String> = ["again", "menu", "briefing", "today"]
 
     /// Plan MG §4: "zoom in on the bottom right", "zoom into the table", "closer at the top",
     /// "get closer to the left". A zoom word, then a place; the whole utterance, so "zoom in on the

@@ -266,13 +266,16 @@ final class LensPageSessionTests: XCTestCase {
 
         XCTAssertEqual(rig.session.held, .cue)
         XCTAssertEqual(itemIDs(rig), [ID.showHere], "one button")
-        XCTAssertFalse(rig.frames.screenKeys.contains { $0.contains("|pic:") }, "no page on the lens unasked")
+        // A picture's render key: the screen's own (`|pic:`) or a block's (`#pic:`, the whole page
+        // as a card since Plan MU).
+        func hasPicture(_ key: String) -> Bool { key.contains("|pic:") || key.contains("#pic:") }
+        XCTAssertFalse(rig.frames.screenKeys.contains(where: hasPicture), "no page on the lens unasked")
         XCTAssertTrue(rig.session.shownScreen?.lines.first?.text.hasSuffix("on your phone") == true)
         XCTAssertEqual(rig.audit.lines.map(\.event), [.cueShown])
 
         await press(rig, ID.showHere)
         XCTAssertEqual(rig.session.held, .view)
-        XCTAssertTrue(rig.frames.lastScreenKey?.contains("|pic:") == true)
+        XCTAssertTrue(rig.frames.lastScreenKey.map(hasPicture) == true)
         XCTAssertEqual(rig.audit.lines.map(\.event), [.cueShown, .opened])
         XCTAssertEqual(rig.audit.lines.last?.route, "automatic")
         XCTAssertEqual(rig.session.stats["metaRayBan"].showHerePressed, 1)
