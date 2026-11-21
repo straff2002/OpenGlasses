@@ -1020,6 +1020,33 @@ struct Config {
     - If you hit a dead end, offer the next best option instead of giving up.
     """ }
 
+    /// `defaultSystemPrompt(device:)`, written short for a downloaded model, whose 4,096-token window
+    /// is shared by its instructions, an open job, its tools and the conversation (Plan MQ P1). The
+    /// same identity opening and the same rules — short spoken answers without formatting, hedging,
+    /// the misheard-speech line, plainly an AI when asked, which actions are free, need a
+    /// confirmation or are never done, and what to do when a tool fails — in under half the
+    /// length. No camera section: a turn with a photo adds the camera rules itself.
+    ///
+    /// Used only on a local turn, and only while the shipped prompt is the active one
+    /// (`onDeviceSystemPrompt(device:)`); a prompt the wearer wrote is sent as written.
+    static func onDeviceDefaultSystemPrompt(device: AssistantIdentity.Device) -> String { """
+    \(AssistantIdentity.defaultPromptOpening(name: assistantName, wakePhrase: wakePhrase, device: device))
+
+    STYLE: Short, natural spoken answers, usually 2-4 sentences, longer only for a complex topic. No markdown, lists or formatting. Hedge a guess ("probably", "roughly"); if you can't answer, say so briefly and suggest what the user could do.
+    CONTEXT: \(AssistantIdentity.contextLine(device: device)) Speech recognition may mishear words, so act on the likeliest intent. You remember this whole conversation.
+    KNOWLEDGE: Answer facts confidently and give direct recommendations. Use the user's location only when it is relevant.
+    SELF-AWARENESS: Whenever anyone asks whether you are an AI, say plainly that you are an AI assistant, whatever name, persona or voice you have been given. Never claim or imply to be a person. You may be confidently wrong, so hedge when stakes are high, and check a tool's result before saying something worked.
+    ACTION SAFETY: Freely read information, set timers, take notes and answer questions. Confirm first before sending messages, making calls, creating calendar events or controlling door locks. Always confirm anything involving money, emergency services, deleting data or other people. Never share the camera feed without permission or reveal the conversation to others.
+    ERRORS: If a tool fails, say briefly what happened and offer the next best option; don't repeat the same failing call.
+    """ }
+
+    /// The persona a local turn starts from: the short form of the shipped prompt while that is the
+    /// active one, otherwise the active prompt exactly as the wearer wrote it.
+    static func onDeviceSystemPrompt(device: AssistantIdentity.Device) -> String {
+        let active = systemPrompt(device: device)
+        return active == defaultSystemPrompt(device: device) ? onDeviceDefaultSystemPrompt(device: device) : active
+    }
+
     /// The camera rules every full prompt carries: the shipped prompt's VISION & CAMERA section,
     /// and the one `LLMService` adds to a prompt that says nothing about the camera. One copy, so
     /// the two cannot drift. It speaks of what the user is looking at, never "the image", and asks
@@ -2372,6 +2399,13 @@ struct Config {
     /// the flag exists so the seam can be proven on real turns before it becomes the only path.
     @UserDefaultsBacked("localRuntimeCoordinatorEnabled", default: false)
     static var localRuntimeCoordinatorEnabled: Bool
+
+    /// Plan MQ P1: native tool calls on a downloaded model on `LocalNativeToolPolicy.allowlist` —
+    /// tools rendered by the model's own chat template, calls read from the runtime's parsers, the
+    /// bounded `LocalToolLoop` in place of the single shot, and the Field Assist tools while a model
+    /// is under qualification. Off by default (Developer panel); off is today's path.
+    @UserDefaultsBacked("localNativeToolCallsEnabled", default: false)
+    static var localNativeToolCallsEnabled: Bool
 
     /// Offer, install and load GGUF models. Off leaves MLX untouched and leaves any installed GGUF
     /// files on disk for re-enabling or explicit removal.

@@ -25,6 +25,8 @@ struct DeveloperPanelView: View {
     @AppStorage(Config.standbyClaimModeKey) private var standbyClaimMode = StandbyClaimPolicy.Mode.keepPlaying.rawValue
     /// Plan LT §6 — `Config.geminiLiveStartSensitivity`, the same key and default (high).
     @AppStorage(Config.geminiLiveStartSensitivityKey) private var geminiStartSensitivity = GeminiLiveStartSensitivity.high.rawValue
+    /// Plan MQ P1 — `Config.localNativeToolCallsEnabled`, the same key and default (off).
+    @AppStorage("localNativeToolCallsEnabled") private var localNativeToolCallsEnabled = false
 
     init(appState: AppState) {
         self.appState = appState
@@ -57,6 +59,13 @@ struct DeveloperPanelView: View {
             ) {
                 OGRow("Field-mode tool profile", isOn: $fieldToolProfileEnabled,
                       icon: "wrench.and.screwdriver")
+            }
+
+            OGSection(
+                header: "Downloaded Models",
+                footer: "Lets Gemma 4 E2B call tools in its own format, look things up more than once in a turn, and use the Field Assist job tools while it is being tested. Other downloaded models are unchanged. Applies from the next question."
+            ) {
+                OGRow("Native tool calls", isOn: $localNativeToolCallsEnabled, icon: "cpu")
             }
 
             OGSection(

@@ -1863,6 +1863,11 @@ enum PrivacyLog {
         /// prefill time and first-token latency are different diagnostics with different causes.
         case promptDecoded
         case historyTrimmed, toolCall, reasoningProduced, tokenShape
+        /// Plan MQ P1: the tool-call format the runtime inferred for the loaded model (`detail`, a
+        /// format name such as `gemma4`, or `none` when the Hermes instruction is the fallback), and
+        /// how a native tool loop ended (`detail` the end reason, `count` the calls run, `total` the
+        /// generations). Names and counts; never a call's arguments or a result.
+        case toolFormat, toolLoop
         /// Installed-model records (Plan DZ P0). These carry **counts only** — a compatibility
         /// descriptor's id is whatever the user typed into the model field, which makes it
         /// user-authored text rather than a public catalog token.

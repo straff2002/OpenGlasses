@@ -475,20 +475,82 @@ struct LocalGenerationRequest: @unchecked Sendable {
     let sampling: LocalSamplingConfiguration
     let stopSequences: [String]
     let previewSink: ((String) -> Void)?
+    /// Plan MQ P1: a native tool turn — the call-and-result transcript in template roles and the
+    /// tools for the model's own chat template. Nil on every other turn; a backend that has no tool
+    /// rendering (GGUF until P2) generates from `messages` as before.
+    let toolTurn: LocalToolTurn?
 
     init(messages: [LocalChatMessage],
          images: [LocalImageInput] = [],
          maxOutputTokens: Int,
          sampling: LocalSamplingConfiguration = .conservative,
          stopSequences: [String] = [],
-         previewSink: ((String) -> Void)? = nil) {
+         previewSink: ((String) -> Void)? = nil,
+         toolTurn: LocalToolTurn? = nil) {
         self.messages = messages
         self.images = images
         self.maxOutputTokens = maxOutputTokens
         self.sampling = sampling
         self.stopSequences = stopSequences
         self.previewSink = previewSink
+        self.toolTurn = toolTurn
     }
+}
+
+// MARK: - Tool calls (Plan MQ P1)
+
+/// A tool call the runtime's own parser read out of the generation (mlx-swift-lm's `.toolCall`
+/// event), carried structurally rather than as text. Arguments are canonical JSON (sorted keys) so
+/// the event is `Sendable` and compares by value; they are never logged.
+struct LocalToolCallEvent: Hashable, Sendable {
+    let name: String
+    let argumentsJSON: String
+
+    init(name: String, argumentsJSON: String) {
+        self.name = name
+        self.argumentsJSON = argumentsJSON
+    }
+
+    init(name: String, arguments: [String: Any]) {
+        self.name = name
+        self.argumentsJSON = AttemptToolLedger.canonicalArguments(arguments)
+    }
+
+    /// The arguments as the router takes them. An unparseable payload reads as no arguments: the
+    /// tool's own validation then names what is missing.
+    var arguments: [String: Any] {
+        guard let data = argumentsJSON.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    /// The call as the text path's parser would have read it.
+    var invocation: LocalOutputPolicy.Invocation {
+        LocalOutputPolicy.Invocation(name: name, arguments: arguments)
+    }
+}
+
+/// What one generation produced: the text (authoritative, as before) and, separately, any calls
+/// the runtime's parser took out of the stream.
+enum LocalGenerationEvent: Sendable {
+    case text(String)
+    case toolCall(LocalToolCallEvent)
+}
+
+/// A native tool turn for the runtime to render (Plan MQ P1).
+struct LocalToolTurn: @unchecked Sendable {
+    /// Earlier turns, which the runtime may trim oldest first to fit the budget.
+    let history: [LocalToolLoop.Message]
+    /// This turn: the user's message, then each call and its result. Never trimmed.
+    let turn: [LocalToolLoop.Message]
+    /// `OnDeviceToolSchema.localToolSpec` per tool; empty when tools are withheld for this pass.
+    let tools: [[String: Any]]
+    /// Ask the template for no thinking (`enable_thinking: false`) where it reads the flag.
+    let thinkingOff: Bool
+    /// Today's Hermes instruction (`LLMService.localToolInstructions`), appended to the system
+    /// prompt when the runtime inferred no tool-call format for the model, or its template could
+    /// not render the tools: then the calls come back as `<tool_call>` text instead.
+    let fallbackInstructions: String
 }
 
 /// How a model should be brought up. Every value is a *ceiling the caller already decided*; a

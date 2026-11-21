@@ -101,6 +101,11 @@ enum SystemPromptBuilder {
     /// it wasting them.
     static let privateConversationLine = "This conversation is private. Don't use memory tags. Nothing from it is kept."
 
+    /// What a downloaded model's prompt says about the camera on a turn with no photo (Plan MQ P1):
+    /// the full rules (`Config.visionAndCameraRules`) ride the turn that has one.
+    static let onDeviceCameraLine = "CAMERA: \(Config.cameraSentence) When the user asks you to look at, read or "
+        + "identify something, a photo is captured and sent to you with that turn; never say you lack camera access."
+
     static let visionWordingLine = "Talk about what the user is looking at, never \"the image\" or \"the photo\"."
 
     /// When a cluttered view leaves the subject unclear: one specific guess, not an inventory.

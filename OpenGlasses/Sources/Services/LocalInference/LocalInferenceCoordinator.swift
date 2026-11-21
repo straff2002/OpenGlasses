@@ -116,6 +116,25 @@ actor LocalInferenceCoordinator {
         return backend.generate(request)
     }
 
+    /// `generate`, with the runtime's parsed tool calls as events beside the text (Plan MQ P1).
+    /// The same admission checks, in the same order.
+    func generateEvents(_ request: LocalGenerationRequest,
+                        expecting expected: LocalModelID? = nil) throws -> AsyncThrowingStream<LocalGenerationEvent, Error> {
+        guard !isTransitioning else { throw LocalInferenceError.transitionInProgress }
+        guard let resident, let residentRuntime else { throw LocalInferenceError.notLoaded }
+        if let expected, expected != resident.id {
+            throw LocalInferenceError.wrongModelResident(expected: expected, resident: resident.id)
+        }
+        guard !isBackgrounded() else { throw LocalInferenceError.backgrounded }
+        if !request.images.isEmpty, !resident.supportsVision {
+            throw LocalInferenceError.visionNotAvailable
+        }
+        guard let backend = backends[residentRuntime] else {
+            throw LocalInferenceError.noBackend(residentRuntime)
+        }
+        return backend.generateEvents(request)
+    }
+
     /// Stop the in-flight generation on the resident backend and wait for it to have stopped.
     func cancelGeneration() async {
         guard let residentRuntime, let backend = backends[residentRuntime] else { return }

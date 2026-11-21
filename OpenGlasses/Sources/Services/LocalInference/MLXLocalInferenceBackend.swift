@@ -19,6 +19,35 @@ protocol MLXLocalRuntime: AnyObject {
                   history: [(role: String, content: String)],
                   imageData: Data?,
                   onToken: ((String) -> Void)?) async throws -> String
+    /// `generate`, keeping the tool calls the library's parser read out of the stream, and taking a
+    /// native tool turn when one is given (Plan MQ P1).
+    func generateTurn(_ input: MLXTurnInput) async throws -> MLXTurnOutput
+}
+
+/// One MLX generation with everything `generate` takes, plus a native tool turn (Plan MQ P1).
+struct MLXTurnInput: @unchecked Sendable {
+    let userMessage: String
+    let systemPrompt: String
+    let history: [(role: String, content: String)]
+    let imageData: Data?
+    let onToken: ((String) -> Void)?
+    let toolTurn: LocalToolTurn?
+}
+
+/// What one MLX generation produced: the authoritative text, and the calls the parser took out.
+struct MLXTurnOutput: Equatable, Sendable {
+    let text: String
+    let toolCalls: [LocalToolCallEvent]
+}
+
+extension MLXLocalRuntime {
+    /// A runtime that knows nothing of tool calls (a test double) generates text only.
+    func generateTurn(_ input: MLXTurnInput) async throws -> MLXTurnOutput {
+        MLXTurnOutput(text: try await generate(userMessage: input.userMessage, systemPrompt: input.systemPrompt,
+                                               history: input.history, imageData: input.imageData,
+                                               onToken: input.onToken),
+                      toolCalls: [])
+    }
 }
 
 extension LocalLLMService: MLXLocalRuntime {}
@@ -208,6 +237,34 @@ final class MLXLocalInferenceBackend: LocalInferenceBackend, @unchecked Sendable
                 // A consumer that walks away (or is cancelled) must stop the GPU work too —
                 // otherwise a barge-in leaves MLX decoding to completion, which is the exact
                 // battery/thermal burn the drain loop's cancellation check exists to prevent.
+                if case .cancelled = termination { self?.cancelActiveGeneration() }
+            }
+        }
+    }
+
+    /// The structured route (Plan MQ P1): the text as one event, as `generate` yields it, then each
+    /// call the library parsed. Same task handle, so cancellation behaves identically.
+    func generateEvents(_ request: LocalGenerationRequest) -> AsyncThrowingStream<LocalGenerationEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { [service] in
+                do {
+                    let decomposed = try MLXPromptAdapter.decompose(request.messages)
+                    let output = try await service.generateTurn(MLXTurnInput(
+                        userMessage: decomposed.userMessage,
+                        systemPrompt: decomposed.systemPrompt,
+                        history: decomposed.history.map(\.tuple),
+                        imageData: request.images.first?.data,
+                        onToken: request.previewSink,
+                        toolTurn: request.toolTurn))
+                    continuation.yield(.text(output.text))
+                    for call in output.toolCalls { continuation.yield(.toolCall(call)) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            lock.lock(); activeGeneration = task; lock.unlock()
+            continuation.onTermination = { [weak self] termination in
                 if case .cancelled = termination { self?.cancelActiveGeneration() }
             }
         }

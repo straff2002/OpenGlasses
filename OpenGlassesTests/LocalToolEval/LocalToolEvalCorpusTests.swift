@@ -185,6 +185,10 @@ final class LocalToolEvalCorpusTests: XCTestCase {
             }
         }
         XCTAssertEqual(report.overall.runs, cases.count * repeats)
+        XCTAssertEqual(report.floorShortfalls(), [], "the reference model clears decision 5's floors")
+        // Corpus v2 has no Field Assist restraint case (its seven are everyday chatter), so the
+        // restraint floor cannot be judged on the group decision 5 names until some are generated.
+        XCTAssertEqual(report.unjudgedFloors().map(\.name), ["restraint"])
         // Counts only.
         for line in report.lines() { print(line) }
         let printed = report.lines().joined(separator: "\n")
@@ -195,6 +199,52 @@ final class LocalToolEvalCorpusTests: XCTestCase {
                 XCTAssertFalse(printed.contains(passage), "the report must never carry a passage")
             }
         }
+    }
+
+    // MARK: - Decision 5's floors
+
+    func testTheFloorsAreTheOwnersNumbers() {
+        XCTAssertEqual(LocalToolEval.Floors.notInManualDeclined, 0.95)
+        XCTAssertEqual(LocalToolEval.Floors.cleanOutput, 1.0)
+        XCTAssertEqual(LocalToolEval.Floors.restraint, 0.90)
+        XCTAssertEqual(LocalToolEval.Floors.judgedGroup, .fieldAssist)
+        XCTAssertEqual(LocalToolEval.Floors.all.count, 3)
+    }
+
+    private func report(_ runs: [(LocalToolEval.Category, LocalToolEval.Group, Bool, Bool)]) -> LocalToolEval.Report {
+        var report = LocalToolEval.Report()
+        for (index, run) in runs.enumerated() {
+            report.add(LocalToolEval.Run(caseID: "r\(index)", category: run.0, group: run.1,
+                                         grades: [.toolName: run.2, .cleanText: run.3]))
+        }
+        return report
+    }
+
+    func testEachFloorIsJudgedOnItsOwnInTheFieldAssistGroup() {
+        // 19 of 20 declined is 0.95: on the floor. Ten restraint runs, nine clean of tools: 0.90.
+        var runs: [(LocalToolEval.Category, LocalToolEval.Group, Bool, Bool)] =
+            (0..<20).map { (.notInManual, .fieldAssist, $0 != 0, true) }
+        runs += (0..<10).map { (.restraint, .fieldAssist, $0 != 0, true) }
+        XCTAssertEqual(report(runs).floorShortfalls(), [])
+        XCTAssertTrue(report(runs).clearsFloors)
+
+        // One more miss on either is below its floor, however well the other does.
+        var short = runs
+        short[1] = (.notInManual, .fieldAssist, false, true)
+        XCTAssertEqual(report(short).floorShortfalls().map(\.name), ["not in the manual declined"])
+        short = runs
+        short[21] = (.restraint, .fieldAssist, false, true)
+        XCTAssertEqual(report(short).floorShortfalls().map(\.name), ["restraint"])
+
+        // One piece of markup in the voice, on any case, misses clean output.
+        short = runs + [(.toolChoice, .fieldAssist, true, false)]
+        XCTAssertEqual(report(short).floorShortfalls().map(\.name), ["clean output"])
+
+        // The everyday group is not what is judged, and a floor with nothing to judge it is not cleared.
+        let everydayOnly = report(runs.map { ($0.0, LocalToolEval.Group.everyday, $0.2, $0.3) })
+        XCTAssertEqual(everydayOnly.floorShortfalls(), [])
+        XCTAssertEqual(everydayOnly.unjudgedFloors().count, 3)
+        XCTAssertFalse(everydayOnly.clearsFloors)
     }
 
     // MARK: - The graders catch what they exist to catch

@@ -27,6 +27,12 @@ protocol LocalInferenceBackend: AnyObject, Sendable {
     /// Start a generation against the resident model.
     func generate(_ request: LocalGenerationRequest) -> AsyncThrowingStream<String, Error>
 
+    /// The same generation, with the tool calls the runtime's own parser read out of the stream
+    /// delivered as `.toolCall` events beside the text (Plan MQ P1). The text events concatenate to
+    /// exactly what `generate` yields. The default wraps `generate`: a runtime with no parser of
+    /// its own (GGUF until P2) yields text only, and its calls are read from that text as before.
+    func generateEvents(_ request: LocalGenerationRequest) -> AsyncThrowingStream<LocalGenerationEvent, Error>
+
     /// Stop the in-flight generation, if any, and wait until the runtime has actually stopped —
     /// not merely been asked to. The coordinator relies on this before unloading.
     func cancelGeneration() async
@@ -37,4 +43,23 @@ protocol LocalInferenceBackend: AnyObject, Sendable {
 
     /// What is resident right now, or nil.
     var loadedModel: LocalLoadedModel? { get async }
+}
+
+extension LocalInferenceBackend {
+    func generateEvents(_ request: LocalGenerationRequest) -> AsyncThrowingStream<LocalGenerationEvent, Error> {
+        let text = generate(request)
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await chunk in text { continuation.yield(.text(chunk)) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { termination in
+                if case .cancelled = termination { task.cancel() }
+            }
+        }
+    }
 }

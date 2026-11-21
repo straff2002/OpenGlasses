@@ -199,7 +199,40 @@ enum LocalToolLoop {
                       fromReasoning: false)
     }
 
+    /// One generation's output: the raw text, and the calls the runtime's own parser took out of the
+    /// stream (mlx-swift-lm's `.toolCall` events, Plan MQ P1). A text-only runtime returns none.
+    struct Generation {
+        let text: String
+        let toolCalls: [LocalToolCallEvent]
+
+        init(text: String, toolCalls: [LocalToolCallEvent] = []) {
+            self.text = text
+            self.toolCalls = toolCalls
+        }
+    }
+
+    /// `parse(_:)` over the text, then, when the text holds no usable call, the first call the
+    /// runtime parsed — the rule `LocalOutputPolicy.classify(_:parsedCalls:)` follows. In practice
+    /// only one is present: a runtime parser consumes the frame it reads. Any protocol left in the
+    /// text is still removed from what is spoken.
+    static func parse(_ generation: Generation) -> Parsed {
+        let parsed = parse(generation.text)
+        guard parsed.invocation == nil, let first = generation.toolCalls.first else { return parsed }
+        return Parsed(classification: parsed.classification, invocation: first.invocation, fromReasoning: false)
+    }
+
     // MARK: - The loop
+
+    /// Run one turn over a text-only model: `run(history:userMessage:configuration:generateTurn:execute:)`
+    /// with no parsed calls.
+    static func run(history: [Message],
+                    userMessage: String,
+                    configuration: Configuration = Configuration(),
+                    generate: (GenerationRequest) async throws -> String,
+                    execute: (Call) async throws -> ExecutionResult) async throws -> Outcome {
+        try await run(history: history, userMessage: userMessage, configuration: configuration,
+                      generateTurn: { Generation(text: try await generate($0)) }, execute: execute)
+    }
 
     /// Run one turn.
     ///
@@ -211,7 +244,7 @@ enum LocalToolLoop {
     static func run(history: [Message],
                     userMessage: String,
                     configuration: Configuration = Configuration(),
-                    generate: (GenerationRequest) async throws -> String,
+                    generateTurn generate: (GenerationRequest) async throws -> Generation,
                     execute: (Call) async throws -> ExecutionResult) async throws -> Outcome {
         let cap = max(0, configuration.roundCap)
         var transcript = history + [.user(userMessage)]
