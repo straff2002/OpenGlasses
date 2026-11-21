@@ -269,6 +269,66 @@ Give the MLX entries the GGUF catalog's `Evidence` field and its rule: an entry 
 phone and cannot be granted by a list. Whether the tools stay *offered* to an unbadged model is
 decision 6.
 
+### H. Running a small model well on a phone (added 2026-11-21)
+
+Added after reviewing another offline on-device chat app and its field data. That app has no tool
+calling, so none of this changes A–G. All four decide whether a qualification run measures the
+model or the conditions around it. Where code is adapted rather than rewritten, its MIT notice
+goes with it.
+
+1. **Each model's own sampling (P3, before the screener).** Every local turn today uses one set of
+   settings, temperature 0.7 and top-p 0.9 (`LocalLLMService`). Model publishers recommend very
+   different ones: top-k and min-p values differ by family, and some advise against a repetition
+   penalty. A model screened on settings its publisher doesn't recommend can fail a floor for
+   that reason alone. MLX and GGUF catalog entries get an optional `sampling` object (temperature,
+   top-p, top-k, min-p, repetition and presence penalty; every member optional, decoded only if
+   present, with the source noted beside it). Only the members that are set replace the global
+   value. A separate tool-turn set is allowed, because a call wants less randomness than a
+   sentence. The qualification record names the set it ran with.
+2. **A memory budget from the real kill limit (P3).** The RAM gates use physical memory rounded
+   up to the number on the box (`LocalLLMService.marketingRAMGB`). The point where iOS kills the
+   app is lower, and it is fixed per process: `os_proc_available_memory()` plus the footprint
+   already held, measured once. Copied-weight backends (MLX) are judged against that limit;
+   memory-mapped GGUF against Metal's `recommendedMaxWorkingSetSize`. A 6 GB phone keeps about
+   1 GB in reserve, because a Field Assist turn's KV cache keeps growing over a job and is what
+   tips a model that only just fits. A pure `LocalMemoryBudget` takes the readings as inputs. The
+   device app records peak footprint against the same limit, so the fit rule and the evidence
+   use one number.
+3. **Keep the prompt's start where it was (P2).** The GGUF backend clears its KV cache every turn,
+   and `LocalModelBudget.historyFittingBudget` drops one exchange at a time, so the start of the
+   prompt moves on every turn. On a long job that means re-reading the whole window before each
+   answer; the other app's field data reported 23 s to the first word by turn eight before its fix.
+   The fix has two parts:
+   - The engine rewinds the cache to the longest token prefix it shares with the new prompt,
+     instead of clearing it.
+   - The trim drops old exchanges in batches of about a quarter of the room, rounded up, so the
+     same exchanges stay dropped until the conversation has grown another batch. The system
+     prompt, the compact job tier and the turn being answered never go.
+
+   A Field Assist job is the best case for this: the same system prompt and job tier for many
+   turns. The time to first token on turn 1 and turn 8 goes in the record. Whether mlx-swift-lm's
+   prompt cache gives MLX the same reuse is checked in P1's pin bump; if not, it joins P3.
+4. **A thermal and power check before measuring (P3, device app).** In the other app's overnight
+   runs, every model fell to 5–11 tokens a second once the phone reached `serious`, which took
+   two to five long answers. A cool-down wait that gave up after a few minutes measured hot
+   twice a night. A pure `QualificationRunGate` turns a reading (thermal state, Low Power Mode,
+   battery level and charging) into one of four decisions:
+   - `proceed`;
+   - `wait`, with the reasons, for the log;
+   - `flag`: the wait ran out, so it measures anyway and the issue goes on the record;
+   - `stop`: the power is still bad at the cap, so no later model is measured.
+
+   Unattended runs wait for `nominal` plus a settle period, refuse a draining battery and refuse
+   Low Power Mode. A flagged result can't grant a badge. The 10-minute sustained run keeps
+   its thermal trace either way.
+
+Smaller items go in with P3's graders:
+- A reply of zero tokens is told apart from a blank one. Zero tokens almost always means the prompt
+  format is wrong, so it counts against clean output as a template fault, not as a model answer.
+- A reply that stops at exactly the token cap is marked cut.
+- While the phone is `serious` or hotter, the local path may say once that replies are slower, and
+  offer a lighter downloaded model. It never switches models by itself.
+
 ## Qualification
 
 The primary purpose is Field Assist on a downloaded model, because that is what saves the cloud
@@ -298,7 +358,8 @@ Deterministic, no model judging a model. They run the **shipped** parser and loo
 output: tool name, argument presence and types, a value checked against its passage with
 `ManualReadingCheck`, repeated calls, leftover markup. A run prints counts and bootstrap intervals
 only, never a question, a passage or an answer, as `RetrievalEvalCore` does. Each case is run
-several times at fixed sampling settings.
+several times at fixed sampling settings: the model's own from its catalog entry (H1), or the global
+set when it has none, and the record says which.
 
 ### Runners
 
@@ -360,10 +421,12 @@ licences are confirmed.
   hand a small model, is [Plan MV](MV-manuals-a-small-model-can-use.md)'s: typed facts the app
   scopes to the unit and speaks itself, and cards of at most 200 tokens for the reader.
 - **P2 — GGUF tool parsing**, behind the same flag: `common/chat` in the framework build (or the
-  alternative from decision 4), with the engine-reproducibility check updated.
-- **P3 — qualification:** the Mac screener and the device app, the shortlist run, new catalog
-  entries for the models that pass, badges set from the records, and the flag's default decided
-  per model from the results. Records are dated JSON in `reports/` (decision 8), and a test fails
+  alternative from decision 4), with the engine-reproducibility check updated, and the GGUF cache
+  keeping its shared prefix with batch trimming (H3).
+- **P3 — qualification:** per-model sampling in the catalog (H1) and the kill-limit memory budget
+  (H2) first; then the Mac screener and the device app with its run gate (H4), the shortlist run,
+  new catalog entries for the models that pass, badges set from the records, and the flag's default
+  decided per model from the results. Records are dated JSON in `reports/` (decision 8), and a test fails
   if a catalog entry's evidence names a record that is not in git.
 - **P4 — device pass (owed, not automatable):** a field day on each RAM tier in airplane mode:
   open a job by voice, log readings, a calculation, a manual question answered and one declined,
