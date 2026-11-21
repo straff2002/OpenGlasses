@@ -63,6 +63,8 @@ struct ProcedureStepScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 modeCard(p)
+                // Plan JI §7a: talk-through, off by default, for this run.
+                TalkThroughCard(service: appState.talkThrough)
                 stepCard(p)
                 if p.answer != nil || p.recorded != nil { answerCard(p) }
                 routeCard(p)
@@ -556,7 +558,7 @@ struct ProcedureStepScreen: View {
 
 /// A big full-width procedure button: the accent fill for the step's main action, the card ground
 /// with an accent outline for the others. At least 60 points tall, more as the text grows.
-private struct ProcedureButtonStyle: ButtonStyle {
+struct ProcedureButtonStyle: ButtonStyle {
     let prominent: Bool
     @Environment(\.appAccent) private var accent
     @Environment(\.isEnabled) private var isEnabled

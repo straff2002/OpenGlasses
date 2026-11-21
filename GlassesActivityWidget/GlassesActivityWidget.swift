@@ -360,6 +360,10 @@ struct GlassesActivityWidget: Widget {
     }
 
     private func statusText(for state: GlassesActivityAttributes.ContentState) -> String {
+        if state.talkThroughRunning == true {
+            return String(localized: "Talking you through the job",
+                          comment: "Live Activity: talk-through is following the technician through a procedure.")
+        }
         if state.liveHintsRunning == true {
             return String(localized: "Live hints: listening",
                           comment: "Live Activity: a live-hints session is running and listening to the room.")

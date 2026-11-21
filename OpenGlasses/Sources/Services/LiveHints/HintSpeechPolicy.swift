@@ -14,7 +14,10 @@ import Foundation
 /// - **never through the phone speaker**: on that route a hint is dropped for the ear and kept for
 ///   the screen (`lastHint`), and a hint that is playing when the route falls back to the speaker
 ///   stops;
-/// - repeat speaks the last hint again, under the same quiet and route rules; skip stops it.
+/// - repeat speaks the last hint again, under the same quiet and route rules; skip stops it;
+/// - an urgent line (Plan JI §7a: a step's safety note brought up by an author's caution phrase) is
+///   spoken at once, whatever the pause, replacing whatever plays, and is not cut short by speech:
+///   the wearer is talking, which is why it fired. The route rule still holds.
 ///
 /// It starts on the phone speaker until told otherwise, so it never speaks before the session
 /// has said where the sound goes.
@@ -31,6 +34,9 @@ struct HintSpeechPolicy: Equatable {
         case repeatRequested(at: Date)
         case skipRequested
         case outputRoute(isPhoneSpeaker: Bool)
+        /// Speak this now, whatever the pause, and let nobody's speech cut it (Plan JI §7a). The
+        /// session stops what plays before it says the line.
+        case urgentArrived(String, at: Date)
     }
 
     enum Action: Equatable {
@@ -55,6 +61,8 @@ struct HintSpeechPolicy: Equatable {
     private(set) var lastHint: String?
     /// The hint playing now.
     private(set) var speaking: String?
+    /// The line playing now is urgent: speech does not stop it.
+    private(set) var speakingUrgent = false
     /// The hint waiting for quiet, and when it arrived.
     private(set) var waiting: String?
     private var waitingSince: Date?
@@ -82,7 +90,7 @@ struct HintSpeechPolicy: Equatable {
         case let .speechActivity(isSpeaking, at):
             someoneSpeaking = isSpeaking
             lastActivityAt = at
-            if isSpeaking, speaking != nil {
+            if isSpeaking, speaking != nil, !speakingUrgent {
                 speaking = nil
                 return .stopSpeaking
             }
@@ -94,7 +102,20 @@ struct HintSpeechPolicy: Equatable {
 
         case .speechFinished:
             speaking = nil
+            speakingUrgent = false
             return .none
+
+        case let .urgentArrived(text, _):
+            lastHint = text
+            clearWaiting()
+            guard !isPhoneSpeaker else {
+                speaking = nil
+                speakingUrgent = false
+                return .drop(.phoneSpeaker)
+            }
+            speaking = text
+            speakingUrgent = true
+            return .speak(text)
 
         case let .repeatRequested(at):
             guard let lastHint else { return .drop(.nothingToRepeat) }
@@ -107,6 +128,7 @@ struct HintSpeechPolicy: Equatable {
         case .skipRequested:
             if speaking != nil {
                 speaking = nil
+                speakingUrgent = false
                 clearWaiting()
                 return .stopSpeaking
             }
@@ -119,6 +141,7 @@ struct HintSpeechPolicy: Equatable {
             guard phoneSpeaker else { return .none }
             if speaking != nil {
                 speaking = nil
+                speakingUrgent = false
                 clearWaiting()
                 return .stopSpeaking
             }
@@ -141,6 +164,7 @@ struct HintSpeechPolicy: Equatable {
         }
         clearWaiting()
         speaking = text
+        speakingUrgent = false
         return .speak(text)
     }
 

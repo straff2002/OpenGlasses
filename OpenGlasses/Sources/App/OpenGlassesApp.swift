@@ -1475,14 +1475,30 @@ class AppState: ObservableObject, AppStateProtocol {
         let service = LiveHintsService(carriers: .init(
             captions: AmbientCaptionHintSource(service: ambientCaptions),
             // Plan MO P2: the active project's documents, or those picked on the session sheet.
-            documents: DocumentStoreHintSearch(store: documentStore, scope: { [weak self] in
-                HintDocumentScope.resolve(chosen: self?.liveHints.settings.documentIds,
-                                          activeProject: ProjectContextService.shared.activeProjectId?())
-            }),
+            // P2b: during a job, the job's manuals through Field Assist's own search, unless the
+            // sheet chose the wearer's documents; read at every search.
+            documents: JobAwareHintSearch(
+                personal: DocumentStoreHintSearch(store: documentStore, scope: { [weak self] in
+                    HintDocumentScope.resolve(chosen: self?.liveHints.settings.documentIds,
+                                              activeProject: ProjectContextService.shared.activeProjectId?())
+                }),
+                job: FieldSessionService.shared,
+                preference: { [weak self] in self?.liveHints.settings.documentSource ?? .jobManualsWhenOpen },
+                chosen: { [weak self] in self?.liveHints.settings.documentIds },
+                activeProject: { ProjectContextService.shared.activeProjectId?() },
+                resolvedProvider: { [weak self] in self?.llmService.statelessModelProvider() },
+                medicalLocalOnly: {
+                    MedicalLLMRoutingPolicy.isEnforced(hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly)
+                }),
             model: LLMServiceHintModel(llm: llmService, isOnline: { [weak self] in
                 self?.reachability.isOnline ?? true
             }),
-            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard),
+            // Plan MO §5a: over a procedure's step card a hint flashes, and the step card comes back.
+            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard,
+                                  taskCardShowing: { [weak self] in
+                                      guard let router = self?.hudRouter else { return false }
+                                      return router.isPresentingTask && !router.isPresentingMenu
+                                  }),
             ear: TTSHintEar(tts: speechService),
             voiceActivity: MicLevelHintVoiceActivity(wakeWordService: wakeWordService),
             phoneList: liveHintsList,
@@ -1516,12 +1532,21 @@ class AppState: ObservableObject, AppStateProtocol {
     @Published var liveHintsSheetPresented = false
     /// Mirrors `liveHints.isRunning` for the idle listener's plan, without creating the service.
     private(set) var liveHintsRunning = false
+    /// Plan JI §7a (P6b): talk-through on a running procedure. Lazy; a session starts only from
+    /// `startTalkThrough` (the step screen's switch, or "talk me through it"), and never alongside
+    /// a live-hints session.
+    lazy var talkThrough: TalkThroughService = makeTalkThrough()
+    /// Mirrors `talkThrough.isRunning` for the idle listener's plan and the taps, without creating
+    /// the service. Written only by the session's `onRunningChanged`.
+    var talkThroughRunning = false
 
     /// Start a live-hints session (Plan MO). The entry point P2's Home card, session sheet and voice
     /// command call. The first start ever raises the first-run sheet and starts from it.
     @discardableResult
     func startLiveHints(_ settings: LiveHintsService.Settings = .init()) -> LiveHintsService.StartOutcome {
-        liveHints.start(settings)
+        // Plan JI §7a: never alongside talk-through, which stops first with one line.
+        yieldTalkThroughToLiveHints()
+        return liveHints.start(settings)
     }
 
     /// Stop the live-hints session, if one is running.
@@ -5310,7 +5335,10 @@ class AppState: ObservableObject, AppStateProtocol {
                 liveHintsActive: self?.liveHintsRunning ?? false,
                 // Plan MO P2: the mic the session sheet chose; the phone unless the wearer took
                 // the glasses' mic with its caveat.
-                liveHintsMic: (self?.liveHintsRunning ?? false) ? (self?.liveHints.settings.mic.route ?? .phone) : .phone)
+                liveHintsMic: (self?.liveHintsRunning ?? false) ? (self?.liveHints.settings.mic.route ?? .phone) : .phone,
+                // Plan JI §7a: talk-through hears the wearer on the mic their setup gives.
+                talkThroughActive: self?.talkThroughRunning ?? false,
+                talkThroughMic: (self?.talkThroughRunning ?? false) ? (self?.talkThroughMicRoute ?? .phone) : .phone)
         }
         wakeWordService.glassesTurnState = { [weak self] in
             (stoodDown: self?.glassesStoodDown ?? false, worn: self?.glassesService.isWorn)
@@ -5375,17 +5403,19 @@ class AppState: ObservableObject, AppStateProtocol {
             guard let self else { return false }
             // Plan MO P2: during a live-hints session a headset's media button counts too.
             return (self.isConnected && self.glassesService.isWorn != false)
-                || (self.liveHintsSessionActive && self.liveHintsHeadsetConnected)
+                || (self.hintSessionOwner != nil && self.liveHintsHeadsetConnected)
         }
         // Plan MO P2: while a live-hints session runs it holds the taps, the setting on or off.
-        mediaTrigger.heldBySession = { [weak self] in self?.liveHintsSessionActive ?? false }
+        // Plan JI §7a: so does talk-through; the owner says whose they are.
+        mediaTrigger.heldBySession = { [weak self] in self?.hintSessionOwner != nil }
         mediaTrigger.onGesture = { [weak self] gesture, command in
             Task { @MainActor in
                 guard let self else { return }
                 self.noteUserInteraction()
                 // Plan MO P2: a session's taps repeat and skip hints, never the wake word or the
                 // wearer's assignments; Settings' test screen still hears every tap.
-                if !self.templeTaps.testMode, self.handleLiveHintsTap(gesture) {
+                // Plan JI §7a: while talk-through runs the taps answer its proposals instead.
+                if !self.templeTaps.testMode, self.handleTalkThroughTap(gesture) || self.handleLiveHintsTap(gesture) {
                     self.mediaTrigger.recheckClaim(after: .tapAction)
                     return
                 }
@@ -5915,7 +5945,8 @@ class AppState: ObservableObject, AppStateProtocol {
             deviceName: glassesService.deviceName,
             batteryLevel: glassesService.batteryLevel,
             instantReplayRunning: instantReplay.isRunning,
-            liveHintsRunning: liveHintsSessionActive
+            liveHintsRunning: liveHintsSessionActive,
+            talkThroughRunning: talkThroughRunning
         )
     }
 
@@ -8229,6 +8260,16 @@ class AppState: ObservableObject, AppStateProtocol {
             VoiceCommandHandler(label: "job-question") { [weak self] text in
                 guard let self, await self.guidedJobFlow.handleUtterance(text) else { return false }
                 PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("jobQuestion"))
+                await self.resumeListeningOrReturnToWakeWord()
+                return true
+            },
+            // Plan JI §7a: "talk me through it", "stop talking me through", "just go", and a yes or
+            // no to a step talk-through proposed. Ahead of the no-model procedure, which takes
+            // every utterance; a yes or no the procedure needs (a yes/no step, a read-back) is
+            // left to it, and anything else goes on.
+            VoiceCommandHandler(label: "talk-through") { [weak self] text in
+                guard let self, await self.handleTalkThroughVoice(text) else { return false }
+                PrivacyLog.app(.voiceCommandHandled, detail: PrivacyToken("talkThrough"))
                 await self.resumeListeningOrReturnToWakeWord()
                 return true
             },

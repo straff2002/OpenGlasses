@@ -20,6 +20,10 @@ extension AppState {
         LiveHintsSessionChoices.defaults(displayConnected: liveHintsDisplayConnected)
     }
 
+    /// The open job's manuals, while a job with manuals is open (Plan MO §5a): the sheet's
+    /// Documents row offers them first.
+    var liveHintsJobManuals: HintJobManuals? { FieldSessionService.shared.hintJobManuals }
+
     /// Diarization is on for captions, so voices are told apart and "That's me" means something.
     var liveHintsTellsVoicesApart: Bool { Config.isDiarizationConfigured }
 
@@ -53,6 +57,8 @@ extension AppState {
     @discardableResult
     func startLiveHintsDemo() -> LiveHintsService.StartOutcome {
         stopLiveHints()
+        // Plan JI §7a: never alongside talk-through, which stops with one line.
+        yieldTalkThroughToLiveHints()
         var settings = LiveHintsService.Settings()
         settings.delivery = liveHintsDisplayConnected ? .lens : .ear
         return liveHintsDemo.start(settings)
@@ -76,8 +82,9 @@ extension AppState {
         // as it was (`MediaTriggerService.sessionHoldChanged`).
         mediaTrigger.sessionHoldChanged()
         // The Listening pill's twin (§10): a Live Activity for the whole session, which carries
-        // repeat, skip and stop. It ends with the session only if nothing else keeps one.
-        if liveHintsSessionActive {
+        // repeat, skip and stop. It ends with the session only if nothing else keeps one. Plan JI
+        // §7a: talk-through holds it the same way.
+        if hintSessionOwner != nil {
             liveActivityManager.start(glassesName: glassesService.deviceName ?? "Avenkin")
         } else if !listeningEnabled {
             liveActivityManager.end()
@@ -90,7 +97,11 @@ extension AppState {
         let clock = SystemHintClock()
         let built = LiveHintsDemo.carriers(
             model: LLMServiceHintModel(llm: llmService, isOnline: { [weak self] in self?.reachability.isOnline ?? true }),
-            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard),
+            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard,
+                                  taskCardShowing: { [weak self] in
+                                      guard let router = self?.hudRouter else { return false }
+                                      return router.isPresentingTask && !router.isPresentingMenu
+                                  }),
             ear: TTSHintEar(tts: speechService),
             phoneList: liveHintsDemoList,
             clock: clock)
@@ -141,6 +152,8 @@ extension AppState {
     /// Darwin notification and on becoming active, whichever runs first.
     func takePendingLiveHintsCommand(trigger: String) {
         guard let command = PendingLiveHintsCommand.shared.consume() else { return }
+        // Plan JI §7a: while talk-through holds the activity, its buttons are talk-through's.
+        if takeTalkThroughActivityCommand(command) { return }
         guard let service = activeLiveHints else {
             PrivacyLog.speech(.liveHints, .controlHandled, detail: PrivacyToken("activity.noSession"))
             return
@@ -212,6 +225,11 @@ extension AppState {
     /// Stop the session once the app has been away as long as captions are allowed to be
     /// (`LiveHintsPresenceRule`, the captions' own rule). The demo stops the same way.
     func applyLiveHintsPresence(_ mode: EngagementMode) {
+        // Plan JI §7a: talk-through hears the narration through the captions, so it stops by
+        // their rule too.
+        if LiveHintsPresenceRule.shouldStop(mode: mode, sessionRunning: talkThroughRunning) {
+            talkThrough.stop(reason: .background)
+        }
         guard LiveHintsPresenceRule.shouldStop(mode: mode, sessionRunning: liveHintsSessionActive) else { return }
         if liveHintsRunning { liveHints.stop(reason: .background) }
         if liveHintsDemoRunning { liveHintsDemo.stop(reason: .background) }
@@ -274,6 +292,19 @@ extension AppState {
     }
 
     // MARK: - Opening a hint's passage on the phone
+
+    /// A hint from the job's manuals opens its page the way a citation chip does (§5a): the live
+    /// hints sheet goes down and the page opens where Field Assist shows a cited page (on the Voice
+    /// tab, under the answer or in the context pane). False when the hint has no manual page or the
+    /// vault can't open it now; the row then opens the passage sheet.
+    @discardableResult
+    func openLiveHintManualPage(_ hint: LiveHint) -> Bool {
+        guard let citation = hint.manualCitation, canOpenCitation(citation) else { return false }
+        liveHintsSheetPresented = false
+        openCitation(citation, origin: .chip)
+        PrivacyLog.speech(.liveHints, .controlHandled, detail: PrivacyToken("manualPageOpened"))
+        return true
+    }
 
     /// The passage a hint stands on, for the session screen's press: the chunk the search returned
     /// (`documentId`, `chunkIndex`), or the sample document's for the demo.

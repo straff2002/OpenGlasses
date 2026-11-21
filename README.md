@@ -6,7 +6,7 @@ Avenkin is a private AI assistant that works for you, not for a platform: your c
 
 **On your iPhone, through headphones or AirPods, from your wrist, or hands-free with glasses.**
 
-Ask about what you see, translate a conversation, remember the details, and get things done. Buy once, with no subscription to us—a cloud AI provider you choose bills its own usage. With the [on-device setup](#offline-ai-right-on-your-iphone), the conversation runs offline on your iPhone.
+Ask about what you see, translate a conversation, remember the details, and get things done. With the [on-device setup](#offline-ai-right-on-your-iphone), the conversation runs offline on your iPhone.
 
 [Get started](#quick-start) · [Explore capabilities](docs/CAPABILITIES.md) · [Accessibility](docs/CAPABILITIES.md#accessibility) · [For teams](#expertise-where-the-work-happens) · [简体中文](README.zh-CN.md)
 

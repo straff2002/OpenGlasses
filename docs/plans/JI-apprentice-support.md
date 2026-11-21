@@ -1,6 +1,20 @@
 # Plan JI — Apprentice Support (an hours logbook a journeyman signs, a scope-of-practice guard that never blocks, a call to the journeyman in one phrase, and practice that stays the apprentice's own)
 
-**Status:** 📝 Drafted 2026-10-19 — nothing implemented. Revised the same day with the owner's
+**Status:** 🚧 **P6b (talk-through) built 2026-11-21, headless:** `TalkThroughLocator` (previous, current and next
+two steps; two agreeing finished sentences; off order past a skipped step that asks for a reading,
+a confirmation or a required answer), `TalkThroughHint` (safety note, expected reading, the
+calculation's authored words; `why` and MI's figure wait for their fields), `cautionPhrases` on
+`Procedure.Step` and in the vault guide, and `TalkThroughService` on live hints' carriers: never
+with a live hints session (`HintSessionArbiter`), the wearer's mic by setup (`talkThroughActive`
+in `WakeListenPolicy`), taps that answer a proposal, the Live Activity, "talk me through it" on
+the step screen and by voice ahead of the no-model procedure (which keeps every yes and no it
+needs), a question answered from the job's manuals under `HintManualModelRule`, recognition kept
+on the phone under the four rules, nothing kept and nothing metered. Not built: GE's held question
+(a weak offline answer shows the passage only), JL's deviation record (the phrase is offered,
+nothing is recorded), the HUD launcher's switch, a mic choice on the sheet. **Device pass owed:**
+a narrated job in a pocket and on Ray-Ban Meta's mic, online and offline; how often proposals
+match the steps done; caught phrase to spoken note; whether captions survive a locked phone. The
+rest of JI: 📝 drafted 2026-10-19, nothing implemented. Revised the same day with the owner's
 logbook sign-off design: "journeyman" throughout, the customer sign-off sheet reused, by the day,
 the signer chosen from staff, bound to the entries by a fingerprint, and three levels of
 self-signing protection (§9). Amended 2026-11-20 with **talk-through** (§7a, P6b): the apprentice

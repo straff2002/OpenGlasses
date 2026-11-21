@@ -1404,6 +1404,10 @@ enum PrivacyLog {
         case cloudDictation
         /// A live-hints session (Plan MO P1): timings and lengths only, never a question or a hint.
         case liveHints
+        /// Talk-through on a running procedure (Plan JI §7a): starts, stops, the wearer's
+        /// controls, lengths and timings only. Never a word of the narration, the step it points
+        /// at, an "off order" or a caught phrase.
+        case talkThrough
     }
 
     enum SpeechEvent: String {

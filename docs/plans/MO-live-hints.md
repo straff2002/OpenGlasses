@@ -37,9 +37,15 @@ and an invented sample document through `HintCaptionSource`, first question at 4
 allowance). The talk note (`LiveHintsTalkNote`): the meeting-summary prompt at stop, LQ's acceptance,
 kept as a finished conversation with its note (`ConversationStore.saveTalkNote`), never in Medical
 Compliance mode or a Private Conversation; the transcript stays **Keep caption sessions**'s. The
-session stops by `CaptionPresenceGate`'s rule when the app is away. Remaining: the catalog sync
-(P2's strings are English only) and the P3 device pass. Decisions 1–10 have recommendations; P0, P1
-and P2 were built on them as recommended.
+session stops by `CaptionPresenceGate`'s rule when the app is away. **P2b built 2026-11-21
+(headless, §5a):** during a Field Assist job, hints come from the job's manuals through Field
+Assist's own search (`hintPassages`, read-only, the equipment check and the running step included),
+cite the manual and page and open it on a press, and ask the model only as the job's rules allow
+(`HintManualModelRule`: no permitted model or Medical Local Only with a cloud model is the passage
+card alone; vault-only and required citations turn general knowledge off); "My documents" on the
+sheet instead; over a procedure's step card a hint flashes and the step card comes back. Remaining:
+the catalog sync (P2's and P2b's strings are English only) and the P3 device pass. Decisions 1–11
+have recommendations; P0, P1, P2 and P2b were built on them as recommended.
 **Track:** Everyday assistant: conversations. Captions, documents, the lens, speech output.
 **Origin:** The owner, 2026-11-20, after surveying adjacent live-assistant products: a session that
 listens to a conversation and, when someone asks the wearer a question, puts a short answer from
@@ -211,6 +217,64 @@ The latency target is measured from the end of the question to the first line on
 **good under 1.5 s, usable under 3 s, broken over 5 s**, reported as p50 and p95, never an average.
 `PrivacyLog` keeps timings and lengths only.
 
+### 5a. Field Assist: hints from the job's manuals
+
+A technician on a job is asked questions by the customer, a colleague or an apprentice, and the
+answer is in the job's manuals, not in their personal documents. While a Field Assist job is open
+on a vault with manuals, live hints searches those manuals through Field Assist's own manual search.
+
+- **The search is Field Assist's.** `FieldSessionService.hintPassages(for:limit:)` starts where a
+  turn's manual block starts (`searchManuals`, factored out of `manualPassagesContext`, whose
+  behaviour is unchanged): job references taken out of the words (`ManualTurnScope`), the
+  **equipment scope check** first, the edition the words ask for (`EditionRequest`), the vault's
+  retriever (`manualRetriever`), and one search per manual language (`retrieveByLanguage`). It
+  stands behind the gate a turn does: an open, unpaused job; an unlocked vault; current work access.
+- **Read-only.** None of a turn's side effects: no page staged, no support-trace line, no follow-up
+  context held, no evidence or team-learning disclosure recorded, nothing a later Direct turn reads.
+  A test compares the next turn's manual block with and without hint searches before it, and a guard
+  scrapes the search's source for every side-effect name.
+- **Only the manual's own evidence is a hint.** A question about a machine the vault isn't for, one
+  naming another model than the job's unit, a gate that refuses, or an answer resting on team
+  learnings alone (which owes a disclosure only a turn can give) is no card and no model call: the
+  model is never asked to answer around the gate. Team learnings beside a manual passage are left out.
+- **One scope per search, chosen at each search** (`HintSearchScope.resolve`, decision 11). During a
+  job, the job's manuals; otherwise, or by choice, the wearer's own documents. Never both in one
+  card. A job opened or closed mid-session takes effect at the next question, and the session's
+  cache is kept per scope.
+- **The citation.** A manual passage carries Field Assist's citation, exactly as a turn's `Source:`
+  line gives it ("Pump guide, page 12, §4 Priming"): the card's source line, the model's name for
+  the passage, and on the phone a press that opens the page through the path a citation chip uses
+  (`openCitation`, read back by `CitationLineParser`): the sheet goes down and the page opens where
+  Field Assist shows a cited page. A manual the vault can't open now falls back to the passage sheet.
+- **The model follows the job's rules** (`HintManualModelRule`, pure). The call goes to the model a
+  job's turns use, the vault's linked model while the job is open or the organisation's on a phone
+  its profile set up, resolved through the medical routing rule as a Direct turn is
+  (`LLMService.statelessModelProvider`). No model, or a routing rule that refuses every model, means
+  the passage card alone. With Medical Local Only on, a manual passage goes only to a model on the
+  phone, and a cloud resolution is refused here rather than trusted. A vault-only job (`VaultOnlyPolicy`)
+  and a vault that requires citations answer from the passages alone, with general knowledge off.
+  When the rules forbid the call, the passage card stands alone and the passages go nowhere.
+- **The sheet.** With a job with manuals open, the Documents row shows the vault's name (or "The
+  job's manuals") as the default, and the picker offers "My documents" (the active project, or
+  documents picked one by one) instead.
+
+**During a procedure.** A question asked while the technician is on a procedure step is searched
+with the step's title beside it, as a turn is, so that step's pages rank first; the runner is only
+read. A procedure's step card is a HUD task, and no answer card is made over one
+(`acceptsAnswerCard`), so a hint goes over the step card as a notification does
+(`HintLensPlacement`): a flash with no buttons for 8 s, after which the display puts the step card
+back. The step card stays the held screen throughout, with its own selection handler, so a band
+press or a spoken step word still means the step, and nothing a hint shows can advance, answer or
+skip it. A menu, an approval card or a page view gets nothing on the lens. The procedure's voice
+keeps priority: a procedure running without a model takes every utterance before the live-hints
+phrases in the pre-model chain, and no step word ("next", "done", "skip", "back", "repeat", a yes
+or no) is a live-hints phrase. Temple taps drive no procedure anywhere (a tap's actions are the
+wearer's assignments, and none moves a step), so a session keeps them for repeat and skip as
+before. Following the apprentice's narration through a procedure and showing a step's authored
+hints is Plan [JI](JI-apprentice-support.md) §7a (talk-through, P6b): not built here, and it reuses
+MO's pieces. `hintPassages` is read-only and reusable there, for a cited reason beside an authored
+hint, but this plan doesn't wire it.
+
 ### 6. Delivery
 
 - **Lens** (a Display is connected): page 1 is the question in 2–4 words, dimmed, above the `hint`
@@ -326,6 +390,15 @@ feature work without a real conversation.
 - Voice: "start live hints", "stop hints", "show hints", "hint me about …" (adds a keyword).
 - The demo session (§11).
 
+**P2b — Field Assist: hints from the job's manuals** (one PR, headless)
+- `FieldSessionService.searchManuals` factored out of `manualPassagesContext` (unchanged), and
+  `hintPassages` / `hintJobManuals` / `hintManualTitles`, read-only, with the running step beside
+  the question.
+- `JobAwareHintSearch` (the job's manuals or the wearer's documents, chosen at each search),
+  `HintManualModelRule`, the manual citation and its press, the sheet's Documents row and picker.
+- During a procedure: the hint flashes over the step card (`HintLensPlacement`); the procedure's
+  voice keeps priority; nothing of a hint moves a step.
+
 **P3 — Device pass** (owed, GiPhone)
 - Ray-Ban Display with the phone mic: p50/p95 from the end of a question to the first line, filmed
   in slow motion; whether a send wakes a dimmed lens; whether the Display session survives an hour.
@@ -369,3 +442,7 @@ feature work without a real conversation.
 10. **Temple taps during a session.** They repeat and skip hints instead of waking the assistant
     (recommended); or a tap still wakes the assistant and repeat lives on the band and the Live
     Activity only.
+11. **Documents during a job (§5a).** The job's manuals by default whenever a job with manuals is
+    open, with "My documents" on the sheet instead (recommended, built in P2b); or the wearer's own
+    documents unless they pick the job's manuals. A picked document of the wearer's own is a choice
+    of their documents for the session; a paused job is no job.
