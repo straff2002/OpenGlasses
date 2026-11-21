@@ -264,7 +264,7 @@ three adjustment steps.
 
 P0–P2 are one PR; P3 another; P4 is owed after.
 
-## Decisions for Greig
+## Decisions
 
 1. **What a called procedure gives back: the end it reached, with that end's outcome
    (recommended).** The caller's rules read which terminal step the callee ended on; the callee's
