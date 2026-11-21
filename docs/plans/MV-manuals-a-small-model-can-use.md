@@ -1,6 +1,6 @@
 # Plan MV — Manuals a Small Model Can Use
 
-**Status:** 📝 Drafted 2026-11-21 · nothing built · 10 decisions below, each with a recommendation
+**Status:** 📝 Drafted 2026-11-21 · nothing built · all 10 decisions taken as recommended by the owner, 2026-11-21
 
 The owner wants Field Assist to run on a downloaded model (Gemma 4 E2B, a Qwen-class 1.5–4B, 4K–8K
 windows) so that cloud AI costs fall: "i want local, how can we break down manuals to be easier to
@@ -307,20 +307,22 @@ reader change that alters a fact fails the corpus hash check in CI. New categori
 
 ## Decisions
 
-1. **Facts derived on the phone, or shipped in the vault?** *Recommend derived* (at install for the
+All ten taken as recommended by the owner on 2026-11-21.
+
+1. **Facts derived on the phone, or shipped in the vault?** **Decided 2026-11-21: derived** (at install for the
    core, at import for manuals), with `facts.json` for annotations and vocabulary only. Nothing new
    ships with a hand-authored vault, and no table content leaves a phone.
-2. **Versioning.** *Recommend a `schema_version` inside `facts.json` and a new optional manifest key
-   `facts` naming it.* The file is kept out of the prompt the way `chains.md` and table checks are.
+2. **Versioning.** **Decided 2026-11-21: a `schema_version` inside `facts.json` and a new optional manifest key
+   `facts` naming it.** The file is kept out of the prompt the way `chains.md` and table checks are.
    An older build ignores the key, since unknown manifest keys don't fail decoding. A newer major
    version is refused with a validator warning, and the vault still installs. Derived facts carry
    the reader's version in their cache key, so a reader change rebuilds them.
-3. **Does the cloud path use facts too?** *Recommend yes for `table_lookup`'s resolution* (one
+3. **Does the cloud path use facts too?** **Decided 2026-11-21: yes for `table_lookup`'s resolution** (one
    resolver, scoped and exact for every model), while the core tier stays in the cloud prompt as
    today. Template answers spoken as is and the keyword route are local only at first.
-4. **May the local model reword a fact?** *Recommend no*: the app's sentence is spoken as is. The
+4. **May the local model reword a fact?** **Decided 2026-11-21: no**: the app's sentence is spoken as is. The
    model may ask a follow-up on the next turn.
-5. **Authoring model and review rules.** *Recommend LW's rules unchanged*:
+5. **Authoring model and review rules.** **Decided 2026-11-21: LW's rules unchanged**:
    - deterministic proposals on the phone;
    - an author's own model only by copy and paste;
    - every pasted row checked against its page;
@@ -328,22 +330,22 @@ reader change that alters a fact fails the corpus hash check in CI. New categori
    - no Avenkin-run extraction service. An Avenkin cloud model reading customer manuals would be a
      new processor of licensed text, needing its own disclosure and organisation key (as MP's
      `apple_cloud`).
-6. **Card size.** *Recommend at most 200 tokens (800 characters), two cards plus one safety card a
-   turn on a 4K window, three on 8K.* P0 measures how many of today's chunks already fit before any
+6. **Card size.** **Decided 2026-11-21: at most 200 tokens (800 characters), two cards plus one safety card a
+   turn on a 4K window, three on 8K.** P0 measures how many of today's chunks already fit before any
    re-chunking. The chunker's 700/900 targets are left alone unless P2's retrieval eval says
    otherwise.
-7. **Who owns the vocabulary.** *Recommend:*
+7. **Who owns the vocabulary.** **Decided 2026-11-21:**
    - trade words in `TradeTemplate`, maintained with the app;
    - vault words in `facts.json`, the author's;
    - a company layer adds and never redefines;
    - no per-technician words yet.
-8. **Old vaults.** *Recommend no migration.* A vault with no tables has no facts, and its local
+8. **Old vaults.** **Decided 2026-11-21: no migration.** A vault with no tables has no facts, and its local
    reader turns use cards from its prose and chunks. A vault whose rows can't be scoped gets
    unread-scope facts that are never hidden. The cloud path is unchanged either way.
-9. **`safety.md` on the local path: whole, or as cards?** *Recommend cards by hazard on the local
-   path only*, with the manifest's safety rules in every prompt. The whole file is about 1,150
+9. **`safety.md` on the local path: whole, or as cards?** **Decided 2026-11-21: cards by hazard on the local
+   path only**, with the manifest's safety rules in every prompt. The whole file is about 1,150
    tokens, a third of a 4K budget. The cloud path keeps it whole and protected, as today.
-10. **Model-free answers with the phone locked.** *Recommend yes, behind the flag*: only a single
+10. **Model-free answers with the phone locked.** **Decided 2026-11-21: yes, behind the flag**: only a single
     fact that is unit-scoped, with every separating condition said. Anything else is held.
 
 ## Non-goals
