@@ -29,6 +29,7 @@ struct VanStockView: View {
     @State private var scanning = false
     @State private var counting = false
     @State private var reporting = false
+    @State private var checkingEMR = false
 
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
 
@@ -141,6 +142,14 @@ struct VanStockView: View {
                     }
                     .disabled(store.isUnreadable)
                 }
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        checkingEMR = true
+                    } label: {
+                        Label("Check against the EMR…", systemImage: "checkmark.rectangle.stack")
+                    }
+                    .disabled(store.isUnreadable || store.log.isEmpty)
+                }
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button {
@@ -193,6 +202,9 @@ struct VanStockView: View {
         }
         .sheet(isPresented: $reporting) {
             StockReportView(store: store, service: service)
+        }
+        .sheet(isPresented: $checkingEMR) {
+            ImmunisationCheckSheet(store: store)
         }
         .confirmationDialog("Go back to the list from before the last takeover?",
                             isPresented: $confirmingRestore, titleVisibility: .visible) {
