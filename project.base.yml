@@ -142,6 +142,8 @@ targets:
       # so iOS opens the app and runs it here; it hands the press over as a pending request.
       - path: GlassesActivityWidget/AskAvenkinControlIntent.swift
       - path: GlassesActivityWidget/PendingAskRequest.swift
+      # Shared with widget target — the Live Activity's live-hints buttons hand their press over.
+      - path: GlassesActivityWidget/LiveHintsActivityCommand.swift
       # Shared with widget target — the Home Screen widget's Listen button opens the app and
       # runs there, because iOS refuses a background microphone start.
       - path: GlassesActivityWidget/StartListeningFromWidgetIntent.swift

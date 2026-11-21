@@ -106,7 +106,8 @@ class LiveActivityManager {
         lastResponse: String = "",
         deviceName: String? = nil,
         batteryLevel: Int? = nil,
-        instantReplayRunning: Bool = false
+        instantReplayRunning: Bool = false,
+        liveHintsRunning: Bool = false
     ) {
         guard let activity = currentActivity else { return }
 
@@ -125,7 +126,8 @@ class LiveActivityManager {
             batteryLevel: batteryLevel,
             personaButtons: personas,
             quickActionButtons: quickActionButtons(),
-            instantReplayRunning: instantReplayRunning ? true : nil
+            instantReplayRunning: instantReplayRunning ? true : nil,
+            liveHintsRunning: liveHintsRunning ? true : nil
         )
 
         Task {
