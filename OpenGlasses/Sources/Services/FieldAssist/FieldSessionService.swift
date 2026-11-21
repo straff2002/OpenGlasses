@@ -2233,6 +2233,36 @@ final class FieldSessionService: ObservableObject {
         return context
     }
 
+    /// The compact `<field_assist_context>` for a downloaded model (Plan MQ P1, `LocalJobContext`),
+    /// or nil when no session is active. Same gates as `promptContext`, and the same two pieces of
+    /// per-turn bookkeeping (the turn's kind, the unit the model last heard); no retrieval runs and
+    /// no page is staged, because no passage goes to this model. A page an earlier turn staged is
+    /// cleared, so it cannot ride a turn whose evidence never pointed at it.
+    func localPromptContext(turn: String? = nil, fieldToolsOffered: Bool, budgetTokens: Int,
+                            modelSettingsPath: String) -> String? {
+        guard let store = activeVault, hasCurrentWorkAccess,
+              VaultRegistry.shared.isUnlocked(store.manifest), let session = activeSession else { return nil }
+        lastTurnKind = turn.map(ManualTurnClassifier.classify)
+        recordModelSaid()
+        if !toolPutUpPageThisTurn { stageFigure(nil) }
+        let superseded = Set(session.spokenReadings.compactMap(\.supersedes))
+        let readings = session.spokenReadings
+            .filter { !superseded.contains($0.id) && !$0.isRuleChain && $0.unitScope == session.continuityScope }
+            .map { [$0.quantity, $0.value, $0.unit].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ") }
+        let procedure = runner?.promptContext()
+        let chain = activeChain == nil ? nil : chainPromptContext()
+        return LocalJobContext.render(.init(
+            vaultName: store.manifest.name,
+            rules: store.manifest.promptRules,
+            summary: AppleOnDeviceInstructions.JobSummary(session: session),
+            equipment: activeEquipment?.promptBlock,
+            readings: readings,
+            procedure: procedure?.isEmpty == false ? procedure : nil,
+            ruleChain: chain,
+            fieldToolsOffered: fieldToolsOffered,
+            modelSettingsPath: modelSettingsPath), budgetTokens: budgetTokens)
+    }
+
     /// What the model is told while the open job is paused.
     static let pausedJobPromptNote = """
         This job is PAUSED. The technician may be talking about something unrelated: answer \

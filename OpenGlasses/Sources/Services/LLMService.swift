@@ -494,11 +494,18 @@ class LLMService: ObservableObject {
     /// of the heavy optional contexts (playbook/shortcuts/OpenClaw). `sendLocal` appends its own
     /// reduced tool block, so the model still has usable tools. Used by every on-device path
     /// (active-model `sendMessage` and fast-tier `sendViaLocalAgent`) so they can't diverge.
-    static func leanOnDevicePrompt(locationContext: String?, memoryContext: String?, hasImage: Bool, turn: String, weatherContext: String? = nil, device: AssistantIdentity.Device = .phone) async -> String {
+    static func leanOnDevicePrompt(locationContext: String?, memoryContext: String?, hasImage: Bool, turn: String, weatherContext: String? = nil, device: AssistantIdentity.Device = .phone, localModelID: String? = nil) async -> String {
+        // Plan MQ P1: the open job as a compact tier fitted to this model's budget, on every local
+        // turn — the full block cannot fit any catalog model, so without this the turn is refused.
+        let modelID = localModelID ?? Config.activeModel?.model ?? ""
+        let tier = LocalJobTier(modelID: modelID,
+                                fieldToolsOffered: localFieldToolsOffered(
+                                    modelID: modelID,
+                                    runtime: LocalModelSelection.installation(for: LocalModelID(modelID)).runtime))
         var prompt = await buildSystemPrompt(
             locationContext: locationContext, includeTools: false, includeOpenClaw: false,
             hasImage: hasImage, memoryContext: memoryContext, turn: turn,
-            compactMemoryRules: true, compactSpokenManners: true, device: device).combined
+            compactMemoryRules: true, compactSpokenManners: true, localJobTier: tier, device: device).combined
         if let weatherContext {
             prompt += "\n\nCURRENT WEATHER (fetched just now — answer from this; do NOT call get_weather and do NOT say you will check): \(weatherContext)"
         }
@@ -677,7 +684,7 @@ class LLMService: ObservableObject {
     /// location, skills, job and manual context, …) — so a route that can place the tail after the
     /// history keeps its cacheable prefix byte-identical turn to turn. `.combined` is the old
     /// single string, head first.
-    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, compactSpokenManners: Bool = false, device: AssistantIdentity.Device) async -> PromptLayout {
+    private static func buildSystemPrompt(locationContext: String?, includeTools: Bool, includeOpenClaw: Bool, hasImage: Bool, nativeToolNames: [String] = [], nativeToolDescriptions: [(name: String, description: String)] = [], onDemandToolGuide: String? = nil, gatewayToolNames: [String] = [], memoryContext: String? = nil, agentContext: String? = nil, playbookContext: String? = nil, nowPlayingContext: String? = nil, shortcutsContext: String? = nil, promptSections: ConversationClassifier.PromptSections? = nil, turn: String? = nil, offersFollowUps: Bool = false, compactMemoryRules: Bool = false, compactSpokenManners: Bool = false, localJobTier: LocalJobTier? = nil, device: AssistantIdentity.Device) async -> PromptLayout {
         // Agent personality mode: soul.md + skills.md + memory.md replace the standard prompt
         var prompt: String
         if Config.agentModeEnabled, let agentContext, !agentContext.isEmpty {
@@ -888,7 +895,17 @@ class LLMService: ObservableObject {
         closeBlock("voice skills")
         // Inject Field Assist vault content when a session is active.
         // This grounds the LLM in domain knowledge (refrigeration, IT, health) with strict source attribution.
-        if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
+        // Plan MQ P1: a downloaded model gets the compact job tier instead — the full block is more
+        // than twice its whole prompt budget with a real vault, and the tools fetch the rest.
+        if let localJobTier {
+            if let vaultContext = FieldSessionService.shared.localPromptContext(
+                turn: turn, fieldToolsOffered: localJobTier.fieldToolsOffered,
+                budgetTokens: localJobTier.budgetTokens,
+                modelSettingsPath: "Settings > \(SettingsHub.path(to: .intelligence))") {
+                prompt += "\n\n<field_assist_context>\n\(vaultContext)\n</field_assist_context>"
+            }
+            closeBlock("field assist: job summary (on-device)")
+        } else if let vaultContext = FieldSessionService.shared.promptContext(turn: turn) {
             prompt += "\n\n<field_assist_context>\n\(vaultContext)\n</field_assist_context>"
         }
         closeBlock("field assist: vault, job and manual passages")
@@ -1350,7 +1367,7 @@ class LLMService: ObservableObject {
         } else if isOnDevice {
             fullPrompt = await Self.leanOnDevicePrompt(
                 locationContext: locationContext, memoryContext: memoryContext,
-                hasImage: imageData != nil, turn: text, device: device)
+                hasImage: imageData != nil, turn: text, device: device, localModelID: modelConfig.model)
         } else if smallContext {
             fullPrompt = Self.leanCloudPrompt(hasImage: imageData != nil, memoryContext: memoryContext,
                                               device: device)
@@ -1750,6 +1767,28 @@ class LLMService: ObservableObject {
         let manualTools: Set<String> = libraryHasManuals ? ["manual_lookup", "table_lookup", "manual_figure", "show_source"] : []
         let local = registered.filter { localSafeTools.contains($0) || manualTools.contains($0) }
         return offlineHandoff ? OfflineToolPolicy.offlineNames(local) : local
+    }
+
+    /// Plan MQ P1: how the open job reaches a downloaded model's prompt (`LocalJobContext`).
+    struct LocalJobTier: Equatable {
+        /// The turn will offer the Field Assist tools, so the manuals line names them.
+        let fieldToolsOffered: Bool
+        /// `LocalModelBudget.jobContextBudget(for:)`.
+        let budgetTokens: Int
+
+        init(modelID: String, fieldToolsOffered: Bool) {
+            self.fieldToolsOffered = fieldToolsOffered
+            self.budgetTokens = LocalModelBudget.jobContextBudget(for: modelID)
+        }
+    }
+
+    /// Whether this turn offers a downloaded model the Field Assist tools: Field Assist on, and the
+    /// model qualified by evidence or, with `Config.localNativeToolCallsEnabled`, on the allowlist
+    /// and under qualification (`LocalNativeToolPolicy`).
+    static func localFieldToolsOffered(modelID: String, runtime: LocalModelRuntime) -> Bool {
+        Config.fieldAssistActive && LocalNativeToolPolicy.offersFieldAssistTools(
+            modelID: modelID, runtime: runtime, flagOn: Config.localNativeToolCallsEnabled,
+            qualified: LocalModelCatalog.qualifiesForFieldAssistTools(LocalModelID(modelID)))
     }
 
     // MARK: - Per-minute allowance (Plan KL P1)
@@ -6395,7 +6434,8 @@ class LLMService: ObservableObject {
                                            weatherContext: weatherContext, device: device)
                 : await Self.leanOnDevicePrompt(
                     locationContext: locationContext, memoryContext: memoryContext,
-                    hasImage: false, turn: text, weatherContext: weatherContext, device: device)
+                    hasImage: false, turn: text, weatherContext: weatherContext, device: device,
+                    localModelID: localConfig.model)
             PrivacyLog.model(.agentSelected, model: PrivacyToken(localConfig.model),
                              detail: PrivacyToken("medicalLocalOnly"))
             switch localConfig.llmProvider {
@@ -6419,7 +6459,7 @@ class LLMService: ObservableObject {
         }
         let leanPrompt = await Self.leanOnDevicePrompt(
             locationContext: locationContext, memoryContext: memoryContext, hasImage: false, turn: text,
-            weatherContext: weatherContext, device: device)
+            weatherContext: weatherContext, device: device, localModelID: agentModelId)
         if !localService.isModelLoaded || localService.loadedModelId != agentModelId {
             try await localService.loadModel(agentModelId)
         }

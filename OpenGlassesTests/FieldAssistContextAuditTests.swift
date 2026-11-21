@@ -76,9 +76,20 @@ final class FieldAssistContextAuditTests: XCTestCase {
         return dir
     }
 
+    /// `<field_assist_context>` and its newlines.
+    private static let wrapperTokens = 12
+    /// What must be left for three exchanges of history and the turn itself.
+    private static let historyAndTurnFloor = 400
+
+    private static func blockTokens(_ context: String) -> Int {
+        HandoffTranscriptBridge.estimatedTokens("\n\n<field_assist_context>\n\(context)\n</field_assist_context>")
+    }
+
     private struct Measurement {
         let state: String
         let tokens: Int
+        /// The compact tier (Plan MQ P1) in the same state, before it is fitted to a model.
+        let compactTokens: Int
     }
 
     func testTheJobContextAgainstEveryCatalogWindow() async throws {
@@ -96,8 +107,11 @@ final class FieldAssistContextAuditTests: XCTestCase {
 
         func measure(_ state: String, turn: String? = nil) throws -> Measurement {
             let context = try XCTUnwrap(service.promptContext(turn: turn), state)
-            let block = "\n\n<field_assist_context>\n\(context)\n</field_assist_context>"
-            return Measurement(state: state, tokens: HandoffTranscriptBridge.estimatedTokens(block))
+            let compact = try XCTUnwrap(service.localPromptContext(turn: turn, fieldToolsOffered: true,
+                                                                   budgetTokens: .max,
+                                                                   modelSettingsPath: "Settings > Assistant"), state)
+            return Measurement(state: state, tokens: Self.blockTokens(context),
+                               compactTokens: Self.blockTokens(compact))
         }
 
         var measurements: [Measurement] = []
@@ -130,7 +144,7 @@ final class FieldAssistContextAuditTests: XCTestCase {
         // Counts only: state, tokens, and each model's window and prompt budget.
         print("field-assist-context audit (estimated tokens, 4 characters a token)")
         for measurement in measurements {
-            print("  \(measurement.state): \(measurement.tokens)")
+            print("  \(measurement.state): \(measurement.tokens) (compact tier \(measurement.compactTokens))")
         }
         for entry in LocalModelCatalog.entries {
             let id = entry.id.rawValue
@@ -138,6 +152,34 @@ final class FieldAssistContextAuditTests: XCTestCase {
             let budget = LocalModelBudget.promptBudget(for: id)
             let shares = measurements.map { "\(Int((Double($0.tokens) / Double(budget) * 100).rounded()))%" }
             print("  \(entry.descriptor.displayName): window \(window), prompt budget \(budget), shares \(shares.joined(separator: " / "))")
+        }
+
+        // Plan MQ P1: the compact tier a downloaded model gets instead, fitted per model, beside the
+        // rest of the lean prompt, the tools' quarter and room for the conversation and the turn.
+        let turn = "what's the high fire manifold pressure on natural gas"
+        let unfitted = try XCTUnwrap(service.localPromptContext(turn: turn, fieldToolsOffered: true,
+                                                                budgetTokens: .max, modelSettingsPath: "Settings > Assistant"))
+        print("  compact tier, unfitted (all states above): \(Self.blockTokens(unfitted))")
+        for entry in LocalModelCatalog.entries {
+            let id = entry.id.rawValue
+            let budget = LocalModelBudget.promptBudget(for: id)
+            let jobBudget = LocalModelBudget.jobContextBudget(for: id)
+            let tier = try XCTUnwrap(service.localPromptContext(turn: turn, fieldToolsOffered: true,
+                                                                budgetTokens: jobBudget,
+                                                                modelSettingsPath: "Settings > Assistant"))
+            let tierTokens = Self.blockTokens(tier)
+            let base = HandoffTranscriptBridge.estimatedTokens(await LLMService.leanOnDevicePrompt(
+                locationContext: "Auckland, New Zealand", memoryContext: nil, hasImage: false, turn: turn,
+                localModelID: id))
+            let tools = LocalModelBudget.toolDefinitionBudget(for: id)
+            let left = budget - base - tierTokens - tools
+            print("  \(entry.descriptor.displayName): compact tier \(tierTokens) of \(jobBudget); lean prompt \(base); tools \(tools); left for history and the turn \(left)")
+            XCTAssertLessThanOrEqual(tierTokens, jobBudget + Self.wrapperTokens, "\(id): the tier is fitted to its budget")
+            XCTAssertTrue(tier.contains("Never fabricate"), "\(id): the vault's rules stay")
+            XCTAssertTrue(tier.contains("MANUALS:"), "\(id): the manuals line stays")
+            XCTAssertFalse(tier.contains("=== service_values.md ==="), "\(id): no core file rides along")
+            XCTAssertGreaterThanOrEqual(left, Self.historyAndTurnFloor,
+                                        "\(id): the lean prompt, the tier and the tools leave room for the conversation")
         }
 
         XCTAssertTrue(procedureStarted, "the Lennox no-ignition procedure should start")

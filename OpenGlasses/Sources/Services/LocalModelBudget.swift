@@ -96,6 +96,17 @@ enum LocalModelBudget {
         promptBudget(for: modelId) / toolDefinitionShare
     }
 
+    /// The share of the prompt budget the open job's context may take on a downloaded model
+    /// (Plan MQ P1, `LocalJobContext`): a quarter, beside the tools' quarter, so the lean prompt,
+    /// the conversation and the turn keep half. The full `<field_assist_context>` of the Lennox
+    /// example vault is more than twice a 4,096 window's whole budget; this is what replaces it.
+    static let jobContextShare = 4
+
+    /// Tokens the compact job context may use on this model.
+    static func jobContextBudget(for modelId: String?) -> Int {
+        promptBudget(for: modelId) / jobContextShare
+    }
+
     // MARK: - Backend-aware load admission (Plan DZ P0 item 6)
 
     /// Why a load is allowed but constrained.
