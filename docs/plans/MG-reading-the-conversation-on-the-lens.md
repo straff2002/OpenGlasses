@@ -267,7 +267,10 @@ Display gives the drag rate this needs:
 - **Drag is out.** The band sent drags only as bursts of 40–140 ms with 2–5 moves, and a pinch is
   preceded by one of those bursts about 300 ms before its `select`. A drag-driven pan would move the
   page on every press, and a burst is too short to pan with. Unless a later run shows a long drag,
-  `drag` stays unmapped.
+  `drag` stays unmapped. Since 2026-11-21 the probe also reports each drag's travel (distance and
+  net change per axis, from `dx`/`dy`; JV P2), so the next run's deliberate slow drag across the
+  lens settles it: a long drag with real travel reopens drag-to-pan, a pinch's burst with almost
+  none confirms it as noise.
 - **`nav` is the candidate.** Each swipe arrived as one `nav` event in all four directions, with none
   lost or doubled. `nav(.left/.right)` stepping the page view stays the proposal, and
   `nav(.up/.down)` could step the reading view's rows.

@@ -11,12 +11,19 @@ struct InputsChannelHandlers: Sendable {
     var onFailure: @MainActor @Sendable (InputsProbeFailure) -> Void
     /// The session under the capability stopped.
     var onEnded: @MainActor @Sendable () -> Void
+    /// The capability's event stream finished (taken off, or a terminal error): nothing more will
+    /// arrive on it.
+    var onInputsEnded: @MainActor @Sendable () -> Void
 }
 
 /// The glasses' touch inputs, added on the shared session for one device.
 @MainActor
 protocol InputsChannel: AnyObject {
-    /// Removes the capability and hands the session back. Idempotent.
+    /// The capability's state now. Adding Inputs only begins activation, and the state publisher
+    /// does not replay, so the probe reads this once the channel is open in case `.active` came
+    /// before its listener.
+    var state: InputsProbeState { get }
+    /// Cancels the event task, removes the capability and hands the session back. Idempotent.
     func stop()
 }
 

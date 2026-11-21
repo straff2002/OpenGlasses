@@ -160,6 +160,41 @@ final class InputsProbeLedgerTests: XCTestCase {
             lines.joined(separator: "\n"))
     }
 
+    /// A drag's moves say how far they went: the distance along each axis and the net change, so
+    /// the report tells a real drag from a pinch's twitch. Never a position.
+    func testDragMovesReportHowFarTheyWent() throws {
+        let ledger = ledger()
+        ledger.begin(battery: nil)
+        func drag(_ phase: GlassesInputKind.DragPhase, _ dx: Double, _ dy: Double) {
+            ledger.recordInput(GlassesInput(kind: .drag(phase), origin: .neuralBandDrag,
+                                            delta: GlassesDragDelta(dx: dx, dy: dy)),
+                               userAudioPlaying: false)
+        }
+        drag(.down, 0, 0)
+        advance(30)
+        drag(.move, 10, -2)
+        advance(30)
+        drag(.move, 6, 1.5)
+        advance(30)
+        drag(.move, -4, 0)
+        advance(30)
+        drag(.up, 1, 0)
+        let run = try XCTUnwrap(ledger.current)
+        guard case .moves(_, 3, _, _, _, let travel?) = run.entries[1] else {
+            return XCTFail("the three moves are one entry with travel: \(run.entries)")
+        }
+        XCTAssertEqual(travel, {
+            var expected = GlassesDragTravel()
+            expected.distanceX = 20; expected.distanceY = 3.5; expected.netX = 12; expected.netY = -0.5
+            return expected
+        }())
+        XCTAssertEqual(run.entries.map(InputsProbeLedger.describe), [
+            "+0 ms · drag-down (neuralBandDrag)",
+            "+30 ms · drag-move 3 times over 60 ms (neuralBandDrag), travel x 20.0 y 3.5, net x +12.0 y -0.5",
+            "+120 ms · drag-up (neuralBandDrag), travel x 1.0 y 0.0, net x +1.0 y +0.0",
+        ])
+    }
+
     /// Moves are joined only when nothing came between them from another source or kind.
     func testMovesAreJoinedOnlyInAnUnbrokenRun() throws {
         let ledger = ledger()
@@ -177,7 +212,7 @@ final class InputsProbeLedgerTests: XCTestCase {
         let shapes: [String] = run.entries.map {
             switch $0 {
             case .input(let input, _, _): return input.kind.reportToken
-            case .moves(let origin, let count, _, _, _): return "moves \(origin.rawValue) \(count)"
+            case .moves(let origin, let count, _, _, _, _): return "moves \(origin.rawValue) \(count)"
             case .state(let state, _): return "state \(state.rawValue)"
             case .error(let failure, _): return "error \(failure.rawValue)"
             }
