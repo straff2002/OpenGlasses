@@ -313,6 +313,13 @@ final class CameraRetryDispositionTests: XCTestCase {
         }
     }
 
+    /// DAT 1.1.0: a session refused because the app isn't registered (or was just unregistered)
+    /// never starts by waiting, so the ladder stops and asks for a connect.
+    func testAnUnregisteredAppIsNotRetried() {
+        XCTAssertEqual(CameraErrorPolicy.retryDisposition(for: DeviceSessionError.notRegistered),
+                       .stopRetrying(notice: String(localized: "Connect your glasses first.")))
+    }
+
     /// A failed capture says nothing about the stream, and must not stop a reconnect that is about
     /// something else. Same for the session errors that are windows closing.
     func testFailuresThatSayNothingAboutTheStreamDoNotStopTheLadder() {

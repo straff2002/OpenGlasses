@@ -160,6 +160,11 @@ enum CameraErrorPolicy {
                                  ?? error.localizedDescription)
         case .thermalCritical, .thermalEmergency, .peakPowerShutdown, .batteryCritical:
             return .stopRetrying(notice: deviceConditionNotice)
+        case .notRegistered:
+            // DAT 1.1.0: `createSession` refuses an app Meta AI has not registered (or has just
+            // unregistered, which now also stops every session). Waiting changes nothing; only
+            // connecting again in the app does.
+            return .stopRetrying(notice: String(localized: "Connect your glasses first."))
         case .dwaOutOfStuRange:
             // DAT 1.0: a nonblocking compatibility warning, not a failure — the session carries
             // on. Nothing to retry, and certainly nothing to stop for.
