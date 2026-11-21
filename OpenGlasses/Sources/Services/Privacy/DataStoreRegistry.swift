@@ -597,7 +597,9 @@ enum SensitiveStore: String, CaseIterable {
             // subject erasure (a session mentioning the subject goes whole), first-unlock (captions
             // can stop with the phone locked), out of backup, and read by nothing but its own list
             // and transcript. Written only while the switch is on (off by default) and never in
-            // Medical Compliance mode; each session goes seven days after it began.
+            // Medical Compliance mode; each session goes seven days after it began. The session in
+            // progress is checkpointed beside them under the same rules (one file, replaced every
+            // 30 s), so a crash keeps what was said; the next launch keeps or deletes it.
             return Record(store: self, dataClass: .conversationContent, subjectLinkage: .thirdPartySubject,
                           protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
                           retention: .policy("\(CaptionSessionStore.retentionDays) days from when each "
@@ -607,7 +609,8 @@ enum SensitiveStore: String, CaseIterable {
                           deleteSubject: .api("CaptionSessionStore.deleteMatching(_:)"),
                           owner: "CaptionSessionStore",
                           ownerPaths: ["OpenGlasses/Sources/Services/CaptionSessions/CaptionSessionStore.swift"],
-                          location: "Application Support/CaptionSessions/caption-session-{began}.json")
+                          location: "Application Support/CaptionSessions/caption-session-{began}.json, "
+                              + "plus caption-checkpoint.json while a kept session runs")
 
         case .instantReplayBuffer:
             // The last minute (by default) of what the glasses camera showed, as two-second

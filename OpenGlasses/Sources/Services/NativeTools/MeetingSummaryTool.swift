@@ -39,9 +39,19 @@ struct MeetingSummaryTool: NativeTool {
             return MeetingSummaryOutput(text: "Ambient caption service not available.", facts: nil)
         }
 
-        let history = await MainActor.run { service.captionHistory }
+        // The whole session's transcript, oldest first (not the screen's capped history), with each
+        // diarized line named as the registry names it now, and the model's window for the budget.
+        let snapshot = await MainActor.run { () -> (transcript: MeetingTranscriptBuffer, labeled: [String], budget: Int) in
+            let transcript = service.meetingTranscript
+            let registry = service.speakerRegistry
+            let labeled = transcript.lines.map { line in
+                line.speaker.map { "\(registry.displayLabel(for: $0)): \(line.text)" } ?? line.text
+            }
+            return (transcript, labeled, Self.excerptBudget())
+        }
+        let lines = snapshot.transcript.lines
 
-        guard !history.isEmpty else {
+        guard !lines.isEmpty else {
             return MeetingSummaryOutput(
                 text: "No conversation transcript available. Start ambient captions first, then have a conversation. I'll be able to summarize it afterward.",
                 facts: nil)
@@ -50,18 +60,11 @@ struct MeetingSummaryTool: NativeTool {
         let mode = (args["mode"] as? String)?.lowercased() ?? "full"
         let shouldSave = args["save"] as? Bool ?? true
 
-        // Build transcript from caption history (most recent first, so reverse)
-        let entries = history.reversed()
-        let transcript = entries.map { entry in
-            let time = formatTime(entry.timestamp)
-            return "[\(time)] \(entry.text)"
-        }.joined(separator: "\n")
+        let duration = Self.duration(of: lines.map(\.timestamp))
+        let wordCount = lines.reduce(0) { $0 + $1.text.split(separator: " ").count }
 
-        let duration = calculateDuration(entries: Array(entries))
-        let wordCount = entries.reduce(0) { $0 + $1.text.split(separator: " ").count }
-
-        // Extract key information locally
-        let facts = Self.facts(from: entries.map { (text: $0.text, timestamp: $0.timestamp) },
+        // Extract key information locally, over the whole meeting
+        let facts = Self.facts(from: lines.map { (text: $0.text, timestamp: $0.timestamp) },
                                savedAt: now)
         // Held in memory for the My Day cards' meeting follow-up (Plan KT P1); never written down.
         if let facts { LatestMeetingSummary.shared.record(facts) }
@@ -74,7 +77,7 @@ struct MeetingSummaryTool: NativeTool {
         switch mode {
         case "brief":
             summary = buildBriefSummary(
-                entryCount: entries.count,
+                entryCount: lines.count,
                 duration: duration,
                 wordCount: wordCount,
                 topics: topics
@@ -88,9 +91,15 @@ struct MeetingSummaryTool: NativeTool {
             }
 
         default: // "full"
+            let pinned = MeetingTranscriptExcerpt.pinnedIndices(
+                texts: lines.map(\.text), actionItems: actionItems, decisions: decisions)
+            let excerpt = MeetingTranscriptExcerpt.make(
+                lines: zip(snapshot.labeled, lines).map { .init(text: $0, timestamp: $1.timestamp) },
+                pinned: pinned, budget: snapshot.budget)
             summary = buildFullSummary(
-                transcript: transcript,
-                entryCount: entries.count,
+                excerpt: excerpt,
+                droppedLines: snapshot.transcript.dropped,
+                entryCount: lines.count,
                 duration: duration,
                 wordCount: wordCount,
                 topics: topics,
@@ -135,13 +144,17 @@ struct MeetingSummaryTool: NativeTool {
         return parts.joined(separator: " ")
     }
 
-    private func buildFullSummary(transcript: String, entryCount: Int, duration: String,
+    private func buildFullSummary(excerpt: MeetingTranscriptExcerpt, droppedLines: Int,
+                                   entryCount: Int, duration: String,
                                    wordCount: Int, topics: [String], actionItems: [String],
                                    decisions: [String]) -> String {
         var parts: [String] = []
 
         parts.append("MEETING SUMMARY")
         parts.append("Duration: \(duration) | Segments: \(entryCount) | Words: ~\(wordCount)")
+        if droppedLines > 0 {
+            parts.append("(This session ran past what is held in memory: its first \(MeetingTranscriptExcerpt.grouped(droppedLines)) lines are no longer available, so everything here starts after them.)")
+        }
         parts.append("")
 
         if !topics.isEmpty {
@@ -161,9 +174,8 @@ struct MeetingSummaryTool: NativeTool {
         }
 
         parts.append("")
-        parts.append("TRANSCRIPT (last \(min(entryCount, 20)) segments):")
-        let recentTranscript = transcript.split(separator: "\n").suffix(20).joined(separator: "\n")
-        parts.append(recentTranscript)
+        parts.append(excerpt.header)
+        parts.append(excerpt.text)
 
         return parts.joined(separator: "\n")
     }
@@ -254,14 +266,24 @@ struct MeetingSummaryTool: NativeTool {
 
     // MARK: - Helpers
 
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
+    /// The excerpt's character budget, from the active model's context window where the app
+    /// knows it (`ModelContextWindow`), else the conservative budget that fits a 4k model.
+    @MainActor
+    static func excerptBudget() -> Int {
+        guard let config = Config.activeModel else {
+            return MeetingTranscriptExcerpt.characterBudget(contextTokens: nil)
+        }
+        let catalogContext = config.llmProvider == .chatgpt
+            ? ChatGPTContextCatalog.context(model: config.model, accountID: ChatGPTOAuthService.shared.accountID)
+            : nil
+        let window = ModelContextWindow.resolve(provider: config.llmProvider, model: config.model,
+                                                baseURL: config.baseURL, chatGPTCatalogContext: catalogContext)
+        return MeetingTranscriptExcerpt.characterBudget(contextTokens: window?.tokens)
     }
 
-    private func calculateDuration(entries: [AmbientCaptionService.CaptionEntry]) -> String {
-        guard let first = entries.first?.timestamp, let last = entries.last?.timestamp else {
+    /// From the first line to the last, in words.
+    nonisolated static func duration(of timestamps: [Date]) -> String {
+        guard let first = timestamps.min(), let last = timestamps.max() else {
             return "unknown"
         }
         let seconds = Int(last.timeIntervalSince(first))

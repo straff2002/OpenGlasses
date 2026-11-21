@@ -1,8 +1,13 @@
 import Foundation
 import Combine
 
-/// Listens to live captions during a meeting, periodically sends the transcript to an LLM,
-/// and posts lock screen notifications with a running summary and suggested follow-up questions.
+/// Listens to live captions during a meeting, periodically asks an LLM for a running summary,
+/// and posts lock screen notifications with it and suggested follow-up questions.
+///
+/// Each round sends the previous round's summary and the lines said since it (newest kept when
+/// there are too many), never the whole transcript, so the prompt stays the same size however
+/// long the meeting runs (`MeetingAnalysisWindow`). The first round, with no summary yet, asks
+/// exactly what it always did.
 ///
 /// Plan MO §2: the prompt and the delivery sit behind a `MeetingAnalysisSink`. A recording's
 /// assistant (`start(captionService:llm:)`) uses `MeetingNotificationSink`, which asks and posts
@@ -21,11 +26,9 @@ class MeetingAssistantService: ObservableObject {
     /// Combine subscription to caption history.
     private var captionSubscription: AnyCancellable?
 
-    /// All caption text seen since the session started (ordered oldest → newest).
-    private var fullTranscript: [String] = []
-
-    /// Caption text accumulated since the last analysis round.
-    private var bufferText: String = ""
+    /// What the next round sends: the previous summary, the lines since it, and a short tail of
+    /// what came before them. Bounded, unlike the unbounded transcript this replaced.
+    private(set) var window = MeetingAnalysisWindow()
 
     /// Position in the caption stream. Sequence-based, because `captionHistory` is capped and
     /// stops growing once full.
@@ -84,8 +87,7 @@ class MeetingAssistantService: ObservableObject {
         self.llm = llm
         self.sink = sink
         self.registry = registry
-        fullTranscript = []
-        bufferText = ""
+        window = MeetingAnalysisWindow()
         cursor = CaptionCursor()
         isAnalysing = false
         lastSummary = ""
@@ -132,14 +134,11 @@ class MeetingAssistantService: ObservableObject {
         guard isActive, !newEntries.isEmpty else { return }
 
         for entry in newEntries {
-            let line = Self.transcriptLine(for: entry, registry: registry)
-            fullTranscript.append(line)
-            bufferText += (bufferText.isEmpty ? "" : " ") + line
+            window.append(Self.transcriptLine(for: entry, registry: registry))
         }
 
         // Trigger early if the buffer already has ≥ 100 words.
-        let wordCount = bufferText.split(whereSeparator: \.isWhitespace).count
-        if wordCount >= 100, !isAnalysing {
+        if window.pendingWordCount >= 100, !isAnalysing {
             analysisTask = Task { await analyseIfNeeded(force: false) }
         }
     }
@@ -156,25 +155,23 @@ class MeetingAssistantService: ObservableObject {
 
     /// Run an LLM analysis unless one is already in progress.
     /// - Parameter force: When `true`, run even if the buffer has very few words.
+    ///
+    /// Nothing new since the last round, nothing asked: the old loop re-sent the whole transcript
+    /// every 60 s whether anyone had spoken or not.
     private func analyseIfNeeded(force: Bool) async {
         guard isActive, !isAnalysing else { return }
-        guard force || bufferText.split(whereSeparator: \.isWhitespace).count >= 100 else { return }
-        guard !fullTranscript.isEmpty else { return }
-        guard let llm else { return }
+        guard force || window.pendingWordCount >= 100 else { return }
+        guard let llm, let sink, let round = window.nextRound() else { return }
 
         isAnalysing = true
         defer { isAnalysing = false }
 
-        guard let sink else { return }
-        // Snapshot and clear the buffer.
-        let recent = bufferText
-        bufferText = ""
-
-        let transcript = fullTranscript.joined(separator: "\n")
-        let prompt = sink.prompt(transcript: transcript, recent: recent)
+        let prompt = sink.prompt(for: round)
 
         do {
             let response = try await llm(prompt)
+            // The lines this round covered become the past; the reply is the next round's summary.
+            window.complete(round, reply: response)
             lastSummary = response
             sink.deliver(response)
             PrivacyLog.speech(.meetingNotes, .analysisCompleted, characters: response.count)

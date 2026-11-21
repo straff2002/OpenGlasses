@@ -46,6 +46,15 @@ class AmbientCaptionService: ObservableObject {
     /// `Config.isDiarizationConfigured`. Nil on the default (unlabeled) path.
     private var diarizer: DeepgramSTTService?
 
+    /// Long-form on-device recogniser (iOS 26 `SpeechAnalyzer`) for the plain path, when
+    /// `CaptionEnginePolicy` picks it. One per recognition session; it never restarts itself.
+    private var analyzerEngine: SpeechAnalyzerCaptionEngine?
+
+    /// Set when the analyzer could not run in this captions session (unsupported locale, model
+    /// not installed, a start or stream error): the plain path stays on `SFSpeechRecognizer`
+    /// until captions stop. Cleared by `start()`.
+    private var analyzerFellBack = false
+
     /// Translated-caption provider, cloud tier (BY P2). Nil unless the session picked it.
     private var translator: GeminiTranslationProvider?
 
@@ -106,14 +115,28 @@ class AmbientCaptionService: ObservableObject {
     /// while **Keep caption sessions** is on and never in Medical Compliance mode.
     var onSessionEnded: ((CaptionSession) -> Void)?
 
-    /// Whether sessions are being kept. Read at every final caption, so nothing beyond the capped
-    /// history is held in memory while the switch is off, and a switch turned on mid-session keeps
-    /// what follows. False in Medical Compliance mode.
+    /// Whether sessions are being kept. Read at every final caption, so no session is collected for
+    /// the disk while the switch is off (the in-memory `meetingTranscript` is not a kept session),
+    /// and a switch turned on mid-session keeps what follows. False in Medical Compliance mode.
     var keepsSessions: () -> Bool = { Config.keepCaptionSessions }
 
     /// The session being collected, while sessions are kept. A presence suspension is not a stop,
     /// so it carries on through one.
     private var sessionRecorder: CaptionSessionRecorder?
+
+    /// Called with the session so far every `checkpointInterval`, when the app goes away and when
+    /// the mode changes, so a crash or a kill keeps what was said; with nil when a checkpoint
+    /// written earlier must go (the switch went off, Medical Compliance mode came on, or the
+    /// session ended with nothing to keep). AppState hands it to `CaptionSessionStore`, which
+    /// writes only under the same switch and never in Medical Compliance mode. Never called while
+    /// sessions are not kept, unless to remove a checkpoint this service caused.
+    var onSessionCheckpoint: ((CaptionSession?) -> Void)?
+
+    static let checkpointInterval: TimeInterval = 30
+
+    private var checkpointTask: Task<Void, Never>?
+    /// What the last checkpoint held, for `CaptionCheckpointPolicy`.
+    private var checkpointState = CaptionCheckpointPolicy.State()
 
     /// Reference to the wake word service for audio buffer forwarding
     weak var wakeWordService: WakeWordService?
@@ -152,6 +175,13 @@ class AmbientCaptionService: ObservableObject {
     /// Max history entries to keep
     private let maxHistory = 50
 
+    /// Every final caption of this session, oldest first: what a meeting summary reads, so it
+    /// covers the whole meeting and not just the last `maxHistory` lines (`MeetingTranscriptBuffer`).
+    /// Memory only, like `captionHistory`: never written down, logged or kept past the process.
+    /// Emptied when captions start and by `clearHistory()`; kept through `stop()`, because the
+    /// summary is usually asked for after captions stop.
+    private(set) var meetingTranscript = MeetingTranscriptBuffer()
+
     /// Ever-increasing caption id. Never reset — a consumer holding an older `seq` must not have
     /// it silently reused, or it would stop seeing new captions.
     private var nextSeq: UInt64 = 0
@@ -187,7 +217,11 @@ class AmbientCaptionService: ObservableObject {
 
         isActive = true
         currentCaption = ""
+        analyzerFellBack = false
+        meetingTranscript.removeAll()
         sessionRecorder = keepsSessions() ? CaptionSessionRecorder(startedAt: Date()) : nil
+        checkpointState = CaptionCheckpointPolicy.State()
+        startCheckpointing()
         startRecognitionSession()
         syncTranscribing()
         PrivacyLog.speech(.ambientCaptions, .started)
@@ -206,12 +240,57 @@ class AmbientCaptionService: ObservableObject {
     }
 
     /// Hand the finished session on, with each diarised line named as the registry names it now.
+    /// Keeping it replaces its checkpoint; with nothing to keep, a checkpoint this session wrote
+    /// is removed.
     private func endSession() {
-        guard let recorder = sessionRecorder else { return }
+        checkpointTask?.cancel()
+        checkpointTask = nil
+        let wroteCheckpoint = checkpointState.onDisk
+        checkpointState = CaptionCheckpointPolicy.State()
+        let recorder = sessionRecorder
         sessionRecorder = nil
         let registry = speakerRegistry
-        if let session = recorder.finish(at: Date(), speakerLabel: { registry.displayLabel(for: $0) }) {
+        if let session = recorder?.finish(at: Date(), speakerLabel: { registry.displayLabel(for: $0) }) {
             onSessionEnded?(session)
+        } else if wroteCheckpoint {
+            onSessionCheckpoint?(nil)
+        }
+    }
+
+    // MARK: - Checkpoint
+
+    private func startCheckpointing() {
+        checkpointTask?.cancel()
+        checkpointTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.checkpointInterval * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                self.checkpointSession()
+            }
+        }
+    }
+
+    /// Write the session so far, if sessions are kept and something new was said since the last
+    /// checkpoint; remove the last checkpoint if sessions are no longer kept. Called on the
+    /// interval, when the app goes to the background, on a presence suspension and on a mode
+    /// change. A no-op when captions are not running a session.
+    func checkpointSession() {
+        let keeps = keepsSessions()
+        if !keeps { sessionRecorder = nil }
+        let action = CaptionCheckpointPolicy.action(
+            keepsSessions: keeps, turns: sessionRecorder?.pending.count ?? 0, state: checkpointState)
+        switch action {
+        case .none:
+            return
+        case .clear:
+            checkpointState = CaptionCheckpointPolicy.State()
+            onSessionCheckpoint?(nil)
+        case .write(let turns):
+            guard let recorder = sessionRecorder, let last = recorder.pending.last else { return }
+            let registry = speakerRegistry
+            let session = recorder.finish(at: last.at, speakerLabel: { registry.displayLabel(for: $0) })
+            checkpointState = CaptionCheckpointPolicy.State(turns: turns, onDisk: true)
+            onSessionCheckpoint?(session)
         }
     }
 
@@ -226,6 +305,8 @@ class AmbientCaptionService: ObservableObject {
         glassesDisplay?.clear()
         syncTranscribing()
         PrivacyLog.speech(.ambientCaptions, .suspended, detail: PrivacyToken("presenceAway"))
+        // Away is when an app is most likely to be killed: keep what was said so far.
+        checkpointSession()
     }
 
     /// Resume a presence-suspended caption stream when the user returns. No-op otherwise.
@@ -253,6 +334,8 @@ class AmbientCaptionService: ObservableObject {
     /// closes deterministically instead of waiting for the next audio buffer. No-op when inactive
     /// or presence-suspended (the suspend path already picks the right backend on resume).
     func reconfigureForModeChange() {
+        // Medical Compliance mode turning on takes the checkpoint with it, at once.
+        if isActive { checkpointSession() }
         guard isActive, !presenceSuspended else { return }
         stopRecognitionSession()
         startRecognitionSession()
@@ -261,6 +344,7 @@ class AmbientCaptionService: ObservableObject {
 
     func clearHistory() {
         captionHistory.removeAll()
+        meetingTranscript.removeAll()
     }
 
     // MARK: - Recognition Session
@@ -288,6 +372,20 @@ class AmbientCaptionService: ObservableObject {
             return
         }
 
+        // Plain captions: iOS 26's long-form recogniser when the locale's model is here
+        // (`CaptionEnginePolicy`), which hears a meeting end to end with no restarts; otherwise,
+        // and after any failure of it this session, `SFSpeechRecognizer` below.
+        if CaptionEnginePolicy.shouldTry(enabled: Config.captionSpeechAnalyzerEnabled,
+                                         fellBackThisSession: analyzerFellBack) {
+            startAnalyzerSession()
+            return
+        }
+
+        startSpeechRecognizerSession()
+    }
+
+    /// The plain path on `SFSpeechRecognizer`: restarts itself after each final result and error.
+    private func startSpeechRecognizerSession() {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
@@ -360,6 +458,66 @@ class AmbientCaptionService: ObservableObject {
                 }
             }
         }
+    }
+
+    /// The plain path on `SpeechAnalyzer`, fed by the same shared-engine buffer fan-out and the
+    /// same assistant-voice gate as every caption path (no second mic session). The engine checks
+    /// the locale and its model first; if it cannot run, or fails at any point, this session falls
+    /// back to `SFSpeechRecognizer` (and a supported locale's model is asked for in the background,
+    /// for the next session). Device-pending; the policy and the result mapping are unit-tested.
+    ///
+    /// Compaction (`Config.captionCompactionEnabled`) is deliberately not applied here, and neither
+    /// is the silence timer. Both exist for `SFSpeechRecognizer`, whose "final" is often a premature
+    /// endpoint (the compactor and debouncer join those back into one caption) and which can leave a
+    /// partial unfinalised in silence (the timer commits it). The analyzer's finals are its own
+    /// settled segments and it finalises after silence itself: holding each final for the debounce
+    /// would only delay it and merge separate segments into one entry, and committing a volatile
+    /// line from a timer would commit it twice once the analyzer finalised it.
+    private func startAnalyzerSession() {
+        let engine = SpeechAnalyzerCaptionEngine()
+        let locale = SpeechLocaleResolver.current
+        engine.onEvent = { [weak self, weak engine] event in
+            guard let self, let engine, self.analyzerEngine === engine, self.isActive else { return }
+            switch event {
+            case .volatile(let text):
+                self.currentCaption = text
+                if !text.isEmpty { self.showOnLens(text) }
+            case .final(let text):
+                self.finalizeCaption(text)
+            }
+        }
+        engine.onUnavailable = { [weak self, weak engine] availability in
+            guard let self, let engine, self.analyzerEngine === engine else { return }
+            let decision = CaptionEnginePolicy.decide(enabled: true, fellBackThisSession: false,
+                                                      availability: availability)
+            if decision == .sfSpeech(installAssets: true) {
+                SpeechAnalyzerCaptionEngine.installAssetsInBackground(for: locale)
+            }
+            PrivacyLog.speech(.ambientCaptions, .engineSelected, language: PrivacyToken(locale.identifier),
+                              detail: PrivacyToken(availability == .unsupported ? "sfSpeech.unsupported"
+                                                                                 : "sfSpeech.notInstalled"))
+            self.fallBackFromAnalyzer()
+        }
+        engine.onFailure = { [weak self, weak engine] error in
+            guard let self, let engine, self.analyzerEngine === engine else { return }
+            PrivacyLog.speech(.ambientCaptions, .engineFailed, detail: PrivacyToken("speechAnalyzer"),
+                              error: SafeErrorSummary(error))
+            self.fallBackFromAnalyzer()
+        }
+        analyzerEngine = engine
+        let feed = engine.feed
+        addCaptionAudioConsumer { buffer in
+            feed.append(buffer)
+        }
+        engine.start(locale: locale, contextualStrings: sessionContextualStrings)
+    }
+
+    /// The analyzer cannot run, or stopped working: `SFSpeechRecognizer` for the rest of this
+    /// captions session. Restarting tears the analyzer down first, committing its live line.
+    private func fallBackFromAnalyzer() {
+        analyzerFellBack = true
+        guard isActive, !presenceSuspended else { return }
+        startRecognitionSession()
     }
 
     /// Translated captions (BY P2/P3), fed by the same shared-engine buffer fan-out (no second
@@ -506,7 +664,14 @@ class AmbientCaptionService: ObservableObject {
     }
 
     private func stopRecognitionSession() {
-        // Session teardown commits any pending caption rather than dropping it.
+        // Session teardown commits any pending caption rather than dropping it — the analyzer's
+        // live line too, since its stop does not wait for results still in flight.
+        if let engine = analyzerEngine {
+            analyzerEngine = nil
+            let pending = engine.volatileText
+            engine.stop()
+            if !pending.isEmpty { finalizeCaption(pending) }
+        }
         endpointCommitTask?.cancel()
         endpointCommitTask = nil
         if Config.captionCompactionEnabled {
@@ -548,6 +713,7 @@ class AmbientCaptionService: ObservableObject {
         let note = "[Visual: \(description)]"
         let entry = CaptionEntry(text: note, timestamp: Date(), seq: makeSeq())
         captionHistory.insert(entry, at: 0)
+        meetingTranscript.append(.init(text: entry.text, timestamp: entry.timestamp))
         if captionHistory.count > maxHistory {
             captionHistory = Array(captionHistory.prefix(maxHistory))
         }
@@ -595,6 +761,8 @@ class AmbientCaptionService: ObservableObject {
         let entry = CaptionEntry(text: trimmed, timestamp: Date(), seq: makeSeq(),
                                  speaker: speaker, original: original, language: language)
         captionHistory.insert(entry, at: 0)
+        meetingTranscript.append(.init(text: entry.text, timestamp: entry.timestamp, speaker: entry.speaker,
+                                       original: entry.original, language: entry.language))
         recordForSession(entry)
 
         // Trim history
@@ -634,5 +802,31 @@ class AmbientCaptionService: ObservableObject {
                 }
             }
         }
+    }
+}
+
+/// When the caption service writes, replaces or removes its in-progress checkpoint (pure).
+enum CaptionCheckpointPolicy {
+
+    /// What the last checkpoint this session wrote held.
+    struct State: Equatable {
+        var turns = 0
+        var onDisk = false
+    }
+
+    enum Action: Equatable {
+        case none
+        /// Write the session so far, `turns` lines long.
+        case write(turns: Int)
+        /// Remove the checkpoint written earlier.
+        case clear
+    }
+
+    /// Sessions not kept: remove a checkpoint this session wrote, otherwise touch nothing.
+    /// Kept: write when there are lines the last checkpoint did not have.
+    static func action(keepsSessions: Bool, turns: Int, state: State) -> Action {
+        guard keepsSessions else { return state.onDisk ? .clear : .none }
+        guard turns > 0, turns != state.turns else { return .none }
+        return .write(turns: turns)
     }
 }

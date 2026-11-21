@@ -17,6 +17,16 @@ import Combine
 /// whole). Nothing feeds a session to a model, to memory, to `BrainStore`, to search or to
 /// Spotlight; `CaptionSessionIsolationTests` scrapes the sources to hold that. It leaves the
 /// phone only through the share sheet, when the wearer presses Share.
+///
+/// **A checkpoint while one runs.** Under the same switch and the same Medical Compliance refusal,
+/// the session in progress is written every 30 seconds and when the app goes to the background,
+/// to one `caption-checkpoint.json` beside the kept sessions, replacing the last, with the same
+/// protection and backup exclusion. A session that ends is kept the ordinary way and its
+/// checkpoint goes. A checkpoint still there when the store opens is a session the app did not
+/// live to finish (killed or crashed): it is kept as a session ending at its last line, or
+/// deleted if the switch is now off, Medical Compliance mode is on, or it began seven days ago.
+/// Nothing reads it but this store; it is under the same folder, the same Delete all and the
+/// same subject erasure.
 @MainActor
 final class CaptionSessionStore: ObservableObject {
 
@@ -50,6 +60,7 @@ final class CaptionSessionStore: ObservableObject {
         self.isEnabled = isEnabled
         self.hipaaMode = hipaaMode
         pruneExpired()
+        recoverCheckpoint()
         reload()
     }
 
@@ -66,9 +77,17 @@ final class CaptionSessionStore: ObservableObject {
         case couldNotSave
     }
 
-    /// Write a session that has just stopped, if the wearer asked for sessions to be kept.
+    /// Write a session that has just stopped, if the wearer asked for sessions to be kept. Its
+    /// checkpoint goes either way, except when the write failed: then the checkpoint is what is
+    /// left, and the next launch keeps it.
     @discardableResult
     func keep(_ session: CaptionSession) -> KeepOutcome {
+        let outcome = write(session)
+        if outcome != .couldNotSave { removeCheckpoint() }
+        return outcome
+    }
+
+    private func write(_ session: CaptionSession) -> KeepOutcome {
         guard !hipaaMode() else { return .complianceMode }
         guard isEnabled() else { return .settingOff }
         guard !session.turns.isEmpty else { return .empty }
@@ -87,6 +106,74 @@ final class CaptionSessionStore: ObservableObject {
         reload()
         PrivacyLog.store(.captionSessions, .recordWritten, count: session.turns.count)
         return .kept
+    }
+
+    // MARK: - Checkpoint
+
+    nonisolated static let checkpointFileName = "caption-checkpoint.json"
+
+    private var checkpointURL: URL { directory.appendingPathComponent(Self.checkpointFileName) }
+
+    /// Whether a checkpoint is on disk now. For tests and the attribute-truth check.
+    var hasCheckpoint: Bool { FileManager.default.fileExists(atPath: checkpointURL.path) }
+
+    /// The session in progress, written over the last checkpoint, under the switch and never in
+    /// Medical Compliance mode. Nil, the switch off or the mode on: any checkpoint goes, and
+    /// nothing is written.
+    @discardableResult
+    func checkpoint(_ session: CaptionSession?) -> KeepOutcome {
+        guard !hipaaMode() else { removeCheckpoint(); return .complianceMode }
+        guard isEnabled() else { removeCheckpoint(); return .settingOff }
+        guard let session, !session.turns.isEmpty else { removeCheckpoint(); return .empty }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            protect(directory)
+            let data = try Self.encoder().encode(session)
+            try data.write(to: checkpointURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            protect(checkpointURL)
+        } catch {
+            PrivacyLog.store(.captionSessions, .saveFailed, detail: PrivacyToken("checkpoint"),
+                             error: SafeErrorSummary(error))
+            return .couldNotSave
+        }
+        return .kept
+    }
+
+    /// A checkpoint left by a session the app did not live to finish, kept as a session ending at
+    /// its last line (once, however many times the store opens). Deleted instead when the switch
+    /// is off, Medical Compliance mode is on, it began seven days ago, or it cannot be decoded.
+    /// Left alone only when it cannot be read yet (the phone has not been unlocked since it
+    /// started), for the next open.
+    @discardableResult
+    func recoverCheckpoint() -> KeepOutcome? {
+        guard hasCheckpoint else { return nil }
+        guard !hipaaMode() else { removeCheckpoint(); return .complianceMode }
+        guard isEnabled() else { removeCheckpoint(); return .settingOff }
+        guard let data = try? Data(contentsOf: checkpointURL) else { return nil }
+        guard let saved = try? Self.decoder().decode(CaptionSession.self, from: data),
+              let last = saved.turns.last else {
+            removeCheckpoint()
+            return .empty
+        }
+        let cutoff = now().addingTimeInterval(-Double(Self.retentionDays) * 86_400)
+        // Already kept (the app stopped between writing the session and removing its checkpoint),
+        // or too old to keep: the checkpoint simply goes.
+        if saved.startedAt <= cutoff || files().contains(where: { read($0)?.id == saved.id }) {
+            removeCheckpoint()
+            return .empty
+        }
+        let finished = CaptionSession(id: saved.id, startedAt: saved.startedAt,
+                                      endedAt: max(saved.startedAt, last.at), turns: saved.turns)
+        let outcome = keep(finished)
+        if outcome == .kept {
+            PrivacyLog.store(.captionSessions, .recovered, count: finished.turns.count)
+        }
+        return outcome
+    }
+
+    private func removeCheckpoint() {
+        guard hasCheckpoint else { return }
+        try? FileManager.default.removeItem(at: checkpointURL)
     }
 
     // MARK: - Removing
@@ -129,7 +216,7 @@ final class CaptionSessionStore: ObservableObject {
     @discardableResult
     func deleteMatching(_ token: String) -> Int {
         var removed = 0
-        for url in files() {
+        for url in files() + (hasCheckpoint ? [checkpointURL] : []) {
             guard let session = read(url), session.mentions(token) else { continue }
             if (try? FileManager.default.removeItem(at: url)) != nil { removed += 1 }
         }

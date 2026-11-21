@@ -283,4 +283,190 @@ final class CaptionSessionStoreTests: XCTestCase {
         XCTAssertEqual(try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
         XCTAssertEqual(try workspace.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
     }
+
+    // MARK: - Checkpoint (a session in progress survives a crash)
+
+    private var checkpointPath: String {
+        workspace.appendingPathComponent(CaptionSessionStore.checkpointFileName).path
+    }
+
+    func testACheckpointIsReplacedNotAddedAndIsNotListed() {
+        let store = makeStore()
+        let running = session(startedAt: clock.addingTimeInterval(-120), lines: ["first line"])
+        XCTAssertEqual(store.checkpoint(running), .kept)
+        let longer = CaptionSession(id: running.id, startedAt: running.startedAt, endedAt: clock,
+                                    turns: running.turns + [.init(at: clock, said: "second line")])
+        XCTAssertEqual(store.checkpoint(longer), .kept)
+        XCTAssertEqual(sessionFiles(), [CaptionSessionStore.checkpointFileName], "one checkpoint, replaced")
+        XCTAssertTrue(store.sessions.isEmpty, "a session in progress is not a kept session")
+    }
+
+    func testKeepingTheFinishedSessionRemovesItsCheckpoint() {
+        let store = makeStore()
+        let running = session(startedAt: clock.addingTimeInterval(-120))
+        _ = store.checkpoint(running)
+        XCTAssertEqual(store.keep(running), .kept)
+        XCTAssertFalse(store.hasCheckpoint)
+        XCTAssertEqual(store.sessions, [running])
+    }
+
+    func testAStopWithTheSwitchOffStillRemovesTheCheckpoint() {
+        let store = makeStore()
+        let running = session(startedAt: clock.addingTimeInterval(-120))
+        _ = store.checkpoint(running)
+        enabled = false
+        XCTAssertEqual(store.keep(running), .settingOff)
+        XCTAssertFalse(store.hasCheckpoint)
+        XCTAssertTrue(sessionFiles().isEmpty)
+    }
+
+    func testNoCheckpointIsWrittenWithTheSwitchOffOrInMedicalComplianceMode() {
+        enabled = false
+        XCTAssertEqual(makeStore().checkpoint(session(startedAt: clock)), .settingOff)
+        XCTAssertTrue(sessionFiles().isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.path), "nothing touched the disk")
+
+        enabled = true
+        compliance = true
+        XCTAssertEqual(makeStore().checkpoint(session(startedAt: clock)), .complianceMode)
+        XCTAssertTrue(sessionFiles().isEmpty)
+    }
+
+    func testTheModeComingOnRemovesACheckpoint() {
+        let store = makeStore()
+        _ = store.checkpoint(session(startedAt: clock))
+        compliance = true
+        XCTAssertEqual(store.checkpoint(session(startedAt: clock)), .complianceMode)
+        XCTAssertFalse(store.hasCheckpoint)
+    }
+
+    func testAClearRemovesTheCheckpoint() {
+        let store = makeStore()
+        _ = store.checkpoint(session(startedAt: clock))
+        XCTAssertEqual(store.checkpoint(nil), .empty)
+        XCTAssertFalse(store.hasCheckpoint)
+    }
+
+    func testACheckpointLeftByACrashIsKeptAtTheNextLaunchEndingAtItsLastLine() throws {
+        let began = clock.addingTimeInterval(-3_600)
+        let turns = [CaptionSession.Turn(at: began.addingTimeInterval(10), said: "We start with the budget."),
+                     CaptionSession.Turn(at: began.addingTimeInterval(1_800), said: "Lee will book the room.",
+                                         speaker: "Speaker 2")]
+        // A checkpoint's end is when it was written; the crash came later.
+        let running = CaptionSession(id: UUID(), startedAt: began, endedAt: began.addingTimeInterval(1_800),
+                                     turns: turns)
+        _ = makeStore().checkpoint(running)
+
+        let relaunched = makeStore()
+        XCTAssertFalse(relaunched.hasCheckpoint)
+        let recovered = try XCTUnwrap(relaunched.sessions.first)
+        XCTAssertEqual(relaunched.sessions.count, 1)
+        XCTAssertEqual(recovered.id, running.id)
+        XCTAssertEqual(recovered.turns, turns)
+        XCTAssertEqual(recovered.endedAt, turns[1].at, "it ends at its last line")
+        XCTAssertEqual(makeStore().sessions.count, 1, "kept once, however many launches")
+    }
+
+    func testACheckpointFoundWithTheSwitchNowOffIsDeletedNotKept() {
+        _ = makeStore().checkpoint(session(startedAt: clock))
+        enabled = false
+        let relaunched = makeStore()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: checkpointPath))
+        XCTAssertTrue(relaunched.sessions.isEmpty)
+        XCTAssertTrue(sessionFiles().isEmpty)
+    }
+
+    func testACheckpointFoundInMedicalComplianceModeIsDeletedNotKept() {
+        _ = makeStore().checkpoint(session(startedAt: clock))
+        compliance = true
+        let relaunched = makeStore()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: checkpointPath))
+        XCTAssertTrue(sessionFiles().isEmpty)
+        XCTAssertTrue(relaunched.sessions.isEmpty)
+    }
+
+    func testAnOldCheckpointGoesByTheSevenDays() {
+        _ = makeStore().checkpoint(session(startedAt: clock))
+        clock = clock.addingTimeInterval(8 * 86_400)
+        let relaunched = makeStore()
+        XCTAssertTrue(relaunched.sessions.isEmpty)
+        XCTAssertTrue(sessionFiles().isEmpty)
+    }
+
+    func testACheckpointAlreadyKeptIsNotKeptTwice() throws {
+        let running = session(startedAt: clock.addingTimeInterval(-60))
+        let store = makeStore()
+        _ = store.checkpoint(running)
+        // As if the app died between writing the session and removing its checkpoint.
+        try FileManager.default.copyItem(atPath: checkpointPath, toPath: checkpointPath + ".copy")
+        _ = store.keep(running)
+        try FileManager.default.moveItem(atPath: checkpointPath + ".copy", toPath: checkpointPath)
+        let relaunched = makeStore()
+        XCTAssertEqual(relaunched.sessions.count, 1)
+        XCTAssertFalse(relaunched.hasCheckpoint)
+    }
+
+    func testAnUnreadableCheckpointIsRemoved() throws {
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: URL(fileURLWithPath: checkpointPath))
+        XCTAssertTrue(makeStore().sessions.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: checkpointPath))
+    }
+
+    func testDeleteAllAndTheErasureReachTheCheckpoint() async {
+        let store = makeStore()
+        _ = store.checkpoint(session(startedAt: clock, lines: ["Ask Zylkorath about the filter"]))
+        var stores = SubjectErasureCoordinator.Stores()
+        stores.captionSessions = store
+        let receipts = await SubjectErasureCoordinator(stores: stores).erase(.person("zylkorath"))
+        XCTAssertEqual(receipts.first { $0.store == .captionSessions }?.removed, 1)
+        XCTAssertFalse(store.hasCheckpoint)
+
+        _ = store.checkpoint(session(startedAt: clock, lines: ["The coil is iced"]))
+        store.deleteAll()
+        XCTAssertFalse(store.hasCheckpoint)
+    }
+
+    func testACheckpointIsOutOfBackup() throws {
+        let store = makeStore()
+        _ = store.checkpoint(session(startedAt: clock))
+        let url = URL(fileURLWithPath: checkpointPath)
+        XCTAssertEqual(try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
+    // MARK: - When the caption service checkpoints
+
+    func testTheCheckpointPolicy() {
+        typealias P = CaptionCheckpointPolicy
+        XCTAssertEqual(P.action(keepsSessions: false, turns: 12, state: .init()), .none,
+                       "the switch off: nothing touches the disk")
+        XCTAssertEqual(P.action(keepsSessions: false, turns: 0, state: .init(turns: 3, onDisk: true)), .clear)
+        XCTAssertEqual(P.action(keepsSessions: true, turns: 0, state: .init()), .none, "nothing said yet")
+        XCTAssertEqual(P.action(keepsSessions: true, turns: 4, state: .init()), .write(turns: 4))
+        XCTAssertEqual(P.action(keepsSessions: true, turns: 4, state: .init(turns: 4, onDisk: true)), .none,
+                       "nothing new since the last checkpoint")
+        XCTAssertEqual(P.action(keepsSessions: true, turns: 5, state: .init(turns: 4, onDisk: true)), .write(turns: 5))
+    }
+
+    func testTheCaptionServiceCheckpointsOnlyWhileSessionsAreKept() {
+        let captions = AmbientCaptionService()
+        var checkpoints: [CaptionSession?] = []
+        captions.onSessionCheckpoint = { checkpoints.append($0) }
+        captions.keepsSessions = { false }
+        captions.checkpointSession()
+        XCTAssertTrue(checkpoints.isEmpty, "not running, not kept: no call at all")
+    }
+
+    func testTheWiringHandsACheckpointToTheStoreAlone() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let text = try String(contentsOf: root.appendingPathComponent("OpenGlasses/Sources/App/OpenGlassesApp.swift"),
+                              encoding: .utf8)
+        let marker = try XCTUnwrap(text.range(of: "ambientCaptions.onSessionCheckpoint = {"))
+        let tail = text[marker.upperBound...]
+        let body = String(tail[..<(tail.range(of: "}")?.lowerBound ?? tail.endIndex)])
+        XCTAssertTrue(body.contains("CaptionSessionStore.shared.checkpoint(session)"), body)
+        for memory in ["BrainStore", "userMemory", "llmService", "ingest", "Spotlight", "conversationStore"] {
+            XCTAssertFalse(body.contains(memory), "a checkpoint reaches \(memory)")
+        }
+    }
 }

@@ -766,6 +766,8 @@ struct OpenGlassesApp: App {
             case .background:
                 // Plan LM P1: ask iOS for the next shared background wake, if a participant wants one.
                 BackgroundRefreshCoordinator.shared.scheduleNext()
+                // A kept caption session in progress is checkpointed before iOS may end the app.
+                appState.ambientCaptions.checkpointSession()
                 // Plan KM P2: the expert's clock writes its last sign of life, so a kill while
                 // backgrounded loses only what came after.
                 AssistingService.shared.appWillResignActive()
@@ -3351,6 +3353,11 @@ class AppState: ObservableObject, AppStateProtocol {
         // on, and never in Medical Compliance mode; the store decides. Nothing else reads it.
         ambientCaptions.onSessionEnded = { session in
             CaptionSessionStore.shared.keep(session)
+        }
+        // The session in progress, checkpointed under the same switch and the same refusal, so a
+        // crash keeps what was said; the store recovers it at the next launch. Nothing else reads it.
+        ambientCaptions.onSessionCheckpoint = { session in
+            CaptionSessionStore.shared.checkpoint(session)
         }
         // Toggling HIPAA mid-session must tear down any live cloud diarization at once (Plan BM
         // P0): reconfigure ambient captions onto the on-device path the moment the flag flips.

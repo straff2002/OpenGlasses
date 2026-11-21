@@ -139,8 +139,9 @@ final class CaptionAudioGateTests: XCTestCase {
         let text = try source("OpenGlasses/Sources/Services/AmbientCaptionService.swift")
         XCTAssertEqual(text.components(separatedBy: "addAudioBufferConsumer(").count - 1, 1,
                        "only addCaptionAudioConsumer registers with the listener")
-        XCTAssertEqual(text.components(separatedBy: "addCaptionAudioConsumer {").count - 1, 4,
-                       "the four caption paths: recogniser, cloud and on-device translation, diarized")
+        XCTAssertEqual(text.components(separatedBy: "addCaptionAudioConsumer {").count - 1, 5,
+                       "the five caption paths: recogniser, long-form analyzer, cloud and on-device "
+                       + "translation, diarized")
         XCTAssertTrue(text.contains("handler: Self.captionAudioConsumer(gate: assistantVoiceGate, append: append)"))
         XCTAssertFalse(text.contains("id: \"ambient_captions\") {"))
     }
