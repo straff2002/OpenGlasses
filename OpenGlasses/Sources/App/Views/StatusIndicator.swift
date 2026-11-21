@@ -225,6 +225,12 @@ struct StatusIndicator: View {
                                                    pushToTalk: pushToTalk) {
                     wakeWordOffChip
                 }
+                // The mic held to mute (`SessionCardMicMutedNotice`): said in words, since the
+                // mode dot's colour and the badge on the mic were all a muted mic used to show.
+                if SessionCardMicMutedNotice.shows(micMuted: appState.micMuted,
+                                                   liveSessionActive: session.isActive || openAISession.isActive) {
+                    micMutedChip
+                }
                 // An open job, running or paused (`SessionCardJobPill`).
                 jobPill
                 glassesPill
@@ -788,6 +794,34 @@ struct StatusIndicator: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(SessionCardWakeWordNotice.accessibilityLabel)
         .accessibilityHint(SessionCardWakeWordNotice.accessibilityHint)
+    }
+
+    /// The mic is muted (`SessionCardMicMutedNotice`): a chip like the wake word's, in the warning
+    /// hue the mode dot already uses for it. One tap unmutes.
+    private var micMutedChip: some View {
+        Button {
+            appState.micMuted = false
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "mic.slash.fill")
+                    .accessibilityHidden(true)
+                Text(SessionCardMicMutedNotice.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(OGTheme.warnLabel)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .glassEffect(in: .capsule)
+            // The same 44pt floor as the glasses pill, for the same reasons (see there).
+            .frame(minWidth: OGMetrics.minTouchTarget, minHeight: OGMetrics.minTouchTarget)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(SessionCardMicMutedNotice.text)
+        .accessibilityHint(SessionCardMicMutedNotice.accessibilityHint)
     }
 
     /// The Replay mark: not a button — what it says is that the buffer is running, and the switch
