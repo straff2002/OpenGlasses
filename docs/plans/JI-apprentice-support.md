@@ -5,7 +5,10 @@ logbook sign-off design: "journeyman" throughout, the customer sign-off sheet re
 the signer chosen from staff, bound to the entries by a fingerprint, and three levels of
 self-signing protection (§9). Amended 2026-11-20 with **talk-through** (§7a, P6b): the apprentice
 says what they are doing, the app works out the step and shows that step's authored hint, with
-signal or without. It is written to be built now, ahead of the rest of JI, on code that exists.
+signal or without. It is written to be built now, ahead of the rest of JI, on code that exists. Amended 2026-11-21:
+live hints (Plan MO) was built first, so talk-through reuses its card, ear policy, caption voice
+gate, taps and Live Activity, never runs alongside a live hints session, takes the wearer's mic by
+setup and is not metered (decisions 25–26).
 **Track:** Field Assist (B2B): apprentices in the regulated trades, HVAC/R and electrical first. The
 first organisation is in Winnipeg, Manitoba, so Manitoba's rules are the worked case; nothing in the
 design is Manitoba-only.
@@ -542,10 +545,9 @@ an unfamiliar unit too, so the switch stays available to every role.
 - `LocalLLMService` for an answer written on the phone. It runs only in the foreground: the GPU is
   off-limits to a backgrounded app, and a locked phone in a pocket is the normal case on a job.
 
-**Shared with Plan [MO](MO-live-hints.md) (live hints).** The hint card on the lens, the
-"speak when quiet" ear policy, the voice gate that keeps the app's own speech out of the captions,
-and the free-question path are the same pieces. Whichever plan is built first builds them; the other
-reuses them. If this slice goes first, those pieces are built here and MO points at them.
+**Shared with Plan [MO](MO-live-hints.md) (live hints).** MO was built first (P0–P2, 2026-11-21),
+so talk-through reuses its pieces rather than building them; see "Built on MO's pieces" at the end
+of this section.
 
 #### Where they are: `TalkThroughLocator` (pure)
 
@@ -629,6 +631,48 @@ guard's notices (§5), they would turn a help into a monitor of the apprentice. 
 nothing from talk-through is in any office payload, work record, logbook entry or team-learning
 candidate. A step the apprentice confirms is recorded exactly as a spoken "next" is today, and no
 differently.
+
+#### Built on MO's pieces (amendment, 2026-11-21)
+
+Live hints was built first, so the pieces this section calls "shared" now exist. Talk-through uses
+them as they are:
+
+| Need | MO piece |
+|---|---|
+| The app's own voice kept out of the narration | `CaptionAudioGate` on every caption consumer (MO P0) |
+| Speak after a pause, stop when the apprentice talks, newest only, never the phone speaker | `HintSpeechPolicy`, with barge-in from `HintVoiceActivityDetector` on the ungated mic level |
+| The lens card | `HintLensCardBuilder` / `GlassesHintLens`: two lines, kept out of the conversation log; the procedure's step card comes back when the hint hides (MO §5a) |
+| Repeat and skip with no phone | `MediaTriggerService.heldBySession` and the Live Activity's Repeat, Skip and Stop |
+| The session's words for the recogniser | `AmbientCaptionService.sessionContextualStrings` |
+| A free question mid-job | MO §5a's read-only manual search, with the current step as context, under the job's provider rules |
+| Spoken lines that don't take the conversation route | `TextToSpeechService.speakReporting(takesConversationRoute: false)` |
+
+What talk-through adds on top, and where it differs from a live hints session:
+
+- **Its own mode, not a live hints session.** Talk-through belongs to a running procedure. It does
+  not use MO's `HintTrigger`: its input is the apprentice's narration, read by
+  `TalkThroughLocator`, and a question in the narration goes to the free-question path. **The two
+  never run at once.** Starting one while the other runs stops it, with one spoken line ("Live hints
+  stopped; talking you through the job"). One owner each for the captions, the taps, the ear and the
+  lens keeps the rules simple.
+- **The mic follows the wearer, not the room.** MO's idle-audio rule moves a live hints session to
+  the phone's mic, because it listens to other people. Talk-through listens to the wearer, so it
+  needs its own input to `WakeListenPolicy` (for example `talkThroughActive`): the glasses' mic on
+  glasses without a display (call-quality playback, acceptable for short hints), and the phone or a
+  wired headset on Ray-Ban Display, by the reasons in "The apprentice's own voice" above. The sheet
+  shows the choice.
+- **Taps answer the proposal.** While talk-through runs, one tap means yes to "Sounds like you're on
+  step six?" when a proposal is waiting, and otherwise repeats the step's hint. Two taps skip the
+  hint. Three do nothing, as in MO. A tap never advances the runner without a proposal on the table.
+- **The procedure keeps its voice.** The procedure's own voice handling (`ProcedureVoiceGate`, and
+  Plan MN's no-model mode, which takes every utterance) keeps priority. Talk-through reads the
+  captions alongside it and never consumes an utterance the procedure needs.
+- **Where the switch lives.** "Talk me through it" is on the procedure's start (the phone step screen
+  from Plan MN) and by voice ("talk me through it", "stop talking me through"). It is off by default
+  for every role until JG's `PracticeRole` exists.
+- **Not metered.** Talk-through is part of running a procedure, not a listening session, so the
+  app-wide daily allowance that live hints obeys does not apply to it (decision 25).
+
 
 ### 8 · The post-job debrief, for an apprentice (an amendment to FO §6, carried here)
 
@@ -1241,10 +1285,13 @@ the qualified role hears no reason unless asked; older procedures without the fi
 
 Depends only on built code (§7a), not on JG, the logbook or IP. `TalkThroughLocator`, the authored
 hint order, `cautionPhrases` on `Procedure.Step` (optional, older procedures decode unchanged), the
-session vocabulary from the procedure, the mic choice by setup, and the online/offline table through
-GE's controller. The shared hint card, ear policy, caption voice gate and free-question path are
-built here unless Plan MO has already built them. The per-procedure "talk me through it" switch;
-the apprentice-role default waits for JG's `PracticeRole`.
+session vocabulary from the procedure, and the online/offline table through GE's controller. The
+hint card, ear policy, caption voice gate, taps, Live Activity buttons and free-question path are
+MO's, reused as built ("Built on MO's pieces" in §7a). New here: the talk-through mode on a running
+procedure, which never runs alongside a live hints session; a `talkThroughActive` input to
+`WakeListenPolicy` for the wearer's mic by setup; taps that answer a waiting proposal; the "talk me
+through it" switch on the procedure's start and by voice. The apprentice-role default waits for JG's
+`PracticeRole`.
 
 **Exit tests:** `TalkThroughLocatorTests` (candidates limited to previous, current and the next two;
 two agreeing sentences before a proposal; silence and off-topic talk hold; partials ignored; never
@@ -1255,7 +1302,10 @@ authored phrases); `TalkThroughConnectivityTests` (the same narration with the n
 mid-step gives the same step positions and the same hints; the phone forced under `VaultOnlyPolicy`,
 HIPAA, Medical Local Only and a Private Conversation; no web search either way);
 `TalkThroughPrivacyTests` (nothing from talk-through in an office payload, work record, logbook
-entry or learning candidate).
+entry or learning candidate); `TalkThroughSessionTests` (starting talk-through stops a live hints
+session and the reverse; one tap confirms a waiting proposal and otherwise repeats; a tap with no
+proposal never advances the runner; the procedure's own voice handling keeps every utterance it
+needs; the mic plan follows the setup; the daily allowance is never drawn on).
 
 **Device pass (owed):** a narrated job with the phone in a pocket and on the glasses' microphone
 (Ray-Ban Meta), offline and online; how often the locator agrees with the steps actually done; the
@@ -1411,6 +1461,12 @@ G. **Legal framing**: s. 7(b) puts verification on the employer, which reports h
     phrase leaves the phone or is kept.
 24. **Mic by setup**: the glasses' microphone on glasses without a display, the phone or a wired
     headset microphone on Ray-Ban Display glasses; shown and changeable on the session sheet.
+25. **Talk-through is not metered and never runs with live hints** (§7a, "Built on MO's pieces"): it
+    belongs to a running procedure, so the app-wide daily allowance does not apply; starting either
+    talk-through or a live hints session stops the other. Recommended; the alternative is to meter it
+    like live hints.
+26. **Taps answer the proposal**: one tap is yes to a waiting "step six?", otherwise repeat; two skip;
+    three nothing. Recommended; the alternative is voice-only confirmation, with taps only repeating.
 
 ## Open questions for the owner
 
