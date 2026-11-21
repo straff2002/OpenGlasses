@@ -34,6 +34,9 @@ struct VoiceTab: View {
     /// Settings and the home screen's editor write, so the three can never disagree.
     @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
         = MyDayHomePlacement.onHomeDefault
+    /// Live hints' card placement, off by default; written by Edit Home › Cards.
+    @AppStorage(LiveHintsHomeCardRule.onHomeKey) private var liveHintsOnHome = false
+    @AppStorage("liveHintsEnabled") private var liveHintsEnabled = true
     @ScaledMetric(relativeTo: .caption) private var recordingDot: CGFloat = 8
     /// Field Assist mode's facts (Plan HB) — the home screen shows the job-day card while it is on.
     @AppStorage("fieldAssistEnabled") private var fieldAssistEnabled = false
@@ -445,9 +448,11 @@ struct VoiceTab: View {
                 }
 
                 // Plan MO P2: live hints. Always there while a session runs (the way back to it and
-                // the Listening pill); otherwise it yields the zone as the day card does.
+                // the Listening pill); otherwise only when placed on Home, yielding the zone as the
+                // day card does.
                 if LiveHintsHomeCardRule.shows(
-                    featureOn: Config.liveHintsEnabled, sessionRunning: appState.liveHintsSessionActive,
+                    featureOn: liveHintsEnabled, onHome: liveHintsOnHome,
+                    sessionRunning: appState.liveHintsSessionActive,
                     surfaceFree: !showsContext && HomeSurfaceVisibility.showsMyDay(state: voiceState,
                                                                                   captionsActive: captionsActive)) {
                     LiveHintsHomeCard(service: appState.liveHints, demo: appState.liveHintsDemo) {

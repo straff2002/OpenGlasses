@@ -38,6 +38,9 @@ struct DockLayoutEditPage: View {
     @AppStorage(MyDayHomePlacement.enabledKey) private var myDayEnabled = false
     @AppStorage(MyDayHomePlacement.onHomeKey) private var myDayOnHome
         = MyDayHomePlacement.onHomeDefault
+    /// Live hints' card on Home — off by default; the row shows only while the feature is on.
+    @AppStorage("liveHintsEnabled") private var liveHintsEnabled = true
+    @AppStorage(LiveHintsHomeCardRule.onHomeKey) private var liveHintsOnHome = false
 
     @State private var editing: EditorTarget?
 
@@ -78,6 +81,9 @@ struct DockLayoutEditPage: View {
             VStack(alignment: .leading, spacing: 6) {
                 sectionHeader("Cards")
                 myDayRow
+                if liveHintsEnabled {
+                    liveHintsRow
+                }
 
                 sectionHeader("Tiles")
                     .padding(.top, 6)
@@ -127,23 +133,37 @@ struct DockLayoutEditPage: View {
     /// on, and its card placed. Turning it off only takes the card away: the briefings keep their
     /// own settings.
     private var myDayRow: some View {
-        Toggle(isOn: Binding(
-            get: { MyDayHomePlacement.isShown(enabled: myDayEnabled, onHome: myDayOnHome) },
-            set: { Config.setMyDayShownOnHome($0) }
-        )) {
+        cardRow(icon: "sun.max.fill", title: "My Day",
+                subtitle: myDayEnabled
+                    ? "Briefings keep their own settings."
+                    : "Uses Calendar, Reminders and Weather once you turn it on.",
+                isOn: Binding(
+                    get: { MyDayHomePlacement.isShown(enabled: myDayEnabled, onHome: myDayOnHome) },
+                    set: { Config.setMyDayShownOnHome($0) }
+                ))
+    }
+
+    /// Live hints' card on Home. Off by default; a running session shows its card regardless.
+    private var liveHintsRow: some View {
+        cardRow(icon: "text.bubble", title: "Live hints",
+                subtitle: "Or say \u{201C}Start live hints\u{201D}.",
+                isOn: $liveHintsOnHome)
+    }
+
+    private func cardRow(icon: String, title: LocalizedStringKey, subtitle: LocalizedStringKey,
+                         isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
             HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
+                Image(systemName: icon)
                     .font(.footnote)
                     .foregroundStyle(Color(.label))
                     .frame(width: 22)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("My Day")
+                    Text(title)
                         .font(.footnote)
                         .foregroundStyle(Color(.label))
-                    Text(myDayEnabled
-                         ? "Briefings keep their own settings."
-                         : "Uses Calendar, Reminders and Weather once you turn it on.")
+                    Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

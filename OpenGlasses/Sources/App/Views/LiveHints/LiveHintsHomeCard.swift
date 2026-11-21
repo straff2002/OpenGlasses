@@ -4,12 +4,16 @@ import SwiftUI
 ///
 /// While a session runs (real or demo) the card is always there: it is the way back to the session
 /// screen and to a dismissed lens card, and it carries the Listening pill. Otherwise it shows only
-/// with the feature switched on, and it yields the zone the way the day card does (to a reply being
-/// worked out or spoken, and to captions).
+/// with the feature switched on *and* the wearer having placed it on Home (Edit Home › Cards, off
+/// by default), and it yields the zone the way the day card does (to a reply being worked out or
+/// spoken, and to captions).
 enum LiveHintsHomeCardRule {
-    static func shows(featureOn: Bool, sessionRunning: Bool, surfaceFree: Bool) -> Bool {
+    /// The placement's `UserDefaults` key (`Config.liveHintsOnHome`).
+    static let onHomeKey = "liveHintsOnHome"
+
+    static func shows(featureOn: Bool, onHome: Bool, sessionRunning: Bool, surfaceFree: Bool) -> Bool {
         if sessionRunning { return true }
-        return featureOn && surfaceFree
+        return featureOn && onHome && surfaceFree
     }
 }
 
