@@ -170,31 +170,40 @@ aren't in what Inputs reports today.
    line). A folded earlier answer shows its question and first **3** lines (from 2), ending in "…".
 6. **A page you get around in one or two moves (§6).** The aim is to remove the steps, not to make
    them quicker: up and down are the lens's own scroll, and the only other move is one press.
-   - **It opens where the answer is.** "Show me the page" opens at **fit width**: the page as wide
-     as the lens (576 px), one tall strip the band scrolls up and down with no send, opened scrolled
-     to the cited part (the passage's mark, the figure or the table row the answer named:
-     `LensPageFocus`, `PageFigureLocator`). The wearer never sees a corner, and the whole width is
-     always in view. A page with no cited part opens at its top. The whole page fitted to the lens
-     (a short overview) is one press, **Whole page**.
-   - **A press is a close-up.** A pinch on the part of the strip in view (its slice, which the band's
-     focus is already on) opens a **close-up** of it at the next readable zoom (about 2×). A wide page
-     is cut into a left half and a right half, both stacked in one strip: the left half's rows, then a
-     "Right half" marker, then the right half's rows. So both are reached by scrolling, with no **Move**
-     and no arrows. **Back** (a button at the top, where focus opens) returns to fit width at the same
-     place.
+   - **It opens whole, with the answer highlighted** (owner, 2026-11-21). "Show me the page" opens on
+     one picture of the whole page fitted to the lens, the view the tester asked for. The part the
+     answer came from (the passage's mark, the table row or the figure: `PassageMarks`,
+     `LensPageFocus`, `PageFigureLocator`) is outlined in the highlight colour, as the page view
+     already does (`LensPageRenderPlan`, `LensHighlightColour`). The rest of the page is drawn at
+     about half brightness so the highlight stands out on an additive lens. The wearer sees at once
+     where on the page the answer is.
+   - **Its words are under it, so no press is needed to read it.** At whole-page size the page's text
+     is too small to read (the tester needed to zoom for labels). So the line under the picture, which
+     today says "Zoom in for labels", carries the highlighted part's own words, one or two lines: the
+     table row from `TableLookup` ("E7 · Low supply voltage · Check the supply"), or the cited passage's
+     first sentence. The picture shows where; the line says what.
+   - **One pinch reads it closely.** Focus opens on the picture, so a pinch opens a **close-up** of
+     the highlighted part at a readable zoom (about 2×), not of whatever happens to be in view. A part
+     wider than the lens is cut into a left half and a right half, both stacked in one strip: the left
+     half's rows, then a "Right half" marker, then the right half's rows. Both are reached by
+     scrolling, with no **Move** and no arrows. The band scrolls on past the part, down the page at
+     the same zoom. **Back** (a button at the top, where focus opens) returns to the whole page.
+   - **A page with nothing to highlight** (asked for by number) opens whole with no highlight. A pinch
+     opens it at **fit width**, as wide as the lens and scrolled from the top, and the band scrolls it
+     down.
    - **A table can be read as text.** When the vault holds the page's table (`TableLookup`), the
      button **Rows** shows the table one row per card: "E7 · Low supply voltage · Check the supply …",
      with the column names on each card. The band scrolls the rows, and a row can be pressed to say
-     it aloud. Nothing is lost to the lens's width. This is the default for a table the answer cites,
-     with **Picture** one press away (decision 6).
+     it aloud, opened at the highlighted row. Nothing is lost to the lens's width. It is one press
+     from the whole page (decision 6).
    - **Voice gets there directly:** "show E7", "go to the bottom", "close-up", "whole page", "right
      half", "back". MG's combined zoom words stay.
-   - **The buttons are at most three:** fit width has **Whole page** (or **Rows**) and **Close**; a
-     close-up has **Back** and **Close**; **Read it** and **Next page ›** are added only where they
+   - **The buttons are at most three:** the whole page has **Rows** (for a table) and **Close**; a
+     close-up or fit width has **Back** and **Close**; **Read it** and **Next page ›** are added only where they
      apply, within §3's budget. **Zoom in**, **Zoom out**, **Move**, the arrows, **Done** and **Next
      diagram ›** leave the lens's buttons (the zoom and diagram words stay by voice and on Actions).
-   - The page report records each view's drawn picture sizes, where it opened and why (cited mark,
-     figure, table row, top), and every press, so a support report shows how many moves a page took.
+   - The page report records each view's drawn picture sizes, what it highlighted and why (cited mark,
+     figure, table row, none), and every press, so a support report shows how many moves a page took.
 7. **Swipe and pinch in the TestFlight lane (§7, P6).** Under `DAT_EXPERIMENTAL` only, in
    `Sources/Glasses/Experimental/`: band `nav` **left/right** jump between a close-up's halves and, at
    fit width, to the previous or next page (one send each), so no button is needed for either. Up and down stay the lens's own scroll, and `back` is never consumed. This lane is
@@ -219,13 +228,15 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
   no screen sent to the Meta Display has two pictures in a row, every picture is sent at its lens
   size divided by the factor, at 1 nothing changes. One fit check on the tester's glasses afterwards.
 - **P1 — A page you get around in one or two moves (§6).** The tester's main complaint, so it comes
-  next. Headless: fit width as the opening view, scrolled to the cited part (mark, figure, table row,
-  else the top); the close-up from a pressed slice, with both halves stacked in one strip and the
-  marker; **Back** to the same place; **Rows** from `TableLookup` as cards, the default for a cited
-  table; the voice words; the page view's buttons at most three; the report's opening reason and press
-  count. Tests: a cited row opens in view with no press; any cell is reachable by scrolling plus at
-  most one press; no **Move**, arrows or **Done** on any lens screen; the rows of an invented table;
-  pages with no table, no mark and no figure.
+  next. Headless: the whole page opening with the answer highlighted and the rest dimmed; the
+  highlighted part's words in the line under the picture (table row or first sentence, cut to two
+  lines); focus on the picture so a pinch opens the highlight's close-up, with both halves stacked in
+  one strip and the marker; fit width for a page with no highlight; **Back** to the whole page;
+  **Rows** from `TableLookup` as cards, opened at the row; the voice words; the page view's buttons at
+  most three; the report's highlight reason and press count. Tests: a cited row is outlined and its
+  words are under the picture with no press; the close-up is of the highlight wherever the lens is
+  scrolled; any cell is reachable by scrolling plus at most one press; no **Move**, arrows or **Done**
+  on any lens screen; the rows of an invented table; pages with no table, no mark and no figure.
 - **P2 — Fuller tiles, sources on their own, and Earlier (§1, §2, §5).** Headless:
   `HUDReadingRows` (the 8-line rule, the join, the stride cut removed), a pure `LensSourceTile` that
   takes the `Source:` markers out of the answer's text for the lens with `CitationLineParser`, the
@@ -250,7 +261,7 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
 - **P7 — Catalog sync.** The new strings ("Earlier — press to open", the source tile's label if any,
   Keep answers up and its two choices, the short labels) in the 13 complete languages, add-only.
 - **P8 — Device pass.** Takes over MG P6. On a Ray-Ban Display, with the tester at a real unit:
-  the fit check; a cited table opens on its row with no press; any cell is reached by scrolling plus at
+  the fit check; a cited table opens whole with its row highlighted and readable in words, and one pinch reads the row closely; any cell is reached by scrolling plus at
   most one press, counted from the page report, against today's count; **Rows** read at arm's length;
   a close-up's right half by scrolling; an 8- and 9-line tile reads whole; the source tile; the row of
   three buttons in the longest language; the answer still there after 10 and 30 minutes with the lens
@@ -271,12 +282,13 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
 5. **The tile grid.** Recommend off by default from P0 and dropped from the lens's page view once P1's
    close-up replaces pointing at a ninth of the page. (Alternative: keep it behind a setting until P8
    shows how it draws.)
-6. **How a cited table opens.** Recommend **Rows** (the table as text cards) when the vault holds the
-   table, with **Picture** one press away; otherwise fit width at the cited row. (Alternative: always
-   the picture at fit width, with **Rows** one press away.)
-7. **Where any other page opens.** Recommend fit width scrolled to the cited part, with **Whole page**
-   one press away. PR 1138's "opens whole" becomes the overview button. (Alternative: the whole page
-   first, as now, with fit width one press away. That adds a press to every look-up.)
+6. **How a cited table is read.** Recommend the whole page with the row highlighted and its words
+   under the picture, and **Rows** (the table as text cards, at that row) one press away when the
+   vault holds the table. (Alternative: open straight on **Rows** and skip the picture.)
+7. **How "show me the page" opens.** Recommend the whole page with the answer highlighted, the rest
+   dimmed, its words under the picture, and one pinch for a readable close-up of the highlight
+   (owner's suggestion). (Alternative: open at fit width already scrolled to the part. That gives
+   readable text with no press, but the wearer loses the overview and has asked for the whole page.)
 8. **The TestFlight lane.** Recommend building P6 now so the mapping is ready when Inputs becomes
    stable: left and right for the halves and the next page, and `back` never consumed. (Alternative:
    wait for Meta.)
