@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import VisionKit
 
 /// What is on the van, on the phone (Plan IH §5), or in the store or wherever the list is kept
 /// (Plan MK).
@@ -25,6 +26,7 @@ struct VanStockView: View {
     @State private var exportFailed = false
     @State private var namingPlace = false
     @State private var confirmingRestore = false
+    @State private var scanning = false
 
     private var rows: [VanStockRow] { VanStockRows.rows(store.log, query: search) }
 
@@ -92,6 +94,13 @@ struct VanStockView: View {
                     Text("Tap a line to set its count or change its details. Anything said to the assistant shows here too.")
                 }
             }
+            if store.resolvedClinical.clinical, !store.isUnreadable {
+                Section {
+                    EmptyView()
+                } footer: {
+                    Text("This is a stock record, not the immunisation record. Nothing about a patient is kept here.")
+                }
+            }
         }
         .ogFormStyle()
         .modifier(StockSystemPull(service: stockSystem))
@@ -102,6 +111,16 @@ struct VanStockView: View {
                 Button("Undo") { _ = service.undo(source: .typed) }
                     .disabled(!service.canUndo)
                     .accessibilityHint("Takes back the last entry, spoken or typed, or the last spreadsheet import.")
+            }
+            if DataScannerViewController.isSupported {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        scanning = true
+                    } label: {
+                        Label("Scan a carton", systemImage: "barcode.viewfinder")
+                    }
+                    .disabled(store.isUnreadable)
+                }
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button {
@@ -145,6 +164,9 @@ struct VanStockView: View {
         }
         .sheet(isPresented: $namingPlace) {
             VanStockPlaceSheet(store: store, books: VanStockPlaceSheet.installedBooks())
+        }
+        .sheet(isPresented: $scanning) {
+            StockScanSheet(store: store, service: service)
         }
         .confirmationDialog("Go back to the list from before the last takeover?",
                             isPresented: $confirmingRestore, titleVisibility: .visible) {
@@ -357,7 +379,12 @@ struct VanStockItemView: View {
                 let level = store.log.level(of: itemID)
                 List {
                     levelSection(item, level)
-                    countSection(item, level)
+                    if !store.log.lots(of: itemID).isEmpty {
+                        lotsSection(item, level)
+                    }
+                    if StockExpiry.inStock(store.log.lots(of: itemID), levels: level.lots).isEmpty {
+                        countSection(item, level)
+                    }
                     detailsSection(item)
                     historySection
                 }
@@ -406,6 +433,49 @@ struct VanStockItemView: View {
                     Text(verbatim: VanStockRow.figure(level.onOrder, unit: item.unit, locale: locale))
                 }
             }
+        }
+    }
+
+    /// The line's lots, oldest expiry first (Plan MY §1, §4). A line with stock in its lots is
+    /// counted lot by lot, by scanning a carton and choosing Count.
+    @ViewBuilder
+    private func lotsSection(_ item: VanStockItem, _ level: VanStockLevel) -> some View {
+        let today = StockDay(Date(), calendar: .current)
+        Section {
+            ForEach(StockExpiry.oldestFirst(store.log.lots(of: itemID))) { lot in
+                let held = level.lots[lot.id]
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Lot \(lot.code)")
+                        if let expiry = lot.expiry {
+                            if StockExpiry.isExpired(lot, today: today) {
+                                Label("Expired \(StockScanText.day(expiry))", systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            } else if StockExpiry.expiresSoon(lot, today: today, calendar: .current) {
+                                Label("Expires soon, \(StockScanText.day(expiry))", systemImage: "clock")
+                                    .font(.caption)
+                            } else {
+                                Text("Expires \(StockScanText.day(expiry))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if held?.unreliable == true {
+                            Label("Needs counting", systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                        }
+                    }
+                    Spacer(minLength: 12)
+                    Text(verbatim: VanStockRow.figure(held?.onHand ?? .zero, unit: item.unit, locale: locale))
+                        .font(.body.monospacedDigit())
+                }
+                .accessibilityElement(children: .combine)
+            }
+        } header: {
+            Text("Lots")
+        } footer: {
+            Text("Oldest expiry first. To count a lot, scan a carton from it and choose Count.")
         }
     }
 
@@ -515,6 +585,9 @@ struct VanStockItemView: View {
         case .loaded: return Text("Loaded \(figure)")
         case .used: return Text("Used \(figure)")
         case .removed: return Text("Removed \(figure)")
+        case .wasted:
+            let reason = StockScanText.wasteReasonName(movement.wasteReason ?? .other)
+            return Text("Wasted \(figure) · \(reason)")
         case .counted: return Text("Counted \(figure)")
         case .ordered: return Text("Asked for \(figure)")
         case .opening: return Text("Carried forward \(figure)")

@@ -17,6 +17,7 @@ struct VanStockPlaceSheet: View {
     @State private var kind = StockPlace.Kind.default
     /// The vault id the picker shows; nil for none.
     @State private var bookID: String?
+    @State private var clinical = false
     @State private var loaded = false
 
     /// A vault the list can name.
@@ -42,6 +43,7 @@ struct VanStockPlaceSheet: View {
             Form {
                 nameSection
                 placeSection
+                clinicalSection
                 bookSection
             }
             .ogFormStyle()
@@ -107,6 +109,30 @@ struct VanStockPlaceSheet: View {
         }
     }
 
+    /// Whether the list is a clinic's (Plan MY §9): read-only with who set it when the
+    /// organisation's profile sets it, as the place is.
+    @ViewBuilder
+    private var clinicalSection: some View {
+        let resolvedClinical = store.resolvedClinical
+        Section {
+            if resolvedClinical.isLocked {
+                VStack(alignment: .leading, spacing: 4) {
+                    LabeledContent("A clinic's stock") {
+                        Text(resolvedClinical.clinical ? "On" : "Off")
+                    }
+                    ManagedLockNote(organization: ManagedLockReason.organization)
+                }
+                .frame(minHeight: OGMetrics.minTouchTarget)
+                .accessibilityElement(children: .combine)
+            } else {
+                Toggle("A clinic's stock", isOn: $clinical)
+                    .frame(minHeight: OGMetrics.minTouchTarget)
+            }
+        } footer: {
+            Text("The assistant then speaks of doses given and wasted, by lot. It's a stock record, not the immunisation record.")
+        }
+    }
+
     @ViewBuilder
     private var bookSection: some View {
         Section {
@@ -140,6 +166,7 @@ struct VanStockPlaceSheet: View {
         name = store.van?.name ?? ""
         kind = store.van?.place ?? .default
         bookID = store.van?.checkVaultID
+        clinical = store.van?.clinical ?? false
     }
 
     /// Name, place and book, each written only when it changed, so opening the sheet and saving
@@ -150,6 +177,8 @@ struct VanStockPlaceSheet: View {
         // The profile's place is resolved over the list's, never written into it (Plan MK §2).
         if !resolved.isLocked, kind != (store.van?.place ?? .default) { store.setPlace(kind) }
         if bookID != store.van?.checkVaultID { store.checkNumbers(against: bookID) }
+        // The profile's flag is resolved over the list's, never written into it.
+        if !store.resolvedClinical.isLocked, clinical != (store.van?.clinical ?? false) { store.setClinical(clinical) }
     }
 }
 

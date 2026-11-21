@@ -1159,6 +1159,7 @@ extension SettingKey {
         case .expertHandoverRetentionDays: return String(localized: "How long an expert's app keeps a job sent to them")
         case .customerReportShowsExpertTime: return String(localized: "Whether the customer's report shows an expert's time and name")
         case .organizationStockPlace: return String(localized: "Where stock is kept")
+        case .organizationStockClinical: return String(localized: "Whether the stock list is a clinic's")
         case .stockSystemEnabled: return String(localized: "Whether this phone connects to the business's stock system")
         case .stockSystemConnector: return String(localized: "Which stock system the business uses")
         case .stockSystemSendBack: return String(localized: "Whether parts used are sent back to the stock system")
@@ -1173,6 +1174,8 @@ extension SettingKey {
         switch (self, value) {
         case (.organizationStockPlace, .string(let raw)):
             return StockPlace.Kind(strict: raw).map(StockPlaceScreenText.profileSummary) ?? ownedDescription
+        case (.organizationStockClinical, .bool(let clinical)):
+            return StockPlaceScreenText.clinicalProfileSummary(clinical)
         default:
             return ownedDescription
         }
