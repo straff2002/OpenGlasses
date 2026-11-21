@@ -14,7 +14,11 @@ final class InputsProbeTests: XCTestCase {
     private final class FakeChannel: InputsChannel {
         let handlers: InputsChannelHandlers
         var stopCount = 0
-        init(handlers: InputsChannelHandlers) { self.handlers = handlers }
+        var state: InputsProbeState
+        init(handlers: InputsChannelHandlers, state: InputsProbeState) {
+            self.handlers = handlers
+            self.state = state
+        }
         func stop() { stopCount += 1 }
     }
 
@@ -25,11 +29,13 @@ final class InputsProbeTests: XCTestCase {
         /// When set, `open` waits on it, so a test can stop the probe mid-start.
         var holds = false
         var hold: CheckedContinuation<Void, Never>?
+        /// The state the capability is in when `open` returns. Adding only begins activation.
+        var stateAtOpen: InputsProbeState = .activating
 
         func open(deviceId: String, handlers: InputsChannelHandlers) async throws -> InputsChannel {
             if holds { await withCheckedContinuation { hold = $0 } }
             if let failure { throw failure }
-            let channel = FakeChannel(handlers: handlers)
+            let channel = FakeChannel(handlers: handlers, state: stateAtOpen)
             opened.append((deviceId, channel))
             return channel
         }
@@ -87,6 +93,8 @@ final class InputsProbeTests: XCTestCase {
         probe.update(connectedDeviceIds: ["g1"])
         let first = await probe.start()
         XCTAssertNil(first)
+        XCTAssertEqual(probe.phase, .starting)
+        try? XCTUnwrap(source.last).handlers.onState(.active)
         XCTAssertEqual(probe.phase, .running)
         XCTAssertEqual(source.opened.map(\.deviceId), ["g1"])
         XCTAssertEqual(ledger.current?.batteryAtStart, 80)
@@ -121,7 +129,7 @@ final class InputsProbeTests: XCTestCase {
         audio = true
         channel.handlers.onInput(GlassesInput(kind: .nav(.right), origin: .captouch))
         channel.handlers.onFailure(.communicationError)
-        let run = try XCTUnwrap(ledger.current)
+        let run = try XCTUnwrap(ledger.runs.last)
         XCTAssertEqual(run.inputCount, 2)
         let kinds: [String] = run.entries.map {
             switch $0 {
@@ -133,6 +141,45 @@ final class InputsProbeTests: XCTestCase {
         }
         XCTAssertEqual(kinds, ["state-active", "select", "nav-right+audio", "error-communicationError"])
         probe.stop()
+    }
+
+    // MARK: - Activation
+
+    func testTheRunIsRunningOnlyOnceTheCapabilityIsActive() async throws {
+        let probe = probe()
+        probe.update(connectedDeviceIds: ["g1"])
+        _ = await probe.start()
+        let channel = try XCTUnwrap(source.last)
+        XCTAssertEqual(probe.phase, .starting, "adding Inputs only begins activation")
+        XCTAssertTrue(probe.isRunning)
+        channel.handlers.onState(.activating)
+        XCTAssertEqual(probe.phase, .starting)
+        channel.handlers.onState(.active)
+        XCTAssertEqual(probe.phase, .running)
+        probe.stop()
+    }
+
+    func testACapabilityAlreadyActiveWhenOpenedIsRunningAtOnce() async {
+        let probe = probe()
+        probe.update(connectedDeviceIds: ["g1"])
+        source.stateAtOpen = .active
+        _ = await probe.start()
+        XCTAssertEqual(probe.phase, .running, "the state publisher does not replay an early .active")
+        probe.stop()
+    }
+
+    func testAnActivationTimeoutRemovesTheCapability() async throws {
+        let probe = probe()
+        probe.update(connectedDeviceIds: ["g1"])
+        _ = await probe.start()
+        let channel = try XCTUnwrap(source.last)
+        channel.handlers.onState(.activating)
+        channel.handlers.onFailure(.activationTimeout)
+        XCTAssertEqual(channel.stopCount, 1, "a failed capability stays attached until it is removed")
+        XCTAssertFalse(probe.isRunning)
+        XCTAssertEqual(stop?.reason, .capabilityFailed)
+        channel.handlers.onState(.inactive)
+        XCTAssertEqual(ledger.runs.last?.entries.count, 2, "the old run hears nothing after it stopped")
     }
 
     // MARK: - Stopping
@@ -176,6 +223,18 @@ final class InputsProbeTests: XCTestCase {
         XCTAssertEqual(stop?.reason, .sessionEnded)
     }
 
+    func testTheEventStreamFinishingStopsTheRun() async throws {
+        let probe = probe()
+        probe.update(connectedDeviceIds: ["g1"])
+        _ = await probe.start()
+        let channel = try XCTUnwrap(source.last)
+        channel.handlers.onState(.active)
+        channel.handlers.onInputsEnded()
+        XCTAssertFalse(probe.isRunning)
+        XCTAssertEqual(stop?.reason, .inputsEnded)
+        XCTAssertEqual(channel.stopCount, 1)
+    }
+
     func testTheRunStopsItselfAtTheTimeLimit() async throws {
         let probe = probe(timeLimit: .milliseconds(50))
         probe.update(connectedDeviceIds: ["g1"])
@@ -212,6 +271,8 @@ final class InputsProbeTests: XCTestCase {
         probe.stop()
         _ = await probe.start()
         old.handlers.onInput(GlassesInput(kind: .back, origin: .captouch))
+        old.handlers.onFailure(.communicationError)
+        old.handlers.onInputsEnded()
         old.handlers.onEnded()
         XCTAssertTrue(probe.isRunning)
         XCTAssertEqual(ledger.current?.inputCount, 0)

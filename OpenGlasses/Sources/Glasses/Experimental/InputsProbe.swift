@@ -12,8 +12,11 @@ import Foundation
 /// - **One run at a time, and only with a link.** Start is refused without a connected pair or
 ///   while a run is going (`InputsProbePolicy.refusal`). The camera and the lens may be on: the
 ///   probe joins the session they share.
+/// - **Running means `.active`.** Adding Inputs only begins activation, so the run stays `.starting`
+///   until the capability reports `.active` (the SDK gives up after 10 s with `activationTimeout`).
 /// - **It stops itself** after five minutes, when the device's link drops, when the session stops
-///   underneath it, or at the wearer's Stop — whichever comes first.
+///   underneath it, when the capability reports an error (a failed capability stays attached until
+///   it is removed) or its event stream finishes, or at the wearer's Stop — whichever comes first.
 /// - **Everything goes to `InputsProbeLedger`** for the support report and is logged as case names
 ///   and numbers. The device is never named.
 @MainActor
@@ -92,7 +95,8 @@ final class InputsProbe: ObservableObject {
                 return nil
             }
             channel = opened
-            phase = .running
+            // `.active` may have come before the state listener was attached.
+            if opened.state == .active { phase = .running }
         } catch {
             guard run == thisRun else { return nil }
             let failure = (error as? InputsProbeFailure) ?? .unknown
@@ -134,15 +138,21 @@ final class InputsProbe: ObservableObject {
                 guard let self, self.run == thisRun else { return }
                 self.ledger.recordState(state)
                 PrivacyLog.device(.glasses, .inputsProbeState, state: PrivacyToken(state.rawValue))
+                if state == .active, self.phase == .starting { self.phase = .running }
             },
             onFailure: { [weak self] failure in
                 guard let self, self.run == thisRun else { return }
                 self.ledger.recordError(failure)
                 PrivacyLog.device(.glasses, .inputsProbeError, reason: PrivacyToken(failure.rawValue))
+                self.stop(.capabilityFailed)
             },
             onEnded: { [weak self] in
                 guard let self, self.run == thisRun else { return }
                 self.stop(.sessionEnded)
+            },
+            onInputsEnded: { [weak self] in
+                guard let self, self.run == thisRun else { return }
+                self.stop(.inputsEnded)
             })
     }
 

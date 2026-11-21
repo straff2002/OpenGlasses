@@ -130,6 +130,13 @@ unflagged app runs.
   row from one source are kept as one ledger entry with a count and the first and last times
   (`drag-move 600 times over 5990 ms`): the rate is in the report, no position is, and a long drag
   can no longer fill the 500-entry cap and crowd out the presses after it.
+- **The lifecycle follows Meta's Inputs guide (DAT 1.1 docs, 2026-11-21).** Adding Inputs only
+  begins activation, so a run stays `starting` until the capability reports `.active` (or the
+  channel reads `.active` once it is open, since the state publisher does not replay). An Inputs
+  error now ends the run (`capabilityFailed`) and removes the capability, because a failed one
+  stays attached until it is removed; the SDK's own `activationTimeout` after 10 s is that path.
+  The event stream finishing without our stop (glasses taken off, a terminal error) ends the run
+  too (`inputsEnded`), where it used to wait out the five minutes holding the session.
 
 ## P0 — The lane (no feature yet)
 

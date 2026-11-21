@@ -149,9 +149,14 @@ struct MetaInputsSource: InputsSource {
 
 /// The capability while the probe holds it: its state and error listeners in a `ListenerTokenBag`,
 /// its event stream and the session's state stream each read by a task, all ended together.
+///
+/// The listeners are attached here, straight after `addInputs` returns: adding the capability
+/// already began activation and neither publisher replays. The bag lives as long as the channel,
+/// so the callbacks last as long as the probe holds it.
 @MainActor
 final class MetaInputsChannel: InputsChannel {
     private let session: DeviceSession
+    private let inputs: Inputs
     private let coordinator: DeviceSessionCoordinator
     private let tokens = ListenerTokenBag()
     private var eventsTask: Task<Void, Never>?
@@ -161,6 +166,7 @@ final class MetaInputsChannel: InputsChannel {
     init(session: DeviceSession, inputs: Inputs, coordinator: DeviceSessionCoordinator,
          handlers: InputsChannelHandlers) {
         self.session = session
+        self.inputs = inputs
         self.coordinator = coordinator
         let onState = handlers.onState
         let onFailure = handlers.onFailure
@@ -172,11 +178,16 @@ final class MetaInputsChannel: InputsChannel {
             let mapped = MetaInputsSource.failure(error)
             Task { @MainActor in onFailure(mapped) }
         }.store(in: tokens)
+        // Per-event work stays small: the SDK keeps only the newest 64 and drops the oldest.
         let events = inputs.events
-        eventsTask = Task { @MainActor in
+        eventsTask = Task { @MainActor [weak self] in
             for await event in events {
                 handlers.onInput(MetaInputsSource.input(event))
             }
+            // The stream finishes when the capability is removed (our own stop), the glasses are
+            // taken off, or a terminal error occurs.
+            guard !Task.isCancelled, let self, !self.stopped else { return }
+            handlers.onInputsEnded()
         }
         // The session's state stream finishes once it reaches `.stopped` (DAT 0.9.0).
         let states = session.stateStream()
@@ -189,6 +200,9 @@ final class MetaInputsChannel: InputsChannel {
         }
     }
 
+    var state: InputsProbeState { MetaInputsSource.state(inputs.state) }
+
+    /// Also the way out after an error: a failed capability stays attached until it is removed.
     func stop() {
         guard !stopped else { return }
         stopped = true

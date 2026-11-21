@@ -81,6 +81,12 @@ enum InputsProbeStopReason: String, Equatable {
     case sessionEnded
     /// Inputs could not be added.
     case failed
+    /// The capability reported an error. A failed capability stays attached until it is removed
+    /// (Meta's Inputs guide), so the run removes it rather than holding it for the time limit.
+    case capabilityFailed
+    /// The capability's event stream finished without an error: the glasses were taken off, or the
+    /// SDK ended it. No more inputs can arrive on it.
+    case inputsEnded
     /// The app shut the probe down.
     case shutdown
 }
