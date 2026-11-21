@@ -93,6 +93,45 @@ enum SessionCardWakeWordNotice {
     }
 }
 
+// MARK: - Mic: hold to mute
+
+/// Muting the microphone by holding the mic button (`BottomControlBar`).
+///
+/// Mute switches the wake phrase off, and it used to take half a second: the system's own
+/// long-press time, and about how long a thumb rests on a button it means to tap. A slow tap
+/// muted the mic without the wearer knowing, and the wake phrase stopped answering; all the
+/// screen said was a small badge on the mic. So the hold is longer, and the hold is the whole
+/// gesture: the release that ends it does not also run the mic's tap.
+enum MicMuteHold {
+    /// How long the mic must be held before it mutes or unmutes.
+    static let seconds: Double = 1.0
+
+    /// How long after a hold fired its release still counts as part of the hold. The release
+    /// normally comes a moment after the haptic; the window only bounds a release the button never
+    /// saw (the finger slid off), so a later tap is not swallowed.
+    static let releaseWindow: TimeInterval = 5
+
+    /// Whether a tap on the mic runs its action: not when it is the release of a hold that just
+    /// muted or unmuted, which was the gesture the wearer meant.
+    static func tapRuns(holdFiredAt: Date?, now: Date) -> Bool {
+        guard let holdFiredAt else { return true }
+        return now.timeIntervalSince(holdFiredAt) > releaseWindow
+    }
+}
+
+/// The session card's chip for a muted microphone: shown while the mic is muted outside a live
+/// session, so the state is on the card in words and not only as a badge on the mic. One tap
+/// unmutes. A live session has its own mic, which this mute does not reach, so the chip would
+/// misdescribe it there.
+enum SessionCardMicMutedNotice {
+    static var text: String { String(localized: "Microphone muted") }
+    static var accessibilityHint: String { String(localized: "Turns the microphone back on.") }
+
+    static func shows(micMuted: Bool, liveSessionActive: Bool) -> Bool {
+        micMuted && !liveSessionActive
+    }
+}
+
 // MARK: - Session card: mode dot
 
 /// The reduced shape of `GeminiConnectionState` / `OpenAIRealtimeConnectionState` the mode dot

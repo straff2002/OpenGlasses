@@ -379,4 +379,46 @@ final class TalkEntryPolicyTests: XCTestCase {
                        "VoiceOver's gesture is a double-tap; the spoken name should not instruct one")
         XCTAssertFalse(SessionCardWakeWordNotice.accessibilityHint.isEmpty)
     }
+
+    // MARK: - Hold to mute
+
+    /// Half a second is the system's long press and about how long a thumb rests on a tap; a
+    /// tester muted the mic that way without knowing.
+    func testMutingTakesADeliberateHold() {
+        XCTAssertGreaterThanOrEqual(MicMuteHold.seconds, 1.0)
+    }
+
+    func testAPlainTapRunsTheMic() {
+        XCTAssertTrue(MicMuteHold.tapRuns(holdFiredAt: nil, now: Date()))
+    }
+
+    /// The release that ends a hold is not a second gesture: a hold that muted must not also
+    /// start a turn (or stop one).
+    func testTheReleaseOfAHoldDoesNotAlsoTap() {
+        let fired = Date(timeIntervalSinceReferenceDate: 1_000)
+        XCTAssertFalse(MicMuteHold.tapRuns(holdFiredAt: fired, now: fired))
+        XCTAssertFalse(MicMuteHold.tapRuns(holdFiredAt: fired, now: fired.addingTimeInterval(2)),
+                       "a hold kept a moment past the haptic is still the hold")
+    }
+
+    /// A hold whose release the button never saw (the finger slid off) must not swallow a tap
+    /// made long after it.
+    func testAStaleHoldDoesNotSwallowALaterTap() {
+        let fired = Date(timeIntervalSinceReferenceDate: 1_000)
+        XCTAssertTrue(MicMuteHold.tapRuns(holdFiredAt: fired,
+                                          now: fired.addingTimeInterval(MicMuteHold.releaseWindow + 1)))
+    }
+
+    func testTheCardSaysTheMicIsMutedOutsideALiveSession() {
+        XCTAssertTrue(SessionCardMicMutedNotice.shows(micMuted: true, liveSessionActive: false))
+        XCTAssertFalse(SessionCardMicMutedNotice.shows(micMuted: false, liveSessionActive: false))
+        XCTAssertFalse(SessionCardMicMutedNotice.shows(micMuted: true, liveSessionActive: true),
+                       "a live session's mic is its own; this mute does not reach it")
+    }
+
+    func testTheMutedNoticeSaysWhatATapDoes() {
+        XCTAssertTrue(SessionCardMicMutedNotice.text.localizedCaseInsensitiveContains("muted"))
+        XCTAssertTrue(SessionCardMicMutedNotice.accessibilityHint.localizedCaseInsensitiveContains("back on"))
+        XCTAssertFalse(SessionCardMicMutedNotice.text.localizedCaseInsensitiveContains("tap"))
+    }
 }

@@ -581,10 +581,7 @@ struct BottomControlBar: View {
     /// The mic on the accessory's glass, with the same long-press mute as the floating one.
     private func accessoryMic(inlineTarget: CGSize? = nil) -> some View {
         MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState,
-                  onSystemGlass: true, inlineTarget: inlineTarget)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.5).onEnded { _ in appState.micMuted.toggle() }
-            )
+                  onSystemGlass: true, inlineTarget: inlineTarget, onHold: toggleMuteFromHold)
             .accessibilityHint(appState.micMuted
                                ? "Double-tap and hold to unmute the microphone."
                                : "Double-tap and hold to mute the microphone.")
@@ -596,15 +593,11 @@ struct BottomControlBar: View {
 
     /// The primary control, round and thumb-sized, beside the buttons button.
     private var micButton: some View {
-        MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.5)
-                    .onEnded { _ in
-                        appState.micMuted.toggle()
-                    }
-            )
-            // Mute lives *only* on this long press. A sighted user finds it by accident; a
-            // VoiceOver user finds it never, because a gesture leaves no mark in the
+        MicButton(control: micControl, mutedBadge: micControl.showsMuteBadge, activity: voiceState,
+                  onHold: toggleMuteFromHold)
+            // Mute lives *only* on this hold (unmuting also on the session card's chip). A
+            // sighted user once found it by accident, at half a second; a VoiceOver user finds it
+            // never, because a gesture leaves no mark in the
             // accessibility tree. The hint is the only place it is discoverable — and the
             // custom action is the only way to reach it, since VoiceOver swallows the
             // long press for its own element-inspection gesture.
@@ -615,6 +608,13 @@ struct BottomControlBar: View {
                                                           : "Mute microphone") {
                 appState.micMuted.toggle()
             }
+    }
+
+    /// A held mic (`MicMuteHold`): mute or unmute, with a haptic that says which, since the hold
+    /// ends with the finger over the badge that shows it.
+    private func toggleMuteFromHold() {
+        appState.micMuted.toggle()
+        UINotificationFeedbackGenerator().notificationOccurred(appState.micMuted ? .warning : .success)
     }
 
     // MARK: - Slots
@@ -913,6 +913,10 @@ private struct MicButton: View {
     /// In the strip shrunk beside the Avenkin mark: the tap target `InlineStripLayout` gives it,
     /// larger than the circle, which stays its size (Plan MC).
     var inlineTarget: CGSize? = nil
+    /// A hold of `MicMuteHold.seconds`: mute or unmute.
+    var onHold: (() -> Void)? = nil
+    /// When the last hold fired, so its release does not also run the tap (`MicMuteHold`).
+    @State private var holdFiredAt: Date?
 
     @ScaledMetric(relativeTo: .title) private var scale: CGFloat = 1
     /// Grows with the text size, but not past half again its size: the mic shares one row with the
@@ -929,6 +933,10 @@ private struct MicButton: View {
 
     var body: some View {
         Button {
+            // The release of a hold is not a tap: the hold was the gesture.
+            let runs = MicMuteHold.tapRuns(holdFiredAt: holdFiredAt, now: Date())
+            holdFiredAt = nil
+            guard runs else { return }
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             control.action()
         } label: {
@@ -959,6 +967,13 @@ private struct MicButton: View {
             .contentShape(inlineTarget == nil ? AnyShape(.circle) : AnyShape(.capsule))
         }
         .dockTargetStyle(inline: inlineTarget != nil)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: MicMuteHold.seconds).onEnded { _ in
+                guard let onHold else { return }
+                holdFiredAt = Date()
+                onHold()
+            }
+        )
         // Exactly one button, the size of the circle, by its spoken name.
         .accessibilityRepresentation {
             Button(control.label, action: control.action)
