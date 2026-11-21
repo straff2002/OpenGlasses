@@ -94,4 +94,50 @@ final class CalendarToolTests: XCTestCase {
         XCTAssertNil(resolve("someday", now: date(2026, 6, 1)))
         XCTAssertNil(resolve("", now: date(2026, 6, 1)))
     }
+
+    // MARK: - Event start (create)
+
+    private func start(day: Date? = nil, time: (hour: Int, minute: Int)? = nil, now: Date) -> Date {
+        CalendarTool.resolveStart(day: day, time: time, now: now, calendar: calendar)
+    }
+
+    func testNoTimeLateEveningIsMidnightTomorrowNotACrash() {
+        // Build 728 crash: at 23:22 the "next hour" was hour 24 on today, which is nil.
+        let now = date(2026, 11, 19, hour: 23, minute: 22)
+        XCTAssertEqual(start(now: now), date(2026, 11, 20))
+        XCTAssertEqual(start(day: date(2026, 11, 19), now: now), date(2026, 11, 20))
+    }
+
+    func testNoTimeIsTheNextFullHourToday() {
+        XCTAssertEqual(start(now: date(2026, 11, 19, hour: 14, minute: 10)), date(2026, 11, 19, hour: 15))
+    }
+
+    func testNoTimeExactlyOnTheHourIsTheHourAfter() {
+        XCTAssertEqual(start(now: date(2026, 11, 19, hour: 14)), date(2026, 11, 19, hour: 15))
+    }
+
+    func testNoTimeOnAnotherDayIsTheSameClockHourThere() {
+        let now = date(2026, 11, 19, hour: 9, minute: 15)
+        XCTAssertEqual(start(day: date(2026, 11, 23), now: now), date(2026, 11, 23, hour: 10))
+    }
+
+    func testNoTimeOnAnotherDayLateEveningStaysOnThatDay() {
+        let now = date(2026, 11, 19, hour: 23, minute: 22)
+        XCTAssertEqual(start(day: date(2026, 11, 23), now: now), date(2026, 11, 23, hour: 23))
+    }
+
+    func testNoTimeAcrossTheSpringForwardGapIsAValidHour() {
+        // Auckland skips 02:00–03:00 on 27 Sep 2026; the next full hour after 01:30 is 03:00.
+        let now = date(2026, 9, 27, hour: 1, minute: 30)
+        let resolved = start(now: now)
+        XCTAssertGreaterThan(resolved, now)
+        XCTAssertEqual(calendar.component(.minute, from: resolved), 0)
+        XCTAssertEqual(calendar.component(.hour, from: resolved), 3)
+    }
+
+    func testExplicitTimeIsKeptOnTheDayAskedFor() {
+        let now = date(2026, 11, 19, hour: 23, minute: 22)
+        XCTAssertEqual(start(day: date(2026, 11, 23), time: (15, 30), now: now), date(2026, 11, 23, hour: 15, minute: 30))
+        XCTAssertEqual(start(time: (8, 0), now: now), date(2026, 11, 19, hour: 8))
+    }
 }

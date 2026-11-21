@@ -215,30 +215,19 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
             return "No event title provided."
         }
 
-        let calendar = Calendar.current
-        var startDate: Date
-
-        // Parse date
         let dateStr = (args["date"] as? String ?? "").lowercased()
+        let day: Date?
         if dateStr == "tomorrow" {
-            startDate = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date()))!
-        } else if let parsed = parseDate(dateStr) {
-            startDate = parsed
+            day = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now()))
         } else {
-            startDate = calendar.startOfDay(for: Date())
+            day = parseDate(dateStr)
         }
-
-        // Parse time
-        if let timeStr = args["start_time"] as? String, let time = parseTime(timeStr) {
-            startDate = calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: startDate)!
-        } else {
-            // Default to next hour
-            let hour = calendar.component(.hour, from: Date()) + 1
-            startDate = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: startDate)!
-        }
+        let time = (args["start_time"] as? String).flatMap(parseTime)
+        let startDate = Self.resolveStart(day: day, time: time, now: now(), calendar: calendar)
 
         let durationMinutes = (args["duration_minutes"] as? Int) ?? 60
-        let endDate = calendar.date(byAdding: .minute, value: durationMinutes, to: startDate)!
+        let endDate = calendar.date(byAdding: .minute, value: durationMinutes, to: startDate)
+            ?? startDate.addingTimeInterval(TimeInterval(durationMinutes * 60))
 
         do {
             try eventStore.saveCalendarEvent(
@@ -258,6 +247,40 @@ final class CalendarTool: NativeTool, @unchecked Sendable {
         } catch {
             return "Couldn't create event: \(error.localizedDescription)"
         }
+    }
+
+    /// The new event's start: `day` (today when nil) at `time`.
+    ///
+    /// With no time it is the next full hour after `now`. Today that can be tomorrow's midnight:
+    /// asked at 23:22, the next hour is 00:00, and setting hour 24 on today used to return nil and
+    /// crash. On another day it is the same clock hour, capped at 23:00 so it stays on that day.
+    nonisolated static func resolveStart(
+        day: Date?,
+        time: (hour: Int, minute: Int)?,
+        now: Date,
+        calendar: Calendar
+    ) -> Date {
+        let today = calendar.startOfDay(for: now)
+        let day = day.map { calendar.startOfDay(for: $0) } ?? today
+
+        if let time {
+            return calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: day)
+                ?? calendar.date(byAdding: DateComponents(hour: time.hour, minute: time.minute), to: day)
+                ?? day
+        }
+
+        let nextHour = calendar.nextDate(
+            after: now,
+            matching: DateComponents(minute: 0, second: 0),
+            matchingPolicy: .nextTime
+        ) ?? now.addingTimeInterval(3600)
+        if day == today {
+            return nextHour
+        }
+        let hour = min(calendar.component(.hour, from: now) + 1, 23)
+        return calendar.date(bySettingHour: hour, minute: 0, second: 0, of: day)
+            ?? calendar.date(byAdding: .hour, value: hour, to: day)
+            ?? day
     }
 
     private func parseDate(_ str: String) -> Date? {
