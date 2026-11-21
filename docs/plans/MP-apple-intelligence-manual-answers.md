@@ -198,3 +198,6 @@ the way [Plan FC](FC-local-model-remediation.md) asks of every local model.
   MQ reuses this plan's `ManualPassageFitter` and `ManualReadingCheck`, so a downloaded model's
   manual answers are checked the same way.
 - Using PCC as a general cloud brain for the app.
+- Breaking a vault down for small windows: [Plan MV](MV-manuals-a-small-model-can-use.md) does
+  that. Its cards are the passages the on-device reader takes, and its typed facts answer a table
+  question before any reader runs.

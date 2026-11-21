@@ -356,6 +356,9 @@ licences are confirmed.
   compact local tier for `<field_assist_context>` (on the model of the Apple path's `JobSummary`)
   comes before the loop, since the audit found no catalog model can hold today's block; and the
   mlx-swift-lm pin moves past PR #812 with the stream loop's `Generation.reasoning` handling.
+  What the vault's core files become in that tier, and what `table_lookup` and a manual question
+  hand a small model, is [Plan MV](MV-manuals-a-small-model-can-use.md)'s: typed facts the app
+  scopes to the unit and speaks itself, and cards of at most 200 tokens for the reader.
 - **P2 — GGUF tool parsing**, behind the same flag: `common/chat` in the framework build (or the
   alternative from decision 4), with the engine-reproducibility check updated.
 - **P3 — qualification:** the Mac screener and the device app, the shortlist run, new catalog
