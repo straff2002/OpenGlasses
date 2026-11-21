@@ -1103,8 +1103,11 @@ final class VanStockService {
         case .success(let scan):
             var read = line
             let forms = scan.gtin.map(StockScan.forms(of:)) ?? [scan.code]
+            // A code no line holds yet is kept as read, as it always was, unless it is a GS1
+            // element string: then its product number, never the whole string with its lot.
+            let elementString = StockScan.looksLikeGS1(code) && GS1ElementString.gtin14(code) == nil
             read.code = forms.first { form in log.items.contains { $0.codes.contains(form) } }
-                ?? (scan.gtin == nil ? code : scan.code)
+                ?? (elementString ? scan.code : code)
             if let lot = scan.lot {
                 read.lot = lot
                 read.lotFromScan = true
