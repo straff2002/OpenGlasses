@@ -10,6 +10,16 @@ protocol HintDocumentSearch: AnyObject {
     func passages(for question: String, limit: Int) -> [HintPassage]
     /// The titles of the documents in the session's scope, for the recogniser's vocabulary (§8).
     func documentTitles() -> [String]
+    /// The passages with what the session may do with them (§5a): whether the model may be asked,
+    /// and which documents were searched. The session searches through this.
+    func search(for question: String, limit: Int) -> HintSearchResult
+}
+
+extension HintDocumentSearch {
+    /// The wearer's own documents: the model may be asked, as the session's settings say.
+    func search(for question: String, limit: Int) -> HintSearchResult {
+        HintSearchResult(passages: passages(for: question, limit: limit))
+    }
 }
 
 /// One model call for a hint (§5 step 3), through the app's existing provider rules.

@@ -36,12 +36,16 @@ struct LiveHint: Identifiable, Equatable, Sendable {
     /// When the caption that asked was final.
     let askedAt: Date
 
-    /// The document's name for the card's second page, "General" for general knowledge.
+    /// The source for the card's second page: the manual's citation for a passage from the job's
+    /// manuals (§5a), the document's name otherwise, "General knowledge" for general knowledge.
     var sourceLabel: String? {
         if general { return String(localized: "General knowledge",
                                    comment: "Live hints card: the hint came from general knowledge, not the wearer's documents.") }
-        return passage?.documentName
+        return passage?.sourceName
     }
+
+    /// The manual page a press opens, for a hint standing on the job's manuals (§5a).
+    var manualCitation: Citation? { passage.flatMap(HintManualCitation.citation(for:)) }
 }
 
 /// A short glance at the question for the top of the lens card (Plan MO §6: "the question in 2–4

@@ -57,6 +57,9 @@ enum HintLimits {
     static let modelReplaceWindow: TimeInterval = 3
     /// A hint on the lens hides after this long (the Display's own dim), unless the next replaces it.
     static let lensCardLifetime: TimeInterval = 20
+    /// How long a hint flashes over a procedure's step card before the step card comes back (§5a).
+    /// Shorter than a card's lifetime: the step is the wearer's work.
+    static let overTaskFlashDuration: TimeInterval = 8
     /// The phone keeps this many hints, newest first, in memory only.
     static let phoneListMax = 10
     /// The longest session: it stops itself here.

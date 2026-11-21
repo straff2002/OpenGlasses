@@ -15,6 +15,13 @@ struct PassageHint: Equatable, Sendable {
     let documentName: String
     let documentId: String
     let chunkIndex: Int
+    /// Field Assist's citation for a passage from the job's manuals (§5a); nil otherwise.
+    var citation: String? = nil
+    /// The manual page, when the passage names one.
+    var page: Int? = nil
+
+    /// How the card names its source: the citation for a manual, else the document's name.
+    var sourceName: String { citation ?? documentName }
 
     static func pick(from passages: [HintPassage], for query: String) -> PassageHint? {
         let terms = Set(HintText.contentWords(query).subtracting(HintText.questionWords).map(stem))
@@ -32,7 +39,9 @@ struct PassageHint: Equatable, Sendable {
         return PassageHint(text: HintText.trimmingTrailingPunctuation(line, includingStops: wasCut),
                            documentName: best.passage.documentName,
                            documentId: best.passage.documentId,
-                           chunkIndex: best.passage.chunkIndex)
+                           chunkIndex: best.passage.chunkIndex,
+                           citation: best.passage.citation,
+                           page: best.passage.page)
     }
 
     /// A word without a plural "s" ("prices" → "price", "glass" stays).

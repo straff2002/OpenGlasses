@@ -2316,6 +2316,14 @@ class LLMService: ObservableObject {
     /// must not pollute the chat). History is snapshotted and restored even on error.
     /// Stateless, tool-free completion against the user's active provider (honors on-device
     /// models). Used by lightweight features like recall summarization.
+    /// The provider `completeStateless` would send to now: the active model through the medical
+    /// routing rule, as a Direct turn resolves it. Nil with no model, or when the rule refuses every
+    /// model. Live hints reads it before sending a job's manual passages (Plan MO §5a).
+    func statelessModelProvider() -> LLMProvider? {
+        guard let requested = Config.activeModel else { return nil }
+        return (try? medicalInferenceModel(requested: requested))?.llmProvider
+    }
+
     func completeStateless(_ text: String, system: String) async throws -> String {
         // It empties and restores the history, so a scheduled run must not be going under it.
         await yieldOffConversationRun()

@@ -20,6 +20,10 @@ extension AppState {
         LiveHintsSessionChoices.defaults(displayConnected: liveHintsDisplayConnected)
     }
 
+    /// The open job's manuals, while a job with manuals is open (Plan MO §5a): the sheet's
+    /// Documents row offers them first.
+    var liveHintsJobManuals: HintJobManuals? { FieldSessionService.shared.hintJobManuals }
+
     /// Diarization is on for captions, so voices are told apart and "That's me" means something.
     var liveHintsTellsVoicesApart: Bool { Config.isDiarizationConfigured }
 
@@ -90,7 +94,11 @@ extension AppState {
         let clock = SystemHintClock()
         let built = LiveHintsDemo.carriers(
             model: LLMServiceHintModel(llm: llmService, isOnline: { [weak self] in self?.reachability.isOnline ?? true }),
-            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard),
+            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard,
+                                  taskCardShowing: { [weak self] in
+                                      guard let router = self?.hudRouter else { return false }
+                                      return router.isPresentingTask && !router.isPresentingMenu
+                                  }),
             ear: TTSHintEar(tts: speechService),
             phoneList: liveHintsDemoList,
             clock: clock)
@@ -274,6 +282,19 @@ extension AppState {
     }
 
     // MARK: - Opening a hint's passage on the phone
+
+    /// A hint from the job's manuals opens its page the way a citation chip does (§5a): the live
+    /// hints sheet goes down and the page opens where Field Assist shows a cited page (on the Voice
+    /// tab, under the answer or in the context pane). False when the hint has no manual page or the
+    /// vault can't open it now; the row then opens the passage sheet.
+    @discardableResult
+    func openLiveHintManualPage(_ hint: LiveHint) -> Bool {
+        guard let citation = hint.manualCitation, canOpenCitation(citation) else { return false }
+        liveHintsSheetPresented = false
+        openCitation(citation, origin: .chip)
+        PrivacyLog.speech(.liveHints, .controlHandled, detail: PrivacyToken("manualPageOpened"))
+        return true
+    }
 
     /// The passage a hint stands on, for the session screen's press: the chunk the search returned
     /// (`documentId`, `chunkIndex`), or the sample document's for the demo.

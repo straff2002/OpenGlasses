@@ -1475,14 +1475,30 @@ class AppState: ObservableObject, AppStateProtocol {
         let service = LiveHintsService(carriers: .init(
             captions: AmbientCaptionHintSource(service: ambientCaptions),
             // Plan MO P2: the active project's documents, or those picked on the session sheet.
-            documents: DocumentStoreHintSearch(store: documentStore, scope: { [weak self] in
-                HintDocumentScope.resolve(chosen: self?.liveHints.settings.documentIds,
-                                          activeProject: ProjectContextService.shared.activeProjectId?())
-            }),
+            // P2b: during a job, the job's manuals through Field Assist's own search, unless the
+            // sheet chose the wearer's documents; read at every search.
+            documents: JobAwareHintSearch(
+                personal: DocumentStoreHintSearch(store: documentStore, scope: { [weak self] in
+                    HintDocumentScope.resolve(chosen: self?.liveHints.settings.documentIds,
+                                              activeProject: ProjectContextService.shared.activeProjectId?())
+                }),
+                job: FieldSessionService.shared,
+                preference: { [weak self] in self?.liveHints.settings.documentSource ?? .jobManualsWhenOpen },
+                chosen: { [weak self] in self?.liveHints.settings.documentIds },
+                activeProject: { ProjectContextService.shared.activeProjectId?() },
+                resolvedProvider: { [weak self] in self?.llmService.statelessModelProvider() },
+                medicalLocalOnly: {
+                    MedicalLLMRoutingPolicy.isEnforced(hipaaMode: Config.hipaaMode, localOnly: Config.hipaaLocalOnly)
+                }),
             model: LLMServiceHintModel(llm: llmService, isOnline: { [weak self] in
                 self?.reachability.isOnline ?? true
             }),
-            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard),
+            // Plan MO §5a: over a procedure's step card a hint flashes, and the step card comes back.
+            lens: GlassesHintLens(display: glassesDisplay, answerCard: hudAnswerCard,
+                                  taskCardShowing: { [weak self] in
+                                      guard let router = self?.hudRouter else { return false }
+                                      return router.isPresentingTask && !router.isPresentingMenu
+                                  }),
             ear: TTSHintEar(tts: speechService),
             voiceActivity: MicLevelHintVoiceActivity(wakeWordService: wakeWordService),
             phoneList: liveHintsList,

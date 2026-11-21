@@ -10,6 +10,17 @@ enum LiveHintsCopy {
                comment: "Live hints: the notice shown on the phone every time a session starts.")
     }
 
+    /// The sheet's name for the open job's manuals when the vault has no name of its own (§5a).
+    static var jobManuals: String {
+        String(localized: "The job's manuals",
+               comment: "Live hints sheet: hints come from the open job's manuals.")
+    }
+
+    /// The vault's name, or "The job's manuals" when it has none.
+    static func jobManualsName(_ job: HintJobManuals) -> String {
+        job.vaultName.isEmpty ? jobManuals : job.vaultName
+    }
+
     // MARK: - The first-run sheet
 
     static var firstRunTitle: String {
