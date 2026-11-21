@@ -15,7 +15,7 @@ let package = Package(
         // `project.base.yml` (see the note there): no released tag carries the Gemma 4
         // VLM load fix, and a floating branch would silently move under us.
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git",
-                 revision: "14414441fa44f45eee35a61e9fa0bab577cf9734"),
+                 revision: "4c21c84ba239583d6448dc38bbc9001e2df714a6"),
         // WebRTC — real peer-to-peer expert transport (Plan L)
         .package(url: "https://github.com/stasel/WebRTC.git", from: "120.0.0"),
     ],
