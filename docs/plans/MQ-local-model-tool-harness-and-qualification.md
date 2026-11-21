@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core; nothing wired live) · P1–P4 not built · P4 device pass owed · decisions 2, 3 and 6 built to their recommendations; 1, 4, 5, 7 and 8 open · the mlx-swift-lm pin is unchanged and moves with P1 (see [P0 as built](#p0-as-built-2026-11-21))
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P2–P4 not built · P4 device pass owed · all 8 decisions taken 2026-11-21 · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -157,6 +157,78 @@ validator's whole core budget (`VaultValidator.coreBudgetCharacters`).
 P1 needs a local tier for this block — the Apple path's compact `JobSummary` is the model — before
 the loop is wired in, or the Field Assist tools have no room to be offered. (Recorded as a finding;
 not changed in P0.)
+
+## P1 as built (2026-11-22)
+
+Everything new runs only with `Config.localNativeToolCallsEnabled` on (Developer panel, "Native
+tool calls", default off) and only for models on `LocalNativeToolPolicy.allowlist`, which holds
+Gemma 4 E2B alone (decision 1). With the flag off, a local turn is the single shot it was, except
+for the compact job tier and the shorter prompt head below, which every local turn gets. Routing is
+unchanged: a turn reaches a downloaded model exactly when it did before.
+
+- **Compact job tier.** `LocalJobContext` writes `<field_assist_context>` for a downloaded model
+  on the pattern of the Apple path's `JobSummary`. It carries:
+  - the vault's own rules;
+  - the job, the unit and its nameplate line;
+  - the latest readings;
+  - the running procedure step;
+  - a manuals line. It sends manual questions to the Field Assist tools when the turn offers them,
+    and otherwise says that manual answers need a cloud model, as the Apple path does.
+
+  It is fitted to `LocalModelBudget.jobContextBudget(for:)`: readings go first, then the nameplate
+  line, then the procedure is condensed. The cloud prompt is untouched. Before P1, `sendLocal`
+  refused every turn with this vault open.
+- **Shorter prompt head on local turns.** `buildSystemPrompt(compactHead:)` uses
+  `Config.onDeviceDefaultSystemPrompt`, `SystemPromptBuilder.onDeviceCameraLine`,
+  `PromptInjectionPolicy.onDeviceSystemPromptPolicy` and a short app guide. The prompt without a
+  job dropped from about 2,250 tokens to 1,045. `LocalPromptCompactHeadTests` checks the cloud
+  head is byte-for-byte what it was.
+- **Calls the library already parsed.** The `.toolCall` events mlx-swift-lm emits are now taken
+  (`LocalToolCallEvent`, `LocalGenerationEvent`, `generateEvents`/`generateTurn`) instead of
+  dropped. Even the single shot runs one, so a Hermes-format model's call no longer vanishes.
+- **Native loop.** `sendLocalNative` passes the turn's tools as `ToolSpec`s for the model's own
+  template, runs `LocalToolLoop` (3 rounds, at most 5 tools), coerces arguments
+  (`OnDeviceArgumentCoercion`) and dispatches through the router, so approval and safety rules
+  hold. A photo turn keeps the single shot.
+- **Field Assist tools under qualification.** With the flag on, an allowlisted model is offered the
+  Field Assist tools so the owner can try it on a job. `qualifiesForFieldAssistTools` stays false
+  for every model, and no badge shows (decision 6).
+- **Floors in code.** `LocalToolEval.Floors` holds decision 5's hard floors (not in the manual
+  ≥ 95%, clean output 100%, restraint ≥ 90%). Tool choice and two-step stay unset until the Mac
+  screener.
+- **The pin.** mlx-swift-lm `14414441` → `4c21c84` (upstream PR #812), and mlx-swift 0.31.6 →
+  0.33.0. The library now streams reasoning as its own `Generation.reasoning` event:
+  - `LocalStreamRouter` keeps it out of the spoken, previewed and returned text.
+  - A reasoning-only turn falls to the existing empty-answer guard.
+  - Stop and backgrounding are still checked between reasoning tokens.
+  - Time to first token is stamped at the first answer word.
+
+  `loadContainer`'s progress callback moved to `progress: .download { }`, and the new `tools:`
+  argument is left unset. A call written inside a model's reasoning is no longer picked up for
+  library-parsed models, since the library reads calls from answer text only.
+  `LocalReasoningStreamTests` covers these cases. A fresh resolve also moved about ten unrelated
+  packages within their ranges; `ci_scripts/Package.resolved` keeps only the MLX change, and that
+  drift is left to its own change.
+- **Prompt-cache reuse (finding for H3).** mlx-swift-lm reuses the cache across turns only inside
+  its own `ChatSession`. Our hand-tokenized path would keep the `[KVCache]` and a token ledger
+  itself, trim to the shared prefix (`trimPromptCache`) and prefill only the rest. LFM2's
+  convolution state can't be trimmed, so it reuses only when the new prompt extends the old one
+  exactly, which batch trimming makes common.
+
+Context audit after P1, the same scenario as above (`FieldAssistContextAuditTests`, which now
+measures the real tool JSON and fails under 400 tokens left on any model, or 600 on Gemma 4 E2B
+native):
+
+| Model | Budget | Compact tier (of its cap) | Prompt without the job | Tools | Left for history and the turn |
+|---|---:|---:|---:|---:|---:|
+| Gemma 4 E2B, native, 5 tools | 3,456 | 648 of 864 | 1,045 | 1,146 | 617 |
+| Gemma 4 E4B, Qwen 2.5 3B, SmolVLM2 2.2B (single shot) | 3,456 | 643 of 864 | 1,045 | 213 | 1,555 |
+| LFM2.5 2.6B (single shot) | 2,944 | 643 of 736 | 1,045 | 213 | 1,043 |
+| Qwen 2.5 0.5B, SmolVLM2 500M (8K) | 7,552 | 643 of 1,888 | 1,045 | 213 | 5,651 |
+
+The compact tier is 349 tokens with only the job open and 648 at most, against 7,792–10,049 for
+the full block. Verified headless: 716 tests, 0 failures, plus the Release build. Not verified: any
+real model on a phone. That is P3 and P4.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
@@ -410,7 +482,7 @@ licences are confirmed.
   local tool list and per-turn cut; argument coercion; the corpus format, graders and the CI runner
   against a fake model; `Evidence` on MLX entries with the validation rule; the
   `<field_assist_context>` size audit; the pin bump and `Package.resolved` agreement.
-- **P1 — MLX native tool calls**, behind `Config.localNativeToolCallsEnabled` (default off):
+- **P1 — MLX native tool calls** (✅ built 2026-11-22), behind `Config.localNativeToolCallsEnabled` (default off):
   `ToolSpec`s in, `.toolCall` events out, the inferred format logged, thinking off on tool turns,
   and the loop wired into `sendLocal` in place of the single shot. Added from P0's findings: the
   `.toolCall` events the pinned library already emits for Hermes-format models are taken first; a
