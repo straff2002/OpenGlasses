@@ -20,7 +20,7 @@ right". P5 waits on JV's probe; P6 is the device pass. **JV's first probe run on
 a drag arrives only as short bursts, and every pinch also sends one, so §6's drag-to-pan is not
 buildable as drafted. P5 now waits on one answer: whether Meta's own lens view also moves on a swipe
 (§6).
-**2026-11-21:** P5 and P6 are taken over by Plan [MU](MU-the-lens-read-at-work.md) (P6 and P8 there), after a tester's lens photos showed the glasses drawing every picture larger than the simulated Display, so the tile grid shows one tile.
+**2026-11-21:** P5 and P6 are taken over by Plan [MU](MU-the-lens-read-at-work.md) (P6 and P8 there), after a tester's lens photos showed the tile grid drawing one tile per row on the glasses and page navigation taking a press per move.
 All 8 decisions taken 2026-11-18 as recommended ("take all eight recommendations").
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay` 1.0.1). Every Direct-mode and
 live answer on the lens, and the manual-page view. P0, P2 and P3 are headless. P1 and P4 run on the
