@@ -57,6 +57,13 @@ class RealtimeSessionManager: ObservableObject {
     private(set) var sessionModel: RealtimeModelConfig?
     init(legacyMode: AppMode? = nil) { self.legacyMode = legacyMode }
     var supportsVision: Bool { interpreterPair == nil && (sessionModel?.capabilities?.vision ?? true) }
+    /// Whether this session turns the glasses camera on: a model that can see, and Audio-Only Mode
+    /// off (`LiveSessionCameraPolicy`). Read at each camera start, so a toggle takes effect at the
+    /// next session or recovery.
+    var startsCamera: Bool {
+        LiveSessionCameraPolicy.startsCamera(modelSupportsVision: supportsVision,
+                                             audioOnly: Config.audioOnlyMode)
+    }
     var supportsTextInjection: Bool { sessionModel?.capabilities?.textInjection ?? true }
     var supportsContextUpdates: Bool { sessionModel?.capabilities?.contextUpdate ?? true }
     var supportsSuppliedSpeech: Bool { sessionModel?.capabilities?.suppliedSpeech ?? false }
@@ -191,7 +198,7 @@ class RealtimeSessionManager: ObservableObject {
     /// Submit a video frame directly (called from CameraService's continuous streaming callback).
     /// This bypasses the polling timer for lower latency.
     func submitVideoFrame(_ image: UIImage) {
-        guard supportsVision, !Config.audioOnlyMode else { return }
+        guard startsCamera else { return }
         guard isActive else {
             droppedNotActive += 1
             if droppedNotActive <= 3 {
@@ -285,7 +292,7 @@ class RealtimeSessionManager: ObservableObject {
         // If startCamera succeeds, trust that frames will arrive — the user has approved camera permission
         // through the Meta companion app dialog, so we should build the vision prompt immediately rather
         // than waiting for the first frame (which may take seconds after permission approval).
-        if supportsVision, let startCamera = onRequestStartCamera {
+        if startsCamera, let startCamera = onRequestStartCamera {
             let cameraOk = await startCamera()
             guard isActive, sessionIdentity == identity else { return }
             PrivacyLog.realtimeSession(self.logProvider, .cameraStarted, success: cameraOk)
@@ -712,7 +719,7 @@ class RealtimeSessionManager: ObservableObject {
 
         // Late camera retry: if camera failed initially (SDK wasn't ready),
         // Try again after connection setup has given the SDK time to register.
-        if supportsVision, !isCameraStreaming, let startCamera = onRequestStartCamera {
+        if startsCamera, !isCameraStreaming, let startCamera = onRequestStartCamera {
             let cameraOk = await startCamera()
             guard isActive, sessionIdentity == identity else { return }
             PrivacyLog.realtimeSession(self.logProvider, .lateCameraRetried, success: cameraOk)
@@ -990,7 +997,7 @@ class RealtimeSessionManager: ObservableObject {
             },
             restartFrameCapture: { [weak self] in self?.startFrameCapture() },
             startCamera: { [weak self] in
-                guard let self, let startCamera = self.onRequestStartCamera else { return false }
+                guard let self, self.startsCamera, let startCamera = self.onRequestStartCamera else { return false }
                 let ok = await startCamera()
                 guard self.isActive, self.sessionIdentity == identity else { return false }
                 if ok { self.isCameraStreaming = true }
@@ -1215,7 +1222,7 @@ class RealtimeSessionManager: ObservableObject {
     /// Periodically request frames from the camera and submit to the throttler.
     /// This is a fallback polling mechanism — the primary path is direct push via submitVideoFrame().
     private func startFrameCapture() {
-        guard supportsVision else { return }
+        guard startsCamera else { return }
         frameTimer?.cancel()
         PrivacyLog.realtimeSession(logProvider, .framePollingStarted)
         let identity = sessionIdentity

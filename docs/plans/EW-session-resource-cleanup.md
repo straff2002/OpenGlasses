@@ -72,6 +72,25 @@ Headless, through fakes that record what was acquired and released in order
   committed first and shown failing on the unfixed code (9 assertion failures across 13 tests).
 - A live session releasing the camera it started, and leaving alone one the wearer started.
 
+### Follow-up 2026-11-21: the live mode's own camera start
+
+A tester reported the capture LED on all the time in a live mode, battery draining, "even when I
+only ask what the object is". The session claim above was right, but it never saw a stream it had
+started: choosing a live mode (the mode switch's substrate step) and launching into one
+(`startModeSubstrateOnLaunch()`) both started the camera with a bare `startStreaming()` before any
+session began. The `.liveSession` claim then found the stream already running, took it for
+somebody else's, and left it running when the session ended, so the LED stayed on for as long as
+the mode was selected. Audio-Only Mode didn't help: it stopped the frames going to the model, but
+a session still turned the camera on.
+
+`LiveSessionCameraPolicy` now holds both rules. Only a session turns the camera on, never the mode,
+and Audio-Only Mode keeps it off: every live-session camera start (session start, late retry,
+recovery) asks `startsCamera`, and so does the frame polling. `LiveSessionCameraPolicyTests` checks
+the rule and the claim arithmetic behind the bug, and reads the source so that neither bare start
+comes back. **Owed on a device:** the LED goes off when a live session ends; with Audio-Only Mode
+on, it never comes on; and the extra time to connect when you launch into a live mode and start a
+session, now that the camera cold-starts with the session instead of before it.
+
 Already covered and still green: `CameraStreamClaimsTests` (claim arithmetic),
 `CameraServiceCoordinatorTests` (the coordinator's other behaviours),
 `AudioSessionLedgerTests`/`AudioSessionCoordinatorTests` (lease rollback on a failed activation and
