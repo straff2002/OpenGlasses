@@ -53,6 +53,9 @@ final class LiveHintsService: ObservableObject {
         var talkNote = false
         /// The documents picked on the sheet; nil is the active project. Read by the search adapter.
         var documentIds: [String]?
+        /// During a job, the job's manuals (the default) or the wearer's own documents (§5a). Read
+        /// by the search adapter at every search.
+        var documentSource: HintSourcePreference = .jobManualsWhenOpen
 
         init(mode: HintMode = .conversation, keywords: [String] = [], hintLanguageCode: String? = nil,
              allowGeneral: Bool = true) {
@@ -551,7 +554,11 @@ final class LiveHintsService: ObservableObject {
     }
 
     private func answer(_ request: HintRequest, session: Int) async {
-        let key = Self.cacheKey(request.question)
+        // Searched first: the scope is read at each search (§5a), and a question answered from the
+        // wearer's documents is not answered from the job's manuals out of the cache, or the other
+        // way round.
+        let found = carriers.documents.search(for: request.question, limit: HintLimits.passagesMax)
+        let key = found.scopeKey + "\u{1F}" + Self.cacheKey(request.question)
         if let cached = cache[key] {
             let hint = LiveHint(id: makeHintID(), question: request.question, keyword: nil, line: cached.line,
                             full: cached.full, spoken: cached.spoken, source: cached.source,
@@ -562,7 +569,7 @@ final class LiveHintsService: ObservableObject {
             return
         }
 
-        let passages = carriers.documents.passages(for: request.question, limit: HintLimits.passagesMax)
+        let passages = found.passages
         let card = PassageHint.pick(from: passages, for: request.question)
         var shown: (hint: LiveHint, at: Date)?
         if let card {
@@ -575,6 +582,17 @@ final class LiveHintsService: ObservableObject {
                               detail: PrivacyToken(LiveHint.Source.passage.rawValue))
         }
 
+        // The rules of the documents searched may forbid the call (§5a): then the passage card
+        // stands alone, and the passages go nowhere.
+        let allowGeneral: Bool
+        switch found.modelUse {
+        case .ask(let general):
+            allowGeneral = settings.allowGeneral && general
+        case .passageOnly(let reason):
+            if let shown { cache[key] = shown.hint }
+            PrivacyLog.speech(.liveHints, .hintSkipped, detail: PrivacyToken("passageOnly-" + reason))
+            return
+        }
         guard settings.mode != .keyword, carriers.model.isAvailable else {
             if let shown { cache[key] = shown.hint } else {
                 PrivacyLog.speech(.liveHints, .hintSkipped, detail: PrivacyToken("noPassageNoModel"))
@@ -585,7 +603,7 @@ final class LiveHintsService: ObservableObject {
         let prompt = HintPromptBuilder.build(question: request.question, earlierLines: request.earlier,
                                              passages: passages,
                                              hintLanguageCode: settings.hintLanguageCode ?? carriers.captions.languageCode,
-                                             allowGeneral: settings.allowGeneral)
+                                             allowGeneral: allowGeneral)
         modelCalls += 1
         let raw: String
         do {
@@ -637,7 +655,7 @@ final class LiveHintsService: ObservableObject {
 
     /// Keyword mode (§2, §5 step 4): the passage the keyword hits, as a fact card. No model.
     private func showKeyword(_ word: String, askedAt: Date) {
-        let passages = carriers.documents.passages(for: word, limit: HintLimits.passagesMax)
+        let passages = carriers.documents.search(for: word, limit: HintLimits.passagesMax).passages
         guard let card = PassageHint.pick(from: passages, for: word) else {
             PrivacyLog.speech(.liveHints, .hintSkipped, detail: PrivacyToken("keywordNoPassage"))
             return

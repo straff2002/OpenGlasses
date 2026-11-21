@@ -187,24 +187,34 @@ struct LiveHintsSetupView: View {
     // MARK: Documents
 
     private var documentsSection: some View {
-        Section {
+        let summary = HintDocumentsSummary.of(choices, openJob: appState.liveHintsJobManuals)
+        return Section {
             NavigationLink {
-                LiveHintsDocumentPicker(chosen: $choices.documentIds)
+                LiveHintsDocumentPicker(chosen: $choices.documentIds, source: $choices.documentSource,
+                                        openJob: appState.liveHintsJobManuals)
             } label: {
-                LabeledContent("Documents", value: documentsSummary)
+                LabeledContent("Documents", value: Self.documentsSummary(summary))
             }
         } footer: {
-            Text("Hints come from these documents, searched on this phone.")
+            if case .jobManuals = summary {
+                Text("Hints come from the job's manuals, searched on this phone, as Field Assist searches them.")
+            } else {
+                Text("Hints come from these documents, searched on this phone.")
+            }
         }
     }
 
-    private var documentsSummary: String {
-        if let ids = choices.documentIds, !ids.isEmpty {
-            return String(AttributedString(localized: "^[\(ids.count) document](inflect: true)",
+    static func documentsSummary(_ summary: HintDocumentsSummary) -> String {
+        switch summary {
+        case .jobManuals(let vaultName):
+            return vaultName.isEmpty ? LiveHintsCopy.jobManuals : vaultName
+        case .picked(let count):
+            return String(AttributedString(localized: "^[\(count) document](inflect: true)",
                                            comment: "Live hints sheet: how many documents were picked.").characters)
+        case .activeProject:
+            return ProjectContextService.shared.activeProjectName?()
+                ?? String(localized: "Active project", comment: "Live hints sheet: the documents default.")
         }
-        return ProjectContextService.shared.activeProjectName?()
-            ?? String(localized: "Active project", comment: "Live hints sheet: the documents default.")
     }
 
     // MARK: Hint language
@@ -300,21 +310,45 @@ struct LiveHintsSetupView: View {
     }
 }
 
-/// The documents a session searches: the active project's (the default), or the wearer's own
-/// documents picked one by one.
+/// The documents a session searches: during a job with manuals, the job's manuals (the default);
+/// otherwise, or by choice, the active project's documents, or the wearer's own documents picked
+/// one by one.
 struct LiveHintsDocumentPicker: View {
     @EnvironmentObject var appState: AppState
     @Binding var chosen: [String]?
+    @Binding var source: HintSourcePreference
+    /// The open job's manuals, or nil with no job.
+    let openJob: HintJobManuals?
 
     private var documents: [DocumentStore.DocumentRef] { appState.documentStore.personalDocuments() }
 
+    /// The job's manuals are what the session searches.
+    private var jobManualsChosen: Bool { openJob != nil && source == .jobManualsWhenOpen && (chosen ?? []).isEmpty }
+
     var body: some View {
         Form {
+            if let openJob {
+                Section {
+                    OGSelectionRow(title: LiveHintsCopy.jobManualsName(openJob),
+                                   subtitle: String(localized: "The job's manuals, searched as Field Assist searches them."),
+                                   isSelected: jobManualsChosen) {
+                        source = .jobManualsWhenOpen
+                        chosen = nil
+                    }
+                } footer: {
+                    Text("While a job is open, hints come from its manuals unless you choose your own documents.")
+                }
+            }
             Section {
                 OGSelectionRow(title: ProjectContextService.shared.activeProjectName?()
                                    ?? String(localized: "Active project"),
                                subtitle: String(localized: "The documents of the project you're in."),
-                               isSelected: (chosen ?? []).isEmpty) { chosen = nil }
+                               isSelected: !jobManualsChosen && (chosen ?? []).isEmpty) {
+                    chosen = nil
+                    if openJob != nil { source = .myDocuments }
+                }
+            } header: {
+                if openJob != nil { Text("My documents") }
             }
             Section {
                 if documents.isEmpty {
@@ -339,6 +373,8 @@ struct LiveHintsDocumentPicker: View {
         var ids = chosen ?? []
         if let index = ids.firstIndex(of: id) { ids.remove(at: index) } else { ids.append(id) }
         chosen = ids.isEmpty ? nil : ids
+        // A document of the wearer's own is a choice of their documents over the job's manuals.
+        if openJob != nil { source = .myDocuments }
     }
 }
 
@@ -498,7 +534,10 @@ struct LiveHintsSessionScreen: View {
             } else {
                 ForEach(Array(list.hints.enumerated()), id: \.element.id) { index, hint in
                     if index > 0 { OGDivider() }
-                    LiveHintRow(hint: hint) { openPassage = hint }
+                    LiveHintRow(hint: hint) {
+                        // A hint from the job's manuals opens its page as a citation does (§5a).
+                        if isDemo || !appState.openLiveHintManualPage(hint) { openPassage = hint }
+                    }
                 }
             }
         }
@@ -546,7 +585,8 @@ struct LiveHintRow: View {
         .buttonStyle(.plain)
         .disabled(hint.passage == nil)
         .accessibilityElement(children: .combine)
-        .accessibilityHint(hint.passage == nil ? Text("") : Text("Opens the passage"))
+        .accessibilityHint(hint.passage == nil ? Text("")
+                           : hint.manualCitation != nil ? Text("Opens the manual page") : Text("Opens the passage"))
     }
 
     /// The question in a few words, or the keyword that fired.
@@ -581,7 +621,7 @@ struct LiveHintsPassageSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(OGTheme.canvas.ignoresSafeArea())
-            .navigationTitle(Text(verbatim: hint.passage?.documentName ?? ""))
+            .navigationTitle(Text(verbatim: hint.passage?.sourceName ?? ""))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

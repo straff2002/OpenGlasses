@@ -51,11 +51,29 @@ struct HintDocumentScope: Equatable, Sendable {
     }
 }
 
+/// What the sheet's Documents row says (§5a): the job's manuals by the vault's name while a job
+/// with manuals is open and the session prefers them, the picked documents' count, or the active
+/// project. Pure, so the default and the choice are tested without a screen.
+enum HintDocumentsSummary: Equatable, Sendable {
+    case jobManuals(vaultName: String)
+    case picked(count: Int)
+    case activeProject
+
+    static func of(_ choices: LiveHintsSessionChoices, openJob: HintJobManuals?) -> HintDocumentsSummary {
+        if let ids = choices.documentIds, !ids.isEmpty { return .picked(count: ids.count) }
+        if choices.documentSource == .jobManualsWhenOpen, let openJob { return .jobManuals(vaultName: openJob.vaultName) }
+        return .activeProject
+    }
+}
+
 /// Everything the session sheet sets, with its defaults.
 struct LiveHintsSessionChoices: Equatable, Sendable {
     var mode: HintMode = .conversation
     /// The documents picked on the sheet; nil (or empty) is the active project.
     var documentIds: [String]?
+    /// During a job with manuals, the job's manuals (the default) or the wearer's own documents
+    /// (§5a, decision 11). Picking a document of the wearer's own is choosing their documents.
+    var documentSource: HintSourcePreference = .jobManualsWhenOpen
     /// The language hints are written in; nil is the conversation's own.
     var hintLanguageCode: String?
     var delivery: HintDelivery = .ear
@@ -108,6 +126,7 @@ struct LiveHintsSessionChoices: Equatable, Sendable {
         settings.mic = mic
         settings.talkNote = talkNote
         settings.documentIds = documentIds?.isEmpty == true ? nil : documentIds
+        settings.documentSource = settings.documentIds == nil ? documentSource : .myDocuments
         return settings
     }
 }

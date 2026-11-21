@@ -95,7 +95,7 @@ enum HintPromptBuilder {
         } else {
             let blocks = sent.enumerated().map { index, passage in
                 """
-                <passage n="\(index + 1)" document="\(quotedAttribute(passage.documentName))">
+                <passage n="\(index + 1)" document="\(quotedAttribute(passage.sourceName))">
                 \(quoted(passage.text))
                 </passage>
                 """

@@ -2253,33 +2253,22 @@ final class FieldSessionService: ObservableObject {
         guard let documentStore,
               let turn = turn?.trimmingCharacters(in: .whitespacesAndNewlines), !turn.isEmpty else { return nil }
         guard retrievableCorpus(store: store, documentStore: documentStore).any else { return nil }
-        // The job number is not evidence. "Open a new job 108" handed 108 to the exact-token search,
-        // and a vent-length table with 108 in a cell opened on the phone (field report, build 420).
-        let searchTurn = ManualTurnScope.removingJobReferences(from: turn)
-        // Equipment before evidence. A question about a machine this vault is not for cannot be
-        // answered by any passage in it, however well the words line up (Plan EL §3), so the block
-        // becomes the scope sentence and the vault's rules relay it verbatim.
-        var scopeNote: String?
         // Whether this build decides the turn's page: its first, with no page a tool put up.
         let decidesFigure = stagesFigure && !toolPutUpPageThisTurn
-        switch equipmentScope(turn: searchTurn) {
-        case .unknownEquipment(_, let sentence):
+        let search: ManualSearch
+        switch searchManuals(turn: turn, store: store, procedureStep: runner?.currentStep?.title) {
+        case .outOfScope(let sentence):
             if decidesFigure { stageFigure(nil) }
             TurnRecorder.noteManualPassages([], refused: true)
             return VaultRetriever.promptBlock(.insufficient(reason: sentence))
-        case .otherKnownModel(let token, let model):
-            if let active = activeEquipment {
-                scopeNote = EquipmentScopeCheck.otherModelNote(token: token, model: model, active: active)
-            }
-        case .inScope:
-            break
+        case .searched(let searched):
+            search = searched
         }
-        let editionRequest = EditionRequest.parse(searchTurn, editions: documentEditions(of: store))
-        let retriever = manualRetriever(store: store, editionRequest: editionRequest)
-        // Manuals in more than one language are searched once per language and merged by rank
-        // (Plan JY P2); a library in one language is searched exactly as before.
-        let ownOutcome = retrieveByLanguage(.init(turn: searchTurn, procedureStep: runner?.currentStep?.title),
-                                            with: retriever, store: store, editionRequest: editionRequest).outcome
+        let searchTurn = search.searchTurn
+        let scopeNote = search.scopeNote
+        let editionRequest = search.editionRequest
+        let retriever = search.retriever
+        let ownOutcome = search.outcome
         // A follow-up rarely says what it follows (Plan KE P1). A second search, with the job's
         // subject beside the turn, can only add to what the turn found.
         let kind = ManualTurnClassifier.classify(turn)
@@ -2375,6 +2364,121 @@ final class FieldSessionService: ObservableObject {
         if let documents = assignedDocumentsNote() { block += "\n\n" + documents }
         if kind == .question || kind == .statement || kind == .reading { block += "\n\n" + Self.oneCheckRule }
         return scopeNote.map { block + "\n\n" + $0 } ?? block
+    }
+
+    // MARK: - The search a turn and a live hint share (Plan MO P2b)
+
+    /// One search of the vault's manuals, before anything is done with it.
+    struct ManualSearch {
+        /// The words searched: the turn without its job references.
+        let searchTurn: String
+        /// Set when the words name another model the vault knows than the unit the job is on.
+        let scopeNote: String?
+        let editionRequest: EditionRequest
+        let retriever: VaultRetriever
+        /// The request the retriever was given: the words, and the procedure step beside them.
+        let request: VaultRetriever.Request
+        /// What the words found by themselves, gated.
+        let outcome: RetrievalOutcome
+    }
+
+    enum ManualSearchStart {
+        /// The words are about a machine this vault is not for: the scope sentence, no search.
+        case outOfScope(sentence: String)
+        case searched(ManualSearch)
+    }
+
+    /// The part of a turn's manual search that changes nothing: the job references taken out, the
+    /// equipment checked, the edition read from the words, and the vault searched once per language.
+    /// The per-turn block (`manualPassagesContext`) and live hints (`hintPassages`) both start here,
+    /// and every side effect a turn has is the block's, after this returns.
+    func searchManuals(turn: String, store: VaultStore, procedureStep: String?) -> ManualSearchStart {
+        // The job number is not evidence. "Open a new job 108" handed 108 to the exact-token search,
+        // and a vent-length table with 108 in a cell opened on the phone (field report, build 420).
+        let searchTurn = ManualTurnScope.removingJobReferences(from: turn)
+        // Equipment before evidence. A question about a machine this vault is not for cannot be
+        // answered by any passage in it, however well the words line up (Plan EL §3), so the block
+        // becomes the scope sentence and the vault's rules relay it verbatim.
+        var scopeNote: String?
+        switch equipmentScope(turn: searchTurn) {
+        case .unknownEquipment(_, let sentence):
+            return .outOfScope(sentence: sentence)
+        case .otherKnownModel(let token, let model):
+            if let active = activeEquipment {
+                scopeNote = EquipmentScopeCheck.otherModelNote(token: token, model: model, active: active)
+            }
+        case .inScope:
+            break
+        }
+        let editionRequest = EditionRequest.parse(searchTurn, editions: documentEditions(of: store))
+        let retriever = manualRetriever(store: store, editionRequest: editionRequest)
+        // Manuals in more than one language are searched once per language and merged by rank
+        // (Plan JY P2); a library in one language is searched exactly as before.
+        let request = VaultRetriever.Request(turn: searchTurn, procedureStep: procedureStep)
+        let outcome = retrieveByLanguage(request, with: retriever, store: store, editionRequest: editionRequest).outcome
+        return .searched(ManualSearch(searchTurn: searchTurn, scopeNote: scopeNote, editionRequest: editionRequest,
+                                      retriever: retriever, request: request, outcome: outcome))
+    }
+
+    /// The open job's manuals, as live hints searches them (Plan MO P2b): nil with no job, a paused
+    /// job, a vault that is locked or that this phone has no current work access to, or a vault with
+    /// no imported or photographed manual to search. The same gate the per-turn block stands behind.
+    var hintJobManuals: HintJobManuals? {
+        guard let session = activeSession, session.isActive, session.pausedAt == nil,
+              let store = activeVault, hasCurrentWorkAccess, VaultRegistry.shared.isUnlocked(store.manifest),
+              let documentStore, retrievableCorpus(store: store, documentStore: documentStore).manuals
+        else { return nil }
+        return HintJobManuals(vaultId: store.manifest.id, vaultName: store.manifest.name,
+                              vaultOnly: vaultOnlyJobOpen,
+                              citationsRequired: store.manifest.sourceAttributionRequired)
+    }
+
+    /// The job's manuals searched for a question someone asked in the room (Plan MO P2b), with
+    /// nothing else happening: no page staged, no support-trace line, no follow-up context kept,
+    /// no evidence or disclosure recorded, nothing a later turn reads. `searchManuals` is the same
+    /// search a turn makes (job references out, the equipment check, the edition, every language),
+    /// with the running procedure's step beside the question as a turn has it, so a question asked
+    /// during a step ranks that step's pages first. The runner is only read: no step moves, and no
+    /// answer is recorded.
+    ///
+    /// Only what clears the gate as the manual's own evidence is a hint. The scope sentence, a
+    /// question about another model than the job's unit, a gate that refused, and an answer that
+    /// rests on team learnings alone (which owes a disclosure only a turn can give) are all
+    /// `.nothing`, and the session shows no card. Team learnings beside a manual passage are left
+    /// out for the same reason.
+    func hintPassages(for question: String, limit: Int) -> ManualHintSearch {
+        let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { return .nothing(.emptyQuestion) }
+        guard let start = hintManualSearch(for: question) else { return .nothing(.noJobManuals) }
+        switch start {
+        case .outOfScope:
+            return .nothing(.otherEquipment)
+        case .searched(let search):
+            guard search.scopeNote == nil else { return .nothing(.otherModel) }
+            switch search.outcome {
+            case .insufficient:
+                return .nothing(.insufficient)
+            case .teamLearningOnly:
+                return .nothing(.teamLearningOnly)
+            case .sufficient(let passages):
+                let manual = passages.filter { $0.source.isReference }.prefix(max(limit, 0))
+                return manual.isEmpty ? .nothing(.insufficient) : .passages(manual.map(HintPassage.init(manual:)))
+            }
+        }
+    }
+
+    /// A hint's search before the gate is read: the question, with the running procedure's step
+    /// beside it as a turn has it. Nil with no job manuals to search. Only reads the runner.
+    func hintManualSearch(for question: String) -> ManualSearchStart? {
+        guard hintJobManuals != nil, let store = activeVault else { return nil }
+        return searchManuals(turn: question, store: store, procedureStep: runner?.currentStep?.title)
+    }
+
+    /// The titles of the job's manuals, for the caption recogniser's vocabulary during live hints.
+    func hintManualTitles() -> [String] {
+        guard hintJobManuals != nil, let store = activeVault, let documentStore else { return [] }
+        return retrievalNamespaces(vaultId: store.manifest.id).filter { $0.source.isReference }
+            .flatMap { documentStore.list(namespace: $0.namespace) }.map(\.name)
     }
 
     /// How a diagnostic turn is answered (Plan KE P1). Beside the passages it speaks of, on the turns

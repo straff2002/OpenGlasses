@@ -21,18 +21,109 @@ final class DocumentStoreHintSearch: HintDocumentSearch {
     }
 
     func passages(for question: String, limit: Int) -> [HintPassage] {
-        let scope = scope()
-        return store.query(question, limit: limit, namespace: scope.namespace, documentIds: scope.documentIds)
-            .map(HintPassage.init)
+        passages(for: question, limit: limit, in: scope())
     }
 
     func documentTitles() -> [String] {
-        let scope = scope()
+        documentTitles(in: scope())
+    }
+
+    func passages(for question: String, limit: Int, in scope: HintDocumentScope) -> [HintPassage] {
+        store.query(question, limit: limit, namespace: scope.namespace, documentIds: scope.documentIds)
+            .map(HintPassage.init)
+    }
+
+    func documentTitles(in scope: HintDocumentScope) -> [String] {
         if let ids = scope.documentIds {
             let chosen = Set(ids)
             return store.list().filter { chosen.contains($0.id) }.map(\.name)
         }
         return store.list(namespace: scope.namespace ?? "global").map(\.name)
+    }
+}
+
+/// The open job's manuals, searched for a hint (Plan MO §5a): `FieldSessionService` in the app.
+@MainActor
+protocol HintJobManualSource: AnyObject {
+    /// The job's manuals, or nil when no job with manuals to search is open.
+    var hintJobManuals: HintJobManuals? { get }
+    /// Field Assist's manual search for the question, with none of a turn's side effects.
+    func hintPassages(for question: String, limit: Int) -> ManualHintSearch
+    func hintManualTitles() -> [String]
+}
+
+extension FieldSessionService: HintJobManualSource {}
+
+/// The session's documents during and outside a job (Plan MO §5a): the job's manuals through Field
+/// Assist's own search while a job with manuals is open and the session prefers them, the wearer's
+/// own documents (`DocumentStoreHintSearch`) otherwise. Which one is read at every search
+/// (`HintSearchScope.resolve`), so a job opened or closed mid-session takes effect at the next
+/// question, and one search never mixes the two.
+///
+/// A search of the job's manuals says whether the model may be asked (`HintManualModelRule`): the
+/// rules a Field Assist answer follows. Nothing in the manuals answering is no card and no call:
+/// the model is not asked to answer around the gate.
+@MainActor
+final class JobAwareHintSearch: HintDocumentSearch {
+    private let personal: DocumentStoreHintSearch
+    private let job: HintJobManualSource
+    private let preference: () -> HintSourcePreference
+    private let chosen: () -> [String]?
+    private let activeProject: () -> String?
+    /// The provider a hint's call would go to now, nil when none may be asked
+    /// (`LLMService.statelessModelProvider`).
+    private let resolvedProvider: () -> LLMProvider?
+    private let medicalLocalOnly: () -> Bool
+
+    init(personal: DocumentStoreHintSearch, job: HintJobManualSource,
+         preference: @escaping () -> HintSourcePreference, chosen: @escaping () -> [String]?,
+         activeProject: @escaping () -> String?, resolvedProvider: @escaping () -> LLMProvider?,
+         medicalLocalOnly: @escaping () -> Bool) {
+        self.personal = personal
+        self.job = job
+        self.preference = preference
+        self.chosen = chosen
+        self.activeProject = activeProject
+        self.resolvedProvider = resolvedProvider
+        self.medicalLocalOnly = medicalLocalOnly
+    }
+
+    /// The documents a search goes to now.
+    var scope: HintSearchScope {
+        HintSearchScope.resolve(preference: preference(), openJob: job.hintJobManuals, chosen: chosen(),
+                                activeProject: activeProject())
+    }
+
+    func passages(for question: String, limit: Int) -> [HintPassage] {
+        search(for: question, limit: limit).passages
+    }
+
+    func documentTitles() -> [String] {
+        switch scope {
+        case .jobManuals: return job.hintManualTitles()
+        case .personal(let documents): return personal.documentTitles(in: documents)
+        }
+    }
+
+    func search(for question: String, limit: Int) -> HintSearchResult {
+        let scope = self.scope
+        switch scope {
+        case .jobManuals(let manuals):
+            switch job.hintPassages(for: question, limit: limit) {
+            case .nothing(let reason):
+                return HintSearchResult(passages: [], modelUse: .passageOnly(reason: "manuals-" + reason.rawValue),
+                                        scopeKey: scope.key)
+            case .passages(let found):
+                return HintSearchResult(
+                    passages: found,
+                    modelUse: HintManualModelRule.decide(job: manuals, resolvedProvider: resolvedProvider(),
+                                                         medicalLocalOnly: medicalLocalOnly()),
+                    scopeKey: scope.key)
+            }
+        case .personal(let documents):
+            return HintSearchResult(passages: personal.passages(for: question, limit: limit, in: documents),
+                                    scopeKey: scope.key)
+        }
     }
 }
 
@@ -59,7 +150,7 @@ final class LLMServiceHintModel: HintModel {
     }
 
     nonisolated static func runsOnPhone(_ provider: LLMProvider) -> Bool {
-        provider == .local || provider == .appleOnDevice
+        HintManualModelRule.runsOnPhone(provider)
     }
 
     func complete(system: String, user: String) async throws -> String {
@@ -78,15 +169,19 @@ final class LLMServiceHintModel: HintModel {
 final class GlassesHintLens: HintLensSink {
     private let display: GlassesDisplayService
     private let answerCard: HUDAnswerCard
+    /// A HUD task's card (a procedure's step) is the held screen, not a menu (§5a).
+    private let taskCardShowing: () -> Bool
     private var shown: (id: Int, pages: [HUDScreen], index: Int)?
 
-    init(display: GlassesDisplayService, answerCard: HUDAnswerCard) {
+    init(display: GlassesDisplayService, answerCard: HUDAnswerCard, taskCardShowing: @escaping () -> Bool = { false }) {
         self.display = display
         self.answerCard = answerCard
+        self.taskCardShowing = taskCardShowing
     }
 
     var isAvailable: Bool {
-        Config.glassesDisplayEnabled && display.deviceSupportsDisplay() && display.acceptsAnswerCard
+        Config.glassesDisplayEnabled && display.deviceSupportsDisplay()
+            && (display.acceptsAnswerCard || taskCardShowing())
     }
 
     func present(_ hint: LiveHint) -> Bool {
@@ -98,6 +193,22 @@ final class GlassesHintLens: HintLensSink {
     }
 
     private func present(_ hint: LiveHint, wearerLed: Bool) -> Bool {
+        switch HintLensPlacement.decide(acceptsAnswerCard: display.acceptsAnswerCard,
+                                        taskCardShowing: taskCardShowing(),
+                                        lensDismissed: display.lensDismissed, wearerLed: wearerLed) {
+        case .none:
+            return false
+        case .overTask:
+            // Over a procedure's step card: a flash with no buttons, after which the display puts
+            // the step card back. The step card stays the held screen, so nothing here moves it.
+            let flash = HintLensPlacement.flash(for: hint)
+            display.showNotification(title: flash.title, body: flash.body, icon: .info,
+                                     duration: HintLimits.overTaskFlashDuration)
+            shown = nil
+            return true
+        case .card:
+            break
+        }
         let pages = HintLensCardBuilder.pages(for: hint, geometry: HUDAnswerCard.activeGeometry(),
                                               suggestion: Config.hipaaMode) { [weak self] action in
             self?.handle(action, hintID: hint.id)
