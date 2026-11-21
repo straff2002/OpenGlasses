@@ -92,7 +92,7 @@ struct BarcodeScannerTool: NativeTool {
     /// A GS1 code's fields, read the way the stock list reads them (Plan MY §5): " (GS1: product
     /// number 09312345678905, lot ZZ1001, expiry 30 November 2027)". Empty for a code that is not
     /// a GS1 element string, and for one whose check digit or date is wrong, which says so.
-    static func gs1Fields(_ payload: String, referenceYear: Int = Calendar.current.component(.year, from: Date())) -> String {
+    nonisolated static func gs1Fields(_ payload: String, referenceYear: Int = Calendar.current.component(.year, from: Date())) -> String {
         guard StockScan.looksLikeGS1(payload) else { return "" }
         switch GS1ElementString.parse(payload, referenceYear: referenceYear) {
         case .success(let fields):
