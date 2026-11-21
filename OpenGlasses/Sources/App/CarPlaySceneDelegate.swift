@@ -616,7 +616,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         guard effect.hangUp else { return }
         PrivacyLog.device(.carPlay, .commandHandled, command: PrivacyToken("stopVoice"))
         Task { @MainActor in
-            await appState.hangUpConversation()
+            await appState.hangUpConversation(source: .carPlay)
             // `hangUpConversation` ends in `returnToWakeWord`, whose last step released the audio
             // through `appFinishedEndingConversation`; this is the backstop should that hook have
             // missed. After a disconnect nothing is owed: the phone's own end path handed it back.

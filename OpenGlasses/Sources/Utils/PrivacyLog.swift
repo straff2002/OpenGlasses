@@ -2270,6 +2270,11 @@ enum PrivacyLog {
         /// notification, a clear) was enqueued after it was issued. `count` is how many frames
         /// came in between. Nothing about the card itself.
         case hudPageTurnStale
+        /// A press of Cancel on the lens's Thinking card (`HUDTurnState`): `state` = `tooSoon` (inside
+        /// the grace after the card changed, so dropped), `armed` (the first press: the card asks
+        /// for a second), `confirmed` (the question was cancelled) or `expired` (no second press,
+        /// the card went back to Cancel). Nothing about the question.
+        case turnCancelPress
         /// Plan KP §8. `displaySessionRead` is the Meta display session's own state each time it
         /// changes (`state` = the app's case name: `paused`, `started`, …). `availabilityRead` is
         /// whose the Display is each time that reading changes (`state` = `ours`, `inUse` or

@@ -137,6 +137,17 @@ show Listening — it would cover the answer card being read — so the states a
 the conversation. Held screens, not ambient frames: Stop needs a button, and a held screen keeps
 captions off the wearer's own words.
 
+**Changed 2026-11-22 (a tester's report of 2026-11-21).** One stray press on Thinking's Stop cancelled
+a question 13 s in, with its answer seconds away, and nothing was said: to the wearer the app had
+ignored them. Thinking's button is now **Cancel**, with its own id (Listening's Stop and Thinking's
+Cancel used to share `lc.turn.stop`, so a press meant to send the question could cancel it). It takes
+two presses: the first turns it into **Press again to cancel** (its own id again, so a double pinch is
+one press), and it goes back after 4 s. A press within 1.5 s of the card changing is dropped. Each
+press is logged (`turnCancelPress`: `tooSoon` / `armed` / `confirmed` / `expired`), every cancel logs
+where it came from (`responseCancelled detail=phoneButton|lens|templeTap|carPlay`), and a question
+dropped from the phone or the lens says "Cancelled" (`TurnCancelCue`; stopping a reply already
+being spoken stays quiet). Device check owed on a Ray-Ban Display with the band.
+
 **Built 2026-11-11 (P3b, Today).** `HUDTodayBuilder` (pure) builds L0 from a plain `HUDTodayGlance`:
 time · glasses battery (`clock`, meta; the battery only while connected), the next event (`calendar`:
 "Now: …", "10:30 …", "Today: …"), the weather (`weather`, with WeatherKit's service name as its

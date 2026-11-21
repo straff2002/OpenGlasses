@@ -5958,8 +5958,11 @@ class AppState: ObservableObject, AppStateProtocol {
     }
 
     /// Cancel current LLM processing or TTS playback and return to wake word listening.
-    func cancelCurrentResponse() {
-        PrivacyLog.app(.responseCancelled)
+    /// `source` is logged, and a question dropped before its answer is said aloud
+    /// (`TurnCancelCue`), so a stray press is never a silent no-answer.
+    func cancelCurrentResponse(source: TurnCancelSource) {
+        PrivacyLog.app(.responseCancelled, detail: PrivacyToken(source.rawValue))
+        let saysCancelled = TurnCancelCue.speaksCancelled(source: source, wasProcessing: isProcessing)
         spokenTurnGate.invalidate()
         bargeInReplacementTask?.cancel()
         bargeInReplacementTask = nil
@@ -5975,14 +5978,19 @@ class AppState: ObservableObject, AppStateProtocol {
         lastResponse = String(localized: "Cancelled")
         activePersona = nil
         updateLiveActivity()
-        Task { await returnToWakeWord() }
+        Task {
+            if saysCancelled {
+                await speechService.speak(String(localized: "Cancelled"), source: .acknowledgement)
+            }
+            await returnToWakeWord()
+        }
     }
 
     /// End the Direct-mode conversation from wherever it is — listening, thinking or speaking —
     /// the way a temple tap assigned to "hang up" means it (Plan GJ). The same teardown as
     /// cancelling a response, plus the recorder, which otherwise only stops on silence.
-    func hangUpConversation() async {
-        PrivacyLog.app(.responseCancelled)
+    func hangUpConversation(source: TurnCancelSource) async {
+        PrivacyLog.app(.responseCancelled, detail: PrivacyToken(source.rawValue))
         spokenTurnGate.invalidate()
         bargeInReplacementTask?.cancel()
         bargeInReplacementTask = nil
@@ -9051,7 +9059,7 @@ class AppState: ObservableObject, AppStateProtocol {
             .sink { [weak self] text in self?.hudTurnState.partial(text) }
         cancellables.append(partials)
         hudTurnState.onStopListening = { [weak self] in self?.endListeningSession() }
-        hudTurnState.onCancelTurn = { [weak self] in self?.cancelCurrentResponse() }
+        hudTurnState.onCancelTurn = { [weak self] in self?.cancelCurrentResponse(source: .lens) }
     }
 
     /// Plan GE: close a phone turn that needed no model — a deterministic tool answer or the hold

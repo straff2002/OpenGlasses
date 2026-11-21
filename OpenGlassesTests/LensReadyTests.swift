@@ -364,14 +364,32 @@ final class LensReadyTests: XCTestCase {
     }
 
     func testTheThinkingCardShowsWhatWasHeard() {
-        let card = HUDTurnStateBuilder.thinking(question: "what size breaker", lineChars: 32, onStop: {})
+        let card = HUDTurnStateBuilder.thinking(question: "what size breaker", lineChars: 32, onCancel: {})
         XCTAssertEqual(card.title, HUDTurnStateBuilder.thinkingTitle)
         XCTAssertEqual(card.lines.count, 1)
         XCTAssertEqual(card.lines.first?.text,
                        HUDAnswerCardBuilder.questionLine(for: "what size breaker", maxChars: 32))
         XCTAssertEqual(card.lines.first?.emphasis, .meta)
         XCTAssertTrue(HUDExit.hasExit(card))
-        XCTAssertTrue(HUDTurnStateBuilder.thinking(question: nil, lineChars: 32, onStop: {}).lines.isEmpty)
+        XCTAssertTrue(HUDTurnStateBuilder.thinking(question: nil, lineChars: 32, onCancel: {}).lines.isEmpty)
+    }
+
+    func testThinkingsCancelIsNotListeningsStop() {
+        let listening = HUDTurnStateBuilder.listening(partial: nil, onStop: {})
+        let thinking = HUDTurnStateBuilder.thinking(question: "what size breaker", lineChars: 32, onCancel: {})
+        let confirming = HUDTurnStateBuilder.thinking(question: "what size breaker", lineChars: 32,
+                                                      confirming: true, onCancel: {})
+        XCTAssertEqual(thinking.items.map(\.id), [HUDTurnStateBuilder.ItemID.cancel])
+        XCTAssertEqual(thinking.resolvedFocusItemID, HUDTurnStateBuilder.ItemID.cancel)
+        XCTAssertEqual(thinking.items.first?.label, String(localized: "Cancel"))
+        XCTAssertEqual(confirming.items.map(\.id), [HUDTurnStateBuilder.ItemID.confirmCancel])
+        XCTAssertEqual(confirming.resolvedFocusItemID, HUDTurnStateBuilder.ItemID.confirmCancel)
+        XCTAssertEqual(confirming.lines, thinking.lines, "the same card, only the button asks")
+        let ids = Set([listening, thinking, confirming].flatMap { $0.items.map(\.id) })
+        XCTAssertEqual(ids.count, 3, "a press aimed at one card can never land on another's button")
+        XCTAssertNotEqual(listening.items.first?.label, thinking.items.first?.label)
+        XCTAssertTrue(HUDExit.hasExit(thinking))
+        XCTAssertTrue(HUDExit.hasExit(confirming))
     }
 
     func testTheThrottleAllowsOnePartialPerGapAndTheFinalAlways() {
@@ -546,9 +564,9 @@ final class LensReadyTests: XCTestCase {
         XCTAssertEqual(turn.phase, .idle, "the turn's card is gone; nothing redraws it")
     }
 
-    func testStopOnListeningStopsCaptureAndOnThinkingCancels() async {
+    func testStopOnListeningStopsCaptureAndOnThinkingCancelTakesTwoPresses() async {
         let (display, _) = makeDisplay()
-        let (turn, _, _) = makeTurn(display)
+        let (turn, clock, _) = makeTurn(display)
         var stopped = 0
         var cancelled = 0
         turn.onStopListening = { stopped += 1 }
@@ -557,9 +575,127 @@ final class LensReadyTests: XCTestCase {
         await press(HUDTurnStateBuilder.ItemID.stop, on: turn.screenOnLens, display)
         XCTAssertEqual(stopped, 1)
         turn.thinking(question: "what size breaker")
-        await press(HUDTurnStateBuilder.ItemID.stop, on: turn.screenOnLens, display)
+        clock.now += HUDTurnState.pressGrace
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: turn.screenOnLens, display)
+        XCTAssertEqual(cancelled, 0, "the first press only asks")
+        XCTAssertTrue(turn.cancelArmed)
+        XCTAssertEqual(turn.screenOnLens?.items.map(\.id), [HUDTurnStateBuilder.ItemID.confirmCancel])
+        XCTAssertTrue(display.showsTurnState)
+        clock.now += HUDTurnState.pressGrace
+        await press(HUDTurnStateBuilder.ItemID.confirmCancel, on: turn.screenOnLens, display)
         XCTAssertEqual(cancelled, 1)
         XCTAssertFalse(display.showsTurnState)
+        XCTAssertEqual(turn.phase, .idle)
+    }
+
+    /// The tester's report of 2026-11-21: a press meant for Listening's Stop must not cancel the
+    /// question it was sending.
+    func testAListeningPressThatArrivesAfterThinkingIsDropped() async {
+        let (display, _) = makeDisplay()
+        let (turn, clock, _) = makeTurn(display)
+        var stopped = 0
+        var cancelled = 0
+        turn.onStopListening = { stopped += 1 }
+        turn.onCancelTurn = { cancelled += 1 }
+        turn.beginListening()
+        let listening = turn.screenOnLens
+        turn.heard("what size breaker")
+        let lastListening = turn.screenOnLens
+        turn.thinking(question: "what size breaker")
+        clock.now += 5
+        await press(HUDTurnStateBuilder.ItemID.stop, on: listening, display)
+        await press(HUDTurnStateBuilder.ItemID.stop, on: lastListening, display)
+        XCTAssertEqual(stopped, 0, "Listening's Stop is not on the lens any more")
+        XCTAssertEqual(cancelled, 0)
+        XCTAssertFalse(turn.cancelArmed)
+        XCTAssertEqual(turn.phase, .thinking)
+    }
+
+    func testACancelPressInsideTheGraceIsDropped() async {
+        let (display, _) = makeDisplay()
+        let (turn, clock, _) = makeTurn(display)
+        var cancelled = 0
+        turn.onCancelTurn = { cancelled += 1 }
+        turn.beginListening()
+        turn.thinking(question: "what size breaker")
+        clock.now += HUDTurnState.pressGrace / 2
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: turn.screenOnLens, display)
+        XCTAssertFalse(turn.cancelArmed, "a press this soon was aimed at the card before")
+
+        clock.now += HUDTurnState.pressGrace
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: turn.screenOnLens, display)
+        XCTAssertTrue(turn.cancelArmed)
+        clock.now += HUDTurnState.pressGrace / 2
+        await press(HUDTurnStateBuilder.ItemID.confirmCancel, on: turn.screenOnLens, display)
+        XCTAssertEqual(cancelled, 0, "the grace starts again when the card asks")
+        XCTAssertTrue(turn.cancelArmed)
+    }
+
+    func testADoublePressOnCancelIsOnePress() async {
+        let (display, _) = makeDisplay()
+        let (turn, clock, _) = makeTurn(display)
+        var cancelled = 0
+        turn.onCancelTurn = { cancelled += 1 }
+        turn.beginListening()
+        turn.thinking(question: "what size breaker")
+        clock.now += 10
+        let plain = turn.screenOnLens
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: plain, display)
+        clock.now += 5
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: plain, display)
+        XCTAssertEqual(cancelled, 0, "the second press named the button the lens no longer shows")
+        XCTAssertTrue(turn.cancelArmed)
+    }
+
+    func testTheArmedCardGoesBackToCancelWithoutASecondPress() async {
+        let (display, _) = makeDisplay()
+        let (turn, clock, timers) = makeTurn(display)
+        var cancelled = 0
+        turn.onCancelTurn = { cancelled += 1 }
+        turn.beginListening()
+        turn.thinking(question: "what size breaker")
+        clock.now += HUDTurnState.pressGrace
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: turn.screenOnLens, display)
+        let window = timers.fires.last { $0.delay == HUDTurnState.confirmWindow }
+        XCTAssertNotNil(window)
+        clock.now += HUDTurnState.confirmWindow
+        window?.fire()
+        XCTAssertFalse(turn.cancelArmed)
+        XCTAssertEqual(turn.screenOnLens?.items.map(\.id), [HUDTurnStateBuilder.ItemID.cancel])
+        XCTAssertEqual(display.heldScreenRenderKey, turn.screenOnLens?.renderKey)
+        XCTAssertEqual(cancelled, 0)
+        XCTAssertEqual(turn.phase, .thinking)
+    }
+
+    func testAnOldConfirmWindowDoesNothingToALaterTurn() async {
+        let (display, _) = makeDisplay()
+        let (turn, clock, timers) = makeTurn(display)
+        turn.beginListening()
+        turn.thinking(question: "what size breaker")
+        clock.now += HUDTurnState.pressGrace
+        await press(HUDTurnStateBuilder.ItemID.cancel, on: turn.screenOnLens, display)
+        let window = timers.fires.last { $0.delay == HUDTurnState.confirmWindow }
+        turn.processingEnded()
+        turn.beginListening()
+        window?.fire()
+        XCTAssertEqual(turn.phase, .listening)
+        XCTAssertEqual(turn.screenOnLens?.title, HUDTurnStateBuilder.listeningTitle)
+    }
+
+    // MARK: - Where a cancel came from, and what it says
+
+    func testOnlyAQuestionDroppedFromThePhoneOrTheLensSaysCancelled() {
+        XCTAssertTrue(TurnCancelCue.speaksCancelled(source: .lens, wasProcessing: true))
+        XCTAssertTrue(TurnCancelCue.speaksCancelled(source: .phoneButton, wasProcessing: true))
+        XCTAssertFalse(TurnCancelCue.speaksCancelled(source: .templeTap, wasProcessing: true),
+                       "the temple tap plays its own cue")
+        XCTAssertFalse(TurnCancelCue.speaksCancelled(source: .carPlay, wasProcessing: true))
+        for source in TurnCancelSource.allCases {
+            XCTAssertFalse(TurnCancelCue.speaksCancelled(source: source, wasProcessing: false),
+                           "stopping a reply already being spoken stays quiet")
+            XCTAssertNotEqual(PrivacyToken(source.rawValue).description, PrivacyToken.placeholder,
+                              "every source logs as itself")
+        }
     }
 
     func testAnApprovalOverThinkingGivesThinkingBack() async {
