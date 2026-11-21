@@ -146,6 +146,14 @@ enum WakeListenPolicy {
         /// Plan MO P2: the mic the session sheet chose. The phone, unless the wearer took the
         /// glasses' mic with its caveat (call-quality playback; on a Display, the lens covered).
         var liveHintsMic: MicRoute = .phone
+        /// Plan JI §7a: talk-through is running on a procedure. It listens to the wearer, not the
+        /// room, so the mic follows the setup (`TalkThroughMicPlan`): the glasses' own mic on
+        /// glasses with no display, the phone's on Ray-Ban Display glasses and with no glasses.
+        /// Never at the same time as `liveHintsActive`; if both were ever set, live hints' rule
+        /// comes first.
+        var talkThroughActive: Bool = false
+        /// The mic talk-through hears the wearer on (`TalkThroughMicPlan.route`).
+        var talkThroughMic: MicRoute = .phone
     }
 
     static func decide(_ inputs: Inputs) -> IdleAudioPlan {
@@ -157,7 +165,7 @@ enum WakeListenPolicy {
         }
         return IdleAudioPlan(listen: listen, speechGate: gated,
                              strictGate: gated && inputs.posture.prefersStrictWakeGate,
-                             hintsShape: inputs.liveHintsActive)
+                             hintsShape: inputs.liveHintsActive || inputs.talkThroughActive)
     }
 
     private static func listenTarget(_ inputs: Inputs) -> IdleAudioPlan.Listen {
@@ -175,6 +183,13 @@ enum WakeListenPolicy {
         //     quality, and on a Display covers the lens.
         if inputs.liveHintsActive {
             return inputs.liveHintsMic == .phone ? .phone : .bluetooth(inputs.liveHintsMic)
+        }
+        // 3b. Plan JI §7a: talk-through hears the wearer on the mic their setup gives. On the
+        //     phone's mic it takes the hints shape, so a spoken hint ducks other audio and the
+        //     glasses stay on full-quality playback; on the glasses' mic it holds that mic, as a
+        //     recording that wants the wearer's voice does.
+        if inputs.talkThroughActive {
+            return inputs.talkThroughMic == .phone ? .phone : .bluetooth(inputs.talkThroughMic)
         }
         // 4. A consumer that wants the wearer's own voice, with a Bluetooth conversation mic: keep
         //    holding it — released when the consumer stops. Outranks the power override: a
