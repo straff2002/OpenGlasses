@@ -26,7 +26,7 @@ struct ManualReading: Equatable, Sendable {
 ///    marks normalised) — a quote from a different passage is not evidence for this one — and
 /// 4. every number-with-a-unit in the answer occurs in that passage: the same number (4.5 is not
 ///    45, though 4.50 is 4.5) and the same unit, written any of the usual ways (`in. w.c.`, `inWC`,
-///    `inches w.c.`; `°F`, `F`, `degrees F`). The unit may sit in a table's heading rather than
+///    `inches w.c.`, the water-gauge `in. w.g.`; `°F`, `F`, `degrees F`). The unit may sit in a table's heading rather than
 ///    beside the number, so it is looked for anywhere in the passage.
 ///
 /// Anything else is declined, and the caller says "that isn't in the manual" with the page the
@@ -144,7 +144,7 @@ enum ManualReadingCheck {
 
     /// Spellings that are a unit wherever they appear, longest first so `in. w.c.` wins over `in`.
     private static let scannedSpellings = [
-        "inches w\\.?\\s?c\\.?", "inch(?:es)? of water", "in\\.?\\s?w\\.?\\s?c\\.?", "iwc", "inwc",
+        "inches w\\.?\\s?[cg]\\.?", "inch(?:es)? of water", "in\\.?\\s?w\\.?\\s?[cg]\\.?", "iwc", "inwc",
         "\"\\s?w\\.?\\s?c\\.?", "w\\.c\\.",
         "degrees fahrenheit", "degrees celsius", "degrees f", "degrees c", "deg f", "deg c",
         "°\\s?f", "°\\s?c", "fahrenheit", "celsius",
@@ -161,16 +161,16 @@ enum ManualReadingCheck {
     /// One-letter units and "inch", read only right after a number ("41 s" in a timing table).
     private static let adjacentOnlySpellings = ["inch", "in", "f", "c", "v", "a", "w", "g", "s", "h"]
 
-    private static let scannedUnitPattern = "(" + scannedSpellings.joined(separator: "|") + ")(?![a-z])"
+    private static let scannedUnitPattern = "(" + scannedSpellings.joined(separator: "|") + ")(?![a-z0-9])"
     private static let adjacentUnitPattern =
-        "(" + (scannedSpellings + adjacentOnlySpellings).joined(separator: "|") + ")(?![a-z])"
+        "(" + (scannedSpellings + adjacentOnlySpellings).joined(separator: "|") + ")(?![a-z0-9])"
 
     private static let unitAliases: [String: String] = {
         var table: [String: String] = [:]
         func add(_ canonical: String, _ spellings: [String]) {
             for spelling in spellings { table[spelling] = canonical }
         }
-        add("inwc", ["incheswc", "inchesofwater", "inchofwater", "inwc", "iwc", "\"wc", "wc"])
+        add("inwc", ["incheswc", "incheswg", "inchesofwater", "inchofwater", "inwc", "inwg", "iwc", "\"wc", "wc"])
         add("f", ["f", "degreesfahrenheit", "degreesf", "degf", "fahrenheit"])
         add("c", ["c", "degreescelsius", "degreesc", "degc", "celsius"])
         add("psi", ["psi", "psig", "psia"])

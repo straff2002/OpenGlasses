@@ -7,6 +7,11 @@ import Foundation
 /// that plays a case through the **shipped** `LocalToolLoop`, `LocalOutputPolicy` parser,
 /// `OnDeviceArgumentCoercion` and `ManualReadingCheck`.
 ///
+/// The corpus is generated from the Lennox SLP99 example vault by
+/// `Scripts/local-tool-eval/generate-corpus.py`, and is mostly Field Assist job turns: running
+/// Field Assist on a downloaded model is the point (it is what saves the cloud cost), so a report
+/// counts the Field Assist group first and on its own, with the everyday group beside it.
+///
 /// One core, several runners. P0's runner is `LocalToolEvalCorpusTests`, which plays every case's
 /// `reference` output through a scripted fake model in CI. P3's Mac screener and device app will
 /// hand the same cases to a real model instead; the graders don't change.
@@ -16,13 +21,20 @@ import Foundation
 /// into a plan or a PR.
 enum LocalToolEval {
 
-    static let corpusVersion = 1
-    static let corpusFileName = "local-tool-corpus.v1.jsonl"
+    static let corpusVersion = 2
+    static let corpusFileName = "local-tool-corpus.v2.jsonl"
 
     // MARK: - The corpus
 
     enum Category: String, Decodable, CaseIterable, Sendable {
-        case toolChoice, restraint, notInManual, twoStep, longPrompt, multiTurn, cleanOutput, cancellation
+        case toolChoice, restraint, manualAnswer, notInManual, twoStep, longPrompt, multiTurn, cleanOutput,
+             cancellation
+    }
+
+    /// Which question a case answers for qualification. Field Assist on a downloaded model is judged
+    /// first and on its own; the everyday group (small talk, chatter, the time) sits beside it.
+    enum Group: String, Decodable, CaseIterable, Sendable {
+        case fieldAssist, everyday
     }
 
     struct Turn: Decodable, Equatable {
@@ -76,6 +88,11 @@ enum LocalToolEval {
     struct Case: Decodable {
         let id: String
         let category: Category
+        let group: Group
+        /// The vault file (or `synthetic`) the case was written from.
+        let source: String
+        /// For a Field Assist case: the vault whose job context the prompt carries.
+        var vault: String?
         let turn: String
         var history: [Turn]?
         let offered: [String]
@@ -138,6 +155,7 @@ enum LocalToolEval {
     struct Run {
         let caseID: String
         let category: Category
+        let group: Group
         /// Grader → passed. Only the graders that apply to the case are present.
         let grades: [Grader: Bool]
 
@@ -245,7 +263,7 @@ enum LocalToolEval {
             grades[.contextFits] = tokens <= LocalModelBudget.promptBudget(for: environment.referenceModelID)
         }
         guard testCase.reference != nil || testCase.reading == nil else {
-            return Run(caseID: testCase.id, category: testCase.category, grades: grades)
+            return Run(caseID: testCase.id, category: testCase.category, group: testCase.group, grades: grades)
         }
 
         let history: [LocalToolLoop.Message] = (testCase.history ?? []).map {
@@ -303,7 +321,7 @@ enum LocalToolEval {
                 grades[.toolName] = false
             }
         }
-        return Run(caseID: testCase.id, category: testCase.category, grades: grades)
+        return Run(caseID: testCase.id, category: testCase.category, group: testCase.group, grades: grades)
     }
 
     /// A thread-safe count; the loop's closures are not `@Sendable`, but a task may hop threads.
@@ -333,39 +351,53 @@ enum LocalToolEval {
     }
 
     struct Report {
-        var byCategory: [Category: Tally] = [:]
-        var byGrader: [Grader: Tally] = [:]
-        var overall = Tally()
-        /// 1 for each passing run, 0 for each failing one, for the interval.
-        var outcomes: [Double] = []
-
-        mutating func add(_ run: Run) {
-            byCategory[run.category, default: Tally()].runs += 1
-            overall.runs += 1
-            if run.passed {
-                byCategory[run.category, default: Tally()].passed += 1
-                overall.passed += 1
-            }
-            for (grader, passed) in run.grades {
-                byGrader[grader, default: Tally()].runs += 1
-                if passed { byGrader[grader, default: Tally()].passed += 1 }
-            }
-            outcomes.append(run.passed ? 1 : 0)
+        struct GroupTally {
+            var overall = Tally()
+            var byCategory: [Category: Tally] = [:]
+            var byGrader: [Grader: Tally] = [:]
+            var outcomes: [Double] = []
         }
 
-        /// Counts only: categories, graders, and the overall pass rate's bootstrap interval.
+        var groups: [Group: GroupTally] = [:]
+        var overall = Tally()
+
+        mutating func add(_ run: Run) {
+            overall.runs += 1
+            if run.passed { overall.passed += 1 }
+            var group = groups[run.group, default: GroupTally()]
+            group.overall.runs += 1
+            group.byCategory[run.category, default: Tally()].runs += 1
+            if run.passed {
+                group.overall.passed += 1
+                group.byCategory[run.category, default: Tally()].passed += 1
+            }
+            for (grader, passed) in run.grades {
+                group.byGrader[grader, default: Tally()].runs += 1
+                if passed { group.byGrader[grader, default: Tally()].passed += 1 }
+            }
+            group.outcomes.append(run.passed ? 1 : 0)
+            groups[run.group] = group
+        }
+
+        /// Counts only: each group — Field Assist first — with its pass rate's bootstrap interval,
+        /// its categories and its graders.
         func lines() -> [String] {
             var lines = ["local-tool-eval corpus v\(LocalToolEval.corpusVersion): \(overall.passed)/\(overall.runs) runs passed"]
-            if let interval = EvalIntervals.bootstrapInterval(values: outcomes) {
-                lines.append("  pass rate \(interval.formatted())")
-            }
-            for category in Category.allCases {
-                guard let tally = byCategory[category] else { continue }
-                lines.append("  \(category.rawValue): \(tally.passed)/\(tally.runs)")
-            }
-            for grader in Grader.allCases {
-                guard let tally = byGrader[grader] else { continue }
-                lines.append("  grader \(grader.rawValue): \(tally.passed)/\(tally.runs)")
+            for groupKey in Group.allCases {
+                guard let group = groups[groupKey] else { continue }
+                var head = "  \(groupKey.rawValue): \(group.overall.passed)/\(group.overall.runs)"
+                if let interval = EvalIntervals.bootstrapInterval(values: group.outcomes) {
+                    head += ", pass rate \(interval.formatted())"
+                }
+                lines.append(head)
+                for category in Category.allCases {
+                    guard let tally = group.byCategory[category] else { continue }
+                    lines.append("    \(category.rawValue): \(tally.passed)/\(tally.runs)")
+                }
+                for grader in Grader.allCases {
+                    guard let tally = group.byGrader[grader] else { continue }
+                    lines.append("    grader \(grader.rawValue): \(tally.passed)/\(tally.runs)")
+                }
             }
             return lines
         }

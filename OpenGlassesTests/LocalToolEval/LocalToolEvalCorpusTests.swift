@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import OpenGlasses
 
@@ -5,18 +6,37 @@ import XCTest
 /// and reading check against a scripted fake model. This is where a regression in any of them is
 /// caught; P3's Mac screener and device app hand the same cases to real models.
 ///
-/// Output is counts only (`LocalToolEval.Report`), never a turn, a passage or an answer.
+/// The corpus is generated from the Lennox SLP99 example vault (`Scripts/local-tool-eval/
+/// generate-corpus.py`) and is mostly Field Assist job turns. Output is counts only
+/// (`LocalToolEval.Report`, Field Assist first), never a turn, a passage or an answer.
 @MainActor
 final class LocalToolEvalCorpusTests: XCTestCase {
 
-    private static var corpusURL: URL {
+    private static var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // LocalToolEval
             .deletingLastPathComponent()   // OpenGlassesTests
             .deletingLastPathComponent()   // repo root
-            .appendingPathComponent("Scripts/local-tool-eval/corpus", isDirectory: true)
+    }
+
+    private static var corpusURL: URL {
+        repoRoot.appendingPathComponent("Scripts/local-tool-eval/corpus", isDirectory: true)
             .appendingPathComponent(LocalToolEval.corpusFileName)
     }
+
+    /// What the generator reads, in the order it hashes them (sorted by path).
+    private static let generatorInputs = [
+        "Scripts/local-tool-eval/generate-corpus.py",
+        "examples/vaults/lennox-slp99/error_codes.md",
+        "examples/vaults/lennox-slp99/eval/calibration.jsonl",
+        "examples/vaults/lennox-slp99/models.md",
+        "examples/vaults/lennox-slp99/parts.md",
+        "examples/vaults/lennox-slp99/procedures/slp99_no_ignition.json",
+        "examples/vaults/lennox-slp99/procedures/slp99_pressure_switch_lockout.json",
+        "examples/vaults/lennox-slp99/procedures/slp99_unit_size_code.json",
+        "examples/vaults/lennox-slp99/safety.md",
+        "examples/vaults/lennox-slp99/service_values.md",
+    ]
 
     private var registry: NativeToolRegistry!
     private var previousEntitlement: FieldAssistEntitlementProvider!
@@ -74,6 +94,45 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         }
     }
 
+    /// The point of running Field Assist on a downloaded model is cost, so the corpus is mostly
+    /// Field Assist job turns, drawn mostly from the example vault, with every job category in it.
+    func testTheCorpusIsMostlyFieldAssistFromTheVault() throws {
+        let cases = try corpus()
+        let field = cases.filter { $0.group == .fieldAssist }
+        XCTAssertGreaterThanOrEqual(Double(field.count) / Double(cases.count), 0.7)
+        XCTAssertGreaterThanOrEqual(Double(field.filter { $0.source != "synthetic" }.count) / Double(field.count), 0.7)
+        for category: LocalToolEval.Category in [.toolChoice, .manualAnswer, .notInManual, .twoStep, .longPrompt,
+                                                 .multiTurn, .cleanOutput, .cancellation] {
+            XCTAssertTrue(field.contains { $0.category == category }, "Field Assist has no \(category.rawValue) case")
+        }
+        XCTAssertTrue(field.allSatisfy { $0.vault == "lennox-slp99" }, "a Field Assist case names its job context")
+        for tool in FieldAssistLocalToolSet.priority {
+            XCTAssertTrue(field.contains { $0.expect.calls.contains { $0.tool == tool } }, "no case expects \(tool)")
+        }
+        XCTAssertTrue(cases.contains { $0.group == .everyday && $0.category == .restraint })
+    }
+
+    /// The corpus is generated; a vault edit (or a generator edit) without a regeneration fails
+    /// here. Fix: `python3 -I Scripts/local-tool-eval/generate-corpus.py`.
+    func testTheCorpusMatchesItsGeneratorInputs() throws {
+        let text = try String(contentsOf: Self.corpusURL, encoding: .utf8)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        func recorded(_ key: String) -> String? {
+            lines.first { $0.hasPrefix("// \(key): ") }.map { String($0.dropFirst("// \(key): ".count)) }
+        }
+        var hasher = SHA256()
+        for path in Self.generatorInputs {
+            hasher.update(data: Data(path.utf8) + Data([0]))
+            hasher.update(data: try Data(contentsOf: Self.repoRoot.appendingPathComponent(path)) + Data([0]))
+        }
+        let inputs = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(recorded("inputs-sha256"), inputs,
+                       "the vault or the generator changed: run Scripts/local-tool-eval/generate-corpus.py")
+        let body = lines.filter { !$0.hasPrefix("//") }.joined(separator: "\n")
+        let bodyHash = SHA256.hash(data: Data(body.utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(recorded("body-sha256"), bodyHash, "the corpus was edited by hand: regenerate it")
+    }
+
     func testEveryExpectationNamesARealToolAndItsDeclaredArguments() throws {
         for testCase in try corpus() {
             for name in testCase.offered {
@@ -100,10 +159,15 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         }
     }
 
-    func testTheCorpusHoldsNotInTheManualCasesBothWays() throws {
-        let readings = try corpus().filter { $0.category == .notInManual }
-        XCTAssertTrue(readings.contains { $0.expect.readingAccepted == true }, "a control the check must accept")
-        XCTAssertGreaterThanOrEqual(readings.filter { $0.expect.readingAccepted == false }.count, 3)
+    func testEveryManualCaseExpectsTheCheckTheWayItsCategorySays() throws {
+        let cases = try corpus()
+        let answers = cases.filter { $0.category == .manualAnswer }
+        let misses = cases.filter { $0.category == .notInManual }
+        XCTAssertTrue(answers.allSatisfy { $0.expect.readingAccepted == true && $0.reading?.found == true })
+        XCTAssertTrue(misses.allSatisfy { $0.expect.readingAccepted == false })
+        XCTAssertTrue(misses.contains { $0.reading?.found == true },
+                      "near-miss twins: a made-up value beside a real quote, which the check must decline")
+        XCTAssertTrue(misses.contains { $0.reading?.found == false }, "honest abstentions")
     }
 
     // MARK: - The reference model passes
@@ -124,6 +188,7 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         // Counts only.
         for line in report.lines() { print(line) }
         let printed = report.lines().joined(separator: "\n")
+        XCTAssertTrue(printed.contains("fieldAssist"), "Field Assist is reported as its own group")
         for testCase in cases {
             XCTAssertFalse(printed.contains(testCase.turn), "the report must never carry a turn")
             for passage in (testCase.passages ?? [:]).values {
@@ -142,14 +207,14 @@ final class LocalToolEvalCorpusTests: XCTestCase {
     }
 
     func testTheWrongToolFailsToolName() async throws {
-        let run = try await runCase("choice-03", script: [
+        let run = try await runCase("long-1", script: [
             #"<tool_call>{"name": "field_session", "arguments": {"action": "status"}}</tool_call>"#, "Done.",
         ])
         XCTAssertEqual(run.grades[.toolName], false)
     }
 
     func testAMissingRequiredArgumentFailsPresence() async throws {
-        let run = try await runCase("choice-03", script: [
+        let run = try await runCase("long-1", script: [
             #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading"}}</tool_call>"#, "Done.",
         ])
         XCTAssertEqual(run.grades[.toolName], true)
@@ -157,38 +222,40 @@ final class LocalToolEvalCorpusTests: XCTestCase {
     }
 
     func testAValueThatCannotBeReadAtItsTypeFailsTypes() async throws {
-        let run = try await runCase("choice-06", script: [
-            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "superheat", "refrigerant": "R-454B", "suction_pressure_psig": "about a hundred", "suction_line_temp_f": 52}}</tool_call>"#,
+        let run = try await runCase("twostep-070XV36B-115", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "115"}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": 115, "current_a": "about fifteen", "length_ft": 50}}</tool_call>"#,
             "Done.",
         ])
         XCTAssertEqual(run.grades[.argumentTypes], false)
     }
 
     func testANumberWrittenAsTextStillPassesTypesAfterCoercion() async throws {
-        let run = try await runCase("choice-06", script: [
-            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "superheat", "refrigerant": "R-454B", "suction_pressure_psig": "118", "suction_line_temp_f": "52"}}</tool_call>"#,
-            "Superheat is 11.8 degrees.",
+        let run = try await runCase("twostep-070XV36B-115", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": 115}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": "115", "current_a": "15", "length_ft": "50", "area_cmil": "4110"}}</tool_call>"#,
+            "The drop is about 3 volts.",
         ])
         XCTAssertEqual(run.grades[.argumentTypes], true)
         XCTAssertEqual(run.grades[.argumentValues], true)
     }
 
     func testAWrongValueFailsValues() async throws {
-        let run = try await runCase("choice-03", script: [
-            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "180", "unit": "psig"}}</tool_call>"#,
+        let run = try await runCase("long-1", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "6", "unit": "inWC"}}</tool_call>"#,
             "Logged.",
         ])
         XCTAssertEqual(run.grades[.argumentValues], false)
     }
 
     func testARepeatedCallFailsNoRepeats() async throws {
-        let call = #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "118", "unit": "psig"}}</tool_call>"#
-        let run = try await runCase("choice-03", script: [call, call, "Logged."])
+        let call = #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "0.6", "unit": "inWC"}}</tool_call>"#
+        let run = try await runCase("long-1", script: [call, call, "Logged."])
         XCTAssertEqual(run.grades[.noRepeats], false)
     }
 
     func testAToolOnARestraintCaseFails() async throws {
-        let run = try await runCase("restraint-01", script: [
+        let run = try await runCase("chat-morning", script: [
             #"<tool_call>{"name": "field_session", "arguments": {"action": "start"}}</tool_call>"#, "Started.",
         ])
         XCTAssertEqual(run.grades[.toolName], false)
@@ -202,22 +269,22 @@ final class LocalToolEvalCorpusTests: XCTestCase {
     }
 
     func testABrokenCarryFailsCarry() async throws {
-        let run = try await runCase("twostep-01", script: [
-            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "118", "unit": "psig"}}</tool_call>"#,
-            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "superheat", "refrigerant": "R-454B", "suction_pressure_psig": 181, "suction_line_temp_f": 52}}</tool_call>"#,
+        let run = try await runCase("twostep-070XV36B-115", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "115"}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": 151, "current_a": 15, "length_ft": 50}}</tool_call>"#,
             "Done.",
         ])
         XCTAssertEqual(run.grades[.carry], false)
     }
 
     func testAMadeUpManualValueIsDeclined() throws {
-        let testCase = try XCTUnwrap(try corpus().first { $0.id == "manual-02" })
+        let testCase = try XCTUnwrap(try corpus().first { $0.id == "sv-001-miss" })
         let reading = try XCTUnwrap(testCase.reading)
         XCTAssertFalse(ManualReadingCheck.check(reading.manualReading, passages: testCase.passages ?? [:]).isAccepted)
     }
 
     func testCancellationIsGradedOnlyWhereTheCaseCancels() async throws {
-        let testCase = try XCTUnwrap(try corpus().first { $0.id == "cancel-01" })
+        let testCase = try XCTUnwrap(try corpus().first { $0.id == "cancel-job-1" })
         // The scripted model never looks at cancellation; the loop stops the turn by itself.
         let run = await LocalToolEval.run(testCase, environment: environment())
         XCTAssertEqual(run.grades[.cancellation], true)
