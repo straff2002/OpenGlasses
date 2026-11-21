@@ -6,18 +6,31 @@ import Foundation
 /// | Card | Heading | Lines | Buttons |
 /// |---|---|---|---|
 /// | Listening | "Listening…" | the live partial transcript, newest words kept (body style) | Stop (focused) |
-/// | Thinking | "Thinking…" | "You: …", what was heard (meta style, one display line) | Stop (focused) |
+/// | Thinking | "Thinking…" | "You: …", what was heard (meta style, one display line) | Cancel (focused) |
+/// | Thinking, confirming | "Thinking…" | the same line | Press again to cancel (focused) |
+///
+/// **Cancel is not Stop.** Listening's Stop sends the question; Thinking's button drops it, so the
+/// two carry different labels and different ids. A press the wearer aimed at Listening's Stop that
+/// reaches the app after Thinking is drawn names an id the lens no longer shows and is dropped,
+/// rather than cancelling the question it was meant to send (a tester's report of 2026-11-21: a
+/// question cancelled with its answer seconds away, and the wearer thought it was ignored). The
+/// confirming card has its own id too, so a double press on Cancel is one press, not a cancel.
 ///
 /// Listening shows the transcript's *tail*: the wearer is checking that the words they are saying
 /// now were heard, so the start of a long utterance gives way, not the end. Thinking shows the
 /// heard question the way the answer card does (`HUDAnswerCardBuilder.questionLine`), so the lens
-/// reads the same from the moment the wearer stops to the answer's first page. Stop ends in
-/// `.stop`, so `HUDExit` counts it as each card's way out.
+/// reads the same from the moment the wearer stops to the answer's first page. Every button's id ends
+/// in `.stop`, so `HUDExit` counts it as each card's way out.
 enum HUDTurnStateBuilder {
 
     /// Stable item ids, so a band press routes back by id.
     enum ItemID {
+        /// Listening's Stop: send what was heard.
         static let stop = "lc.turn.stop"
+        /// Thinking's Cancel, first press: ask to confirm.
+        static let cancel = "lc.thinking.cancel.stop"
+        /// Thinking's Cancel, confirming: drop the question.
+        static let confirmCancel = "lc.thinking.confirm.stop"
     }
 
     static var listeningTitle: String {
@@ -42,15 +55,21 @@ enum HUDTurnStateBuilder {
     }
 
     /// The Thinking card. `question` is what was heard; `lineChars` is one display line, so the
-    /// question line never wraps (the answer card's rule).
-    static func thinking(question: String?, lineChars: Int,
-                         onStop: @escaping () -> Void) -> HUDScreen {
+    /// question line never wraps (the answer card's rule). `confirming` is the card after one press
+    /// of Cancel: the same card, its button asking for a second press.
+    static func thinking(question: String?, lineChars: Int, confirming: Bool = false,
+                         onCancel: @escaping () -> Void) -> HUDScreen {
         var lines: [HUDLine] = []
         if let line = HUDAnswerCardBuilder.questionLine(for: question, maxChars: lineChars) {
             lines.append(HUDLine(line, emphasis: .meta))
         }
-        return HUDScreen(title: thinkingTitle, lines: lines, items: [stopItem(onStop)],
-                         focusItemID: ItemID.stop)
+        let item = confirming
+            ? HUDItem(id: ItemID.confirmCancel,
+                      label: String(localized: "Press again to cancel",
+                                    comment: "Glasses: the Thinking card's button after one press; a second press drops the question."),
+                      style: .secondary, action: onCancel)
+            : HUDItem(id: ItemID.cancel, label: String(localized: "Cancel"), style: .secondary, action: onCancel)
+        return HUDScreen(title: thinkingTitle, lines: lines, items: [item], focusItemID: item.id)
     }
 
     private static func stopItem(_ onStop: @escaping () -> Void) -> HUDItem {

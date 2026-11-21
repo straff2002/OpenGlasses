@@ -25,9 +25,17 @@ import Foundation
 /// after a lifetime with no change (`listeningLifetime`, `thinkingLifetime`) as a backstop, so the
 /// lens is never left saying "Thinking…".
 ///
-/// **Stop.** On Listening it stops capture and sends what was heard (the phone's Tap to stop); on
-/// Thinking it cancels the turn (the phone's cancel). Both are band presses issued against the card
-/// as last drawn: a press made under a notification is stale and dropped.
+/// **Stop and Cancel.** Listening's Stop stops capture and sends what was heard (the phone's Tap to
+/// stop). Thinking's Cancel drops the question (the phone's cancel), and is guarded, because one
+/// stray pinch used to cancel a question silently with its answer seconds away (a tester's report
+/// of 2026-11-21):
+/// - a press inside `pressGrace` of the card changing is dropped: it was aimed at the card before;
+/// - the first press only arms it: the button asks for a second press, and goes back to Cancel
+///   after `confirmWindow` without one;
+/// - each state has its own button id, so a press reaching the app after the card changed names a
+///   button no longer shown and is dropped (`HUDTurnStateBuilder`).
+/// All are band presses issued against the card as last drawn: a press made under a notification
+/// is stale and dropped.
 @MainActor
 final class HUDTurnState {
     enum Phase: Equatable {
@@ -40,6 +48,11 @@ final class HUDTurnState {
     static let listeningLifetime: TimeInterval = 30
     /// Backstop: a Thinking card no answer replaced clears after this long.
     static let thinkingLifetime: TimeInterval = 90
+    /// A Cancel press this soon after the Thinking card was drawn, or changed, is dropped: it was
+    /// meant for the card before (Listening's Stop, or the first press of a double pinch).
+    static let pressGrace: TimeInterval = 1.5
+    /// How long the armed card waits for the second press before going back to Cancel.
+    static let confirmWindow: TimeInterval = 4
 
     private let display: GlassesDisplayService
 
@@ -60,7 +73,7 @@ final class HUDTurnState {
 
     /// Listening's Stop: stop capture and send what was heard.
     var onStopListening: (() -> Void)?
-    /// Thinking's Stop: cancel the turn.
+    /// Thinking's Cancel, confirmed: cancel the turn.
     var onCancelTurn: (() -> Void)?
 
     // MARK: State
@@ -78,6 +91,14 @@ final class HUDTurnState {
     private var lifetimeGeneration = 0
     /// The screen last handed to the display, buttons and all. Read by tests.
     private(set) var screenOnLens: HUDScreen?
+    /// The question the Thinking card shows, kept to redraw it armed and back.
+    private var thinkingQuestion: String?
+    /// When the Thinking card was last drawn or changed: the start of `pressGrace`.
+    private var thinkingChangedAt: Date?
+    /// Thinking's Cancel was pressed once and waits for the second press.
+    private(set) var cancelArmed = false
+    /// Bumped whenever the Cancel state changes, so only the newest confirm window disarms.
+    private var cancelGeneration = 0
 
     init(display: GlassesDisplayService) {
         self.display = display
@@ -129,14 +150,12 @@ final class HUDTurnState {
     func thinking(question: String? = nil) {
         guard phase == .listening, stillOnLens() else { return }
         let heard = question ?? (latestPartial.isEmpty ? nil : latestPartial)
-        let screen = HUDTurnStateBuilder.thinking(question: heard, lineChars: geometry().maxChars,
-                                                  onStop: { [weak self] in self?.press() })
-        guard display.presentTurnState(screen, wearerStarted: false, onSelect: selectionHandler) else {
+        thinkingQuestion = heard
+        guard drawThinking(confirming: false) else {
             reset()
             return
         }
         phase = .thinking
-        screenOnLens = screen
         armLifetime()
     }
 
@@ -211,24 +230,69 @@ final class HUDTurnState {
         turnGeneration += 1
         lifetimeGeneration += 1
         screenOnLens = nil
+        thinkingQuestion = nil
+        thinkingChangedAt = nil
+        cancelArmed = false
+        cancelGeneration += 1
+    }
+
+    /// Draw the Thinking card, plain or asking for the second press. Starts the press grace.
+    @discardableResult
+    private func drawThinking(confirming: Bool) -> Bool {
+        let screen = HUDTurnStateBuilder.thinking(question: thinkingQuestion, lineChars: geometry().maxChars,
+                                                  confirming: confirming,
+                                                  onCancel: { [weak self] in self?.pressCancel() })
+        guard display.presentTurnState(screen, wearerStarted: false, onSelect: selectionHandler) else {
+            return false
+        }
+        screenOnLens = screen
+        thinkingChangedAt = now()
+        cancelArmed = confirming
+        cancelGeneration += 1
+        return true
     }
 
     private func listeningScreen(partial: String?) -> HUDScreen {
         HUDTurnStateBuilder.listening(partial: partial, onStop: { [weak self] in self?.press() })
     }
 
-    /// Stop, from the band, against the card as last drawn.
+    /// Listening's Stop, from the band, against the card as last drawn.
     private func press() {
-        guard phase != .idle, display.showsTurnState,
+        guard phase == .listening, display.showsTurnState,
               display.acceptsHeldScreenPress(issuedAgainst: display.heldScreenRevision) else { return }
-        switch phase {
-        case .listening:
-            onStopListening?()
-        case .thinking:
-            onCancelTurn?()
-            end()
-        case .idle:
-            break
+        onStopListening?()
+    }
+
+    /// Thinking's Cancel, from the band: dropped inside the grace, armed on the first press,
+    /// cancels on the second.
+    private func pressCancel() {
+        guard phase == .thinking, display.showsTurnState,
+              display.acceptsHeldScreenPress(issuedAgainst: display.heldScreenRevision) else { return }
+        if let changed = thinkingChangedAt, now().timeIntervalSince(changed) < Self.pressGrace {
+            PrivacyLog.device(.hud, .turnCancelPress, state: PrivacyToken("tooSoon"))
+            display.onDebugEvent?("HUD cancel press too soon")
+            return
+        }
+        guard cancelArmed else {
+            guard drawThinking(confirming: true) else { return }
+            PrivacyLog.device(.hud, .turnCancelPress, state: PrivacyToken("armed"))
+            armLifetime()
+            armConfirmWindow()
+            return
+        }
+        PrivacyLog.device(.hud, .turnCancelPress, state: PrivacyToken("confirmed"))
+        onCancelTurn?()
+        end()
+    }
+
+    /// No second press within `confirmWindow`: the card goes back to Cancel.
+    private func armConfirmWindow() {
+        let generation = cancelGeneration
+        schedule(Self.confirmWindow) { [weak self] in
+            guard let self, generation == self.cancelGeneration, self.phase == .thinking,
+                  self.cancelArmed, self.stillOnLens() else { return }
+            PrivacyLog.device(.hud, .turnCancelPress, state: PrivacyToken("expired"))
+            self.drawThinking(confirming: false)
         }
     }
 

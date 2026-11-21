@@ -774,7 +774,7 @@ struct BottomControlBar: View {
                 isActive: true,
                 color: OGTheme.warn
             ) {
-                appState.cancelCurrentResponse()
+                appState.cancelCurrentResponse(source: .phoneButton)
             }
         } else if appState.isListening {
             // Active voice session — explicit End. Shown regardless of glasses connection so

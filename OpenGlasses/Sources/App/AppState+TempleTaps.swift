@@ -53,7 +53,7 @@ extension AppState: TempleActionPerforming {
         case .interruptAndListen:
             await interruptSpeechAndListen()
         case .endConversation:
-            await hangUpConversation()
+            await hangUpConversation(source: .templeTap)
         case .endLiveSession:
             stopLiveSession(geminiLiveSession.isActive ? .geminiLive : openAIRealtimeSession.sessionMode,
                             source: .templeTap)
@@ -63,7 +63,7 @@ extension AppState: TempleActionPerforming {
             // Muted first, so the end of the conversation does not re-arm the wake word only for
             // the mute to take it straight down again.
             micMuted = true
-            await hangUpConversation()
+            await hangUpConversation(source: .templeTap)
         case .setLiveMicMuted(let muted):
             if geminiLiveSession.isActive { geminiLiveSession.micMuted = muted }
             if openAIRealtimeSession.isActive { openAIRealtimeSession.micMuted = muted }
