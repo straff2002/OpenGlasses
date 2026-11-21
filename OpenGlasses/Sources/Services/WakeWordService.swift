@@ -1516,6 +1516,13 @@ class WakeWordService: NSObject, ObservableObject {
         reapplyIdlePlanIfChanged()
     }
 
+    /// Plan MO §7 — a live-hints session started or stopped: move the idle session to the phone's
+    /// mic in the hints shape (`IdleAudioPlan.hintsShape`), or back. Through the same re-apply as a
+    /// consumer change, so never under a turn.
+    func liveHintsSessionChanged() {
+        reapplyIdlePlanIfChanged()
+    }
+
     /// Plan GU §1 — a consumer that wants the wearer's own voice (captions, the teleprompter, a
     /// glasses recording or broadcast) started or stopped while the app was idle: move the idle
     /// session to the plan's new mic. The engine reconfigures under the switch and the
@@ -1525,7 +1532,7 @@ class WakeWordService: NSObject, ObservableObject {
         guard audioSessionConfigured, pauseHoldCount == 0, turnMicRoute == nil, !carPlayMode,
               let applied = appliedIdlePlan else { return }
         let plan = currentIdlePlan()
-        guard plan.holdsSession, plan.listen != applied.listen else { return }
+        guard plan.holdsSession, plan.listen != applied.listen || plan.hintsShape != applied.hintsShape else { return }
         Task { @MainActor [weak self] in
             guard let self, self.pauseHoldCount == 0, self.turnMicRoute == nil else { return }
             await self.reconfigureAudioSession()

@@ -64,6 +64,9 @@ enum SpeechSource: String, CaseIterable, Sendable {
     case readAloud
     /// A test line: a subsystem probe, the live readiness check, the readiness walkthrough.
     case diagnostic
+    /// A live hint (Plan MO): a few words answering a question someone near the wearer asked, and
+    /// the session's own limit lines.
+    case hint
 
     /// The log token.
     var token: PrivacyToken { PrivacyToken(rawValue) }

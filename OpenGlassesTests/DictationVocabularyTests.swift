@@ -130,9 +130,14 @@ final class DictationVocabularyTests: XCTestCase {
             vanStock: [],
             vaults: [],
             wakePhrases: [],
-            trades: [])
+            trades: [],
+            // Plan MO §8: a live-hints session's own trigger words and its documents' titles.
+            // Titles only, never the names a document mentions.
+            keywords: [],
+            documentTitles: [])
         let labels = Mirror(reflecting: input).children.compactMap(\.label)
-        XCTAssertEqual(labels, ["activeEquipment", "jobEquipment", "vanStock", "vaults", "wakePhrases", "trades"])
+        XCTAssertEqual(labels, ["activeEquipment", "jobEquipment", "vanStock", "vaults", "wakePhrases", "trades",
+                                "keywords", "documentTitles"])
     }
 
     func testJobEquipmentSerialAndUnitKeyAreNotHints() {

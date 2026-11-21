@@ -153,6 +153,10 @@ final class GlassesDisplayService: ObservableObject {
     /// nothing interactive is up: over anything else it flashes, as it always has.
     @Published private(set) var showsAnswerCard = false
 
+    /// The card number (`HUDPageSet.card`) of the answer card held now, or nil when none is. A live
+    /// hint (Plan MO) reads it to take only its own card off the lens.
+    var heldAnswerCardSerial: Int? { showsAnswerCard ? currentScreen?.pageSet?.card : nil }
+
     /// A transient frame (a notification, a flash) is drawn over the held interactive screen and
     /// will restore it. A card that changes meanwhile updates `currentScreen` only, so the restore
     /// draws the newest version instead of the card cutting the notification short.

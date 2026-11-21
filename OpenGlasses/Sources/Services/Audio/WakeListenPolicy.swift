@@ -42,6 +42,18 @@ struct IdleAudioPlan: Equatable {
     let speechGate: Bool
     /// The stricter gate thresholds (`PowerPosture.prefersStrictWakeGate`).
     let strictGate: Bool
+    /// Plan MO §6–§7: a live-hints session is running on the phone's mic. Other audio is ducked
+    /// under a spoken hint rather than mixed at full level, the mode is `.spokenAudio`, and
+    /// Bluetooth stays on A2DP: never `.allowBluetoothHFP`, so iOS cannot switch the glasses to call
+    /// mode. Only ever with `listen == .phone`.
+    let hintsShape: Bool
+
+    init(listen: Listen, speechGate: Bool, strictGate: Bool, hintsShape: Bool = false) {
+        self.listen = listen
+        self.speechGate = speechGate
+        self.strictGate = strictGate
+        self.hintsShape = hintsShape && listen == .phone
+    }
 
     /// Whether this plan opens a session of its own at all.
     var holdsSession: Bool {
@@ -59,13 +71,16 @@ struct IdleAudioPlan: Equatable {
             return [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
         case .bluetooth(let route):
             return MicRoutePolicy.categoryOptions(for: route, mixWithOthers: true)
+        case .phone where hintsShape:
+            return MicRoutePolicy.liveHintsCategoryOptions
         case .phone, .off, .notOurs:
             return MicRoutePolicy.idleCategoryOptions(for: .phone)
         }
     }
 
     var mode: AVAudioSession.Mode {
-        listen == .carPlay ? .voiceChat : .default
+        if listen == .carPlay { return .voiceChat }
+        return hintsShape ? .spokenAudio : .default
     }
 
     /// The route whose port `setPreferredInput` should target: the built-in mic (`.phone`) for a
@@ -124,6 +139,10 @@ enum WakeListenPolicy {
         var posture: PowerPosture = .normal
         /// `Config.wakeSpeechGateEnabled`.
         var speechGateEnabled: Bool = false
+        /// Plan MO §7: a live-hints session is running. The room is heard on the phone's mic, so the
+        /// idle listener waits there whatever a caption consumer or the Microphone setting would
+        /// otherwise hold, and the session takes the hints shape (`IdleAudioPlan.hintsShape`).
+        var liveHintsActive: Bool = false
     }
 
     static func decide(_ inputs: Inputs) -> IdleAudioPlan {
@@ -134,7 +153,8 @@ enum WakeListenPolicy {
         case .off, .notOurs, .carPlay: gated = false
         }
         return IdleAudioPlan(listen: listen, speechGate: gated,
-                             strictGate: gated && inputs.posture.prefersStrictWakeGate)
+                             strictGate: gated && inputs.posture.prefersStrictWakeGate,
+                             hintsShape: inputs.liveHintsActive)
     }
 
     private static func listenTarget(_ inputs: Inputs) -> IdleAudioPlan.Listen {
@@ -146,6 +166,11 @@ enum WakeListenPolicy {
         if inputs.foreignOwner { return .notOurs }
         // 3. The car owns the route.
         if inputs.carPlayMode { return .carPlay }
+        // 3a. Plan MO §7: a live-hints session hears the room on the phone's mic. It outranks a
+        //     caption consumer's Bluetooth hold (rule 4) and the wearer's idle choice (rule 5): the
+        //     glasses' hands-free mic hears the other person poorly, drops playback to call
+        //     quality, and on a Display covers the lens.
+        if inputs.liveHintsActive { return .phone }
         // 4. A consumer that wants the wearer's own voice, with a Bluetooth conversation mic: keep
         //    holding it — released when the consumer stops. Outranks the power override: a
         //    recording should not change microphone because the battery dipped.

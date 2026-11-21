@@ -51,6 +51,31 @@ enum HintLimits {
     /// A hint not started this long after it arrived is dropped.
     static let speakWithin: TimeInterval = 5
 
+    // MARK: - The session (§5, §6, §10)
+
+    /// The model's hint replaces the passage card only if it lands this soon after the card.
+    static let modelReplaceWindow: TimeInterval = 3
+    /// A hint on the lens hides after this long (the Display's own dim), unless the next replaces it.
+    static let lensCardLifetime: TimeInterval = 20
+    /// The phone keeps this many hints, newest first, in memory only.
+    static let phoneListMax = 10
+    /// The longest session: it stops itself here.
+    static let sessionLimit: TimeInterval = 2 * 60 * 60
+    /// The spoken warning before the limit (at 1 h 55).
+    static let sessionWarningAt: TimeInterval = sessionLimit - 5 * 60
+    /// The capture notice stays on the phone this long after a start.
+    static let captureNoticeDuration: TimeInterval = 8
+    /// How often the session's clock ticks (the speak-when-quiet policy, the limits, the card).
+    static let tickInterval: TimeInterval = 0.1
+    /// Lecture mode: a key point about this often, or sooner at a pause after
+    /// `keyPointWords` words (`MeetingAssistantService`'s cadence).
+    static let keyPointInterval: TimeInterval = 60
+    static let keyPointWords = 100
+    /// The key-point line on the lens: two lens lines, as a passage card.
+    static let keyPointMaxCharacters = 90
+    /// The question over the hint: at most this many words.
+    static let questionGlanceWords = 4
+
     /// Slack for comparing intervals built from `Date` arithmetic, so a boundary measured at
     /// exactly the limit lands on the limit's side whatever the base date's rounding.
     static let timeTolerance: TimeInterval = 0.000_001

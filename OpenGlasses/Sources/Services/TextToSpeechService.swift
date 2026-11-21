@@ -390,10 +390,15 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     /// own the mic), so it registers as non-exclusive — never preempting or deactivating the session.
     private var coexistToken: UUID?
 
-    private func beginPause() async {
+    /// Whether the hold now in place took the conversation route (`pauseOtherAudio`). A live hint
+    /// (Plan MO §6) rides the idle session as it is and takes nothing.
+    private var heldPauseTookConversationRoute = true
+
+    private func beginPause(takingConversationRoute: Bool = true) async {
         guard !didHoldPause else { return }
         didHoldPause = true   // set before the await so a concurrent beginPause can't double-hold
-        await wakeWordService?.pauseOtherAudio()
+        heldPauseTookConversationRoute = takingConversationRoute
+        if takingConversationRoute { await wakeWordService?.pauseOtherAudio() }
         coexistToken = AudioSessionCoordinator.shared.beginCoexisting(.textToSpeech)
     }
 
@@ -404,6 +409,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
             coexistToken = nil
             AudioSessionCoordinator.shared.endCoexisting(token)
         }
+        guard heldPauseTookConversationRoute else { return }
         // BJ PR2: await the resume so a teardown (barge-in / stopSpeaking) doesn't return before
         // other audio is actually restored (was fire-and-forget).
         await wakeWordService?.resumeOtherAudio()
@@ -492,10 +498,16 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
     ///
     /// `source` (Plan KL P4) is what kind of line this is, logged on the `speaking` line beside its
     /// length. No default: see `SpeechSource`.
+    ///
+    /// `takesConversationRoute` false (Plan MO §6, a live hint) speaks over the idle session as it
+    /// stands: no conversation mic is taken, other audio is not paused (the live-hints session ducks
+    /// it), and the output is never moved to the loudspeaker. The caller has already checked the
+    /// route is not the phone's speaker.
     @discardableResult
     func speakReporting(_ text: String, source: SpeechSource, urgency: SpeechUrgency = .low,
                         mirrorToHUD: Bool = true,
-                        onDeviceOnly: Bool = false) async -> SpeechDeliveryOutcome {
+                        onDeviceOnly: Bool = false,
+                        takesConversationRoute: Bool = true) async -> SpeechDeliveryOutcome {
         // Plan KZ §6: no web address is read aloud or put on the lens — a link keeps its words,
         // citation markers and bare addresses go.
         let unlinked = CitationMarkupStripper.strip(text)
@@ -507,7 +519,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
         // A finished reply long enough to take a cloud voice a while is said in parts, so its first
         // sentence is heard while the rest is synthesised (`WholeReplyParts`).
-        if source == .reply, urgency == .low, mirrorToHUD, !onDeviceOnly,
+        if source == .reply, urgency == .low, mirrorToHUD, !onDeviceOnly, takesConversationRoute,
            let outcome = await speakFinishedReplyInParts(unlinked) {
             return outcome
         }
@@ -532,7 +544,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         // rather than the earpiece. Never over a real output: AirPods, headphones, a car or the
         // glasses are where the reply belongs, glasses connected or not.
         let session = AVAudioSession.sharedInstance()
-        if session.category == .playAndRecord,
+        if takesConversationRoute, session.category == .playAndRecord,
            MicRoutePolicy.shouldOverrideToSpeaker(outputs: session.currentRoute.outputs.map(\.portType)) {
             try? session.overrideOutputAudioPort(.speaker)
         }
@@ -571,7 +583,7 @@ class TextToSpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelega
         }
 
         isSpeaking = true
-        await beginPause()
+        await beginPause(takingConversationRoute: takesConversationRoute)
 
         // Wrap the actual speech work in a trackable task
         let task = Task { @MainActor [weak self] in

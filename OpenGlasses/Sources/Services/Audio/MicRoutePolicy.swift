@@ -170,6 +170,15 @@ enum MicRoutePolicy {
         [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers]
     }
 
+    /// Plan MO §6–§7 — the idle phone-mic shape while a live-hints session runs: the idle set with
+    /// other audio ducked (`.duckOthers`, which implies mixing) instead of mixed at full level, so a
+    /// hint in the ear is heard over a podcast without pausing it. A2DP and never `.allowBluetoothHFP`:
+    /// the glasses stay on full-quality playback and their hands-free mic is never opened.
+    /// `.defaultToSpeaker` stays for the assistant's own replies; a hint is never spoken on the
+    /// phone speaker (`HintSpeechPolicy`).
+    static let liveHintsCategoryOptions: AVAudioSession.CategoryOptions =
+        [.defaultToSpeaker, .allowBluetoothA2DP, .duckOthers]
+
     /// Plan GU §2 — the session for a conversation on `route`: non-mixable (it pauses other
     /// audio, as before), the route's Bluetooth options, and on a Bluetooth route
     /// `.bluetoothHighQualityRecording`, which keeps a route that supports it (some AirPods) in
