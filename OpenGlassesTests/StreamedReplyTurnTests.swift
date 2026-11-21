@@ -216,12 +216,12 @@ final class StreamedReplyTurnTests: XCTestCase {
 
     // MARK: - The switched-off path
 
-    func testTheSwitchIsOffByDefault() {
+    func testTheSwitchIsOnByDefault() {
         let key = "directSentenceStreamingEnabled"
         let saved = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(saved, forKey: key) }
         UserDefaults.standard.removeObject(forKey: key)
-        XCTAssertFalse(Config.directSentenceStreamingEnabled)
+        XCTAssertTrue(Config.directSentenceStreamingEnabled)
     }
 
     func testNothingStreamedIsTodaysPathByteForByte() async {

@@ -576,10 +576,10 @@ struct Config {
     static func setNarrateModelSwitchesEnabled(_ enabled: Bool) { narrateModelSwitchesEnabled = enabled }
 
     /// Speak a Direct-mode reply a sentence at a time while the model is still writing it, instead
-    /// of after its last token (Plan HZ P1). What is said does not change, only when. Default off
-    /// until the device measurement (Plan HZ P2) shows it is better on the glasses route; the switch
-    /// is in Settings › Advanced & Support › Advanced › Developer.
-    @UserDefaultsBacked("directSentenceStreamingEnabled", default: false)
+    /// of after its last token (Plan HZ P1). What is said does not change, only when. Default on
+    /// (owner decision 2026-11-22, ahead of the Plan HZ P2 device measurement); a wearer who set the
+    /// switch keeps their choice. The switch is in Settings › Advanced & Support › Advanced › Developer.
+    @UserDefaultsBacked("directSentenceStreamingEnabled", default: true)
     static var directSentenceStreamingEnabled: Bool
 
     /// Plan LA: when something the wearer asked for has fully happened, a short done tone instead

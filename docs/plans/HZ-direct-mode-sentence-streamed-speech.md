@@ -1,8 +1,9 @@
 # Plan HZ: Direct-Mode Sentence-Streamed Speech (start talking at the first sentence, not the last token)
 
 **Status:** 🚧 P0 + P1 built 2026-10-21 (one PR), behind `Config.directSentenceStreamingEnabled`,
-**default off**; P2's device measurement through Plan [CU](CU-voice-turn-latency.md)'s `ttsLeadIn`
-is owed and decides the default. **2026-11-18:** a finished reply is now said in parts whatever the
+**default on since 2026-11-22** (owner decision, ahead of P2; a wearer who set the switch keeps
+their choice). P2's device measurement through Plan [CU](CU-voice-turn-latency.md)'s `ttsLeadIn` is
+still owed; if it shows streaming is worse on the glasses route, the default goes back off. **2026-11-18:** a finished reply is now said in parts whatever the
 switch says ([below](#finished-replies-said-in-parts-2026-11-18)). Drafted 2026-10-10. What shipped and where it differs from the
 design below: [Built 2026-10-21](#built-2026-10-21).
 **Origin:** The [October 2026 ecosystem review](../ecosystem-review-2026-10.md) (section 3 row
@@ -135,7 +136,8 @@ the reply only, reset drops the remainder).
 
 ### P1: wiring behind a flag (one PR)
 
-`Config.directSentenceStreamingEnabled` (default **off** until P2; a Developer-panel switch).
+`Config.directSentenceStreamingEnabled` (default **off** until P2 as built; **on since 2026-11-22**
+by owner decision, ahead of P2; a Developer-panel switch).
 Direct turn: `onToken` also feeds the splitter; `speak:` becomes "flush the queue" when streaming
 ran, else today's `speak(response)`; `onStreamReset` informs the gate. OpenClaw's
 `speakStreaming` moves onto the new queue. Barge-in and replay as in Design 4.
@@ -153,6 +155,8 @@ On both mic routes, Anthropic, OpenAI and Gemini Direct with ElevenLabs and with
 turns each: perceived time to first word, `ttsLeadIn` distribution, audible gaps between
 sentences, barge-in mid-reply. If streaming is not clearly better on the glasses route, the flag
 stays off and the numbers are recorded here. If it is, a one-line PR flips the default.
+**2026-11-22:** the owner flipped the default on before P2 ran; the measurement now decides whether
+it goes back off.
 
 ## Built 2026-10-21
 
