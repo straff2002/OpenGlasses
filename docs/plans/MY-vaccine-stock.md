@@ -1,8 +1,18 @@
 # Plan MY — Vaccine Stock (each dose given, by lot and expiry, waste kept apart, a weekly count, and a daily check against the clinic's own records)
 
-**Status:** 📝 Drafted 2026-11-22. Nothing is implemented. 12 decisions, each with a recommendation.
-The clinic's process details are due the week of 2026-11-23. The open questions below are what
-they should answer, and some decisions may change when they do.
+**Status:** 🚧 **P0–P3 built 2026-11-22 (headless).** Lots, waste and expiry; GS1 parsing; the scan
+sheet and the clinical `van_stock` actions; the lot-by-lot weekly count, `StockPeriodReport` (screen,
+spreadsheet, spoken sentence) and the weekly count reminder; and the check against the EMR
+(`ImmunisationListReader`, `CSVReader`, the line aliases, `ImmunisationReconciliation`, the
+medical-mode gate). All 12 decisions are built on the plan's recommendations
+(`VaccineStockPolicy`) and remain the owner's to change. The 9 new test classes and every existing
+stock, org-profile, settings-visibility, catalog and brand guard class pass on the simulator (815
+tests, 60 classes). `check-privacy-logging.sh` passes. Owed: the full suite and the Release build;
+a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
+pass (a real carton scanned, and the reminder seen on a phone); P4 the catalog sync; P5 the pilot; a
+takeover workbook still drops lots (it carries lines and figures only); tapping the count reminder
+opens the app but not the count sheet. The clinic's process details are due the week of
+2026-11-23, and some decisions may change when they arrive.
 **Track:** Field Assist stock, for a medical clinic. The phone, not the glasses (Decision 10).
 **Builds on:**
 - Plan [IH](IH-van-stock.md): the phone's own stock list. That means the append-only movement log
@@ -241,7 +251,7 @@ the patient's immunisation record.
 
 The house rhythm puts P0–P3 in one PR, with the device-only edges named as owed.
 
-- **P0 — lots, waste and expiry (headless).**
+- **P0 — lots, waste and expiry (headless).** ✅ Built 2026-11-22.
   - `StockLot` and the optional `lotID` on `VanStockMovement`, decoding older logs unchanged.
   - The fold per lot, and the line total.
   - The `wasted` kind and `WasteReason`.
@@ -251,7 +261,8 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
   - `VanStockCountCheck` per lot.
   - Every existing IH, MK, ML and MM test stays green, which shows nothing changed for a van.
   - About 40 tests.
-- **P1 — scan and speak (headless + simulator).**
+- **P1 — scan and speak (headless + simulator).** ✅ Built 2026-11-22, headless. Owed: the
+  simulator check of the scan sheet, and the device pass with a real carton.
   - The Stock screen's scan sheet (Data Matrix and GS1-128) and the Given / Wasted / Received /
     Count choice.
   - The new-line and new-lot flows, and the 10-second repeat guard.
@@ -261,11 +272,20 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
   - The clinical wording and its profile key.
   - `BarcodeScannerTool`'s `barcode` filter gains `.dataMatrix` and returns a parsed GS1 code when
     it reads one.
-- **P2 — the count and the reports (headless + simulator).**
+- **P2 — the count and the reports (headless + simulator).** ✅ Built 2026-11-22, headless.
+  The count is a sheet on the Stock screen (every lot, oldest expiry first within its line; one
+  entry, so one Undo takes it back; an empty lot is hidden by a swipe). The report is a sheet
+  (Today, This week, or dates) shared as a spreadsheet, and `van_stock`'s `report` action speaks
+  its one sentence. The reminder is one repeating local notification that names nothing. Owed:
+  the simulator check of the three sheets, the reminder seen on a device, and opening the count
+  from the reminder.
   - The lot-by-lot count flow.
   - `StockPeriodReport`, on screen, as a spreadsheet and as a spoken summary.
   - The weekly reminder.
-- **P3 — the check against the EMR (headless).**
+- **P3 — the check against the EMR (headless).** ✅ Built 2026-11-22. A sheet on the Stock
+  screen picks the file in place (never copied), maps the columns once and lists the findings; a
+  vaccine the EMR names is matched to a line once and kept in the line's codes. Only the counts of
+  the last check are kept, for the report. Owed: a run against the clinic's real export (P5).
   - `ImmunisationListReader` with its column mapping, the drop of every other column at read time,
     and a CSV reader if needed.
   - The line aliases.
@@ -274,9 +294,9 @@ The house rhythm puts P0–P3 in one PR, with the device-only edges named as owe
   - A guard test that the reader's output type has no field for anything but date, vaccine and lot.
   - Fixtures are invented rows with invented names in the dropped columns, and the test asserts
     those names appear nowhere in the output.
-- **P4 — the catalog sync (its own PR).** The new English keys translated into the 13 complete
+- **P4 — the catalog sync (its own PR).** Owed. The new English keys translated into the 13 complete
   languages, add-only, as PRs 1128, 1133, 1140 and 1147 did.
-- **P5 — the pilot (owed, a report).** A real delivery received by scanning, a week of doses given
+- **P5 — the pilot (owed, a report).** Owed. A real delivery received by scanning, a week of doses given
   and wasted, a weekly count, and two checks against the clinic's own EMR export. Read every spoken
   answer for a stray "van", "part" or "used". Count how many missing EMR entries the check found,
   and whether staff found them correct.
