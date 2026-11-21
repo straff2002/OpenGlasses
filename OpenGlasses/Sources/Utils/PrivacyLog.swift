@@ -1445,6 +1445,12 @@ enum PrivacyLog {
         /// model's reply not kept). `controlHandled`: a tap, a Live Activity button or a voice
         /// phrase acted on the session, `detail` which (`tap.repeatHint`, `activity.stop`, …).
         case talkNoteSaved, talkNoteSkipped, controlHandled
+        /// Captions' long-form on-device recogniser. `engineSelected`: which engine a captions
+        /// recognition session runs, `detail` the engine and why (`speechAnalyzer`,
+        /// `sfSpeech.unsupported`, `sfSpeech.notInstalled`, `sfSpeech.fellBack`, …).
+        /// `assetsRequested` / `assetsInstalled` / `assetsFailed`: its on-device model asked for
+        /// from Apple, by `language` only. Never a word of what was said.
+        case engineSelected, assetsRequested, assetsInstalled, assetsFailed
     }
 
     /// `language` is a BCP-47 tag — a property of the session, not of what was said — so it is

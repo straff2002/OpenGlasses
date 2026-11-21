@@ -3082,6 +3082,18 @@ struct Config {
         UserDefaults.standard.set(enabled, forKey: "captionCompactionEnabled")
     }
 
+    /// Plain (not diarized, not translated) captions run on iOS 26's long-form on-device
+    /// recogniser (`SpeechAnalyzer`) when the locale's model is installed, with
+    /// `SFSpeechRecognizer` as the fallback (`CaptionEnginePolicy`). Default ON; no UI — the field
+    /// kill switch, set from a support build or the debugger.
+    static var captionSpeechAnalyzerEnabled: Bool {
+        UserDefaults.standard.object(forKey: "captionSpeechAnalyzerEnabled") as? Bool ?? true
+    }
+
+    static func setCaptionSpeechAnalyzerEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: "captionSpeechAnalyzerEnabled")
+    }
+
     // MARK: - OpenAI Realtime Configuration
 
     /// Find the best OpenAI model config for Realtime mode.

@@ -46,6 +46,15 @@ class AmbientCaptionService: ObservableObject {
     /// `Config.isDiarizationConfigured`. Nil on the default (unlabeled) path.
     private var diarizer: DeepgramSTTService?
 
+    /// Long-form on-device recogniser (iOS 26 `SpeechAnalyzer`) for the plain path, when
+    /// `CaptionEnginePolicy` picks it. One per recognition session; it never restarts itself.
+    private var analyzerEngine: SpeechAnalyzerCaptionEngine?
+
+    /// Set when the analyzer could not run in this captions session (unsupported locale, model
+    /// not installed, a start or stream error): the plain path stays on `SFSpeechRecognizer`
+    /// until captions stop. Cleared by `start()`.
+    private var analyzerFellBack = false
+
     /// Translated-caption provider, cloud tier (BY P2). Nil unless the session picked it.
     private var translator: GeminiTranslationProvider?
 
@@ -208,6 +217,7 @@ class AmbientCaptionService: ObservableObject {
 
         isActive = true
         currentCaption = ""
+        analyzerFellBack = false
         meetingTranscript.removeAll()
         sessionRecorder = keepsSessions() ? CaptionSessionRecorder(startedAt: Date()) : nil
         checkpointState = CaptionCheckpointPolicy.State()
@@ -362,6 +372,20 @@ class AmbientCaptionService: ObservableObject {
             return
         }
 
+        // Plain captions: iOS 26's long-form recogniser when the locale's model is here
+        // (`CaptionEnginePolicy`), which hears a meeting end to end with no restarts; otherwise,
+        // and after any failure of it this session, `SFSpeechRecognizer` below.
+        if CaptionEnginePolicy.shouldTry(enabled: Config.captionSpeechAnalyzerEnabled,
+                                         fellBackThisSession: analyzerFellBack) {
+            startAnalyzerSession()
+            return
+        }
+
+        startSpeechRecognizerSession()
+    }
+
+    /// The plain path on `SFSpeechRecognizer`: restarts itself after each final result and error.
+    private func startSpeechRecognizerSession() {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.addsPunctuation = true
@@ -434,6 +458,66 @@ class AmbientCaptionService: ObservableObject {
                 }
             }
         }
+    }
+
+    /// The plain path on `SpeechAnalyzer`, fed by the same shared-engine buffer fan-out and the
+    /// same assistant-voice gate as every caption path (no second mic session). The engine checks
+    /// the locale and its model first; if it cannot run, or fails at any point, this session falls
+    /// back to `SFSpeechRecognizer` (and a supported locale's model is asked for in the background,
+    /// for the next session). Device-pending; the policy and the result mapping are unit-tested.
+    ///
+    /// Compaction (`Config.captionCompactionEnabled`) is deliberately not applied here, and neither
+    /// is the silence timer. Both exist for `SFSpeechRecognizer`, whose "final" is often a premature
+    /// endpoint (the compactor and debouncer join those back into one caption) and which can leave a
+    /// partial unfinalised in silence (the timer commits it). The analyzer's finals are its own
+    /// settled segments and it finalises after silence itself: holding each final for the debounce
+    /// would only delay it and merge separate segments into one entry, and committing a volatile
+    /// line from a timer would commit it twice once the analyzer finalised it.
+    private func startAnalyzerSession() {
+        let engine = SpeechAnalyzerCaptionEngine()
+        let locale = SpeechLocaleResolver.current
+        engine.onEvent = { [weak self, weak engine] event in
+            guard let self, let engine, self.analyzerEngine === engine, self.isActive else { return }
+            switch event {
+            case .volatile(let text):
+                self.currentCaption = text
+                if !text.isEmpty { self.showOnLens(text) }
+            case .final(let text):
+                self.finalizeCaption(text)
+            }
+        }
+        engine.onUnavailable = { [weak self, weak engine] availability in
+            guard let self, let engine, self.analyzerEngine === engine else { return }
+            let decision = CaptionEnginePolicy.decide(enabled: true, fellBackThisSession: false,
+                                                      availability: availability)
+            if decision == .sfSpeech(installAssets: true) {
+                SpeechAnalyzerCaptionEngine.installAssetsInBackground(for: locale)
+            }
+            PrivacyLog.speech(.ambientCaptions, .engineSelected, language: PrivacyToken(locale.identifier),
+                              detail: PrivacyToken(availability == .unsupported ? "sfSpeech.unsupported"
+                                                                                 : "sfSpeech.notInstalled"))
+            self.fallBackFromAnalyzer()
+        }
+        engine.onFailure = { [weak self, weak engine] error in
+            guard let self, let engine, self.analyzerEngine === engine else { return }
+            PrivacyLog.speech(.ambientCaptions, .engineFailed, detail: PrivacyToken("speechAnalyzer"),
+                              error: SafeErrorSummary(error))
+            self.fallBackFromAnalyzer()
+        }
+        analyzerEngine = engine
+        let feed = engine.feed
+        addCaptionAudioConsumer { buffer in
+            feed.append(buffer)
+        }
+        engine.start(locale: locale, contextualStrings: sessionContextualStrings)
+    }
+
+    /// The analyzer cannot run, or stopped working: `SFSpeechRecognizer` for the rest of this
+    /// captions session. Restarting tears the analyzer down first, committing its live line.
+    private func fallBackFromAnalyzer() {
+        analyzerFellBack = true
+        guard isActive, !presenceSuspended else { return }
+        startRecognitionSession()
     }
 
     /// Translated captions (BY P2/P3), fed by the same shared-engine buffer fan-out (no second
@@ -580,7 +664,14 @@ class AmbientCaptionService: ObservableObject {
     }
 
     private func stopRecognitionSession() {
-        // Session teardown commits any pending caption rather than dropping it.
+        // Session teardown commits any pending caption rather than dropping it — the analyzer's
+        // live line too, since its stop does not wait for results still in flight.
+        if let engine = analyzerEngine {
+            analyzerEngine = nil
+            let pending = engine.volatileText
+            engine.stop()
+            if !pending.isEmpty { finalizeCaption(pending) }
+        }
         endpointCommitTask?.cancel()
         endpointCommitTask = nil
         if Config.captionCompactionEnabled {
