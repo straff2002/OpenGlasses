@@ -134,7 +134,7 @@ final class InputsProbeTests: XCTestCase {
         let kinds: [String] = run.entries.map {
             switch $0 {
             case .input(let input, _, let playing): return "\(input.kind.reportToken)\(playing ? "+audio" : "")"
-            case .moves(_, let count, _, _, _): return "drag-move×\(count)"
+            case .moves(_, let count, _, _, _, _): return "drag-move×\(count)"
             case .state(let state, _): return "state-\(state.rawValue)"
             case .error(let failure, _): return "error-\(failure.rawValue)"
             }

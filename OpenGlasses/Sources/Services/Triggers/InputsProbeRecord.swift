@@ -11,8 +11,8 @@ enum GlassesInputOrigin: String, CaseIterable, Equatable, Hashable {
     case captouch, neuralBand, captureButton, actionButton, neuralBandDrag, unknown
 }
 
-/// One input from the glasses, as the probe records it. A drag keeps its phase only, never where
-/// the finger was.
+/// One input from the glasses, as the probe records it. A drag keeps its phase here; how far a
+/// sample moved rides beside it (`GlassesInput.delta`), never where the finger was.
 enum GlassesInputKind: Equatable, Hashable {
     enum Direction: String, Equatable, Hashable { case up, down, left, right }
     enum Press: String, Equatable, Hashable { case shortPress, hold, doublePress }
@@ -42,9 +42,46 @@ enum GlassesInputKind: Equatable, Hashable {
     }
 }
 
+/// How far a drag sample moved since the sample before it, in the glasses' own input units. Meta
+/// promises no origin, range or axis direction for that space, so only sizes and signs relative
+/// to each other mean anything. Never a position: the SDK's `x` and `y` are not read.
+struct GlassesDragDelta: Equatable, Hashable {
+    var dx: Double
+    var dy: Double
+}
+
 struct GlassesInput: Equatable {
     var kind: GlassesInputKind
     var origin: GlassesInputOrigin
+    /// A drag sample's change since the previous one; nil for every other kind.
+    var delta: GlassesDragDelta? = nil
+}
+
+/// How far a run of drag moves went: the distance along each axis (the sum of |dx| and of |dy|)
+/// and the net change (the sum of dx and of dy). A drag that moves the lens has distance; a
+/// pinch's twitch has little; a back-and-forth has distance with little net.
+struct GlassesDragTravel: Equatable {
+    var distanceX = 0.0
+    var distanceY = 0.0
+    var netX = 0.0
+    var netY = 0.0
+
+    init() {}
+    init(_ delta: GlassesDragDelta) { add(delta) }
+
+    mutating func add(_ delta: GlassesDragDelta) {
+        distanceX += abs(delta.dx)
+        distanceY += abs(delta.dy)
+        netX += delta.dx
+        netY += delta.dy
+    }
+
+    /// "travel x 12.5 y 3.0, net x +12.5 y -1.0".
+    var reportText: String {
+        let posix = Locale(identifier: "en_US_POSIX")
+        return String(format: "travel x %.1f y %.1f, net x %+.1f y %+.1f", locale: posix,
+                      distanceX, distanceY, netX, netY)
+    }
 }
 
 /// The Inputs capability's state, in the app's own words.
@@ -150,9 +187,10 @@ final class InputsProbeLedger: ObservableObject {
         case input(GlassesInput, milliseconds: Int, userAudioPlaying: Bool)
         /// Drag moves in a row from one source, kept as one entry: a band drag streams moves, and
         /// one at a time they would fill the run's cap in seconds and crowd out every press after
-        /// it. The count and the first and last times give the rate; no position is kept.
+        /// it. The count and the first and last times give the rate, and `travel` how far the
+        /// moves went (nil when none carried a delta); no position is kept.
         case moves(GlassesInputOrigin, count: Int, firstMilliseconds: Int, lastMilliseconds: Int,
-                   userAudioPlaying: Bool)
+                   userAudioPlaying: Bool, travel: GlassesDragTravel?)
         case state(InputsProbeState, milliseconds: Int)
         case error(InputsProbeFailure, milliseconds: Int)
     }
@@ -179,7 +217,7 @@ final class InputsProbeLedger: ObservableObject {
             entries.reduce(0) {
                 switch $1 {
                 case .input: return $0 + 1
-                case .moves(_, let count, _, _, _): return $0 + count
+                case .moves(_, let count, _, _, _, _): return $0 + count
                 case .state, .error: return $0
                 }
             }
@@ -236,16 +274,20 @@ final class InputsProbeLedger: ObservableObject {
             run.inputCount += 1
             let isMove = input.kind == .drag(.move)
             if isMove, let last = run.entries.indices.last,
-               case .moves(let origin, let count, let first, _, let audio) = run.entries[last],
+               case .moves(let origin, let count, let first, _, let audio, var travel) = run.entries[last],
                origin == input.origin {
+                if let delta = input.delta {
+                    if travel == nil { travel = GlassesDragTravel() }
+                    travel?.add(delta)
+                }
                 run.entries[last] = .moves(origin, count: count + 1, firstMilliseconds: first,
-                                           lastMilliseconds: ms, userAudioPlaying: audio)
+                                           lastMilliseconds: ms, userAudioPlaying: audio, travel: travel)
                 return
             }
             guard run.inputEntries < Self.inputCapacity else { return }
             run.entries.append(isMove
                 ? .moves(input.origin, count: 1, firstMilliseconds: ms, lastMilliseconds: ms,
-                         userAudioPlaying: userAudioPlaying)
+                         userAudioPlaying: userAudioPlaying, travel: input.delta.map(GlassesDragTravel.init))
                 : .input(input, milliseconds: ms, userAudioPlaying: userAudioPlaying))
         }
     }
@@ -328,10 +370,13 @@ final class InputsProbeLedger: ObservableObject {
     static func describe(_ entry: Entry) -> String {
         switch entry {
         case .input(let input, let ms, let audio):
-            return "+\(ms) ms · \(input.kind.reportToken) (\(input.origin.rawValue))\(audio ? ", audio playing" : "")"
-        case .moves(let origin, let count, let first, let last, let audio):
+            // A drag's down or up says how far it moved only when it did.
+            let moved = input.delta.flatMap { $0.dx != 0 || $0.dy != 0 ? ", " + GlassesDragTravel($0).reportText : nil } ?? ""
+            return "+\(ms) ms · \(input.kind.reportToken) (\(input.origin.rawValue))\(moved)\(audio ? ", audio playing" : "")"
+        case .moves(let origin, let count, let first, let last, let audio, let travel):
             let span = count == 1 ? "" : " \(count) times over \(last - first) ms"
             return "+\(first) ms · \(GlassesInputKind.drag(.move).reportToken)\(span) (\(origin.rawValue))"
+                + (travel.map { ", " + $0.reportText } ?? "")
                 + (audio ? ", audio playing" : "")
         case .state(let state, let ms):
             return "+\(ms) ms · state \(state.rawValue)"
@@ -349,7 +394,7 @@ final class InputsProbeLedger: ObservableObject {
             case .input(let input, _, let playing):
                 counts["\(input.kind.reportToken) (\(input.origin.rawValue))", default: 0] += 1
                 if playing { audio += 1 }
-            case .moves(let origin, let count, _, _, let playing):
+            case .moves(let origin, let count, _, _, let playing, _):
                 counts["\(GlassesInputKind.drag(.move).reportToken) (\(origin.rawValue))", default: 0] += count
                 if playing { audio += count }
             case .state, .error:

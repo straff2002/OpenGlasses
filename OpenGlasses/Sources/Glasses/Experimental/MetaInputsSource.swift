@@ -83,10 +83,12 @@ struct MetaInputsSource: InputsSource {
         }
     }
 
-    /// The kind, with its direction or press type. A drag keeps its phase only; its coordinates
-    /// are never read.
+    /// The kind, with its direction or press type. A drag keeps its phase and its change since the
+    /// previous sample (`dx`, `dy`), so the report can say how far it went; its position (`x`,
+    /// `y`) is never read.
     nonisolated static func input(_ event: InputEvent) -> GlassesInput {
         let kind: GlassesInputKind
+        var delta: GlassesDragDelta?
         switch event {
         case .nav(let direction, _, _):
             switch direction {
@@ -109,16 +111,17 @@ struct MetaInputsSource: InputsSource {
             case .hold: kind = .capture(.hold)
             case .doublePress: kind = .capture(.doublePress)
             }
-        case .drag(let action, _, _, _, _, _, _):
+        case .drag(let action, _, _, let dx, let dy, _, _):
             switch action {
             case .down: kind = .drag(.down)
             case .move: kind = .drag(.move)
             case .up: kind = .drag(.up)
             }
+            delta = GlassesDragDelta(dx: Double(dx), dy: Double(dy))
         @unknown default:
             kind = .unknown
         }
-        return GlassesInput(kind: kind, origin: origin(event.source))
+        return GlassesInput(kind: kind, origin: origin(event.source), delta: delta)
     }
 
     /// Not frozen: a case added in a later SDK is `.unknown` until it is read and named here.
