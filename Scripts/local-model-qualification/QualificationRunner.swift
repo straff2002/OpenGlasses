@@ -12,6 +12,7 @@ import UIKit
 ///     --groups <a,b>       case groups (default fieldAssist, with the restraint and
 ///                          not-in-the-manual categories beside it); `all` for every case
 ///     --limit <n>          the first n selected cases only (a smoke run)
+///     --categories <a,b>   only cases of these categories (a targeted rerun, e.g. toolChoice,multiTurn)
 ///     --settle <seconds>   how long the phone must stay below critical before the first case and after a critical spell (default 120)
 ///     --cap <seconds>      the longest one wait lasts (default 1200)
 ///     --allow-battery      measure off the charger (an attended run; Low Power Mode still waits)
@@ -62,6 +63,11 @@ final class QualificationRunner: ObservableObject {
                 case "--transcripts": options.transcripts = true
                 case "--original-tool-guide": options.originalToolGuide = true
                 case "--tool-temperature": if let v = value().flatMap(Float.init), v >= 0 { options.toolTemperature = v }
+                case "--categories":
+                    if let v = value() {
+                        let only = Set(v.split(separator: ",").compactMap { LocalToolEval.Category(rawValue: String($0)) })
+                        if !only.isEmpty { options.selection.onlyCategories = only }
+                    }
                 case "--groups":
                     if let v = value() {
                         if v == "all" {
@@ -377,7 +383,8 @@ final class QualificationRunner: ObservableObject {
                           groups: selection.groups.map(\.rawValue).sorted(),
                           alsoCategories: selection.alsoCategories.map(\.rawValue).sorted(),
                           limit: selection.limit, repeats: options.repeats, selectedCases: cases,
-                          checkOnlySkipped: skipped),
+                          checkOnlySkipped: skipped,
+                          onlyCategories: selection.onlyCategories?.map(\.rawValue).sorted()),
             gate: .init(settleSeconds: options.policy.settleSeconds, capSeconds: options.policy.capSeconds,
                         requiresCharger: options.policy.requiresCharger),
             memory: .init(killLimitBytes: LocalMemoryReadings.processKillLimit,

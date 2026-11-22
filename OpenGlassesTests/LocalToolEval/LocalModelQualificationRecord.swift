@@ -102,6 +102,9 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var selectedCases: Int
         /// Near-miss twins a live run skips (`LocalToolEval.Case.isCheckOnly`).
         var checkOnlySkipped: Int
+        /// A targeted rerun's categories (`--categories`); nil for the whole selection. Such a run's
+        /// floors read only the cases it took, so it is never the record a model qualifies on.
+        var onlyCategories: [String]? = nil
     }
 
     struct Window: Codable, Equatable {

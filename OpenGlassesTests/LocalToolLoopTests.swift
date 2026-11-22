@@ -307,6 +307,33 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertNil(spoken("Timer set.", isError: true))
     }
 
+    // MARK: - A reply that opens by naming the assistant
+
+    func testAReplyThatOpensWithTheAssistantsNameLosesIt() {
+        func strip(_ text: String) -> String { LocalToolLoop.withoutLeadingName(text, name: "Avenkin") }
+        XCTAssertEqual(strip("Avenkin, I can look that up."), "I can look that up.")
+        XCTAssertEqual(strip("Avenkin. I see the nameplate."), "I see the nameplate.")
+        XCTAssertEqual(strip("avenkin I can start the procedure."), "I can start the procedure.")
+        XCTAssertEqual(strip("Avenkin here. I need the code."), "I need the code.")
+        XCTAssertEqual(strip("Avenkin understood. Logging it."), "Understood. Logging it.")
+        XCTAssertEqual(strip("avenkin yes, logged."), "Yes, logged.")
+        XCTAssertEqual(strip("avenkin"), "")
+        XCTAssertEqual(strip("Avenkin will log the line voltage."), "Avenkin will log the line voltage.",
+                       "the name used in a sentence stays")
+        XCTAssertEqual(strip("Avenkins are rare."), "Avenkins are rare.")
+        XCTAssertEqual(strip("Logged 7.5, Avenkin."), "Logged 7.5, Avenkin.")
+        XCTAssertEqual(LocalToolLoop.withoutLeadingName("Avenkin, hi.", name: ""), "Avenkin, hi.")
+    }
+
+    func testTheLoopTakesTheNameOffItsAnswer() async throws {
+        var configuration = LocalToolLoop.Configuration()
+        configuration.assistantName = "Avenkin"
+        let outcome = try await run(ScriptedModel(["Avenkin, good morning!"]), ToolLog(), configuration: configuration,
+                                    message: "morning")
+        XCTAssertEqual(outcome.text, "Good morning!")
+        XCTAssertEqual(outcome.transcript.last?.content, "Good morning!")
+    }
+
     func testRestraintAnswersWithoutATool() async throws {
         let model = ScriptedModel(["Good morning! How can I help on this job?"])
         let tools = ToolLog()

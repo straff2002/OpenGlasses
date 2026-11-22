@@ -123,6 +123,9 @@ enum LocalToolLoop {
         var correction: ((String) -> String?)? = LocalToolLoop.standardCorrection
         /// What the wearer hears when the model said nothing but protocol.
         var missText: String = LLMService.localMissMessage
+        /// The assistant's own name, taken off the front of a reply that opens by addressing it
+        /// (`withoutLeadingName`). Empty takes nothing off.
+        var assistantName: String = Config.assistantName
     }
 
     static let defaultRoundCap = 3
@@ -280,7 +283,7 @@ enum LocalToolLoop {
 
         func finish(_ parsed: Parsed, _ reason: EndReason) -> Outcome {
             var reason = reason
-            var text = parsed.text
+            var text = LocalToolLoop.withoutLeadingName(parsed.text, name: configuration.assistantName)
             if text.isEmpty {
                 // Only a turn that ended on its own with nothing at all said after the call: not one
                 // that tried another call or wrote broken protocol, and not one the cap or a repeat
@@ -346,6 +349,39 @@ enum LocalToolLoop {
             }
         }
         return finish(parsed, .answered)
+    }
+
+    /// Words that follow the assistant's name when a reply opens by naming itself ("Avenkin, I
+    /// can…", "Avenkin here.", "avenkin I can…", "Avenkin understood.") rather than using it in
+    /// a sentence ("Avenkin will log…", which is left alone).
+    static let wordsAfterALeadingName: Set<String> = ["i", "yes", "sure", "ok", "okay", "right", "here", "understood"]
+
+    /// `text` without the assistant's name at its front, when the reply opens by naming itself:
+    /// the name followed by punctuation, by "here", or by a word in `wordsAfterALeadingName`. A
+    /// reply that is only the name becomes empty. Gemma 4 E2B opened 132 of the full phone run's
+    /// replies so, spoken as "Avenkin, I can look that up" (Plan MQ P3). Pure.
+    static func withoutLeadingName(_ text: String, name: String) -> String {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, trimmed.lowercased().hasPrefix(name.lowercased()) else { return text }
+        var rest = Substring(trimmed.dropFirst(name.count))
+        if let next = rest.first, next.isLetter || next.isNumber { return text }   // a longer word
+        let punctuation: Set<Character> = [",", ".", ":", ";", "!", "\u{2014}", "\u{2013}", "-"]
+        func dropSpaces() { rest = rest.drop(while: { $0.isWhitespace }) }
+        dropSpaces()
+        if rest.lowercased().hasPrefix("here"), !(rest.dropFirst(4).first?.isLetter ?? false) {
+            rest = rest.dropFirst(4)
+            dropSpaces()
+            rest = rest.drop(while: { punctuation.contains($0) })
+        } else if let first = rest.first, punctuation.contains(first) {
+            rest = rest.drop(while: { punctuation.contains($0) })
+        } else if !rest.isEmpty {
+            let word = rest.prefix(while: { $0.isLetter }).lowercased()
+            guard wordsAfterALeadingName.contains(word) else { return text }
+        }
+        dropSpaces()
+        guard let first = rest.first else { return "" }
+        return first.uppercased() + rest.dropFirst()
     }
 
     /// The longest tool result `spokenResult(of:)` will say in place of an empty reply.

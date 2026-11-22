@@ -140,6 +140,8 @@ enum LocalToolEval {
         var alsoCategories: Set<Category>
         /// Keep the first `limit` selected cases (a smoke run), or all.
         var limit: Int?
+        /// Keep only cases of these categories (a targeted rerun), or all the selection takes.
+        var onlyCategories: Set<Category>? = nil
 
         static let qualification = Selection(groups: [.fieldAssist], alsoCategories: [.restraint, .notInManual],
                                              limit: nil)
@@ -155,6 +157,7 @@ enum LocalToolEval {
             skipped = picked.filter(\.isCheckOnly).count
             picked.removeAll(where: \.isCheckOnly)
         }
+        if let only = selection.onlyCategories { picked.removeAll { !only.contains($0.category) } }
         if let limit = selection.limit, limit >= 0 { picked = Array(picked.prefix(limit)) }
         return (picked, skipped)
     }

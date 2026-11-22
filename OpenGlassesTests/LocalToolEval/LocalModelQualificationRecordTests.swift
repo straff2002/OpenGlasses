@@ -157,6 +157,16 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertTrue(request.prompt.hasSuffix("Question: \(answer.turn)"))
     }
 
+    func testATargetedRerunTakesOnlyItsCategoriesAndSaysSo() throws {
+        var selection = LocalToolEval.Selection.qualification
+        selection.onlyCategories = [.toolChoice, .multiTurn]
+        let picked = LocalToolEval.select(try corpus(), selection, live: true).cases
+        XCTAssertFalse(picked.isEmpty)
+        XCTAssertTrue(picked.allSatisfy { [.toolChoice, .multiTurn].contains($0.category) })
+        let all = LocalToolEval.select(try corpus(), .qualification, live: true).cases
+        XCTAssertEqual(picked.count, all.filter { [.toolChoice, .multiTurn].contains($0.category) }.count)
+    }
+
     func testALiveRunSkipsTheCheckOnlyTwinsAndTakesTheJudgedCategories() throws {
         let cases = try corpus()
         let twins = cases.filter(\.isCheckOnly)

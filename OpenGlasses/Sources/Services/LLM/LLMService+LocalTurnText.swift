@@ -102,6 +102,19 @@ extension LLMService {
             block += " On the job: when the technician gives a value to log, call reading with that value and its unit; "
                 + "run job steps with the job tools; never invent a value."
         }
+        // Plan MQ P3, the full phone run: Gemma 4 E2B asked "which manual?" instead of looking a code
+        // or a model number up (all 142 lookup turns), and paraphrased procedure steps instead of
+        // driving them. No quoted phrases: a quoted example is what the model repeated back.
+        let lookups = ["table_lookup", "equipment_lookup"].filter(toolNames.contains)
+        if !lookups.isEmpty {
+            block += " For a fault or error code, a part, a spec or a model number, call "
+                + lookups.joined(separator: " or ") + " with what the technician said; the job's equipment is "
+                + "already known, so don't ask which manual or unit first."
+        }
+        if toolNames.contains("procedure_runner") {
+            block += " While a procedure runs, the technician saying next, done, back, skip or repeat, or answering a "
+                + "step's question, goes to procedure_runner; don't read or explain a step yourself."
+        }
         return block
     }
 
