@@ -35,6 +35,27 @@ final class ToolPermissionGateTests: XCTestCase {
         XCTAssertFalse(body.contains("stepCount"), "the fitness coach never reads step count from HealthKit")
     }
 
+    /// Plan MZ: the ring writes heart rate, oxygen, sleep and steps, and the permission it asks for
+    /// at pairing is exactly that set, from the writer itself.
+    func testTheRingSharesWhatItsWriterWrites() {
+        let expected: Set<HKSampleType> = [
+            HKQuantityType(.heartRate),
+            HKQuantityType(.oxygenSaturation),
+            HKCategoryType(.sleepAnalysis),
+            HKQuantityType(.stepCount),
+        ]
+        XCTAssertEqual(RingHealthWriter.shareTypes, expected)
+    }
+
+    func testTheGateAsksForTheRingWritersOwnTypes() throws {
+        let source = try gateSource()
+        let ringCase = try XCTUnwrap(source.range(of: "case \"ring\":"))
+        let end = source.range(of: "default:", range: ringCase.upperBound..<source.endIndex)
+        let body = String(source[ringCase.upperBound..<(end?.lowerBound ?? source.endIndex)])
+        XCTAssertTrue(body.contains("toShare: RingHealthWriter.shareTypes"), "the gate must share what the ring writes")
+        XCTAssertTrue(body.contains("read: []"), "the ring adds no read types")
+    }
+
     func testFitnessCoachIsAPermissionTool() {
         XCTAssertEqual(ToolPermissionGate.permissionName(for: "fitness_coach"), "HealthKit access")
     }

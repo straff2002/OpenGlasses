@@ -76,6 +76,7 @@ enum PrivateToolRule {
         "copy_to_clipboard": .wearerDirected,
         "study": .wearerDirected,
         "fitness_coach": .wearerDirected,
+        "ring": .wearerDirected,
         "golf_mode": .wearerDirected,
         // A conversation reset; in a private conversation P1 treats it as `startFresh`.
         "new_topic": .wearerDirected,

@@ -235,7 +235,12 @@ enum ActivityTitler {
         "fitness_coach": .init("Updated your workout", actions: [
             "start_workout": "Started a workout", "stop_workout": "Finished your workout",
             "log_exercise": "Logged an exercise", "step_goal": "Set your step goal",
-        ], reads: ["workout_history", "check_form"]),
+        ], reads: ["workout_history", "check_form", "status"]),
+        "ring": .init("Used your smart ring", actions: [
+            "heart_rate": "Measured your heart rate with your ring",
+            "oxygen": "Measured your blood oxygen with your ring",
+            "find": "Lit up your ring", "sync": "Synced your ring to Apple Health",
+        ], reads: ["battery", "last_sync"]),
         "golf_mode": .init("Changed golf mode"),
 
         // Field work: a technician's day

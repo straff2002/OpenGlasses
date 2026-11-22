@@ -27,6 +27,8 @@ BANNED_BYTES = re.compile(BANNED.encode("utf-8"))
 # else by it ("Goal" is "Meta" in Spanish and Portuguese).
 BARE_COMPANY = re.compile(r"\bMeta\b", re.ASCII)
 UNRELATED_CATALOG_KEYS = {"Goal", "Meta Agent"}
+# The store build has no smart ring (Plan MZ decision 5), so no permission reason may promise one.
+RING = re.compile(r"(?i)\bring\b")
 COMPILED_STRINGS = {".strings", ".stringsdict", ".loctable"}
 MACH_MAGICS = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce",
                b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca"}
@@ -42,6 +44,9 @@ def metadata_errors(info):
                 "NSBluetoothPeripheralUsageDescription"):
         if key in info:
             errors.append(f"Unexpected hardware metadata: {key}")
+    for key, value in info.items():
+        if key.endswith("UsageDescription") and isinstance(value, str) and RING.search(value):
+            errors.append(f"Usage description names the smart ring: {key}")
     if set(info.get("UIBackgroundModes", [])) & {"external-accessory", "bluetooth-central", "bluetooth-peripheral"}:
         errors.append("Unexpected glasses background modes")
     if "fb-viewapp" in info.get("LSApplicationQueriesSchemes", []):

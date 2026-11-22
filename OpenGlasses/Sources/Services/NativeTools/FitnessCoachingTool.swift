@@ -18,10 +18,21 @@ struct FitnessCoachingTool: NativeTool {
     /// instead of the old hardcoded deflection that never ran the built `PoseAnalyzer`.
     var frameProvider: (@MainActor () -> UIImage?)?
     #if AVENKIN_PHONE_ONLY
-    private static let actions = ["start_workout", "stop_workout", "log_exercise", "workout_history", "step_goal"]
+    private static let actions = ["start_workout", "stop_workout", "status", "log_exercise", "workout_history", "step_goal"]
     #else
-    private static let actions = ["start_workout", "stop_workout", "log_exercise", "check_form", "workout_history", "step_goal"]
+    private static let actions = ["start_workout", "stop_workout", "status", "log_exercise", "check_form", "workout_history", "step_goal"]
     #endif
+
+    /// Plan MZ §5: where a workout's live heart rate comes from — the smart ring, while one is
+    /// paired and the ring support is on. Resolved at execution time; a test injects a fake.
+    var heartRateSource: (@MainActor () -> WorkoutHeartRateSource?)?
+    /// Who may hear the live heart rate in `status` (`HealthSummaryDeliveryPolicy`).
+    var deliveryInputs: @MainActor () -> HealthSummaryDeliveryPolicy.Inputs = { HealthSummaryTool.liveDeliveryInputs() }
+    /// Saves the finished workout with the ring's heart rate attached; the HealthKit builder unless
+    /// a test replaces it.
+    var workoutSaver: ((ActiveWorkout, TimeInterval, Double, [RingHealthSample]) async -> Bool)?
+    /// Keeps the finished workout's summary as a note; the notes store unless a test replaces it.
+    var noteSaver: ((String) -> Void)?
     let parametersSchema: [String: Any] = [
         "type": "object",
         "properties": [
@@ -100,6 +111,8 @@ struct FitnessCoachingTool: NativeTool {
             return await startWorkout(args: args)
         case "stop_workout":
             return await stopWorkout()
+        case "status":
+            return await workoutStatus()
         case "log_exercise":
             return logExercise(args: args)
         case "check_form":
@@ -128,6 +141,9 @@ struct FitnessCoachingTool: NativeTool {
             exercises: [],
             caloriesEstimate: 0
         )
+        // The ring streams the heart rate for as long as the workout runs; its readings go to
+        // Apple Health as they arrive.
+        resolvedHeartRateSource()?.beginWorkoutHeartRate()
 
         return "Started a \(workoutType) workout session. Log exercises as you go with log_exercise, and I'll track everything. Say 'stop workout' when you're done."
     }
@@ -139,6 +155,7 @@ struct FitnessCoachingTool: NativeTool {
 
         let duration = Date().timeIntervalSince(workout.startDate)
         let durationMinutes = Int(duration / 60)
+        let heartRates = takeWorkoutHeartRates(since: workout.startDate)
 
         // Build summary
         var summary = "Workout complete! \(workout.type.capitalized) session: \(durationMinutes) minutes."
@@ -157,7 +174,13 @@ struct FitnessCoachingTool: NativeTool {
         summary += " Estimated calories burned: \(Int(estimatedCalories))."
 
         // Try to save to HealthKit
-        let saved = await saveWorkoutToHealthKit(workout: workout, duration: duration, calories: estimatedCalories)
+        let saved: Bool
+        if let workoutSaver {
+            saved = await workoutSaver(workout, duration, estimatedCalories, heartRates)
+        } else {
+            saved = await saveWorkoutToHealthKit(workout: workout, duration: duration, calories: estimatedCalories,
+                                                 heartRates: heartRates)
+        }
         if saved {
             summary += " Saved to Apple Health."
         }
@@ -165,7 +188,7 @@ struct FitnessCoachingTool: NativeTool {
         Self.activeWorkout = nil
 
         // Also save to local notes for reference
-        saveWorkoutNote(summary: summary)
+        if let noteSaver { noteSaver(summary) } else { saveWorkoutNote(summary: summary) }
 
         return summary
     }
@@ -186,6 +209,49 @@ struct FitnessCoachingTool: NativeTool {
             #endif
         }
         return PoseAnalyzer.analyzeForm(image: frame, exercise: exercise)
+    }
+
+    /// The running workout, and the ring's heart rate when it is fresh and the wearer's Health
+    /// settings let a health number reach the model (Plan MZ §5).
+    private func workoutStatus() async -> String {
+        guard let workout = Self.activeWorkout else { return "No workout is running." }
+        let minutes = Int(Date().timeIntervalSince(workout.startDate) / 60)
+        var status = "A \(workout.type) workout is running: \(minutes) minute\(minutes == 1 ? "" : "s") so far, \(workout.exercises.count) exercise\(workout.exercises.count == 1 ? "" : "s") logged."
+        if let line = Self.heartRateLine(source: resolvedHeartRateSource(), delivery: deliveryInputs) {
+            status += " " + line
+        }
+        return status
+    }
+
+    /// "Heart rate now" for a status, or nil: no fresh reading, or the wearer's Health settings
+    /// keep health numbers from the model.
+    @MainActor
+    static func heartRateLine(source: WorkoutHeartRateSource?,
+                              delivery: @MainActor () -> HealthSummaryDeliveryPolicy.Inputs) -> String? {
+        guard let bpm = source?.freshHeartRate,
+              HealthSummaryDeliveryPolicy.decide(delivery()) == .returnToModel else { return nil }
+        return "Heart rate now: \(bpm) beats per minute, from the wearer's ring (an estimate)."
+    }
+
+    /// Lets the ring's workout session go and returns its heart rate, to go on the saved workout
+    /// too so the workout's own chart shows it (read before the session is let go).
+    @MainActor
+    private func takeWorkoutHeartRates(since start: Date) -> [RingHealthSample] {
+        guard let source = resolvedHeartRateSource() else { return [] }
+        let samples = source.workoutHeartRateSamples(from: start, to: Date())
+        source.endWorkoutHeartRate()
+        return samples
+    }
+
+    @MainActor
+    private func resolvedHeartRateSource() -> WorkoutHeartRateSource? {
+        if let heartRateSource { return heartRateSource() }
+        #if AVENKIN_PHONE_ONLY
+        return nil
+        #else
+        guard Config.ringSupportEnabled, let ring = AppStateProvider.shared?.ringService, ring.isPaired else { return nil }
+        return ring
+        #endif
     }
 
     private func logExercise(args: [String: Any]) -> String {
@@ -274,7 +340,8 @@ struct FitnessCoachingTool: NativeTool {
         }
     }
 
-    private func saveWorkoutToHealthKit(workout: ActiveWorkout, duration: TimeInterval, calories: Double) async -> Bool {
+    private func saveWorkoutToHealthKit(workout: ActiveWorkout, duration: TimeInterval, calories: Double,
+                                        heartRates: [RingHealthSample]) async -> Bool {
         guard HKHealthStore.isHealthDataAvailable() else { return false }
 
         do {
@@ -300,6 +367,14 @@ struct FitnessCoachingTool: NativeTool {
                 end: Date()
             )
             try await builder.addSamples([calorieSample])
+            if !heartRates.isEmpty {
+                // Added on their own, so a refused heart-rate write never costs the workout.
+                do {
+                    try await builder.addSamples(heartRates.map(HealthKitRingStore.object(for:)))
+                } catch {
+                    PrivacyLog.medical(.fitness, .workoutSaveFailed, error: SafeErrorSummary(error))
+                }
+            }
             try await builder.endCollection(at: Date())
             try await builder.addMetadata(["OpenGlasses": true])
             try await builder.finishWorkout()

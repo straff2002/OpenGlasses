@@ -155,6 +155,10 @@ final class LiveCoachService: ObservableObject {
     private var customPrompt: String?
     /// Plan HY P2 — the change gate and the call budget. Fresh per session.
     private(set) var pacer = LiveCoachPacer()
+    /// Plan MZ §5: the smart ring's heart rate when fresh. Wired by AppState; nil without a ring.
+    var heartRateNow: (@MainActor () -> Int?)?
+    /// Who may be handed a health number (`HealthSummaryDeliveryPolicy`).
+    var healthDelivery: @MainActor () -> HealthSummaryDeliveryPolicy.Inputs = { HealthSummaryTool.liveDeliveryInputs() }
 
     private init() {}
 
@@ -248,7 +252,11 @@ final class LiveCoachService: ObservableObject {
         guard isActive else { return }
         guard pacer.consider(hash: frame.hash, now: Date()) == .send else { return }
         let imageData = frame.jpeg
-        let systemPrompt = domain.systemPrompt(maxWords: maxWords, customPrompt: customPrompt)
+        var systemPrompt = domain.systemPrompt(maxWords: maxWords, customPrompt: customPrompt)
+        if let line = Self.heartRateContextLine(bpm: heartRateNow?(),
+                                                delivery: HealthSummaryDeliveryPolicy.decide(healthDelivery())) {
+            systemPrompt += "\n" + line
+        }
         guard let raw = await llm.analyzeFrame(systemPrompt: systemPrompt, userText: domain.userText, imageData: imageData, maxTokens: 80) else {
             return
         }
@@ -279,6 +287,16 @@ final class LiveCoachService: ObservableObject {
         let still = await camera.filteredStill(for: .assistiveGuidance)
         guard let jpeg = still.jpegData(compressionQuality: 0.7) else { return nil }
         return (jpeg, still.image.flatMap(PerceptualHash.dhash))
+    }
+
+    // MARK: - Heart rate
+
+    /// The one "heart rate now" line, only when there is a fresh reading and the wearer's Health
+    /// settings would hand a health number to the model (Plan MZ §5); otherwise nothing, and the
+    /// number never reaches the model.
+    nonisolated static func heartRateContextLine(bpm: Int?, delivery: HealthSummaryDeliveryPolicy.Delivery) -> String? {
+        guard let bpm, delivery == .returnToModel else { return nil }
+        return "Heart rate now: \(bpm) beats per minute (from the wearer's ring, an estimate)."
     }
 
     // MARK: - Dedup

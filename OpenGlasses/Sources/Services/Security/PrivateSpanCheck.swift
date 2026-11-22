@@ -66,6 +66,7 @@ enum PrivateSpanCheck {
     static let privateOutputTools: [String: Source] = [
         "health_vault": .healthNotes,
         "health_summary": .healthData,
+        "ring": .healthData,
         "health_check": .healthData,
         "notes_vault": .notes,
         "list_notes": .notes,

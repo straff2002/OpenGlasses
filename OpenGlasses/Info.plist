@@ -378,9 +378,9 @@
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Avenkin plays music from your library or the Apple Music catalogue, adds music to your library when you ask, and controls playback hands-free, by voice.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
+	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2) and to your smart ring.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2).</string>
+	<string>Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2) and to your smart ring.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Avenkin accesses your calendar to tell you about upcoming events and create new ones hands-free.</string>
 	<key>NSCalendarsUsageDescription</key>
@@ -392,7 +392,7 @@
 	<key>NSHealthShareUsageDescription</key>
 	<string>Avenkin reads your heart rate, resting heart rate, sleep, steps and workouts from Apple Health to answer questions like "how did I sleep?" and to tell you about your fitness activity. Only if you turn on "Share Health Data with AI" in Settings are these numbers sent to your chosen AI provider; otherwise Avenkin speaks them to you itself and they stay on your phone.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>Avenkin saves workout data from fitness coaching sessions to Apple Health.</string>
+	<string>Avenkin saves workout data from fitness coaching sessions, and the heart rate, blood oxygen, sleep and steps your smart ring measures, to Apple Health.</string>
 	<key>NSHomeKitUsageDescription</key>
 	<string>Avenkin controls your smart home devices hands-free, by voice.</string>
 	<key>NSLocalNetworkUsageDescription</key>

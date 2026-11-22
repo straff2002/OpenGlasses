@@ -1085,6 +1085,23 @@ struct GlassesPrivacySettingsScreen: View {
                 }
             }
 
+            #if !AVENKIN_PHONE_ONLY
+            // Plan MZ: the smart ring, its own row beside Apple Watch, only while the ring support
+            // is on (Developer panel) — nothing ring-related anywhere else.
+            if rest.isShown && Config.ringSupportEnabled {
+                Section {
+                    NavigationLink {
+                        RingSettingsView(ring: appState.ringService)
+                    } label: {
+                        Label("Smart Ring", systemImage: "circle.circle")
+                    }
+                    .disabled(!rest.isEditable)
+                } footer: {
+                    Text("Heart rate, blood oxygen, sleep and steps from your ring, saved to Apple Health.")
+                }
+            }
+            #endif
+
             if rest.isShown {
                 Section {
                     NavigationLink {

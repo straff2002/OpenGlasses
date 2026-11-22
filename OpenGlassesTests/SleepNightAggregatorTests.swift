@@ -92,6 +92,38 @@ final class SleepNightAggregatorTests: XCTestCase {
         XCTAssertEqual(night.stages?.deep, F.hours(2), "stages come from the busier tracker alone")
     }
 
+    /// Plan MZ P1: a smart ring writes light and deep runs and no REM. Worn beside a watch, the
+    /// night is the union of the two, never their sum, and the stages come from whichever recorded
+    /// more staged time.
+    func testARingBesideAWatchIsNotAddedAndTheBusierSourceGivesTheStages() throws {
+        let clock = RingClock(offsetSeconds: 0)
+        let ringStart = clock.ringSeconds(for: F.at(14, 23, 30))
+        // 6 h 30 from the ring: 23:30 → 06:00, the second hour deep.
+        let packets = (0..<26).map { index in
+            RingSleepPacket(ringSeconds: ringStart + UInt32(index) * 900,
+                            minutes: Array(repeating: (4..<8).contains(index) ? .deep : .light, count: 15))
+        }
+        let ring = RingSleepTimeline.runs(from: packets, clock: clock)
+            .map { F.sleep($0.start, $0.end, $0.stage, source: "ring") }
+        let watch = [
+            F.sleep(F.at(14, 23), F.at(15, 1), .asleepCore, source: "watch"),
+            F.sleep(F.at(15, 1), F.at(15, 2), .asleepDeep, source: "watch"),
+            F.sleep(F.at(15, 2), F.at(15, 3, 30), .asleepREM, source: "watch"),
+            F.sleep(F.at(15, 3, 30), F.at(15, 7), .asleepCore, source: "watch"),
+        ]
+
+        let both = try XCTUnwrap(aggregate(ring + watch))
+        XCTAssertEqual(both.asleep, F.hours(8), "23:00 → 07:00 once, not the ring's 6 h 30 added on")
+        XCTAssertEqual(both.stages?.rem, F.hours(1.5), "the watch recorded more staged time")
+        XCTAssertEqual(both.stages?.deep, F.hours(1))
+
+        let ringAlone = try XCTUnwrap(aggregate(ring))
+        XCTAssertEqual(ringAlone.asleep, F.hours(6.5))
+        XCTAssertEqual(ringAlone.stages?.deep, F.hours(1))
+        XCTAssertEqual(ringAlone.stages?.core, F.hours(5.5))
+        XCTAssertEqual(ringAlone.stages?.rem, 0)
+    }
+
     func testNothingInTheWindowIsNoNight() {
         XCTAssertNil(aggregate([F.sleep(F.at(13, 23), F.at(14, 7), .asleepCore)]))
         XCTAssertNil(aggregate([]))

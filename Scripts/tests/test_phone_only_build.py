@@ -55,6 +55,29 @@ class PhoneOnlyBuildTests(unittest.TestCase):
         phone["AvenkinDATExperimental"] = "YES"
         self.assertTrue(any("AvenkinDATExperimental" in error for error in check.metadata_errors(phone)))
 
+    def test_the_store_build_keeps_the_health_wording_from_before_the_ring(self):
+        phone = prepare.phone_info(self.common)
+        wording = prepare.PHONE_USAGE_STRINGS["NSHealthUpdateUsageDescription"]
+        self.assertEqual(phone["NSHealthUpdateUsageDescription"], wording["en"])
+        self.assertIsNone(check.RING.search(phone["NSHealthUpdateUsageDescription"]))
+        self.assertIsNotNone(check.RING.search(self.common["NSHealthUpdateUsageDescription"]),
+                             "the common wording names the ring; the store build's must not")
+        phone["NSHealthUpdateUsageDescription"] = self.common["NSHealthUpdateUsageDescription"]
+        self.assertIn("Usage description names the smart ring: NSHealthUpdateUsageDescription",
+                      check.metadata_errors(phone))
+
+    def test_the_store_catalog_keeps_the_health_wording_in_every_language(self):
+        catalog = json.loads((ROOT / "OpenGlasses/Sources/Resources/InfoPlist.xcstrings").read_text(encoding="utf-8"))
+        wording = prepare.PHONE_USAGE_STRINGS["NSHealthUpdateUsageDescription"]
+        source = catalog["strings"]["NSHealthUpdateUsageDescription"]["localizations"]
+        entry = prepare.phone_catalog(catalog, check)["strings"]["NSHealthUpdateUsageDescription"]
+        self.assertEqual(sorted(entry["localizations"]), sorted(source))
+        self.assertTrue(set(source) <= set(wording), "every language the catalog carries has the store wording")
+        for language, value in entry["localizations"].items():
+            self.assertEqual(value["stringUnit"]["value"], wording[language], language)
+            self.assertEqual(value["stringUnit"]["state"], source[language]["stringUnit"]["state"], language)
+        self.assertNotEqual(source["en"]["stringUnit"]["value"], wording["en"], "the source catalog is not mutated")
+
     def test_derivation_is_idempotent(self):
         phone = prepare.phone_info(self.common)
         self.assertEqual(prepare.phone_info(phone), phone)

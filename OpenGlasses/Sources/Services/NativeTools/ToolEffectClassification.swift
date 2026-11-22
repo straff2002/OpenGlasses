@@ -106,6 +106,11 @@ extension CalendarTool { var executionSemantics: ToolExecutionSemantics { .local
 extension AppleRemindersTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension AlarmTool { var executionSemantics: ToolExecutionSemantics { .local(.bestEffort) } }
 extension FitnessCoachingTool { var executionSemantics: ToolExecutionSemantics { .local() } }
+// A measurement writes its reading to Apple Health (the wearer's own store) and `find` lights the
+// ring; an oxygen run takes about 45 s, so the tool answers inside its own 60 s (Plan MZ §6).
+extension RingTool {
+    var executionSemantics: ToolExecutionSemantics { .local(.bestEffort, timeout: .seconds(60)) }
+}
 extension GolfModeTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension CaptureFlowTool { var executionSemantics: ToolExecutionSemantics { .local() } }
 extension ProcedureRunnerTool { var executionSemantics: ToolExecutionSemantics { .local() } }
