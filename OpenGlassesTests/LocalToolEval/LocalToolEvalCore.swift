@@ -211,6 +211,9 @@ enum LocalToolEval {
         var cutGenerations = 0
         /// A reading reply that could not be read as a reading (declined, as the app would).
         var readerUnparsed = 0
+        /// When the run failed on an error rather than on what the model said: the error's type and
+        /// case name only (`errorKind(_:)`), never its message, so the record stays counts and names.
+        var errorKind: String?
         var generatedTokens = 0
         /// Per generation the runtime reported on: seconds to read the prompt (time to first token).
         var promptSeconds: [Double] = []
@@ -438,6 +441,7 @@ enum LocalToolEval {
                 let verdict = reading.map { ManualReadingCheck.check($0, passages: testCase.passages ?? [:]) }
                 grades[.manualReading] = (verdict?.isAccepted ?? false) == expected
             } catch {
+                measured.noteError(error)
                 grades[.manualReading] = false
             }
             if measured.value.zeroTokenGenerations > 0 { grades[.cleanText] = false }
@@ -508,6 +512,7 @@ enum LocalToolEval {
                                measurements: measured.value)) { $1 }
             if testCase.cancel != nil { grades[.cancellation] = false }
         case .failure(let error):
+            if !(error is CancellationError) || testCase.cancel == nil { measured.noteError(error) }
             if testCase.cancel != nil {
                 grades[.cancellation] = error is CancellationError && elapsed <= environment.cancellationBound
                     && executedAfterCancel.value == 0
@@ -537,6 +542,22 @@ enum LocalToolEval {
         var value: Measurements { lock.lock(); defer { lock.unlock() }; return measurements }
         func add(_ stats: LocalGenerationStats?) { lock.lock(); measurements.add(stats); lock.unlock() }
         func noteUnparsedReading() { lock.lock(); measurements.readerUnparsed += 1; lock.unlock() }
+        func noteError(_ error: Error) { lock.lock(); measurements.errorKind = LocalToolEval.errorKind(error); lock.unlock() }
+    }
+
+    /// An error's type and, for an enum, its case name; an `NSError`'s domain and code. No message,
+    /// no associated value: those can carry a prompt, a template or a path.
+    static func errorKind(_ error: Error) -> String {
+        let type = String(describing: Swift.type(of: error))
+        if error is CancellationError { return type }
+        let mirror = Mirror(reflecting: error)
+        if mirror.displayStyle == .enum {
+            if let label = mirror.children.first?.label { return type + "." + label }
+            return type + "." + String(describing: error).prefix(while: { $0.isLetter || $0.isNumber })
+        }
+        let ns = error as NSError
+        if type == "NSError" || type.hasPrefix("__") { return ns.domain + "#" + String(ns.code) }
+        return type
     }
 
     /// The scripted fake model CI plays: each case's `reference`, one entry per generation, then

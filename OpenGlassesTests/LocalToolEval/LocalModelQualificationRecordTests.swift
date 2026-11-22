@@ -229,6 +229,17 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertNotNil(record.summary.groups["fieldAssist"]?.byCategory["notInManual"]?.lower)
     }
 
+    /// A run that fails on an error keeps the error's type and case name, never its message.
+    func testAnErrorIsRecordedByKindOnly() {
+        enum Sample: Error { case templateFailed(String), plain }
+        struct Opaque: Error {}
+        XCTAssertEqual(LocalToolEval.errorKind(Sample.templateFailed("{{ secret prompt }}")), "Sample.templateFailed")
+        XCTAssertEqual(LocalToolEval.errorKind(Sample.plain), "Sample.plain")
+        XCTAssertEqual(LocalToolEval.errorKind(Opaque()), "Opaque")
+        XCTAssertEqual(LocalToolEval.errorKind(NSError(domain: "Jinja", code: 7, userInfo: [NSLocalizedDescriptionKey: "line 3"])), "Jinja#7")
+        XCTAssertEqual(LocalToolEval.errorKind(CancellationError()), "CancellationError")
+    }
+
     func testARecordIsResumedOnlyWithTheSameSettingsAndKeepsEachRunOnce() throws {
         var first = record()
         let run = LocalToolEval.Run(caseID: "sv-001-answer", category: .manualAnswer, group: .fieldAssist,

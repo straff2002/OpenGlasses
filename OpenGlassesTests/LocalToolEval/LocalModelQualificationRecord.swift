@@ -183,6 +183,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var zeroTokenGenerations: Int
         var cutGenerations: Int
         var readerUnparsed: Int
+        /// The error's type and case name when the run failed on one (`LocalToolEval.errorKind`).
+        var errorKind: String?
         var generatedTokens: Int
         var promptSeconds: [Double]
         var decodeTokensPerSecond: [Double]
@@ -257,7 +259,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             grades: Dictionary(uniqueKeysWithValues: run.grades.map { ($0.key.rawValue, $0.value) }),
             passed: run.passed, flagged: flagged, generations: m.generations,
             zeroTokenGenerations: m.zeroTokenGenerations, cutGenerations: m.cutGenerations,
-            readerUnparsed: m.readerUnparsed, generatedTokens: m.generatedTokens,
+            readerUnparsed: m.readerUnparsed, errorKind: m.errorKind, generatedTokens: m.generatedTokens,
             promptSeconds: m.promptSeconds, decodeTokensPerSecond: m.decodeTokensPerSecond, seconds: seconds)
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
@@ -276,6 +278,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.zeroTokenGenerations = entry.zeroTokenGenerations
             measurements.cutGenerations = entry.cutGenerations
             measurements.readerUnparsed = entry.readerUnparsed
+            measurements.errorKind = entry.errorKind
             measurements.generatedTokens = entry.generatedTokens
             measurements.promptSeconds = entry.promptSeconds
             measurements.decodeTokensPerSecond = entry.decodeTokensPerSecond
