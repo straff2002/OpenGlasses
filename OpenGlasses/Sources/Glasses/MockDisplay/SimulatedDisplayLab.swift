@@ -30,6 +30,8 @@ final class SimulatedDisplayLab: ObservableObject {
     static let switchOnLaunchArgument = "-AvenkinSimulatedDisplay"
     /// Launch argument: switch the simulated Display on at launch and run the tall-views measurement.
     static let tallViewsLaunchArgument = "-AvenkinSimulatedDisplayTallViews"
+    /// Launch argument: switch the simulated Display on at launch and run the button-row measurement.
+    static let buttonRowsLaunchArgument = "-AvenkinSimulatedDisplayButtonRows"
 
     @Published private(set) var isOn = false
     @Published private(set) var status = ""
@@ -54,7 +56,8 @@ final class SimulatedDisplayLab: ObservableObject {
         let arguments = ProcessInfo.processInfo.arguments
         let walkthrough = arguments.contains(Self.walkthroughLaunchArgument)
         let tallViews = arguments.contains(Self.tallViewsLaunchArgument)
-        guard walkthrough || tallViews || arguments.contains(Self.switchOnLaunchArgument) else { return }
+        let buttonRows = arguments.contains(Self.buttonRowsLaunchArgument)
+        guard walkthrough || tallViews || buttonRows || arguments.contains(Self.switchOnLaunchArgument) else { return }
         Task { @MainActor in
             // Let the scene come up first: the preview panel needs a window scene.
             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -64,6 +67,9 @@ final class SimulatedDisplayLab: ObservableObject {
             }
             if tallViews, self.isOn {
                 await SimulatedDisplayTallViews(appState: appState, lab: self).run()
+            }
+            if buttonRows, self.isOn {
+                await SimulatedDisplayButtonRows(appState: appState, lab: self).run()
             }
         }
     }
