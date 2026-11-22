@@ -100,6 +100,8 @@ extension LLMService {
         }
         if toolNames.contains("reading") || toolNames.contains("field_session") {
             block += " On the job: when the technician gives a value to log, call reading with that value and its unit; "
+                + "a short follow-up after a log (\"and the other one?\", \"same for the second\") asks you to log the next "
+                + "value they already gave the same way, so call reading again with it; "
                 + "run job steps with the job tools; never invent a value."
         }
         return block
