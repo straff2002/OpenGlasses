@@ -4,7 +4,9 @@
 (PR 1192, 2026-11-22: 22 new keys in the 13 complete languages, add-only, with Plan MQ P1's three
 Developer panel keys); P5 measured on the simulated Display 2026-11-22 (branch `feat/mu-p5-measure`:
 the button-row budget's constants measured, no lens button sent with an icon, decision 11; see
-Measured (P5)). P0 and P1 2026-11-21: one picture
+Measured (P5)); P6 built 2026-11-22 (branch `feat/mu-p6-band-swipes`: Neural Band left/right in
+the page view of flagged TestFlight builds, between a close-up's halves and fit-width pages, one
+send at a time; up, down and Back left to Meta; see Built (P6)). P0 and P1 2026-11-21: one picture
 a row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
 (Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
 highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
@@ -16,7 +18,7 @@ halves in one strip) or fit width, **Back**, **Rows**, the voice words, three bu
 (Meta Display only), Actions, the page view and reading mode, with the 13-language test; the reading
 view's three-button row with follow-ups on Actions; Keep answers up (Until closed by default, or 3
 minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
-Not done: P6 and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
+Not done: P8's device checks, P6's included (and the fit check's one reading in P0). **All 10 decisions
 taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
 request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
