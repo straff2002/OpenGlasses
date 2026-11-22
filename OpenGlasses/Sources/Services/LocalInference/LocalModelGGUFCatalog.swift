@@ -114,6 +114,10 @@ extension LocalModelCatalog {
         /// model was trained for and what this app is willing to allocate is visible.
         let trainedContextTokens: Int?
         let evidence: Evidence
+        /// The publisher's recommended sampling (Plan MQ H1), or nil for the global set.
+        var sampling: LocalModelSampling? = nil
+        /// The dated qualification record in `reports/` that backs `deviceVerified` (decision 8).
+        var evidenceRecord: String? = nil
 
         var id: LocalModelID { descriptor.id }
     }
@@ -136,6 +140,12 @@ extension LocalModelCatalog {
                     + " without device evidence"
             }
         }
+        if entry.evidence == .deviceVerified, let reason = evidenceRecordError(entry.evidenceRecord) {
+            return reason
+        }
+        // The GGUF wrapper's sampler has no presence penalty, so a set that needs one is refused
+        // rather than silently run without it.
+        if let reason = entry.sampling?.validationError(supportsPresencePenalty: false) { return reason }
         if descriptor.license.requiresAcceptance && descriptor.license.revision == nil {
             return "licence requires acceptance but names no revision to accept"
         }
@@ -175,6 +185,9 @@ extension LocalModelCatalog {
         let architecture: String?
         let trainedContextTokens: Int?
         let evidence: String?
+        /// Optional, decoded only when present (Plan MQ H1).
+        let sampling: LocalModelSampling?
+        let evidenceRecord: String?
 
         struct RawFile: Decodable {
             let relativePath: String
@@ -228,7 +241,9 @@ extension LocalModelCatalog {
                              minimumRAMGB: minimumRAMGB ?? 0,
                              architecture: architecture,
                              trainedContextTokens: trainedContextTokens,
-                             evidence: Evidence(rawValue: evidence ?? "") ?? .fileMetadataOnly)
+                             evidence: Evidence(rawValue: evidence ?? "") ?? .fileMetadataOnly,
+                             sampling: sampling,
+                             evidenceRecord: evidenceRecord)
         }
     }
 }

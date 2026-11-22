@@ -115,7 +115,7 @@ struct LlamaSamplerOptions: Hashable, Sendable {
                   temperature: sampling.temperature,
                   topK: sampling.topK.map { Int32(clamping: $0) } ?? Self.defaultTopK,
                   topP: sampling.topP,
-                  minP: Self.defaultMinP,
+                  minP: sampling.minP ?? Self.defaultMinP,
                   penaltyWindow: Self.defaultPenaltyWindow,
                   penaltyRepeat: sampling.repetitionPenalty ?? Self.defaultRepeatPenalty)
     }

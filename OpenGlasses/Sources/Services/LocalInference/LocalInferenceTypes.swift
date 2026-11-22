@@ -434,25 +434,33 @@ struct LocalImageInput: Hashable, Sendable {
     init(data: Data) { self.data = data }
 }
 
-/// App-owned sampling defaults. Per-model overrides belong in the catalog descriptor, never in a
-/// filename heuristic.
+/// App-owned sampling defaults. Per-model overrides belong in the catalog entry's `sampling`
+/// (`LocalModelSampling`, Plan MQ H1), never in a filename heuristic. A member left nil takes the
+/// runtime's own default (MLX: top-k and min-p off, no penalty; GGUF: `LlamaSamplerOptions`).
 struct LocalSamplingConfiguration: Codable, Hashable, Sendable {
     var temperature: Float
     var topP: Float
     var topK: Int?
+    var minP: Float?
     var repetitionPenalty: Float?
+    /// MLX only: the GGUF wrapper has no presence penalty, and a GGUF entry may not set one.
+    var presencePenalty: Float?
     /// Fixed seed for deterministic tests. `nil` in production.
     var seed: UInt64?
 
     init(temperature: Float = 0.7,
          topP: Float = 0.9,
          topK: Int? = nil,
+         minP: Float? = nil,
          repetitionPenalty: Float? = nil,
+         presencePenalty: Float? = nil,
          seed: UInt64? = nil) {
         self.temperature = temperature
         self.topP = topP
         self.topK = topK
+        self.minP = minP
         self.repetitionPenalty = repetitionPenalty
+        self.presencePenalty = presencePenalty
         self.seed = seed
     }
 
@@ -551,6 +559,68 @@ struct LocalToolTurn: @unchecked Sendable {
     /// prompt when the runtime inferred no tool-call format for the model, or its template could
     /// not render the tools: then the calls come back as `<tool_call>` text instead.
     let fallbackInstructions: String
+}
+
+extension LocalToolTurn {
+    /// The tool turn for one pass of `LocalToolLoop` over `history`: the turn's own messages are
+    /// whatever the pass carries beyond the earlier history, the tools are withheld when the loop
+    /// withholds them, and thinking is off. `LLMService.sendLocalNative` and the device
+    /// qualification app (Plan MQ P3) both build a pass here, so a phone run renders what a turn
+    /// renders.
+    static func forLoopPass(history earlier: [LocalToolLoop.Message],
+                            request: LocalToolLoop.GenerationRequest,
+                            toolSpecs: [[String: Any]],
+                            fallbackInstructions: String) -> LocalToolTurn {
+        LocalToolTurn(history: earlier,
+                      turn: Array(request.messages.dropFirst(earlier.count)),
+                      tools: request.toolsOffered ? toolSpecs : [],
+                      thinkingOff: true,
+                      fallbackInstructions: fallbackInstructions)
+    }
+}
+
+/// What the runtime reported about one generation (Plan MQ P3): its own token counts and timings,
+/// and the cap it ran under. Counts only. The device qualification app records time to first token
+/// and decode rate from it, and the graders read two faults from it: a reply of zero tokens (almost
+/// always a prompt-format fault, not a model answer) and a reply that stopped at the cap (cut).
+struct LocalGenerationStats: Equatable, Sendable {
+    /// Tokens in the prompt the runtime prefilled.
+    let promptTokens: Int
+    /// Tokens generated, reasoning included.
+    let generatedTokens: Int
+    /// Seconds spent reading the prompt: the time to the first generated token.
+    let promptSeconds: Double
+    /// Seconds spent generating.
+    let generateSeconds: Double
+    /// The most tokens this generation could produce (`GenerateParameters.maxTokens`).
+    let tokenCap: Int?
+    /// The runtime's own report that it stopped at the cap.
+    let stoppedAtCap: Bool
+
+    init(promptTokens: Int, generatedTokens: Int, promptSeconds: Double, generateSeconds: Double,
+         tokenCap: Int?, stoppedAtCap: Bool) {
+        self.promptTokens = promptTokens
+        self.generatedTokens = generatedTokens
+        self.promptSeconds = promptSeconds
+        self.generateSeconds = generateSeconds
+        self.tokenCap = tokenCap
+        self.stoppedAtCap = stoppedAtCap
+    }
+
+    /// No token at all: the template ended the turn before the model said anything.
+    var isZeroTokens: Bool { generatedTokens == 0 }
+
+    /// The reply stopped exactly at the token cap, so its end is missing.
+    var isCut: Bool {
+        if stoppedAtCap { return true }
+        guard let tokenCap, tokenCap > 0 else { return false }
+        return generatedTokens >= tokenCap
+    }
+
+    /// Generated tokens a second, or nil when no time was measured.
+    var decodeTokensPerSecond: Double? {
+        generateSeconds > 0 ? Double(generatedTokens) / generateSeconds : nil
+    }
 }
 
 /// How a model should be brought up. Every value is a *ceiling the caller already decided*; a

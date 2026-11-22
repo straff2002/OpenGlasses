@@ -334,25 +334,4 @@ struct AttemptToolLedger: Equatable {
         guard omitted > 0 else { return "" }
         return "\n(\(omitted) more \(omitted == 1 ? "result" : "results") did not fit here; call \(omitted == 1 ? "that tool" : "those tools") again if you need \(omitted == 1 ? "it" : "them").)"
     }
-
-    // MARK: - Arguments
-
-    /// Arguments as canonical JSON (sorted keys), the shape a model reads back most easily.
-    static func canonicalArguments(_ args: [String: Any]) -> String {
-        guard JSONSerialization.isValidJSONObject(args),
-              let data = try? JSONSerialization.data(withJSONObject: args, options: [.sortedKeys]) else {
-            return "{}"
-        }
-        return String(decoding: data, as: UTF8.self)
-    }
-
-    /// The same for arguments that arrived as a JSON string (the on-device runner's); a string
-    /// that is not an object is kept as it came.
-    static func canonicalArguments(json: String) -> String {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return json.isEmpty ? "{}" : json
-        }
-        return canonicalArguments(object)
-    }
 }

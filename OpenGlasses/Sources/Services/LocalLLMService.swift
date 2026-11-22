@@ -763,7 +763,7 @@ final class LocalLLMService: ObservableObject {
         defer { NotificationCenter.default.removeObserver(bgObserver) }
 
         // Generate — sampling and token cap are per-model (reasoning models differ)
-        let parameters = Self.generateParameters(for: loadedModelId)
+        let parameters = Self.generateParameters(for: loadedModelId, toolTurn: toolTurn != nil)
         let stream = try await container.generate(input: input, parameters: parameters)
 
         // Reasoning models (LFM2.5) spend the start of every completion thinking. From mlx-swift-lm
@@ -838,7 +838,8 @@ final class LocalLLMService: ObservableObject {
             answer: output, routedReasoning: router.reasoning,
             stripsThink: isReasoningModel, templateOpensThink: templateOpensThink)
         noteReasoning(reasoning)
-        return MLXTurnOutput(text: spoken, toolCalls: toolCalls)
+        return MLXTurnOutput(text: spoken, toolCalls: toolCalls,
+                             stats: Self.generationStats(router.completion, tokenCap: parameters.maxTokens))
     }
 
     /// Keep a turn's reasoning for the prompt inspector, and log that there was some.
@@ -891,7 +892,7 @@ final class LocalLLMService: ObservableObject {
         renderedTools: [[String: any Sendable]]? = nil,
         flattenTranscript: Bool = false
     ) async throws -> MLXTurnOutput {
-        let parameters = Self.generateParameters(for: loadedModelId)
+        let parameters = Self.generateParameters(for: loadedModelId, toolTurn: toolTurn != nil)
         // Answer, reasoning (Gemma 4's thought channel, routed by the library from 4c21c84), calls
         // and the completion report, collected off the main actor inside `container.perform`.
         let router = LocalStreamRouter<GenerateCompletionInfo>()
@@ -1082,7 +1083,8 @@ final class LocalLLMService: ObservableObject {
         let (spoken, reasoning) = LocalReasoningRouting.finish(
             answer: output, routedReasoning: router.reasoning, stripsThink: false, templateOpensThink: false)
         noteReasoning(reasoning)
-        return MLXTurnOutput(text: spoken, toolCalls: router.toolCalls)
+        return MLXTurnOutput(text: spoken, toolCalls: router.toolCalls,
+                             stats: Self.generationStats(router.completion, tokenCap: parameters.maxTokens))
     }
 
     /// One transcript message as the library's structured chat message, tool metadata included.
@@ -1112,7 +1114,8 @@ final class LocalLLMService: ObservableObject {
         container: ModelContainer,
         onToken: ((String) -> Void)?
     ) async throws -> String {
-        let parameters = GenerateParameters(maxTokens: 512, temperature: 0.7, topP: 0.9)
+        let parameters = Self.generateParameters(LocalModelSampling.configuration(for: loadedModelId, toolTurn: false),
+                                                 maxTokens: 512)
 
         // Same mid-generation backgrounding watch as the text path (Metal in the background
         // is an uncatchable kill) — but the drain runs inside `container.perform`, OFF the
@@ -1195,25 +1198,43 @@ final class LocalLLMService: ObservableObject {
         return spoken
     }
 
-    /// Sampling parameters per model. Reasoning models (LFM2.5) follow Liquid's recommended
-    /// low-temperature settings (temp 0.1, top-k 50, repetition penalty 1.1) and take their
-    /// token cap from `LocalModelBudget.generationReserve(for:)` — the think block spends
-    /// from the same cap as the spoken answer, so they get the larger reasoning reserve.
-    /// Everything else keeps the long-standing defaults.
-    nonisolated static func generateParameters(for modelId: String?) -> GenerateParameters {
-        if let modelId, LocalModelBudget.reasoningModelIds.contains(modelId) {
-            return GenerateParameters(
-                maxTokens: LocalModelBudget.generationReserve(for: modelId),
-                temperature: 0.1,
-                topK: 50,
-                repetitionPenalty: 1.1
-            )
-        }
-        return GenerateParameters(
-            maxTokens: LocalModelBudget.generationReserve(for: modelId),
-            temperature: 0.7,
-            topP: 0.9
-        )
+    /// Sampling parameters per model (Plan MQ H1). The values are the catalog's: the global set
+    /// (temperature 0.7, top-p 0.9) with the members the model's entry sets put over it — the
+    /// publisher's recommendation, with its source beside it (`LocalModelSampling`) — and, on a
+    /// native tool turn, the entry's tool-turn set over that. LFM2.5's low-temperature set, which
+    /// lived here before, is its catalog entry now. The token cap is
+    /// `LocalModelBudget.generationReserve(for:)`: a reasoning model's think block spends from the
+    /// same cap as its answer, so it gets the larger reserve.
+    ///
+    /// The device qualification app (`Scripts/local-model-qualification`) generates through this
+    /// same service, so a phone run samples exactly as a turn does.
+    nonisolated static func generateParameters(for modelId: String?, toolTurn: Bool = false) -> GenerateParameters {
+        generateParameters(LocalModelSampling.configuration(for: modelId, toolTurn: toolTurn),
+                           maxTokens: LocalModelBudget.generationReserve(for: modelId))
+    }
+
+    /// MLX's parameters for a resolved set. A member the set leaves open keeps MLX's own default:
+    /// top-k and min-p off, no penalty.
+    nonisolated static func generateParameters(_ sampling: LocalSamplingConfiguration, maxTokens: Int) -> GenerateParameters {
+        GenerateParameters(
+            maxTokens: maxTokens,
+            temperature: sampling.temperature,
+            topP: sampling.topP,
+            topK: sampling.topK ?? 0,
+            minP: sampling.minP ?? 0,
+            repetitionPenalty: sampling.repetitionPenalty,
+            presencePenalty: sampling.presencePenalty,
+            seed: sampling.seed)
+    }
+
+    /// The runtime's report on one generation, as the seam carries it (Plan MQ P3).
+    nonisolated static func generationStats(_ info: GenerateCompletionInfo?, tokenCap: Int?) -> LocalGenerationStats? {
+        guard let info else { return nil }
+        let stoppedAtCap: Bool
+        if case .length = info.stopReason { stoppedAtCap = true } else { stoppedAtCap = false }
+        return LocalGenerationStats(promptTokens: info.promptTokenCount, generatedTokens: info.generationTokenCount,
+                                    promptSeconds: info.promptTime, generateSeconds: info.generateTime,
+                                    tokenCap: tokenCap, stoppedAtCap: stoppedAtCap)
     }
 
     /// Load configuration for a model id.

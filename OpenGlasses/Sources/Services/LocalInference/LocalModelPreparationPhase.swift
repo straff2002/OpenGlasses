@@ -179,31 +179,3 @@ enum LocalModelPreparationPhase: Equatable, Sendable {
         }
     }
 }
-
-// MARK: - Bridge from the acquisition pipeline
-
-extension LocalModelPreparationPhase {
-
-    /// The acquisition pipeline's staging summary said in this vocabulary, so both paths describe
-    /// themselves with the same words.
-    ///
-    /// The pipeline keeps its own richer summary (file counts, byte totals, a typed retry reason)
-    /// — this is the phase alone, which is what decides whether a percentage may be shown at all.
-    init(staging: LocalModelStagingSummary) {
-        switch staging.phase {
-        case .awaitingConsent:
-            self = .waitingForConsent
-        case .queued:
-            self = .queued
-        case .downloading:
-            // The pipeline always knows its total: the plan records every file's size up front.
-            self = .downloading(fraction: staging.totalBytes > 0 ? staging.fractionCompleted : nil)
-        case .validating:
-            self = .verifying
-        case .installing:
-            self = .installing
-        case .retryable(let reason):
-            self = .failed(reason: LocalModelRowState.retryExplanation(reason))
-        }
-    }
-}

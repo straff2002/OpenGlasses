@@ -999,10 +999,7 @@ class LLMService: ObservableObject {
     /// envelope so injected instructions inside it are visibly framed as data, not commands.
     private func wrapToolResultForModel(toolName: String, content: String) -> String {
         let isKnownNative = nativeToolRouter?.registry.tool(named: toolName) != nil
-        guard PromptInjectionPolicy.isUntrustedOutput(toolName: toolName, isKnownNativeTool: isKnownNative) else {
-            return content
-        }
-        return PromptInjectionPolicy.wrap(toolName: toolName, content: content)
+        return PromptInjectionPolicy.resultForModel(toolName: toolName, content: content, isKnownNativeTool: isKnownNative)
     }
 
     // MARK: - On-demand tool schemas (Plan IU)
@@ -5910,15 +5907,6 @@ class LLMService: ObservableObject {
         trimHistory()
     }
 
-    /// "Tuesday, 15 July 2026, 6:41 pm (Pacific/Auckland)" — injected into every system
-    /// prompt. Pure and injectable for tests.
-    nonisolated static func currentDateTimeLine(now: Date = Date(), timeZone: TimeZone = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "EEEE, d MMMM yyyy, h:mm a"
-        return "\(formatter.string(from: now)) (\(timeZone.identifier))"
-    }
-
     /// Parse the local model's `<tool_call>` markup.
     ///
     /// FC P1: now a thin reading of `LocalOutputPolicy`, so there is exactly one parser. The
@@ -5929,8 +5917,6 @@ class LLMService: ObservableObject {
         return (invocation.name, invocation.arguments)
     }
 
-    /// True when the reply narrates an intention to fetch/check something without any
-    /// tool markup — the shape a small model produces instead of acting.
     /// The last `n` history entries as (role, content) tuples — the shape the local paths and
     /// UncertaintyReask consume. Optionally strips `<tool_call>` markup (local path keeps its
     /// context clean; the Apple path's transcript never contains markup).
@@ -5957,68 +5943,6 @@ class LLMService: ObservableObject {
             }
             return content.isEmpty ? nil : (role: role, content: content)
         }
-    }
-
-    nonisolated static func announcesToolIntent(_ response: String) -> Bool {
-        let lowered = response.lowercased()
-        guard !lowered.contains("<tool_call>") else { return false }
-        // A promise-instead-of-action reply is SHORT (a sentence or two). A long answer that
-        // merely contains "searching for"/"let me check" mid-prose is an answer, not a stall —
-        // without this gate the never-speak-a-promise net could discard valid replies.
-        guard lowered.count < 280 else { return false }
-        let intentPhrases = [
-            "looking up", "look that up", "look it up", "let me check", "i'll check",
-            "i will check", "checking the", "let me get", "i'll get", "i'm getting",
-            "fetching", "one moment", "just a moment", "i'm looking",
-            // Search-flavoured announcements (live-traced: "I will now search for popular
-            // tourist destinations in Samoa for you" — then silence). Anchored to first-person
-            // intent so an answer that merely mentions searching doesn't match.
-            "i will now search", "i will search", "i'll search", "let me search",
-            "i'm searching", "searching for", "i should have used a tool",
-            "i will use a tool", "using a tool to",
-        ]
-        return intentPhrases.contains { lowered.contains($0) }
-    }
-
-    /// True when the reply asks the user to supply their location — the model has
-    /// where_am_i available and must never ask (live-traced: "If you tell me your current
-    /// location, I can check the forecast for you").
-    nonisolated static func asksUserForLocation(_ response: String) -> Bool {
-        let lowered = response.lowercased()
-        guard !lowered.contains("<tool_call>") else { return false }
-        let askPhrases = [
-            "your location", "your current location", "where you are",
-            "what city", "which city", "your city", "tell me where",
-            "let me know where", "share your location",
-        ]
-        return askPhrases.contains { lowered.contains($0) }
-    }
-
-    /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.
-    nonisolated static let localLocationCorrection = "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
-    nonisolated static let localIntentCorrection = "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
-
-    /// The reduced tool block appended to the lean on-device prompt. Extracted (and pure)
-    /// so the location nudge is testable: without it, a small model that has no USER
-    /// LOCATION line answers "I can't find your location" instead of calling `where_am_i`.
-    nonisolated static func localToolInstructions(toolNames: [String]) -> String {
-        guard !toolNames.isEmpty else { return "" }
-        var block = """
-
-        \nTOOLS (use sparingly, only when the user clearly needs one):
-        Output exactly: <tool_call>{"name": "tool_name", "arguments": {"key": "value"}}</tool_call>
-        Available: \(toolNames.joined(separator: ", "))
-        Only use a tool if the user explicitly asks for that action. Otherwise just answer directly.
-        """
-        if toolNames.contains("where_am_i") {
-            block += "\nIf you need the user's location and it isn't given above, call where_am_i — never say you lack location access and never ask the user where they are."
-        }
-        if toolNames.contains("calendar") {
-            // Live-traced: without the argument schema the model only ever got the default
-            // ("today"), asked the user for dates it couldn't use, then denied having access.
-            block += "\ncalendar arguments: {\"action\": \"today\" | \"tomorrow\" | \"next\" | \"upcoming\"} — pick the one matching the day asked about. You DO have the user's calendar through this tool; never claim you lack calendar access and never ask for a date when one of these actions fits."
-        }
-        return block
     }
 
     /// The installation record the coordinator needs for an MLX model, resolved from the bundled
@@ -6183,6 +6107,11 @@ class LLMService: ObservableObject {
                            _ systemOverride: String?,
                            _ toolTurn: LocalToolTurn?) async throws -> LocalToolLoop.Generation
         if let inferenceCoordinator {
+            // Plan MQ H1: the model's own sampling from its catalog entry, over the global set. Read
+            // once for the turn. The MLX backend derives the same values itself
+            // (`LocalLLMService.generateParameters(for:toolTurn:)`); the GGUF backend takes these.
+            let sampling = LocalModelSampling.configuration(for: selectedID.rawValue, toolTurn: false)
+            let toolSampling = LocalModelSampling.configuration(for: selectedID.rawValue, toolTurn: true)
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
                 let request = LocalGenerationRequest(
                     messages: MLXPromptAdapter.compose(systemPrompt: systemOverride ?? prompt,
@@ -6190,6 +6119,7 @@ class LLMService: ObservableObject {
                                                        userMessage: message),
                     images: image.map { [LocalImageInput(data: $0)] } ?? [],
                     maxOutputTokens: maxOutputTokens,
+                    sampling: toolTurn == nil ? sampling : toolSampling,
                     previewSink: preview,
                     toolTurn: toolTurn)
                 let stream = try await inferenceCoordinator.generateEvents(request, expecting: selectedID)
@@ -6208,7 +6138,7 @@ class LLMService: ObservableObject {
                 let output = try await localService.generateTurn(MLXTurnInput(
                     userMessage: message, systemPrompt: systemOverride ?? prompt, history: turnHistory,
                     imageData: image, onToken: preview, toolTurn: toolTurn))
-                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls)
+                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats)
             }
         }
         let generate: (_ message: String,
@@ -6522,11 +6452,10 @@ class LLMService: ObservableObject {
         let outcome: LocalToolLoop.Outcome
         do {
             outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, generateTurn: { request in
-                let toolTurn = LocalToolTurn(history: earlier,
-                                             turn: Array(request.messages.dropFirst(earlier.count)),
-                                             tools: request.toolsOffered ? toolSpecs : [],
-                                             thinkingOff: true,
-                                             fallbackInstructions: fallback)
+                // Shared with the device qualification app (Plan MQ P3), so a phone run renders
+                // each pass exactly as this turn does.
+                let toolTurn = LocalToolTurn.forLoopPass(history: earlier, request: request,
+                                                         toolSpecs: toolSpecs, fallbackInstructions: fallback)
                 // The same transcript flattened, for a runtime that renders no tool turn (the seam
                 // composes its messages from it); the MLX runtime renders `toolTurn` instead.
                 let flat = LocalToolTranscript.flattened(request.messages)
@@ -6571,8 +6500,7 @@ class LLMService: ObservableObject {
         guard offered.contains(call.name) else {
             // The name is the model's text, not a registered tool, so it is not logged.
             PrivacyLog.localModel(.malformedOutput, detail: PrivacyToken("unofferedTool"))
-            return .init(text: "Error: the tool '\(call.name)' is not available on this turn. Use one of: "
-                         + offered.sorted().joined(separator: ", ") + ".", isError: true)
+            return .init(text: LocalToolLoop.unofferedToolMessage(name: call.name, offered: offered), isError: true)
         }
         var arguments = call.arguments
         if let root = roots[call.name] {
@@ -6604,27 +6532,6 @@ class LLMService: ObservableObject {
             return .init(text: "Error: \(reason)", isError: true)
         }
     }
-
-    /// The tool block for a native tool turn. The definitions themselves are rendered by the
-    /// model's chat template, so this says only how to use them.
-    nonisolated static func localNativeToolGuide(toolNames: [String]) -> String {
-        guard !toolNames.isEmpty else { return "" }
-        var block = "\n\nTOOLS: the tools you may call this turn are declared to you. Call one only when the user "
-            + "clearly needs it; otherwise answer directly. After a tool result, answer from it in one or two spoken "
-            + "sentences, and never repeat a call you have already made."
-        if toolNames.contains("where_am_i") {
-            block += " If you need the user's location and it isn't given above, call where_am_i — never ask the user where they are."
-        }
-        if toolNames.contains("reading") || toolNames.contains("field_session") {
-            block += " On the job: log a value the technician reports with reading, and run job steps with the job tools; never invent a value."
-        }
-        return block
-    }
-
-    /// The one honest-miss line the local path speaks when a turn produced no answer it may say —
-    /// a promise it never kept, or output that was nothing but broken tool protocol. It claims
-    /// nothing happened and invites a retry, which is the only truthful thing left to say.
-    nonisolated static let localMissMessage = "I couldn't get that information just now — please ask me again."
 
     // MARK: - Local Agent Model
 

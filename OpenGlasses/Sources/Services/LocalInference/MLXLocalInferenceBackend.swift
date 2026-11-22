@@ -38,6 +38,9 @@ struct MLXTurnInput: @unchecked Sendable {
 struct MLXTurnOutput: Equatable, Sendable {
     let text: String
     let toolCalls: [LocalToolCallEvent]
+    /// The runtime's report on this generation (Plan MQ P3); nil when it sent none (a test double,
+    /// a refusal that generated nothing).
+    var stats: LocalGenerationStats? = nil
 }
 
 extension MLXLocalRuntime {

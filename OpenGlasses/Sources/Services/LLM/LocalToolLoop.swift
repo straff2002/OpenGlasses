@@ -204,10 +204,14 @@ enum LocalToolLoop {
     struct Generation {
         let text: String
         let toolCalls: [LocalToolCallEvent]
+        /// The runtime's report (Plan MQ P3): token counts, timings and the cap. Not read by the
+        /// loop; the qualification graders read it for zero-token and cut replies.
+        let stats: LocalGenerationStats?
 
-        init(text: String, toolCalls: [LocalToolCallEvent] = []) {
+        init(text: String, toolCalls: [LocalToolCallEvent] = [], stats: LocalGenerationStats? = nil) {
             self.text = text
             self.toolCalls = toolCalls
+            self.stats = stats
         }
     }
 
@@ -323,6 +327,14 @@ enum LocalToolLoop {
             }
         }
         return finish(parsed, .answered)
+    }
+
+    /// What the model reads when it calls a tool the turn did not offer. Shared by
+    /// `LLMService.sendLocalNative` and the qualification runners, so a model is told the same
+    /// thing on a phone run as on a turn.
+    static func unofferedToolMessage(name: String, offered: Set<String>) -> String {
+        "Error: the tool '\(name)' is not available on this turn. Use one of: "
+            + offered.sorted().joined(separator: ", ") + "."
     }
 
     // MARK: - Round 0's correction
