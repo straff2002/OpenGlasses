@@ -1,6 +1,7 @@
 # Plan MZ — Smart Ring (heart rate, oxygen, steps, sleep and battery from a cheap ring, straight into Apple Health, with no vendor app or cloud)
 
-**Status:** 📝 Drafted 2026-11-22; nothing built. 10 decisions with recommendations. The owner has
+**Status:** 📝 Drafted 2026-11-22; nothing built. 10 decisions with recommendations (Decision 8's
+action taken: a clench starts the assistant listening). The owner has
 one ring in hand, so the device pass (P5) can be run for real as soon as P0–P4 are built.
 **Track:** Health and wearables. The phone talks to the ring; the glasses are not involved, except
 as the camera a ring trigger can fire (P4).
@@ -238,10 +239,11 @@ own battery at 10 % is said once per charge.
 In selfie mode the ring sends `06 02` when the wearer clenches or flicks the hand. It is coarse: the
 event carries no strength or direction, and an ordinary hand movement can fire it. So:
 
-- **Opt-in, off by default,** chosen in the ring settings from the same `TempleAction` list temple
-  taps use (start talking, describe a photo, a photo to the camera roll, save Instant Replay, a Quick
-  Action, and the rest). Selfie mode is turned on only while an action is chosen and off when it is
-  cleared or the ring is forgotten.
+- **A clench starts the assistant listening** (`.startTalking`, owner's decision 2026-11-22). The
+  wearer can change the action in the ring settings to anything on the `TempleAction` list temple
+  taps use (describe a photo, a photo to the camera roll, save Instant Replay, a Quick Action, and the
+  rest), or turn the trigger off. Selfie mode is turned on only while the trigger is on and off when
+  it is turned off or the ring is forgotten.
 - `RingClenchClassifier` (pure) reads two events within 1.2 s as a double clench. A photo action
   needs a double clench; start talking takes one.
 - `TriggerGate` (2 s debounce) and suppression while the assistant is listening, speaking or in a live
@@ -350,8 +352,10 @@ The house rhythm: P0–P4 in one PR, everything device-facing behind `Config.rin
    already does under `HealthSummaryDeliveryPolicy`. *Alternative:* the ring stops in medical mode.
 7. **Forgetting the ring.** *Recommend:* readings stay in Health; a separate Delete Ring Readings
    button removes them. *Alternative:* forgetting also deletes them, after a confirmation.
-8. **The trigger's default.** *Recommend:* off, with Start Talking first in the picker, and photo
-   actions needing a double clench. *Alternative:* no photo actions on the ring at all.
+8. **The trigger's default.** *Taken (owner, 2026-11-22):* a clench starts the assistant listening.
+   Still open: whether the trigger starts on when a ring is paired. *Recommend:* on, because a misfire
+   only opens listening with the earcon and listening ends on silence; photo actions, if chosen, need
+   a double clench. *Alternative:* off until the wearer turns it on.
 9. **The vendor app still on the phone.** *Recommend:* when the ring is found already connected
    through another app, say once that the ring's own app is still talking to it and may change its
    clock and schedule, and suggest removing that app. *Alternative:* refuse to pair until it is gone.
