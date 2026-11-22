@@ -571,6 +571,66 @@ def job_flow():
          "reference": [call("procedure_runner", {"action": "start", "procedure_id": "slp99_no_ignition"}), "First step."]})
 
 
+def field_restraint():
+    """Job turns that need no tool although the job tools are offered (the restraint floor, decision 5).
+
+    Three kinds, all written here: chatter and asides during a job; turns that name the unit, a code
+    or a procedure without asking for anything (the tempting ones); and requests none of the offered
+    tools can do. None states a reading, so none should be logged.
+    """
+    src = "synthetic"
+    turns = [
+        # Chatter and asides on the job.
+        ("cheers", "Cheers, got it", "No problem."),
+        ("hang-on", "Hang on, the customer's at the door", "Sure, I'll wait."),
+        ("ladder", "Just getting the ladder out of the van", "Okay."),
+        ("coffee", "Customer's made me a coffee, nice of them", "Enjoy it."),
+        ("tight", "This flue is a pain to get at", "Take your time."),
+        ("dusty", "It's filthy in this cupboard", "Mind the dust."),
+        ("think", "Give me a second to think about where to start", "Sure, take a moment."),
+        ("back", "Okay, I'm back", "Welcome back."),
+        ("phone-low", "My phone's on twenty percent, I'll have to be quick", "Understood, I'll keep it short."),
+        ("rain", "It's started raining, glad this one's inside", "Lucky timing."),
+        ("good-news", "Good news, it fired up first time", "Great."),
+        ("not-sure", "I'm not sure about this one yet", "Okay, tell me what you're seeing when you're ready."),
+        ("stretch", "Hold on, my knee's killing me from kneeling", "Take a break."),
+        ("van", "I left my multimeter in the van, back in a minute", "Okay, I'll be here."),
+        # Naming the unit, a code or a procedure without asking for anything.
+        ("seen-code", "I've seen that E223 code loads of times, I know what it is", "Okay."),
+        ("did-procedure", "I already ran the no ignition procedure yesterday, it was the igniter", "Got it."),
+        ("know-this", "Don't bother with the manual, I know this furnace", "Okay, shout if you want anything."),
+        ("panel-off", "The last tech left the SLP99 panel off, typical", "That's annoying."),
+        ("old-unit", "This SLP99 has been in since the house was built by the look of it", "It's had a good run."),
+        ("switch-fine", "The pressure switch looks fine to me", "Okay."),
+        ("photo-later", "I'll take photos once I've got the cover off", "Okay."),
+        ("job-later", "I'll start the job properly once I've had a look", "Sure, tell me when."),
+        ("readings-later", "I'll give you the readings in a bit", "Okay, ready when you are."),
+        ("customer-asked", "Customer asked if it's the original furnace, I told them yes", "Fair enough."),
+        ("spoken-before", "We talked about this unit last week, same problem again", "Okay."),
+        ("no-log", "Don't log anything yet, I'm just looking", "Okay, nothing logged."),
+        ("filter", "Filter's due a change, I'll mention it to them", "Good idea."),
+        ("tidy", "Right, tidying up my tools", "Okay."),
+        # Requests none of the offered tools can do.
+        ("call-boss", "Call my boss and tell them I'm running late", "I can't make calls here. Let them know when you can."),
+        ("order-part", "Order a new igniter for me", "I can't place orders from here. Note it down for the office."),
+        ("text-customer", "Text the customer that I'm outside", "I can't send messages offline. Knock when you're there."),
+        ("directions", "How do I get to the next job from here?", "I can't do directions offline. Check your maps when you've got signal."),
+        ("invoice", "Send the invoice to the customer", "I can't send invoices from here. The office can do it."),
+        ("music", "Put some music on", "I can't play music in this mode."),
+        ("weather", "Is it going to rain later?", "I can't check the weather offline."),
+        ("remind-office", "Remind the office to book the follow-up", "I can't contact the office from here. Note it for later."),
+    ]
+    sets = [
+        ["field_session", "reading", "evidence", "equipment_lookup", "procedure_runner"],
+        ["field_session", "reading", "table_lookup"],
+        ["reading", "evidence", "show_source"],
+        ["field_session", "procedure_runner", "equipment_lookup", "domain_calc"],
+    ]
+    for n, (cid, turn, answer) in enumerate(turns):
+        add({"id": f"fa-restraint-{cid}", "category": "restraint", "source": src, "turn": turn,
+             "offered": sets[n % len(sets)], "expect": {"calls": []}, "reference": [answer]})
+
+
 def everyday():
     """The short everyday set: small talk, job-adjacent chatter that needs no tool, the time, a timer."""
     src = "synthetic"
@@ -615,6 +675,7 @@ def build():
     two_steps()
     calibration()
     job_flow()
+    field_restraint()
     everyday()
     ids = [c["id"] for c in cases]
     duplicates = sorted({i for i in ids if ids.count(i) > 1})

@@ -186,9 +186,10 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         }
         XCTAssertEqual(report.overall.runs, cases.count * repeats)
         XCTAssertEqual(report.floorShortfalls(), [], "the reference model clears decision 5's floors")
-        // Corpus v2 has no Field Assist restraint case (its seven are everyday chatter), so the
-        // restraint floor cannot be judged on the group decision 5 names until some are generated.
-        XCTAssertEqual(report.unjudgedFloors().map(\.name), ["restraint"])
+        // Every hard floor has Field Assist cases to judge it, restraint included (36 job turns
+        // that need no tool, added 2026-11-22), so the reference model clears all three.
+        XCTAssertEqual(report.unjudgedFloors().map(\.name), [])
+        XCTAssertTrue(report.clearsFloors)
         // Counts only.
         for line in report.lines() { print(line) }
         let printed = report.lines().joined(separator: "\n")

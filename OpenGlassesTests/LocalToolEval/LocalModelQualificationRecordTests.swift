@@ -156,8 +156,10 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         let live = LocalToolEval.select(cases, .qualification, live: true)
         XCTAssertEqual(live.checkOnlySkipped, 98)
         XCTAssertFalse(live.cases.contains(where: \.isCheckOnly))
+        XCTAssertTrue(live.cases.contains { $0.category == .restraint && $0.group == .fieldAssist },
+                      "Field Assist has restraint cases of its own")
         XCTAssertTrue(live.cases.contains { $0.category == .restraint && $0.group == .everyday },
-                      "restraint's cases ride beside Field Assist")
+                      "everyday restraint still rides beside it")
         XCTAssertFalse(live.cases.contains { $0.group == .everyday && $0.category != .restraint })
         XCTAssertEqual(live.cases.count, cases.filter { $0.group == .fieldAssist || $0.category == .restraint }.count - 98)
 
@@ -221,8 +223,8 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         var report = LocalToolEval.Report()
         for run in record.evalRuns { report.add(run) }
         XCTAssertEqual(record.summary.floors.map(\.name), LocalToolEval.Floors.all.compactMap { report.tally(for: $0) == nil ? nil : $0.name })
-        XCTAssertEqual(record.summary.unjudgedFloors, ["restraint"], "corpus v2's restraint cases are everyday")
-        XCTAssertFalse(record.summary.clearsFloorsUnflagged, "an unjudged floor is not cleared")
+        XCTAssertEqual(record.summary.unjudgedFloors, [], "every hard floor has Field Assist cases")
+        XCTAssertTrue(record.summary.clearsFloorsUnflagged, "a finished, unflagged reference run clears them")
         XCTAssertEqual(record.summary.groups["fieldAssist"]?.overall.passed, report.groups[.fieldAssist]?.overall.passed)
         XCTAssertNotNil(record.summary.groups["fieldAssist"]?.byCategory["notInManual"]?.lower)
     }

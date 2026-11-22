@@ -132,7 +132,8 @@ enum LocalToolEval {
     // MARK: - Selection
 
     /// Which cases a run takes. Field Assist first and on its own, with the categories whose
-    /// floors are judged beside it (restraint's cases are everyday chatter in corpus v2).
+    /// floors are judged beside it (everyday restraint and declines ride along; the floors
+    /// themselves are judged on Field Assist's own cases).
     struct Selection: Equatable {
         var groups: Set<Group>
         /// Cases of these categories are taken whatever their group.

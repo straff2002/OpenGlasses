@@ -87,10 +87,11 @@ behind `Config.localNativeToolCallsEnabled`.
   | Field Assist | longPrompt | 4 |
   | Field Assist | cleanOutput | 3 |
   | Field Assist | cancellation | 2 |
+  | Field Assist | restraint (added in P3, 2026-11-22) | 36 |
   | Everyday | restraint | 7 |
   | Everyday | toolChoice | 2 |
   | Everyday | cancellation | 1 |
-  | | **Total** (Field Assist 673, 98%) | **683** |
+  | | **Total** (Field Assist 709, 98%) | **719** |
 
   | Source | Cases |
   |---|---:|
@@ -103,7 +104,7 @@ behind `Config.localNativeToolCallsEnabled`.
   | `procedures/slp99_pressure_switch_lockout.json` | 21 |
   | `procedures/slp99_unit_size_code.json` | 16 |
   | `eval/calibration.jsonl` (phrasings) | 24 |
-  | written in the generator (job flow, protocol, everyday) | 34 |
+  | written in the generator (job flow, protocol, Field Assist restraint, everyday) | 70 |
 
   Writing the cases found two gaps in the check, fixed before it shipped: a timing table's bare `s`
   wasn't read as seconds, and the manifold table states its unit only as the nameplate note's
@@ -319,9 +320,14 @@ grants a badge, adds a catalog model or touches the GGUF tool path (P2).
 - **Compile check.** `Scripts/local-model-qualification/check-compiles.sh` builds the app for the
   simulator. It is not in `Scripts/check-eval-harnesses.sh`: that job compiles plain-swiftc Mac
   harnesses in a 10-minute budget, and a cold mlx-swift-lm build alone takes longer.
-- **Found while building.** Corpus v2 has no Field Assist restraint case (its seven are everyday
-  chatter), so the restraint floor stays unjudged on the judged group and no run on v2 can clear
-  every floor; the corpus needs Field Assist restraint cases before a badge can be granted.
+- **Field Assist restraint cases.** Found while building: the corpus had no Field Assist restraint
+  case (its seven were everyday chatter), so the restraint floor could not be judged on the group
+  decision 5 names and no run could clear every floor. `generate-corpus.py` now writes 36 job turns
+  that need no tool while the job tools are offered (owner, 2026-11-22): chatter and asides, turns
+  that name the unit, a code or a procedure without asking for anything, and requests none of the
+  offered tools can do. None states a reading. They are written by hand, with no facts from the
+  vault beyond names the corpus already used. The corpus is 719 cases (Field Assist 709); the
+  format is unchanged, so it stays version 2.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
@@ -593,7 +599,7 @@ licences are confirmed.
   per-model sampling in the catalog (H1), the kill-limit memory budget (H2), the device app with
   its run gate (H4), the grader additions, Apple's baseline, and the test that fails if a catalog
   entry's evidence names a record that is not in git (decision 8). Owed: the first phone run, then
-  tool choice's and two-step's floors set from it, Field Assist restraint cases in the corpus, the
+  tool choice's and two-step's floors set from it, the
   shortlist run on each RAM tier, new catalog entries for the models that pass, badges set from the
   records (dated JSON in `reports/`), and the flag's default decided per model from the results.
   The Mac screener is a compile check (owner, 2026-11-22).
