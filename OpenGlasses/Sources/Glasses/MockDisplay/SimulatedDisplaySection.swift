@@ -8,6 +8,7 @@ struct SimulatedDisplaySection: View {
     @ObservedObject private var lab = SimulatedDisplayLab.shared
     @State private var walking = false
     @State private var measuring = false
+    @State private var measuringButtons = false
 
     var body: some View {
         OGSection(
@@ -51,7 +52,7 @@ struct SimulatedDisplaySection: View {
                           icon: "play.rectangle", mutedIcon: walking, showsChevron: false)
                 }
                 .buttonStyle(.plain)
-                .disabled(walking || measuring)
+                .disabled(walking || measuring || measuringButtons)
                 OGDivider()
                 Button {
                     measuring = true
@@ -64,7 +65,20 @@ struct SimulatedDisplaySection: View {
                           icon: "ruler", mutedIcon: measuring, showsChevron: false)
                 }
                 .buttonStyle(.plain)
-                .disabled(walking || measuring)
+                .disabled(walking || measuring || measuringButtons)
+                OGDivider()
+                Button {
+                    measuringButtons = true
+                    Task { @MainActor in
+                        await SimulatedDisplayButtonRows(appState: appState, lab: lab).run()
+                        measuringButtons = false
+                    }
+                } label: {
+                    OGRow(measuringButtons ? "Measuring button rows…" : "Measure button rows",
+                          icon: "rectangle.split.3x1", mutedIcon: measuringButtons, showsChevron: false)
+                }
+                .buttonStyle(.plain)
+                .disabled(walking || measuring || measuringButtons)
             }
             if !lab.status.isEmpty, lab.status != "On" {
                 Text(verbatim: lab.status)

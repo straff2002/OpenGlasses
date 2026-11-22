@@ -1,8 +1,10 @@
 # Plan MU — The Lens Read at Work (a page you get around in one move, fuller tiles, sources on their own, fewer buttons, and an answer that stays until you put it away)
 
-**Status:** 🚧 P0–P4 built headless and merged (PR 1189, 2026-11-22); P7 catalog sync built 2026-11-22
-(branch `chore/mu-catalog-sync`: 22 new keys in the 13 complete languages, add-only, with Plan MQ
-P1's three Developer panel keys). P0 and P1 2026-11-21: one picture
+**Status:** 🚧 P0–P4 built headless and merged (PR 1189, 2026-11-22); P7 catalog sync merged
+(PR 1192, 2026-11-22: 22 new keys in the 13 complete languages, add-only, with Plan MQ P1's three
+Developer panel keys); P5 measured on the simulated Display 2026-11-22 (branch `feat/mu-p5-measure`:
+the button-row budget's constants measured, no lens button sent with an icon, decision 11; see
+Measured (P5)). P0 and P1 2026-11-21: one picture
 a row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
 (Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
 highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
@@ -14,7 +16,7 @@ halves in one strip) or fit width, **Back**, **Rows**, the voice words, three bu
 (Meta Display only), Actions, the page view and reading mode, with the 13-language test; the reading
 view's three-button row with follow-ups on Actions; Keep answers up (Until closed by default, or 3
 minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
-Not done: P5 (the budget's constants are estimates until measured), P6 and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
+Not done: P6 and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
 taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
 request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
@@ -270,6 +272,89 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
   button label and the button's padding (to fix the P3 budget), an 8- and 9-line tile with the question
   line, the source tile, a 3-button row in the longest language, the whole page fitted, fit width and a close-up with both
   halves of a wide table, the rows view, and the fit-check screen (the simulator must read 12 and three tiles side by side). Evidence into the worktree's gitignored folder as before.
+
+  **Measured (P5), 2026-11-22.** iOS Simulator (iPhone 17 Pro, iOS 26.5), DAT 1.1.0's Mock Device
+  Kit and its simulated Ray-Ban Display, a Debug build of the mock lane. Developer › Simulated
+  Display › **Measure button rows**, or the launch argument `-AvenkinSimulatedDisplayButtonRows`,
+  runs `SimulatedDisplayButtonRows` unattended. It sends real `Button`s in `ButtonGroup` rows through
+  the HUD's own lens session (`MetaDisplayBackend.sendMeasurementView`, so no second `DeviceSession`),
+  then the app's own screens through the builders and the backend, and reads the preview's web view
+  after every send: each button's drawn box, its label's glyph run, padding, gaps and scale. Results go
+  to the app's Documents/button-rows/ (`results.json`, `button-rows.log`, PNG snapshots, DOM dumps).
+  **Run 1** measured with the provisional constants and set the new ones; **run 2** ran the same
+  measurement with the new constants and no button icons. The simulator is not the glasses: P8
+  checks every result again.
+
+  1. **The label's advance.** Labels are drawn in 24 px Noto Sans, a proportional font, so no one
+     advance fits every label. Over the 185 real labels in narrow scripts (run 1) the advance is
+     11.2 px a character at the median, 13.4 at the 90th percentile, 14.1 at the 95th and 15.4 at
+     most (short capitalised words such as "Map"). A full-width (CJK) character is 23.65 px, every
+     time. Straight-line fits of a label's width against its length: Latin 9.90·n + 12.0 (R² 0.991),
+     Cyrillic 12.29·n + 6.5 (1.000), Arabic and Urdu 9.53·n + 5.4 (0.970), full-width 21.33·n + 1.0
+     (0.961). Run 2's lens rows agree: over their 178 distinct labels in narrow scripts, median 11.2,
+     90th percentile 12.9, most 15.4; all 38 full-width labels 23.65.
+  2. **The button round it.** Every button is its label plus exactly 64 px (32 px a side) in
+     `.primary`, `.secondary` and `.outline` alike (237 samples, 63.5–64.5), and is never narrower than
+     88 px: a one-character label draws as an 88 × 88 circle.
+  3. **Focus and gaps.** The focused button draws full size. Every other button draws at 9/11 (0.818)
+     of its size, with 8 px either side, so 16 px between two unfocused buttons. For a button of 88 px
+     or more the shrink gives back at least those 16 px, so a row of full-size buttons side by side with
+     no gap is never narrower than the lens lays it out.
+  4. **A row that is too wide.** The row is not wrapped. The lens squeezes its buttons, down to 88 px
+     each, cuts their labels, and then lets the row run past both edges of the lens.
+  5. **Icons.** In 1.1.0's preview any button with an icon, `.primary` included, draws as the icon
+     alone in an 88 px circle, and its label is lost (on 1.0.1 only `.secondary` did). There was no
+     icon beside a label to measure. **Decision (owner, 2026-11-22): labels win.** No lens button is
+     sent with an icon, whatever its style (`LensButtonIconPolicy`). Today's ready and What's new
+     buttons and a prepared card's primary keep their icon as items but go to the lens as labels: in
+     run 2 they draw as "Ready", "What's new" and "Directions" in full-width buttons beside **Close**.
+     Icons on text lines (the clock, the calendar, the weather) are not buttons and keep theirs: run
+     2's clock line drew its icon. P8 checks real glasses, and the rule can be relaxed if they draw an
+     icon and its label together.
+  6. **The constants chosen** (`LensButtonRowBudget`). `advancePixels` 13, the 90th percentile rounded
+     down, `wideAdvancePixels` 24, `buttonPaddingPixels` 64, `minimumButtonPixels` 88 and
+     `gapPixels` 0. `iconPixels` stays 32 and is counted only if icons return. Against the 143 rows
+     drawn full size, an advance of 13 judges no row to fit that does not (gap 0 or 8), and so does
+     11. An advance of 10 lets one through. So 13 is never unsafe, and leans the other way on purpose:
+     it costs only rows the lens could have held. 9 of run 2's 236 distinct labels are estimated
+     narrower than they draw, by at most 9.4 px, and the unfocused buttons' shrink absorbs it: no
+     row was judged to fit that does not. The photo's row of a zoomed page ("Zoom in", "Whole page", "Move",
+     "Close") is estimated at 594 px against the 557 px the lens lays it out at.
+  7. **Every lens row in the 13 complete languages** (11 rows each: the reading view, the paged card,
+     Actions, the page view, reading mode), sent before and after the budget.
+     - Run 1, with the provisional constants: 10 of the 143 fitted rows needed more than 576 px, and 6
+       visibly squeezed and clipped (the Actions row in ja, ko, nl, pt-BR, zh-Hans and zh-Hant).
+     - Run 2, with the measured constants and no icons: **no fitted row needs more than 576 px, none
+       is squeezed and no label is clipped.** The widest drawn is 503 px (Actions in zh-Hans and
+       zh-Hant). Before the budget, 40 of the 143 rows were too wide. The budget moved buttons in 21
+       rows: Repeat, Save and Send leave the Actions row in 13 languages (Save and Send only in
+       Chinese), with **Close** and **‹** kept; and the follow-up leaves the paged card's last page in
+       8 languages. The longest three-button row, the reading view with a follow-up in Russian
+       ("What should…", "Действия", "Закрыть"), draws 484 px wide.
+  8. **The reading view, an 8- and a 9-line tile under the question line.** The question line is one
+     27 px meta line at the top ("You: how do I find a fault on…"). The 8-line tile is 576 × 304 px,
+     whole on the lens under it, with the 9-line tile's first lines below. One move down brings the
+     9-line tile whole onto the lens (576 × 340 px, y 201–541). The lens wraps both line for line as
+     `HUDReadingRows` does at 31 characters, 36 px a line.
+  9. **The source tile.** Three meta lines, joined with "; ", in a card that focus rests on
+     (576 × 100 px), whole on the lens after a second move, with **Actions** and **Close** under it.
+     The whole answer is 928 px tall.
+  10. **The page view.** The whole page is one 576 × 382 px picture at 1:1, with no scrolling. A
+      table's close-up is six 576 × 200 px slices at 1:1: the left half's three, then the "Right half"
+      marker, then the right half's three, in one 1,382 px strip that the lens steps through slice by
+      slice, with **Back** and **Close** at the top. Fit width is four 576 × 187 px slices, 881 px.
+      The lab's invented manual holds the table only as a picture, so its whole page offered **Close**
+      alone, with no **Rows**.
+  11. **The rows view** (invented rows sent directly). **Back** and **Close** are at the top, then four
+      cards: 113 px for three lines, 78 px for two. The 620 px of content scroll by 20 px.
+  12. **The fit check.** The ruler is 576 × 64 px at 1:1 and shows all 12 numbers. The three 186 px
+      tiles sit side by side in a 576 × 120 px row. Nothing scrolls. **The simulator reads 12 and three
+      tiles.**
+
+  **P8 must check on a Ray-Ban Display:** the 0.818 scale of an unfocused button; the 64 px padding;
+  the 88 px minimum; the full-width advance (23.65 px); whether the glasses draw an icon and its label
+  together (if they do, the icon rule can be relaxed); and whether a row that is too wide squeezes and
+  clips, as the simulator does, or runs off the edges.
 - **P6 — Swipe and pinch (§7).** TestFlight only, `DAT_EXPERIMENTAL`, added to
   `DATExperimentalGuardTests`' roster. Takes over MG P5.
 - **P7 — Catalog sync.** The new strings ("Earlier — press to open", the source tile's label if any,
@@ -311,6 +396,10 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
    tester's glasses, and only rows of pictures misbehave, which P0 removes. The fit check then confirms
    it or sets a factor. (Alternative: guess a factor from the photos; not worth it, since a wrong one
    would make every picture smaller than it needs to be.)
+11. **Icons on lens buttons.** *Taken 2026-11-22 (owner): none; labels win.* P5 found that on 1.1.0's
+   simulated Display any button with an icon, `.primary` included, draws as the icon alone and loses
+   its label. No lens button is sent with an icon, whatever its style (`LensButtonIconPolicy`); icons
+   on text lines stay. Relaxed only if P8 shows real glasses drawing an icon and its label together.
 
 ## Tests and checks
 

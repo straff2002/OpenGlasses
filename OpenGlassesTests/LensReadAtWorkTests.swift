@@ -269,8 +269,15 @@ final class LensReadAtWorkTests: XCTestCase {
                        9 * budget.advancePixels + 2 * budget.buttonPaddingPixels + budget.gapPixels)
         XCTAssertGreaterThan(budget.labelWidth("閉じる"), budget.labelWidth("abc"), "a full-width character is wider")
         XCTAssertEqual(budget.columnPixels, 576)
-        // The photos: four short zoom buttons fitted; two follow-ups beside Actions and Close did not.
-        XCTAssertTrue(budget.fits([item("1", "Zoom in"), item("2", "Whole page"), item("3", "Move"), item("4", "Close")]))
+        // P5: a one-character label still makes a button of the lens's minimum width.
+        XCTAssertEqual(budget.width(of: item("a", "‹")), budget.minimumButtonPixels)
+        XCTAssertEqual(budget.minimumButtonPixels, 88)
+        // The photos. Four short zoom buttons all showed: the simulator lays them out at 557 px with
+        // the widest focused, and the measured budget errs a little wide of that (594 px), never
+        // narrow. Two follow-ups beside Actions and Close did not fit.
+        let zoomRow = budget.width(of: [item("1", "Zoom in"), item("2", "Whole page"), item("3", "Move"), item("4", "Close")])
+        XCTAssertGreaterThanOrEqual(zoomRow, 557)
+        XCTAssertLessThanOrEqual(zoomRow, 557 * 1.1)
         XCTAssertFalse(budget.fits([item("kp.followup.0", "What should the supply read at L and N?"),
                                     item("kp.followup.1", "How do I reseat the X3 plug?"),
                                     item("kp.actions", "Actions"), item("kp.close", "Close")]))

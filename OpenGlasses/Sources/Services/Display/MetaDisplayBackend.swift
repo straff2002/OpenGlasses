@@ -440,8 +440,8 @@ final class MetaDisplayBackend: GlassesDisplayBackend {
         // Plan LC §2.1: exactly one button carries `.actionRole(.primary)`, so the glasses focus it
         // when the frame first renders (and again on every re-send, which resets focus).
         let focusID = screen.resolvedFocusItemID
-        // A secondary button with an icon can be drawn as the icon alone, losing its label, so
-        // only a primary button keeps its icon (`LensButtonIconPolicy`).
+        // A button with an icon is drawn as the icon alone, losing its label, so no button is
+        // sent with its icon (`LensButtonIconPolicy`).
         let buttonModels = screen.items.map { item in
             (id: item.id, label: HUDTextShaper.condense(item.label, max: HUDTextShaper.maxTitleLength),
              style: item.style.buttonStyle,

@@ -120,6 +120,10 @@ final class DataStoreRegistryTests: XCTestCase {
             "Development-only tall-views measurement (DAT_MOCK_DISPLAY, Debug Simulator builds): "
                 + "scroll offsets, focus, sizes and send times of invented test views, and snapshots "
                 + "of them; never in a store or TestFlight build",
+        "OpenGlasses/Sources/Glasses/MockDisplay/SimulatedDisplayButtonRows.swift":
+            "Development-only button-row measurement (DAT_MOCK_DISPLAY, Debug Simulator builds): "
+                + "widths of invented button rows in each language, and snapshots of them; never in "
+                + "a store or TestFlight build",
     ]
 
     // MARK: - Exhaustiveness

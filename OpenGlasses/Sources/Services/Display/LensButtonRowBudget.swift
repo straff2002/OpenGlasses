@@ -6,9 +6,10 @@ import Foundation
 /// The Display draws a `ButtonGroup` as one row and cannot scroll sideways, so a row wider than
 /// the 576 px column is centred and cut off at both ends (a tester's photo: two follow-up questions
 /// pushed the first label off the left and **Close** off the right). Each button is estimated from
-/// its label's characters at `advancePixels` a character (`wideAdvanceFactor` times that for a
-/// full-width CJK character), plus `buttonPaddingPixels` for the button round it and `iconPixels`
-/// for an icon, with `gapPixels` between buttons.
+/// its label's characters at `advancePixels` a character (`wideAdvancePixels` for a full-width CJK
+/// character), plus `buttonPaddingPixels` for the button round it, and is never narrower than
+/// `minimumButtonPixels`; `gapPixels` goes between buttons. No lens button is sent with an icon
+/// (`LensButtonIconPolicy`), so `iconPixels` is counted only if icons return.
 ///
 /// **When a row is too wide** (`fit`):
 /// 1. labels with a short form take it (`shortLabelKey(for:)`: "Next page ›" → "Next ›",
@@ -22,40 +23,62 @@ import Foundation
 /// **Close is never dropped** (nor any other id in `protected`): Meta's Back gesture isn't passed to
 /// apps (ios #349), so Close is the only way to put the lens away from the lens itself.
 ///
-/// **The constants are provisional** (P5 measures them on the simulated Display). They come from
-/// two readings: the lens body text's advance, 18 px a character (`LensPageFrame.readingCharAdvancePixels`,
-/// 32 characters across the column), as an upper bound for a button label; and the tester's photo of
-/// a zoomed page whose four buttons "Zoom in", "Whole page", "Move" and "Close" (26 characters) all
-/// showed, which a 15 px advance with 32 px of padding a button and 8 px gaps puts at 542 px, inside
-/// the column. The same numbers put the photo's cut-off row (two follow-ups, **Actions**, **Close**)
-/// at well over 576 px.
+/// **The constants were measured on the simulated Display on 2026-11-22** (Plan MU P5: DAT 1.1.0's
+/// Mock Device Kit, the iOS Simulator, Developer › Simulated Display › Measure button rows), from
+/// 255 single buttons in Latin, Cyrillic, Arabic and CJK labels and every lens row in the 13
+/// complete languages (239 distinct labels). The glasses re-check them in P8.
+/// - A label is drawn in 24 px Noto Sans, a proportional font, so no single advance fits every
+///   label: across the 185 real labels in narrow scripts the advance is 11.2 px a character at the
+///   median, 13.4 at the 90th percentile and 15.4 at most (short, capitalised words such as "Map").
+///   `advancePixels` is the 90th percentile, rounded down to 13. A full-width character draws at
+///   23.65 px, so `wideAdvancePixels` is 24.
+/// - Every button is its label plus 32 px either side (64 px, the same for `.primary`, `.secondary`
+///   and `.outline`), and at least 88 px wide (88 × 88, a circle round a one-character label).
+/// - The focused button is drawn full size; every other button is drawn at 9/11 (82%) of its size
+///   with 8 px either side of it, so 16 px between two unfocused buttons and 8 px beside the
+///   focused one. For a button of 88 px or more the shrink gives back at least those 16 px, so a row
+///   of full-size buttons side by side with no gap is never narrower than the lens lays it out:
+///   `gapPixels` is 0.
+/// - A row wider than the column is not wrapped: the lens squeezes its buttons (down to 88 px each)
+///   and cuts their labels, then lets the row run past both edges.
+/// - In the 1.1.0 preview a button with an icon draws as the icon alone in an 88 px circle, whatever
+///   its style, so there was no icon-beside-label to measure, and since then no lens button is sent
+///   with an icon. `iconPixels` stays the earlier estimate, 32 px, for the day icons return.
+/// At these numbers the photo of a zoomed page's four buttons ("Zoom in", "Whole page", "Move",
+/// "Close", which all showed) is estimated at 594 px against the 557 px the simulator lays it out
+/// at with the widest focused (a little conservative), and the photo's cut-off row (two follow-ups, **Actions**, **Close**) at well over 576 px.
 enum LensButtonRowBudget {
     /// The column a row must fit: the lens less its side padding.
     static var columnPixels: CGFloat { LensPageFrame.contentWidthPixels }
-    /// Provisional: a button label's advance, per character.
-    static let advancePixels: CGFloat = 15
-    /// A full-width character (CJK) takes this many times the advance.
-    static let wideAdvanceFactor: CGFloat = 1.8
-    /// Provisional: a button's own padding, both sides together.
-    static let buttonPaddingPixels: CGFloat = 32
-    /// Provisional: an icon and its spacing beside the label.
+    /// A button label's advance per character (narrow scripts): the 90th percentile measured.
+    static let advancePixels: CGFloat = 13
+    /// A full-width character's (CJK) advance.
+    static let wideAdvancePixels: CGFloat = 24
+    /// A full-width character takes this many times the advance.
+    static var wideAdvanceFactor: CGFloat { wideAdvancePixels / advancePixels }
+    /// A button's own padding, both sides together.
+    static let buttonPaddingPixels: CGFloat = 64
+    /// The narrowest a button is drawn.
+    static let minimumButtonPixels: CGFloat = 88
+    /// Not measured (see above): an icon and its spacing beside the label. Counted only if
+    /// `LensButtonIconPolicy` lets icons back onto lens buttons; today it never does.
     static let iconPixels: CGFloat = 32
-    /// Provisional: the gap between two buttons.
-    static let gapPixels: CGFloat = 8
+    /// The gap between two full-size buttons: none (the unfocused buttons' shrink pays for theirs).
+    static let gapPixels: CGFloat = 0
     /// A follow-up cut shorter than this says too little to press: it leaves the row instead.
     static let minimumCutCharacters = 12
 
     // MARK: - Widths
 
     static func labelWidth(_ label: String) -> CGFloat {
-        label.reduce(0) { $0 + (isWide($1) ? advancePixels * wideAdvanceFactor : advancePixels) }
+        label.reduce(0) { $0 + (isWide($1) ? wideAdvancePixels : advancePixels) }
     }
 
     static func width(of item: HUDItem, label: String? = nil) -> CGFloat {
         let icon = LensButtonIconPolicy.icon(item.icon, style: item.style) != .none ? iconPixels : 0
         // As the backend sends it: cut to a heading's length.
         let drawn = HUDTextShaper.condense(label ?? item.label, max: HUDTextShaper.maxTitleLength)
-        return labelWidth(drawn) + buttonPaddingPixels + icon
+        return max(minimumButtonPixels, labelWidth(drawn) + buttonPaddingPixels + icon)
     }
 
     static func width(of items: [HUDItem]) -> CGFloat {
