@@ -108,17 +108,43 @@ struct RingTriggerEngine: Equatable, Sendable {
     }
 }
 
+/// What became of a clench the engine let through.
+enum RingTriggerResult: Equatable {
+    /// Resolved and carried out as a temple tap would be.
+    case carriedOut(TempleOutcome)
+    /// It needed the microphone, and iOS won't start one from the background. `noticePosted` is
+    /// whether this one posted the notification (`RingBackgroundListenGate`).
+    case refusedInBackground(noticePosted: Bool)
+}
+
 /// A clench the engine let through, carried out exactly as a temple tap with the same action
 /// would be: resolved against what the app is doing, confirmed with the temple tap's earcon, then
 /// performed (`TempleGestureDispatcher.carryOut`). A photo goes through the glasses camera's own
 /// capture, so the capture light and the photo ledger apply as for any other photo.
+///
+/// One check comes first: a turn that needs the microphone while the app can't open it
+/// (`RingMicrophoneFacts`) is not started at all. There is no earcon, because no audio can play
+/// either. The wearer gets a notification instead, at most once per cooldown.
 @MainActor
 enum RingTriggerRunner {
+
+    /// The notice cooldown, kept for the life of the process.
+    static var backgroundGate = RingBackgroundListenGate()
+
     @discardableResult
-    static func run(_ action: TempleAction, performer: TempleActionPerforming) async -> TempleOutcome {
+    static func run(_ action: TempleAction, performer: TempleActionPerforming,
+                    microphone: RingMicrophoneFacts = .foreground, now: Date = Date(),
+                    postNotice: () -> Void = {}) async -> RingTriggerResult {
         let outcome = TempleActionResolver.resolve(action: action, context: performer.templeContext())
+        if case .run(let effect) = outcome,
+           case .refuse(let notify) = backgroundGate.decide(effect, facts: microphone, now: now) {
+            PrivacyLog.device(.ring, .ringTrigger, state: PrivacyToken("refused"),
+                              reason: PrivacyToken("backgroundMicrophone"), success: notify)
+            if notify { postNotice() }
+            return .refusedInBackground(noticePosted: notify)
+        }
         PrivacyLog.device(.ring, .commandHandled, state: PrivacyToken(TempleGestureDispatcher.logToken(outcome)))
         await TempleGestureDispatcher.carryOut(outcome, with: performer)
-        return outcome
+        return .carriedOut(outcome)
     }
 }

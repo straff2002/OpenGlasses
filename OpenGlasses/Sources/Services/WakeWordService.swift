@@ -1487,6 +1487,10 @@ class WakeWordService: NSObject, ObservableObject {
         }
     }
 
+    /// Whether the shared engine is running. In the background this is what lets a turn open the
+    /// microphone: iOS refuses to start one there, but a running engine is already recording.
+    var audioEngineRunning: Bool { audioEngine?.isRunning == true }
+
     /// Get the current audio engine (for shared use by TranscriptionService)
     func getAudioEngine() -> AVAudioEngine? {
         return audioEngine
