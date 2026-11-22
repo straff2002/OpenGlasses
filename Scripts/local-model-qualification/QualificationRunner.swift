@@ -12,7 +12,7 @@ import UIKit
 ///     --groups <a,b>       case groups (default fieldAssist, with the restraint and
 ///                          not-in-the-manual categories beside it); `all` for every case
 ///     --limit <n>          the first n selected cases only (a smoke run)
-///     --settle <seconds>   how long the phone must be nominal before measuring (default 120)
+///     --settle <seconds>   how long the phone must stay cool (nominal or fair) before the first case and after a hot spell (default 120)
 ///     --cap <seconds>      the longest one wait lasts (default 1200)
 ///     --allow-battery      measure off the charger (an attended run; Low Power Mode still waits)
 ///     --cancel-probes <n>  cancel-latency probes after the cases (default 6; 0 for none)

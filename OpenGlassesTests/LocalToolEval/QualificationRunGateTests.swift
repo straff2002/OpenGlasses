@@ -12,13 +12,23 @@ final class QualificationRunGateTests: XCTestCase {
         .init(time: time, thermal: thermal, lowPowerMode: lowPower, batteryLevel: battery, power: power)
     }
 
-    func testNominalMustSettleBeforeTheFirstCase() {
+    func testTheFirstCaseWaitsForTheSettlePeriod() {
         var state = Gate.State()
         XCTAssertEqual(Gate.decide(reading(0), state: &state, policy: policy), .wait([.settling]))
         XCTAssertEqual(Gate.decide(reading(119), state: &state, policy: policy), .wait([.settling]))
         XCTAssertEqual(Gate.decide(reading(120), state: &state, policy: policy), .proceed)
-        // Still nominal: no new settle.
+        // Still cool: no new settle.
         XCTAssertEqual(Gate.decide(reading(500), state: &state, policy: policy), .proceed)
+    }
+
+    /// `fair` doesn't throttle: it counts towards settling, measures once settled, and doesn't restart it.
+    func testFairIsMeasuredOn() {
+        var state = Gate.State()
+        XCTAssertEqual(Gate.decide(reading(0, .fair), state: &state, policy: policy), .wait([.settling]))
+        XCTAssertEqual(Gate.decide(reading(60), state: &state, policy: policy), .wait([.settling]))
+        XCTAssertEqual(Gate.decide(reading(120, .fair), state: &state, policy: policy), .proceed)
+        XCTAssertEqual(Gate.decide(reading(130), state: &state, policy: policy), .proceed)
+        XCTAssertEqual(Gate.decide(reading(140, .fair), state: &state, policy: policy), .proceed, "no new settle after fair")
     }
 
     func testHeatRestartsTheSettlePeriod() {
@@ -26,9 +36,11 @@ final class QualificationRunGateTests: XCTestCase {
         _ = Gate.decide(reading(0), state: &state, policy: policy)
         XCTAssertEqual(Gate.decide(reading(200), state: &state, policy: policy), .proceed)
         XCTAssertEqual(Gate.decide(reading(300, .serious), state: &state, policy: policy), .wait([.thermal]))
-        XCTAssertEqual(Gate.decide(reading(400, .fair), state: &state, policy: policy), .wait([.thermal]))
-        XCTAssertEqual(Gate.decide(reading(500), state: &state, policy: policy), .wait([.settling]))
-        XCTAssertEqual(Gate.decide(reading(620), state: &state, policy: policy), .proceed)
+        XCTAssertEqual(Gate.decide(reading(350, .critical), state: &state, policy: policy), .wait([.thermal]))
+        // Cool again at fair: the settle period starts there.
+        XCTAssertEqual(Gate.decide(reading(400, .fair), state: &state, policy: policy), .wait([.settling]))
+        XCTAssertEqual(Gate.decide(reading(519), state: &state, policy: policy), .wait([.settling]))
+        XCTAssertEqual(Gate.decide(reading(520), state: &state, policy: policy), .proceed)
     }
 
     func testHeatAtTheCapFlagsAndLaterCasesAreFlaggedUntilItSettles() {
@@ -37,9 +49,10 @@ final class QualificationRunGateTests: XCTestCase {
         XCTAssertEqual(Gate.decide(reading(1_199, .serious), state: &state, policy: policy), .wait([.thermal]))
         XCTAssertEqual(Gate.decide(reading(1_200, .serious), state: &state, policy: policy), .flag([.thermal]))
         // Measured flagged at once, rather than each case waiting out the cap again.
-        XCTAssertEqual(Gate.decide(reading(1_300, .fair), state: &state, policy: policy), .flag([.thermal]))
+        XCTAssertEqual(Gate.decide(reading(1_250, .serious), state: &state, policy: policy), .flag([.thermal]))
+        XCTAssertEqual(Gate.decide(reading(1_300, .fair), state: &state, policy: policy), .flag([.settling]))
         XCTAssertEqual(Gate.decide(reading(1_400), state: &state, policy: policy), .flag([.settling]))
-        XCTAssertEqual(Gate.decide(reading(1_520), state: &state, policy: policy), .proceed)
+        XCTAssertEqual(Gate.decide(reading(1_420), state: &state, policy: policy), .proceed)
         // Cleared: the next heat waits again.
         XCTAssertEqual(Gate.decide(reading(1_600, .serious), state: &state, policy: policy), .wait([.thermal]))
     }

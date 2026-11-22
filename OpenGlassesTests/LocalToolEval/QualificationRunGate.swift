@@ -6,8 +6,12 @@ import Foundation
 ///
 /// In another app's overnight runs every model fell to 5–11 tokens a second once the phone reached
 /// `serious`, which took two to five long answers, and a cool-down wait that gave up after a few
-/// minutes measured hot twice a night. So an unattended run waits for `nominal` and then a settle
-/// period, refuses a draining battery and refuses Low Power Mode:
+/// minutes measured hot twice a night. So an unattended run waits out `serious` and `critical`,
+/// the states where iOS throttles, settles once at the start and again after each hot spell, and
+/// refuses a draining battery and Low Power Mode. `fair` is measured on: iOS doesn't throttle there,
+/// and on the first phone run (2026-11-22) a cool iPhone Air on its charger reported `fair` between
+/// cases, which held a nominal-only gate in "waiting" for no reason. The thermal trace still shows
+/// how long the run spent at `fair`.
 ///
 /// - `proceed`: measure now.
 /// - `wait(reasons)`: not yet; the reasons are for the log. Ask again shortly.
@@ -42,9 +46,9 @@ enum QualificationRunGate {
     }
 
     enum Reason: String, Codable, Sendable, CaseIterable {
-        /// Warmer than `nominal`.
+        /// `serious` or `critical`: hot enough for iOS to throttle.
         case thermal
-        /// `nominal`, but not yet for the settle period.
+        /// Cool (`nominal` or `fair`), but not yet for the settle period after the start or a hot spell.
         case settling
         case lowPowerMode
         /// On battery: a run must not drain the phone, and a draining phone throttles.
@@ -64,7 +68,7 @@ enum QualificationRunGate {
     }
 
     struct Policy: Equatable, Sendable {
-        /// How long `nominal` must hold before measuring.
+        /// How long the phone must stay cool (`nominal` or `fair`) before the first case, and after a hot spell.
         var settleSeconds: TimeInterval = 120
         /// The longest one wait lasts before it flags (heat) or stops (power).
         var capSeconds: TimeInterval = 20 * 60
@@ -76,25 +80,36 @@ enum QualificationRunGate {
 
     /// What the gate remembers between readings.
     struct State: Equatable, Sendable {
-        /// When the current stretch of `nominal` began.
-        var nominalSince: TimeInterval?
+        /// When the current cool stretch (`nominal` or `fair`) began.
+        var coolSince: TimeInterval?
+        /// The phone has settled since the start or the last hot spell; until the next hot spell,
+        /// every cool reading measures without settling again.
+        var settled = false
         /// When the current wait began.
         var waitingSince: TimeInterval?
-        /// The wait ran out on heat; later cases are flagged until a settled `nominal`.
+        /// The wait ran out on heat; later cases are flagged until the phone has cooled and settled.
         var flagging = false
 
         init() {}
     }
 
-    /// The reasons `reading` is not fit to measure on, updating when `nominal` began.
+    /// Hot enough for iOS to throttle.
+    static func isHot(_ thermal: Thermal) -> Bool { thermal >= .serious }
+
+    /// The reasons `reading` is not fit to measure on, updating the cool stretch and settling.
     static func reasons(_ reading: Reading, state: inout State, policy: Policy) -> [Reason] {
         var reasons: [Reason] = []
-        if reading.thermal == .nominal {
-            if state.nominalSince == nil { state.nominalSince = reading.time }
-            if let since = state.nominalSince, reading.time - since < policy.settleSeconds { reasons.append(.settling) }
-        } else {
-            state.nominalSince = nil
+        if isHot(reading.thermal) {
+            state.coolSince = nil
+            state.settled = false
             reasons.append(.thermal)
+        } else if !state.settled {
+            if state.coolSince == nil { state.coolSince = reading.time }
+            if let since = state.coolSince, reading.time - since >= policy.settleSeconds {
+                state.settled = true
+            } else {
+                reasons.append(.settling)
+            }
         }
         if reading.lowPowerMode { reasons.append(.lowPowerMode) }
         if policy.requiresCharger {

@@ -67,8 +67,8 @@ the main app's copy), so the first launch needs a network. Keep the app in the f
 screen stays awake, and leaving the app stops generation at once. A relaunch with the same model,
 settings and corpus carries on from the last finished case; `--fresh` starts over.
 
-Before every case the run gate (`QualificationRunGate`) waits for `nominal` thermal state plus the
-settle period, refuses Low Power Mode and refuses a battery that is not on a charger. If heat
+Before every case the run gate (`QualificationRunGate`) waits out `serious` and `critical` thermal
+states, settles at the start and after each hot spell (`nominal` and `fair` both count as cool), refuses Low Power Mode and refuses a battery that is not on a charger. If heat
 outlasts the cap, the case is measured and flagged (a flagged run can't grant a badge); if power is
 still bad at the cap, the run stops. The near-miss twins in the corpus test the check, not a model,
 so a phone run skips them and says how many.
