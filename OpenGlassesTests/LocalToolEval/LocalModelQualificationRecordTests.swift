@@ -231,9 +231,12 @@ final class LocalModelQualificationRecordTests: XCTestCase {
 
     /// A run that fails on an error keeps the error's type and case name, never its message.
     func testAnErrorIsRecordedByKindOnly() {
-        enum Sample: Error { case templateFailed(String), plain }
+        enum Sample: Error { case templateFailed(String), plain, tooLong(tokens: Int, limit: Int), mixed(Int, String) }
         struct Opaque: Error {}
         XCTAssertEqual(LocalToolEval.errorKind(Sample.templateFailed("{{ secret prompt }}")), "Sample.templateFailed")
+        XCTAssertEqual(LocalToolEval.errorKind(Sample.tooLong(tokens: 4100, limit: 3456)),
+                       "Sample.tooLong(tokens: 4100, limit: 3456)", "whole numbers are kept")
+        XCTAssertEqual(LocalToolEval.errorKind(Sample.mixed(3, "a passage")), "Sample.mixed", "a string drops them all")
         XCTAssertEqual(LocalToolEval.errorKind(Sample.plain), "Sample.plain")
         XCTAssertEqual(LocalToolEval.errorKind(Opaque()), "Opaque")
         XCTAssertEqual(LocalToolEval.errorKind(NSError(domain: "Jinja", code: 7, userInfo: [NSLocalizedDescriptionKey: "line 3"])), "Jinja#7")

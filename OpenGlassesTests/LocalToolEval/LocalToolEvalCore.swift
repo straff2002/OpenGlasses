@@ -552,7 +552,17 @@ enum LocalToolEval {
         if error is CancellationError { return type }
         let mirror = Mirror(reflecting: error)
         if mirror.displayStyle == .enum {
-            if let label = mirror.children.first?.label { return type + "." + label }
+            if let child = mirror.children.first, let label = child.label {
+                // Whole numbers only (a token count and its limit): never a string or anything else.
+                let value = Mirror(reflecting: child.value)
+                if let number = child.value as? Int { return type + "." + label + "(\(number))" }
+                if value.displayStyle == .tuple, !value.children.isEmpty,
+                   value.children.allSatisfy({ $0.value is Int }) {
+                    let parts = value.children.map { "\($0.label.map { $0 + ": " } ?? "")\($0.value as! Int)" }
+                    return type + "." + label + "(" + parts.joined(separator: ", ") + ")"
+                }
+                return type + "." + label
+            }
             return type + "." + String(describing: error).prefix(while: { $0.isLetter || $0.isNumber })
         }
         let ns = error as NSError
