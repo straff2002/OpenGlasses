@@ -350,6 +350,13 @@ extension OnDeviceToolSchema.Node {
 /// Explicit `null`s are dropped, as `AppleToolArguments` drops them, so an optional the model
 /// spelled out as null reads as absent. Arguments the schema doesn't declare pass through untouched;
 /// the router's authorization, not this, decides what they mean.
+///
+/// One misnamed argument has one reading too (Plan MQ P3): a required choice that is missing, when
+/// exactly one other key holds one of its choices and could not keep it — undeclared, or declared
+/// with choices that don't include it. Gemma 4 E2B on the phone sent `application: "voltage_drop"`
+/// for `operation` in 7 of 8 two-step calls; the value is moved to the required key. Nothing else
+/// is renamed: not onto a key that is present, not for a target without choices, not when two keys
+/// could be meant.
 enum OnDeviceArgumentCoercion {
 
     enum Problem: Equatable {
@@ -410,6 +417,7 @@ enum OnDeviceArgumentCoercion {
                                      path: String, state: inout State) -> [String: Any]? {
         guard case .object(_, _, let properties) = node else { return object }
         var result = object.filter { !($0.value is NSNull) }
+        repairMisnamedChoices(&result, properties: properties, state: &state)
         for property in properties {
             let propertyPath = join(path, property.name)
             guard let raw = result[property.name] else {
@@ -421,6 +429,39 @@ enum OnDeviceArgumentCoercion {
             }
         }
         return result
+    }
+
+    /// Moves a missing required choice back from the one key that holds it under another name.
+    /// Counted as a coercion; the key's name and value are never recorded.
+    private static func repairMisnamedChoices(_ object: inout [String: Any],
+                                              properties: [OnDeviceToolSchema.Property], state: inout State) {
+        let declared = Dictionary(properties.map { ($0.name, $0.node) }, uniquingKeysWith: { first, _ in first })
+        for property in properties where !property.isOptional && object[property.name] == nil {
+            guard case .string(let choices?) = property.node else { continue }
+            let folded = Set(choices.map { $0.lowercased() })
+            let holders = object.compactMap { key, value -> String? in
+                guard let text = value as? String,
+                      folded.contains(text.trimmingCharacters(in: .whitespaces).lowercased()) else { return nil }
+                // A declared key keeps a value it can take; only one it would refuse can be misnamed.
+                if let own = declared[key], accepts(own, text) { return nil }
+                return key
+            }
+            guard holders.count == 1, let key = holders.first, let value = object.removeValue(forKey: key) else { continue }
+            object[property.name] = value
+            state.coerced += 1
+        }
+    }
+
+    /// Whether `node` reads `text` as a value of its own, as `coerceValue` would.
+    private static func accepts(_ node: OnDeviceToolSchema.Node, _ text: String) -> Bool {
+        let folded = text.trimmingCharacters(in: .whitespaces).lowercased()
+        switch node {
+        case .string(let choices): return choices.map { $0.contains { $0.lowercased() == folded } } ?? true
+        case .integer, .number: return plainNumber(text) != nil
+        case .boolean: return folded == "true" || folded == "false"
+        case .array(let item): return accepts(item, text)
+        case .object: return false
+        }
     }
 
     /// The value at its declared type, or nil (with a problem recorded) when it has no single reading.

@@ -1,6 +1,6 @@
 {
   "assistantName" : "Avenkin",
-  "corpusBodySha256" : "be111510d290b02172bcfcc91e7a961bd2b64b003478632899dcd8a1b96b41be",
+  "corpusBodySha256" : "63adf4ee8b762be42f0d9f738e0c3afce748682b06522ca0b0559abdc9cca825",
   "dateTimePlaceholder" : "{{DATE_TIME}}",
   "prompts" : {
     "LiquidAI/LFM2.5-2.6B-MLX-4bit" : {
@@ -26,7 +26,7 @@
   },
   "tools" : {
     "domain_calc" : {
-      "description" : "Refrigerant saturation math from CoolProp tables: pt_lookup, superheat (dew point), subcool (bubble point). 'pt_lookup' gives the dew and bubble saturation temperatures at a gauge pressure, or the saturation pressures at a temperature. 'superheat' is suction line temperature minus the dew-point temperature at suction pressure; 'subcool' is the bubble-point temperature at liquid pressure minus liquid line temperature. Pressures in psig (answer in °F) or kPa/bar gauge (answer in °C and K). Gauge pressure assumes sea level unless altitude_ft or altitude_m is given. Never assume the refrigerant: take it from the nameplate or ask. Use superheat/subcool for values the technician says when refrigerant_gauges has no usable picture: a pressure implausible for the refrigerant is asked again, and with a job open the spoken pressure and line temperature are recorded. 'voltage_drop' (electrical): the drop along a run from 'phase' ('single' or 'three'), 'current_a', the one-way length ('length_m' or 'length_ft') and the conductor's resistance per unit length ('resistance_ohm_per_km', '_per_m', '_per_1000ft' or '_per_ft'), or a factor with the conductor's area ('k_factor_ohm_mm2_per_m' with 'area_mm2', or 'k_factor_ohm_cmil_per_ft' with 'area_cmil'); 'supply_v' adds the drop as a percentage. The resistance or factor comes from the technician or a table in the organisation's own book, never from memory; never assume the phase or a resistance.",
+      "description" : "Refrigerant saturation math from CoolProp tables: pt_lookup, superheat (dew point), subcool (bubble point). 'pt_lookup' gives the dew and bubble saturation temperatures at a gauge pressure, or the saturation pressures at a temperature. 'superheat' is suction line temperature minus the dew-point temperature at suction pressure; 'subcool' is the bubble-point temperature at liquid pressure minus liquid line temperature. Pressures in psig (answer in °F) or kPa/bar gauge (answer in °C and K). Gauge pressure assumes sea level unless altitude_ft or altitude_m is given. Never assume the refrigerant: take it from the nameplate or ask. Use superheat/subcool for values the technician says when refrigerant_gauges has no usable picture: a pressure implausible for the refrigerant is asked again, and with a job open the spoken pressure and line temperature are recorded. 'voltage_drop' (electrical): the drop along a run from 'phase' ('single' or 'three'), 'current_a', the one-way length ('length_m' or 'length_ft') and the conductor: 'wire_awg' with 'material' is enough, or a resistance per unit length ('resistance_ohm_per_km', '_per_m', '_per_1000ft' or '_per_ft'), or a factor with the area ('k_factor_ohm_mm2_per_m' with 'area_mm2', or 'k_factor_ohm_cmil_per_ft' with 'area_cmil'), which win over the gauge; 'supply_v' adds the drop as a percentage. A resistance or factor comes from the technician or the organisation's own book, never from memory; never assume the phase, the material or a resistance.",
       "parameters" : {
         "properties" : {
           "altitude_ft" : {
@@ -94,8 +94,22 @@
             "description" : "For 'subcool': liquid-side gauge pressure (psig).",
             "type" : "number"
           },
+          "material" : {
+            "description" : "For 'voltage_drop' with 'wire_awg': the conductor's metal. Never assumed.",
+            "enum" : [
+              "copper",
+              "aluminum"
+            ],
+            "type" : "string"
+          },
           "operation" : {
-            "description" : "'pt_lookup', 'superheat', or 'subcool' (refrigerant); 'voltage_drop' (electrical).",
+            "description" : "pt_lookup, superheat, subcool (refrigerant); voltage_drop (electrical).",
+            "enum" : [
+              "pt_lookup",
+              "superheat",
+              "subcool",
+              "voltage_drop"
+            ],
             "type" : "string"
           },
           "phase" : {
@@ -182,6 +196,10 @@
           "temperature_f" : {
             "description" : "For 'pt_lookup' instead of a pressure: a saturation temperature (°F); answers in psig.",
             "type" : "number"
+          },
+          "wire_awg" : {
+            "description" : "For 'voltage_drop': the wire's AWG size ('14', '1/0'), with 'material'. Enough without a resistance or area.",
+            "type" : "string"
           }
         },
         "required" : [

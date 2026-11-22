@@ -17,8 +17,11 @@ extension LLMService {
     }
 
     /// True when the reply narrates an intention to fetch/check something without any
-    /// tool markup — the shape a small model produces instead of acting.
-    nonisolated static func announcesToolIntent(_ response: String) -> Bool {
+    /// tool markup — the shape a small model produces instead of acting. `assistantName` is the
+    /// assistant's own name, which a small model promises in as it would in "I" (Gemma 4 E2B on the
+    /// phone: "Avenkin will log the line voltage reading and calculate the voltage drop for you.").
+    nonisolated static func announcesToolIntent(_ response: String,
+                                                assistantName: String = Config.assistantName) -> Bool {
         let lowered = response.lowercased()
         guard !lowered.contains("<tool_call>") else { return false }
         // A promise-instead-of-action reply is SHORT (a sentence or two). A long answer that
@@ -42,7 +45,10 @@ extension LLMService {
         // something or waits on the wearer: "I'll log it once you tell me the value" is not a stall.
         guard !lowered.contains("?"), !waitingOnWearer.contains(where: { lowered.contains($0) }) else { return false }
         let straightened = lowered.replacingOccurrences(of: "\u{2019}", with: "'")
-        return actionPromisePhrases.contains { straightened.contains($0) }
+        if actionPromisePhrases.contains(where: { straightened.contains($0) }) { return true }
+        // The name only as a word of its own, so a short name is not found inside another word.
+        let spaced = " " + straightened
+        return namedPromisePhrases(assistantName).contains { spaced.contains(" " + $0) }
     }
 
     /// Words that make a promise wait on the wearer rather than stand in for a call.
@@ -51,9 +57,26 @@ extension LLMService {
     /// First-person promises of a Field Assist action: a log, a calculation.
     nonisolated static let actionPromisePhrases: [String] = {
         let openers = ["i will", "i'll", "let me", "i'm going to", "i am going to", "i will now", "i'll now", "i'm about to"]
-        let actions = ["log", "record", "calculate", "work out", "figure out", "save the reading", "note the reading"]
-        return openers.flatMap { opener in actions.map { opener + " " + $0 } }
+        return openers.flatMap { opener in promisedActions.map { opener + " " + $0 } }
     }()
+
+    nonisolated static let promisedActions = ["log", "record", "calculate", "work out", "figure out",
+                                              "save the reading", "note the reading"]
+
+    /// The same promises with the assistant's name for "I", lowercased: "avenkin will log",
+    /// "avenkin is going to calculate", and the running form, "avenkin is logging". Empty for no name.
+    nonisolated static func namedPromisePhrases(_ assistantName: String) -> [String] {
+        let name = assistantName.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+        guard !name.isEmpty else { return [] }
+        let openers = ["will", "'ll", "will now", "is going to", "is about to"].map {
+            $0.hasPrefix("'") ? name + $0 : name + " " + $0
+        }
+        let running = ["logging", "recording", "calculating", "working out", "figuring out",
+                       "saving the reading", "noting the reading"]
+        return openers.flatMap { opener in promisedActions.map { opener + " " + $0 } }
+            + running.map { name + " is " + $0 }
+    }
 
     /// True when the reply asks the user to supply their location — the model has
     /// where_am_i available and must never ask (live-traced: "If you tell me your current
@@ -63,10 +86,22 @@ extension LLMService {
         guard !lowered.contains("<tool_call>") else { return false }
         let askPhrases = [
             "your location", "your current location", "where you are",
-            "what city", "which city", "your city", "tell me where",
-            "let me know where", "share your location",
+            "what city", "which city", "your city", "share your location",
         ]
-        return askPhrases.contains { lowered.contains($0) }
+        if askPhrases.contains(where: { lowered.contains($0) }) { return true }
+        // "Tell me where" asks for a location only when it is the wearer's own: "tell me where you
+        // are", not "tell me where you saw this E223 code" (Plan MQ P3, a restraint case on the phone).
+        let straightened = lowered.replacingOccurrences(of: "\u{2019}", with: "'")
+        for opener in ["tell me where ", "let me know where "] {
+            var searchRange = straightened.startIndex..<straightened.endIndex
+            while let found = straightened.range(of: opener, range: searchRange) {
+                let rest = straightened[found.upperBound...]
+                if ["you are", "you're", "youre", "you currently are", "you're currently", "you are currently"]
+                    .contains(where: { rest.hasPrefix($0) }) { return true }
+                searchRange = found.upperBound..<straightened.endIndex
+            }
+        }
+        return false
     }
 
     /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.

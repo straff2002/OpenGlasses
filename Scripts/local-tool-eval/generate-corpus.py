@@ -465,7 +465,8 @@ def two_steps():
                 "reference": [call("reading", {"action": "record_reading", "quantity": "line voltage",
                                                "value": volts, "unit": "VAC"}),
                               call("domain_calc", {"operation": "voltage_drop", "supply_v": volts,
-                                                   "current_a": amps, "length_ft": 50, "area_cmil": 4110}),
+                                                   "current_a": amps, "length_ft": 50, "wire_awg": "14",
+                                                   "material": "copper"}),
                               f"Logged {volts} volts; the drop is about 3 volts."],
             })
 

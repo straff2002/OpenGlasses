@@ -585,6 +585,52 @@ final class LocalToolLoopTests: XCTestCase {
         }
     }
 
+    func testTheAssistantsOwnNameCountsAsI() {
+        // Gemma 4 E2B on the phone talks about itself by name, in the third person.
+        for promise in ["Avenkin will log the line voltage reading and calculate the voltage drop for you.",
+                        "Avenkin is logging the line voltage now.", "Avenkin\u{2019}ll record it.",
+                        "Okay, Avenkin is going to work out the drop."] {
+            XCTAssertTrue(LLMService.announcesToolIntent(promise, assistantName: "Avenkin"), promise)
+        }
+        // Another name, the same way; and the name only as a word of its own.
+        XCTAssertTrue(LLMService.announcesToolIntent("Juniper will calculate the voltage drop.", assistantName: "Juniper"))
+        XCTAssertFalse(LLMService.announcesToolIntent("Avenkin will log it.", assistantName: "Juniper"))
+        XCTAssertFalse(LLMService.announcesToolIntent("The total will log itself.", assistantName: "Al"))
+        XCTAssertFalse(LLMService.announcesToolIntent("Avenkin will log it once you tell me the value.",
+                                                      assistantName: "Avenkin"), "waiting on the wearer")
+        XCTAssertFalse(LLMService.announcesToolIntent("Avenkin will log it.", assistantName: ""))
+
+        for claim in ["Avenkin has logged the line voltage.", "Avenkin logged 120 volts.",
+                      "Avenkin has calculated the drop.", "Avenkin is logging the line voltage reading."] {
+            XCTAssertNotNil(LocalToolLoop.unbackedClaim(in: claim, executed: [], assistantName: "Avenkin"), claim)
+        }
+        XCTAssertNotNil(LocalToolLoop.unbackedClaim(in: "Juniper has worked out the drop.", executed: [],
+                                                    assistantName: "Juniper"))
+        XCTAssertNil(LocalToolLoop.unbackedClaim(in: "Juniper has worked out the drop.", executed: [],
+                                                 assistantName: "Avenkin"))
+
+        XCTAssertTrue(LocalToolLoop.offersInsteadOfDoing("Avenkin can calculate the voltage drop for you.",
+                                                         turn: twoStepTurn, assistantName: "Avenkin"))
+        XCTAssertFalse(LocalToolLoop.offersInsteadOfDoing("Avenkin can calculate the voltage drop for you.",
+                                                          turn: "Don't work it out yet", assistantName: "Avenkin"))
+    }
+
+    func testANamedPromiseGetsTheIntentCorrection() async throws {
+        var configuration = LocalToolLoop.Configuration()
+        configuration.assistantName = "Avenkin"
+        configuration.correction = { LocalToolLoop.standardCorrection(for: $0, assistantName: "Avenkin") }
+        let model = ScriptedModel([
+            "Avenkin will log the line voltage reading and calculate the voltage drop for you.",
+            call("reading", #"{"action": "record_reading", "value": "120"}"#),
+            "Logged 120 volts.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, configuration: configuration, message: twoStepTurn)
+        XCTAssertEqual(model.requests[1].purpose, .correction)
+        XCTAssertEqual(model.requests[1].messages.last?.content, LLMService.localIntentCorrection)
+        XCTAssertEqual(tools.calls.map(\.name), ["reading"])
+    }
+
     func testAnOfferInsteadOfTheActionAskedForIsCorrectedOnce() async throws {
         let model = ScriptedModel([
             "I can calculate the voltage drop for you.",

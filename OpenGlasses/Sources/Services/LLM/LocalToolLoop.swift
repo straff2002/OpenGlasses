@@ -142,7 +142,7 @@ enum LocalToolLoop {
         /// Round 0's recovery: given the first output's prose, the correction to send, or nil when
         /// none is needed. Nil disables the recovery, and the later claim correction with it; a
         /// claim nothing backs is still never spoken.
-        var correction: ((String) -> String?)? = LocalToolLoop.standardCorrection
+        var correction: ((String) -> String?)? = LocalToolLoop.standardCorrection(for:)
         /// What the wearer hears when the model said nothing but protocol.
         var missText: String = LLMService.localMissMessage
         /// The assistant's own name, taken off the front of a reply that opens by addressing it
@@ -342,7 +342,8 @@ enum LocalToolLoop {
                     text = configuration.missText
                     if reason == .answered { reason = .protocolOnly }
                 }
-            } else if LocalToolLoop.unbackedClaim(in: text, executed: executed) != nil {
+            } else if LocalToolLoop.unbackedClaim(in: text, executed: executed,
+                                                   assistantName: configuration.assistantName) != nil {
                 // Never say it was done when nothing did it.
                 text = configuration.missText
                 reason = .unbackedClaim
@@ -386,8 +387,10 @@ enum LocalToolLoop {
         // An offer to do what the turn asked for ("I can calculate the voltage drop for you"), when
         // it claims nothing: a claim gets the claim correction below.
         func offerCorrection(_ prose: String) -> String? {
-            guard LocalToolLoop.unbackedClaim(in: prose, executed: executed) == nil,
-                  LocalToolLoop.offersInsteadOfDoing(prose, turn: userMessage) else { return nil }
+            guard LocalToolLoop.unbackedClaim(in: prose, executed: executed,
+                                              assistantName: configuration.assistantName) == nil,
+                  LocalToolLoop.offersInsteadOfDoing(prose, turn: userMessage,
+                                                     assistantName: configuration.assistantName) else { return nil }
             return LLMService.localIntentCorrection
         }
 
@@ -409,7 +412,8 @@ enum LocalToolLoop {
                 // tools are still offered (`finish` never speaks it).
                 if !usedCorrection, configuration.correction != nil, executed.count < cap,
                    parsed.classification.kind == .prose,
-                   LocalToolLoop.unbackedClaim(in: parsed.text, executed: executed) != nil {
+                   LocalToolLoop.unbackedClaim(in: parsed.text, executed: executed,
+                                               assistantName: configuration.assistantName) != nil {
                     usedCorrection = true
                     let scaffold = transcript + [.assistant(parsed.text), .user(LLMService.localClaimCorrection)]
                     parsed = try await generation(.correction, messages: scaffold, toolsOffered: true)
@@ -534,20 +538,28 @@ enum LocalToolLoop {
     /// What a reply may claim was done, and the tools whose successful call this turn backs it
     /// (Plan MQ P3). Small on purpose: the two claims Gemma 4 E2B made on the phone without a call,
     /// in the forms it made them. A "recorded" step answer is the runner's, so it backs a log too.
-    static let actionClaims: [(tools: Set<String>, patterns: [NSRegularExpression])] = [
-        (["reading", "procedure_runner", "evidence", "field_session"], claimPatterns([
-            #"\b(i|i've|i have|we've|we have|avenkin has)\s+(just\s+|now\s+|already\s+)?(logged|recorded|saved|noted)\b"#,
-            #"\b(i'm|i am|is|are)\s+(now\s+)?(logging|recording)\b"#,
-            #"\b(?<!not )(?<!n't )been\s+(logged|recorded|saved)\b"#,
-            #"(^|[.!?,;:\u2014]\s*)(ok(ay)?[,.]?\s+)?(logged|recorded)\b"#,
-        ])),
-        (["domain_calc"], claimPatterns([
-            #"\b(i|i've|i have|we've|we have)\s+(just\s+|now\s+|already\s+)?(calculated|computed|worked out|figured out)\b"#,
-            #"\b(i'm|i am|is)\s+(now\s+)?(calculating|computing)\b"#,
-            #"\b(the|your|that)\s+(voltage\s+)?drop\s+(is|would be|will be|comes to|comes out( at)?|works out( at| to)?)\s+(about\s+|around\s+|roughly\s+|approximately\s+|only\s+|just\s+)?\d"#,
-            #"(^|[.!?,;:\u2014]\s*)calculated\b"#,
-        ])),
-    ]
+    /// The assistant's own name claims as "I" does ("Avenkin has logged it"): Gemma talks about
+    /// itself in the third person.
+    static func actionClaims(assistantName: String = Config.assistantName)
+        -> [(tools: Set<String>, patterns: [NSRegularExpression])] {
+        let name = assistantName.trimmingCharacters(in: .whitespaces)
+        let escaped = NSRegularExpression.escapedPattern(for: name)
+        let named = name.isEmpty ? "" : "|\(escaped)|\(escaped) has"
+        return [
+            (["reading", "procedure_runner", "evidence", "field_session"], claimPatterns([
+                #"\b(i|i've|i have|we've|we have"# + named + #")\s+(just\s+|now\s+|already\s+)?(logged|recorded|saved|noted)\b"#,
+                #"\b(i'm|i am|is|are)\s+(now\s+)?(logging|recording)\b"#,
+                #"\b(?<!not )(?<!n't )been\s+(logged|recorded|saved)\b"#,
+                #"(^|[.!?,;:\u2014]\s*)(ok(ay)?[,.]?\s+)?(logged|recorded)\b"#,
+            ])),
+            (["domain_calc"], claimPatterns([
+                #"\b(i|i've|i have|we've|we have"# + named + #")\s+(just\s+|now\s+|already\s+)?(calculated|computed|worked out|figured out)\b"#,
+                #"\b(i'm|i am|is)\s+(now\s+)?(calculating|computing)\b"#,
+                #"\b(the|your|that)\s+(voltage\s+)?drop\s+(is|would be|will be|comes to|comes out( at)?|works out( at| to)?)\s+(about\s+|around\s+|roughly\s+|approximately\s+|only\s+|just\s+)?\d"#,
+                #"(^|[.!?,;:\u2014]\s*)calculated\b"#,
+            ])),
+        ]
+    }
 
     private static func claimPatterns(_ patterns: [String]) -> [NSRegularExpression] {
         patterns.map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
@@ -556,12 +568,13 @@ enum LocalToolLoop {
     /// The tools one of whose claims `text` makes with no successful call of any of them in
     /// `executed`, or nil. A claim the turn's own calls back ("Logged 120 volts" after `reading`
     /// ran) passes. Pure.
-    static func unbackedClaim(in text: String, executed: [Executed]) -> Set<String>? {
+    static func unbackedClaim(in text: String, executed: [Executed],
+                              assistantName: String = Config.assistantName) -> Set<String>? {
         let done = Set(executed.filter { !$0.result.isError && !isUnofferedToolResult($0.result.text, name: $0.call.name) }
             .map(\.call.name))
         let spoken = text.replacingOccurrences(of: "\u{2019}", with: "'")
         let range = NSRange(spoken.startIndex..., in: spoken)
-        for claim in actionClaims where claim.tools.isDisjoint(with: done) {
+        for claim in actionClaims(assistantName: assistantName) where claim.tools.isDisjoint(with: done) {
             if claim.patterns.contains(where: { $0.firstMatch(in: spoken, range: range) != nil }) { return claim.tools }
         }
         return nil
@@ -571,13 +584,19 @@ enum LocalToolLoop {
     /// calculate the voltage drop for you." on "…then work out the voltage drop"). Only when the
     /// turn asks for that action, without a "don't" or a "not yet", so an offer on a turn that
     /// asked for nothing ("I'll give you the readings in a bit") is left alone. Pure.
-    static func offersInsteadOfDoing(_ reply: String, turn: String) -> Bool {
-        let said = LocalTurnRouter.normalised(reply)
+    static func offersInsteadOfDoing(_ reply: String, turn: String,
+                                     assistantName: String = Config.assistantName) -> Bool {
+        let said = " " + LocalTurnRouter.normalised(reply)
         let asked = " " + LocalTurnRouter.normalised(turn) + " "
         guard !offerNegations.contains(where: { asked.contains($0) }) else { return false }
-        for (offers, requests) in offeredActions
-        where requests.contains(where: { asked.contains($0) }) && offers.contains(where: { said.contains($0) }) {
-            return true
+        // "Avenkin can calculate…" offers as "I can calculate…" does; the name only as a word.
+        let name = LocalTurnRouter.normalised(assistantName)
+        for (offers, requests) in offeredActions where requests.contains(where: { asked.contains($0) }) {
+            let named: [String] = name.isEmpty ? [] : offers.filter { $0.hasPrefix("i can ") }
+                .map { " \(name) can \(String($0.dropFirst("i can ".count)))" }
+            if offers.contains(where: { said.contains($0) }) || named.contains(where: { said.contains($0) }) {
+                return true
+            }
         }
         return false
     }
@@ -600,8 +619,12 @@ enum LocalToolLoop {
     /// The correction `sendLocal` sends after an "I'll check" stall, or nil when the prose did not
     /// stall: the same two tests (`announcesToolIntent`, `asksUserForLocation`) and the same words.
     static func standardCorrection(for prose: String) -> String? {
+        standardCorrection(for: prose, assistantName: Config.assistantName)
+    }
+
+    static func standardCorrection(for prose: String, assistantName: String) -> String? {
         if LLMService.asksUserForLocation(prose) { return LLMService.localLocationCorrection }
-        if LLMService.announcesToolIntent(prose) { return LLMService.localIntentCorrection }
+        if LLMService.announcesToolIntent(prose, assistantName: assistantName) { return LLMService.localIntentCorrection }
         return nil
     }
 }

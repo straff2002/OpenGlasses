@@ -101,6 +101,17 @@ final class LocalLocationFixTests: XCTestCase {
         XCTAssertFalse(LLMService.asksUserForLocation(#"<tool_call>{"name": "where_am_i", "arguments": {}}</tool_call>"#))
     }
 
+    func testTellMeWhereAsksForALocationOnlyWhenItIsTheWearers() {
+        // Plan MQ P3, a restraint case on the phone: a question about a code is not a location ask.
+        XCTAssertFalse(LLMService.asksUserForLocation("Could you tell me where you saw this E223 code?"))
+        XCTAssertFalse(LLMService.asksUserForLocation("Let me know where the filter is mounted and I'll walk you through it."))
+        XCTAssertTrue(LLMService.asksUserForLocation("Can you tell me where you are?"))
+        XCTAssertTrue(LLMService.asksUserForLocation("Please tell me where you\u{2019}re located and I'll check the forecast."))
+        XCTAssertTrue(LLMService.asksUserForLocation("Let me know where you're right now."))
+        XCTAssertTrue(LLMService.asksUserForLocation(
+            "Could you tell me where you saw it? Also tell me where you're at, for the weather."), "a later ask still counts")
+    }
+
     func testParseLocalToolCall() {
         let reply = #"Sure. <tool_call>{"name": "get_weather", "arguments": {"latitude": -35.6}}</tool_call>"#
         let parsed = LLMService.parseLocalToolCall(reply)
