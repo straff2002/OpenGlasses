@@ -104,6 +104,14 @@ final class LocalModelQualificationFixtureTests: XCTestCase {
             + String(base[at.lowerBound...])
     }
 
+    /// The tier stamps the equipment with the clock time it was identified ("from the technician,
+    /// 17:34"), which made the fixture differ on every run. Pinned to one time so the file is the
+    /// same every time it is built.
+    static func fixedClock(_ prompt: String) -> String {
+        prompt.replacingOccurrences(of: #"\(from the technician, \d{1,2}[:.]\d{2}(\s?[AaPp]\.?[Mm]\.?)?\)"#,
+                                    with: "(from the technician, 09:00)", options: .regularExpression)
+    }
+
     private func build() async throws -> LocalModelQualificationFixture {
         let text = try String(contentsOf: Self.repoRoot.appendingPathComponent("Scripts/local-tool-eval/corpus")
             .appendingPathComponent(LocalToolEval.corpusFileName), encoding: .utf8)
@@ -159,12 +167,19 @@ final class LocalModelQualificationFixtureTests: XCTestCase {
             let base = try XCTUnwrap(bases[id])
             prompts[id] = .init(
                 everyday: LocalModelQualificationFixture.withDatePlaceholder(base),
-                job: LocalModelQualificationFixture.withDatePlaceholder(try Self.inserting(tier: try XCTUnwrap(jobTiers[id]), into: base)),
-                longJob: LocalModelQualificationFixture.withDatePlaceholder(try Self.inserting(tier: try tier(id), into: base)))
+                job: LocalModelQualificationFixture.withDatePlaceholder(
+                    Self.fixedClock(try Self.inserting(tier: try XCTUnwrap(jobTiers[id]), into: base))),
+                longJob: LocalModelQualificationFixture.withDatePlaceholder(
+                    Self.fixedClock(try Self.inserting(tier: try tier(id), into: base))))
         }
         return LocalModelQualificationFixture(version: LocalModelQualificationFixture.version,
                                               corpusBodySha256: try Self.corpusBodySha256(),
                                               assistantName: Config.assistantName, tools: tools, prompts: prompts)
+    }
+
+    func testTheFixtureDoesNotCarryTheClock() {
+        XCTAssertEqual(Self.fixedClock("x (from the technician, 17:34). y"), "x (from the technician, 09:00). y")
+        XCTAssertEqual(Self.fixedClock("(from the technician, 5:34 PM)"), "(from the technician, 09:00)")
     }
 
     func testTheCommittedFixtureIsWhatTheAppBuilds() async throws {
@@ -200,6 +215,12 @@ final class LocalModelQualificationFixtureTests: XCTestCase {
                 XCTAssertEqual(try JSONSerialization.data(withJSONObject: spec, options: [.sortedKeys]),
                                try JSONSerialization.data(withJSONObject: live, options: [.sortedKeys]), name)
                 XCTAssertEqual(fixture.schemaRoot(name), OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema))
+                // And the compact definition the runtime's fit falls back to (Plan MQ P3).
+                let compact = try XCTUnwrap(fixture.toolSpec(name, limits: .compact))
+                let liveCompact = OnDeviceToolSchema.localToolSpec(name: name, description: tool.description,
+                                                                   parameters: tool.parametersSchema, limits: .compact)
+                XCTAssertEqual(try JSONSerialization.data(withJSONObject: compact, options: [.sortedKeys]),
+                               try JSONSerialization.data(withJSONObject: liveCompact, options: [.sortedKeys]), name)
             }
             for id in Self.modelIDs {
                 let prompt = try XCTUnwrap(fixture.systemPrompt(for: testCase, modelID: id, dateTimeLine: "today"))

@@ -610,35 +610,54 @@ final class LocalLLMService: ObservableObject {
             let budget = LocalModelBudget.promptBudget(for: loadedModelId)
             if let toolTurn {
                 // Measured with the template itself, tools included: the definitions are tokens too.
+                // Plan MQ P3: the definitions are fitted first (`LocalToolFit`), with no history, and
+                // only then is the history trimmed into the room they leave.
                 let system = systemPrompt
                 let earlier = toolTurn.history
-                let kept = try LocalModelBudget.historyFittingBudget(
-                    history: earlier.map { (role: $0.role.rawValue, content: $0.content) }, budget: budget
-                ) { hist in
+                let window = toolTurn.contextWindow ?? LocalModelBudget.contextWindow(for: loadedModelId)
+                let toolBudget = LocalModelBudget.promptBudget(for: loadedModelId, contextWindow: window)
+                func count(keeping historyCount: Int, tools: [[String: Any]]) -> Int {
+                    let rendered = tools.isEmpty ? nil : tools.map(LocalToolTranscript.sendableSpec)
                     let messages = [["role": "system", "content": system] as [String: any Sendable]]
-                        + (Array(earlier.suffix(hist.count)) + toolTurn.turn).map(LocalToolTranscript.rawMessage)
+                        + (Array(earlier.suffix(historyCount)) + toolTurn.turn).map(LocalToolTranscript.rawMessage)
                     if let tokens = try? tokenizer.applyChatTemplate(
-                        messages: messages, tools: renderedTools,
+                        messages: messages, tools: rendered,
                         additionalContext: LocalToolTranscript.templateContext(thinkingOff: toolTurn.thinkingOff)) {
                         return tokens.count
                     }
-                    let flat = LocalToolTranscript.flattened(Array(earlier.suffix(hist.count)) + toolTurn.turn)
+                    let flat = LocalToolTranscript.flattened(Array(earlier.suffix(historyCount)) + toolTurn.turn)
                     return tokenizer.encode(text: Gemma4ChatPrompt.render(
-                        system: system + toolTurn.fallbackInstructions, history: Array(flat.dropLast()),
+                        system: system + (tools.isEmpty ? "" : toolTurn.fallbackInstructions),
+                        history: Array(flat.dropLast()),
                         userMessage: flat.last?.content ?? "", bosToken: tokenizer.bosToken),
                                             addSpecialTokens: false).count
                 }
-                if kept.count < earlier.count {
-                    PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: earlier.count, tokens: budget)
+                let fitted = Self.fitTools(toolTurn, rendersTools: renderedTools != nil, budget: toolBudget,
+                                           window: window) { kept, detail in
+                    count(keeping: 0, tools: toolTurn.specs(kept: kept, detail: detail))
                 }
-                return try await generateGemma4Turn(
+                let keptSpecs = fitted.turn.tools
+                let kept = try LocalModelBudget.historyFittingBudget(
+                    history: earlier.map { (role: $0.role.rawValue, content: $0.content) }, budget: toolBudget
+                ) { hist in
+                    count(keeping: hist.count, tools: flattenTranscript ? [] : keptSpecs)
+                }
+                if kept.count < earlier.count {
+                    PrivacyLog.localModel(.historyTrimmed, count: kept.count, total: earlier.count, tokens: toolBudget)
+                }
+                var output = try await generateGemma4Turn(
                     userMessage: userMessage, systemPrompt: systemPrompt,
                     history: [], imageData: nil,
                     container: container, onToken: onToken,
                     toolTurn: LocalToolTurn(history: Array(earlier.suffix(kept.count)), turn: toolTurn.turn,
-                                            tools: toolTurn.tools, thinkingOff: toolTurn.thinkingOff,
-                                            fallbackInstructions: toolTurn.fallbackInstructions),
-                    renderedTools: renderedTools, flattenTranscript: flattenTranscript)
+                                            tools: keptSpecs, thinkingOff: toolTurn.thinkingOff,
+                                            fallbackInstructions: toolTurn.fallbackInstructions,
+                                            contextWindow: window),
+                    renderedTools: flattenTranscript || keptSpecs.isEmpty
+                        ? nil : keptSpecs.map(LocalToolTranscript.sendableSpec),
+                    flattenTranscript: flattenTranscript)
+                output.toolFit = fitted.report
+                return output
             }
             let trimmedHistory = try LocalModelBudget.historyFittingBudget(
                 history: history, budget: budget
@@ -667,13 +686,14 @@ final class LocalLLMService: ObservableObject {
         let toolEarlier = toolTurn?.history ?? []
         let tupleHistory = toolTurn == nil ? history
             : toolEarlier.map { (role: $0.role.rawValue, content: $0.content) }
-        func tokenizeToolTurn(_ toolTurn: LocalToolTurn, keeping count: Int) throws -> [Int] {
+        func tokenizeToolTurn(_ toolTurn: LocalToolTurn, keeping count: Int,
+                              tools: [[String: any Sendable]]?) throws -> [Int] {
             let messages = Array(toolEarlier.suffix(count)) + toolTurn.turn
             if !flattenTranscript {
                 let raw = [["role": "system", "content": system] as [String: any Sendable]]
                     + messages.map(LocalToolTranscript.rawMessage)
                 return try tokenizer.applyChatTemplate(
-                    messages: raw, tools: renderedTools,
+                    messages: raw, tools: tools,
                     additionalContext: LocalToolTranscript.templateContext(thinkingOff: toolTurn.thinkingOff))
             }
             let flat = LocalToolTranscript.flattened(messages)
@@ -681,8 +701,26 @@ final class LocalLLMService: ObservableObject {
                 + flat.map { ["role": $0.role, "content": $0.content] as [String: any Sendable] }
             return try tokenizer.applyChatTemplate(messages: raw, tools: nil, additionalContext: nil)
         }
+        // Plan MQ P3: a tool turn's definitions are fitted to the budget first, with no history
+        // (`LocalToolFit`); the history is then trimmed into what they leave.
+        var toolBudget: Int? = nil
+        var fittedToolTurn: (turn: LocalToolTurn, report: LocalToolFit.Report)?
+        if let toolTurn {
+            let window = toolTurn.contextWindow ?? LocalModelBudget.contextWindow(for: loadedModelId)
+            let budget = LocalModelBudget.promptBudget(for: loadedModelId, contextWindow: window)
+            toolBudget = budget
+            fittedToolTurn = try Self.fitTools(toolTurn, rendersTools: renderedTools != nil, budget: budget,
+                                               window: window) { kept, detail in
+                let specs = toolTurn.specs(kept: kept, detail: detail)
+                return try tokenizeToolTurn(toolTurn, keeping: 0,
+                                            tools: specs.isEmpty ? nil : specs.map(LocalToolTranscript.sendableSpec)).count
+            }
+            if let kept = fittedToolTurn?.turn.tools, renderedTools != nil {
+                renderedTools = kept.isEmpty ? nil : kept.map(LocalToolTranscript.sendableSpec)
+            }
+        }
         func tokenize(_ hist: [(role: String, content: String)]) throws -> [Int] {
-            if let toolTurn { return try tokenizeToolTurn(toolTurn, keeping: hist.count) }
+            if let toolTurn { return try tokenizeToolTurn(toolTurn, keeping: hist.count, tools: renderedTools) }
             var messages: [[String: String]] = [["role": "system", "content": systemPrompt]]
             for turn in hist { messages.append(["role": turn.role, "content": turn.content]) }
             messages.append(["role": "user", "content": userMessage])
@@ -715,7 +753,7 @@ final class LocalLLMService: ObservableObject {
         // an uncatchable per-token kill), then truncate oldest-history-first to fit instead of
         // hard-rejecting. Only a prompt that can't be trimmed under budget (system + current turn
         // alone too big) throws `.promptTooLong` — catchable, so the caller can fall back to cloud.
-        let budget = LocalModelBudget.promptBudget(for: loadedModelId)
+        let budget = toolBudget ?? LocalModelBudget.promptBudget(for: loadedModelId)
         let trimmedHistory = try LocalModelBudget.historyFittingBudget(
             history: tupleHistory, budget: budget
         ) { try tokenize($0).count }
@@ -839,7 +877,36 @@ final class LocalLLMService: ObservableObject {
             stripsThink: isReasoningModel, templateOpensThink: templateOpensThink)
         noteReasoning(reasoning)
         return MLXTurnOutput(text: spoken, toolCalls: toolCalls,
-                             stats: Self.generationStats(router.completion, tokenCap: parameters.maxTokens))
+                             stats: Self.generationStats(router.completion, tokenCap: parameters.maxTokens),
+                             toolFit: fittedToolTurn?.report)
+    }
+
+    /// Fit a tool turn's definitions to `budget` (Plan MQ P3, `LocalToolFit`): standard (when it
+    /// leaves `LocalToolFit.historyReserve` for a turn with history), then compact, then dropping
+    /// from the lowest-priority end, then none. `count(kept, detail)` is the
+    /// prompt's real tokens with no history. A turn whose template renders no tools (no format was
+    /// inferred: the Hermes instruction stands in) is not fitted, since its definitions are not in
+    /// the prompt; it keeps every tool. Logged as counts.
+    nonisolated static func fitTools(_ toolTurn: LocalToolTurn, rendersTools: Bool, budget: Int, window: Int,
+                         count: (_ kept: Int, _ detail: LocalToolFit.Detail) throws -> Int) rethrows
+        -> (turn: LocalToolTurn, report: LocalToolFit.Report) {
+        let names = toolTurn.toolNames
+        guard rendersTools, !toolTurn.tools.isEmpty else {
+            return (toolTurn, LocalToolFit.Report(offered: names.count, keptNames: names, compact: false,
+                                                  contextWindow: window))
+        }
+        let choice = try LocalToolFit.choose(offered: toolTurn.tools.count, budget: budget,
+                                             reserve: toolTurn.history.isEmpty ? 0 : LocalToolFit.historyReserve,
+                                             tokenCount: count)
+        let fitted = toolTurn.fitted(kept: choice.kept, detail: choice.detail, history: toolTurn.history)
+        let compact = choice.kept > 0 && choice.detail == .compact && !toolTurn.compactTools.isEmpty
+        if choice.kept < toolTurn.tools.count || compact {
+            PrivacyLog.localModel(.toolsFitted, count: choice.kept, total: toolTurn.tools.count,
+                                  tokens: choice.tokens,
+                                  detail: PrivacyToken(choice.kept == 0 ? "none" : choice.detail.rawValue))
+        }
+        return (fitted, LocalToolFit.Report(offered: names.count, keptNames: Array(names.prefix(choice.kept)),
+                                            compact: compact, contextWindow: window))
     }
 
     /// Keep a turn's reasoning for the prompt inspector, and log that there was some.

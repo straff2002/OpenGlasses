@@ -61,12 +61,13 @@ enum LocalNativeToolPolicy {
     /// `FieldAssistLocalToolSet`), then the everyday tools the turn's words name, then the rest in
     /// the registry's order — at most `perTurnLimit`, each kept only while the definitions fit
     /// `budgetTokens`. Pure.
+    ///
+    /// The order returned is the turn's **priority order**, highest first, and it reaches the runtime
+    /// as it is (`LocalToolTurn.tools`): when the definitions don't fit the prompt, the runtime's fit
+    /// (`LocalToolFit`) drops from the end.
     static func nativeToolNames(field: [String], everyday: [String], utterance: String,
                                 estimatedTokens: (String) -> Int, budgetTokens: Int) -> [String] {
-        let words = Set(utterance.lowercased().split { !$0.isLetter }.map(String.init))
-        let remaining = everyday.filter { !field.contains($0) }
-        let hinted = remaining.filter { name in everydayCues[name]?.contains(where: words.contains) ?? false }
-        let ordered = field + hinted + remaining.filter { !hinted.contains($0) }
+        let ordered = ordered(field: field, everyday: everyday, utterance: utterance)
         var used = 0
         var kept: [String] = []
         for name in ordered where kept.count < perTurnLimit {
@@ -76,5 +77,15 @@ enum LocalNativeToolPolicy {
             kept.append(name)
         }
         return kept
+    }
+
+    /// The priority order before any budget: `field` as given, then the everyday tools the turn's
+    /// words name, then the rest in the given order. The device qualification app orders a case's
+    /// offered tools with this, so its runs drop what a turn would drop. Pure.
+    static func ordered(field: [String], everyday: [String], utterance: String) -> [String] {
+        let words = Set(utterance.lowercased().split { !$0.isLetter }.map(String.init))
+        let remaining = everyday.filter { !field.contains($0) }
+        let hinted = remaining.filter { name in everydayCues[name]?.contains(where: words.contains) ?? false }
+        return field + hinted + remaining.filter { !hinted.contains($0) }
     }
 }

@@ -58,14 +58,21 @@ enum FieldAssistLocalToolSet {
                        estimatedTokens: (String) -> Int,
                        budgetTokens: Int) -> [String] {
         guard fieldAssistActive, modelQualified else { return [] }
-        let available = Set(OfflineToolPolicy.offlineNames(registered))
-        let offered = priority.filter(available.contains)
-        let hinted = OfflineKeywordRouter.fieldToolHints(utterance).filter(offered.contains)
-        let ordered = hinted + offered.filter { !hinted.contains($0) }
-        let candidates = ordered.prefix(perTurnLimit).map {
+        let available = OfflineToolPolicy.offlineNames(registered)
+        let candidates = ordered(available, utterance: utterance).prefix(perTurnLimit).map {
             Candidate(name: $0, estimatedTokens: estimatedTokens($0))
         }
         return fit(Array(candidates), budget: budgetTokens).map(\.name)
+    }
+
+    /// The Field Assist tools among `names`, in the order a turn offers them: the ones the turn's
+    /// words name first (`OfflineKeywordRouter.fieldToolHints`), then `priority`. Pure; the device
+    /// qualification app orders a case's tools with it.
+    static func ordered(_ names: [String], utterance: String) -> [String] {
+        let available = Set(names)
+        let offered = priority.filter(available.contains)
+        let hinted = OfflineKeywordRouter.fieldToolHints(utterance).filter(offered.contains)
+        return hinted + offered.filter { !hinted.contains($0) }
     }
 
     /// `candidates` in order, kept while the running total stays within `budget`. One that does not

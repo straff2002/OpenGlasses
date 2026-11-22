@@ -55,7 +55,7 @@ struct SafeErrorSummary: CustomStringConvertible {
 enum PrivacyLog {
     enum LocalModelEvent {
         case deleted, downloadCancelled, downloaded, generationCompleted, generationStarted, historyTrimmed,
-             imageRefused, loaded, reasoningProduced, tempsSwept, tokenShape, toolFormat, unloaded, visionDemoted
+             imageRefused, loaded, reasoningProduced, tempsSwept, tokenShape, toolFormat, toolsFitted, unloaded, visionDemoted
     }
 
     static func localModel(_ event: LocalModelEvent, model: PrivacyToken? = nil, count: Int? = nil, total: Int? = nil,

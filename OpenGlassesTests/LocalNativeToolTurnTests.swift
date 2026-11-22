@@ -16,6 +16,8 @@ final class LocalNativeToolTurnTests: XCTestCase {
     struct Pass {
         var text: String = ""
         var calls: [LocalToolCallEvent] = []
+        /// What the runtime's fit sent of the tools (Plan MQ P3), or nil for a runtime that fits none.
+        var fit: LocalToolFit.Report? = nil
     }
 
     private final class EventBackend: LocalInferenceBackend, @unchecked Sendable {
@@ -71,6 +73,7 @@ final class LocalNativeToolTurnTests: XCTestCase {
             return AsyncThrowingStream { continuation in
                 if cancel { continuation.finish(throwing: CancellationError()); return }
                 request.previewSink?(pass.text)
+                if let fit = pass.fit { continuation.yield(.toolFit(fit)) }
                 continuation.yield(.text(pass.text))
                 for call in pass.calls { continuation.yield(.toolCall(call)) }
                 continuation.finish()
@@ -264,6 +267,33 @@ final class LocalNativeToolTurnTests: XCTestCase {
         let result = try XCTUnwrap(harness.backend.requests.last?.toolTurn?.turn.last)
         XCTAssertTrue(result.content.hasPrefix("Error: the tool 'send_message' is not available"))
         XCTAssertEqual(answer, "I can't send messages here.")
+    }
+
+    /// Plan MQ P3: the runtime fitted the definitions and dropped a tool for room. The model never
+    /// saw it declared, so a call to it is answered as not offered and runs nothing.
+    func testACallToAToolTheFitDroppedIsNotRun() async throws {
+        Config.localNativeToolCallsEnabled = true
+        let harness = makeHarness(passes: [Pass(text: "", calls: [clockCall],
+                                                fit: .init(offered: 2, keptNames: ["calculate"], compact: true,
+                                                           contextWindow: 4_096)),
+                                           Pass(text: "I can't check the time just now.")])
+        let answer = try await ask(harness)
+        XCTAssertTrue(harness.clock.invocations.isEmpty, "the dropped tool is not run")
+        let result = try XCTUnwrap(harness.backend.requests.last?.toolTurn?.turn.last)
+        XCTAssertEqual(result.role, .tool)
+        XCTAssertEqual(result.content, LocalToolLoop.unofferedToolMessage(name: "get_datetime", offered: ["calculate"]))
+        XCTAssertEqual(answer, "I can't check the time just now.")
+    }
+
+    /// The turn hands the runtime both definitions of every tool, in priority order, and the window.
+    func testTheNativeTurnCarriesCompactDefinitionsInTheSameOrder() async throws {
+        Config.localNativeToolCallsEnabled = true
+        let harness = makeHarness(passes: [Pass(text: "Nine.")])
+        _ = try await ask(harness)
+        let turn = try XCTUnwrap(harness.backend.requests.first?.toolTurn)
+        XCTAssertEqual(turn.compactTools.count, turn.tools.count)
+        XCTAssertEqual(turn.compactTools.compactMap(LocalToolFit.name(of:)), turn.toolNames)
+        XCTAssertNotNil(turn.contextWindow, "a native turn names its window")
     }
 
     func testARepeatedCallEndsTheLoopAndTheAnswerStands() async throws {

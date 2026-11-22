@@ -72,8 +72,11 @@ struct LocalModelQualificationFixture {
     }
 
     /// The template spec for `name` (`OnDeviceToolSchema.localToolSpec`), as `sendLocal` builds it.
-    func toolSpec(_ name: String) -> [String: Any]? {
-        tools[name].map { OnDeviceToolSchema.localToolSpec(name: name, description: $0.description, parameters: $0.parameters) }
+    func toolSpec(_ name: String, limits: OnDeviceToolSchema.Limits = .standard) -> [String: Any]? {
+        tools[name].map {
+            OnDeviceToolSchema.localToolSpec(name: name, description: $0.description, parameters: $0.parameters,
+                                             limits: limits)
+        }
     }
 
     /// The schema root for `name`, as the loop's coercion and the graders read it.

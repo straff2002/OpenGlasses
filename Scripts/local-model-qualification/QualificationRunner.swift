@@ -184,6 +184,7 @@ final class QualificationRunner: ObservableObject {
                 return stop("loadFailed-\(String(describing: type(of: error)))")
             }
             environment = LiveEnvironments.mlx(service: service, fixture: fixture, modelID: options.modelID,
+                                               contextWindow: record?.window.toolTurnTokens,
                                                cancellationBound: record?.timing.cancelBoundSeconds ?? 1.0)
         }
 
@@ -329,6 +330,12 @@ final class QualificationRunner: ObservableObject {
             toolTurn: LocalModelSampling.configuration(for: options.modelID, toolTurn: true))
         let readings = LocalMemoryReadings.againstProcessLimit()
         let selection = options.selection
+        // The window this run's tool turns are budgeted with, chosen as `sendLocal` chooses it with the
+        // flag on (this app stands in for the flag-on build), at launch, with the model not yet
+        // resident: its weights are charged as not yet in the footprint. `LiveEnvironments.mlx` keeps
+        // the same choice for every case.
+        let window = Self.toolTurnWindow(modelID: options.modelID, apple: options.apple, readings: readings,
+                                         weightsBytes: entry?.snapshot.weightsBytes ?? 0)
         return LocalModelQualificationRecord(
             startedAt: now, updatedAt: now, device: DeviceFacts.device, app: DeviceFacts.app, runtime: runtime,
             model: model, sampling: sampling,
@@ -343,7 +350,22 @@ final class QualificationRunner: ObservableObject {
                           recommendedWorkingSetBytes: readings.recommendedWorkingSetBytes,
                           reserveBytes: LocalMemoryBudget.reserveBytes(marketingRAMGB: readings.marketingRAMGB),
                           footprintBeforeLoadBytes: readings.footprintBytes, fitJudgedAgainst: "notMeasured",
-                          fitNeededBytes: 0, fitLimitBytes: 0, fits: true))
+                          fitNeededBytes: 0, fitLimitBytes: 0, fits: true),
+            window: .init(ordinaryTokens: LocalModelBudget.contextWindow(for: options.apple ? nil : options.modelID),
+                          toolTurnTokens: window.tokens, reason: window.reason.rawValue,
+                          toolTurnPromptBudget: LocalModelBudget.promptBudget(for: options.modelID,
+                                                                             contextWindow: window.tokens)))
+    }
+
+    /// The tool-turn window for `modelID`: `LocalModelBudget.toolTurnContextWindow` with native tool
+    /// calls decided by `LocalNativeToolPolicy` with the flag on. Apple's model keeps its own 4,096.
+    static func toolTurnWindow(modelID: String, apple: Bool, readings: LocalMemoryBudget.Readings,
+                               weightsBytes: Int64) -> LocalModelBudget.ToolTurnWindow {
+        guard !apple else { return .init(tokens: LocalModelBudget.defaultContextWindow, reason: .ordinary) }
+        return LocalModelBudget.toolTurnContextWindow(
+            modelId: modelID,
+            nativeToolCalls: LocalNativeToolPolicy.usesNativeToolCalls(modelID: modelID, runtime: .mlx, flagOn: true),
+            marketingRAMGB: readings.marketingRAMGB, readings: readings, residentWeightsBytes: weightsBytes)
     }
 
     /// Footprint every 2 s for the peak, thermal state on every change (and every minute).

@@ -17,7 +17,9 @@ import Foundation
 /// from where it stopped (`resumable(with:)`), and `summary` is recomputed from `runs` each time.
 struct LocalModelQualificationRecord: Codable, Equatable {
 
-    static let schemaName = "local-model-qualification/1"
+    /// 2 (2026-11-22): the runtime fits a tool turn's definitions to the budget, and a native tool
+    /// turn may run on a larger window, so a /1 record measured something else and is not resumed.
+    static let schemaName = "local-model-qualification/2"
 
     var schema = LocalModelQualificationRecord.schemaName
     var startedAt: String
@@ -36,6 +38,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
     var corpus: Corpus
     var gate: Gate
     var memory: Memory
+    /// The context window native tool turns were budgeted with (Plan MQ P3).
+    var window: Window
     var timing = Timing()
     var thermalTrace: [ThermalSample] = []
     var runs: [RunEntry] = []
@@ -98,6 +102,17 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var selectedCases: Int
         /// Near-miss twins a live run skips (`LocalToolEval.Case.isCheckOnly`).
         var checkOnlySkipped: Int
+    }
+
+    struct Window: Codable, Equatable {
+        /// The model's ordinary window (`LocalModelBudget.contextWindow(for:)`).
+        var ordinaryTokens: Int
+        /// The window chosen for the run's tool turns at load (`LocalModelBudget.toolTurnContextWindow`).
+        var toolTurnTokens: Int
+        /// `LocalModelBudget.ToolTurnWindowReason`: ordinary, smallPhone, memory or raised.
+        var reason: String
+        /// The prompt budget on that window.
+        var toolTurnPromptBudget: Int
     }
 
     struct Gate: Codable, Equatable {
@@ -187,7 +202,18 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var errorKind: String?
         var generatedTokens: Int
         var promptSeconds: [Double]
+        /// Tokens prefilled, per generation.
+        var promptTokens: [Int]
         var decodeTokensPerSecond: [Double]
+        /// What the runtime's fit sent of the tools (Plan MQ P3; counts only): offered and kept on
+        /// the first generation that offered tools, generations that dropped one or went compact,
+        /// whether an expected tool was dropped, and the window used.
+        var toolsOffered: Int?
+        var toolsKept: Int?
+        var fitDroppedGenerations: Int
+        var compactGenerations: Int
+        var expectedToolDropped: Bool
+        var contextWindow: Int?
         var seconds: Double
     }
 
@@ -207,6 +233,12 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var cutRuns: Int
         var templateFaultRuns: Int
         var readerUnparsedRuns: Int
+        /// Runs where the fit dropped a tool the case expected: "the fit dropped it", told apart
+        /// from "the model missed it" (Plan MQ P3).
+        var expectedToolDroppedRuns: Int
+        /// Runs where the fit dropped any tool, and runs that sent compact definitions.
+        var fitDroppedRuns: Int
+        var compactRuns: Int
     }
 
     struct FloorResult: Codable, Equatable {
@@ -246,7 +278,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
     /// schema, model, runtime, corpus, selection, repeats and sampling, and not finished.
     func resumable(with fresh: LocalModelQualificationRecord) -> Bool {
         schema == fresh.schema && !finished && model.identity == fresh.model.identity && runtime == fresh.runtime
-            && corpus == fresh.corpus && sampling == fresh.sampling
+            && corpus == fresh.corpus && sampling == fresh.sampling && window == fresh.window
     }
 
     // MARK: - Adding runs
@@ -260,7 +292,10 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             passed: run.passed, flagged: flagged, generations: m.generations,
             zeroTokenGenerations: m.zeroTokenGenerations, cutGenerations: m.cutGenerations,
             readerUnparsed: m.readerUnparsed, errorKind: m.errorKind, generatedTokens: m.generatedTokens,
-            promptSeconds: m.promptSeconds, decodeTokensPerSecond: m.decodeTokensPerSecond, seconds: seconds)
+            promptSeconds: m.promptSeconds, promptTokens: m.promptTokens, decodeTokensPerSecond: m.decodeTokensPerSecond,
+            toolsOffered: m.toolsOffered, toolsKept: m.toolsKept, fitDroppedGenerations: m.fitDroppedGenerations,
+            compactGenerations: m.compactGenerations, expectedToolDropped: m.expectedToolDropped,
+            contextWindow: m.contextWindow, seconds: seconds)
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
         recompute()
@@ -281,7 +316,14 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.errorKind = entry.errorKind
             measurements.generatedTokens = entry.generatedTokens
             measurements.promptSeconds = entry.promptSeconds
+            measurements.promptTokens = entry.promptTokens
             measurements.decodeTokensPerSecond = entry.decodeTokensPerSecond
+            measurements.toolsOffered = entry.toolsOffered
+            measurements.toolsKept = entry.toolsKept
+            measurements.fitDroppedGenerations = entry.fitDroppedGenerations
+            measurements.compactGenerations = entry.compactGenerations
+            measurements.expectedToolDropped = entry.expectedToolDropped
+            measurements.contextWindow = entry.contextWindow
             // The id is not kept; the hash stands in for it, which is all the report groups by.
             return LocalToolEval.Run(caseID: entry.caseHash, category: category, group: group, grades: grades,
                                      measurements: measurements)
@@ -320,7 +362,9 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             }
             groups[group.rawValue] = GroupSummary(overall: tally(entries), byCategory: byCategory, byGrader: byGrader,
                                                   cutRuns: counted.cutRuns, templateFaultRuns: counted.templateFaultRuns,
-                                                  readerUnparsedRuns: counted.readerUnparsedRuns)
+                                                  readerUnparsedRuns: counted.readerUnparsedRuns,
+                                                  expectedToolDroppedRuns: counted.expectedToolDroppedRuns,
+                                                  fitDroppedRuns: counted.fitDroppedRuns, compactRuns: counted.compactRuns)
         }
         let shortfalls = Set(report.floorShortfalls().map(\.name))
         let floors = LocalToolEval.Floors.all.compactMap { floor -> FloorResult? in

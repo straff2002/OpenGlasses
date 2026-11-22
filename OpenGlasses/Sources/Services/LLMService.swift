@@ -6013,7 +6013,16 @@ class LLMService: ObservableObject {
                                                           flagOn: Config.localNativeToolCallsEnabled)
         var toolNames: [String] = []
         var toolSpecs: [[String: Any]] = []
+        var compactToolSpecs: [[String: Any]] = []
         var toolRoots: [String: OnDeviceToolSchema.Node] = [:]
+        // Plan MQ P3: a native tool turn may take a larger window on a phone with the room
+        // (`LocalModelBudget.toolTurnContextWindow`); everything else keeps the model's own. The model
+        // is resident here, so its pages are already in the footprint the readings hold.
+        let toolTurnWindow = nativeTools
+            ? LocalModelBudget.toolTurnContextWindow(modelId: selectedID.rawValue, nativeToolCalls: true,
+                                                     marketingRAMGB: LocalLLMService.marketingRAMGB,
+                                                     readings: LocalMemoryReadings.againstProcessLimit())
+            : nil
 
         // Build tool instructions — use minimal set for local models
         var fullPrompt = systemPrompt
@@ -6024,9 +6033,19 @@ class LLMService: ObservableObject {
                                                libraryHasManuals: PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
             // Plan MQ P1: the Field Assist tools for a qualified model, or one under qualification.
             let fieldTools = Self.localFieldToolsOffered(modelID: selectedID.rawValue, runtime: installation.runtime)
-            let definitionBudget = LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue)
+            let definitionBudget = toolTurnWindow.map {
+                LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue, contextWindow: $0.tokens)
+            } ?? LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue)
             func estimate(_ name: String) -> Int {
                 guard let tool = router.registry.tool(named: name) else { return Int.max / 4 }
+                if nativeTools {
+                    // Plan MQ P3: the native turn's definitions are what Gemma's template renders,
+                    // calibrated on a phone, at the compact detail the runtime can always fall back
+                    // to (`LocalToolFit`), so the selection rarely leaves the fit a tool to drop.
+                    return OnDeviceToolSchema.localEstimatedTokens(spec: OnDeviceToolSchema.localToolSpec(
+                        name: name, description: tool.description, parameters: tool.parametersSchema,
+                        limits: .compact))
+                }
                 let root = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
                 return OnDeviceToolSchema.estimatedTokens(name: name, description: OnDeviceToolSchema.toolDescription(tool.description), root: root)
             }
@@ -6040,10 +6059,14 @@ class LLMService: ObservableObject {
                 toolNames = LocalNativeToolPolicy.nativeToolNames(
                     field: fieldNames, everyday: everyday, utterance: text,
                     estimatedTokens: estimate, budgetTokens: definitionBudget)
+                // In priority order, which is the order `nativeToolNames` returns: the runtime's fit
+                // drops from the end when even the compact definitions don't fit.
                 for name in toolNames {
                     guard let tool = router.registry.tool(named: name) else { continue }
                     toolSpecs.append(OnDeviceToolSchema.localToolSpec(name: name, description: tool.description,
                                                                       parameters: tool.parametersSchema))
+                    compactToolSpecs.append(OnDeviceToolSchema.localToolSpec(
+                        name: name, description: tool.description, parameters: tool.parametersSchema, limits: .compact))
                     toolRoots[name] = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
                 }
                 fullPrompt += Self.localNativeToolGuide(toolNames: toolNames)
@@ -6125,20 +6148,23 @@ class LLMService: ObservableObject {
                 let stream = try await inferenceCoordinator.generateEvents(request, expecting: selectedID)
                 var assembled = ""
                 var calls: [LocalToolCallEvent] = []
+                var fit: LocalToolFit.Report?
                 for try await event in stream {
                     switch event {
                     case .text(let chunk): assembled += chunk
                     case .toolCall(let call): calls.append(call)
+                    case .toolFit(let report): fit = report
                     }
                 }
-                return LocalToolLoop.Generation(text: assembled, toolCalls: calls)
+                return LocalToolLoop.Generation(text: assembled, toolCalls: calls, toolFit: fit)
             }
         } else {
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
                 let output = try await localService.generateTurn(MLXTurnInput(
                     userMessage: message, systemPrompt: systemOverride ?? prompt, history: turnHistory,
                     imageData: image, onToken: preview, toolTurn: toolTurn))
-                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats)
+                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats,
+                                                toolFit: output.toolFit)
             }
         }
         let generate: (_ message: String,
@@ -6170,7 +6196,8 @@ class LLMService: ObservableObject {
         // rendered by the model's own template.
         if nativeTools, let router = nativeToolRouter {
             return try await sendLocalNative(
-                text, history: history, toolNames: toolNames, toolSpecs: toolSpecs, toolRoots: toolRoots,
+                text, history: history, toolNames: toolNames, toolSpecs: toolSpecs,
+                compactToolSpecs: compactToolSpecs, contextWindow: toolTurnWindow?.tokens, toolRoots: toolRoots,
                 router: router, selectedID: selectedID, preview: containedPreview,
                 flushPreview: { if let onToken { let tail = previewFilter.flush(); if !tail.isEmpty { onToken(tail) } } },
                 generateTurn: { message, turnHistory, preview, toolTurn in
@@ -6437,6 +6464,8 @@ class LLMService: ObservableObject {
                                  history: [(role: String, content: String)],
                                  toolNames: [String],
                                  toolSpecs: [[String: Any]],
+                                 compactToolSpecs: [[String: Any]] = [],
+                                 contextWindow: Int? = nil,
                                  toolRoots: [String: OnDeviceToolSchema.Node],
                                  router: NativeToolRouter,
                                  selectedID: LocalModelID,
@@ -6448,14 +6477,18 @@ class LLMService: ObservableObject {
                                                 _ toolTurn: LocalToolTurn) async throws -> LocalToolLoop.Generation) async throws -> String {
         let earlier = history.map { $0.role == "assistant" ? LocalToolLoop.Message.assistant($0.content) : .user($0.content) }
         let fallback = Self.localToolInstructions(toolNames: toolNames)
-        let offered = Set(toolNames)
+        // What the dispatcher may run: the turn's offer, narrowed after each generation to what the
+        // runtime actually declared to the model (Plan MQ P3, `LocalToolFit`). A call to a tool the
+        // fit dropped is answered as not offered.
+        var offered = Set(toolNames)
         let outcome: LocalToolLoop.Outcome
         do {
             outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, generateTurn: { request in
                 // Shared with the device qualification app (Plan MQ P3), so a phone run renders
                 // each pass exactly as this turn does.
                 let toolTurn = LocalToolTurn.forLoopPass(history: earlier, request: request,
-                                                         toolSpecs: toolSpecs, fallbackInstructions: fallback)
+                                                         toolSpecs: toolSpecs, compactToolSpecs: compactToolSpecs,
+                                                         fallbackInstructions: fallback, contextWindow: contextWindow)
                 // The same transcript flattened, for a runtime that renders no tool turn (the seam
                 // composes its messages from it); the MLX runtime renders `toolTurn` instead.
                 let flat = LocalToolTranscript.flattened(request.messages)
@@ -6463,6 +6496,9 @@ class LLMService: ObservableObject {
                 let generation = try await generateTurn(flat.last?.content ?? text, Array(flat.dropLast()),
                                                         isFirst ? preview : nil, toolTurn)
                 if isFirst { flushPreview() }
+                if request.toolsOffered {
+                    offered = LocalToolFit.dispatchable(offered: toolNames, report: generation.toolFit)
+                }
                 return generation
             }, execute: { call in
                 await self.executeLocalToolCall(call, offered: offered, roots: toolRoots, router: router)

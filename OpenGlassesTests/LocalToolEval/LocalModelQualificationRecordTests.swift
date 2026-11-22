@@ -188,7 +188,8 @@ final class LocalModelQualificationRecordTests: XCTestCase {
             gate: .init(settleSeconds: 120, capSeconds: 1_200, requiresCharger: true),
             memory: .init(killLimitBytes: 6_000_000_000, recommendedWorkingSetBytes: 5_000_000_000,
                           reserveBytes: 536_870_912, footprintBeforeLoadBytes: 200_000_000, fitJudgedAgainst: "killLimit",
-                          fitNeededBytes: 4_000_000_000, fitLimitBytes: 6_000_000_000, fits: true))
+                          fitNeededBytes: 4_000_000_000, fitLimitBytes: 6_000_000_000, fits: true),
+            window: .init(ordinaryTokens: 4_096, toolTurnTokens: 6_144, reason: "raised", toolTurnPromptBudget: 5_504))
     }
 
     /// Counts and hashes only: a record of every reference run carries no case id, turn, passage,
@@ -266,6 +267,81 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         var finished = decoded
         finished.finished = true
         XCTAssertFalse(finished.resumable(with: record()), "a finished record is not carried on")
+    }
+
+    // MARK: - The runtime's tool fit (Plan MQ P3)
+
+    /// A run tells "the fit dropped the expected tool" from "the model missed it": the dispatcher
+    /// refuses a call to a dropped tool as the app does, and the record keeps the counts.
+    func testTheFitIsRecordedAndADroppedToolIsNotRun() async throws {
+        let cases = try corpus()
+        let testCase = try XCTUnwrap(cases.first {
+            $0.category == .toolChoice && $0.group == .fieldAssist && $0.expect.calls.count == 1 && $0.offered.count >= 3
+        })
+        let expected = try XCTUnwrap(testCase.expect.calls.first?.tool)
+        let kept = testCase.offered.filter { $0 != expected }
+        let reference = testCase.reference ?? []
+        // The model calls the expected tool anyway (as the scripted reference does): it was dropped.
+        let dropped = await LocalToolEval.run(testCase, environment: environment { _, request, index in
+            .init(text: index < reference.count ? reference[index] : "",
+                  stats: self.stats(tokens: 20),
+                  toolFit: request.toolsOffered
+                      ? .init(offered: testCase.offered.count, keptNames: kept, compact: true, contextWindow: 6_144) : nil)
+        })
+        XCTAssertTrue(dropped.expectedToolDropped)
+        XCTAssertEqual(dropped.grades[.toolName], false, "the call was refused, not run")
+        XCTAssertEqual(dropped.measurements.toolsOffered, testCase.offered.count)
+        XCTAssertEqual(dropped.measurements.toolsKept, kept.count)
+        XCTAssertGreaterThan(dropped.measurements.compactGenerations, 0)
+        XCTAssertGreaterThan(dropped.measurements.fitDroppedGenerations, 0)
+        XCTAssertEqual(dropped.measurements.contextWindow, 6_144)
+        XCTAssertEqual(dropped.measurements.promptTokens.first, 900)
+
+        // Everything kept: the reference passes, and nothing is marked.
+        let whole = await LocalToolEval.run(testCase, environment: environment { _, request, index in
+            .init(text: index < reference.count ? reference[index] : "",
+                  toolFit: request.toolsOffered
+                      ? .init(offered: testCase.offered.count, keptNames: testCase.offered, compact: false,
+                              contextWindow: 4_096) : nil)
+        })
+        XCTAssertTrue(whole.passed)
+        XCTAssertFalse(whole.expectedToolDropped)
+        XCTAssertEqual(whole.measurements.fitDroppedGenerations, 0)
+
+        var record = record()
+        record.add(dropped, repeat: 0, flagged: false, seconds: 1)
+        record.add(whole, repeat: 1, flagged: false, seconds: 1)
+        let entry = try XCTUnwrap(record.runs.first)
+        XCTAssertEqual(entry.toolsOffered, testCase.offered.count)
+        XCTAssertEqual(entry.toolsKept, kept.count)
+        XCTAssertTrue(entry.expectedToolDropped)
+        XCTAssertEqual(entry.contextWindow, 6_144)
+        XCTAssertEqual(entry.promptTokens.first, 900)
+        let group = try XCTUnwrap(record.summary.groups["fieldAssist"])
+        XCTAssertEqual(group.expectedToolDroppedRuns, 1)
+        XCTAssertEqual(group.fitDroppedRuns, 1)
+        XCTAssertEqual(group.compactRuns, 1)
+        XCTAssertEqual(record.window.toolTurnTokens, 6_144)
+        let decoded = try XCTUnwrap(LocalModelQualificationRecord.decode(try record.encoded()))
+        XCTAssertEqual(decoded, record)
+        // Counts only: no tool name rides in the record.
+        let text = String(decoding: try record.encoded(), as: UTF8.self)
+        for name in testCase.offered { XCTAssertFalse(text.contains("\"\(name)\""), name) }
+
+        var report = LocalToolEval.Report()
+        report.add(dropped)
+        XCTAssertTrue(report.lines().contains { $0.contains("expected tool dropped 1") })
+    }
+
+    func testARecordWithAnotherWindowIsNotResumed() throws {
+        var first = record()
+        first.add(LocalToolEval.Run(caseID: "a", category: .restraint, group: .fieldAssist, grades: [.toolName: true]),
+                  repeat: 0, flagged: false, seconds: 1)
+        var smaller = record()
+        smaller.window = .init(ordinaryTokens: 4_096, toolTurnTokens: 4_096, reason: "smallPhone", toolTurnPromptBudget: 3_456)
+        XCTAssertFalse(first.resumable(with: smaller))
+        XCTAssertTrue(first.resumable(with: record()))
+        XCTAssertEqual(LocalModelQualificationRecord.schemaName, "local-model-qualification/2")
     }
 
     func testADistributionReadsMedianAndTail() throws {

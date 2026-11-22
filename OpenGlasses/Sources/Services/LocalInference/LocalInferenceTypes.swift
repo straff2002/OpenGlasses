@@ -543,6 +543,9 @@ struct LocalToolCallEvent: Hashable, Sendable {
 enum LocalGenerationEvent: Sendable {
     case text(String)
     case toolCall(LocalToolCallEvent)
+    /// What the runtime sent of a native tool turn's tools (`LocalToolFit`), so the dispatcher
+    /// refuses a call to a tool the fit dropped. Only on a tool turn.
+    case toolFit(LocalToolFit.Report)
 }
 
 /// A native tool turn for the runtime to render (Plan MQ P1).
@@ -551,14 +554,51 @@ struct LocalToolTurn: @unchecked Sendable {
     let history: [LocalToolLoop.Message]
     /// This turn: the user's message, then each call and its result. Never trimmed.
     let turn: [LocalToolLoop.Message]
-    /// `OnDeviceToolSchema.localToolSpec` per tool; empty when tools are withheld for this pass.
+    /// `OnDeviceToolSchema.localToolSpec` per tool, **in priority order** (highest first: the
+    /// order `LocalNativeToolPolicy.nativeToolNames` returns); empty when tools are withheld for
+    /// this pass. When they don't fit the budget the runtime drops from the end (`LocalToolFit`).
     let tools: [[String: Any]]
+    /// The same tools with compact definitions (`OnDeviceToolSchema.Limits.compact`), same order
+    /// and count; the runtime's fallback when `tools` don't fit. Empty: no compact form (the fit
+    /// then uses `tools` for both).
+    var compactTools: [[String: Any]] = []
     /// Ask the template for no thinking (`enable_thinking: false`) where it reads the flag.
     let thinkingOff: Bool
     /// Today's Hermes instruction (`LLMService.localToolInstructions`), appended to the system
     /// prompt when the runtime inferred no tool-call format for the model, or its template could
     /// not render the tools: then the calls come back as `<tool_call>` text instead.
     let fallbackInstructions: String
+    /// The context window this turn is budgeted with (`LocalModelBudget.toolTurnContextWindow`),
+    /// or nil for the model's ordinary window. Set only on a native tool turn.
+    var contextWindow: Int? = nil
+
+    init(history: [LocalToolLoop.Message], turn: [LocalToolLoop.Message], tools: [[String: Any]],
+         compactTools: [[String: Any]] = [], thinkingOff: Bool, fallbackInstructions: String,
+         contextWindow: Int? = nil) {
+        self.history = history
+        self.turn = turn
+        self.tools = tools
+        self.compactTools = compactTools.count == tools.count ? compactTools : []
+        self.thinkingOff = thinkingOff
+        self.fallbackInstructions = fallbackInstructions
+        self.contextWindow = contextWindow
+    }
+
+    /// The offered tools' names, in priority order.
+    var toolNames: [String] { tools.compactMap(LocalToolFit.name(of:)) }
+
+    /// The first `kept` tools at `detail`.
+    func specs(kept: Int, detail: LocalToolFit.Detail) -> [[String: Any]] {
+        let source = detail == .compact && !compactTools.isEmpty ? compactTools : tools
+        return Array(source.prefix(max(0, kept)))
+    }
+
+    /// This turn with only the first `kept` tools at `detail`, and `history` in place of its own.
+    func fitted(kept: Int, detail: LocalToolFit.Detail, history: [LocalToolLoop.Message]) -> LocalToolTurn {
+        LocalToolTurn(history: history, turn: turn, tools: specs(kept: kept, detail: detail),
+                      thinkingOff: thinkingOff, fallbackInstructions: fallbackInstructions,
+                      contextWindow: contextWindow)
+    }
 }
 
 extension LocalToolTurn {
@@ -567,15 +607,23 @@ extension LocalToolTurn {
     /// withholds them, and thinking is off. `LLMService.sendLocalNative` and the device
     /// qualification app (Plan MQ P3) both build a pass here, so a phone run renders what a turn
     /// renders.
+    ///
+    /// `toolSpecs` and `compactToolSpecs` are in priority order (highest first), so the runtime's
+    /// fit drops the least important tool first; `contextWindow` is the turn's
+    /// `LocalModelBudget.toolTurnContextWindow`.
     static func forLoopPass(history earlier: [LocalToolLoop.Message],
                             request: LocalToolLoop.GenerationRequest,
                             toolSpecs: [[String: Any]],
-                            fallbackInstructions: String) -> LocalToolTurn {
+                            compactToolSpecs: [[String: Any]] = [],
+                            fallbackInstructions: String,
+                            contextWindow: Int? = nil) -> LocalToolTurn {
         LocalToolTurn(history: earlier,
                       turn: Array(request.messages.dropFirst(earlier.count)),
                       tools: request.toolsOffered ? toolSpecs : [],
+                      compactTools: request.toolsOffered ? compactToolSpecs : [],
                       thinkingOff: true,
-                      fallbackInstructions: fallbackInstructions)
+                      fallbackInstructions: fallbackInstructions,
+                      contextWindow: contextWindow)
     }
 }
 

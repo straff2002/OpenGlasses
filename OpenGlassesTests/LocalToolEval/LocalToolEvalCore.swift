@@ -217,8 +217,26 @@ enum LocalToolEval {
         var generatedTokens = 0
         /// Per generation the runtime reported on: seconds to read the prompt (time to first token).
         var promptSeconds: [Double] = []
-        /// Per generation: generated tokens a second.
+        /// Per generation the runtime reported on: tokens in the prompt it prefilled. The number
+        /// the tool-definition estimate is calibrated against (Plan MQ P3).
+        var promptTokens: [Int] = []
+        /// Decode rate per generation: generated tokens a second.
         var decodeTokensPerSecond: [Double] = []
+
+        // Plan MQ P3: what the runtime's fit (`LocalToolFit`) sent of the offered tools. Counts only.
+        /// Tools offered on the run's first generation that offered any.
+        var toolsOffered: Int?
+        /// Of those, the tools it kept.
+        var toolsKept: Int?
+        /// Generations that offered tools and dropped at least one for room.
+        var fitDroppedGenerations = 0
+        /// Generations whose kept tools went out with compact definitions.
+        var compactGenerations = 0
+        /// An expected tool the case offered was dropped by the fit on a generation that offered
+        /// tools: the model could not have called it, so a miss there is the fit's, not the model's.
+        var expectedToolDropped = false
+        /// The largest context window a generation of the run was budgeted with.
+        var contextWindow: Int?
 
         mutating func add(_ stats: LocalGenerationStats?) {
             generations += 1
@@ -227,7 +245,23 @@ enum LocalToolEval {
             if stats.isCut { cutGenerations += 1 }
             generatedTokens += stats.generatedTokens
             promptSeconds.append(stats.promptSeconds)
+            promptTokens.append(stats.promptTokens)
             if let rate = stats.decodeTokensPerSecond { decodeTokensPerSecond.append(rate) }
+        }
+
+        /// One generation's fit report, on a generation that offered tools; `expected` the case's
+        /// expected tool names.
+        mutating func add(fit: LocalToolFit.Report?, expected: [String], offered: [String]) {
+            guard let fit else { return }
+            if toolsOffered == nil {
+                toolsOffered = fit.offered
+                toolsKept = fit.kept
+            }
+            if fit.dropped > 0 { fitDroppedGenerations += 1 }
+            if fit.compact { compactGenerations += 1 }
+            contextWindow = max(contextWindow ?? 0, fit.contextWindow)
+            let kept = Set(fit.keptNames)
+            if expected.contains(where: { offered.contains($0) && !kept.contains($0) }) { expectedToolDropped = true }
         }
     }
 
@@ -245,6 +279,8 @@ enum LocalToolEval {
         var wasCut: Bool { measurements.cutGenerations > 0 }
         /// Some reply had no token at all.
         var hadTemplateFault: Bool { measurements.zeroTokenGenerations > 0 }
+        /// The fit dropped a tool the case expected (Plan MQ P3).
+        var expectedToolDropped: Bool { measurements.expectedToolDropped }
     }
 
     /// The markup no spoken answer may carry, whatever parser ran.
@@ -281,7 +317,10 @@ enum LocalToolEval {
                       measurements: Measurements = Measurements()) -> [Grader: Bool] {
         var grades: [Grader: Bool] = [:]
         let calls = outcome.executed.map(\.call)
-        grades[.toolName] = calls.map(\.name) == testCase.expect.calls.map(\.tool)
+        // A call the dispatcher refused as not offered ran nothing: never a right tool choice, even
+        // when it names the expected tool (the runtime's fit dropped it, Plan MQ P3).
+        let refused = outcome.executed.contains { LocalToolLoop.isUnofferedToolResult($0.result.text, name: $0.call.name) }
+        grades[.toolName] = calls.map(\.name) == testCase.expect.calls.map(\.tool) && !refused
 
         if !testCase.expect.calls.isEmpty {
             var present = true
@@ -450,7 +489,10 @@ enum LocalToolEval {
         }
 
         let history = testCase.loopHistory
-        let offered = Set(testCase.offered)
+        // What the dispatcher may run: the case's offer, narrowed after each generation to what the
+        // runtime declared (`LocalToolFit`), as `LLMService.sendLocalNative` narrows it.
+        let offer = OfferLog(Set(testCase.offered))
+        let expectedTools = testCase.expect.calls.map(\.tool)
         let results = testCase.results ?? [:]
         let counter = Counter()
         let executedAfterCancel = Counter()
@@ -463,6 +505,7 @@ enum LocalToolEval {
             defer {
                 if testCase.cancel == .generation { withUnsafeCurrentTask { $0?.cancel() } }
             }
+            let offered = offer.value
             guard offered.contains(call.name) else {
                 return .init(text: LocalToolLoop.unofferedToolMessage(name: call.name, offered: offered), isError: true)
             }
@@ -494,6 +537,10 @@ enum LocalToolEval {
                         }
                         let generation = try await environment.generateTurn(testCase, request, index)
                         measured.add(generation.stats)
+                        if request.toolsOffered {
+                            measured.add(fit: generation.toolFit, expected: expectedTools, offered: testCase.offered)
+                            offer.set(LocalToolFit.dispatchable(offered: testCase.offered, report: generation.toolFit))
+                        }
                         return generation
                     },
                     execute: execute)
@@ -535,12 +582,24 @@ enum LocalToolEval {
         }
     }
 
+    /// The tools a run's dispatcher may run, narrowed by each generation's fit.
+    final class OfferLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var names: Set<String>
+        init(_ names: Set<String>) { self.names = names }
+        var value: Set<String> { lock.lock(); defer { lock.unlock() }; return names }
+        func set(_ names: Set<String>) { lock.lock(); self.names = names; lock.unlock() }
+    }
+
     /// A run's measurements, collected from closures that may hop threads.
     final class MeasurementLog: @unchecked Sendable {
         private let lock = NSLock()
         private var measurements = Measurements()
         var value: Measurements { lock.lock(); defer { lock.unlock() }; return measurements }
         func add(_ stats: LocalGenerationStats?) { lock.lock(); measurements.add(stats); lock.unlock() }
+        func add(fit: LocalToolFit.Report?, expected: [String], offered: [String]) {
+            lock.lock(); measurements.add(fit: fit, expected: expected, offered: offered); lock.unlock()
+        }
         func noteUnparsedReading() { lock.lock(); measurements.readerUnparsed += 1; lock.unlock() }
         func noteError(_ error: Error) { lock.lock(); measurements.errorKind = LocalToolEval.errorKind(error); lock.unlock() }
     }
@@ -602,6 +661,12 @@ enum LocalToolEval {
             var templateFaultRuns = 0
             /// Reading runs whose reply could not be read as a reading.
             var readerUnparsedRuns = 0
+            /// Runs where the runtime's fit dropped a tool the case expected (Plan MQ P3): a miss the
+            /// fit caused, not the model.
+            var expectedToolDroppedRuns = 0
+            /// Runs where the fit dropped any tool, and runs that sent compact definitions.
+            var fitDroppedRuns = 0
+            var compactRuns = 0
         }
 
         var groups: [Group: GroupTally] = [:]
@@ -625,6 +690,9 @@ enum LocalToolEval {
             if run.wasCut { group.cutRuns += 1 }
             if run.hadTemplateFault { group.templateFaultRuns += 1 }
             if run.measurements.readerUnparsed > 0 { group.readerUnparsedRuns += 1 }
+            if run.expectedToolDropped { group.expectedToolDroppedRuns += 1 }
+            if run.measurements.fitDroppedGenerations > 0 { group.fitDroppedRuns += 1 }
+            if run.measurements.compactGenerations > 0 { group.compactRuns += 1 }
             groups[run.group] = group
         }
 
@@ -650,6 +718,10 @@ enum LocalToolEval {
                 if group.cutRuns + group.templateFaultRuns + group.readerUnparsedRuns > 0 {
                     lines.append("    cut at the token cap: \(group.cutRuns), zero-token replies: \(group.templateFaultRuns), "
                                  + "readings not parsed: \(group.readerUnparsedRuns)")
+                }
+                if group.fitDroppedRuns + group.compactRuns > 0 {
+                    lines.append("    tools fitted: compact \(group.compactRuns), dropped \(group.fitDroppedRuns), "
+                                 + "expected tool dropped \(group.expectedToolDroppedRuns)")
                 }
             }
             return lines

@@ -16,26 +16,36 @@ enum LiveEnvironments {
     /// the Hermes instruction as its fallback, the lean on-device prompt from the fixture with the
     /// shipped native tool guide, and the model's catalog sampling
     /// (`LocalLLMService.generateParameters(for:toolTurn:)`).
+    ///
+    /// The case's offered tools go out **in the order the app would offer them**
+    /// (`appOrder(offered:utterance:)`: the Field Assist tools by `FieldAssistLocalToolSet`'s
+    /// priority and the turn's words, then the everyday ones by `LocalNativeToolPolicy`), each with
+    /// its standard and compact definition, so the runtime's fit (`LocalToolFit`) drops what the app
+    /// would drop; the record says when it dropped a tool the case expected. `contextWindow` is the
+    /// run's `LocalModelBudget.toolTurnContextWindow`.
     @MainActor
     static func mlx(service: LocalLLMService, fixture: LocalModelQualificationFixture,
-                    modelID: String, cancellationBound: TimeInterval) -> LocalToolEval.Environment {
+                    modelID: String, contextWindow: Int?, cancellationBound: TimeInterval) -> LocalToolEval.Environment {
         LocalToolEval.Environment(
             generateTurn: { testCase, request, _ in
-                let offered = testCase.offered
+                let offered = appOrder(offered: testCase.offered, utterance: testCase.turn)
                 let specs = offered.compactMap { fixture.toolSpec($0) }
+                let compact = offered.compactMap { fixture.toolSpec($0, limits: .compact) }
                 guard let system = fixture.systemPrompt(for: testCase, modelID: modelID,
                                                         dateTimeLine: LLMService.currentDateTimeLine()) else {
                     throw QualificationFailure.noPromptForModel
                 }
                 let toolTurn = LocalToolTurn.forLoopPass(
-                    history: testCase.loopHistory, request: request, toolSpecs: specs,
-                    fallbackInstructions: LLMService.localToolInstructions(toolNames: offered))
+                    history: testCase.loopHistory, request: request, toolSpecs: specs, compactToolSpecs: compact,
+                    fallbackInstructions: LLMService.localToolInstructions(toolNames: offered),
+                    contextWindow: contextWindow)
                 // The transcript flattened, as `sendLocalNative` passes it beside the tool turn.
                 let flat = LocalToolTranscript.flattened(request.messages)
                 let output = try await service.generateTurn(MLXTurnInput(
                     userMessage: flat.last?.content ?? testCase.turn, systemPrompt: system,
                     history: Array(flat.dropLast()), imageData: nil, onToken: nil, toolTurn: toolTurn))
-                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats)
+                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats,
+                                                toolFit: output.toolFit)
             },
             read: { _, request in
                 let output = try await service.generateTurn(MLXTurnInput(
@@ -46,6 +56,17 @@ enum LiveEnvironments {
             schema: { fixture.schemaRoot($0) },
             referenceModelID: modelID,
             cancellationBound: cancellationBound)
+    }
+
+    /// A case's offered tools in the order `LLMService.sendLocal` offers them: the Field Assist ones
+    /// first, by `FieldAssistLocalToolSet.ordered` (the turn's words, then the priority list), then
+    /// the rest by `LocalNativeToolPolicy.ordered` (the everyday tools the turn names first). The
+    /// same functions the app's selection runs; no budget is applied here, so the runtime's fit is
+    /// what cuts.
+    static func appOrder(offered: [String], utterance: String) -> [String] {
+        let field = FieldAssistLocalToolSet.ordered(offered, utterance: utterance)
+        return LocalNativeToolPolicy.ordered(field: field, everyday: offered.filter { !field.contains($0) },
+                                             utterance: utterance)
     }
 
     /// One cancel-latency probe: start a long answer, cancel once the prompt has had `after`

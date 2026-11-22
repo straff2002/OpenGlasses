@@ -207,11 +207,17 @@ enum LocalToolLoop {
         /// The runtime's report (Plan MQ P3): token counts, timings and the cap. Not read by the
         /// loop; the qualification graders read it for zero-token and cut replies.
         let stats: LocalGenerationStats?
+        /// What the runtime sent of the offered tools (`LocalToolFit`): nil when it fitted nothing
+        /// (a text-only runtime, a test double). A call to a tool the fit dropped was never
+        /// declared to the model, so the dispatcher treats it as not offered.
+        let toolFit: LocalToolFit.Report?
 
-        init(text: String, toolCalls: [LocalToolCallEvent] = [], stats: LocalGenerationStats? = nil) {
+        init(text: String, toolCalls: [LocalToolCallEvent] = [], stats: LocalGenerationStats? = nil,
+             toolFit: LocalToolFit.Report? = nil) {
             self.text = text
             self.toolCalls = toolCalls
             self.stats = stats
+            self.toolFit = toolFit
         }
     }
 
@@ -333,8 +339,16 @@ enum LocalToolLoop {
     /// `LLMService.sendLocalNative` and the qualification runners, so a model is told the same
     /// thing on a phone run as on a turn.
     static func unofferedToolMessage(name: String, offered: Set<String>) -> String {
-        "Error: the tool '\(name)' is not available on this turn. Use one of: "
-            + offered.sorted().joined(separator: ", ") + "."
+        unofferedToolPrefix(name) + " Use one of: " + offered.sorted().joined(separator: ", ") + "."
+    }
+
+    /// Whether `result` is the dispatcher's not-offered answer to a call to `name`.
+    static func isUnofferedToolResult(_ result: String, name: String) -> Bool {
+        result.hasPrefix(unofferedToolPrefix(name))
+    }
+
+    private static func unofferedToolPrefix(_ name: String) -> String {
+        "Error: the tool '\(name)' is not available on this turn."
     }
 
     // MARK: - Round 0's correction
