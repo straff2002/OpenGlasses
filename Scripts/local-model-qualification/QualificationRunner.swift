@@ -92,6 +92,11 @@ final class QualificationRunner: ObservableObject {
     private let started = Date()
     private var sampler: Task<Void, Never>?
     private var lastThermal: Int?
+    /// Set once the model is resident in this process, so a run resumed after the app comes back
+    /// to the foreground neither reloads it nor re-measures the fit with its weights already counted.
+    private var modelLoaded = false
+    /// One per process: a run resumed in the same process appends to it rather than starting it over.
+    private lazy var transcript: DebugTranscript? = options.transcripts ? DebugTranscript() : nil
 
     init(options: Options = .parse(CommandLine.arguments)) {
         self.options = options
@@ -108,7 +113,8 @@ final class QualificationRunner: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
-        guard runTask == nil else { return }
+        // A finished record stays finished: coming back to the app does not run the corpus again.
+        guard runTask == nil, record?.finished != true else { return }
         isRunning = true
         UIApplication.shared.isIdleTimerDisabled = true
         runTask = Task { [weak self] in
@@ -167,7 +173,13 @@ final class QualificationRunner: ObservableObject {
         let (cases, skipped) = LocalToolEval.select(LocalToolEval.loadCorpus(corpusText).cases, options.selection, live: true)
 
         var fresh = makeRecord(cases: cases.count, skipped: skipped, bodyHash: bodyHash)
-        if !options.fresh, let data = try? Data(contentsOf: Self.resultsURL),
+        if let current = record, !current.finished {
+            // Back in the foreground in the same process: carry on with the record in hand. `--fresh`
+            // applies to the launch, not to every return, and a record rebuilt now would budget its
+            // window with the model's weights already resident.
+            fresh = current
+            fresh.stopReason = nil
+        } else if !options.fresh, let data = try? Data(contentsOf: Self.resultsURL),
            let existing = LocalModelQualificationRecord.decode(data), existing.resumable(with: fresh) {
             fresh = existing
             fresh.stopReason = nil
@@ -197,7 +209,7 @@ final class QualificationRunner: ObservableObject {
             environment = LiveEnvironments.mlx(service: service, fixture: fixture, modelID: options.modelID,
                                                contextWindow: record?.window.toolTurnTokens,
                                                cancellationBound: record?.timing.cancelBoundSeconds ?? 1.0,
-                                               transcript: options.transcripts ? DebugTranscript() : nil)
+                                               transcript: transcript)
         }
 
         // The cases, each behind the gate.
@@ -301,6 +313,7 @@ final class QualificationRunner: ObservableObject {
     // MARK: - The model
 
     private func prepareModel() async throws {
+        guard !modelLoaded else { return }
         let id = options.modelID
         if !service.isModelDownloaded(id) {
             status = "Downloading the model"
@@ -322,6 +335,7 @@ final class QualificationRunner: ObservableObject {
         try await service.loadModel(id)
         record?.timing.loadSeconds = Date().timeIntervalSince(loadStarted)
         record?.memory.footprintAfterLoadBytes = MemoryHeadroom.appFootprintBytes()
+        modelLoaded = true
         write()
     }
 
