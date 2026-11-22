@@ -84,14 +84,18 @@ extension LLMService {
     /// model's chat template, so this says only how to use them.
     nonisolated static func localNativeToolGuide(toolNames: [String]) -> String {
         guard !toolNames.isEmpty else { return "" }
-        var block = "\n\nTOOLS: the tools you may call this turn are declared to you. Call one only when the user "
-            + "clearly needs it; otherwise answer directly. After a tool result, answer from it in one or two spoken "
-            + "sentences, and never repeat a call you have already made."
+        var block = "\n\nTOOLS: the tools you may call this turn are declared to you. When the user asks you to do "
+            + "something a tool does (log, record, start, open, pause, resume, end, show, look up), call that tool now, "
+            + "in this reply, with what the user said; don't ask first and don't describe the call. Never say you did "
+            + "something unless a tool result in this turn says it was done. When no tool does what the user asked, "
+            + "answer directly. After a tool result, answer from it in one or two spoken sentences, and never repeat a "
+            + "call you have already made."
         if toolNames.contains("where_am_i") {
             block += " If you need the user's location and it isn't given above, call where_am_i — never ask the user where they are."
         }
         if toolNames.contains("reading") || toolNames.contains("field_session") {
-            block += " On the job: log a value the technician reports with reading, and run job steps with the job tools; never invent a value."
+            block += " On the job: when the technician gives a value to log, call reading with that value and its unit; "
+                + "run job steps with the job tools; never invent a value."
         }
         return block
     }

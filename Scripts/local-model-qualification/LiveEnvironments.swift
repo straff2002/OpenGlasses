@@ -25,7 +25,8 @@ enum LiveEnvironments {
     /// run's `LocalModelBudget.toolTurnContextWindow`.
     @MainActor
     static func mlx(service: LocalLLMService, fixture: LocalModelQualificationFixture,
-                    modelID: String, contextWindow: Int?, cancellationBound: TimeInterval) -> LocalToolEval.Environment {
+                    modelID: String, contextWindow: Int?, cancellationBound: TimeInterval,
+                    transcript: DebugTranscript? = nil) -> LocalToolEval.Environment {
         LocalToolEval.Environment(
             generateTurn: { testCase, request, _ in
                 let offered = appOrder(offered: testCase.offered, utterance: testCase.turn)
@@ -44,6 +45,10 @@ enum LiveEnvironments {
                 let output = try await service.generateTurn(MLXTurnInput(
                     userMessage: flat.last?.content ?? testCase.turn, systemPrompt: system,
                     history: Array(flat.dropLast()), imageData: nil, onToken: nil, toolTurn: toolTurn))
+                transcript?.write(caseID: testCase.id, turn: testCase.turn, offered: offered,
+                                  kept: output.toolFit?.keptNames, expected: testCase.expect.calls.map(\.tool),
+                                  text: output.text, calls: output.toolCalls.map { ($0.name, $0.arguments) },
+                                  pass: request.messages.count)
                 return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats,
                                                 toolFit: output.toolFit)
             },

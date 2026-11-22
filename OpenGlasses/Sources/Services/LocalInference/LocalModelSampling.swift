@@ -129,11 +129,17 @@ struct LocalModelSampling: Equatable, Sendable, Decodable {
         return ggufEntries().first { $0.id == id }?.sampling
     }
 
+    /// A qualification run's experiment, applied over every tool turn's set: set only by the device
+    /// qualification app (`--tool-temperature`), before its first case, and named in its record. The
+    /// app never sets it, so a shipping turn is unaffected.
+    nonisolated(unsafe) static var qualificationToolTurnOverride: Members?
+
     /// What a turn on `modelID` samples with: the global set with the catalog's members over it.
     static func configuration(for modelID: String?, toolTurn: Bool,
                               ggufEntries: () -> [LocalModelCatalog.GGUFEntry] = { LocalModelCatalog.bundledGGUFEntries() })
         -> LocalSamplingConfiguration {
-        guard let sampling = catalogSampling(for: modelID, ggufEntries: ggufEntries) else { return global }
-        return sampling.resolved(over: global, toolTurn: toolTurn)
+        let base = catalogSampling(for: modelID, ggufEntries: ggufEntries)?.resolved(over: global, toolTurn: toolTurn) ?? global
+        guard toolTurn, let override = qualificationToolTurnOverride else { return base }
+        return override.applied(to: base)
     }
 }

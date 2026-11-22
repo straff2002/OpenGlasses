@@ -25,6 +25,7 @@ targets:
       - QualificationRunner.swift
       - LiveEnvironments.swift
       - DeviceFacts.swift
+      - DebugTranscript.swift
       - Stubs.swift
       - path: ../../Scripts/local-tool-eval/corpus/local-tool-corpus.v2.jsonl
         buildPhase: resources

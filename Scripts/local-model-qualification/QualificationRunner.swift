@@ -30,6 +30,12 @@ final class QualificationRunner: ObservableObject {
         var policy = QualificationRunGate.Policy.unattended
         var cancelProbes = 6
         var fresh = false
+        /// Debug only: write each tool-turn generation's raw text and calls to
+        /// Documents/debug-transcripts.jsonl. Never part of the record and never committed.
+        var transcripts = false
+        /// An experiment: the temperature every tool turn samples at, over the catalog's set
+        /// (`LocalModelSampling.qualificationToolTurnOverride`). The record names it.
+        var toolTemperature: Float?
 
         static func parse(_ arguments: [String]) -> Options {
             var options = Options()
@@ -51,6 +57,8 @@ final class QualificationRunner: ObservableObject {
                 case "--allow-battery": options.policy.requiresCharger = false
                 case "--cancel-probes": if let v = value().flatMap(Int.init), v >= 0 { options.cancelProbes = v }
                 case "--fresh": options.fresh = true
+                case "--transcripts": options.transcripts = true
+                case "--tool-temperature": if let v = value().flatMap(Float.init), v >= 0 { options.toolTemperature = v }
                 case "--groups":
                     if let v = value() {
                         if v == "all" {
@@ -185,7 +193,8 @@ final class QualificationRunner: ObservableObject {
             }
             environment = LiveEnvironments.mlx(service: service, fixture: fixture, modelID: options.modelID,
                                                contextWindow: record?.window.toolTurnTokens,
-                                               cancellationBound: record?.timing.cancelBoundSeconds ?? 1.0)
+                                               cancellationBound: record?.timing.cancelBoundSeconds ?? 1.0,
+                                               transcript: options.transcripts ? DebugTranscript() : nil)
         }
 
         // The cases, each behind the gate.
@@ -324,8 +333,13 @@ final class QualificationRunner: ObservableObject {
         let runtime: LocalModelQualificationRecord.Runtime = options.apple
             ? .init(name: "FoundationModels", revision: DeviceFacts.osBuild)
             : .init(name: "mlx-swift-lm", revision: DeviceFacts.mlxSwiftLMRevision)
+        if let temperature = options.toolTemperature {
+            LocalModelSampling.qualificationToolTurnOverride = .init(temperature: temperature)
+        }
         let sampling: LocalModelQualificationRecord.Sampling? = options.apple ? nil : .init(
-            source: entry?.sampling?.source,
+            source: [entry?.sampling?.source,
+                     options.toolTemperature.map { "run override: tool-turn temperature \($0)" }]
+                .compactMap { $0 }.joined(separator: "; "),
             general: LocalModelSampling.configuration(for: options.modelID, toolTurn: false),
             toolTurn: LocalModelSampling.configuration(for: options.modelID, toolTurn: true))
         let readings = LocalMemoryReadings.againstProcessLimit()
