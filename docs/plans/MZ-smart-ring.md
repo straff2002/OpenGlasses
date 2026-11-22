@@ -10,8 +10,11 @@ tests in `RingServiceTests`, `RingScanMatchTests`, `RingToolTests`, `RingLiveRea
 `ToolPermissionGateTests`; 175 new in all). Verified 2026-11-22: Debug
 build-for-testing and Release builds clean; the focused set 731 passed; the full suite 19,681
 passed, 0 failed, 16 skipped (none of them ring tests). Owed: P5 (the device pass on the owner's
-ring), P6 (catalog sync of the new UI strings), and the agreed follow-up PR for CoreBluetooth state
-restoration and the response when a clench asks for listening on a locked phone. 10 decisions with
+ring), P6 (catalog sync of the new UI strings). The follow-up (2026-11-23) adds CoreBluetooth state
+restoration (Decision 3 changed: `RingRestoration`, the central's restore identifier and
+`willRestoreState`) and a clench's answer when the phone can't open the microphone
+(`RingBackgroundListenGate`: no turn, one notification per 5 minutes; 15 tests in
+`RingBackgroundTests`), with P5 checks 13–15 for them. 10 decisions with
 recommendations; Decision 8's action taken (a clench starts the assistant listening), its default
 taken as recommended (on once a ring is paired).
 
@@ -293,6 +296,13 @@ CoreBluetooth half, its own `CBCentralManager`, never shared with the display's:
 - **Stay.** While the app runs the link is held, and a drop reconnects with a pending `connect` (iOS
   completes it when the ring is back in range) after a short backoff (Decision 3). Whether the ring
   drops an idle link, and after how long, is measured in P5; a keepalive is added only if it does.
+- **Come back (follow-up, 2026-11-23).** The ring's central is made with a restore identifier
+  (`RingRestoration.restoreIdentifier`, pinned: iOS matches a relaunch by it). When iOS ends the app
+  in the background, it keeps the ring's pending connect or link and relaunches the app when the
+  ring has something to say. `AppState` starts the ring service, which makes the central again, and
+  `willRestoreState` hands back the paired ring (anything else iOS kept is cancelled). The app
+  delegate logs the launch (`ringRelaunch`), the restore logs what came back (`ringRestored`). A
+  force-quit turns this off until the wearer opens the app again; iOS decides that.
 - **Forget.** Disconnects, clears the pairing id, cursors and latched offset, and tells the wearer to
   also forget the ring in iOS Settings › Bluetooth, which an app cannot do.
 
@@ -324,6 +334,14 @@ event carries no strength or direction, and an ordinary hand movement can fire i
   A photo goes through `CameraService.capturePhoto`, so the capture light and the ledger apply as for
   any other photo.
 - The earcon for a fired trigger is the temple tap's (`TempleEarcon`), so a misfire is heard.
+- **The phone in a pocket (follow-up, 2026-11-23).** iOS lets a backgrounded app keep recording but
+  not start: a turn needs an audio session that is already live. With Listen for Wake Phrase on, the
+  shared engine runs in the background and a clench talks from a locked phone. Without it, a clench
+  whose action starts a turn (`startListening`, `interruptAndListen`, `askAgent`) is not started at
+  all (`RingBackgroundListenGate`). No earcon plays either, since nothing can. Instead one
+  notification says to open Avenkin or turn on Listen for Wake Phrase, at most once every 5 minutes;
+  every refusal is logged (`ringTrigger`, `refused`, `backgroundMicrophone`). Actions that need no
+  microphone (a photo, a recording, music) go ahead as before.
 
 The vendor's "air control" mode (`52`, the `1b` variant) is unconfirmed, and its output is HID, which
 iOS does not hand to apps. It is out of scope.
@@ -402,6 +420,17 @@ The house rhythm: P0–P4 in one PR, everything device-facing behind `Config.rin
 11. **Find ring and the goal.** `04 0a` lights it; the goal from `fitnessStepGoal` is echoed.
 12. **Logs.** `check-privacy-logging.sh` passes and a support report has no reading, address or
     peripheral identifier in it.
+13. **Locked in a pocket, Listen for Wake Phrase on.** Lock the phone, pocket it, wait 5 minutes,
+    clench: the earcon plays through the glasses or phone and the assistant listens. Repeat after
+    30 minutes and after an hour.
+14. **Locked in a pocket, Listen for Wake Phrase off.** Clench: no turn and no earcon, and one
+    notification arrives. A second clench within 5 minutes brings none. Open the app and clench:
+    the turn starts.
+15. **Relaunched by the ring.** Background the app, then end it the way iOS does (run memory-heavy
+    apps until it is gone from memory; not a swipe away, which iOS treats as a force-quit). Clench or
+    wait for a sync: the support report shows `ringRelaunch` and `ringRestored` with the link
+    `connected` or `connecting`, and the next sync runs without the app being opened. Then force-quit
+    and check the ring no longer wakes it.
 
 ## Decisions for Greig
 
@@ -410,10 +439,14 @@ The house rhythm: P0–P4 in one PR, everything device-facing behind `Config.rin
    health store, a registry entry with health values, and every reader a second path.
 2. **Steps, distance, calories.** *Recommend:* steps now; distance after P5 confirms the unit; never
    calories. *Alternative:* steps only, leaving distance to the phone and watch.
-3. **Background.** *Recommend:* hold the link while the app runs, using the `bluetooth-central` mode
-   the glasses build already declares, with a pending reconnect; no state restoration in v1.
-   *Alternative:* foreground-only like the display (simplest, but a night syncs only when the app is
-   opened), or state restoration now (the app relaunched by the ring, more to test).
+3. **Background.** *Taken (owner, 2026-11-22; built 2026-11-23):* hold the link while the app runs,
+   using the `bluetooth-central` mode the glasses build already declares, with a pending reconnect,
+   **and state restoration**, so iOS relaunches the app for the ring after ending it in the
+   background (§7, Come back). This changed from the first recommendation, which held the link only
+   while the app ran, because the owner wants a clench to work from a locked phone in a pocket. What
+   iOS still won't do: relaunch after a force-quit, or start the microphone from the background
+   without a live session (§8, The phone in a pocket). *Alternative not taken:* foreground-only like
+   the display.
 4. **Automatic heart rate.** *Recommend:* on at every 30 minutes, the setting offering Off / 30 / 10
    (only those two cadences have been seen working). *Alternative:* off until the wearer turns it on.
 5. **The store build.** *Recommend:* TestFlight (the glasses build) only until P5 passes; the store
