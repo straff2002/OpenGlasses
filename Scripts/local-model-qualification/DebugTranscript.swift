@@ -25,6 +25,16 @@ final class DebugTranscript: @unchecked Sendable {
             "expected": expected, "text": text,
             "calls": calls.map { ["name": $0.0, "arguments": $0.1] as [String: Any] },
         ]
+        append(row)
+    }
+
+    /// A manual reading: the reply, what the case expects, and the check's verdict.
+    func writeReading(caseID: String, turn: String, text: String, expectedAccepted: Bool, verdict: String) {
+        append(["case": caseID, "turn": turn, "kind": "reading", "text": text,
+                "expectedAccepted": expectedAccepted, "verdict": verdict])
+    }
+
+    private func append(_ row: [String: Any]) {
         guard JSONSerialization.isValidJSONObject(row),
               var line = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]) else { return }
         line.append(0x0A)

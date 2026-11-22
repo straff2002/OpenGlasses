@@ -52,10 +52,16 @@ enum LiveEnvironments {
                 return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats,
                                                 toolFit: output.toolFit)
             },
-            read: { _, request in
+            read: { testCase, request in
                 let output = try await service.generateTurn(MLXTurnInput(
                     userMessage: request.prompt, systemPrompt: request.instructions, history: [],
                     imageData: nil, onToken: nil, toolTurn: nil))
+                if let transcript {
+                    let verdict = LocalToolEval.Reader.parse(output.text)
+                        .map { "\(ManualReadingCheck.check($0, passages: testCase.passages ?? [:]))" } ?? "unparsed"
+                    transcript.writeReading(caseID: testCase.id, turn: testCase.turn, text: output.text,
+                                            expectedAccepted: testCase.expect.readingAccepted ?? false, verdict: verdict)
+                }
                 return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats)
             },
             schema: { fixture.schemaRoot($0) },
