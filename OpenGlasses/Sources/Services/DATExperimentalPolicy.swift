@@ -22,15 +22,18 @@ enum DATExperimentalPolicy {
     enum Feature: String, CaseIterable {
         /// "Hey Meta, open Avenkin": the SDK's voice invocations (P1).
         case voiceInvocation
+        /// Plan MU §7: Neural Band swipes left and right on the manual page view (Inputs).
+        case lensPageSwipes
 
         /// Where the wearer's switch is kept.
         var defaultsKey: String { "datExperimental.\(rawValue)" }
 
         /// Whether the switch starts on. Voice invocations do: they fire only when the wearer says
-        /// the phrase.
+        /// the phrase. Page swipes do: the band is listened to only while a page view is on the lens,
+        /// and only left and right are acted on.
         var defaultOn: Bool {
             switch self {
-            case .voiceInvocation: return true
+            case .voiceInvocation, .lensPageSwipes: return true
             }
         }
     }

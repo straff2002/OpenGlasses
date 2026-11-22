@@ -4,7 +4,9 @@
 (PR 1192, 2026-11-22: 22 new keys in the 13 complete languages, add-only, with Plan MQ P1's three
 Developer panel keys); P5 measured on the simulated Display 2026-11-22 (branch `feat/mu-p5-measure`:
 the button-row budget's constants measured, no lens button sent with an icon, decision 11; see
-Measured (P5)). P0 and P1 2026-11-21: one picture
+Measured (P5)); P6 built 2026-11-22 (branch `feat/mu-p6-band-swipes`: Neural Band left/right in
+the page view of flagged TestFlight builds, between a close-up's halves and fit-width pages, one
+send at a time; up, down and Back left to Meta; see Built (P6)). P0 and P1 2026-11-21: one picture
 a row (MG's tile grid dropped from the page view, decision 5), `LensPictureScale` and the fit check
 (Display & HUD and the Developer panel, default factor 1), the page opening whole with the answer
 highlighted and the rest dimmed, its words under the picture, one press for the close-up (both
@@ -16,7 +18,7 @@ halves in one strip) or fit width, **Back**, **Rows**, the voice words, three bu
 (Meta Display only), Actions, the page view and reading mode, with the 13-language test; the reading
 view's three-button row with follow-ups on Actions; Keep answers up (Until closed by default, or 3
 minutes), "show that again" for the conversation's life, "hide that" and "put it away" as Close.
-Not done: P6 and P8's device checks (and the fit check's one reading in P0). **All 10 decisions
+Not done: P8's device checks, P6's included (and the fit check's one reading in P0). **All 10 decisions
 taken 2026-11-21:** 1–8 and 10 as recommended (7 is the owner's own suggestion); 9 declined, so §8's
 request to Meta is not filed.
 **Track:** Display (Meta Ray-Ban Display through the stable `MWDATDisplay`; DAT 1.1.0, adopted on
@@ -357,6 +359,46 @@ unchanged), live-mode answer cards beyond what the reading view already shows.
   clips, as the simulator does, or runs off the edges.
 - **P6 — Swipe and pinch (§7).** TestFlight only, `DAT_EXPERIMENTAL`, added to
   `DATExperimentalGuardTests`' roster. Takes over MG P5.
+
+  **Built (P6), 2026-11-22** (branch `feat/mu-p6-band-swipes`, headless; flagged builds only).
+  - **Mapped:** Neural Band `nav` left and right on the page view, one send each. In a close-up cut
+    into halves, right shows the right half alone (under its marker) and left goes back to both
+    halves from the left, where the strip starts; at the right half right does nothing, and as the
+    close-up opens left does nothing. At fit width, left and right open the page before or after,
+    still at fit width from its top; nothing before the first page or after the last, no wrap. A
+    pinch is Meta's own `select`, which already presses the focused item, so nothing new is needed
+    for it.
+  - **Not mapped:** up and down (the lens's own scroll), `back` (Inputs added with
+    `consumeBack: false`), select, drag and the buttons. A close-up of a part in one column, the
+    whole page, the rows and reading mode map nothing: the plan gives left and right only to the
+    halves and fit width, the whole page keeps **Next page ›** and reading mode **Next ›**, and the
+    button rows may need left and right for Meta's own focus.
+  - **Shape:** the decision is pure and in every build (`LensBandNav`, `LensBandNavMap`,
+    `LensBandNavGate`, `LensPageSession.handleBand`). Only `Glasses/Experimental/LensBandNavService`
+    adds Inputs, with its own configuration (`LensBandNavConfiguration`: the band's discrete inputs
+    only, Back left to Meta, pinned by `DATExperimentalGuardTests`), while the page view itself is on
+    the lens with a link. It closes when the view does. A failed or ended channel is not asked for
+    again until the next view. The Developer panel's probe comes first: a probe start waits for the
+    channel to hand the one Inputs capability back. No new call site outside the folder.
+  - **Gated** like Hey Meta: `DATExperimentalPolicy` feature `lensPageSwipes` (TestFlight,
+    development or simulator only; glasses offered; the wearer's switch, on by default), shown as
+    **Swipe through manual pages** in the flagged build's Glasses settings section. A store build
+    compiles the mapping and never calls it: voice and buttons only, as before.
+  - **Debounce:** one send in flight at a time. A swipe goes only once the frame the last one asked
+    for has reached the glasses (or failed, or was never drawn), and at least 400 ms after the last.
+    A send with no answer frees the gate after 4 s. A burst is dropped, never queued.
+  - **Report:** the page section's `Band:` line (flagged builds only): swipes acted on (halves,
+    pages), nothing to do, dropped in a burst, other inputs heard, channel listening and failed. The
+    send time per step is the section's existing `send time`.
+  - **P8 checks on a Ray-Ban Display:** band left and right reach the page view (the `Band:` line's
+    counts) and do not also move Meta's own focus, in particular between **Back** and **Close** at
+    the top of a close-up; up and down still scroll the lens while Inputs is added for the band (the
+    SDK has no way to take only left and right); the direction is not inverted by the wearer's swipe
+    settings (Meta's docs say it can be); the send time per step (whole close-up strip and a fit-width
+    page); whether a burst ever drops a swipe the wearer meant; and whether adding Inputs on each
+    page view delays its first swipe or ends the session (JV's probe runs ended with
+    `sessionEndedByDevice`). The two new settings strings are flagged-only and owe a catalog sync with
+    JV's.
 - **P7 — Catalog sync.** The new strings ("Earlier — press to open", the source tile's label if any,
   Keep answers up and its two choices, the short labels) in the 13 complete languages, add-only.
 - **P8 — Device pass.** Takes over MG P6. On a Ray-Ban Display, with the tester at a real unit:

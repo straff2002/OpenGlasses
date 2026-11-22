@@ -111,6 +111,23 @@ struct LensPageStats: Equatable {
         var pictureSizes: [String] = []
         /// The picture factor the last pictures went at.
         var pictureFactor: Double = 1
+        /// Plan MU §7 (flagged builds only): band swipes acted on, each a send, and which kind.
+        var bandSwipes = 0
+        var bandHalves = 0
+        var bandPages = 0
+        /// Left or right with nothing to do in the view, or at an edge.
+        var bandNothingToDo = 0
+        /// Left or right dropped as part of a burst (a send still in flight, or too soon).
+        var bandDropped = 0
+        /// Other inputs heard while the view was up (up, down, a pinch's select, drag), never acted on.
+        var bandOther = 0
+        /// The band's channel became active for a view, or failed.
+        var bandListening = 0
+        var bandFailures = 0
+
+        var bandUsed: Bool {
+            bandSwipes + bandNothingToDo + bandDropped + bandOther + bandListening + bandFailures > 0
+        }
     }
 
     /// Timings kept per backend, newest last.
@@ -158,6 +175,13 @@ enum LensPageReport {
                          + " per view " + summary(entry.pressesPerView, unit: "presses"))
             lines.append("    Pictures sent: " + LensPictureScale.sizesSummary(entry.pictureSizes)
                          + "; factor " + LensPictureScale.factorText(CGFloat(entry.pictureFactor)))
+            if entry.bandUsed {
+                // Plan MU §7: only a flagged (TestFlight-only) build hears the band.
+                lines.append("    Band: swipes acted on \(entry.bandSwipes) (halves \(entry.bandHalves),"
+                             + " pages \(entry.bandPages)), nothing to do \(entry.bandNothingToDo),"
+                             + " dropped in a burst \(entry.bandDropped), other inputs \(entry.bandOther);"
+                             + " listening \(entry.bandListening), failed \(entry.bandFailures)")
+            }
         }
         return lines
     }

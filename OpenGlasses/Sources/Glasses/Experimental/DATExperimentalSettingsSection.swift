@@ -8,6 +8,7 @@ import SwiftUI
 /// glasses features.
 struct DATExperimentalSettingsSection: View {
     @State private var voiceInvocationOn = DATExperimentalPolicy.isSwitchOn(.voiceInvocation)
+    @State private var pageSwipesOn = DATExperimentalPolicy.isSwitchOn(.lensPageSwipes)
 
     /// Why the feature cannot run in this copy whatever the switch says, if it cannot.
     private var heldReason: String? {
@@ -25,6 +26,14 @@ struct DATExperimentalSettingsSection: View {
                     DATExperimentalPolicy.setSwitch(.voiceInvocation, on: on)
                     DATExperimentalFeatures.settingChanged()
                 }
+            Toggle("Swipe through manual pages", isOn: $pageSwipesOn)
+                .onChange(of: pageSwipesOn) { _, on in
+                    DATExperimentalPolicy.setSwitch(.lensPageSwipes, on: on)
+                    DATExperimentalFeatures.settingChanged()
+                }
+            Text("On glasses with a display, swipe left or right with the Neural Band to move between the two halves of a close-up of a manual page, or to the page before or after when a page is shown full width.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             if let heldReason {
                 Text(heldReason)
                     .font(.caption)

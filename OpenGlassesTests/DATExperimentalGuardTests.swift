@@ -245,10 +245,18 @@ final class DATExperimentalGuardTests: XCTestCase {
         }
         XCTAssertEqual(configurations, [
             "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.captouch, .neuralBand, .neuralBandDrag], consumeBack: false)",
-        ], "the probe's one configuration is the touchpad and the band with Back left to Meta")
+            "\(Self.folder)MetaInputsSource.swift: static let sdk = InputsConfiguration(sources: [.neuralBand], consumeBack: false)",
+        ], "two configurations, both with Back left to Meta: the probe's (the touchpad and the band) and the page view's (the band's swipes and presses)")
         XCTAssertEqual(adds, [
-            "\(Self.folder)MetaInputsSource.swift: added = try session.addInputs(configuration: InputsProbeConfiguration.sdk)",
-        ], "Inputs is added once, with the probe's configuration, never the SDK's default")
+            "\(Self.folder)MetaInputsSource.swift: added = try session.addInputs(configuration: purpose.configuration)",
+        ], "Inputs is added once, with one of the two configurations, never the SDK's default")
+    }
+
+    /// Plan MU §7: the page view listens to the Neural Band's discrete inputs only (its swipes and
+    /// presses), never the touchpad, the drag stream or a button, and leaves Back to Meta.
+    func testThePageViewAsksForTheBandsSwipesOnlyAndLeavesBackToMeta() {
+        XCTAssertEqual(LensBandNavPolicy.origins, [.neuralBand])
+        XCTAssertFalse(LensBandNavPolicy.consumesBack)
     }
 
     // MARK: - 4. The stamp

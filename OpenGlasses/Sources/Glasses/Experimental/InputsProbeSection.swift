@@ -27,7 +27,7 @@ private struct InputsProbeRows: View {
                 if probe.isRunning {
                     probe.stop()
                 } else {
-                    Task { @MainActor in await probe.start() }
+                    Task { @MainActor in await DATExperimentalFeatures.startInputsProbe() }
                 }
             } label: {
                 if probe.isRunning {
