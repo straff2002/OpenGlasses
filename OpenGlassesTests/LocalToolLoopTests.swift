@@ -280,6 +280,16 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(outcome.text, LLMService.localMissMessage)
     }
 
+    func testBrokenProtocolAfterASuccessfulCallIsStillAMiss() async throws {
+        let model = ScriptedModel([call("reading", #"{"action": "record_reading", "value": "7.5"}"#),
+                                   #"<tool_call>{"name": "reading", "arguments": "#])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Recorded line pressure 7.5 inWC.") }
+        let outcome = try await run(model, tools)
+        XCTAssertEqual(outcome.endReason, .protocolOnly)
+        XCTAssertEqual(outcome.text, LLMService.localMissMessage)
+    }
+
     func testAnUntrustedLongOrStructuredResultIsNeverSpokenInPlaceOfAReply() {
         func spoken(_ text: String, name: String = "reading", isError: Bool = false) -> String? {
             let call = LocalToolLoop.Call(id: "call_1", name: name, arguments: [:])

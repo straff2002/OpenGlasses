@@ -152,7 +152,7 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         // The request hands over every passage by id and the question, and nothing else.
         let request = LocalToolEval.Reader.request(for: answer)
         for (id, passage) in answer.passages ?? [:] {
-            XCTAssertTrue(request.prompt.contains("[\(id)]\n\(passage)"))
+            XCTAssertTrue(request.prompt.contains("Passage \(id):\n\(passage)"))
         }
         XCTAssertTrue(request.prompt.hasSuffix("Question: \(answer.turn)"))
     }

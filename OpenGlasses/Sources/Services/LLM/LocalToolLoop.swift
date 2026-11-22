@@ -282,7 +282,11 @@ enum LocalToolLoop {
             var reason = reason
             var text = parsed.text
             if text.isEmpty {
-                if let last = executed.last, let spoken = LocalToolLoop.spokenResult(of: last) {
+                // Only a turn that ended on its own with nothing at all said after the call: not one
+                // that tried another call or wrote broken protocol, and not one the cap or a repeat
+                // cut short, where the last result is not an answer to what was asked.
+                if reason == .answered, parsed.invocation == nil, parsed.classification.kind == .prose,
+                   let last = executed.last, let spoken = LocalToolLoop.spokenResult(of: last) {
                     text = spoken
                     reason = .toolResult
                 } else {
