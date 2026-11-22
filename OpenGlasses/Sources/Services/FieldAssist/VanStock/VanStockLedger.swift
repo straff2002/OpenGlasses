@@ -26,6 +26,10 @@ struct VanStockLevel: Equatable, Sendable {
     var unreliable = false
     /// The level is the one a handover left, and nothing has moved since.
     var handedOver = false
+    /// What is in each of the line's lots (Plan MY §1), keyed by lot. Empty for a line with no
+    /// lots, which is every line a van keeps. The line's own figure above is the total; a
+    /// movement that names no lot changes only that, exactly as before lots existed.
+    var lots: [String: StockLotLevel] = [:]
 
     /// Whether anything has ever established a level for the line.
     var isRecorded: Bool { asOf != nil }
@@ -40,10 +44,67 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     private(set) var items: [VanStockItem]
     private(set) var movements: [VanStockMovement]
+    /// Every line's lots (Plan MY §1). Empty, and not written, for a list that has none.
+    private(set) var lots: [StockLot]
 
-    init(items: [VanStockItem] = [], movements: [VanStockMovement] = []) {
+    init(items: [VanStockItem] = [], movements: [VanStockMovement] = [], lots: [StockLot] = []) {
         self.items = items
         self.movements = movements
+        self.lots = lots
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case items, movements, lots
+    }
+
+    /// A list written before lots existed has none.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([VanStockItem].self, forKey: .items)
+        movements = try container.decode([VanStockMovement].self, forKey: .movements)
+        lots = try container.decodeIfPresent([StockLot].self, forKey: .lots) ?? []
+    }
+
+    /// `lots` only when there are some, so a list without them is written exactly as before.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(items, forKey: .items)
+        try container.encode(movements, forKey: .movements)
+        if !lots.isEmpty { try container.encode(lots, forKey: .lots) }
+    }
+
+    // MARK: - Lots (Plan MY §1)
+
+    func lot(id: String) -> StockLot? { lots.first { $0.id == id } }
+
+    /// One line's lots, in the order they came onto the list.
+    func lots(of itemID: String) -> [StockLot] { lots.filter { $0.itemID == itemID } }
+
+    /// Add a lot to a line. Nil, and nothing added, for a line the list does not have, an empty
+    /// code, or a code the line already holds exactly: that lot is the one to use. The code is
+    /// kept exactly as given. Only a delivery or a count may call this, from a scan or the screen;
+    /// a spoken lot is matched, never added (`StockLotMatch`).
+    @discardableResult
+    mutating func addLot(id: String = UUID().uuidString, itemID: String, code: String, expiry: StockDay?,
+                         receivedAt: Date, batch: String) -> StockLot? {
+        let cleaned = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard item(id: itemID) != nil, !cleaned.isEmpty,
+              !lots.contains(where: { $0.itemID == itemID && $0.code == cleaned }) else { return nil }
+        let lot = StockLot(id: id, itemID: itemID, code: cleaned, expiry: expiry, firstReceived: receivedAt,
+                           createdBatch: batch)
+        lots.append(lot)
+        return lot
+    }
+
+    /// Hide a lot from the weekly count, or show it again (Plan MY §6). False for a lot the list
+    /// does not have, or one already so.
+    @discardableResult
+    mutating func setLot(_ lotID: String, hidden: Bool) -> Bool {
+        guard let index = lots.firstIndex(where: { $0.id == lotID }), (lots[index].hidden ?? false) != hidden else {
+            return false
+        }
+        lots[index].hidden = hidden ? true : nil
+        return true
     }
 
     var isEmpty: Bool { items.isEmpty }
@@ -54,7 +115,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     /// Every line's level, keyed by item. A line with nothing recorded is present, at zero.
     var levels: [String: VanStockLevel] {
-        Self.fold(movements, reversed: Self.reversedIDs(in: movements), items: items).levels
+        Self.fold(movements, reversed: Self.reversedIDs(in: movements), items: items, lots: lots).levels
     }
 
     func level(of itemID: String) -> VanStockLevel {
@@ -88,6 +149,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
                           codes: [String] = [],
                           verified: Bool = false,
                           verification: VanStockVerification? = nil,
+                          dosesPerCarton: Int? = nil,
                           batch: String) -> VanStockItem {
         let normalised = number.map(VaultPartsIndex.normalise).flatMap { $0.isEmpty ? nil : $0 }
         let item = VanStockItem(id: id, number: normalised,
@@ -95,6 +157,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
                                 unit: unit, minimum: minimum, standard: standard,
                                 standardSetBy: standard == nil ? nil : standardSetBy,
                                 bin: bin, codes: codes, verified: verified, verification: verification,
+                                dosesPerCarton: dosesPerCarton.flatMap { $0 > 0 ? $0 : nil },
                                 createdBatch: batch)
         items.append(item)
         return item
@@ -102,11 +165,11 @@ struct VanStockLog: Codable, Equatable, Sendable {
 
     // MARK: - Movements
 
-    /// Record a load, a use, a removal, a count or an order. Nil — and nothing recorded — for a
-    /// line the van does not have, a kind this does not take, or a quantity that makes no sense
-    /// for the kind: a count may be zero, everything else is more than zero. A figure above a
-    /// million units, or one that is not a step of the line's unit (part of a pack), is never
-    /// recorded.
+    /// Record a load, a use, a removal, a waste, a count or an order. Nil — and nothing recorded —
+    /// for a line the van does not have, a kind this does not take, a quantity that makes no sense
+    /// for the kind (a count may be zero, everything else is more than zero), or a lot that is not
+    /// one of this line's. A figure above a million units, or one that is not a step of the line's
+    /// unit (part of a pack), is never recorded. An order names no lot.
     @discardableResult
     mutating func record(_ kind: VanStockMovement.Kind,
                          itemID: String,
@@ -118,10 +181,15 @@ struct VanStockLog: Codable, Equatable, Sendable {
                          jobSessionID: String? = nil,
                          jobReference: String? = nil,
                          reason: VanStockMovement.RemovalReason? = nil,
-                         requestID: String? = nil) -> VanStockMovement? {
+                         requestID: String? = nil,
+                         lotID: String? = nil,
+                         wasteReason: VanStockMovement.WasteReason? = nil) -> VanStockMovement? {
         guard let item = item(id: itemID) else { return nil }
+        if let lotID {
+            guard kind != .ordered, lots.contains(where: { $0.id == lotID && $0.itemID == itemID }) else { return nil }
+        }
         switch kind {
-        case .loaded, .used, .removed, .ordered: guard quantity > .zero else { return nil }
+        case .loaded, .used, .removed, .wasted, .ordered: guard quantity > .zero else { return nil }
         case .counted: guard quantity >= .zero else { return nil }
         case .edited, .reversed, .opening: return nil
         }
@@ -131,7 +199,9 @@ struct VanStockLog: Codable, Equatable, Sendable {
             jobSessionID: kind == .used || kind == .loaded ? jobSessionID : nil,
             jobReference: kind == .used || kind == .loaded ? jobReference : nil,
             reason: kind == .removed ? (reason ?? .other) : nil,
-            requestID: kind == .ordered ? requestID : nil)
+            requestID: kind == .ordered ? requestID : nil,
+            lotID: lotID,
+            wasteReason: kind == .wasted ? (wasteReason ?? .other) : nil)
         movements.append(movement)
         return movement
     }
@@ -170,6 +240,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
         /// What a lookup said, and which book answered (Plan MK §4). Recorded under the same
         /// `verified` attribute, so an older build still reads the log.
         case verification(VanStockVerification)
+        /// How many doses a carton holds (Plan MY §2); nil for none. Never zero or less.
+        case dosesPerCarton(Int?)
     }
 
     /// Change one attribute of a line and note that it changed. False, and nothing noted, when the
@@ -225,6 +297,10 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case .verification(let value):
             (attribute, old, new) = (.verified, item.verification.storedValue, value.storedValue)
             item.verification = value
+        case .dosesPerCarton(let value):
+            if let value, value <= 0 || value > 10_000 { return false }
+            (attribute, old, new) = (.dosesPerCarton, item.dosesPerCarton.map(String.init), value.map(String.init))
+            item.dosesPerCarton = value
         }
 
         guard old != new else { return false }
@@ -283,6 +359,8 @@ struct VanStockLog: Codable, Equatable, Sendable {
         let movements: [VanStockMovement]
         /// Lines the batch had created, now gone again.
         let removedItems: [VanStockItem]
+        /// Lots the batch had added, and the lots of lines it took away, now gone again.
+        var removedLots: [StockLot] = []
     }
 
     /// Take back the most recent batch — the whole spoken sentence, or the whole imported sheet.
@@ -304,7 +382,10 @@ struct VanStockLog: Codable, Equatable, Sendable {
         }
         let removed = items.filter { $0.createdBatch == last.batch }
         items.removeAll { $0.createdBatch == last.batch }
-        return Undone(batch: last.batch, movements: target, removedItems: removed)
+        let goneItems = Set(removed.map(\.id))
+        let removedLots = lots.filter { $0.createdBatch == last.batch || goneItems.contains($0.itemID) }
+        lots.removeAll { $0.createdBatch == last.batch || goneItems.contains($0.itemID) }
+        return Undone(batch: last.batch, movements: target, removedItems: removed, removedLots: removedLots)
     }
 
     /// Put an edited attribute back to what it was.
@@ -325,6 +406,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
         case .code: items[index].codes.removeAll { $0 == movement.newValue }
         // "true" and "false" from an older log, or a stored verification from a newer one.
         case .verified: items[index].verification = VanStockVerification(storedValue: old)
+        case .dosesPerCarton: items[index].dosesPerCarton = old.flatMap(Int.init)
         }
     }
 
@@ -337,7 +419,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
         let old = movements.filter { $0.at < cutoff }
         guard !old.isEmpty else { return self }
         let recent = movements.filter { $0.at >= cutoff }
-        let state = Self.fold(old, reversed: Self.reversedIDs(in: movements), items: items)
+        let state = Self.fold(old, reversed: Self.reversedIDs(in: movements), items: items, lots: lots)
 
         var carried: [VanStockMovement] = []
         for item in items {
@@ -350,6 +432,15 @@ struct VanStockLog: Codable, Equatable, Sendable {
                     openingCounted: level.provenance == .counted,
                     openingUnreliable: level.unreliable))
             }
+            // Each lot carries its own figure forward; the line's opening above is the total.
+            for lot in lots(of: item.id) {
+                guard let lotLevel = level.lots[lot.id], let asOf = lotLevel.asOf else { continue }
+                carried.append(VanStockMovement(
+                    id: "opening-\(lot.id)", itemID: item.id, kind: .opening, quantity: lotLevel.onHand,
+                    at: asOf, batch: Self.openingBatch, source: .typed,
+                    openingCounted: lotLevel.provenance == .counted,
+                    openingUnreliable: lotLevel.unreliable, lotID: lot.id))
+            }
             for order in state.openOrders[item.id] ?? [] {
                 carried.append(VanStockMovement(
                     id: order.id, itemID: item.id, kind: .ordered, quantity: order.remaining,
@@ -357,7 +448,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
             }
         }
         carried.sort { $0.at < $1.at }
-        return VanStockLog(items: items, movements: carried + recent)
+        return VanStockLog(items: items, movements: carried + recent, lots: lots)
     }
 
     static let openingBatch = "opening"
@@ -383,13 +474,24 @@ struct VanStockLog: Codable, Equatable, Sendable {
     }
 
     private static func fold(_ movements: [VanStockMovement], reversed: Set<String>,
-                             items: [VanStockItem]) -> Folded {
+                             items: [VanStockItem], lots: [StockLot]) -> Folded {
         var levels = Dictionary(uniqueKeysWithValues: items.map { ($0.id, VanStockLevel(itemID: $0.id)) })
+        for lot in lots where levels[lot.itemID] != nil {
+            levels[lot.itemID]?.lots[lot.id] = StockLotLevel(lotID: lot.id)
+        }
         var orders: [String: [OpenOrder]] = [:]
 
         for movement in movements where !reversed.contains(movement.id) {
             // A movement for a line that has since been taken away is history, not stock.
             guard var level = levels[movement.itemID] else { continue }
+            // A movement that names one of the line's lots (Plan MY §1) changes the lot and the
+            // line's total together. One that names none, which is every movement before lots,
+            // takes the path below unchanged.
+            if let lotID = movement.lotID, level.lots[lotID] != nil {
+                foldLot(movement, lotID: lotID, into: &level)
+                levels[movement.itemID] = level
+                continue
+            }
             switch movement.kind {
             case .loaded:
                 level.onHand += movement.quantity
@@ -405,7 +507,7 @@ struct VanStockLog: Codable, Equatable, Sendable {
                     if open[0].remaining == .zero { open.removeFirst() }
                 }
                 orders[movement.itemID] = open
-            case .used, .removed:
+            case .used, .removed, .wasted:
                 if movement.quantity > level.onHand {
                     level.onHand = .zero
                     level.unreliable = true
@@ -442,6 +544,69 @@ struct VanStockLog: Codable, Equatable, Sendable {
             levels[itemID]?.oldestOrderAt = open.first?.at
         }
         return Folded(levels: levels, openOrders: orders)
+    }
+
+    /// One movement on a lot. The line's figure moves by what the lot's does: a load adds to both,
+    /// a use, removal or waste takes from both (each marked unreliable when it takes more than it
+    /// held), and a count sets the lot and moves the line by the difference. An opening carries the
+    /// lot's figure only; the line's own opening carries the total.
+    private static func foldLot(_ movement: VanStockMovement, lotID: String, into level: inout VanStockLevel) {
+        var lot = level.lots[lotID] ?? StockLotLevel(lotID: lotID)
+        switch movement.kind {
+        case .loaded:
+            lot.onHand += movement.quantity
+            lot.provenance = .inferred
+            lot.asOf = movement.at
+            level.onHand += movement.quantity
+            level.provenance = .inferred
+            level.handedOver = false
+            level.asOf = movement.at
+        case .used, .removed, .wasted:
+            if movement.quantity > lot.onHand {
+                lot.onHand = .zero
+                lot.unreliable = true
+            } else {
+                lot.onHand -= movement.quantity
+            }
+            lot.provenance = .inferred
+            lot.asOf = movement.at
+            if movement.quantity > level.onHand {
+                level.onHand = .zero
+                level.unreliable = true
+            } else {
+                level.onHand -= movement.quantity
+            }
+            level.provenance = .inferred
+            level.handedOver = false
+            level.asOf = movement.at
+        case .counted:
+            let before = lot.onHand
+            lot.onHand = movement.quantity
+            lot.provenance = .counted
+            lot.unreliable = false
+            lot.asOf = movement.at
+            if movement.quantity >= before {
+                level.onHand += movement.quantity - before
+            } else {
+                let less = before - movement.quantity
+                level.onHand = less > level.onHand ? .zero : level.onHand - less
+            }
+            level.provenance = .counted
+            level.handedOver = false
+            level.asOf = movement.at
+            level.lots[lotID] = lot
+            // A line with lots is only as reliable as its lots: once each is trusted, so is it.
+            level.unreliable = level.lots.values.contains { $0.unreliable }
+            return
+        case .opening:
+            lot.onHand = movement.quantity
+            lot.provenance = movement.openingCounted == true ? .counted : .inferred
+            lot.unreliable = movement.openingUnreliable == true
+            lot.asOf = movement.at
+        case .ordered, .edited, .reversed:
+            break
+        }
+        level.lots[lotID] = lot
     }
 
     // MARK: - Minimum and standard, as stored text

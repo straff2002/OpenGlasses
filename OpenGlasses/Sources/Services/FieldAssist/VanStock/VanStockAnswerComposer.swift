@@ -189,8 +189,11 @@ struct VanStockAnswerComposer {
             let name = item?.name ?? "a line"
             switch movement.kind {
             case .loaded: return "the \(w.putNoun) of \(item?.phrase(movement.quantity) ?? name)"
-            case .used: return "the use of \(item?.phrase(movement.quantity) ?? name)"
+            case .used:
+                return w.clinical ? "the dose given of \(item?.phrase(movement.quantity) ?? name)"
+                                  : "the use of \(item?.phrase(movement.quantity) ?? name)"
             case .removed: return "the removal of \(item?.phrase(movement.quantity) ?? name)"
+            case .wasted: return "the waste of \(item?.phrase(movement.quantity) ?? name)"
             case .counted: return "the count of \(name)"
             case .ordered: return "the order for \(name)"
             case .edited, .reversed, .opening: return "a change to \(name)"
@@ -215,6 +218,9 @@ struct VanStockAnswerComposer {
     /// costly for a stock code as for a part number, so every place hears it. The reason given is
     /// the one the lookup supports (Plan MK §4): a number nothing was searched for has only not
     /// been on the list; one its book did not hold is said to be missing from that book.
+    /// The same, as one sentence run, for a read-back built elsewhere (Plan MY's lot read-backs).
+    func newLineNote(_ item: VanStockItem) -> String { newLine(item).joined(separator: " ") }
+
     private func newLine(_ item: VanStockItem) -> [String] {
         var lines = ["That is a new line on \(w.list)."]
         if let number = item.number, !item.verification.isFound {

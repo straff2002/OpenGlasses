@@ -24,6 +24,9 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case reversed
         /// What a folded history left behind: the level as it stood, carried forward.
         case opening
+        /// Taken out and thrown away, for a `WasteReason` (Plan MY §3). Subtracts. Its own kind,
+        /// never a removal, so a report counts waste apart from returns (Decision 3).
+        case wasted
     }
 
     enum Source: String, Codable, Sendable {
@@ -41,6 +44,31 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case other
     }
 
+    /// Why stock was wasted (Plan MY §3). A closed list, so a report can count each reason.
+    enum WasteReason: String, Codable, CaseIterable, Sendable {
+        case expired
+        /// The fridge went out of range.
+        case coldChain = "cold_chain"
+        case drawnUpNotGiven = "drawn_up_not_given"
+        /// Broken or dropped.
+        case broken
+        /// The doses left in an opened vial that had to be thrown out.
+        case openedVialDiscarded = "opened_vial_discarded"
+        case other
+
+        /// "cold chain", for a sentence.
+        var spoken: String {
+            switch self {
+            case .expired: return "expired"
+            case .coldChain: return "cold chain"
+            case .drawnUpNotGiven: return "drawn up and not given"
+            case .broken: return "broken or dropped"
+            case .openedVialDiscarded: return "opened vial discarded"
+            case .other: return "other"
+            }
+        }
+    }
+
     /// The attributes of a line an `edited` movement can name.
     enum Attribute: String, Codable, Sendable {
         case number
@@ -51,6 +79,8 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case bin
         case code
         case verified
+        /// Doses per carton (Plan MY §2).
+        case dosesPerCarton = "doses_per_carton"
     }
 
     let id: String
@@ -77,6 +107,11 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
     /// the line was unreliable when the history was folded.
     var openingCounted: Bool?
     var openingUnreliable: Bool?
+    /// The lot this movement is about (Plan MY §1), one of its line's. Nil for a line with no
+    /// lots and for every movement recorded before lots existed, which fold as they always did.
+    var lotID: String?
+    /// For `wasted` only: why.
+    var wasteReason: WasteReason?
 
     init(id: String = UUID().uuidString,
          itemID: String,
@@ -94,7 +129,9 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
          oldValue: String? = nil,
          newValue: String? = nil,
          openingCounted: Bool? = nil,
-         openingUnreliable: Bool? = nil) {
+         openingUnreliable: Bool? = nil,
+         lotID: String? = nil,
+         wasteReason: WasteReason? = nil) {
         self.id = id
         self.itemID = itemID
         self.kind = kind
@@ -112,6 +149,8 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         self.newValue = newValue
         self.openingCounted = openingCounted
         self.openingUnreliable = openingUnreliable
+        self.lotID = lotID
+        self.wasteReason = wasteReason
     }
 
     enum CodingKeys: String, CodingKey {
@@ -124,12 +163,14 @@ struct VanStockMovement: Codable, Equatable, Identifiable, Sendable {
         case newValue = "new_value"
         case openingCounted = "opening_counted"
         case openingUnreliable = "opening_unreliable"
+        case lotID = "lot_id"
+        case wasteReason = "waste_reason"
     }
 
     /// Whether this kind changes how many are on the van.
     var changesLevel: Bool {
         switch kind {
-        case .loaded, .used, .removed, .counted, .opening: return true
+        case .loaded, .used, .removed, .counted, .opening, .wasted: return true
         case .ordered, .edited, .reversed: return false
         }
     }

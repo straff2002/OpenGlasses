@@ -74,6 +74,24 @@ struct StockPlace: Codable, Equatable, Sendable {
     var wording: StockPlaceWording { StockPlaceWording(kind) }
 }
 
+/// Whether a list is a clinic's, and who decided (Plan MY §9, Decision 12). Pure.
+///
+/// The same order as the place: the organisation's profile sets and locks it; then the list's
+/// own choice; then not clinical. The profile's value is never written into the list.
+enum StockClinicalSetting {
+
+    struct Resolved: Equatable, Sendable {
+        let clinical: Bool
+        let isLocked: Bool
+    }
+
+    /// `profile` is the profile's value, nil when no profile sets it.
+    static func resolve(profile: Bool?, list: Bool?) -> Resolved {
+        if let profile { return Resolved(clinical: profile, isLocked: true) }
+        return Resolved(clinical: list ?? false, isLocked: false)
+    }
+}
+
 /// Which place a list is kept in, and who decided (Plan MK §2). Pure.
 ///
 /// One order, in one place: the organisation's profile, which sets and locks it; then the list's

@@ -14,6 +14,10 @@ struct VanIdentity: Codable, Equatable, Sendable {
     /// §4). This phone's own choice: never written into the workbook, because a vault's id means
     /// nothing on a phone that lacks it, and kept by a takeover.
     var checkVaultID: String? = nil
+    /// The list is a clinic's (Plan MY §9, Decision 12): it speaks of doses given and wasted, by
+    /// lot. Nil for a list nobody marked, which is not clinical. The organisation's profile key
+    /// `organizationStockClinical` is resolved over it and never written into it.
+    var clinical: Bool? = nil
 
     /// The list's place, kind and name together; van when nobody chose.
     var stockPlace: StockPlace {

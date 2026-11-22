@@ -45,7 +45,8 @@ struct BarcodeScannerTool: NativeTool {
         case "qr":
             request.symbologies = [.qr]
         case "barcode":
-            request.symbologies = [.ean8, .ean13, .upce, .code39, .code93, .code128, .itf14, .pdf417]
+            // Data Matrix too: a medicine or vaccine carton carries its GS1 code as one (Plan MY §5).
+            request.symbologies = [.ean8, .ean13, .upce, .code39, .code93, .code128, .itf14, .pdf417, .dataMatrix]
         default:
             // Detect all types
             break
@@ -68,7 +69,7 @@ struct BarcodeScannerTool: NativeTool {
         for observation in results {
             let typeStr = symbologyName(observation.symbology)
             if let payload = observation.payloadStringValue {
-                decoded.append("\(typeStr): \(payload)")
+                decoded.append("\(typeStr): \(payload)" + Self.gs1Fields(payload))
             }
         }
 
@@ -86,6 +87,23 @@ struct BarcodeScannerTool: NativeTool {
         }
 
         return "Found \(decoded.count) codes: \(decoded.joined(separator: ". "))"
+    }
+
+    /// A GS1 code's fields, read the way the stock list reads them (Plan MY §5): " (GS1: product
+    /// number 02000000000015, lot ZZ1001, expiry 30 November 2027)". Empty for a code that is not
+    /// a GS1 element string, and for one whose check digit or date is wrong, which says so.
+    nonisolated static func gs1Fields(_ payload: String, referenceYear: Int = Calendar.current.component(.year, from: Date())) -> String {
+        guard StockScan.looksLikeGS1(payload) else { return "" }
+        switch GS1ElementString.parse(payload, referenceYear: referenceYear) {
+        case .success(let fields):
+            let scan = StockScan(raw: payload, code: fields.gtin ?? payload, gtin: fields.gtin, lot: fields.lot,
+                                 expiry: fields.expiry, serial: fields.serial)
+            let described = scan.described
+            // The bracketed form carries every field with no separator to lose on the way back.
+            return described.isEmpty ? "" : " (GS1: \(described); for van_stock pass 'code' \(fields.bracketed))"
+        case .failure(let failure):
+            return " (a GS1 code that could not be read safely: \(failure.sentence); scan it again)"
+        }
     }
 
     private func symbologyName(_ symbology: VNBarcodeSymbology) -> String {

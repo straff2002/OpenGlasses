@@ -145,11 +145,12 @@ enum VanStockSheet {
         let names = Dictionary(log.items.map { ($0.id, $0.name) }) { first, _ in first }
         var history: [[XLSX.Cell]] = [["When", "Line", "What", "Quantity", "Job", "How"].map { .text($0) }]
         let reversed = Set(log.movements.compactMap { $0.kind == .reversed ? $0.reverses : nil })
+        let lots = Dictionary(log.lots.map { ($0.id, $0.code) }) { first, _ in first }
         for movement in log.movements.reversed().prefix(2_000) where movement.kind != .reversed {
             history.append([
                 .text(stamp(movement.at, calendar)),
                 .text(names[movement.itemID] ?? ""),
-                .text(movement.kind.rawValue + (reversed.contains(movement.id) ? " (taken back)" : "")),
+                .text(Self.what(movement, lots: lots) + (reversed.contains(movement.id) ? " (taken back)" : "")),
                 movement.changesLevel || movement.kind == .ordered ? figure(movement.quantity) : .empty,
                 movement.jobReference.map(XLSX.Cell.text) ?? .empty,
                 .text(movement.source.rawValue),
@@ -183,6 +184,16 @@ enum VanStockSheet {
     /// A figure as the workbook holds it: a number cell in units of the line, exactly
     /// (`<v>4.25</v>`; a whole figure is `<v>4</v>`, as every workbook has had). The workbook holds
     /// what a person reads, never thousandths, so it needs no scale marker.
+    /// The History sheet's "What": the kind as it always was ("used", "loaded"), with a waste's
+    /// reason and the lot a movement names (Plan MY): "wasted (cold_chain) · lot ZZ1001". A
+    /// movement with neither reads exactly as before.
+    static func what(_ movement: VanStockMovement, lots: [String: String]) -> String {
+        var text = movement.kind.rawValue
+        if movement.kind == .wasted, let reason = movement.wasteReason { text += " (\(reason.rawValue))" }
+        if let lotID = movement.lotID, let code = lots[lotID] { text += " · lot \(code)" }
+        return text
+    }
+
     static func figure(_ quantity: StockQuantity) -> XLSX.Cell {
         .decimal(quantity)
     }

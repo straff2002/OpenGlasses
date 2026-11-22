@@ -129,6 +129,16 @@ final class VanStockStore: ObservableObject {
         save()
     }
 
+    /// Mark the list as a clinic's, or not, or clear the choice with nil (Plan MY §9). The
+    /// profile's value is never written here: it is resolved over this.
+    func setClinical(_ clinical: Bool?, makeID: () -> String = { UUID().uuidString }) {
+        guard !isUnreadable, clinical != van?.clinical else { return }
+        var identity = van ?? VanIdentity(id: makeID(), name: "")
+        identity.clinical = clinical
+        van = identity
+        save()
+    }
+
     /// Name the installed vault this list checks part numbers against, or none with nil (Plan MK
     /// §4). Kept on this phone only.
     func checkNumbers(against vaultID: String?, makeID: () -> String = { UUID().uuidString }) {

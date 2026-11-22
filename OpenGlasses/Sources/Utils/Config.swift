@@ -2879,6 +2879,15 @@ struct Config {
         return raw.isEmpty ? nil : raw
     }
 
+    /// Whether the organisation's profile says the stock list is a clinic's (Plan MY §9): doses
+    /// given and wasted, by lot. Nil with no profile, or one that does not say; the list's own
+    /// choice then stands. Written only by a profile; there is no setter on purpose.
+    static var organizationStockClinical: Bool? {
+        guard PolicyEnvelope.isLocked(.organizationStockClinical) else { return nil }
+        return PolicyEnvelope.bool(.organizationStockClinical,
+                                   stored: UserDefaults.standard.bool(forKey: "organizationStockClinical"))
+    }
+
     /// The organisation's add-on ceiling (Plan GF): the strictest of its three add-on keys, each a
     /// ceiling pinned on and written only by a profile. No ceiling on a phone without one.
     static var addOnCeiling: AddOnPolicy.Ceiling {

@@ -76,6 +76,9 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
     /// locked by the profile, like the accent: the Stock screen's place picker is then read-only,
     /// and removing the profile gives the list its own choice back.
     case organizationStockPlace
+    /// The stock list is a clinic's (Plan MY §9): it speaks of doses given and wasted, by lot.
+    /// Set and locked by the profile; removing the profile gives the list its own choice back.
+    case organizationStockClinical
     /// The connection to the business's own stock system (Plan MM P2): a profile may switch it
     /// on or off, and the Settings section then follows it. Never the key: a key is pasted on the
     /// phone, behind the administrator's passcode on a managed phone.
@@ -197,7 +200,7 @@ enum SettingKey: String, CaseIterable, Codable, Sendable {
              .organizationToolDefinitionsMode, .organizationManualSearchModel, .technicianFullName, .technicianID, .organizationExperts,
              .expertHandoverTranscript, .expertHandoverRetentionDays, .organizationStockPlace:
             return .profileOwned(.string)
-        case .expertHandoverIncludesAddress, .customerReportShowsExpertTime:
+        case .expertHandoverIncludesAddress, .customerReportShowsExpertTime, .organizationStockClinical:
             return .profileOwned(.bool)
         case .organizationReportRecipients:
             return .profileOwned(.strings)

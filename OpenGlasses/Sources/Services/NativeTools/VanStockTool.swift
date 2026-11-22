@@ -27,6 +27,22 @@ private func vanStockLineProperties(_ w: StockPlaceWording, system: String? = ni
             "description": "A barcode or QR code read by scan_code, verbatim."
         ],
     ]
+    // A clinic's list (Plan MY §5) takes a lot, a carton count and doses per carton. There is no
+    // field for anyone a dose was given to, by design (Decision 1).
+    if system == nil, w.clinical {
+        properties["lot"] = [
+            "type": "string",
+            "description": "The lot (batch) code exactly as printed on the carton, if \(w.person) said it. It is matched only against the lots this line already holds; a new lot comes in only by scanning its carton."
+        ]
+        properties["cartons"] = [
+            "type": "integer",
+            "description": "For 'receive': how many cartons came in, instead of 'quantity'. Multiplied by the line's doses per carton."
+        ]
+        properties["doses_per_carton"] = [
+            "type": "integer",
+            "description": "For 'receive' or 'count' of a line that does not know it yet: how many doses one carton holds."
+        ]
+    }
     // While a business's own system holds the count nothing is loaded or counted on the phone,
     // so the field that only those take is not offered.
     if system == nil {
@@ -59,9 +75,29 @@ final class VanStockTool: NativeTool {
     static let actions = ["check", "list", "low", "load", "use", "remove", "count", "undo", "unrecorded",
                           "not_from_van", "top_up", "set_standard", "send_to_base"]
 
-    var description: String { Self.description(for: service.place, system: service.systemName) }
+    /// The actions a clinic's list adds (Plan MY §5): a dose given, wasted with its reason, and a
+    /// delivery received. `give` and `receive` are `use` and `load` in the clinic's words.
+    static let clinicalActions = ["give", "waste", "receive", "report"]
 
-    var parametersSchema: [String: Any] { Self.parametersSchema(for: service.place, system: service.systemName) }
+    var description: String {
+        Self.description(for: service.place, system: service.systemName, clinical: service.isClinical)
+    }
+
+    var parametersSchema: [String: Any] {
+        Self.parametersSchema(for: service.place, system: service.systemName, clinical: service.isClinical)
+    }
+
+    /// The description for a place, a system and a clinic's list (Plan MY §9).
+    static func description(for kind: StockPlace.Kind, system: String?, clinical: Bool) -> String {
+        guard clinical, system == nil else { return description(for: kind, system: system) }
+        return description(for: kind, clinical: true)
+    }
+
+    /// The schema for a place, a system and a clinic's list.
+    static func parametersSchema(for kind: StockPlace.Kind, system: String?, clinical: Bool) -> [String: Any] {
+        guard clinical, system == nil else { return parametersSchema(for: kind, system: system) }
+        return parametersSchema(for: kind, clinical: true)
+    }
 
     /// The description while a business's own system holds the count (Plan MM §5): its figures,
     /// read-only, with their as-of time; a use noted on the job, or at premises on the day's list,
@@ -117,8 +153,9 @@ final class VanStockTool: NativeTool {
     private static let saleActions: Set<String> = ["sell", "sale", "sold", "sell_stock", "record_sale"]
 
     /// The description for a place, leading with it (Plan MK §3).
-    static func description(for kind: StockPlace.Kind) -> String {
-        let w = StockPlaceWording(kind)
+    static func description(for kind: StockPlace.Kind, clinical: Bool = false) -> String {
+        let w = StockPlaceWording(kind, clinical: clinical)
+        if clinical { return clinicalDescription(w) }
         return w.toolLead + " Works without a job open and without signal. Pass 'action': 'check' (how many of "
             + "one part; pass 'part' and/or 'description'), 'list' (what is there, all of it or one bin; pass "
             + "'bin'), 'low' (what has run out or is at its minimum), 'load' (\(w.goods) \(w.putThere)), "
@@ -139,15 +176,44 @@ final class VanStockTool: NativeTool {
             + "replacement, ask \(w.person) before requesting one."
     }
 
+    /// A clinic's list (Plan MY §9): doses given, wasted and received, by lot, and never anyone
+    /// they were given to.
+    private static func clinicalDescription(_ w: StockPlaceWording) -> String {
+        w.toolLead + " Works without signal. Pass 'action': 'check' (how many doses of one vaccine, by lot; "
+            + "pass 'description'), 'list' (what is \(w.location)), 'low' (what has run out or is at its minimum), "
+            + "'give' (doses given), 'waste' (doses \(w.wastedVerb); pass 'waste_reason'), 'receive' (a delivery; "
+            + "pass 'quantity' in doses or 'cartons'), 'remove' (returned to the supplier or moved elsewhere; pass "
+            + "'reason'), 'count' (a stocktake of one \(w.lotNoun): sets its figure and says how it compares), or "
+            + "'undo' (takes back the last entry), or 'report' (one sentence on doses given, wasted and received, "
+            + "expiring lots and counts; pass 'period': 'today' or 'this_week'). Pass 'lot' when \(w.person) says it. When a vaccine has more than "
+            + "one \(w.lotNoun) \(w.location), the result lists them oldest expiry first: ask which, and call again "
+            + "with 'lot'. A \(w.lotNoun) that has expired is not recorded as given; the result offers to record it "
+            + "as \(w.wastedVerb) instead, and only with \(w.person)'s yes. A scanned carton's code goes in 'code'. "
+            + "Read the result back as given. Never state a quantity this tool did not return. Never pass, say or "
+            + "keep the name, number or any detail of a patient: this is the stock, not the patient's record."
+    }
+
     /// The schema for a place: the same actions and fields for every kind, described in its words.
-    static func parametersSchema(for kind: StockPlace.Kind) -> [String: Any] {
-        let w = StockPlaceWording(kind)
+    static func parametersSchema(for kind: StockPlace.Kind, clinical: Bool = false) -> [String: Any] {
+        let w = StockPlaceWording(kind, clinical: clinical)
         var properties = vanStockLineProperties(w)
         properties["action"] = [
             "type": "string",
-            "enum": actions,
+            "enum": clinical ? actions + clinicalActions : actions,
             "description": "What to do."
         ]
+        if clinical {
+            properties["period"] = [
+                "type": "string",
+                "enum": VanStockService.ReportPeriod.allCases.map(\.rawValue),
+                "description": "For 'report': today, or this week."
+            ]
+            properties["waste_reason"] = [
+                "type": "string",
+                "enum": VanStockMovement.WasteReason.allCases.map(\.rawValue),
+                "description": "For 'waste': why the doses were thrown out."
+            ]
+        }
         properties["items"] = [
             "type": "array",
             "description": "Several parts said in one sentence. Use instead of the single-part fields.",
@@ -193,7 +259,9 @@ final class VanStockTool: NativeTool {
         guard !Config.organizationForbidsVanStock else {
             return "Your organisation has switched \(w.stockName) off on this phone. Nothing was looked up or changed."
         }
-        let action = (args["action"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let said = (args["action"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        // A clinic's words for two of the actions (Plan MY §5).
+        let action = Self.clinicalAliases[said] ?? said
         // While a business's own system holds the count (Plan MM §5): what the system does is
         // refused before any figure is read, and what the phone never does is not offered.
         if let desk = service.systemDesk {
@@ -204,7 +272,7 @@ final class VanStockTool: NativeTool {
             case "top_up": return desk.composer.refused(.topUp)
             case "send_to_base": return desk.composer.handoverNotOffered()
             case let sale where Self.saleActions.contains(sale): return desk.composer.noSale()
-            case "check", "list", "low", "use", "remove", "undo", "unrecorded", "not_from_van":
+            case "check", "list", "low", "use", "remove", "undo", "unrecorded", "not_from_van", "waste":
                 break
             default:
                 return "Pass 'action': check, list, low, use, remove, undo, unrecorded or not_from_van."
@@ -242,8 +310,14 @@ final class VanStockTool: NativeTool {
             return service.remove(lines, reason: reason ?? .other, source: Self.source(lines))
         case "count":
             return service.count(lines, source: Self.source(lines))
+        case "waste":
+            let reason = (args["waste_reason"] as? String).flatMap { VanStockMovement.WasteReason(rawValue: $0.lowercased()) }
+            return service.waste(lines, reason: reason ?? .other, source: Self.source(lines))
         case "undo":
             return service.undo()
+        case "report" where service.isClinical:
+            let period = (args["period"] as? String).flatMap { VanStockService.ReportPeriod(rawValue: $0.lowercased()) }
+            return service.spokenReport(period ?? .thisWeek)
         case "top_up":
             return service.topUp()
         case "set_standard":
@@ -275,7 +349,11 @@ final class VanStockTool: NativeTool {
     /// Wire nuts". A standard is refused in its own words (`VanStockService.standardRefusal`).
     private static let quantityVerbs: [String: String] = [
         "load": "loaded", "use": "recorded", "remove": "removed", "count": "counted", "set_standard": "set",
+        "waste": "wasted",
     ]
+
+    /// `give` is `use` and `receive` is `load`, in a clinic's words.
+    private static let clinicalAliases = ["give": "use", "receive": "load"]
 
     /// The raw entries of one call: `items` when it is given, otherwise the single-part fields.
     private static func entries(_ args: [String: Any]) -> [[String: Any]] {
@@ -338,13 +416,24 @@ final class VanStockTool: NativeTool {
                                         description: Self.text(entry["description"]),
                                         unit: Self.text(entry["unit"]),
                                         code: Self.text(entry["code"]),
-                                        asNew: (entry["new_line"] as? Bool) ?? false)
+                                        asNew: (entry["new_line"] as? Bool) ?? false,
+                                        lot: Self.text(entry["lot"]),
+                                        cartons: Self.whole(entry["cartons"]),
+                                        dosesPerCarton: Self.whole(entry["doses_per_carton"]))
         return line.part == nil && line.description == nil && line.code == nil ? nil : line
     }
 
     /// A call that carries a scanned code was scanned; anything else was said.
     private static func source(_ lines: [VanStockService.Line]) -> VanStockMovement.Source {
         lines.contains { $0.code != nil } ? .scanned : .spoken
+    }
+
+    /// A whole number sent as a number or a string; nil for anything else or a fraction.
+    private static func whole(_ raw: Any?) -> Int? {
+        if let value = raw as? Int { return value }
+        if let value = raw as? Double, value == value.rounded(), abs(value) < 1_000_000 { return Int(value) }
+        if let value = raw as? String { return Int(value.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return nil
     }
 
     /// Models send a part number as a string or, when it is all digits, as a number.

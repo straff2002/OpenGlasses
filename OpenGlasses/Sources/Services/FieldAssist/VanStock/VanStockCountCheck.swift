@@ -12,6 +12,17 @@ enum VanStockCountCheck: Equatable, Sendable {
     case unreliable
 
     init?(before: VanStockLevel, counted: StockQuantity) {
+        self.init(recorded: before.isRecorded, unreliable: before.unreliable, onHand: before.onHand, counted: counted)
+    }
+
+    /// The same check for one lot (Plan MY §6): a weekly count goes lot by lot, and each lot's
+    /// count is compared with what the log held in that lot. Nil for a lot nothing had set yet.
+    init?(before lot: StockLotLevel, counted: StockQuantity) {
+        self.init(recorded: lot.isRecorded, unreliable: lot.unreliable, onHand: lot.onHand, counted: counted)
+    }
+
+    private init?(recorded: Bool, unreliable: Bool, onHand: StockQuantity, counted: StockQuantity) {
+        let before = (isRecorded: recorded, unreliable: unreliable, onHand: onHand)
         guard before.isRecorded else { return nil }
         if before.unreliable {
             self = .unreliable

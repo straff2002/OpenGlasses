@@ -12,15 +12,22 @@ import Foundation
 struct StockPlaceWording: Equatable, Sendable {
 
     let kind: StockPlace.Kind
+    /// The list is a clinic's (Plan MY §9): stock goes out *given* or *wasted*, as *doses*, by
+    /// *lot*, and it is kept in *the fridge*, never on a van. A clinic is premises, so a clinical
+    /// list speaks as the neutral `stock` kind does, with the fridge as its place. Off for every
+    /// list that has not been marked clinical, which reads exactly as before.
+    let clinical: Bool
 
-    init(_ kind: StockPlace.Kind) {
-        self.kind = kind
+    init(_ kind: StockPlace.Kind, clinical: Bool = false) {
+        self.kind = clinical ? .stock : kind
+        self.clinical = clinical
     }
 
     var family: StockPlace.Family { kind.family }
 
     /// Where the stock is: "22 on the van", "22 in the store", "22 in stock".
     var location: String {
+        if clinical { return "in the fridge" }
         switch kind {
         case .van: return "on the van"
         case .truck: return "on the truck"
@@ -54,6 +61,7 @@ struct StockPlaceWording: Equatable, Sendable {
 
     /// Stock arriving, with the place: "put on the van", "put in the store", "put into stock".
     var putThere: String {
+        if clinical { return "put in the fridge" }
         switch kind {
         case .van: return "put on the van"
         case .truck: return "put on the truck"
@@ -63,8 +71,10 @@ struct StockPlaceWording: Equatable, Sendable {
         }
     }
 
-    /// The word for stock going out: "used" on a vehicle, "sold or used" at premises.
+    /// The word for stock going out: "used" on a vehicle, "sold or used" at premises, "given" on a
+    /// clinical list.
     var takenVerb: String {
+        if clinical { return "given" }
         switch kind {
         case .van, .truck: return "used"
         case .store, .warehouse: return "sold or used"
@@ -72,8 +82,10 @@ struct StockPlaceWording: Equatable, Sendable {
         }
     }
 
-    /// Stock going out, with the place: "taken off the van", "taken from the store".
+    /// Stock going out, with the place: "taken off the van", "taken from the store", "given" on a
+    /// clinical list, where the dose went to a patient and the place says nothing.
     var takenFrom: String {
+        if clinical { return "given" }
         switch kind {
         case .van: return "taken off the van"
         case .truck: return "taken off the truck"
@@ -173,6 +185,7 @@ struct StockPlaceWording: Equatable, Sendable {
     /// The place as the object of a sentence: "bring the van back to its standard load". The
     /// neutral kind has no place, so it brings "the stock" back.
     var placeNoun: String {
+        if clinical { return "the fridge" }
         switch kind {
         case .van: return "the van"
         case .truck: return "the truck"
@@ -251,6 +264,7 @@ struct StockPlaceWording: Equatable, Sendable {
 
     /// What the list holds, for the tool's description: parts on a vehicle, stock at premises.
     var goods: String {
+        if clinical { return "doses" }
         switch family {
         case .vehicle: return "parts"
         case .premises: return "stock"
@@ -260,6 +274,12 @@ struct StockPlaceWording: Equatable, Sendable {
     /// The tool description's first two sentences (Plan MK §3): what the list is and when to use
     /// it. A van keeps the sentences it has always had.
     var toolLead: String {
+        if clinical {
+            return "The clinic's vaccine stock, kept on the phone. It is a stock record, not the patient's "
+                + "immunisation record. Use it whenever they ask what is \(location), or say a dose "
+                + "was given, wasted, received or counted. Never pass, repeat or keep who a dose was given to: "
+                + "say the vaccine and the lot, never the patient."
+        }
         switch kind {
         case .van:
             return "The technician's own van or truck stock, kept on the phone. Use it whenever they ask what is "
@@ -278,6 +298,7 @@ struct StockPlaceWording: Equatable, Sendable {
 
     /// What `use` records, for the tool's description: "parts fitted from the van".
     var useGloss: String {
+        if clinical { return "doses given" }
         switch kind {
         case .van: return "parts fitted from the van"
         case .truck: return "parts fitted from the truck"
@@ -313,6 +334,38 @@ struct StockPlaceWording: Equatable, Sendable {
             + ". Ask for each: returning it, or keeping it on the truck? Record a return with action 'remove' "
             + "and reason 'returned'. For one that is kept, offer to make it part of this truck's standard load "
             + "(action 'set_standard')."
+    }
+
+    // MARK: - A clinical list (Plan MY §9)
+
+    /// Stock thrown out: "wasted".
+    var wastedVerb: String { "wasted" }
+
+    /// A batch of one line: "lot".
+    var lotNoun: String { "lot" }
+
+    /// What the list is and is not, said wherever a clinical list could be taken for the patient's
+    /// record. Empty for any other list.
+    var recordNote: String {
+        clinical ? "This is a stock record, not the immunisation record." : ""
+    }
+
+    /// An amount of a line: "1 dose of the flu vaccine", "3 doses of the flu vaccine" on a
+    /// clinical list counted in each; otherwise the line's own phrase ("2 × Flame sensor").
+    func amount(_ quantity: StockQuantity, of item: VanStockItem) -> String {
+        guard clinical, item.unit == .each else { return item.phrase(quantity) }
+        return "\(doses(quantity)) of \(item.name)"
+    }
+
+    /// A figure in doses on a clinical list: "1 dose", "3 doses"; otherwise the line's figure.
+    func figure(_ quantity: StockQuantity, of item: VanStockItem) -> String {
+        guard clinical, item.unit == .each else { return item.figure(quantity) }
+        return doses(quantity)
+    }
+
+    /// "1 dose", "0 doses", "12 doses".
+    func doses(_ quantity: StockQuantity) -> String {
+        "\(quantity.decimalString) \(quantity == StockQuantity(whole: 1) ? "dose" : "doses")"
     }
 
     /// `phrase` with its first letter in capitals, to open a sentence: "The van list is empty".

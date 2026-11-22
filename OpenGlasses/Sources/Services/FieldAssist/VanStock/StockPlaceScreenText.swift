@@ -81,6 +81,12 @@ enum StockPlaceScreenText {
         }
     }
 
+    /// The organisation profile's summary line for the clinical flag (Plan MY §9).
+    static func clinicalProfileSummary(_ clinical: Bool) -> String {
+        clinical ? String(localized: "The stock list is a clinic's: doses given and wasted, by lot")
+                 : String(localized: "The stock list is not a clinic's")
+    }
+
     // MARK: - The book numbers are checked against
 
     /// Which book the list names, as the "Check numbers against" picker shows it (Plan MK §4).
@@ -116,4 +122,10 @@ extension VanStockStore {
 
     /// The screen's title: the list's name, or the place's title (Plan MK §3).
     var screenTitle: String { StockPlaceScreenText.title(resolvedPlace.kind, name: van?.name) }
+
+    /// Whether the list is a clinic's (Plan MY §9): the organisation's profile over the list's
+    /// own choice.
+    var resolvedClinical: StockClinicalSetting.Resolved {
+        StockClinicalSetting.resolve(profile: Config.organizationStockClinical, list: van?.clinical)
+    }
 }
