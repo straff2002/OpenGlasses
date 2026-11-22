@@ -14,8 +14,10 @@ import Foundation
 /// expects. It is not wired into `sendLocal` yet; that is P1, behind a flag.
 ///
 /// ### Bounds
-/// - **Round cap** (`Configuration.roundCap`, 3 by the plan's decision 2): after that many tool
-///   rounds, one last generation runs with tools withheld and answers from the results gathered.
+/// - **Round cap** (`Configuration.roundCap`, 3 by the plan's decision 2): after that many calls,
+///   one last generation runs with tools withheld and answers from the results gathered. Every
+///   call one generation asks for runs, in order, each counted against the cap (Plan MQ P3: Gemma 4
+///   E2B asks for a two-step turn's both calls at once); a call past the cap is counted, not run.
 /// - **Repeats**: a call whose name and arguments match an earlier round's — compared as
 ///   `AttemptToolLedger.canonicalArguments`, so `{"a":1,"b":2}` and `{"b":2,"a":1}` are the same
 ///   call whatever order Swift's dictionary gives — ends the loop instead of running again.
@@ -27,12 +29,20 @@ import Foundation
 /// exactly where `sendLocal` runs it: on the first output, only when it is prose. The correction
 /// exchange is the turn's own scaffolding and is not kept in the transcript.
 ///
+/// ### Claims of work not done
+/// On the phone Gemma 4 E2B often answered a "log it, then work out…" turn with "I have logged the
+/// line voltage as 120 volts" and called nothing (Plan MQ P3). A reply that says an action was done
+/// (`unbackedClaim(in:executed:)`) with no successful call of a tool that does it this turn gets the
+/// turn's one correction while tools are still offered; a final reply that still claims it is
+/// never spoken: the miss line is, and the turn ends `.unbackedClaim`.
+///
 /// ### Routed calls
 /// With `Configuration.routing` set, a turn `LocalTurnRouter` recognises (an error code, a model
-/// number to identify, a step of the running procedure) has its call run through `execute` before
-/// any generation, so the dispatcher's offer check, coercion and approval gates still decide. A
-/// lookup's result then goes to the model as round 1; a procedure step's result is said as the
-/// runner wrote it, with no generation, unless it is an error or needs the model's next call.
+/// number to identify, a procedure to start, a step of the running procedure) has its call run
+/// through `execute` before any generation, so the dispatcher's offer check, coercion and approval
+/// gates still decide. A lookup's result then goes to the model as round 1; a procedure's result is
+/// said as the runner wrote it, with no generation, unless it is an error or needs the model's next
+/// call.
 /// Without routing the loop is as it was.
 enum LocalToolLoop {
 
@@ -130,7 +140,8 @@ enum LocalToolLoop {
         /// The most tool rounds one turn may run (decision 2: 3).
         var roundCap: Int = defaultRoundCap
         /// Round 0's recovery: given the first output's prose, the correction to send, or nil when
-        /// none is needed. Nil disables the recovery.
+        /// none is needed. Nil disables the recovery, and the later claim correction with it; a
+        /// claim nothing backs is still never spoken.
         var correction: ((String) -> String?)? = LocalToolLoop.standardCorrection
         /// What the wearer hears when the model said nothing but protocol.
         var missText: String = LLMService.localMissMessage
@@ -160,6 +171,9 @@ enum LocalToolLoop {
         case toolResult
         /// A routed procedure step's result was said as the runner wrote it; nothing was generated.
         case routedResult
+        /// The last reply said an action was done that no call this turn did (`unbackedClaim`), so
+        /// the miss line was spoken instead of it.
+        case unbackedClaim
     }
 
     /// A call the loop ran, with what came back. Arguments are kept in memory for the caller's
@@ -186,6 +200,8 @@ enum LocalToolLoop {
         let callsFromReasoning: Int
         /// Calls the model made that the loop did not run: a repeat, or a call after the cap.
         let callsNotRun: Int
+        /// Generations that asked for more than one call (Plan MQ P3). A count only.
+        var multiCallGenerations = 0
         /// Calls `LocalTurnRouter` ran before the model (0 or 1).
         var routedCalls = 0
     }
@@ -196,9 +212,12 @@ enum LocalToolLoop {
     /// rather than dropped.
     struct Parsed {
         let classification: LocalOutputPolicy.Classification
-        /// The usable call: the spoken part's when it has one, else one found in the reasoning.
-        let invocation: LocalOutputPolicy.Invocation?
+        /// The usable calls, in order: the spoken part's when it has any, else those found in the
+        /// reasoning.
+        let invocations: [LocalOutputPolicy.Invocation]
         let fromReasoning: Bool
+        /// The first usable call.
+        var invocation: LocalOutputPolicy.Invocation? { invocations.first }
         /// Speakable text: protocol and reasoning removed.
         var text: String { classification.text }
     }
@@ -212,16 +231,18 @@ enum LocalToolLoop {
         let hasClose = raw.contains("</think>")
         guard hasOpen || hasClose else {
             let classification = LocalOutputPolicy.classify(raw)
-            return Parsed(classification: classification, invocation: classification.invocation,
+            return Parsed(classification: classification, invocations: classification.invocations,
                           fromReasoning: false)
         }
         let (spoken, reasoning) = ThinkStreamFilter.strip(raw, startsInThink: hasClose && !hasOpen)
         let classification = LocalOutputPolicy.classify(spoken)
-        if classification.invocation == nil, let reasoning,
-           let inThought = LocalOutputPolicy.classify(reasoning).invocation {
-            return Parsed(classification: classification, invocation: inThought, fromReasoning: true)
+        if classification.invocations.isEmpty, let reasoning {
+            let inThought = LocalOutputPolicy.classify(reasoning).invocations
+            if !inThought.isEmpty {
+                return Parsed(classification: classification, invocations: inThought, fromReasoning: true)
+            }
         }
-        return Parsed(classification: classification, invocation: classification.invocation,
+        return Parsed(classification: classification, invocations: classification.invocations,
                       fromReasoning: false)
     }
 
@@ -247,14 +268,15 @@ enum LocalToolLoop {
         }
     }
 
-    /// `parse(_:)` over the text, then, when the text holds no usable call, the first call the
-    /// runtime parsed — the rule `LocalOutputPolicy.classify(_:parsedCalls:)` follows. In practice
-    /// only one is present: a runtime parser consumes the frame it reads. Any protocol left in the
-    /// text is still removed from what is spoken.
+    /// `parse(_:)` over the text, then, when the text holds no usable call, every call the runtime
+    /// parsed, in order — the rule `LocalOutputPolicy.classify(_:parsedCalls:)` follows. A runtime
+    /// parser consumes the frames it reads, so the two are not both present. Any protocol left in
+    /// the text is still removed from what is spoken.
     static func parse(_ generation: Generation) -> Parsed {
         let parsed = parse(generation.text)
-        guard parsed.invocation == nil, let first = generation.toolCalls.first else { return parsed }
-        return Parsed(classification: parsed.classification, invocation: first.invocation, fromReasoning: false)
+        guard parsed.invocations.isEmpty, !generation.toolCalls.isEmpty else { return parsed }
+        return Parsed(classification: parsed.classification, invocations: generation.toolCalls.map(\.invocation),
+                      fromReasoning: false)
     }
 
     // MARK: - The loop
@@ -291,6 +313,7 @@ enum LocalToolLoop {
         var fromReasoning = 0
         var notRun = 0
         var routed = 0
+        var multiCall = 0
 
         func generation(_ purpose: Purpose, messages: [Message], toolsOffered: Bool) async throws -> Parsed {
             try Task.checkCancellation()
@@ -299,7 +322,9 @@ enum LocalToolLoop {
                                                            purpose: purpose, round: executed.count,
                                                            routedCalls: routed))
             try Task.checkCancellation()
-            return parse(raw)
+            let parsed = parse(raw)
+            if parsed.invocations.count > 1 { multiCall += 1 }
+            return parsed
         }
 
         func finish(_ parsed: Parsed, _ reason: EndReason) -> Outcome {
@@ -317,11 +342,17 @@ enum LocalToolLoop {
                     text = configuration.missText
                     if reason == .answered { reason = .protocolOnly }
                 }
+            } else if LocalToolLoop.unbackedClaim(in: text, executed: executed) != nil {
+                // Never say it was done when nothing did it.
+                text = configuration.missText
+                reason = .unbackedClaim
             }
             transcript.append(.assistant(text))
-            return Outcome(text: text, endReason: reason, transcript: transcript, executed: executed,
-                           generations: generations, usedCorrection: usedCorrection,
-                           callsFromReasoning: fromReasoning, callsNotRun: notRun, routedCalls: routed)
+            var outcome = Outcome(text: text, endReason: reason, transcript: transcript, executed: executed,
+                                  generations: generations, usedCorrection: usedCorrection,
+                                  callsFromReasoning: fromReasoning, callsNotRun: notRun, routedCalls: routed)
+            outcome.multiCallGenerations = multiCall
+            return outcome
         }
 
         // A routed call runs first, through the same dispatcher a model's call goes through.
@@ -348,51 +379,81 @@ enum LocalToolLoop {
         var parsed = try await generation(routed > 0 ? (atCapAlready ? .final : .afterTools) : .initial,
                                           messages: transcript, toolsOffered: cap > 0 && !atCapAlready)
         if routed > 0, atCapAlready {
-            if parsed.invocation != nil { notRun += 1 }
+            notRun += parsed.invocations.count
             return finish(parsed, .roundCap)
         }
 
-        // Round 0's recovery: the stall `sendLocal` corrects today, corrected the same way. Not
-        // after a routed call: the call the stall promises has already run.
-        if routed == 0, parsed.invocation == nil, parsed.classification.kind == .prose, cap > 0,
-           let correction = configuration.correction?(parsed.text) {
+        // An offer to do what the turn asked for ("I can calculate the voltage drop for you"), when
+        // it claims nothing: a claim gets the claim correction below.
+        func offerCorrection(_ prose: String) -> String? {
+            guard LocalToolLoop.unbackedClaim(in: prose, executed: executed) == nil,
+                  LocalToolLoop.offersInsteadOfDoing(prose, turn: userMessage) else { return nil }
+            return LLMService.localIntentCorrection
+        }
+
+        // Round 0's recovery: the stall `sendLocal` corrects today, corrected the same way, and a
+        // turn that asked for an action answered with an offer to do it. Not after a routed call:
+        // the call the stall promises has already run.
+        if routed == 0, parsed.invocations.isEmpty, parsed.classification.kind == .prose, cap > 0,
+           let correctionFor = configuration.correction,
+           let correction = correctionFor(parsed.text) ?? offerCorrection(parsed.text) {
             usedCorrection = true
             let scaffold = transcript + [.assistant(parsed.text), .user(correction)]
             parsed = try await generation(.correction, messages: scaffold, toolsOffered: true)
         }
 
-        while let invocation = parsed.invocation {
-            let call = Call(id: "call_\(executed.count + 1)", name: invocation.name,
-                            arguments: invocation.arguments, fromReasoning: parsed.fromReasoning)
-
-            guard executed.count < cap else {
-                // Only reachable when the cap is 0, or a model calls after tools were withheld.
-                notRun += 1
-                return finish(parsed, .roundCap)
+        while true {
+            let invocations = parsed.invocations
+            guard !invocations.isEmpty else {
+                // A reply that says it did what no call did gets the turn's one correction, while
+                // tools are still offered (`finish` never speaks it).
+                if !usedCorrection, configuration.correction != nil, executed.count < cap,
+                   parsed.classification.kind == .prose,
+                   LocalToolLoop.unbackedClaim(in: parsed.text, executed: executed) != nil {
+                    usedCorrection = true
+                    let scaffold = transcript + [.assistant(parsed.text), .user(LLMService.localClaimCorrection)]
+                    parsed = try await generation(.correction, messages: scaffold, toolsOffered: true)
+                    continue
+                }
+                break
             }
-            guard seen.insert(call.signature).inserted else {
-                notRun += 1
-                // Whatever it said beside the repeat stands; with nothing said, answer from the
-                // results already gathered, tools withheld.
+
+            // Every call this generation asked for, in order, through the same dispatcher. The prose
+            // beside them rides on the first that runs.
+            var ran = 0
+            for invocation in invocations {
+                let call = Call(id: "call_\(executed.count + 1)", name: invocation.name,
+                                arguments: invocation.arguments, fromReasoning: parsed.fromReasoning)
+                // Past the cap: only reachable when the cap is 0, a model calls after tools were
+                // withheld, or one generation asked for more calls than the cap has left.
+                guard executed.count < cap else { notRun += 1; continue }
+                guard seen.insert(call.signature).inserted else { notRun += 1; continue }
+
+                if call.fromReasoning { fromReasoning += 1 }
+                try Task.checkCancellation()
+                transcript.append(.assistant(ran == 0 ? parsed.text : "", calling: call))
+                let result = try await execute(call)
+                try Task.checkCancellation()
+                transcript.append(.toolResult(result.text, for: call))
+                executed.append(Executed(call: call, result: result))
+                ran += 1
+            }
+
+            if ran == 0 {
+                if executed.count >= cap { return finish(parsed, .roundCap) }
+                // Nothing but repeats: whatever it said beside them stands; with nothing said,
+                // answer from the results already gathered, tools withheld.
                 if !parsed.text.isEmpty { return finish(parsed, .repeatedCall) }
                 let final = try await generation(.final, messages: transcript, toolsOffered: false)
-                if final.invocation != nil { notRun += 1 }
+                notRun += final.invocations.count
                 return finish(final, .repeatedCall)
             }
-
-            if call.fromReasoning { fromReasoning += 1 }
-            try Task.checkCancellation()
-            transcript.append(.assistant(parsed.text, calling: call))
-            let result = try await execute(call)
-            try Task.checkCancellation()
-            transcript.append(.toolResult(result.text, for: call))
-            executed.append(Executed(call: call, result: result))
 
             let atCap = executed.count >= cap
             parsed = try await generation(atCap ? .final : .afterTools, messages: transcript,
                                           toolsOffered: !atCap)
             if atCap {
-                if parsed.invocation != nil { notRun += 1 }
+                notRun += parsed.invocations.count
                 return finish(parsed, .roundCap)
             }
         }
@@ -467,6 +528,72 @@ enum LocalToolLoop {
     private static func unofferedToolPrefix(_ name: String) -> String {
         "Error: the tool '\(name)' is not available on this turn."
     }
+
+    // MARK: - Claims of work not done
+
+    /// What a reply may claim was done, and the tools whose successful call this turn backs it
+    /// (Plan MQ P3). Small on purpose: the two claims Gemma 4 E2B made on the phone without a call,
+    /// in the forms it made them. A "recorded" step answer is the runner's, so it backs a log too.
+    static let actionClaims: [(tools: Set<String>, patterns: [NSRegularExpression])] = [
+        (["reading", "procedure_runner", "evidence", "field_session"], claimPatterns([
+            #"\b(i|i've|i have|we've|we have|avenkin has)\s+(just\s+|now\s+|already\s+)?(logged|recorded|saved|noted)\b"#,
+            #"\b(i'm|i am|is|are)\s+(now\s+)?(logging|recording)\b"#,
+            #"\b(?<!not )(?<!n't )been\s+(logged|recorded|saved)\b"#,
+            #"(^|[.!?,;:\u2014]\s*)(ok(ay)?[,.]?\s+)?(logged|recorded)\b"#,
+        ])),
+        (["domain_calc"], claimPatterns([
+            #"\b(i|i've|i have|we've|we have)\s+(just\s+|now\s+|already\s+)?(calculated|computed|worked out|figured out)\b"#,
+            #"\b(i'm|i am|is)\s+(now\s+)?(calculating|computing)\b"#,
+            #"\b(the|your|that)\s+(voltage\s+)?drop\s+(is|would be|will be|comes to|comes out( at)?|works out( at| to)?)\s+(about\s+|around\s+|roughly\s+|approximately\s+|only\s+|just\s+)?\d"#,
+            #"(^|[.!?,;:\u2014]\s*)calculated\b"#,
+        ])),
+    ]
+
+    private static func claimPatterns(_ patterns: [String]) -> [NSRegularExpression] {
+        patterns.map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }
+
+    /// The tools one of whose claims `text` makes with no successful call of any of them in
+    /// `executed`, or nil. A claim the turn's own calls back ("Logged 120 volts" after `reading`
+    /// ran) passes. Pure.
+    static func unbackedClaim(in text: String, executed: [Executed]) -> Set<String>? {
+        let done = Set(executed.filter { !$0.result.isError && !isUnofferedToolResult($0.result.text, name: $0.call.name) }
+            .map(\.call.name))
+        let spoken = text.replacingOccurrences(of: "\u{2019}", with: "'")
+        let range = NSRange(spoken.startIndex..., in: spoken)
+        for claim in actionClaims where claim.tools.isDisjoint(with: done) {
+            if claim.patterns.contains(where: { $0.firstMatch(in: spoken, range: range) != nil }) { return claim.tools }
+        }
+        return nil
+    }
+
+    /// Whether a reply offers to do the action the turn asked for instead of doing it ("I can
+    /// calculate the voltage drop for you." on "…then work out the voltage drop"). Only when the
+    /// turn asks for that action, without a "don't" or a "not yet", so an offer on a turn that
+    /// asked for nothing ("I'll give you the readings in a bit") is left alone. Pure.
+    static func offersInsteadOfDoing(_ reply: String, turn: String) -> Bool {
+        let said = LocalTurnRouter.normalised(reply)
+        let asked = " " + LocalTurnRouter.normalised(turn) + " "
+        guard !offerNegations.contains(where: { asked.contains($0) }) else { return false }
+        for (offers, requests) in offeredActions
+        where requests.contains(where: { asked.contains($0) }) && offers.contains(where: { said.contains($0) }) {
+            return true
+        }
+        return false
+    }
+
+    /// Per action: how a reply offers it, and how a turn asks for it.
+    static let offeredActions: [(offers: [String], requests: [String])] = [
+        (["i can log", "i can record", "i can save", "want me to log", "want me to record", "like me to log",
+          "like me to record", "shall i log", "shall i record", "should i log", "should i record"],
+         [" log it ", " log that ", " log this ", " log the ", " record it ", " record that ", " record the "]),
+        (["i can calculate", "i can work out", "i can work that out", "i can figure out", "want me to calculate",
+          "want me to work out", "like me to calculate", "like me to work out", "shall i calculate",
+          "shall i work out", "should i calculate"],
+         [" calculate ", " work out ", " figure out "]),
+    ]
+
+    static let offerNegations = [" don't ", " dont ", " do not ", " not yet ", " no need ", " never "]
 
     // MARK: - Round 0's correction
 

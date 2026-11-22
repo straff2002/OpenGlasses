@@ -6527,8 +6527,13 @@ class LLMService: ObservableObject {
             PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.routedCalls,
                                   tool: PrivacyToken(routed.call.name), detail: PrivacyToken("routed"))
         }
+        if outcome.multiCallGenerations > 0 {
+            // A count only: generations that asked for more than one call, all of which ran or were counted.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.multiCallGenerations,
+                                  detail: PrivacyToken("multiCall"))
+        }
         var answer = outcome.text
-        if outcome.endReason == .protocolOnly {
+        if outcome.endReason == .protocolOnly || outcome.endReason == .unbackedClaim {
             lastLocalTurnMissed = true
         } else if outcome.endReason != .routedResult, Self.announcesToolIntent(answer) {
             // Never speak a promise: the loop already had its rounds to keep it.
@@ -6541,13 +6546,21 @@ class LLMService: ObservableObject {
         return validated
     }
 
-    /// What `LocalTurnRouter` reads on a native local turn: the offer, and the Field Assist procedure
-    /// running now, if any. A step waiting on a read-back or a corrective note is left to the model.
+    /// What `LocalTurnRouter` reads on a native local turn: the offer, the Field Assist procedure
+    /// running now, if any, and the procedures the session's vault lets `procedure_runner` start (its
+    /// library, as `availableProcedureDefinitions()` lists it). A step waiting on a read-back or a
+    /// corrective note is left to the model.
     static func localTurnRouting(offered: Set<String>) -> LocalTurnRouter.Context {
-        let presentation = Config.fieldAssistActive ? FieldSessionService.shared.activeProcedurePresentation : nil
+        let fieldAssist = Config.fieldAssistActive
+        let service = FieldSessionService.shared
+        let presentation = fieldAssist ? service.activeProcedurePresentation : nil
+        let procedures = fieldAssist && offered.contains("procedure_runner")
+            ? service.availableProcedureDefinitions().map { LocalTurnRouter.CatalogueEntry(id: $0.id, title: $0.title) }
+            : []
         return LocalTurnRouter.Context(
             offered: offered, procedureActive: presentation != nil,
-            procedureAwaitsConfirmation: presentation.map { $0.pendingReadBack != nil || $0.needsCorrectiveNote } ?? false)
+            procedureAwaitsConfirmation: presentation.map { $0.pendingReadBack != nil || $0.needsCorrectiveNote } ?? false,
+            procedures: procedures)
     }
 
     /// One call from the native loop. A tool the turn did not offer, or arguments that cannot be

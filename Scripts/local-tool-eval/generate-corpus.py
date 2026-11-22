@@ -11,6 +11,10 @@ and most answered manual questions get a near-miss twin that must be declined. A
 (small talk, job-adjacent chatter, the time, a timer) and the protocol cases (clean output,
 cancellation) are written here by hand.
 
+The body opens with one catalogue line per vault, `{"catalogue": {"vault", "procedures": [{id, title}]}}`:
+the procedures a turn may start, which the eval hands every case of that vault, as the app hands its
+router the vault's library (Plan MQ P3). It is written once rather than on every case.
+
 Deterministic: the same vault and this script give byte-identical output. The header records the
 SHA-256 of every input (this script included) and of the case lines, and
 `LocalToolEvalCorpusTests` recomputes both, so a vault edit without a regeneration fails CI.
@@ -396,7 +400,7 @@ def safety():
 
 
 def procedures():
-    for name in ["slp99_no_ignition", "slp99_pressure_switch_lockout", "slp99_unit_size_code"]:
+    for name in PROCEDURE_NAMES:
         src = f"procedures/{name}.json"
         procedure = json.loads(read(f"{VAULT_REL}/{src}"))
         title = procedure["title"]
@@ -675,6 +679,18 @@ def everyday():
 # ---------------------------------------------------------------------------------------------
 
 
+PROCEDURE_NAMES = ["slp99_no_ignition", "slp99_pressure_switch_lockout", "slp99_unit_size_code"]
+
+
+def catalogue():
+    """The example vault's procedures, by id and title, in id order."""
+    entries = []
+    for name in PROCEDURE_NAMES:
+        procedure = json.loads(read(f"{VAULT_REL}/procedures/{name}.json"))
+        entries.append({"id": procedure["id"], "title": procedure["title"]})
+    return {"catalogue": {"vault": VAULT_TAG, "procedures": sorted(entries, key=lambda e: e["id"])}}
+
+
 def build():
     service_values()
     error_codes()
@@ -691,7 +707,8 @@ def build():
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
         sys.exit(f"duplicate case ids: {len(duplicates)}")
-    body = [json.dumps(c, ensure_ascii=False, sort_keys=True) for c in cases]
+    body = [json.dumps(catalogue(), ensure_ascii=False, sort_keys=True)]
+    body += [json.dumps(c, ensure_ascii=False, sort_keys=True) for c in cases]
     digest = hashlib.sha256()
     for rel in sorted(INPUTS):
         digest.update(rel.encode() + b"\0" + (ROOT / rel).read_bytes() + b"\0")
@@ -708,6 +725,7 @@ def build():
 
 def summary(text):
     rows = [json.loads(l) for l in text.splitlines() if l and not l.startswith("//")]
+    rows = [r for r in rows if "catalogue" not in r]
     by = {}
     for r in rows:
         key = (r["group"], r["category"])

@@ -89,6 +89,22 @@ final class LocalOutputPolicyTests: XCTestCase {
         let result = LocalOutputPolicy.classify(validFrame + " and " + second)
         XCTAssertEqual(result.invocation?.name, "get_weather", "first usable call wins")
         XCTAssertEqual(result.text, "and")
+        XCTAssertEqual(result.invocations.map(\.name), ["get_weather", "set_timer"],
+                       "every usable call, in order, for a reader that runs them all (Plan MQ P3)")
+    }
+
+    func testEveryUsableCallIsListedInOrderAcrossBothGrammars() {
+        let raw = #"<tool_call>{"name": "reading", "arguments": {"value": "120"}}</tool_call>"#
+            + #" <tool_call:domain_calc{operation:<|"|>voltage_drop<|"|>}>"#
+            + #" <tool_call>{"name": "broken", "arguments": </tool_call>"#
+        let result = LocalOutputPolicy.classify(raw)
+        XCTAssertEqual(result.kind, .toolCall)
+        XCTAssertEqual(result.invocations.map(\.name), ["reading", "domain_calc"], "a broken frame is never a call")
+        XCTAssertTrue(LocalOutputPolicy.classify("Just prose.").invocations.isEmpty)
+        let parsed = LocalOutputPolicy.classify("", parsedCalls: [.init(name: "reading", arguments: [:]),
+                                                                  .init(name: "domain_calc", arguments: [:])])
+        XCTAssertEqual(parsed.invocation?.name, "reading")
+        XCTAssertEqual(parsed.invocations.map(\.name), ["reading", "domain_calc"])
     }
 
     // MARK: - Broken protocol

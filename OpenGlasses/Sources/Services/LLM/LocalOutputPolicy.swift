@@ -50,7 +50,7 @@ enum LocalOutputPolicy {
         case prose
         /// Protocol fragments were removed; nothing callable, nothing truncated.
         case proseWithProtocol
-        /// Exactly one usable call (`name` + `arguments`). Prose around it survives in `text`.
+        /// At least one usable call (`name` + `arguments`). Prose around it survives in `text`.
         case toolCall
         /// Protocol was present but no usable call could be formed from it — unparseable JSON,
         /// missing keys, or a bare (untagged) call object, which is not the protocol this app
@@ -66,8 +66,12 @@ enum LocalOutputPolicy {
         /// speaker label stripped, whitespace tidied. May be empty — that is the caller's cue that
         /// there is no answer left to say.
         let text: String
-        /// Set only for `.toolCall`.
+        /// Set only for `.toolCall`: the call a single-call reader runs.
         let invocation: Invocation?
+        /// Every usable call, in the order the output gave them (Plan MQ P3): `LocalToolLoop` runs
+        /// them all, since Gemma 4 E2B asks for a two-step turn's both calls in one reply. Empty
+        /// unless `.toolCall`.
+        var invocations: [Invocation] = []
 
         /// True when any protocol fragment was found and removed. The reason a caller can tell
         /// "the model said nothing" (an empty completion, still an error) apart from "the model
@@ -80,6 +84,7 @@ enum LocalOutputPolicy {
     static func classify(_ raw: String) -> Classification {
         var removals: [Range<String.Index>] = []
         var invocation: Invocation?
+        var found: [(at: String.Index, call: Invocation)] = []
         var sawMalformed = false
         var sawIncomplete = false
         var sawEmptyFrame = false
@@ -96,6 +101,7 @@ enum LocalOutputPolicy {
                 if let (call, end) = gemmaCall(in: raw, from: open.upperBound) {
                     removals.append(open.lowerBound..<end)
                     if invocation == nil { invocation = call }
+                    found.append((open.lowerBound, call))
                     scan = end
                 } else {
                     let lineEnd = raw[open.upperBound...].firstIndex(where: \.isNewline) ?? raw.endIndex
@@ -114,6 +120,7 @@ enum LocalOutputPolicy {
                 // whole is still its call.
                 if invocation == nil, let call = gemmaCall(wholly: String(raw[open.upperBound...])) {
                     invocation = call
+                    found.append((open.lowerBound, call))
                 } else {
                     sawIncomplete = true
                 }
@@ -123,9 +130,10 @@ enum LocalOutputPolicy {
             removals.append(open.lowerBound..<close.upperBound)
             let payload = raw[open.upperBound..<close.lowerBound]
             if let call = parseCallObject(String(payload)) ?? gemmaCall(wholly: String(payload)) {
-                // First usable call wins. A second frame in the same output is still removed from
-                // the text but is never executed — one turn, one call, as the local protocol says.
+                // First usable call wins for a single-call reader. A second frame in the same output
+                // is still removed from the text; only `invocations` readers run it.
                 if invocation == nil { invocation = call }
+                found.append((open.lowerBound, call))
             } else if payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 sawEmptyFrame = true
             } else {
@@ -165,7 +173,8 @@ enum LocalOutputPolicy {
 
         return Classification(kind: kind,
                               text: tidied(raw, removing: removals),
-                              invocation: invocation)
+                              invocation: invocation,
+                              invocations: found.sorted { $0.at < $1.at }.map(\.call))
     }
 
     /// The speakable text of a completion, with no classification. Convenience for boundaries that
@@ -650,10 +659,12 @@ extension LocalOutputPolicy {
     /// Plan MQ P1: one generation read with the calls the runtime's parser took out of the stream.
     /// A call in the text wins (the shipped protocol); otherwise the runtime's first call is the
     /// turn's call. Until P1 those calls were skipped, so a Hermes-format model's call vanished.
-    /// Whatever protocol the text carried is still removed from what is spoken.
+    /// Whatever protocol the text carried is still removed from what is spoken. `invocations`
+    /// holds every call the runtime parsed, in order.
     static func classify(_ raw: String, parsedCalls: [LocalToolCallEvent]) -> Classification {
         let classification = classify(raw)
         guard classification.invocation == nil, let first = parsedCalls.first else { return classification }
-        return Classification(kind: .toolCall, text: classification.text, invocation: first.invocation)
+        return Classification(kind: .toolCall, text: classification.text, invocation: first.invocation,
+                              invocations: parsedCalls.map(\.invocation))
     }
 }

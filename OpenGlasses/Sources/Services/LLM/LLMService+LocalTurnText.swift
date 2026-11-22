@@ -36,8 +36,24 @@ extension LLMService {
             "i'm searching", "searching for", "i should have used a tool",
             "i will use a tool", "using a tool to",
         ]
-        return intentPhrases.contains { lowered.contains($0) }
+        if intentPhrases.contains(where: { lowered.contains($0) }) { return true }
+        // A promise of a job action instead of the call (Plan MQ P3, traced on the phone: "I will
+        // log the line voltage first, and then calculate the drop…"). Not when the reply also asks
+        // something or waits on the wearer: "I'll log it once you tell me the value" is not a stall.
+        guard !lowered.contains("?"), !waitingOnWearer.contains(where: { lowered.contains($0) }) else { return false }
+        let straightened = lowered.replacingOccurrences(of: "\u{2019}", with: "'")
+        return actionPromisePhrases.contains { straightened.contains($0) }
     }
+
+    /// Words that make a promise wait on the wearer rather than stand in for a call.
+    nonisolated static let waitingOnWearer = ["once you", "when you", "if you", "after you", "tell me", "give me"]
+
+    /// First-person promises of a Field Assist action: a log, a calculation.
+    nonisolated static let actionPromisePhrases: [String] = {
+        let openers = ["i will", "i'll", "let me", "i'm going to", "i am going to", "i will now", "i'll now", "i'm about to"]
+        let actions = ["log", "record", "calculate", "work out", "figure out", "save the reading", "note the reading"]
+        return openers.flatMap { opener in actions.map { opener + " " + $0 } }
+    }()
 
     /// True when the reply asks the user to supply their location — the model has
     /// where_am_i available and must never ask (live-traced: "If you tell me your current
@@ -56,6 +72,9 @@ extension LLMService {
     /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.
     nonisolated static let localLocationCorrection = "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
     nonisolated static let localIntentCorrection = "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
+    /// The correction after a reply that said an action was done when no call did it (Plan MQ P3,
+    /// `LocalToolLoop.unbackedClaim`). Read by the model, never spoken.
+    nonisolated static let localClaimCorrection = "You said it was done, but no tool was called this turn, so nothing was done. Call the tool now, or say plainly that it has not been done. Never say something was done unless a tool result in this turn says so."
 
     /// The reduced tool block appended to the lean on-device prompt. Extracted (and pure)
     /// so the location nudge is testable: without it, a small model that has no USER

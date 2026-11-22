@@ -18,10 +18,15 @@ import Foundation
 /// the model as before. A turn that asks another tool for something (log, photo, calculate) is
 /// never routed. A route the turn did not offer the tool for never fires.
 ///
+/// ### Starting a procedure
+/// Gemma 4 E2B started none of the vault's procedures when asked (0 of 3). A start is routed only
+/// on an imperative start ("Start the no ignition procedure", "let's run the E270 procedure") with
+/// no procedure running, and only when the words name exactly one entry of the vault's catalogue
+/// (`Context.procedures`): every word said about it is in that title and in no other's. Anything
+/// more, or anything said after it, goes to the model.
+///
 /// ### What is not routed
-/// Starting a procedure: it needs the procedure's id from the vault's catalogue, which the model
-/// reads in its prompt and the router does not have. Error codes through `table_lookup`: it needs
-/// a real table id, which only the passages give.
+/// Error codes through `table_lookup`: it needs a real table id, which only the passages give.
 enum LocalTurnRouter {
 
     /// What the router reads besides the words.
@@ -34,16 +39,26 @@ enum LocalTurnRouter {
         /// is that, not the step's answer, and is left to the model, which has the step's
         /// instructions in its prompt.
         var procedureAwaitsConfirmation: Bool = false
+        /// The procedures the vault lets this turn start, by id and title. Empty: no start is routed.
+        var procedures: [CatalogueEntry] = []
 
-        init(offered: Set<String>, procedureActive: Bool, procedureAwaitsConfirmation: Bool = false) {
+        init(offered: Set<String>, procedureActive: Bool, procedureAwaitsConfirmation: Bool = false,
+             procedures: [CatalogueEntry] = []) {
             self.offered = offered
             self.procedureActive = procedureActive
             self.procedureAwaitsConfirmation = procedureAwaitsConfirmation
+            self.procedures = procedures
         }
     }
 
+    /// One procedure a turn may start.
+    struct CatalogueEntry: Equatable, Sendable, Decodable {
+        let id: String
+        let title: String
+    }
+
     enum Kind: String, CaseIterable, Sendable {
-        case errorCode, modelNumber, procedureNext, procedureRepeat, procedureAnswer
+        case errorCode, modelNumber, procedureStart, procedureNext, procedureRepeat, procedureAnswer
     }
 
     /// How a routed call's result reaches the wearer.
@@ -66,7 +81,7 @@ enum LocalTurnRouter {
         var speech: Speech {
             switch kind {
             case .errorCode, .modelNumber: return .model
-            case .procedureNext, .procedureRepeat, .procedureAnswer: return .result
+            case .procedureStart, .procedureNext, .procedureRepeat, .procedureAnswer: return .result
             }
         }
     }
@@ -82,6 +97,11 @@ enum LocalTurnRouter {
         if procedure, let kind = stepCommand(text) {
             return Route(kind: kind, tool: "procedure_runner",
                          arguments: ["action": kind == .procedureNext ? "next" : "repeat"])
+        }
+        if !context.procedureActive, context.offered.contains("procedure_runner"),
+           let id = startedProcedure(text, catalogue: context.procedures) {
+            return Route(kind: .procedureStart, tool: "procedure_runner",
+                         arguments: ["action": "start", "procedure_id": id])
         }
         let lookup = context.offered.contains("equipment_lookup") && !asksAnotherTool(text)
         if lookup, let code = askedErrorCode(text) {
@@ -161,6 +181,73 @@ enum LocalTurnRouter {
             return token
         }
     }
+
+    // MARK: - Starting a procedure
+
+    /// The id of the one catalogue procedure `text` tells the assistant to start, or nil. The turn
+    /// opens with a start verb (after "ok", "please", "can you", "let's"…); the words up to
+    /// "procedure" name it, and nothing but filler follows. Without the word "procedure", the whole
+    /// title must be said, so "open the pressure switch" is not a start. The words name it when every
+    /// one of them is in its title (case, punctuation, "the" and a code list in brackets ignored),
+    /// and in no other title; one word alone must be a code or at least five letters. Past tense
+    /// and statements ("I already ran the no ignition procedure") have no start verb in front.
+    static func startedProcedure(_ text: String, catalogue: [CatalogueEntry]) -> String? {
+        guard !catalogue.isEmpty, !asksAnotherTool(text) else { return nil }
+        var words = ArraySlice(titleWords(text))
+        var letUs = false
+        while let first = words.first, startOpeners.contains(first) {
+            if first == "let's" || first == "lets" || first == "let" { letUs = true }
+            words = words.dropFirst()
+        }
+        guard let verb = words.first, startVerbs.contains(verb) || (letUs && verb == "do") else { return nil }
+        let rest = Array(words.dropFirst())
+        let named: [String]
+        if let mark = rest.firstIndex(where: { procedureWords.contains($0) }) {
+            guard rest[(mark + 1)...].allSatisfy({ trailingStartFiller.contains($0) }) else { return nil }
+            named = Array(rest[..<mark])
+        } else {
+            guard verb != "open" else { return nil }
+            named = rest
+        }
+        let said = Set(named.filter { !nameFiller.contains($0) })
+        guard !said.isEmpty else { return nil }
+        if said.count == 1, let only = said.first,
+           !(only.count >= 5 || only.range(of: #"^e\d{3}$"#, options: .regularExpression) != nil) { return nil }
+        let matches = catalogue.filter { said.isSubset(of: titleTokens($0.title)) }
+        guard matches.count == 1, let match = matches.first else { return nil }
+        if !rest.contains(where: { procedureWords.contains($0) }) {
+            // The whole title, said: the words outside its brackets, codes aside.
+            guard titleCore(match.title).isSubset(of: said) else { return nil }
+        }
+        return match.id
+    }
+
+    /// `normalised(_:)` split into words, hyphenated words split too ("no-ignition").
+    static func titleWords(_ text: String) -> [String] {
+        normalised(text).split(whereSeparator: { $0 == " " || $0 == "-" }).map(String.init).filter { !$0.isEmpty }
+    }
+
+    /// A title's words, brackets included, without filler.
+    static func titleTokens(_ title: String) -> Set<String> {
+        Set(titleWords(title).filter { !nameFiller.contains($0) })
+    }
+
+    /// A title's words outside brackets, without codes or filler: what saying the whole title says.
+    static func titleCore(_ title: String) -> Set<String> {
+        let unbracketed = title.replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression)
+        return titleTokens(unbracketed).filter { $0.range(of: #"^e\d{3}$"#, options: .regularExpression) == nil }
+    }
+
+    static let startOpeners: Set<String> = [
+        "ok", "okay", "right", "alright", "so", "now", "please", "can", "could", "would", "will", "you", "go",
+        "ahead", "and", "then", "yeah", "yes", "cool", "great", "let's", "lets", "let", "us", "just",
+    ]
+    static let startVerbs: Set<String> = ["start", "run", "begin", "open", "launch"]
+    static let procedureWords: Set<String> = ["procedure", "procedures"]
+    /// Words that may follow "procedure" in a start.
+    static let trailingStartFiller: Set<String> = ["please", "now", "then", "for", "me", "us", "again", "thanks", "mate"]
+    /// Words that name no procedure.
+    static let nameFiller: Set<String> = ["the", "a", "an", "for", "me", "us", "please", "now", "again", "then"]
 
     // MARK: - Procedure steps
 
@@ -291,7 +378,7 @@ enum LocalTurnRouter {
         }
         var spoken: [String] = []
         for line in lines[..<header] {
-            if line.hasPrefix("⚠️ SAFETY: ") || leadLines.contains(line) {
+            if line.hasPrefix("⚠️ SAFETY: ") || leadLines.contains(line) || line.hasPrefix("Started procedure ") {
                 spoken.append(line)
             } else if line.hasPrefix(coachingSafety) {
                 spoken.append("SAFETY: " + line.dropFirst(coachingSafety.count))
@@ -316,7 +403,8 @@ enum LocalTurnRouter {
         "Error:", "Read this back", "Recorded, and it needs a corrective note", "Specify ",
     ]
 
-    /// Lines before a step that are said: where the run now is.
+    /// Lines before a step that are said: where the run now is. A start's own line ("Started
+    /// procedure '…'.") is said too.
     static let leadLines: Set<String> = ["Last step.", "Stepped back."]
 
     /// Words only a line for the model carries.

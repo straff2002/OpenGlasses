@@ -137,6 +137,10 @@ enum LocalToolEval {
         var procedureActive: Bool?
         /// What a passing model emits, raw, one entry per generation.
         var reference: [String]?
+        /// The procedures the case's vault lets a turn start, by id and title: never on a case's own
+        /// line, filled by `loadCorpus` from the vault's one catalogue line, so the router sees on
+        /// every case of the vault (restraint included) what the app's router sees.
+        var procedures: [LocalTurnRouter.CatalogueEntry]?
 
         /// A reading case: the model reads passages and the check accepts or declines.
         var isReading: Bool { reading != nil && expect.readingAccepted != nil }
@@ -185,19 +189,38 @@ enum LocalToolEval {
         return (picked, skipped)
     }
 
+    /// A vault's procedure catalogue, one line per vault in the corpus (`{"catalogue": {…}}`), written
+    /// by the generator from the vault's `procedures/` (Plan MQ P3).
+    struct Catalogue: Decodable, Equatable {
+        let vault: String
+        let procedures: [LocalTurnRouter.CatalogueEntry]
+    }
+
+    private struct CatalogueLine: Decodable {
+        let catalogue: Catalogue
+    }
+
     /// Reads JSON lines. Blank lines and `//` lines are skipped; a line that does not decode is
-    /// counted, not fatal, so a typo shows up as a number rather than a crash.
+    /// counted, not fatal, so a typo shows up as a number rather than a crash. A vault's catalogue
+    /// line is read into `Case.procedures` of each of that vault's cases.
     static func loadCorpus(_ text: String) -> (cases: [Case], undecodable: Int) {
         var cases: [Case] = []
+        var catalogues: [String: [LocalTurnRouter.CatalogueEntry]] = [:]
         var bad = 0
         for line in text.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, !trimmed.hasPrefix("//") else { continue }
-            if let decoded = try? JSONDecoder().decode(Case.self, from: Data(trimmed.utf8)) {
+            let data = Data(trimmed.utf8)
+            if trimmed.hasPrefix(#"{"catalogue":"#), let line = try? JSONDecoder().decode(CatalogueLine.self, from: data) {
+                catalogues[line.catalogue.vault] = line.catalogue.procedures
+            } else if let decoded = try? JSONDecoder().decode(Case.self, from: data) {
                 cases.append(decoded)
             } else {
                 bad += 1
             }
+        }
+        for index in cases.indices {
+            if let vault = cases[index].vault, let procedures = catalogues[vault] { cases[index].procedures = procedures }
         }
         return (cases, bad)
     }
@@ -567,7 +590,8 @@ enum LocalToolEval {
                 var configuration = LocalToolLoop.Configuration()
                 if environment.routesTurns {
                     configuration.routing = LocalTurnRouter.Context(offered: Set(testCase.offered),
-                                                                    procedureActive: testCase.procedureActive ?? false)
+                                                                    procedureActive: testCase.procedureActive ?? false,
+                                                                    procedures: testCase.procedures ?? [])
                 }
                 let outcome = try await LocalToolLoop.run(
                     history: history, userMessage: testCase.turn, configuration: configuration,

@@ -138,7 +138,82 @@ final class LocalTurnRouterTests: XCTestCase {
         XCTAssertNil(route("I already ran the no ignition procedure yesterday, it was the igniter",
                            offered: stepTools, procedure: true, history: asked))
         XCTAssertNil(route("Start the no ignition procedure", offered: stepTools, procedure: true),
-                     "a start needs the catalogue; the model has it")
+                     "a start needs the catalogue")
+    }
+
+    // MARK: - Starting a procedure
+
+    private let catalogue: [R.CatalogueEntry] = [
+        .init(id: "slp99_no_ignition", title: "SLP99 No Ignition, Soft Lockout E270"),
+        .init(id: "slp99_pressure_switch_lockout", title: "SLP99 Pressure Switch Lockout (E223 / E227 / E271 / E272)"),
+        .init(id: "slp99_unit_size_code", title: "SLP99 Program the Unit Size Code (E203 / three bars)"),
+    ]
+
+    private func start(_ turn: String, offered: Set<String>? = nil, procedure: Bool = false,
+                       catalogue: [R.CatalogueEntry]? = nil) -> R.Route? {
+        R.route(turn: turn, history: [],
+                context: R.Context(offered: offered ?? stepTools.union(["equipment_lookup"]), procedureActive: procedure,
+                                   procedures: catalogue ?? self.catalogue))
+    }
+
+    func testAStartNamingOneProcedureStartsItByID() {
+        for (turn, id) in [("Start the sLP99 No Ignition, Soft Lockout E270 procedure", "slp99_no_ignition"),
+                           ("Start the sLP99 Pressure Switch Lockout (E223 / E227 / E271 / E272) procedure",
+                            "slp99_pressure_switch_lockout"),
+                           ("Start the sLP99 Program the Unit Size Code (E203 / three bars) procedure", "slp99_unit_size_code"),
+                           ("Start the no ignition procedure", "slp99_no_ignition"),
+                           ("OK, can you run the no-ignition procedure please?", "slp99_no_ignition"),
+                           ("Let's do the pressure switch procedure", "slp99_pressure_switch_lockout"),
+                           ("Begin the E203 procedure", "slp99_unit_size_code"),
+                           ("Start SLP99 no ignition soft lockout", "slp99_no_ignition")] {
+            let routed = start(turn)
+            XCTAssertEqual(routed?.kind, .procedureStart, turn)
+            XCTAssertEqual(routed?.tool, "procedure_runner", turn)
+            XCTAssertEqual(routed?.arguments, ["action": "start", "procedure_id": id], turn)
+            XCTAssertEqual(routed?.speech, .result, turn)
+        }
+    }
+
+    func testAStartThatNamesNoneOrMoreThanOneIsLeftToTheModel() {
+        for turn in ["Start the furnace tune-up procedure", "Start the no ignition troubleshooting procedure",
+                     "Open a new job for the SLP99 furnace at 14 Hill Street", "Start job 1005",
+                     "Start the SLP99 procedure", "Run the lockout procedure", "Start the code procedure",
+                     "Start the procedure", "Open the pressure switch",
+                     "Start the no ignition procedure, the igniter isn't glowing",
+                     "Start the no ignition procedure and log 120 volts"] {
+            XCTAssertNil(start(turn), turn)
+        }
+        XCTAssertEqual(start("Start the SLP99 procedure", catalogue: [catalogue[0]])?.arguments["procedure_id"],
+                       "slp99_no_ignition", "one procedure in the vault: naming the unit is enough")
+    }
+
+    func testAStartIsNotRoutedWhileOneRunsOrWithoutTheRunnerOrTheCatalogue() {
+        let turn = "Start the no ignition procedure"
+        XCTAssertNil(start(turn, procedure: true))
+        XCTAssertNil(start(turn, offered: ["field_session", "reading", "equipment_lookup"]))
+        XCTAssertNil(start(turn, catalogue: []))
+    }
+
+    func testTalkAboutAProcedureIsNotAStart() {
+        for turn in ["I already ran the no ignition procedure yesterday, it was the igniter",
+                     "We started the no ignition procedure earlier", "Did you start the no ignition procedure?",
+                     "Don't start the no ignition procedure yet", "I'll start the no ignition procedure in a minute",
+                     "The no ignition procedure is the one I need", "Give me a second to think about where to start"] {
+            XCTAssertNil(start(turn), turn)
+        }
+    }
+
+    func testAStartResultIsSaidWithItsOwnLine() {
+        let result = LocalToolLoop.ExecutionResult(text: """
+            Started procedure 'SLP99 No Ignition, Soft Lockout E270'.
+
+            Step — Confirm the lockout
+            Read the code on the control.
+            (Call 'next' to continue.)
+            """)
+        XCTAssertEqual(R.spokenProcedureResult(result),
+                       "Started procedure 'SLP99 No Ignition, Soft Lockout E270'. Confirm the lockout. Read the code on the control.")
+        XCTAssertNil(R.spokenProcedureResult(.init(text: "Could not start procedure: unknown procedure.")))
     }
 
     // MARK: - Speaking a step's result
@@ -229,11 +304,12 @@ final class LocalTurnRouterTests: XCTestCase {
 
     /// The turn shapes the router exists for, by case id.
     private enum Target: String, CaseIterable {
-        case errorCode, modelNumber, procedureNextRepeat, procedureAnswer
+        case errorCode, modelNumber, procedureStart, procedureNextRepeat, procedureAnswer
 
         init?(id: String) {
             if id.hasPrefix("code-"), id.hasSuffix("-lookup") || id.hasSuffix("-followup") { self = .errorCode }
             else if id.hasPrefix("model-"), id.hasSuffix("-lookup") { self = .modelNumber }
+            else if id.hasPrefix("proc-"), id.hasSuffix("-start") { self = .procedureStart }
             else if id.hasPrefix("proc-"), id.hasSuffix("-next") || id.hasSuffix("-repeat") { self = .procedureNextRepeat }
             else if id.hasPrefix("proc-"), id.hasSuffix("-answer") { self = .procedureAnswer }
             else { return nil }
@@ -242,7 +318,7 @@ final class LocalTurnRouterTests: XCTestCase {
         var floor: Double {
             switch self {
             case .errorCode, .modelNumber, .procedureAnswer: return 0.9
-            case .procedureNextRepeat: return 1.0
+            case .procedureStart, .procedureNextRepeat: return 1.0
             }
         }
     }
@@ -259,7 +335,8 @@ final class LocalTurnRouterTests: XCTestCase {
             if let target { totals[target, default: 0] += 1 }
             guard let route = R.route(turn: testCase.turn, history: testCase.loopHistory,
                                       context: R.Context(offered: Set(testCase.offered),
-                                                         procedureActive: testCase.procedureActive ?? false)) else {
+                                                         procedureActive: testCase.procedureActive ?? false,
+                                                         procedures: testCase.procedures ?? [])) else {
                 continue
             }
             if let target { routedByTarget[target, default: 0] += 1 } else { routedElsewhere += 1 }
@@ -284,6 +361,9 @@ final class LocalTurnRouterTests: XCTestCase {
         print("local-turn-router corpus other cases routed: \(routedElsewhere); wrongly routed: \(wrong.count)")
 
         XCTAssertEqual(wrong, [])
+        let catalogued = loaded.cases.filter { $0.vault == "lennox-slp99" }
+        XCTAssertTrue(!catalogued.isEmpty && catalogued.allSatisfy { ($0.procedures ?? []).count == 3 },
+                      "every case of the vault sees its catalogue, restraint included")
         for target in Target.allCases {
             let total = try XCTUnwrap(totals[target], "the corpus has no \(target.rawValue) case")
             let routed = routedByTarget[target] ?? 0
