@@ -2327,10 +2327,14 @@ enum PrivacyLog {
         /// sync step's name), `ringStoredHistory` (`count`: chunks, `success`: the end marker came),
         /// `ringMeasured` (`detail`: the measurement's kind, `success`: a value came),
         /// `ringWriteRefused` (`reason`: why Health refused), `ringUnknownPacket` (nothing else: not
-        /// even the opcode), `ringTrigger` (`state`: fired or ignored, `reason`: why ignored). Case
-        /// names and counts only: never a reading, an address, an identifier or a packet's bytes.
+        /// even the opcode), `ringTrigger` (`state`: fired, ignored or refused, `reason`: why ignored
+        /// or refused, `success` on a refusal: the notice was posted), `ringRestored` (iOS handed
+        /// the link back after relaunching the app; `count`: rings restored, `state`: the paired
+        /// ring's link — `connected`, `connecting` or `none`) and `ringRelaunch` (the app was
+        /// launched for the ring's link). Case names and counts only: never a reading, an address,
+        /// an identifier or a packet's bytes.
         case ringPaired, ringForgotten, ringSynced, ringStepSkipped, ringStoredHistory, ringMeasured
-        case ringWriteRefused, ringUnknownPacket, ringTrigger
+        case ringWriteRefused, ringUnknownPacket, ringTrigger, ringRestored, ringRelaunch
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

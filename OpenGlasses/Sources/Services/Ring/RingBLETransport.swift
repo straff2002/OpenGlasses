@@ -15,7 +15,12 @@ import Foundation
 ///   its pairing prompt on the first connect; the subscription completes once it is answered.
 /// - **Stay.** A connect is a pending one: iOS completes it when the ring is in range. The service
 ///   reconnects after a drop with a short backoff while the app runs, using the existing
-///   `bluetooth-central` background mode (decision 3). No state restoration in v1.
+///   `bluetooth-central` background mode (decision 3).
+/// - **Come back.** The central carries a restore identifier (`RingRestoration`), so when iOS ends
+///   the app in the background it keeps the ring's connection and relaunches the app for it. The
+///   relaunch makes `AppState`, which starts the ring service, which makes this central again with
+///   the same identifier; iOS then hands the paired ring back in `willRestoreState`. Not after a
+///   force-quit: iOS doesn't relaunch an app the wearer swiped away.
 ///
 /// The central is made on first use, so Bluetooth is never touched (and never asked for) until the
 /// ring support is on and the wearer pairs a ring or one is paired.
@@ -97,7 +102,8 @@ final class RingBLETransport: NSObject, RingTransporting {
 
     private func ensureCentral() {
         guard central == nil else { return }
-        central = CBCentralManager(delegate: self, queue: .main)
+        central = CBCentralManager(delegate: self, queue: .main,
+                                   options: [CBCentralManagerOptionRestoreIdentifierKey: RingRestoration.restoreIdentifier])
     }
 
     private func beginScanIfReady() {
@@ -165,6 +171,30 @@ extension RingBLETransport: CBCentralManagerDelegate, CBPeripheralDelegate {
             guard central.state == .poweredOn else { return }
             beginScanIfReady()
             connectIfReady()
+        }
+    }
+
+    /// iOS relaunched the app for the ring and hands back what it kept. Called before the state
+    /// update. The paired ring is taken back as the link; the next `poweredOn` re-runs
+    /// `connectIfReady`, which rediscovers the services of a ring that is still connected and
+    /// leaves a pending connect pending. Anything else iOS kept is cancelled.
+    nonisolated func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        MainActor.assumeIsolated {
+            let restored = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral]) ?? []
+            let adopt = RingRestoration.peripheralToAdopt(restored: restored.map(\.identifier),
+                                                          paired: wantedPeripheral)
+            var state = RingRestoration.LinkState.none
+            for peripheral in restored {
+                if peripheral.identifier == adopt {
+                    seen[peripheral.identifier] = peripheral
+                    self.peripheral = peripheral
+                    peripheral.delegate = self
+                    state = peripheral.state == .connected ? .connected : .connecting
+                } else {
+                    central.cancelPeripheralConnection(peripheral)
+                }
+            }
+            PrivacyLog.device(.ring, .ringRestored, state: PrivacyToken(state.rawValue), count: restored.count)
         }
     }
 

@@ -99,6 +99,13 @@ final class OpenGlassesAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         BackgroundRefreshCoordinator.shared.registerWithSystem()
+        #if !AVENKIN_PHONE_ONLY
+        // Plan MZ: iOS relaunched the app for the ring's link. The ring's central is made again
+        // when `AppState` starts the ring service, and iOS hands the link back to it then.
+        if RingRestoration.launchedForRing(centrals: launchOptions?[.bluetoothCentrals] as? [String]) {
+            PrivacyLog.device(.ring, .ringRelaunch)
+        }
+        #endif
         return true
     }
 

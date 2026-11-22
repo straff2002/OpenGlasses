@@ -204,12 +204,12 @@ final class RingTriggerTests: XCTestCase {
     func testAClenchIsCarriedOutAsATempleTapWouldBe() async {
         let app = FakeApp()
         let outcome = await RingTriggerRunner.run(.startTalking, performer: app)
-        XCTAssertEqual(outcome, .run(.startListening))
+        XCTAssertEqual(outcome, .carriedOut(.run(.startListening)))
         XCTAssertEqual(app.effects, [.startListening])
         XCTAssertEqual(app.earcons, [TempleEarcon.for(.run(.startListening))], "the temple tap's earcon")
 
         let photo = await RingTriggerRunner.run(.photoDescribe, performer: app)
-        XCTAssertEqual(photo, .ignored(.noGlassesCamera))
+        XCTAssertEqual(photo, .carriedOut(.ignored(.noGlassesCamera)))
         XCTAssertEqual(app.earcons.last, .refused)
         XCTAssertEqual(app.lines, [TempleIgnoreReason.noGlassesCamera.spokenLine!])
     }
