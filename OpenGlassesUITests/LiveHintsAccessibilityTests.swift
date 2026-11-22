@@ -8,6 +8,9 @@ final class LiveHintsAccessibilityTests: AccessibilityAuditCase {
     /// The deferrals any `Form` screen in this app carries.
     private let formDeferrals: [AuditDeferral] = [.systemFormChrome, .secondaryCopyContrast, .singleLineTextEntry]
 
+    /// The card is off Home by default (Edit Home › Cards places it); the argument domain places it.
+    private static let cardOnHome = ["-liveHintsOnHome", "YES"]
+
     private func openSheet(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         awaitScreen(app.tabBars.buttons["Avenkin"], named: "The tab bar", file: file, line: line)
         let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Live hints'")).firstMatch
@@ -19,14 +22,14 @@ final class LiveHintsAccessibilityTests: AccessibilityAuditCase {
 
     func testTheSessionSheetPassesAccessibilityAudit() {
         executionTimeAllowance = 600
-        let app = launch([.configured])
+        let app = launch([.configured], extraArguments: Self.cardOnHome)
         openSheet(app)
         audit(app, screen: "Live hints — session sheet", deferring: formDeferrals)
     }
 
     func testTheDemoSessionScreenPassesAccessibilityAudit() {
         executionTimeAllowance = 600
-        let app = launch([.configured])
+        let app = launch([.configured], extraArguments: Self.cardOnHome)
         openSheet(app)
         let demo = app.buttons["Try a demo"]
         for _ in 0..<6 where !demo.isHittable { app.swipeUp() }

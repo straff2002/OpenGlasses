@@ -132,11 +132,18 @@ final class LiveHintsSurfacesTests: XCTestCase {
     // MARK: - The Home card
 
     func testTheHomeCardIsAlwaysThereDuringASessionAndYieldsOtherwise() {
-        XCTAssertTrue(LiveHintsHomeCardRule.shows(featureOn: true, sessionRunning: false, surfaceFree: true))
-        XCTAssertFalse(LiveHintsHomeCardRule.shows(featureOn: true, sessionRunning: false, surfaceFree: false))
-        XCTAssertFalse(LiveHintsHomeCardRule.shows(featureOn: false, sessionRunning: false, surfaceFree: true))
-        XCTAssertTrue(LiveHintsHomeCardRule.shows(featureOn: true, sessionRunning: true, surfaceFree: false),
+        XCTAssertTrue(LiveHintsHomeCardRule.shows(featureOn: true, onHome: true, sessionRunning: false, surfaceFree: true))
+        XCTAssertFalse(LiveHintsHomeCardRule.shows(featureOn: true, onHome: true, sessionRunning: false, surfaceFree: false))
+        XCTAssertFalse(LiveHintsHomeCardRule.shows(featureOn: false, onHome: true, sessionRunning: false, surfaceFree: true))
+        XCTAssertTrue(LiveHintsHomeCardRule.shows(featureOn: true, onHome: false, sessionRunning: true, surfaceFree: false),
                       "the session turned captions on; the card is the way back")
+    }
+
+    func testTheHomeCardIsOffHomeUntilTheWearerPlacesIt() {
+        XCTAssertFalse(LiveHintsHomeCardRule.shows(featureOn: true, onHome: false, sessionRunning: false, surfaceFree: true),
+                       "Home is the conversation: no idle feature card unless placed there")
+        UserDefaults.standard.removeObject(forKey: LiveHintsHomeCardRule.onHomeKey)
+        XCTAssertFalse(Config.liveHintsOnHome, "off by default")
     }
 
     // MARK: - Taps

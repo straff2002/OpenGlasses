@@ -4989,6 +4989,11 @@ struct Config {
     /// default as a feature; a session only ever starts on the wearer's word.
     @UserDefaultsBacked("liveHintsEnabled", default: true) static var liveHintsEnabled: Bool
 
+    /// Live hints' card on the Home screen, when no session runs. Off by default: Home is the
+    /// conversation, not a place to advertise features. Edit Home › Cards turns it on; "start live
+    /// hints" works either way, and a running session always shows its card.
+    @UserDefaultsBacked(LiveHintsHomeCardRule.onHomeKey, default: false) static var liveHintsOnHome: Bool
+
     /// Live hints' first-run sheet (where audio goes, that nothing is kept) has been shown and
     /// acknowledged. It shows once; the one-line capture notice shows at every start.
     @UserDefaultsBacked("liveHintsFirstRunAcknowledged", default: false) static var liveHintsFirstRunAcknowledged: Bool
