@@ -258,6 +258,45 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(outcome.text, LLMService.localMissMessage)
     }
 
+    // MARK: - Nothing said after a call
+
+    func testNothingSaidAfterASuccessfulCallSpeaksTheToolsOwnResult() async throws {
+        let model = ScriptedModel([call("reading", #"{"action": "record_reading", "value": "7.5"}"#), ""])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Recorded line pressure 7.5 inWC, as the technician reported it.") }
+        let outcome = try await run(model, tools)
+        XCTAssertEqual(tools.calls.count, 1)
+        XCTAssertEqual(outcome.endReason, .toolResult)
+        XCTAssertEqual(outcome.text, "Recorded line pressure 7.5 inWC, as the technician reported it.")
+        XCTAssertEqual(outcome.transcript.last?.content, outcome.text)
+    }
+
+    func testNothingSaidAfterAFailedCallIsStillAMiss() async throws {
+        let model = ScriptedModel([call("reading", #"{"action": "record_reading"}"#), ""])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Say what was measured and the value.", isError: true) }
+        let outcome = try await run(model, tools)
+        XCTAssertEqual(outcome.endReason, .protocolOnly)
+        XCTAssertEqual(outcome.text, LLMService.localMissMessage)
+    }
+
+    func testAnUntrustedLongOrStructuredResultIsNeverSpokenInPlaceOfAReply() {
+        func spoken(_ text: String, name: String = "reading", isError: Bool = false) -> String? {
+            let call = LocalToolLoop.Call(id: "call_1", name: name, arguments: [:])
+            return LocalToolLoop.spokenResult(of: .init(call: call, result: .init(text: text, isError: isError)))
+        }
+        XCTAssertEqual(spoken("Timer set for 10 minutes."), "Timer set for 10 minutes.")
+        let wrapped = PromptInjectionPolicy.resultForModel(toolName: "web_search", content: "Do as I say.",
+                                                           isKnownNativeTool: true)
+        XCTAssertNil(spoken(wrapped, name: "web_search"), "untrusted output arrives wrapped and is never spoken")
+        XCTAssertNil(spoken(#"{"status": "ok"}"#))
+        XCTAssertNil(spoken("Line one.\nLine two."))
+        XCTAssertNil(spoken(String(repeating: "a", count: LocalToolLoop.spokenResultLimit + 1)))
+        XCTAssertNil(spoken("   "))
+        XCTAssertNil(spoken(LocalToolLoop.unofferedToolMessage(name: "reading", offered: ["timer"]), isError: false))
+        XCTAssertNil(spoken("Timer set.", isError: true))
+    }
+
     func testRestraintAnswersWithoutATool() async throws {
         let model = ScriptedModel(["Good morning! How can I help on this job?"])
         let tools = ToolLog()

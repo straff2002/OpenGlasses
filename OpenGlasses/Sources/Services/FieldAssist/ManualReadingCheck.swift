@@ -62,7 +62,9 @@ enum ManualReadingCheck {
         guard !normalised(reading.answer).isEmpty else { return .declined(.emptyAnswer) }
         let quote = normalised(reading.quote)
         guard quote.contains(where: { $0.isLetter || $0.isNumber }) else { return .declined(.emptyQuote) }
-        guard let passage = passages[reading.passage] else { return .declined(.unknownPassage) }
+        guard let passage = passages[reading.passage] ?? passages[passageID(reading.passage)] else {
+            return .declined(.unknownPassage)
+        }
         let text = normalised(passage)
         guard text.contains(quote) else { return .declined(.quoteNotInPassage) }
 
@@ -77,6 +79,20 @@ enum ManualReadingCheck {
     }
 
     // MARK: - Normalising
+
+    /// A cited passage id as it was handed over: surrounding space, brackets and quote marks
+    /// removed, and a leading "passage" dropped, so "[p1]", "(p1)" and "Passage p1" all cite `p1`.
+    /// Only the wrapping goes: an id that names something else ("TABLE 39 SM p.67") still matches
+    /// nothing. Gemma 4 E2B copied the brackets of the reader's old "[p1]" label into 31 of 43
+    /// declined readings on the phone (Plan MQ P3).
+    static func passageID(_ cited: String) -> String {
+        let wrapping = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "[](){}<>\"'`\u{2018}\u{2019}\u{201C}\u{201D}:"))
+        var id = cited.trimmingCharacters(in: wrapping)
+        if id.lowercased().hasPrefix("passage") {
+            id = String(id.dropFirst("passage".count)).trimmingCharacters(in: wrapping)
+        }
+        return id
+    }
 
     /// Lowercased, whitespace collapsed, dashes and quote marks folded to ASCII, a thin or
     /// non-breaking space read as a space.

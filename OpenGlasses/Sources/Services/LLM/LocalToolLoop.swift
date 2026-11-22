@@ -138,6 +138,10 @@ enum LocalToolLoop {
         case roundCap
         /// The model produced only protocol (or nothing usable); the miss line is spoken.
         case protocolOnly
+        /// The model said nothing after a call that succeeded, so the call's own short result is
+        /// spoken (`spokenResult(of:)`) rather than the miss line: Gemma 4 E2B on the phone
+        /// logged the reading and then ended its turn in 24 of 38 calls (Plan MQ P3).
+        case toolResult
     }
 
     /// A call the loop ran, with what came back. Arguments are kept in memory for the caller's
@@ -278,8 +282,13 @@ enum LocalToolLoop {
             var reason = reason
             var text = parsed.text
             if text.isEmpty {
-                text = configuration.missText
-                if reason == .answered { reason = .protocolOnly }
+                if let last = executed.last, let spoken = LocalToolLoop.spokenResult(of: last) {
+                    text = spoken
+                    reason = .toolResult
+                } else {
+                    text = configuration.missText
+                    if reason == .answered { reason = .protocolOnly }
+                }
             }
             transcript.append(.assistant(text))
             return Outcome(text: text, endReason: reason, transcript: transcript, executed: executed,
@@ -333,6 +342,26 @@ enum LocalToolLoop {
             }
         }
         return finish(parsed, .answered)
+    }
+
+    /// The longest tool result `spokenResult(of:)` will say in place of an empty reply.
+    static let spokenResultLimit = 240
+
+    /// A finished call's result as the wearer may hear it when the model said nothing after it, or
+    /// nil. Only a native tool's own result that succeeded, on one line, short, plain prose: never
+    /// an error, never the dispatcher's refusal, and never an untrusted result, which arrives
+    /// wrapped (`PromptInjectionPolicy.resultForModel`) and so is never one plain line. What the
+    /// wearer hears is then what the tool says it did ("Recorded line pressure 7.5 inWC, as the
+    /// technician reported it."), which is true, rather than the miss line, which isn't.
+    static func spokenResult(of executed: Executed) -> String? {
+        let result = executed.result
+        guard !result.isError, !isUnofferedToolResult(result.text, name: executed.call.name) else { return nil }
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= spokenResultLimit,
+              !text.contains(where: { $0.isNewline || $0 == "<" || $0 == "{" || $0 == "[" }) else { return nil }
+        let classification = LocalOutputPolicy.classify(text)
+        guard classification.kind == .prose, classification.text == text else { return nil }
+        return text
     }
 
     /// What the model reads when it calls a tool the turn did not offer. Shared by

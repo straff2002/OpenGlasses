@@ -84,6 +84,18 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertTrue(scripted.measurements.promptSeconds.isEmpty)
     }
 
+    func testNothingSaidAfterALoggedReadingIsCoveredByItsResultAndStillCountedAsAFault() async throws {
+        let testCase = try XCTUnwrap(try corpus().first { $0.id == "sv-001-log-in" })
+        let call = #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "#
+            + #""quantity": "line pressure, in. w.c., Natural", "value": "7.5", "unit": "inWC"}}</tool_call>"#
+        let run = await LocalToolEval.run(testCase, environment: environment { _, _, index in
+            index == 0 ? .init(text: call, stats: self.stats(tokens: 40)) : .init(text: "", stats: self.stats(tokens: 0))
+        })
+        XCTAssertEqual(run.grades[.toolName], true)
+        XCTAssertEqual(run.grades[.cleanText], true, "the wearer hears the reading's own result, which is clean")
+        XCTAssertTrue(run.hadTemplateFault, "the empty reply is still counted")
+    }
+
     func testAReplyThatStopsAtTheCapIsMarkedCut() async throws {
         let testCase = try XCTUnwrap(try corpus().first { $0.id == "chat-morning" })
         let atCap = await LocalToolEval.run(testCase, environment: environment { _, _, _ in

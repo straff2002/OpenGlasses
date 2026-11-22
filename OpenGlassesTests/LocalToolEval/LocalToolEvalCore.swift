@@ -359,7 +359,10 @@ enum LocalToolEval {
         }
         let signatures = calls.map(\.signature)
         grades[.noRepeats] = Set(signatures).count == signatures.count && outcome.callsNotRun == 0
-        grades[.cleanText] = isClean(outcome.text) && measurements.zeroTokenGenerations == 0
+        // The empty reply the loop covered with the call's own result (`.toolResult`) is what the
+        // wearer hears as clean; any other generation of no tokens is still a template fault.
+        let covered = outcome.endReason == .toolResult ? 1 : 0
+        grades[.cleanText] = isClean(outcome.text) && measurements.zeroTokenGenerations - covered <= 0
         return grades
     }
 
@@ -385,7 +388,7 @@ enum LocalToolEval {
         /// The request for `testCase`, passages in id order.
         static func request(for testCase: Case) -> Request {
             let passages = (testCase.passages ?? [:]).sorted { $0.key < $1.key }
-                .map { "[\($0.key)]\n\($0.value)" }.joined(separator: "\n\n")
+                .map { "Passage \($0.key):\n\($0.value)" }.joined(separator: "\n\n")
             return Request(instructions: instructions,
                            prompt: "Passages:\n\n\(passages)\n\nQuestion: \(testCase.turn)")
         }

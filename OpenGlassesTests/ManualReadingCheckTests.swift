@@ -46,6 +46,15 @@ final class ManualReadingCheckTests: XCTestCase {
         XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: "p9"), .declined(.unknownPassage))
     }
 
+    func testACitedIdInItsLabelsWrappingStillCitesThePassage() {
+        for cited in ["[p1]", " p1 ", "(p1)", "\"p1\"", "Passage p1", "passage: p1", "[Passage p1]"] {
+            XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: cited), .accepted, cited)
+        }
+        XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: "TABLE 39 SM p.67"),
+                       .declined(.unknownPassage), "only the wrapping goes, never a different name")
+        XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: "[p9]"), .declined(.unknownPassage))
+    }
+
     func testQuotesMatchAcrossCaseWhitespaceAndDashes() {
         XCTAssertEqual(check("4.5 in. w.c.", quote: "NATURAL  |  4.5 - 10.5"), .accepted)
         XCTAssertEqual(check("4.5 in. w.c.", quote: "natural | 4.5 — 10.5"), .accepted)
