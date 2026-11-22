@@ -188,85 +188,85 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يستخدم Avenkin تقنية Bluetooth للاتصال بنظاراتك الذكية (Ray-Ban Meta أو EVEN Realities G2)."
+            "value" : "يستخدم Avenkin تقنية Bluetooth للاتصال بنظاراتك الذكية (Ray-Ban Meta أو EVEN Realities G2) وبخاتمك الذكي."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2)."
+            "value" : "Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2) and to your smart ring."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin usa Bluetooth para conectarse a tus lentes inteligentes (Ray-Ban Meta o EVEN Realities G2)."
+            "value" : "Avenkin usa Bluetooth para conectarse a tus lentes inteligentes (Ray-Ban Meta o EVEN Realities G2) y a tu anillo inteligente."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin utilise le Bluetooth pour se connecter à vos lunettes intelligentes (Ray-Ban Meta ou EVEN Realities G2)."
+            "value" : "Avenkin utilise le Bluetooth pour se connecter à vos lunettes intelligentes (Ray-Ban Meta ou EVEN Realities G2) et à votre bague intelligente."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Avenkin a Bluetooth segítségével csatlakozik az okos szemüvegéhez (Ray-Ban Meta vagy EVEN Realities G2)."
+            "value" : "Az Avenkin a Bluetooth segítségével csatlakozik az okos szemüvegéhez (Ray-Ban Meta vagy EVEN Realities G2) és az okosgyűrűjéhez."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin usa il Bluetooth per connettersi ai tuoi occhiali intelligenti (Ray-Ban Meta o EVEN Realities G2)."
+            "value" : "Avenkin usa il Bluetooth per connettersi ai tuoi occhiali intelligenti (Ray-Ban Meta o EVEN Realities G2) e al tuo anello intelligente."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinは、スマートグラス（Ray-Ban MetaまたはEVEN Realities G2）に接続するためにBluetoothを使用します。"
+            "value" : "Avenkinは、スマートグラス（Ray-Ban MetaまたはEVEN Realities G2）とスマートリングに接続するためにBluetoothを使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin은 Bluetooth를 사용하여 스마트 안경(Ray-Ban Meta 또는 EVEN Realities G2)에 연결합니다."
+            "value" : "Avenkin은 Bluetooth를 사용하여 스마트 안경(Ray-Ban Meta 또는 EVEN Realities G2)과 스마트 링에 연결합니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin gebruikt Bluetooth om verbinding te maken met uw slimme bril (Ray-Ban Meta of EVEN Realities G2)."
+            "value" : "Avenkin gebruikt Bluetooth om verbinding te maken met uw slimme bril (Ray-Ban Meta of EVEN Realities G2) en uw slimme ring."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Avenkin usa o Bluetooth para se conectar aos seus óculos inteligentes (Ray-Ban Meta ou EVEN Realities G2)."
+            "value" : "O Avenkin usa o Bluetooth para se conectar aos seus óculos inteligentes (Ray-Ban Meta ou EVEN Realities G2) e ao seu anel inteligente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin использует Bluetooth для подключения к вашим умным очкам (Ray-Ban Meta или EVEN Realities G2)."
+            "value" : "Avenkin использует Bluetooth для подключения к вашим умным очкам (Ray-Ban Meta или EVEN Realities G2) и умному кольцу."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin آپ کی اسمارٹ عینک (Ray-Ban Meta یا EVEN Realities G2) سے منسلک ہونے کے لیے Bluetooth استعمال کرتا ہے۔"
+            "value" : "Avenkin آپ کی اسمارٹ عینک (Ray-Ban Meta یا EVEN Realities G2) اور اسمارٹ رنگ سے منسلک ہونے کے لیے Bluetooth استعمال کرتا ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 使用 Bluetooth 连接你的智能眼镜（Ray-Ban Meta 或 EVEN Realities G2）。"
+            "value" : "Avenkin 使用 Bluetooth 连接你的智能眼镜（Ray-Ban Meta 或 EVEN Realities G2）和智能戒指。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 使用 Bluetooth 連接你的智慧眼鏡（Ray-Ban Meta 或 EVEN Realities G2）。"
+            "value" : "Avenkin 使用 Bluetooth 連接你的智慧眼鏡（Ray-Ban Meta 或 EVEN Realities G2）和智慧戒指。"
           }
         }
       }
@@ -278,85 +278,85 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يستخدم Avenkin تقنية Bluetooth للاتصال بنظاراتك الذكية (Ray-Ban Meta أو EVEN Realities G2)."
+            "value" : "يستخدم Avenkin تقنية Bluetooth للاتصال بنظاراتك الذكية (Ray-Ban Meta أو EVEN Realities G2) وبخاتمك الذكي."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2)."
+            "value" : "Avenkin uses Bluetooth to connect to your smart glasses (Ray-Ban Meta or EVEN Realities G2) and to your smart ring."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin usa Bluetooth para conectarse a tus lentes inteligentes (Ray-Ban Meta o EVEN Realities G2)."
+            "value" : "Avenkin usa Bluetooth para conectarse a tus lentes inteligentes (Ray-Ban Meta o EVEN Realities G2) y a tu anillo inteligente."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin utilise le Bluetooth pour se connecter à vos lunettes intelligentes (Ray-Ban Meta ou EVEN Realities G2)."
+            "value" : "Avenkin utilise le Bluetooth pour se connecter à vos lunettes intelligentes (Ray-Ban Meta ou EVEN Realities G2) et à votre bague intelligente."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Avenkin a Bluetooth segítségével csatlakozik az okos szemüvegéhez (Ray-Ban Meta vagy EVEN Realities G2)."
+            "value" : "Az Avenkin a Bluetooth segítségével csatlakozik az okos szemüvegéhez (Ray-Ban Meta vagy EVEN Realities G2) és az okosgyűrűjéhez."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin usa il Bluetooth per connettersi ai tuoi occhiali intelligenti (Ray-Ban Meta o EVEN Realities G2)."
+            "value" : "Avenkin usa il Bluetooth per connettersi ai tuoi occhiali intelligenti (Ray-Ban Meta o EVEN Realities G2) e al tuo anello intelligente."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinは、スマートグラス（Ray-Ban MetaまたはEVEN Realities G2）に接続するためにBluetoothを使用します。"
+            "value" : "Avenkinは、スマートグラス（Ray-Ban MetaまたはEVEN Realities G2）とスマートリングに接続するためにBluetoothを使用します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin은 Bluetooth를 사용하여 스마트 안경(Ray-Ban Meta 또는 EVEN Realities G2)에 연결합니다."
+            "value" : "Avenkin은 Bluetooth를 사용하여 스마트 안경(Ray-Ban Meta 또는 EVEN Realities G2)과 스마트 링에 연결합니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin gebruikt Bluetooth om verbinding te maken met uw slimme bril (Ray-Ban Meta of EVEN Realities G2)."
+            "value" : "Avenkin gebruikt Bluetooth om verbinding te maken met uw slimme bril (Ray-Ban Meta of EVEN Realities G2) en uw slimme ring."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Avenkin usa o Bluetooth para se conectar aos seus óculos inteligentes (Ray-Ban Meta ou EVEN Realities G2)."
+            "value" : "O Avenkin usa o Bluetooth para se conectar aos seus óculos inteligentes (Ray-Ban Meta ou EVEN Realities G2) e ao seu anel inteligente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin использует Bluetooth для подключения к вашим умным очкам (Ray-Ban Meta или EVEN Realities G2)."
+            "value" : "Avenkin использует Bluetooth для подключения к вашим умным очкам (Ray-Ban Meta или EVEN Realities G2) и умному кольцу."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin آپ کی اسمارٹ عینک (Ray-Ban Meta یا EVEN Realities G2) سے منسلک ہونے کے لیے Bluetooth استعمال کرتا ہے۔"
+            "value" : "Avenkin آپ کی اسمارٹ عینک (Ray-Ban Meta یا EVEN Realities G2) اور اسمارٹ رنگ سے منسلک ہونے کے لیے Bluetooth استعمال کرتا ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 使用 Bluetooth 连接你的智能眼镜（Ray-Ban Meta 或 EVEN Realities G2）。"
+            "value" : "Avenkin 使用 Bluetooth 连接你的智能眼镜（Ray-Ban Meta 或 EVEN Realities G2）和智能戒指。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 使用 Bluetooth 連接你的智慧眼鏡（Ray-Ban Meta 或 EVEN Realities G2）。"
+            "value" : "Avenkin 使用 Bluetooth 連接你的智慧眼鏡（Ray-Ban Meta 或 EVEN Realities G2）和智慧戒指。"
           }
         }
       }
@@ -818,85 +818,85 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يحفظ Avenkin بيانات التمارين من جلسات التدريب البدني في Apple Health."
+            "value" : "يحفظ Avenkin في Apple Health بيانات التمارين من جلسات التدريب البدني، ومعدل ضربات القلب وأكسجين الدم والنوم والخطوات التي يقيسها خاتمك الذكي."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Avenkin saves workout data from fitness coaching sessions to Apple Health."
+            "value" : "Avenkin saves workout data from fitness coaching sessions, and the heart rate, blood oxygen, sleep and steps your smart ring measures, to Apple Health."
           }
         },
         "es-MX" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin guarda en Apple Health los datos de entrenamiento de las sesiones con el entrenador de fitness."
+            "value" : "Avenkin guarda en Apple Health los datos de entrenamiento de las sesiones con el entrenador de fitness, y la frecuencia cardiaca, el oxígeno en la sangre, el sueño y los pasos que mide tu anillo inteligente."
           }
         },
         "fr-CA" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin enregistre dans Apple Health les données d'entraînement de vos séances de coaching en mise en forme."
+            "value" : "Avenkin enregistre dans Apple Health les données d'entraînement de vos séances de coaching en mise en forme, ainsi que la fréquence cardiaque, l'oxygène sanguin, le sommeil et les pas mesurés par votre bague intelligente."
           }
         },
         "hu" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Az Avenkin a fitneszedzői foglalkozások edzésadatait az Apple Healthbe menti."
+            "value" : "Az Avenkin a fitneszedzői foglalkozások edzésadatait, valamint az okosgyűrűje által mért pulzust, véroxigénszintet, alvást és lépésszámot az Apple Healthbe menti."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin salva in Apple Health i dati degli allenamenti delle sessioni di coaching fitness."
+            "value" : "Avenkin salva in Apple Health i dati degli allenamenti delle sessioni di coaching fitness, oltre alla frequenza cardiaca, all'ossigeno nel sangue, al sonno e ai passi misurati dal tuo anello intelligente."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkinは、フィットネスコーチングセッションのワークアウトデータをApple Healthに保存します。"
+            "value" : "Avenkinは、フィットネスコーチングセッションのワークアウトデータと、スマートリングが測定した心拍数、血中酸素、睡眠、歩数をApple Healthに保存します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin은 피트니스 코칭 세션의 운동 데이터를 Apple Health에 저장합니다."
+            "value" : "Avenkin은 피트니스 코칭 세션의 운동 데이터와 스마트 링이 측정한 심박수, 혈중 산소, 수면, 걸음 수를 Apple Health에 저장합니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin bewaart trainingsgegevens van fitnesscoachingsessies in Apple Health."
+            "value" : "Avenkin bewaart trainingsgegevens van fitnesscoachingsessies en de hartslag, het zuurstofgehalte in het bloed, de slaap en de stappen die uw slimme ring meet in Apple Health."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Avenkin salva no Apple Health os dados de treino das sessões com o preparador físico."
+            "value" : "O Avenkin salva no Apple Health os dados de treino das sessões com o preparador físico e a frequência cardíaca, o oxigênio no sangue, o sono e os passos medidos pelo seu anel inteligente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin сохраняет в Apple Health данные о тренировках, проведенных с фитнес-тренером."
+            "value" : "Avenkin сохраняет в Apple Health данные о тренировках, проведенных с фитнес-тренером, а также пульс, уровень кислорода в крови, сон и шаги, которые измеряет ваше умное кольцо."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin فٹنس کوچنگ سیشنز کا ورزش کا ڈیٹا Apple Health میں محفوظ کرتا ہے۔"
+            "value" : "Avenkin فٹنس کوچنگ سیشنز کا ورزش کا ڈیٹا، اور آپ کے اسمارٹ رنگ کی ناپی گئی دل کی دھڑکن، خون میں آکسیجن، نیند اور قدم Apple Health میں محفوظ کرتا ہے۔"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 会将健身指导课程中的锻炼数据存储到 Apple Health。"
+            "value" : "Avenkin 会将健身指导课程中的锻炼数据，以及智能戒指测量的心率、血氧、睡眠和步数存储到 Apple Health。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Avenkin 會將健身指導課程的鍛鍊資料儲存到 Apple Health。"
+            "value" : "Avenkin 會將健身指導課程的鍛鍊資料，以及智慧戒指測量的心率、血氧、睡眠和步數儲存到 Apple Health。"
           }
         }
       }

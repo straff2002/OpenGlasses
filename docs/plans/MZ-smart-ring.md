@@ -1,8 +1,81 @@
 # Plan MZ — Smart Ring (heart rate, oxygen, steps, sleep and battery from a cheap ring, straight into Apple Health, with no vendor app or cloud)
 
-**Status:** 📝 Drafted 2026-11-22; nothing built. 10 decisions with recommendations (Decision 8's
-action taken: a clench starts the assistant listening). The owner has
-one ring in hand, so the device pass (P5) can be run for real as soon as P0–P4 are built.
+**Status:** 🚧 P0–P4 built 2026-11-22, behind `Config.ringSupportEnabled` (off by default; turned on
+at Settings › Advanced & Support › Advanced › Developer › Smart Ring). P0/P1: `Services/Ring/` codec,
+clock, sleep timeline, sync machine and Health writer (93 tests, plus one `SleepNightAggregatorTests`
+case). P2–P4: `RingBLETransport` (glasses build only), `RingService`, the pairing record, Devices &
+Privacy › Smart Ring, the `ring` tool, the workout and Live Coach hooks and the clench trigger (81 new
+tests in `RingServiceTests`, `RingScanMatchTests`, `RingToolTests`, `RingLiveReadingsTests`,
+`RingTriggerTests`, `RingWorkoutHeartRateTests`, `RingPrivacyScrapeTests` and
+`ToolPermissionGateTests`; 175 new in all). Verified 2026-11-22: Debug
+build-for-testing and Release builds clean; the focused set 731 passed; the full suite 19,681
+passed, 0 failed, 16 skipped (none of them ring tests). Owed: P5 (the device pass on the owner's
+ring), P6 (catalog sync of the new UI strings), and the agreed follow-up PR for CoreBluetooth state
+restoration and the response when a clench asks for listening on a locked phone. 10 decisions with
+recommendations; Decision 8's action taken (a clench starts the assistant listening), its default
+taken as recommended (on once a ring is paired).
+
+**Built as, where it differs from the text below (P0/P1):**
+- The time-sync command's bytes 1–4 carry the ring's local wall-clock seconds (UTC plus the full
+  offset), byte 5 the whole hours truncated toward zero. The notes call bytes 1–4 a "Unix timestamp";
+  P5 confirms which (the published example cannot tell them apart).
+- The activity step waits 5 s for an `03` when the startup burst brought none. Steps are stamped with
+  the time the packet arrived, not the ring's timestamp (the burst comes before the clock is set).
+- A spot heart rate takes the first reading in 30–220 bpm and stops. `27` restarts a run (spot or
+  live); the spot cap runs from the first start. `28` during an oxygen run is "no reading".
+- The stored-history watchdog restarts on each `16` packet; the activity summary (`13`), the sleep
+  query's summary (`10`) and the stored stream are typed events with no values kept.
+- Sleep fetched in a sync is decoded with the clock latched before that connection's time sync
+  (`RingSyncMachine.recordingClock`); after a full sync the new clock takes over.
+- Steps: the last counter value is held in memory only (the cursor is dates only). After a relaunch,
+  a day the cursor has already reached waits for a second reading rather than guess the starting
+  count, so steps between the last write and that first reading are lost; a day not yet reached is
+  written from midnight.
+- Delete Ring Readings removes every `ring.`-prefixed sample from the app's source, earlier pairings
+  included, since Forget clears the pairing id.
+
+**Built as, where it differs from the text below (P2–P4):**
+- `RingTransporting` reports events (`radio`, `discovered`, `ready`, `notification`, `battery`,
+  `disconnected`); `RingBLETransport` makes its own central on first use, so Bluetooth is not touched
+  (or asked for) until the support is on and a ring is paired or a scan starts. `.ready` is reported
+  only once `33f4` is notifying; a refused pairing prompt cancels the connect.
+- `RingService` feeds the machine through an inbox, so a synchronous echo never re-enters it. The
+  reconnect backoff is 2, 5, 15, 30, then 60 s, reset by a ready link. A linked ring is synced every
+  30 min while the app runs (60 min at conserve and reserve). At reserve a workout's live session is
+  not restarted after a reconnect; asking for one (a workout starting, a tool call) still starts it.
+- The machine gained a `trigger` step after `goal` (writes `07 01` only while the trigger is on),
+  one-off commands (find ring, trigger mode on/off) that run before the next sync step, and a
+  schedule change sent at once. Forget sends `07 00` and waits up to 3 s for the echo.
+- The pairing record is one JSON value in preferences (`ringPairingRecord`, `DataStoreRegistry`
+  `ringPairing`): pairing id, Bluetooth identifier, cursors, latched clock, paired and last-sync
+  dates. Decision 9's note is shown once, the first time a ring held by another app is found, and
+  Forget lets it be shown again.
+- Health access is asked at pairing through `ToolPermissionGate`'s `ring` case
+  (`RingHealthWriter.shareTypes`, no read types).
+- The low-battery line (at 10 % or below) is spoken once, re-armed at 20 % or above. It is held in
+  memory, so a relaunch below 10 % can say it once more.
+- `ring` is registered in the glasses build and offered (prompt, schemas, the Tools list) only while
+  the support is on (`ConditionallyOfferedTool`). It is classified `.local(.bestEffort, 60 s)`: a
+  measurement writes to Health. It waits at most 55 s for a measurement and then says there was no
+  reading. A fresh workout reading answers `heart_rate` without a new run. `oxygen` speaks "keep your
+  hand still" on an on-device voice (no number) while the run starts.
+- `fitness_coach` gained a `status` action. The workout's heart-rate samples reach Health through the
+  ring's writer as they arrive, and the ones read during the workout are also added to the saved
+  `HKWorkout` (`WorkoutHeartRateSource.workoutHeartRateSamples(from:to:)`, a separate
+  `addSamples` so a refused heart-rate write never costs the workout). The workout's copies carry
+  the same sync identifiers one sync version higher, so Health should replace the earlier copies
+  rather than count them twice; that replacement is untested until the device pass.
+- Recording, as well as both photo actions, needs a double clench: a misfire that starts a recording
+  is worse than one photo. Suppression covers listening, speaking and live sessions; thinking and busy
+  go to `TempleActionResolver`, which turns them down with its own tone. The clench is carried out by
+  `TempleGestureDispatcher.carryOut`, shared with the temple taps.
+- The three usage strings (both Bluetooth keys, `NSHealthUpdateUsageDescription`) are reworded and
+  translated into the 13 complete languages in `InfoPlist.xcstrings`. The phone-only store build
+  drops the Bluetooth keys as before, and `Scripts/prepare-phone-only-build.py` restores the pre-ring
+  `NSHealthUpdateUsageDescription` there (`Scripts/check-phone-only-artifact.py` fails an artifact
+  that mentions the ring), so Decision 5's wording concern is settled.
+- The Developer panel's ring packet screen keeps the last 20 packets and the unknown opcodes in
+  memory only.
 **Track:** Health and wearables. The phone talks to the ring; the glasses are not involved, except
 as the camera a ring trigger can fire (P4).
 **Builds on:**

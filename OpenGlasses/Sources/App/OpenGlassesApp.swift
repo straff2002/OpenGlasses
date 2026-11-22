@@ -1654,6 +1654,11 @@ class AppState: ObservableObject, AppStateProtocol {
     lazy var bandPractice = BandPracticeSession(display: glassesDisplay)
     /// Plan MU §0: the lens fit check (Display & HUD and the Developer panel).
     lazy var lensFitCheck = LensFitCheckSession(display: glassesDisplay)
+    #if !AVENKIN_PHONE_ONLY
+    /// Plan MZ: the smart ring. Made on first use; it touches Bluetooth only once started, which
+    /// happens only while `Config.ringSupportEnabled` is on (`AppState+Ring.swift`).
+    lazy var ringService: RingService = RingService.live()
+    #endif
     /// The manual page on the lens (Plan KV): the view, zoomed by band or voice, and the
     /// **Show here** cue for a page the app put up by itself.
     lazy var lensPage = LensPageSession(display: glassesDisplay, router: hudRouter)
@@ -5397,6 +5402,10 @@ class AppState: ObservableObject, AppStateProtocol {
         // app is doing right now. The claim policy keeps the user's audio and other-party calls
         // first; during our own conversations only the handlers stay (session control).
         templeTaps.performer = self
+        #if !AVENKIN_PHONE_ONLY
+        // Plan MZ P4: the ring's clench reaches the same performer as a temple tap.
+        setUpRing()
+        #endif
         mediaTrigger.realtimeSessionActive = { [weak self] in
             (self?.geminiLiveSession.isActive ?? false) || (self?.openAIRealtimeSession.isActive ?? false)
         }

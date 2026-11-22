@@ -92,6 +92,17 @@ enum ToolPermissionGate {
             } catch {
                 return false
             }
+        case "ring":
+            // Plan MZ: what the ring writes, asked for when a ring is paired. The set is the
+            // writer's own, so the prompt cannot ask for one thing while the writer saves another.
+            // No new read types: everything reads the ring back through health summaries.
+            guard HKHealthStore.isHealthDataAvailable() else { return false }
+            do {
+                try await HKHealthStore().requestAuthorization(toShare: RingHealthWriter.shareTypes, read: [])
+                return true
+            } catch {
+                return false
+            }
         default:
             return true
         }

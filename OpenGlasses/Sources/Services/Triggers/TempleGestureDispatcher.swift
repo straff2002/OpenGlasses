@@ -66,6 +66,14 @@ final class TempleGestureDispatcher: ObservableObject {
                                   outcome: outcome, at: now())
         PrivacyLog.device(.nowPlaying, .commandHandled, state: PrivacyToken(Self.logToken(outcome)),
                           command: PrivacyToken(gesture.rawValue))
+        await Self.carryOut(outcome, with: performer)
+        return outcome
+    }
+
+    /// Carry out a resolved outcome: confirm it with its earcon, then do it, or say why not when
+    /// that is worth a sentence. Temple taps and the ring's clench (Plan MZ §8) both end here, so
+    /// a clench sounds and acts exactly as a tap assigned the same action.
+    static func carryOut(_ outcome: TempleOutcome, with performer: TempleActionPerforming) async {
         performer.playTempleEarcon(TempleEarcon.for(outcome))
         switch outcome {
         case .run(let effect):
@@ -75,7 +83,6 @@ final class TempleGestureDispatcher: ObservableObject {
                 await performer.announceTempleLine(line)
             }
         }
-        return outcome
     }
 
     /// What test mode says for a tap: the count, the raw command (so a wrong calibration is

@@ -167,6 +167,8 @@ enum SensitiveStore: String, CaseIterable {
     case checkInDismissals
     case licence
     case licenceSeat
+    /// Which smart ring is paired and how far it has synced (Plan MZ P2). No readings.
+    case ringPairing
 
     // Keychain, by item family
     case keychainProviderKeys
@@ -1486,6 +1488,19 @@ enum SensitiveStore: String, CaseIterable {
                           owner: "LicenseService",
                           ownerPaths: ["OpenGlasses/Sources/Services/LicenseService.swift"],
                           location: "preferences key `fieldAssistLicenseCode`")
+
+        case .ringPairing:
+            // Plan MZ P2: the paired ring. A pairing id made at pairing, the phone's Bluetooth
+            // identifier for the ring, the sync cursors (dates only), the clock offset the ring was
+            // last set with and the last sync time. The readings themselves live in Apple Health.
+            // Forget Ring clears it.
+            return Record(store: self, dataClass: .preference, subjectLinkage: .wearer,
+                          protection: .platformDefault, backupExcluded: false, retention: .none,
+                          deleteAll: .api("RingPairingStore.clear()"),
+                          deleteSubject: .unavailable("the wearer's own pairing; Forget Ring clears it as a whole"),
+                          owner: "RingPairingStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/Ring/RingPairing.swift"],
+                          location: "preferences key `ringPairingRecord`: pairing id, Bluetooth identifier, sync dates, clock offset; no readings")
 
         case .licenceSeat:
             // Plan JS P2: this phone's seat on a seat-checked licence — the signed lease, ids and

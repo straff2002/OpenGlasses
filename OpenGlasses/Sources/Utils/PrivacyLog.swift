@@ -2219,6 +2219,8 @@ enum PrivacyLog {
     // state are all composed from the conversation.
     enum DeviceSurface: String {
         case glasses, watch, carPlay, liveActivity, hud, nowPlaying, sdk
+        /// Plan MZ: the smart ring.
+        case ring
     }
 
     enum DeviceEvent: String {
@@ -2320,6 +2322,15 @@ enum PrivacyLog {
         /// never named.
         case inputsProbeStarted, inputsProbeRefused, inputsProbeInput, inputsProbeState, inputsProbeError
         case inputsProbeStopped
+        /// Plan MZ, the smart ring. `ringPaired` (`success` false when the ring was found through
+        /// another app's connection), `ringForgotten`, `ringSynced`, `ringStepSkipped` (`state`: the
+        /// sync step's name), `ringStoredHistory` (`count`: chunks, `success`: the end marker came),
+        /// `ringMeasured` (`detail`: the measurement's kind, `success`: a value came),
+        /// `ringWriteRefused` (`reason`: why Health refused), `ringUnknownPacket` (nothing else: not
+        /// even the opcode), `ringTrigger` (`state`: fired or ignored, `reason`: why ignored). Case
+        /// names and counts only: never a reading, an address, an identifier or a packet's bytes.
+        case ringPaired, ringForgotten, ringSynced, ringStepSkipped, ringStoredHistory, ringMeasured
+        case ringWriteRefused, ringUnknownPacket, ringTrigger
     }
 
     /// `state` is a registration or activation state — a small fixed SDK vocabulary. `command` is

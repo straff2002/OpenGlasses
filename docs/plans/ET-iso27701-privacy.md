@@ -137,6 +137,7 @@ subject column distinguishes the wearer from a third party who never installed t
 | recordedSessions | `RecordedSessionStore` | media | thirdPartySubject | completeUnlessOpenInComplianceMode | no | none | `RecordedSessionStore.deleteAll()` | `RecordedSessionStore.delete(_:)` |
 | recordings | `VideoRecordingService` | media | thirdPartySubject | completeUnlessOpenInComplianceMode | no | none | none — recordings are the wearer's media, removed individually | none — a recording is not indexed by who appears in it |
 | remoteInvokeAudit | `RemoteInvokeService` | operationalAudit | wearer | platformDefault | no | cap 100 | none — the trail is what makes remote invocation reviewable | n/a — no subject linkage |
+| ringPairing | `RingPairingStore` | preference | wearer | platformDefault | no | none | `RingPairingStore.clear()` | none — the wearer's own pairing; Forget Ring clears it as a whole |
 | safetyAssessments | `SafetyAssessmentStore` | operationalAudit | none | platformDefault | no | none | none — assessment history is the site record | n/a — no subject linkage |
 | savedLocations | `SaveLocationTool` | locationData | wearer | platformDefault | no | none | none — the wearer's own places, removed individually | n/a — no subject linkage |
 | savedNotes | `NotesStorage` | personalMemory | wearer | platformDefault | no | cap 50 | none — the wearer's own notes; the cap is what expires them | none — free-text notes are not indexed by person |

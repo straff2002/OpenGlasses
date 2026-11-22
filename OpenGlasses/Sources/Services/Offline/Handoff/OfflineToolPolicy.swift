@@ -52,6 +52,7 @@ enum OfflineToolPolicy {
         "get_datetime": .local,
         "health_check": .local,
         "health_summary": .local,
+        "ring": .local,                   // Plan MZ: the ring, over Bluetooth
         "health_vault": .local,
         "list_notes": .local,
         "list_saved_locations": .local,

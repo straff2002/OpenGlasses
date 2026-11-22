@@ -102,6 +102,11 @@ final class NativeToolRegistry {
         // Plan GI: heart rate, sleep and steps from Apple Health. Read-only; speaks the answer
         // itself when the wearer has not allowed Health data to reach the model.
         register(HealthSummaryTool())
+        // Plan MZ P3: the smart ring. Offered only while the ring support is on; glasses build only,
+        // with the ring's Bluetooth.
+        #if !AVENKIN_PHONE_ONLY
+        register(RingTool())
+        #endif
         register(EmergencyInfoTool(locationService: locationService))
         register(CalendarTool(eventStore: eventKitStore))
         register(ContactsTool())
