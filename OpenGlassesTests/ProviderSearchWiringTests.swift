@@ -328,6 +328,8 @@ final class ProviderSearchWiringTests: XCTestCase {
         XCTAssertFalse(ProviderSearchPolicy.declaresOurTool(sent))
         XCTAssertEqual((try body(0)["toolConfig"] as? [String: Any]).flatMap { $0["functionCallingConfig"] as? [String: String] },
                        ["mode": "VALIDATED"])
+        // Build 737: without this flag Gemini 3 refuses Google Search beside function calling.
+        XCTAssertEqual((try body(0)["toolConfig"] as? [String: Any])?["includeServerSideToolInvocations"] as? Bool, true)
         XCTAssertEqual(svc.replyWebSources.count, 1)
         XCTAssertEqual(svc.replySearchSuggestions?.renderedContent, "<div class=\"g\">suggestions</div>")
         let taken = svc.takeReplyWebAttachments()
@@ -432,6 +434,48 @@ final class ProviderSearchWiringTests: XCTestCase {
         XCTAssertFalse(try tools(1).contains { $0["google_search"] != nil })
         let toolConfig = (try body(1)["toolConfig"] as? [String: Any]).flatMap { $0["functionCallingConfig"] as? [String: String] }
         XCTAssertNotEqual(toolConfig, ["mode": "VALIDATED"])
+        XCTAssertNil((try body(1)["toolConfig"] as? [String: Any])?["includeServerSideToolInvocations"])
+    }
+
+    /// The combined mode returns Google's own `toolCall`/`toolResponse` parts: echoed back as
+    /// given while search rides, left out of a round that no longer carries it.
+    func testGeminiEchoesServerSideToolPartsOnlyWhileSearchRides() async throws {
+        let round1 = #"""
+        {"candidates":[{"content":{"role":"model","parts":[
+          {"toolCall":{"toolType":"GOOGLE_SEARCH_WEB","args":{"queries":["q"]},"id":"s1"},"thoughtSignature":"sig-a"},
+          {"toolResponse":{"toolType":"GOOGLE_SEARCH_WEB","response":{"search_suggestions":"x"},"id":"s1"},"thoughtSignature":"sig-b"},
+          {"functionCall":{"name":"kz_missing_tool","args":{},"id":"f1"},"thoughtSignature":"sig-c"}]}}],
+         "usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":3}}
+        """#
+        let round2 = #"{"candidates":[{"content":{"role":"model","parts":[{"text":"Done."}]}}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":1}}"#
+        let round3 = round2
+        RecordingQueueProtocol.queue = [(200, round1), (200, round2), (200, round3)]
+        let svc = service(origin: "https://generativelanguage.googleapis.com")
+        let config = ModelConfig(id: "kzg", name: "kzg", provider: LLMProvider.gemini.rawValue, apiKey: "g-test",
+                                 model: "gemini-3.5-flash", baseURL: "")
+        let reply = try await svc.sendGemini("q", systemPrompt: "sys", config: config, includeTools: true, imageData: nil)
+        XCTAssertEqual(reply, "Done.")
+        func modelParts(_ index: Int) throws -> [[String: Any]] {
+            let contents = try body(index)["contents"] as? [[String: Any]] ?? []
+            return contents.filter { $0["role"] as? String == "model" }
+                .flatMap { $0["parts"] as? [[String: Any]] ?? [] }
+        }
+        // Round 2 still carries search: the model turn goes back whole, signatures and all.
+        XCTAssertEqual((try body(1)["toolConfig"] as? [String: Any])?["includeServerSideToolInvocations"] as? Bool, true)
+        let echoed = try modelParts(1)
+        XCTAssertTrue(echoed.contains { $0["toolCall"] != nil })
+        XCTAssertTrue(echoed.contains { $0["toolResponse"] != nil })
+        XCTAssertEqual(echoed.compactMap { $0["thoughtSignature"] as? String }, ["sig-a", "sig-b", "sig-c"])
+        let answered = try body(1)["contents"] as? [[String: Any]] ?? []
+        let response = answered.flatMap { $0["parts"] as? [[String: Any]] ?? [] }
+            .compactMap { $0["functionResponse"] as? [String: Any] }.first
+        XCTAssertEqual(response?["id"] as? String, "f1")
+
+        // A plain turn after it carries no search, so Google's own parts stay out of what it sends.
+        _ = try await svc.sendGemini("thanks", systemPrompt: "sys", config: config, includeTools: false, imageData: nil)
+        let plain = try modelParts(2)
+        XCTAssertFalse(plain.contains { $0["toolCall"] != nil || $0["toolResponse"] != nil })
+        XCTAssertTrue(plain.contains { $0["functionCall"] != nil })
     }
 
     func testTheTurnStripLeavesEarlierTurnsAlone() {
