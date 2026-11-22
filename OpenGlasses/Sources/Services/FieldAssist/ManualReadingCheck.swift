@@ -66,7 +66,9 @@ enum ManualReadingCheck {
             return .declined(.unknownPassage)
         }
         let text = normalised(passage)
-        guard text.contains(quote) else { return .declined(.quoteNotInPassage) }
+        guard text.contains(quote) || quotesOneTableRow(reading.quote, in: passage) else {
+            return .declined(.quoteNotInPassage)
+        }
 
         let passageNumbers = Set(numbers(in: text))
         let passageUnits = units(in: text)
@@ -76,6 +78,78 @@ enum ManualReadingCheck {
             }
         }
         return .accepted
+    }
+
+    // MARK: - Table quotes
+
+    /// Whether `quote` is a table entry read from `passage` cell by cell: its `|`-separated cells
+    /// are each a whole cell of one body row of one table, or of that table's header row, with at
+    /// least one from the body row. When the quote names headers, each body cell it quotes past the
+    /// first column sits under one of them, so "LP, 2 cu ft dial | 272 s" is accepted only when
+    /// 272 s is in the LP, 2 cu ft column. A model reads a table entry as its row and column ("the
+    /// row label, the column, the value") and skips the cells between, which no verbatim match
+    /// allows: 22 of 25 declined readings on the phone were that (Plan MQ P3). An elided "…" cell
+    /// is skipped; any other cell that isn't in the row or the header declines the quote.
+    static func quotesOneTableRow(_ quote: String, in passage: String) -> Bool {
+        let cells = tableCells(quote).filter { !$0.isEmpty && !["...", "\u{2026}"].contains($0) }
+        guard cells.count >= 2 else { return false }
+        for table in tables(in: passage) {
+            guard let header = table.first else { continue }
+            for row in table.dropFirst() {
+                var fromRow = false
+                var quotedHeaders = Set<Int>()
+                var rowColumns: [Set<Int>] = []
+                var matched = true
+                for cell in cells {
+                    let inRow = Set(row.indices.filter { row[$0] == cell })
+                    let inHeader = Set(header.indices.filter { header[$0] == cell })
+                    guard !inRow.isEmpty || !inHeader.isEmpty else { matched = false; break }
+                    if inRow.isEmpty {
+                        quotedHeaders.formUnion(inHeader)
+                    } else {
+                        fromRow = true
+                        rowColumns.append(inRow)
+                    }
+                }
+                guard matched, fromRow else { continue }
+                if !quotedHeaders.isEmpty {
+                    let underAHeader = rowColumns.allSatisfy { columns in
+                        columns.contains(0) || !columns.isDisjoint(with: quotedHeaders)
+                    }
+                    guard underAHeader else { continue }
+                }
+                return true
+            }
+        }
+        return false
+    }
+
+    /// The tables in `passage`: runs of lines that start with `|`, each line's cells normalised,
+    /// a `| --- |` separator line dropped. The first line of a run is its header.
+    static func tables(in passage: String) -> [[[String]]] {
+        var tables: [[[String]]] = []
+        var current: [[String]] = []
+        for line in passage.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("|") else {
+                if !current.isEmpty { tables.append(current); current = [] }
+                continue
+            }
+            let cells = tableCells(trimmed)
+            if cells.allSatisfy({ $0.allSatisfy { $0 == "-" || $0 == ":" || $0 == " " } }) { continue }
+            current.append(cells)
+        }
+        if !current.isEmpty { tables.append(current) }
+        return tables
+    }
+
+    /// A table line's (or a quote's) cells, normalised, the empty ends of a leading or trailing `|`
+    /// dropped.
+    static func tableCells(_ line: String) -> [String] {
+        var cells = line.split(separator: "|", omittingEmptySubsequences: false).map { normalised(String($0)) }
+        if cells.first?.isEmpty == true { cells.removeFirst() }
+        if cells.last?.isEmpty == true { cells.removeLast() }
+        return cells
     }
 
     // MARK: - Normalising
