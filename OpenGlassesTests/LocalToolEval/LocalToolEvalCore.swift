@@ -57,6 +57,26 @@ enum LocalToolEval {
         /// Argument values that must match, compared after coercion (a number by value, text
         /// without regard to case or surrounding space).
         let values: [String: String]
+        /// Other tools that do the same job here, each with its own arguments: an error code read
+        /// from the diagnostic table (`table_lookup`) or looked up by code (`equipment_lookup`,
+        /// whose description names error codes). Nil for one right tool.
+        var alternatives: [Alternative]? = nil
+
+        struct Alternative: Decodable, Equatable {
+            let tool: String
+            let required: [String]
+            let values: [String: String]
+        }
+
+        /// The arguments a call to `name` is held to: this call's, or an alternative's. Nil when
+        /// `name` does neither.
+        func variant(for name: String) -> (required: [String], values: [String: String])? {
+            if name == tool { return (required, values) }
+            return alternatives?.first { $0.tool == name }.map { ($0.required, $0.values) }
+        }
+
+        /// Every tool that answers this call.
+        var tools: [String] { [tool] + (alternatives ?? []).map(\.tool) }
     }
 
     struct Carry: Decodable, Equatable {
@@ -323,7 +343,9 @@ enum LocalToolEval {
         // A call the dispatcher refused as not offered ran nothing: never a right tool choice, even
         // when it names the expected tool (the runtime's fit dropped it, Plan MQ P3).
         let refused = outcome.executed.contains { LocalToolLoop.isUnofferedToolResult($0.result.text, name: $0.call.name) }
-        grades[.toolName] = calls.map(\.name) == testCase.expect.calls.map(\.tool) && !refused
+        let expectedCalls = testCase.expect.calls
+        grades[.toolName] = calls.count == expectedCalls.count
+            && zip(calls, expectedCalls).allSatisfy { $1.variant(for: $0.name) != nil } && !refused
 
         if !testCase.expect.calls.isEmpty {
             var present = true
@@ -331,7 +353,7 @@ enum LocalToolEval {
             var valued = true
             var coercedByCall: [[String: Any]] = []
             for (index, expected) in testCase.expect.calls.enumerated() {
-                guard index < calls.count, calls[index].name == expected.tool else {
+                guard index < calls.count, let variant = expected.variant(for: calls[index].name) else {
                     present = false; typed = false; valued = false
                     coercedByCall.append([:])
                     continue
@@ -346,8 +368,8 @@ enum LocalToolEval {
                     typed = false
                 }
                 coercedByCall.append(arguments)
-                if !expected.required.allSatisfy({ arguments[$0] != nil }) { present = false }
-                for (name, wanted) in expected.values where !matches(arguments[name], expected: wanted) {
+                if !variant.required.allSatisfy({ arguments[$0] != nil }) { present = false }
+                for (name, wanted) in variant.values where !matches(arguments[name], expected: wanted) {
                     valued = false
                 }
             }

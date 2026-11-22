@@ -267,9 +267,14 @@ def error_codes():
                     "id": f"code-{code}-lookup", "category": "toolChoice", "source": src,
                     "turn": f"The control's showing {code}. What do I check?",
                     "offered": ["table_lookup", "equipment_lookup", "field_session", "show_source", "reading"],
+                    # equipment_lookup's own description names error codes, so looking the code
+                    # up there is as right as reading it from the table.
                     "expect": {"calls": [{"tool": "table_lookup", "required": ["table", "row"],
-                                          "values": {"row": code}}]},
-                    "results": {"table_lookup": f"Diagnostic codes, {code}: {meaning}. Action: {action}"},
+                                          "values": {"row": code},
+                                          "alternatives": [{"tool": "equipment_lookup", "required": ["query"],
+                                                            "values": {"query": code}}]}]},
+                    "results": {"table_lookup": f"Diagnostic codes, {code}: {meaning}. Action: {action}",
+                                "equipment_lookup": f"{src}: {code}: {meaning}. Action: {action}"},
                     "reference": [call("table_lookup", {"table": "Diagnostic codes", "row": code}),
                                   f"{code} means {meaning[0].lower() + meaning[1:]}."],
                 })
@@ -281,8 +286,11 @@ def error_codes():
                                 {"role": "assistant", "content": f"{first} is in the diagnostic table; I read it out."}],
                     "offered": ["table_lookup", "equipment_lookup", "field_session"],
                     "expect": {"calls": [{"tool": "table_lookup", "required": ["table", "row"],
-                                          "values": {"row": second}}]},
-                    "results": {"table_lookup": f"Diagnostic codes, {second}."},
+                                          "values": {"row": second},
+                                          "alternatives": [{"tool": "equipment_lookup", "required": ["query"],
+                                                            "values": {"query": second}}]}]},
+                    "results": {"table_lookup": f"Diagnostic codes, {second}.",
+                                "equipment_lookup": f"{src}: {second}."},
                     "reference": [call("table_lookup", {"table": "Diagnostic codes", "row": second}),
                                   f"That's {second} — here's what it means."],
                 })

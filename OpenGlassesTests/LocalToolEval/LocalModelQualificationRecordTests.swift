@@ -157,6 +157,22 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertTrue(request.prompt.hasSuffix("Question: \(answer.turn)"))
     }
 
+    func testAnErrorCodeLookedUpByCodeIsAsRightAsReadFromTheTable() async throws {
+        let testCase = try XCTUnwrap(try corpus().first { $0.id == "code-E105-lookup" })
+        func run(_ call: String) async -> LocalToolEval.Run {
+            await LocalToolEval.run(testCase, environment: environment { _, _, index in
+                index == 0 ? .init(text: call) : .init(text: "E105 is a device communication problem.")
+            })
+        }
+        let byCode = await run(#"<tool_call>{"name": "equipment_lookup", "arguments": {"query": "E105"}}</tool_call>"#)
+        XCTAssertEqual(byCode.grades[.toolName], true)
+        XCTAssertEqual(byCode.grades[.argumentValues], true)
+        let wrongCode = await run(#"<tool_call>{"name": "equipment_lookup", "arguments": {"query": "E106"}}</tool_call>"#)
+        XCTAssertEqual(wrongCode.grades[.argumentValues], false, "the alternative is held to its own values")
+        let other = await run(#"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "1"}}</tool_call>"#)
+        XCTAssertEqual(other.grades[.toolName], false)
+    }
+
     func testATargetedRerunTakesOnlyItsCategoriesAndSaysSo() throws {
         var selection = LocalToolEval.Selection.qualification
         selection.onlyCategories = [.toolChoice, .multiTurn]

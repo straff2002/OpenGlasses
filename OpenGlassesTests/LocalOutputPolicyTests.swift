@@ -14,6 +14,56 @@ final class LocalOutputPolicyTests: XCTestCase {
 
     // MARK: - Valid calls
 
+    // MARK: - Gemma 4's own call syntax (Plan MQ P3)
+
+    /// The shapes Gemma 4 E2B wrote on the phone after the "I'll look that up" correction.
+    func testGemmasCallsBehindAStrayOpenerAreRead() {
+        let shapes = [
+            #"<tool_call:equipment_lookup{query:<|"|>E105<|"|>}}"#,
+            #"<tool_call:equipment_lookup{query:<|"|>E117<|"|>}>"#,
+            "<tool_call>equipment_lookup{query:<|\"|>E226<|\"|>}\n</tool_call>",
+            #"<tool_call>equipment_lookup{query:<|"|>E311<|"|>}"#,
+            #"<|tool_call>call:equipment_lookup{query:<|"|>E105<|"|>}<tool_call|>"#,
+        ]
+        for raw in shapes {
+            let result = LocalOutputPolicy.classify(raw)
+            XCTAssertEqual(result.kind, .toolCall, raw)
+            XCTAssertEqual(result.invocation?.name, "equipment_lookup", raw)
+            XCTAssertNotNil(result.invocation?.arguments["query"] as? String, raw)
+            XCTAssertEqual(result.text, "", "nothing of the frame is spoken: \(raw)")
+        }
+        let none = LocalOutputPolicy.classify("<tool_call>where_am_i()</tool_call>")
+        XCTAssertEqual(none.invocation?.name, "where_am_i")
+        XCTAssertEqual(none.invocation?.arguments.count, 0)
+    }
+
+    func testGemmasArgumentsKeepTheirTypes() {
+        let raw = #"<tool_call:procedure_runner{action:<|"|>next<|"|>,count:2,ratio:0.5,confirmed:true}>"#
+        let arguments = LocalOutputPolicy.classify(raw).invocation?.arguments ?? [:]
+        XCTAssertEqual(arguments["action"] as? String, "next")
+        XCTAssertEqual(arguments["count"] as? Int, 2)
+        XCTAssertEqual(arguments["ratio"] as? Double, 0.5)
+        XCTAssertEqual(arguments["confirmed"] as? Bool, true)
+    }
+
+    func testAGemmaBodyThatDoesNotReadIsNeverACallAndNeverSpoken() {
+        for raw in [#"<tool_call:equipment_lookup{query:<|"|>E105}"#,          // unterminated string
+                    #"<tool_call:equipment_lookup{query:E105}>"#,               // bare word value
+                    #"<tool_call:equipment_lookup query E105>"#,                // no body
+                    #"<tool_call:{query:<|"|>E105<|"|>}>"#] {                   // no name
+            let result = LocalOutputPolicy.classify("Checking. " + raw)
+            XCTAssertNil(result.invocation, raw)
+            XCTAssertEqual(result.kind, .malformedCall, raw)
+            XCTAssertEqual(result.text, "Checking.", raw)
+        }
+    }
+
+    func testProseThatMentionsGemmasMarksIsLeftAlone() {
+        let prose = "The code is E105, call: check the wiring {first}."
+        XCTAssertEqual(LocalOutputPolicy.classify(prose).kind, .prose)
+        XCTAssertEqual(LocalOutputPolicy.classify(prose).text, prose)
+    }
+
     func testCompleteFrameIsAUsableCall() {
         let result = LocalOutputPolicy.classify(validFrame)
         XCTAssertEqual(result.kind, .toolCall)

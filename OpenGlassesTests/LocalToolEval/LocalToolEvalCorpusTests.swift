@@ -140,13 +140,15 @@ final class LocalToolEvalCorpusTests: XCTestCase {
                 XCTAssertTrue(OfflineToolPolicy.isOfferedOffline(name), "\(testCase.id): \(name) needs the network")
             }
             for call in testCase.expect.calls {
-                XCTAssertTrue(testCase.offered.contains(call.tool), "\(testCase.id) expects \(call.tool) but doesn't offer it")
-                guard case .object(_, _, let properties)? = schema(call.tool) else {
-                    XCTFail("\(testCase.id): \(call.tool) has no schema"); continue
-                }
-                let declared = Set(properties.map(\.name))
-                for name in call.required + Array(call.values.keys) {
-                    XCTAssertTrue(declared.contains(name), "\(testCase.id): \(call.tool) declares no '\(name)'")
+                for tool in call.tools {
+                    XCTAssertTrue(testCase.offered.contains(tool), "\(testCase.id) expects \(tool) but doesn't offer it")
+                    guard case .object(_, _, let properties)? = schema(tool), let variant = call.variant(for: tool) else {
+                        XCTFail("\(testCase.id): \(tool) has no schema"); continue
+                    }
+                    let declared = Set(properties.map(\.name))
+                    for name in variant.required + Array(variant.values.keys) {
+                        XCTAssertTrue(declared.contains(name), "\(testCase.id): \(tool) declares no '\(name)'")
+                    }
                 }
             }
             if testCase.category == .notInManual {

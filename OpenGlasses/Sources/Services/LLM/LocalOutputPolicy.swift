@@ -14,7 +14,8 @@ import Foundation
 /// speak protocol" a property of the turn instead of a property of five regexes.
 ///
 /// ### What it deliberately does not do
-/// It never *repairs* a call. A frame whose JSON does not parse, or whose object lacks a `name` or
+/// It never *repairs* a call. (Gemma 4's own call syntax, `name{key:<|"|>value<|"|>}`, is a second
+/// grammar read in full or not at all — `gemmaCall` — not a repair.) A frame whose JSON does not parse, or whose object lacks a `name` or
 /// an `arguments` object, is reported as malformed and dropped — guessing a tool or an argument out
 /// of broken text would be inventing an action the model did not successfully ask for. And it never
 /// judges a call by its name: unknown or disallowed tools keep going through the router's existing
@@ -86,17 +87,42 @@ enum LocalOutputPolicy {
         // Pass 1 — tagged frames, in order. A frame with no close tag runs to the end of the
         // output: the model was cut off mid-protocol and everything after the open tag is protocol,
         // not speech.
+        // Pass 0 — Gemma 4's own call syntax behind an opener that isn't ours (`<tool_call:name{…}>`,
+        // `<|tool_call>call:name{…}<tool_call|>`): taken only when its body reads completely
+        // (`gemmaCall`); otherwise the rest of its line is protocol, removed and never run.
+        for opener in gemmaOpeners {
+            var scan = raw.startIndex
+            while let open = raw.range(of: opener, range: scan..<raw.endIndex) {
+                if let (call, end) = gemmaCall(in: raw, from: open.upperBound) {
+                    removals.append(open.lowerBound..<end)
+                    if invocation == nil { invocation = call }
+                    scan = end
+                } else {
+                    let lineEnd = raw[open.upperBound...].firstIndex(where: \.isNewline) ?? raw.endIndex
+                    removals.append(open.lowerBound..<lineEnd)
+                    sawMalformed = true
+                    scan = lineEnd
+                }
+            }
+        }
+
         var cursor = raw.startIndex
         while let open = raw.range(of: openTag, range: cursor..<raw.endIndex) {
             guard let close = raw.range(of: closeTag, range: open.upperBound..<raw.endIndex) else {
                 removals.append(open.lowerBound..<raw.endIndex)
-                sawIncomplete = true
+                // Gemma 4 leaves its own frame unclosed (`<tool_call>name{…}`): a body that reads
+                // whole is still its call.
+                if invocation == nil, let call = gemmaCall(wholly: String(raw[open.upperBound...])) {
+                    invocation = call
+                } else {
+                    sawIncomplete = true
+                }
                 cursor = raw.endIndex
                 break
             }
             removals.append(open.lowerBound..<close.upperBound)
             let payload = raw[open.upperBound..<close.lowerBound]
-            if let call = parseCallObject(String(payload)) {
+            if let call = parseCallObject(String(payload)) ?? gemmaCall(wholly: String(payload)) {
                 // First usable call wins. A second frame in the same output is still removed from
                 // the text but is never executed — one turn, one call, as the local protocol says.
                 if invocation == nil { invocation = call }
@@ -160,6 +186,89 @@ enum LocalOutputPolicy {
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let arguments = object["arguments"] as? [String: Any] else { return nil }
         return Invocation(name: name, arguments: arguments)
+    }
+
+    // MARK: - Gemma 4's call syntax
+
+    /// Openers Gemma 4 E2B was seen writing in text, on the phone, after the "I'll look that up"
+    /// correction: half its native frame (`<|tool_call>call:…<tool_call|>`), half ours
+    /// (`<tool_call>`). Our own `<tool_call>` is pass 1's; its payload may be Gemma's too.
+    static let gemmaOpeners = ["<tool_call:", "<|tool_call>"]
+
+    /// Gemma 4's string delimiter inside a call body.
+    static let gemmaQuote = "<|\"|>"
+
+    /// A call in Gemma 4's own syntax starting at `start`: an optional `call:`, a tool name, then
+    /// a `{key:value,…}` body (strings between `<|"|>` marks, numbers, true/false) or `()`. Taken
+    /// only when the body closes and every pair reads; the closing debris on the same line (`}`,
+    /// `>`, `<tool_call|>`, `</tool_call>`) is part of the range. Not a repair: a second, fully
+    /// specified grammar, and nothing that doesn't read under it becomes a call (Plan MQ P3).
+    static func gemmaCall(in raw: String, from start: String.Index) -> (Invocation, String.Index)? {
+        var index = raw[start...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+        if raw[index...].hasPrefix("call:") { index = raw.index(index, offsetBy: 5) }
+        let nameEnd = raw[index...].firstIndex { !($0.isLetter || $0.isNumber || $0 == "_") } ?? raw.endIndex
+        let name = String(raw[index..<nameEnd])
+        guard let first = name.first, first.isLetter || first == "_", nameEnd < raw.endIndex else { return nil }
+        var arguments: [String: Any] = [:]
+        var cursor = nameEnd
+        if raw[cursor...].hasPrefix("()") {
+            cursor = raw.index(cursor, offsetBy: 2)
+        } else {
+            guard raw[cursor] == "{" else { return nil }
+            cursor = raw.index(after: cursor)
+            while true {
+                cursor = raw[cursor...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+                guard cursor < raw.endIndex else { return nil }
+                if raw[cursor] == "}" { cursor = raw.index(after: cursor); break }
+                guard let colon = raw[cursor...].firstIndex(of: ":") else { return nil }
+                let key = raw[cursor..<colon].trimmingCharacters(in: .whitespaces)
+                guard !key.isEmpty, key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return nil }
+                cursor = raw[raw.index(after: colon)...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+                if raw[cursor...].hasPrefix(gemmaQuote) {
+                    let valueStart = raw.index(cursor, offsetBy: gemmaQuote.count)
+                    guard let close = raw.range(of: gemmaQuote, range: valueStart..<raw.endIndex) else { return nil }
+                    arguments[key] = String(raw[valueStart..<close.lowerBound])
+                    cursor = close.upperBound
+                } else {
+                    let valueEnd = raw[cursor...].firstIndex { $0 == "," || $0 == "}" || $0.isNewline } ?? raw.endIndex
+                    let token = raw[cursor..<valueEnd].trimmingCharacters(in: .whitespaces)
+                    if token == "true" || token == "false" {
+                        arguments[key] = token == "true"
+                    } else if let number = Double(token), token.first.map({ $0.isNumber || $0 == "-" }) == true {
+                        arguments[key] = token.contains(".") ? number as Any : (Int(exactly: number).map { $0 as Any } ?? number)
+                    } else {
+                        return nil
+                    }
+                    cursor = valueEnd
+                }
+                cursor = raw[cursor...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+                guard cursor < raw.endIndex else { return nil }
+                if raw[cursor] == "," { cursor = raw.index(after: cursor); continue }
+                guard raw[cursor] == "}" else { return nil }
+                cursor = raw.index(after: cursor)
+                break
+            }
+        }
+        // The frame's closing debris, on the same line.
+        while cursor < raw.endIndex {
+            let rest = raw[cursor...]
+            if let tag = ["<tool_call|>", closeTag].first(where: { rest.hasPrefix($0) }) {
+                cursor = raw.index(cursor, offsetBy: tag.count)
+            } else if rest.first == "}" || rest.first == ">" || rest.first == " " || rest.first == "\t" {
+                cursor = raw.index(after: cursor)
+            } else {
+                break
+            }
+        }
+        return (Invocation(name: name, arguments: arguments), cursor)
+    }
+
+    /// A whole frame payload in Gemma 4's syntax, with nothing but closing debris and whitespace
+    /// after it.
+    static func gemmaCall(wholly payload: String) -> Invocation? {
+        guard let (call, end) = gemmaCall(in: payload, from: payload.startIndex),
+              payload[end...].allSatisfy({ $0.isWhitespace }) else { return nil }
+        return call
     }
 
     // MARK: - Bare (untagged) call objects
