@@ -36,6 +36,8 @@ final class QualificationRunner: ObservableObject {
         /// An experiment: the temperature every tool turn samples at, over the catalog's set
         /// (`LocalModelSampling.qualificationToolTurnOverride`). The record names it.
         var toolTemperature: Float?
+        /// An experiment: P1's tool guide instead of today's (`LLMService.qualificationUsesOriginalToolGuide`).
+        var originalToolGuide = false
 
         static func parse(_ arguments: [String]) -> Options {
             var options = Options()
@@ -58,6 +60,7 @@ final class QualificationRunner: ObservableObject {
                 case "--cancel-probes": if let v = value().flatMap(Int.init), v >= 0 { options.cancelProbes = v }
                 case "--fresh": options.fresh = true
                 case "--transcripts": options.transcripts = true
+                case "--original-tool-guide": options.originalToolGuide = true
                 case "--tool-temperature": if let v = value().flatMap(Float.init), v >= 0 { options.toolTemperature = v }
                 case "--groups":
                     if let v = value() {
@@ -337,9 +340,11 @@ final class QualificationRunner: ObservableObject {
         if let temperature = options.toolTemperature {
             LocalModelSampling.qualificationToolTurnOverride = .init(temperature: temperature)
         }
+        LLMService.qualificationUsesOriginalToolGuide = options.originalToolGuide
         let sampling: LocalModelQualificationRecord.Sampling? = options.apple ? nil : .init(
             source: [entry?.sampling?.source,
-                     options.toolTemperature.map { "run override: tool-turn temperature \($0)" }]
+                     options.toolTemperature.map { "run override: tool-turn temperature \($0)" },
+                     options.originalToolGuide ? "run override: P1's original tool guide" : nil]
                 .compactMap { $0 }.joined(separator: "; "),
             general: LocalModelSampling.configuration(for: options.modelID, toolTurn: false),
             toolTurn: LocalModelSampling.configuration(for: options.modelID, toolTurn: true))

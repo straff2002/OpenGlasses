@@ -82,8 +82,13 @@ extension LLMService {
 
     /// The tool block for a native tool turn. The definitions themselves are rendered by the
     /// model's chat template, so this says only how to use them.
+    /// A qualification run's experiment (the device app's `--original-tool-guide`): the guide as P1
+    /// shipped it, to compare against. Set only by the device qualification app; the app never sets it.
+    nonisolated(unsafe) static var qualificationUsesOriginalToolGuide = false
+
     nonisolated static func localNativeToolGuide(toolNames: [String]) -> String {
         guard !toolNames.isEmpty else { return "" }
+        if qualificationUsesOriginalToolGuide { return originalNativeToolGuide(toolNames: toolNames) }
         var block = "\n\nTOOLS: the tools you may call this turn are declared to you. When the user asks you to do "
             + "something a tool does (log, record, start, open, pause, resume, end, show, look up), call that tool now, "
             + "in this reply, with what the user said; don't ask first and don't describe the call. Never say you did "
@@ -96,6 +101,20 @@ extension LLMService {
         if toolNames.contains("reading") || toolNames.contains("field_session") {
             block += " On the job: when the technician gives a value to log, call reading with that value and its unit; "
                 + "run job steps with the job tools; never invent a value."
+        }
+        return block
+    }
+
+    /// P1's guide, kept for the comparison above.
+    nonisolated private static func originalNativeToolGuide(toolNames: [String]) -> String {
+        var block = "\n\nTOOLS: the tools you may call this turn are declared to you. Call one only when the user "
+            + "clearly needs it; otherwise answer directly. After a tool result, answer from it in one or two spoken "
+            + "sentences, and never repeat a call you have already made."
+        if toolNames.contains("where_am_i") {
+            block += " If you need the user's location and it isn't given above, call where_am_i — never ask the user where they are."
+        }
+        if toolNames.contains("reading") || toolNames.contains("field_session") {
+            block += " On the job: log a value the technician reports with reading, and run job steps with the job tools; never invent a value."
         }
         return block
     }
