@@ -52,6 +52,14 @@ final class DATExperimentalPolicyTests: XCTestCase {
         XCTAssertTrue(Policy.isSwitchOn(.voiceInvocation, defaults: defaults))
     }
 
+    func testThePageSwipesSwitchDefaultsOnAndRemembersTheWearersChoice() {
+        let defaults = defaults()
+        XCTAssertTrue(Policy.isSwitchOn(.lensPageSwipes, defaults: defaults))
+        Policy.setSwitch(.lensPageSwipes, on: false, defaults: defaults)
+        XCTAssertFalse(Policy.isSwitchOn(.lensPageSwipes, defaults: defaults))
+        XCTAssertTrue(Policy.isSwitchOn(.voiceInvocation, defaults: defaults), "each feature has its own switch")
+    }
+
     func testTheReportLineForAnUnflaggedBuild() {
         XCTAssertEqual(Policy.reportLine(flagged: false, stamped: false, channel: .appStore, glassesSupported: true,
                                          switches: [:]),
@@ -61,13 +69,13 @@ final class DATExperimentalPolicyTests: XCTestCase {
     func testTheReportLineForAFlaggedBuildNamesEachFeaturesVerdict() {
         XCTAssertEqual(Policy.reportLine(flagged: true, stamped: true, channel: .testFlight, glassesSupported: true,
                                          switches: [.voiceInvocation: true]),
-                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation runs")
+                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation runs, lensPageSwipes runs")
         XCTAssertEqual(Policy.reportLine(flagged: true, stamped: true, channel: .testFlight, glassesSupported: true,
-                                         switches: [.voiceInvocation: false]),
-                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation switchedOff")
+                                         switches: [.voiceInvocation: false, .lensPageSwipes: false]),
+                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation switchedOff, lensPageSwipes switchedOff")
         XCTAssertEqual(Policy.reportLine(flagged: true, stamped: true, channel: .appStore, glassesSupported: true,
                                          switches: [:]),
-                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation heldOnThisChannel")
+                       "Experimental glasses features: in this build (TestFlight only) · voiceInvocation heldOnThisChannel, lensPageSwipes heldOnThisChannel")
     }
 
     func testTheReportLineSaysWhenTheStampDisagrees() {

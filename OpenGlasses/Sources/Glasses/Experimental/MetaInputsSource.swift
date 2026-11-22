@@ -3,7 +3,7 @@ import Foundation
 import MWDATCore
 import MWDATInputs
 
-// Plan JV P2: the only code that touches the SDK's [Experimental] Inputs. Compiled only in a
+// Plan JV P2 (and Plan MU §7's band swipes): the only code that touches the SDK's [Experimental] Inputs. Compiled only in a
 // project generated with AVENKIN_DAT_EXPERIMENTAL=1 (TestFlight only, never submitted for review).
 
 /// The one configuration the probe ever asks for: the touchpad and the Neural Band (presses,
@@ -18,6 +18,31 @@ enum InputsProbeConfiguration {
     static var consumesBack: Bool { sdk.consumeBack }
 }
 
+/// Plan MU §7: what the page view asks for while it listens to the band: the Neural Band's swipes
+/// and presses only, Back left to Meta. Built from `LensBandNavPolicy`, and
+/// `DATExperimentalGuardTests` pins this line as written.
+enum LensBandNavConfiguration {
+    static let sdk = InputsConfiguration(sources: [.neuralBand], consumeBack: false)
+
+    static var origins: Set<GlassesInputOrigin> { Set(sdk.sources.map(MetaInputsSource.origin)) }
+    static var consumesBack: Bool { sdk.consumeBack }
+}
+
+/// Who adds Inputs, and so with which of the two configurations.
+enum InputsPurpose: Equatable {
+    /// The Developer panel's probe (Plan JV P2).
+    case probe
+    /// The page view's band swipes (Plan MU §7).
+    case lensBandNav
+
+    var configuration: InputsConfiguration {
+        switch self {
+        case .probe: return InputsProbeConfiguration.sdk
+        case .lensBandNav: return LensBandNavConfiguration.sdk
+        }
+    }
+}
+
 /// Inputs from Meta's SDK, on the shared `DeviceSessionCoordinator` session as its `.inputs`
 /// capability, beside the camera and the lens when they are on: the session is created bound to
 /// the connected device when no one holds it, started unless it already is (or is starting), and
@@ -25,6 +50,8 @@ enum InputsProbeConfiguration {
 /// probe was its last holder.
 struct MetaInputsSource: InputsSource {
     var coordinator: DeviceSessionCoordinator = .shared
+    /// Which configuration the capability is added with.
+    var purpose: InputsPurpose = .probe
     /// How long the session has to reach `started`.
     var startDeadline: Duration = .seconds(20)
 
@@ -57,7 +84,7 @@ struct MetaInputsSource: InputsSource {
             guard session.state == .started else { throw InputsProbeFailure.sessionNotStarted }
             let added: Inputs?
             do {
-                added = try session.addInputs(configuration: InputsProbeConfiguration.sdk)
+                added = try session.addInputs(configuration: purpose.configuration)
             } catch {
                 throw InputsProbeFailure.addFailed
             }

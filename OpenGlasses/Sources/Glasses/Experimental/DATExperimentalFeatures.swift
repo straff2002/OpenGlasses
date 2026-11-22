@@ -14,6 +14,8 @@ enum DATExperimentalFeatures {
     private(set) static var voiceInvocations: GlassesVoiceInvocationService?
     /// The Developer panel's Inputs probe (P2). Idle until the wearer presses Start.
     private(set) static var inputsProbe: InputsProbe?
+    /// Plan MU §7: the band's left and right on the manual page view.
+    private(set) static var lensBandNav: LensBandNavService?
     private static var cancellables: [AnyCancellable] = []
 
     /// Starts following the connected glasses. Idempotent. Nothing reaches the SDK until a pair's
@@ -45,6 +47,26 @@ enum DATExperimentalFeatures {
             // The media trigger's reading: another app's audio is audible.
             userAudioPlaying: { AVAudioSession.sharedInstance().isOtherAudioPlaying })
         inputsProbe = probe
+        let lensPage = appState.lensPage
+        let bandNav = LensBandNavService(
+            source: MetaInputsSource(purpose: .lensBandNav),
+            isEnabled: { DATExperimentalPolicy.current(.lensPageSwipes) == .runs },
+            onInput: { [weak lensPage] kind in lensPage?.handleBand(kind) },
+            onListening: { [weak lensPage] in lensPage?.noteBandListening() },
+            onFailed: { [weak lensPage] in lensPage?.noteBandFailed() })
+        lensBandNav = bandNav
+        cancellables.append(lensPage.$held
+            .map { $0 == .view }
+            .removeDuplicates()
+            .sink { onLens in
+                DispatchQueue.main.async { bandNav.update(viewOnLens: onLens) }
+            })
+        cancellables.append(probe.$phase
+            .map { $0 != .idle }
+            .removeDuplicates()
+            .sink { running in
+                DispatchQueue.main.async { bandNav.update(probeRunning: running) }
+            })
         // `@Published` fires in willSet, so the value is handed over; the hop lets the connection
         // service finish publishing first.
         cancellables.append(appState.glassesService.$connectedDeviceIds
@@ -53,6 +75,7 @@ enum DATExperimentalFeatures {
                 DispatchQueue.main.async {
                     service.update(connectedDeviceIds: ids)
                     probe.update(connectedDeviceIds: ids)
+                    bandNav.update(connectedDeviceIds: ids)
                 }
             })
     }
@@ -60,6 +83,16 @@ enum DATExperimentalFeatures {
     /// The wearer's switch changed in Settings.
     static func settingChanged() {
         voiceInvocations?.refresh()
+        lensBandNav?.refresh()
+    }
+
+    /// The Developer panel's Start: the page view's band channel hands the one Inputs capability
+    /// back first, and listens again once the run is over (or was refused).
+    static func startInputsProbe() async {
+        guard let probe = inputsProbe else { return }
+        if !probe.isRunning { await lensBandNav?.yield() }
+        await probe.start()
+        lensBandNav?.update(probeRunning: probe.isRunning)
     }
 }
 

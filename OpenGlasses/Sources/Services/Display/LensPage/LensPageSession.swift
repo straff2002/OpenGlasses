@@ -185,6 +185,9 @@ final class LensPageSession: ObservableObject {
     /// Whether any frame of the open view reached the glasses, so a close is recorded only for a
     /// view that was on the lens.
     private var viewReachedLens = false
+    /// Plan MU §7: one band send in flight at a time, and the frame it is waiting on.
+    private var bandGate = LensBandNavGate()
+    private var bandPendingKey: String?
 
     init(display: GlassesDisplayService, router: HUDRouter, cache: LensPageRenderCache? = nil) {
         self.display = display
@@ -440,7 +443,7 @@ final class LensPageSession: ObservableObject {
             next = Self.leavingCloseUp(shown)
             next.viewport.move(step); event = .moved
         case .nextPage:
-            goToNextPage(issuedAgainst: revision)
+            goToPage(pageIndex + 1, issuedAgainst: revision)
             return
         case .nextDiagram:
             guard let layout = currentLayout, let target = Self.nextDiagram(after: shown, in: layout) else { return }
@@ -582,6 +585,59 @@ final class LensPageSession: ObservableObject {
         return true
     }
 
+    /// Plan MU §7 (P6): one input from the band, heard only in a flagged (TestFlight-only) build,
+    /// whose Inputs wiring calls this. Left and right move a close-up between its halves, and fit
+    /// width to the page before or after (`LensBandNavMap`), one send each; up and down stay the
+    /// lens's own scroll and nothing else is mapped. One send at a time (`LensBandNavGate`): a burst
+    /// is dropped, never queued. A swipe is counted on its own, not as a press.
+    @discardableResult
+    func handleBand(_ input: GlassesInputKind) -> LensBandOutcome {
+        guard isViewOnLens, let shown = shownState else { return .notOnLens }
+        guard let nav = LensBandNav(input) else {
+            stats.update(backend()) { $0.bandOther += 1 }
+            return .notMapped
+        }
+        let context = LensBandNavMap.Context(shown, pageIndex: pageIndex, pageCount: pages.count)
+        guard let action = LensBandNavMap.action(for: nav, in: context) else {
+            stats.update(backend()) { $0.bandNothingToDo += 1 }
+            return .nothingToDo
+        }
+        guard bandGate.admit(at: clock()) else {
+            stats.update(backend()) { $0.bandDropped += 1 }
+            return .dropped
+        }
+        let revision = display.heldScreenRevision
+        switch action {
+        case .rightHalf, .leftHalf:
+            var next = shown
+            next.closeUp?.only = action == .rightHalf ? .right : nil
+            next.isFirstFrame = false
+            next = next.framed()
+            guard next != shown else {
+                bandGate.finished()
+                stats.update(backend()) { $0.bandNothingToDo += 1 }
+                return .nothingToDo
+            }
+            stats.update(backend()) { $0.bandSwipes += 1; $0.bandHalves += 1 }
+            draw(next, event: .closeUp, issuedAgainst: revision, band: true)
+        case .previousPage, .nextPage:
+            stats.update(backend()) { $0.bandSwipes += 1; $0.bandPages += 1 }
+            goToPage(pageIndex + (action == .nextPage ? 1 : -1), atFitWidth: true,
+                     issuedAgainst: revision, band: true)
+        }
+        return .sent(action)
+    }
+
+    /// Plan MU §7: the band's channel became active for the open view, or failed (for the report).
+    func noteBandListening() { stats.update(backend()) { $0.bandListening += 1 } }
+    func noteBandFailed() { stats.update(backend()) { $0.bandFailures += 1 } }
+
+    /// A band send was drawn and handed over, or will never be: the next swipe may go.
+    private func bandSendEnded() {
+        bandPendingKey = nil
+        bandGate.finished()
+    }
+
     /// The words while reading mode is up. "Next" and "back" page the text, and are taken even with
     /// nowhere to go, so a task card under the view never takes a step it isn't showing; "show the
     /// page" (or "whole page") goes to the picture; the picture's own words wait for it.
@@ -702,20 +758,29 @@ final class LensPageSession: ObservableObject {
         return closeUpState(next)
     }
 
-    private func draw(_ next: HUDPageViewState, event: LensPageAuditLine.Event?, issuedAgainst revision: UInt64) {
-        guard let page = currentPage, let request = page.request, let layout = layouts[page.layoutKey] else { return }
+    private func draw(_ next: HUDPageViewState, event: LensPageAuditLine.Event?, issuedAgainst revision: UInt64,
+                      band: Bool = false) {
+        guard let page = currentPage, let request = page.request, let layout = layouts[page.layoutKey] else {
+            if band { bandSendEnded() }
+            return
+        }
         generation += 1
         let drawing = generation
         armTimer(viewLifetime)
         track { [weak self] in
             guard let self else { return }
             guard let screen = await self.screen(for: next, page: page, layout: layout, request: request),
-                  drawing == self.generation else { return }
+                  drawing == self.generation else {
+                if band { self.bandSendEnded() }
+                return
+            }
             // Stale: a notification was enqueued after the press. The view stays as it was.
             guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
                 self.stats.update(self.backend()) { $0.stalePressesDropped += 1 }
+                if band { self.bandSendEnded() }
                 return
             }
+            if band { self.bandPendingKey = screen.renderKey }
             self.shownState = next
             self.shownScreen = screen
             self.noteSent(screen)
@@ -780,31 +845,50 @@ final class LensPageSession: ObservableObject {
         }
     }
 
-    private func goToNextPage(issuedAgainst revision: UInt64) {
-        guard pageIndex + 1 < pages.count else { return }
-        let target = pageIndex + 1
+    /// Another staged page: as it opens (**Next page ›**, "next page"), or at fit width from its
+    /// top (Plan MU §7: a band swipe at fit width).
+    private func goToPage(_ target: Int, atFitWidth: Bool = false, issuedAgainst revision: UInt64,
+                          band: Bool = false) {
+        guard target != pageIndex, pages.indices.contains(target), let request = pages[target].request else {
+            if band { bandSendEnded() }
+            return
+        }
         let page = pages[target]
-        guard let request = page.request else { return }
+        let forward = target > pageIndex
         generation += 1
         let drawing = generation
         armTimer(viewLifetime)
         prepare(page)
         track { [weak self] in
             guard let self else { return }
-            guard let layout = await self.layout(for: page, request: request) else { return }
-            let state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count,
-                                          geometry: self.readingGeometry(), rows: self.rows(for: page))
-            guard let screen = await self.screen(for: state, page: page, layout: layout, request: request),
-                  drawing == self.generation else { return }
-            guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
-                self.stats.update(self.backend()) { $0.stalePressesDropped += 1 }
+            guard let layout = await self.layout(for: page, request: request) else {
+                if band { self.bandSendEnded() }
                 return
             }
+            var state = Self.openingState(layout, page: page, hasNextPage: target + 1 < self.pages.count,
+                                          geometry: self.readingGeometry(), rows: self.rows(for: page))
+            if atFitWidth {
+                state.closeUp = .fitWidth(pageSize: state.viewport.pageSize)
+                state.isFirstFrame = false
+                state = state.framed()
+            }
+            guard let screen = await self.screen(for: state, page: page, layout: layout, request: request),
+                  drawing == self.generation else {
+                if band { self.bandSendEnded() }
+                return
+            }
+            guard self.router.updatePage(screen, issuedAgainst: revision, onSelect: self.selectionHandler) else {
+                self.stats.update(self.backend()) { $0.stalePressesDropped += 1 }
+                if band { self.bandSendEnded() }
+                return
+            }
+            if band { self.bandPendingKey = screen.renderKey }
             self.pageIndex = target
             self.shownState = state
             self.shownScreen = screen
             self.stats.update(self.backend()) { entry in
-                entry.nextPages += 1
+                if forward { entry.nextPages += 1 }
+                if atFitWidth { entry.fitWidths += 1 }
                 if state.isReading { entry.readingViews += 1 }
                 entry.highlights[state.highlight.reason.rawValue, default: 0] += 1
             }
@@ -855,6 +939,7 @@ final class LensPageSession: ObservableObject {
         held = nil
         shownState = nil
         shownScreen = nil
+        bandSendEnded()
         awaitingDelivery = [:]
         viewReachedLens = false
         generation += 1
@@ -1023,6 +1108,7 @@ final class LensPageSession: ObservableObject {
     /// The display service's word on a frame. Taken: the audit line is written. Not taken: no
     /// line, and the support report counts it as refused (`lensPageRefused reason=send`).
     func frameDelivered(renderKey: String, delivered: Bool) {
+        if let pending = bandPendingKey, pending == renderKey { bandSendEnded() }
         guard let waiting = awaitingDelivery.removeValue(forKey: renderKey) else { return }
         guard delivered else {
             refuse("send")
