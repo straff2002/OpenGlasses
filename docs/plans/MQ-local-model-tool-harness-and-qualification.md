@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); the first phone run owed · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); a second phone run owed · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -216,13 +216,20 @@ unchanged: a turn reaches a downloaded model exactly when it did before.
   convolution state can't be trimmed, so it reuses only when the new prompt extends the old one
   exactly, which batch trimming makes common.
 
-Context audit after P1, the same scenario as above (`FieldAssistContextAuditTests`, which now
-measures the real tool JSON and fails under 400 tokens left on any model, or 600 on Gemma 4 E2B
-native):
+Context audit after P1, the same scenario as above (`FieldAssistContextAuditTests`, which fails
+under 400 tokens left on any model, or 600 on Gemma 4 E2B native). **Corrected 2026-11-22 from the
+first phone run** (see [Found on the phone](#found-on-the-phone-2026-11-22)): the Gemma rows count
+the definitions at Gemma's real template rate calibrated on the phone
+(`OnDeviceToolSchema.localEstimatedTokens`, 3.4 bytes of spec JSON a token plus 8 a tool, not four
+characters a token), selected and fitted as the app now does it (`LocalToolFit`, with the 600-token history reserve a job
+turn has). On 6,144 the larger definition budget (1,376) selects five bigger tools; full detail
+would leave only 376 for the conversation, so they go compact. P1's figure was 1,146 tokens of
+tools and 617 left.
 
 | Model | Budget | Compact tier (of its cap) | Prompt without the job | Tools | Left for history and the turn |
 |---|---:|---:|---:|---:|---:|
-| Gemma 4 E2B, native, 5 tools | 3,456 | 648 of 864 | 1,045 | 1,146 | 617 |
+| Gemma 4 E2B, native, 6 GB phone (4,096 window): 5 tools, compact | 3,456 | 648 of 864 | 1,045 | 940 | 823 |
+| Gemma 4 E2B, native, 8 GB and up (6,144 window): 5 tools, compact | 5,504 | 648 of 864 | 1,045 | 1,394 | 2,417 |
 | Gemma 4 E4B, Qwen 2.5 3B, SmolVLM2 2.2B (single shot) | 3,456 | 643 of 864 | 1,045 | 213 | 1,555 |
 | LFM2.5 2.6B (single shot) | 2,944 | 643 of 736 | 1,045 | 213 | 1,043 |
 | Qwen 2.5 0.5B, SmolVLM2 500M (8K) | 7,552 | 643 of 1,888 | 1,045 | 213 | 5,651 |
@@ -328,6 +335,85 @@ grants a badge, adds a catalog model or touches the GGUF tool path (P2).
   offered tools can do. None states a reading. They are written by hand, with no facts from the
   vault beyond names the corpus already used. The corpus is 719 cases (Field Assist 709); the
   format is unchanged, so it stays version 2.
+
+### Found on the phone (2026-11-22)
+
+The first phone run (iPhone Air, 12 GB, `mlx-community/gemma-4-e2b-it-4bit`, mlx-swift-lm
+`4c21c84`): reading turns ran at about 40 tokens a second, first token in 0.1–0.6 s (6.2 s cold),
+peak footprint 3.16 GB against a 6.44 GB kill limit. **Every tool turn failed before generating**
+with `promptTooLong(tokens: 4,317–4,326, limit: 3,456)`. Three faults together:
+
+- **Nothing cut the tools.** `historyFittingBudget` drops history, and these turns had none; the
+  overflow was the definitions, and the turn threw.
+- **The device app bypassed the app's selection.** It sent each case's offered tools as they were;
+  the first tool cases offer `reading`, `field_session`, `table_lookup` and `domain_calc`, whose
+  standard definitions are about 2,750 tokens (`domain_calc` alone about 1,400). The app's own
+  selection would have cut them to its 864-token definition budget.
+- **The app's selection estimate was low.** It used the Apple path's `estimatedTokens`, which counts
+  no JSON keys, types or punctuation: 2,155 for those four tools, about 22% under the render.
+
+Calibration, from that case (`FieldAssistContextAuditTests.testTheCalibratedToolEstimateAgainstThePhone`):
+the job prompt with the tool guide is 6,234 characters (about 1,560 tokens at four characters a
+token), the turn 52–75 characters, the four specs 10,034 bytes of JSON; 4,317–4,326 measured leaves
+about 2,750 tokens for the definitions, 3.65 bytes a token. The native selection now budgets with
+`OnDeviceToolSchema.localEstimatedTokens` (3.4 bytes a token plus 8 per tool), which puts that
+prompt at 4,556–4,561, 5–6% over the phone; the test fails if it ever comes in under. P1's audit was
+not a chars/4 undercount by half, as first read: its five tools were selected under the 864-token
+budget, the phone's four were not, and four characters a token of the same spec JSON is about 8% low.
+The split assumes the system prompt reads at four characters a token; the record now keeps every
+generation's prompt token count, which settles it on the next run.
+
+What was built:
+
+- **The fit (`LocalToolFit`, pure).** At the one chokepoint every local tool turn goes through
+  (`LocalLLMService.generateTurn`, both the Gemma 4 VLM path and the generic tokenizer path), the
+  system prompt, the turn and the tools are measured with the model's own tokenizer and template,
+  no history, in this order: every tool at full detail (only when that also leaves 600 tokens,
+  `LocalToolFit.historyReserve`, for a turn with history, so a roomier window doesn't spend its room
+  on longer descriptions); every tool with compact definitions (`OnDeviceToolSchema.Limits.compact`:
+  a 160-character tool description, required properties' descriptions cut to 100, optional ones
+  dropped; every node keeps its `type` and choices, nesting still at most two); compact, dropping one
+  tool at a time from the lowest-priority end; no tools. Only then is the history trimmed into what
+  is left. A tool turn now throws `promptTooLong` only when the system prompt and the turn alone
+  don't fit. A turn whose model inferred no tool format (Hermes instruction, nothing rendered) is
+  not fitted.
+- **Priority order is explicit.** `LocalToolTurn.tools` and `compactTools` are in priority order
+  (`LocalNativeToolPolicy.nativeToolNames`, which now builds on a pure `ordered(field:everyday:utterance:)`);
+  `FieldAssistLocalToolSet.ordered` is the Field Assist half.
+- **The dispatcher refuses a dropped tool.** `MLXTurnOutput.toolFit` and `LocalToolLoop.Generation.toolFit`
+  carry offered, kept, compact and the window (a `.toolFit` event on the coordinator path).
+  `sendLocalNative` and the eval core narrow the offer after each generation
+  (`LocalToolFit.dispatchable`), so a call to a dropped tool gets `unofferedToolMessage` and runs
+  nothing; the `toolName` grader fails a call the dispatcher refused as not offered.
+- **The selection is honest.** A native turn's `estimate` is `localEstimatedTokens` of the compact
+  spec (the least the runtime can send), so the selection rarely leaves the fit a tool to drop; the
+  audit asserts it leaves none. The single shot and the Apple path keep `estimatedTokens`.
+- **The device app orders like the app.** `LiveEnvironments.appOrder` orders each case's tools with
+  the same two functions, sends standard and compact specs, and the record keeps, per run (counts
+  only): tools offered and kept on the first tool generation, generations that dropped a tool or
+  went compact, whether a tool the case expected was dropped, the window and every generation's
+  prompt tokens; per group: runs where the fit dropped an expected tool (so "the fit dropped it" is
+  told from "the model missed it"), runs that dropped any and runs that went compact. Record schema
+  `/2`, so a `/1` record is not resumed.
+- **A larger window for Gemma on bigger phones (behind the flag).** A native tool turn (the flag on,
+  an allowlisted MLX model) on Gemma 4 E2B gets a 6,144-token window, prompt budget 5,504, definition
+  budget 1,376, when the phone has at least 8 GB and `LocalMemoryBudget.fit` against the kill limit
+  still keeps the reserve after the model, its 768 MB working set and the KV cache for 6,144 tokens
+  (`LocalModelBudget.toolTurnContextWindow`). 6 GB phones, the flag off, other models and non-tool
+  turns keep 4,096. The cache is read from the model's config as mlx-swift-lm builds it: of 35
+  layers the last 20 share earlier layers' K and V and hold none, and of the 15 that do, 3 are full
+  attention (one KV head, 512 wide) and 12 slide over 512 tokens (one head, 256): 6 KB a token
+  plus 12 MB, 48 MB at 6,144. The gate charges a conservative 180 MiB (all 15 layers full width, no
+  window) in case the checkpoint's config differs from the library's defaults. The record names the
+  window (`window`: ordinary, chosen, reason, budget). The app decides it once per turn in
+  `sendLocal` and hands it to the runtime on `LocalToolTurn.contextWindow`.
+- **The fixture no longer carries the clock.** Found while regenerating it: the job tier stamps the
+  equipment with the time it was identified, so `qualification-fixture.json` differed on every run;
+  `LocalModelQualificationFixtureTests` pins that time, and the file is now the same every build.
+- **Time to first token (owed, phone).** The larger window lets a turn carry up to about 2,000 more
+  prompt tokens. Reading turns prefilled in 0.1–0.6 s warm; the extra prompt will add to that on a
+  long job, and the next phone run measures it (the record's per-generation prompt seconds and
+  tokens). Not measured here.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
