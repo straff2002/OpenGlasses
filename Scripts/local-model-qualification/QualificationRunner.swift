@@ -12,7 +12,7 @@ import UIKit
 ///     --groups <a,b>       case groups (default fieldAssist, with the restraint and
 ///                          not-in-the-manual categories beside it); `all` for every case
 ///     --limit <n>          the first n selected cases only (a smoke run)
-///     --settle <seconds>   how long the phone must stay cool (nominal or fair) before the first case and after a hot spell (default 120)
+///     --settle <seconds>   how long the phone must stay below critical before the first case and after a critical spell (default 120)
 ///     --cap <seconds>      the longest one wait lasts (default 1200)
 ///     --allow-battery      measure off the charger (an attended run; Low Power Mode still waits)
 ///     --cancel-probes <n>  cancel-latency probes after the cases (default 6; 0 for none)
@@ -208,11 +208,12 @@ final class QualificationRunner: ObservableObject {
                 guard let flagged = await passGate(&gate) else { return }
                 status = "Measuring \(completed + 1) of \(total)"
                 let caseStarted = Date()
+                let thermalAtStart = DeviceFacts.gateReading(at: elapsed).thermal
                 let run = await LocalToolEval.run(testCase, environment: environment)
                 // A run cut short by the app leaving the foreground is not a result.
                 guard !Task.isCancelled else { return }
                 let seconds = Date().timeIntervalSince(caseStarted)
-                record?.add(run, repeat: index, flagged: flagged, seconds: seconds)
+                record?.add(run, repeat: index, flagged: flagged, seconds: seconds, thermalAtStart: thermalAtStart)
                 record?.timing.measuringSeconds += seconds
                 done.insert(key)
                 refreshCounts()

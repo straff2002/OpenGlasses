@@ -230,6 +230,29 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertNotNil(record.summary.groups["fieldAssist"]?.byCategory["notInManual"]?.lower)
     }
 
+    /// Heat changes the speed, not the answers (owner, 2026-11-22): a run that started `serious`
+    /// counts towards the floors, and only the cool runs make the timing.
+    func testAHotRunCountsForTheAnswersButNotTheTiming() {
+        var record = record()
+        func run(_ id: String, rate: Double) -> LocalToolEval.Run {
+            var m = LocalToolEval.Measurements()
+            m.generations = 1
+            m.promptSeconds = [rate / 100]
+            m.decodeTokensPerSecond = [rate]
+            return LocalToolEval.Run(caseID: id, category: .restraint, group: .fieldAssist,
+                                     grades: [.toolName: true], measurements: m)
+        }
+        record.add(run("cool", rate: 40), repeat: 0, flagged: false, seconds: 1, thermalAtStart: .nominal)
+        record.add(run("fair", rate: 38), repeat: 0, flagged: false, seconds: 1, thermalAtStart: .fair)
+        record.add(run("hot", rate: 12), repeat: 0, flagged: false, seconds: 1, thermalAtStart: .serious)
+        XCTAssertEqual(record.summary.groups["fieldAssist"]?.overall.runs, 3, "every answer counts")
+        XCTAssertEqual(record.timing.decodeTokensPerSecond?.count, 2)
+        XCTAssertEqual(record.timing.decodeTokensPerSecond?.max, 40)
+        XCTAssertEqual(record.timing.hotRunsExcludedFromTiming, 1)
+        XCTAssertEqual(record.timing.hotDecodeTokensPerSecond?.max, 12)
+        XCTAssertEqual(record.summary.flaggedRuns, 0, "serious is not a flag")
+    }
+
     /// A run that fails on an error keeps the error's type and case name, never its message.
     func testAnErrorIsRecordedByKindOnly() {
         enum Sample: Error { case templateFailed(String), plain, tooLong(tokens: Int, limit: Int), mixed(Int, String) }

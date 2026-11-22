@@ -6,12 +6,13 @@ import Foundation
 ///
 /// In another app's overnight runs every model fell to 5–11 tokens a second once the phone reached
 /// `serious`, which took two to five long answers, and a cool-down wait that gave up after a few
-/// minutes measured hot twice a night. So an unattended run waits out `serious` and `critical`,
-/// the states where iOS throttles, settles once at the start and again after each hot spell, and
-/// refuses a draining battery and Low Power Mode. `fair` is measured on: iOS doesn't throttle there,
-/// and on the first phone run (2026-11-22) a cool iPhone Air on its charger reported `fair` between
-/// cases, which held a nominal-only gate in "waiting" for no reason. The thermal trace still shows
-/// how long the run spent at `fair`.
+/// minutes measured hot twice a night. Heat changes a model's speed, not its answers, so (owner,
+/// 2026-11-22) a run keeps measuring through `fair` and `serious` and counts every answer towards the
+/// floors, while the record takes its timing only from cases that started `nominal` or `fair`. It
+/// pauses only at `critical`, to protect the phone, settles once at the start and after a
+/// `critical` spell, and refuses a draining battery and Low Power Mode. On the first phone runs an
+/// iPhone Air on its charger reached `serious` within a minute of generating, which held a stricter
+/// gate in "waiting" for most of the run.
 ///
 /// - `proceed`: measure now.
 /// - `wait(reasons)`: not yet; the reasons are for the log. Ask again shortly.
@@ -46,9 +47,9 @@ enum QualificationRunGate {
     }
 
     enum Reason: String, Codable, Sendable, CaseIterable {
-        /// `serious` or `critical`: hot enough for iOS to throttle.
+        /// `critical`: hot enough that the run pauses to protect the phone.
         case thermal
-        /// Cool (`nominal` or `fair`), but not yet for the settle period after the start or a hot spell.
+        /// Below `critical`, but not yet for the settle period after the start or a `critical` spell.
         case settling
         case lowPowerMode
         /// On battery: a run must not drain the phone, and a draining phone throttles.
@@ -68,7 +69,7 @@ enum QualificationRunGate {
     }
 
     struct Policy: Equatable, Sendable {
-        /// How long the phone must stay cool (`nominal` or `fair`) before the first case, and after a hot spell.
+        /// How long the phone must stay below `critical` before the first case, and after a `critical` spell.
         var settleSeconds: TimeInterval = 120
         /// The longest one wait lasts before it flags (heat) or stops (power).
         var capSeconds: TimeInterval = 20 * 60
@@ -93,8 +94,11 @@ enum QualificationRunGate {
         init() {}
     }
 
-    /// Hot enough for iOS to throttle.
-    static func isHot(_ thermal: Thermal) -> Bool { thermal >= .serious }
+    /// Hot enough to pause the run.
+    static func isHot(_ thermal: Thermal) -> Bool { thermal >= .critical }
+
+    /// Cool enough for the case's speed and time to first token to count in the record's timing.
+    static func countsForTiming(_ thermal: Thermal) -> Bool { thermal <= .fair }
 
     /// The reasons `reading` is not fit to measure on, updating the cool stretch and settling.
     static func reasons(_ reading: Reading, state: inout State, policy: Policy) -> [Reason] {

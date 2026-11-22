@@ -156,6 +156,11 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var cancelBoundSeconds = 1.0
         /// Seconds the run spent measuring, waits excluded.
         var measuringSeconds = 0.0
+        /// Runs that started `serious` or hotter: their answers count, their timing doesn't
+        /// (`QualificationRunGate.countsForTiming`).
+        var hotRunsExcludedFromTiming: Int?
+        /// The excluded runs' decode rate, to show what heat cost.
+        var hotDecodeTokensPerSecond: Distribution?
     }
 
     struct Distribution: Codable, Equatable {
@@ -214,6 +219,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var compactGenerations: Int
         var expectedToolDropped: Bool
         var contextWindow: Int?
+        /// `QualificationRunGate.Thermal`'s raw value when the case started; nil in older records.
+        var thermalAtStart: Int?
         var seconds: Double
     }
 
@@ -283,7 +290,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
 
     // MARK: - Adding runs
 
-    mutating func add(_ run: LocalToolEval.Run, repeat index: Int, flagged: Bool, seconds: Double) {
+    mutating func add(_ run: LocalToolEval.Run, repeat index: Int, flagged: Bool, seconds: Double,
+                      thermalAtStart: QualificationRunGate.Thermal? = nil) {
         let m = run.measurements
         let entry = RunEntry(
             key: Self.key(caseID: run.caseID, repeat: index), caseHash: Self.caseHash(run.caseID), repeatIndex: index,
@@ -295,7 +303,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             promptSeconds: m.promptSeconds, promptTokens: m.promptTokens, decodeTokensPerSecond: m.decodeTokensPerSecond,
             toolsOffered: m.toolsOffered, toolsKept: m.toolsKept, fitDroppedGenerations: m.fitDroppedGenerations,
             compactGenerations: m.compactGenerations, expectedToolDropped: m.expectedToolDropped,
-            contextWindow: m.contextWindow, seconds: seconds)
+            contextWindow: m.contextWindow, thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
         recompute()
@@ -377,8 +385,17 @@ struct LocalModelQualificationRecord: Codable, Equatable {
                           flaggedRuns: flagged,
                           clearsFloorsUnflagged: finished && report.clearsFloors && flagged == 0)
         gate.flaggedRuns = flagged
-        timing.firstTokenSeconds = Distribution(runs.flatMap(\.promptSeconds))
-        timing.decodeTokensPerSecond = Distribution(runs.flatMap(\.decodeTokensPerSecond))
+        // Heat changes the speed, not the answers: every run counts above, only cool ones here.
+        func cool(_ entry: RunEntry) -> Bool {
+            entry.thermalAtStart.flatMap(QualificationRunGate.Thermal.init(rawValue:))
+                .map(QualificationRunGate.countsForTiming) ?? true
+        }
+        let coolRuns = runs.filter(cool)
+        let hotRuns = runs.filter { !cool($0) }
+        timing.firstTokenSeconds = Distribution(coolRuns.flatMap(\.promptSeconds))
+        timing.decodeTokensPerSecond = Distribution(coolRuns.flatMap(\.decodeTokensPerSecond))
+        timing.hotRunsExcludedFromTiming = hotRuns.count
+        timing.hotDecodeTokensPerSecond = Distribution(hotRuns.flatMap(\.decodeTokensPerSecond))
     }
 
     // MARK: - Writing

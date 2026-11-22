@@ -271,14 +271,16 @@ grants a badge, adds a catalog model or touches the GGUF tool path (P2).
   customer may load waits for the phone records this feeds.
 - **The run gate (H4).** `QualificationRunGate` (pure, in `OpenGlassesTests/LocalToolEval/`):
   thermal state, Low Power Mode, battery level and charging into `proceed`, `wait(reasons)`,
-  `flag(reasons)` or `stop(reasons)`. It waits out `serious` and `critical`, where iOS throttles,
-  settles for 120 s at the start and after each hot spell, measures at `nominal` and `fair`, refuses
-  Low Power Mode and a battery off the charger, flags when heat outlasts the cap (20 minutes) and
-  then flags later cases at once until the phone has cooled and settled, and stops when power is
-  still bad at the cap. The plan gives no numbers; these are the device app's defaults and its
-  arguments. The first build waited for `nominal` only; on the phone a cool iPhone Air on its
-  charger reported `fair` between cases and sat in "waiting", so `fair` is measured on (iOS
-  doesn't throttle there) and the thermal trace shows the time spent at it.
+  `flag(reasons)` or `stop(reasons)`. **Heat changes the speed, not the answers (owner,
+  2026-11-22):** a run measures through `nominal`, `fair` and `serious` and counts every answer
+  towards the floors; the record's time to first token and decode rate come only from cases that
+  started `nominal` or `fair`, and the hot cases' count and decode rate are kept beside them. It
+  pauses only at `critical`, settles for 120 s at the start and after a `critical` spell, refuses
+  Low Power Mode and a battery off the charger, flags when `critical` outlasts the cap (20
+  minutes), and stops when power is still bad at the cap. The plan gives no numbers; these are
+  the device app's defaults and its arguments. Found on the phone: the first build waited for
+  `nominal`, and a cool iPhone Air on its charger reported `fair` between cases; the second waited
+  out `serious`, which the phone reached within a minute of generating after an hour of runs.
 - **Grader additions.** A generation's runtime report (`LocalGenerationStats`: tokens, timings,
   the cap and the stop reason, from mlx-swift-lm's completion info) now rides out of
   `LocalLLMService` on `MLXTurnOutput` and `LocalToolLoop.Generation`. A reply of zero tokens fails
@@ -579,8 +581,9 @@ goes with it.
    - `flag`: the wait ran out, so it measures anyway and the issue goes on the record;
    - `stop`: the power is still bad at the cap, so no later model is measured.
 
-   Unattended runs wait out `serious` and hotter, settle at the start and after each hot spell,
-   refuse a draining battery and refuse Low Power Mode (`fair` is measured on, as built). A flagged result can't grant a badge. The 10-minute sustained run keeps
+   As built (owner, 2026-11-22): heat changes the speed, not the answers, so answers count
+   through `serious` and only the timing is taken from cool cases; the run pauses only at
+   `critical`, and refuses a draining battery and Low Power Mode. A flagged result can't grant a badge. The 10-minute sustained run keeps
    its thermal trace either way.
 
 Smaller items go in with P3's graders:
