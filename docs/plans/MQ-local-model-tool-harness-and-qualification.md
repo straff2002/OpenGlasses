@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P2–P4 not built · P4 device pass owed · all 8 decisions taken 2026-11-21 · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); the first phone run owed · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -194,8 +194,8 @@ unchanged: a turn reaches a downloaded model exactly when it did before.
   Field Assist tools so the owner can try it on a job. `qualifiesForFieldAssistTools` stays false
   for every model, and no badge shows (decision 6).
 - **Floors in code.** `LocalToolEval.Floors` holds decision 5's hard floors (not in the manual
-  ≥ 95%, clean output 100%, restraint ≥ 90%). Tool choice and two-step stay unset until the Mac
-  screener.
+  ≥ 95%, clean output 100%, restraint ≥ 90%). Tool choice and two-step stay unset until the first
+  phone run (owner, 2026-11-22; it was the Mac screener).
 - **The pin.** mlx-swift-lm `14414441` → `4c21c84` (upstream PR #812), and mlx-swift 0.31.6 →
   0.33.0. The library now streams reasoning as its own `Generation.reasoning` event:
   - `LocalStreamRouter` keeps it out of the spoken, previewed and returned text.
@@ -229,6 +229,99 @@ native):
 The compact tier is 349 tokens with only the job open and 648 at most, against 7,792–10,049 for
 the full block. Verified headless: 716 tests, 0 failures, plus the Release build. Not verified: any
 real model on a phone. That is P3 and P4.
+
+## P3 part 1 as built (2026-11-22)
+
+The owner decided on 2026-11-22 that phone results come first: the Mac's memory limit, GPU and
+thermals don't represent a phone, so the Mac screener shrinks to a compile check and the device app
+is the runner that qualifies. This part builds the device app and what it stands on. Nothing in it
+grants a badge, adds a catalog model or touches the GGUF tool path (P2).
+
+- **Per-model sampling (H1).** `LocalModelSampling` (`Services/LocalInference/`): an optional
+  `sampling` object on MLX and GGUF catalog entries — temperature, top-p, top-k, min-p, repetition
+  and presence penalty, each decoded only when present — with a `source` note and an optional
+  `toolTurn` set applied over it on a native tool turn. Only the members set replace the global
+  0.7 / 0.9. `LocalLLMService.generateParameters(for:toolTurn:)` reads it on every MLX turn, and
+  `sendLocal` passes the same set to the GGUF backend through `LocalGenerationRequest.sampling`, so
+  the app and the device app sample alike. Sets are added only where the publisher states one:
+  - Gemma 4 E2B and E4B: temperature 1.0, top-p 0.95, top-k 64 (their model cards, "Best
+    Practices", one configuration for all uses);
+  - LFM2.5 2.6B: temperature 0.1, top-k 50, repetition penalty 1.1 (its card's "Generation
+    parameters"). These are the values `generateParameters` hard-coded before; the card names no
+    top-p, so it now takes the global 0.9 rather than the library's 1.0.
+
+  Qwen 2.5 and the GGUF entries carry none. No entry has a tool-turn set: no publisher we ship
+  states one. A GGUF set may not use presence penalty (the wrapper's sampler has none) and is
+  refused if it does; GGUF min-p now comes from the request when set.
+- **Memory budget from the kill limit (H2).** `LocalMemoryBudget` (pure): the kill limit is
+  `os_proc_available_memory()` plus the footprint held, measured once; copied weights (MLX) are
+  judged against it with the footprint held, mapped weights (GGUF) against Metal's
+  `recommendedMaxWorkingSetSize` with their working set against the kill limit; 1 GB is kept back
+  on a 6 GB phone, 512 MB above. `LocalMemoryReadings` is the live adapter, with the kill limit
+  fixed at first use. **The shipping gates are unchanged**: loads still go through
+  `MemoryHeadroom.canLoad` and the RAM floors. Switching a gate that decides which models a
+  customer may load waits for the phone records this feeds.
+- **The run gate (H4).** `QualificationRunGate` (pure, in `OpenGlassesTests/LocalToolEval/`):
+  thermal state, Low Power Mode, battery level and charging into `proceed`, `wait(reasons)`,
+  `flag(reasons)` or `stop(reasons)`. It waits for `nominal` plus a settle period (120 s), refuses
+  Low Power Mode and a battery off the charger, flags when heat outlasts the cap (20 minutes) and
+  then flags later cases at once until a settled `nominal`, and stops when power is still bad at
+  the cap. The plan gives no numbers; these are the device app's defaults and its arguments.
+- **Grader additions.** A generation's runtime report (`LocalGenerationStats`: tokens, timings,
+  the cap and the stop reason, from mlx-swift-lm's completion info) now rides out of
+  `LocalLLMService` on `MLXTurnOutput` and `LocalToolLoop.Generation`. A reply of zero tokens fails
+  `cleanText` as a template fault; a blank reply with tokens behind it does not. A reply that
+  stops at the cap is marked cut and counted, not failed.
+- **One grading core, two runners.** `LocalToolEvalCore.swift` is compiled unchanged by the test
+  target and the device app. Its `Environment` takes the loop's generation (text, parsed calls and
+  report), a reader for reading cases, and optionally a model that runs its own tool loop (Apple's).
+  A reading case now asks the model for a reading (`Reader`: passages by id and the question in,
+  one JSON object out), which `ManualReadingCheck` accepts or declines; CI's scripted model replies
+  with the case's scripted reading in that format, and an unreadable reply is declined, as the app
+  would decline it, and counted. The 98 near-miss twins test the check, not a model (each is an
+  answered case's question and passages with a made-up value in its scripted reading), so a live
+  run skips them (`Case.isCheckOnly`) and the record says how many. The dispatcher's unoffered-tool
+  message (`LocalToolLoop.unofferedToolMessage`) and the tool-result framing
+  (`PromptInjectionPolicy.resultForModel`) are the shipped ones, shared.
+- **The device app** (`Scripts/local-model-qualification/`, bundle id
+  `com.openglasses.localmodelqualification`, the app's increased-memory-limit entitlement). It
+  compiles the production `LocalLLMService` and its MLX runtime, the loop, parser, coercion, output
+  policy, schema conversion, catalog and sampling by path; `Stubs.swift` adapts only telemetry, the
+  turn recorder, two type names and a photo-only helper. To make that possible, four pure pieces
+  moved out of large files unchanged: the local turn's wording (`LLMService+LocalTurnText.swift`),
+  canonical arguments (`AttemptToolLedger+CanonicalArguments.swift`), tool-output framing
+  (`PromptInjectionPolicy+ToolOutput.swift`), and the staging-summary bridge (into
+  `LocalModelRowState.swift`); `LocalToolTurn.forLoopPass` builds each pass for `sendLocalNative`
+  and the app alike. What it can't build without the app is in `Fixture/qualification-fixture.json`:
+  each offered tool's registry declaration and the lean on-device prompt with the Lennox job open,
+  fitted to each tool-candidate model; `LocalModelQualificationFixtureTests` rebuilds it from the
+  app and fails when it is stale. The app takes `--model` (default Gemma 4 E2B), `--apple`,
+  `--repeats` (3), `--groups` (default Field Assist with the restraint and not-in-the-manual
+  categories), `--limit`, `--settle`, `--cap`, `--allow-battery`, `--cancel-probes` and `--fresh`;
+  downloads the model through the production downloader; gates every case; keeps the screen awake;
+  cancels generation when it resigns active; and writes `Documents/results.json` after every case,
+  resuming a matching unfinished record. The record (`LocalModelQualificationRecord`) is counts and
+  hashes only: per group and category pass counts with bootstrap intervals over cases, decision 5's
+  floors, cut and zero-token replies, time to first token and decode rate, the fit before load and
+  the peak footprint against the kill limit, the thermal trace, gate waits and flags, cancel latency
+  from timed probes, the sampling set, and the device, OS build, app commit, runtime revision, model
+  revision and quantisation.
+- **Apple's baseline.** `--apple` runs the same cases on Apple's on-device model: the tools are
+  the shipped `AppleToolBridge` adapters built from `OnDeviceToolSchema`, each calling the same
+  dispatcher the loop uses (scripted results, the same coercion), and the outcome is graded by the
+  same graders. Two differences, recorded here: its instructions are Gemma 4 E2B's fixture prompt,
+  not the shipped Apple path's `AppleOnDeviceInstructions` (which needs the running app's job
+  service), and Apple reports no token counts, so the zero-token and cut checks don't apply to it.
+- **Decision 8's test.** An entry with `deviceVerified` evidence must name its record
+  (`evidenceRecord`, a JSON file under `reports/`; MLX and GGUF), and
+  `LocalModelQualificationRecordTests` fails when a named record is not in git, read from the git
+  index itself since the simulator can't run `git`. No entry names one yet.
+- **Compile check.** `Scripts/local-model-qualification/check-compiles.sh` builds the app for the
+  simulator. It is not in `Scripts/check-eval-harnesses.sh`: that job compiles plain-swiftc Mac
+  harnesses in a 10-minute budget, and a cold mlx-swift-lm build alone takes longer.
+- **Found while building.** Corpus v2 has no Field Assist restraint case (its seven are everyday
+  chatter), so the restraint floor stays unjudged on the judged group and no run on v2 can clear
+  every floor; the corpus needs Field Assist restraint cases before a badge can be granted.
 
 ## What the local path does today (read from the code, 2026-11-20)
 
@@ -348,7 +441,7 @@ calling, so none of this changes A–G. All four decide whether a qualification 
 model or the conditions around it. Where code is adapted rather than rewritten, its MIT notice
 goes with it.
 
-1. **Each model's own sampling (P3, before the screener).** Every local turn today uses one set of
+1. **Each model's own sampling (P3, before the first phone run; built 2026-11-22).** Every local turn today uses one set of
    settings, temperature 0.7 and top-p 0.9 (`LocalLLMService`). Model publishers recommend very
    different ones: top-k and min-p values differ by family, and some advise against a repetition
    penalty. A model screened on settings its publisher doesn't recommend can fail a floor for
@@ -437,13 +530,10 @@ set when it has none, and the record says which.
 
 1. **CI, headless:** the loop, the schema adapter, the graders and the corpus format against a
    scripted fake model. This is where regressions are caught.
-2. **Mac screener:** `Scripts/local-tool-eval/run.sh` compiles the app's loop, parser and graders
-   against mlx-swift-lm on macOS (MLX runs on Apple silicon). It honours `EVAL_COMPILE_ONLY` so
-   `Scripts/check-eval-harnesses.sh` keeps it building. It compares models; it doesn't qualify
-   them. The research found Swift and Python results differ, so it must run the Swift path.
-3. **Device qualification app:** `Scripts/local-model-qualification/`, a separate bundle id on the
-   pattern of `Scripts/manual-library-benchmark`, running the production `LocalInferenceCoordinator`
-   and backends. It records the corpus results and, per run:
+2. **Device qualification app, first** (owner, 2026-11-22): `Scripts/local-model-qualification/`,
+   a separate bundle id on the pattern of `Scripts/manual-library-benchmark`, running the
+   production `LocalLLMService` and its MLX runtime with the CI runner's grading core compiled
+   unchanged (built in P3 part 1). It records the corpus results and, per run:
    - time to first token and decode rate;
    - peak footprint against `os_proc_available_memory`;
    - thermal state over a 10-minute sustained run;
@@ -453,6 +543,10 @@ set when it has none, and the record says which.
    It runs on each RAM tier we offer (6, 8 and 12 GB, per `minimumRAMGB`). Results go into the
    catalog's `evidence` and a dated qualification record. The record holds counts and hashes only,
    plus the device, OS build, app build, runtime revision, model revision and quantisation.
+3. **Mac screener, a compile check only.** The Mac's memory limit, GPU and thermals don't
+   represent a phone, so a Mac run neither qualifies nor ranks models. What is left of it is
+   keeping the device app building: `Scripts/local-model-qualification/check-compiles.sh` builds it
+   for the simulator.
 
 Apple's on-device model, and Private Cloud Compute once MP P2 lands, run the same corpus as the
 baseline.
@@ -495,11 +589,14 @@ licences are confirmed.
 - **P2 — GGUF tool parsing**, behind the same flag: `common/chat` in the framework build (or the
   alternative from decision 4), with the engine-reproducibility check updated, and the GGUF cache
   keeping its shared prefix with batch trimming (H3).
-- **P3 — qualification:** per-model sampling in the catalog (H1) and the kill-limit memory budget
-  (H2) first; then the Mac screener and the device app with its run gate (H4), the shortlist run,
-  new catalog entries for the models that pass, badges set from the records, and the flag's default
-  decided per model from the results. Records are dated JSON in `reports/` (decision 8), and a test fails
-  if a catalog entry's evidence names a record that is not in git.
+- **P3 — qualification:** part 1 (🚧 built 2026-11-22, [as built](#p3-part-1-as-built-2026-11-22)):
+  per-model sampling in the catalog (H1), the kill-limit memory budget (H2), the device app with
+  its run gate (H4), the grader additions, Apple's baseline, and the test that fails if a catalog
+  entry's evidence names a record that is not in git (decision 8). Owed: the first phone run, then
+  tool choice's and two-step's floors set from it, Field Assist restraint cases in the corpus, the
+  shortlist run on each RAM tier, new catalog entries for the models that pass, badges set from the
+  records (dated JSON in `reports/`), and the flag's default decided per model from the results.
+  The Mac screener is a compile check (owner, 2026-11-22).
 - **P4 — device pass (owed, not automatable):** a field day on each RAM tier in airplane mode:
   open a job by voice, log readings, a calculation, a manual question answered and one declined,
   barge-ins, a locked phone (Plan GE's background ladder).
@@ -530,8 +627,8 @@ All eight decided by the owner on 2026-11-21.
    - no protocol markup reaching the voice: 100%;
    - restraint (no tool when none applies) ≥ 90%.
 
-   Set after the first Mac screener run but before the device runs: tool choice (around 85%) and
-   two-step (around 70%).
+   Set after the first phone run (owner, 2026-11-22, in place of the Mac screener run): tool
+   choice (around 85%) and two-step (around 70%). The hard floors above are unchanged.
 6. **Does an unbadged model still get tools?** **Decided 2026-11-21: yes, the everyday set only,
    as built**, with no Field Assist tools until it is qualified (or, with the P1 flag on, while an
    allowlisted model is under qualification), and the badge hidden.
