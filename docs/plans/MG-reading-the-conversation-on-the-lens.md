@@ -284,6 +284,10 @@ Display gives the drag rate this needs:
 The code goes under `Sources/Glasses/Experimental/` inside `#if DAT_EXPERIMENTAL` and is listed in
 `DATExperimentalGuardTests`' roster. A store build has the stable view and nothing more.
 
+**Built by Plan MU P6 (2026-11-22, flagged builds only):** band `nav` left/right on the page view
+(a close-up's halves, and the page before or after at fit width); drag, up/down and Back unmapped.
+See [MU](MU-the-lens-read-at-work.md) P6.
+
 ### 7 · Bringing the lens back hands-free (P0)
 
 Reopening is the tester's top ask. Today the glasses' Back gesture (a two-finger temple tap) ends the
