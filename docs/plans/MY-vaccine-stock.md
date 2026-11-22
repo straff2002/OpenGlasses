@@ -7,8 +7,8 @@ spreadsheet, spoken sentence) and the weekly count reminder; and the check again
 medical-mode gate). All 12 decisions are built on the plan's recommendations
 (`VaccineStockPolicy`) and remain the owner's to change. The 9 new test classes and every existing
 stock, org-profile, settings-visibility, catalog and brand guard class pass on the simulator (815
-tests, 60 classes). `check-privacy-logging.sh` passes. Owed: the full suite and the Release build;
-a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
+tests, 60 classes); the full suite (19,508 tests) and the Release build pass. `check-privacy-logging.sh`
+passes. Owed: a simulator check of the scan sheet, the count sheet, the report and the EMR check sheet; the device
 pass (a real carton scanned, and the reminder seen on a phone); P4 the catalog sync; P5 the pilot; a
 takeover workbook still drops lots (it carries lines and figures only); tapping the count reminder
 opens the app but not the count sheet. The clinic's process details are due the week of

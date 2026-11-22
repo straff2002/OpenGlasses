@@ -158,7 +158,7 @@ struct GS1ElementString: Equatable, Sendable {
         return .success(result)
     }
 
-    /// "(01)09312345678905(10)ZZ1001(21)S1" as the element string it stands for, with a separator
+    /// "(01)02000000000015(10)ZZ1001(21)S1" as the element string it stands for, with a separator
     /// after each variable-length field but the last. Nil when a bracket holds no AI this reader
     /// knows. A field runs to the next bracketed known AI, so a lot may hold brackets of its own.
     static func unbracketed(_ text: String) -> String? {
@@ -200,7 +200,7 @@ struct GS1ElementString: Equatable, Sendable {
         return out
     }
 
-    /// This code in the human-readable form: "(01)09312345678905(17)271130(10)ZZ1001".
+    /// This code in the human-readable form: "(01)02000000000015(17)271130(10)ZZ1001".
     var bracketed: String {
         var out = ""
         if let gtin { out += "(01)\(gtin)" }
@@ -324,7 +324,7 @@ struct StockScan: Equatable, Sendable {
         return forms
     }
 
-    /// The fields, for `scan_code`'s answer: "product number 09312345678905, lot ZZ1001, expiry
+    /// The fields, for `scan_code`'s answer: "product number 02000000000015, lot ZZ1001, expiry
     /// 30 November 2027".
     var described: String {
         var parts: [String] = []

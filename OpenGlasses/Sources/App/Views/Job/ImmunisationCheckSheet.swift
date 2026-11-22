@@ -91,8 +91,11 @@ struct ImmunisationCheckSheet: View {
             problem = ImmunisationListReader.Failure.unreadable.sentence
             return
         }
-        guard let data = Self.contents(of: url) else {
-            problem = ImmunisationListReader.Failure.unreadable.sentence
+        let data: Data
+        switch Self.contents(of: url) {
+        case .success(let read): data = read
+        case .failure(let failure):
+            problem = failure.sentence
             return
         }
         switch checker.header(data, format: format) {
@@ -114,11 +117,17 @@ struct ImmunisationCheckSheet: View {
         }
     }
 
-    /// The file's bytes, read where the file is and never written anywhere.
-    private static func contents(of url: URL) -> Data? {
+    /// The file's bytes, read where the file is and never written anywhere. A file over the
+    /// reader's size limit is refused before any of it is loaded.
+    private static func contents(of url: URL) -> Result<Data, ImmunisationListReader.Failure> {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        return try? Data(contentsOf: url, options: [.uncached])
+        if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           size > CSVReader.maximumFileBytes {
+            return .failure(.tooLarge)
+        }
+        guard let data = try? Data(contentsOf: url, options: [.uncached]) else { return .failure(.unreadable) }
+        return .success(data)
     }
 
     // MARK: - The columns
@@ -151,8 +160,15 @@ struct ImmunisationCheckSheet: View {
     }
 
     private func run() {
-        guard let file, let format, let data = Self.contents(of: file) else {
+        guard let file, let format else {
             problem = ImmunisationListReader.Failure.unreadable.sentence
+            return
+        }
+        let data: Data
+        switch Self.contents(of: file) {
+        case .success(let read): data = read
+        case .failure(let failure):
+            problem = failure.sentence
             return
         }
         outcome = checker.check(data, format: format, mapping: mapping)
