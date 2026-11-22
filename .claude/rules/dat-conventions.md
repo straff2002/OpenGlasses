@@ -164,10 +164,10 @@ import MWDATMockDevice  // MockDeviceKit, MockGlasses, MockCameraKit; pairGlasse
   guide; `start()` returns while it is still `.starting`, until the glasses accept the request).
   `MetaDisplayBackend.awaitStarted` waits up to 10 s (`DisplayStartWait`) after every `start()`;
   build 705 sent at once, and on a real Ray-Ban Display every first send went unanswered. `ButtonGroup` (+ `ButtonGroupBuilder`/`ButtonGroupAlignment`) lays out
-  button rows (0.9.0); the component result builder supports full if/else. **Only a `.primary`
-  button is sent with its icon** (`LensButtonIconPolicy`): in Meta's simulated preview on 1.0.1 a
-  `.secondary` button with an icon draws as the icon alone and loses its label. Not yet checked on
-  real glasses.
+  button rows (0.9.0); the component result builder supports full if/else. **No lens button is
+  sent with an icon** (`LensButtonIconPolicy`): in Meta's simulated preview on 1.1.0 any button with
+  an icon, `.primary` included, draws as the icon alone and loses its label (on 1.0.1 it was
+  `.secondary` only). Not yet checked on real glasses.
 - `Device.supportsDisplay()` / `DeviceType.supportsDisplay` — capability gate; `AutoDeviceSelector(wearables:filter:)`
   can constrain selection (e.g. `filter: { $0.supportsDisplay() }`).
 - `DeviceType` — `.rayBanMeta`, `.oakleyMetaHSTN`, `.oakleyMetaVanguard`, `.rayBanMetaOptics`, `.metaGlasses`.
