@@ -1,6 +1,6 @@
 {
   "assistantName" : "Avenkin",
-  "corpusBodySha256" : "3592f5b50f74854b3a3c4018a9253b73f5fa992c10c7647568c67e0710db0577",
+  "corpusBodySha256" : "cc10801a8f539db85a4406eb41c58233a3e8619045ab1a039c4c959dbb4852b5",
   "dateTimePlaceholder" : "{{DATE_TIME}}",
   "prompts" : {
     "LiquidAI/LFM2.5-2.6B-MLX-4bit" : {
