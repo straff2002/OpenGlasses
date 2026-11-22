@@ -21,9 +21,10 @@ import Foundation
 ///
 /// **Voltage drop** (Plan JJ P4) is its electrical domain: `voltage_drop` over [[VoltageDrop]], from
 /// the phase, the current, the one-way length and the conductor's resistance per unit length (or a
-/// factor and the conductor's area, or an AWG size and its metal), in metric or imperial units, with
-/// every input said back. No limit is built in, nor any resistance or factor beyond the usual one for
-/// a wire size's metal, which the answer names; a missing one is refused. The trade gate takes the
+/// factor and the conductor's area, or an AWG size or an area in mm² with its metal), in metric or
+/// imperial units, with every input said back. No limit is built in; the only figures not given are
+/// the electrical trade's conductor data (`ConductorTable`, a bundled file like the saturation
+/// tables), which the answer names, and a missing one is refused. The trade gate takes the
 /// tool's operations by trade (`FieldTradeGate.operationTrades`): the saturation math is
 /// refrigeration's and voltage drop is electrical's.
 @MainActor
@@ -184,7 +185,9 @@ final class DomainCalcTool: NativeTool {
         guard let operation = (args["operation"] as? String)?.lowercased() else {
             return "Specify 'operation': 'pt_lookup', 'superheat', or 'subcool' (refrigerant), or 'voltage_drop' (electrical)."
         }
-        if operation == "voltage_drop" { return Self.voltageDrop(args) }
+        if operation == "voltage_drop" {
+            return Self.voltageDrop(args, conductors: ConductorTableCatalog.table(bundle: bundle))
+        }
         guard let rawRefrigerant = (args["refrigerant"] as? String)?.trimmingCharacters(in: .whitespaces),
               !rawRefrigerant.isEmpty else {
             return "Specify 'refrigerant' (e.g. 'R-410A'), from the nameplate or the technician. It is never assumed."
@@ -231,8 +234,10 @@ final class DomainCalcTool: NativeTool {
     // MARK: - Voltage drop (Plan JJ P4)
 
     /// The drop along a run, or what is missing. Every input is the technician's or a table's in
-    /// the organisation's own book; none is assumed.
-    nonisolated static func voltageDrop(_ args: [String: Any]) -> String {
+    /// the organisation's own book; none is assumed. `conductors` is the trade's conductor file, read
+    /// only for a run given as a wire size or a metal; nil (the file missing or malformed) refuses
+    /// that path and asks for the figures instead.
+    nonisolated static func voltageDrop(_ args: [String: Any], conductors: ConductorTable?) -> String {
         guard let phase = (args["phase"] as? String).flatMap(VoltageDrop.Phase.init(words:)) else {
             return "Specify 'phase': 'single' or 'three'. The phase is never assumed: ask the technician."
         }
@@ -253,24 +258,48 @@ final class DomainCalcTool: NativeTool {
         for (key, unit) in resistances {
             if let value = number(args[key]) { conductor = .resistance(value, unit); break }
         }
+        /// The metal's factor in `unit` from the conductor file, or the refusal.
+        func materialFactor(_ unit: VoltageDrop.FactorUnit) -> Result<(VoltageDrop.Material, ConductorTable.Factor, String), ArgumentProblem> {
+            guard let metal = text(args["material"]).flatMap(VoltageDrop.Material.init(words:)) else {
+                return .failure(ArgumentProblem(text: "Specify 'material': 'copper' or 'aluminum', the conductor's metal. It is never "
+                    + "assumed: ask the technician."))
+            }
+            guard let conductors, let factor = conductors.factor(for: metal, unit: unit) else {
+                return .failure(ArgumentProblem(text: conductorDataUnavailable))
+            }
+            return .success((metal, factor, conductors.source))
+        }
         if conductor == nil {
             let cmilFactor = number(args["k_factor_ohm_cmil_per_ft"])
             let cmilArea = number(args["area_cmil"])
+            let mm2Area = number(args["area_mm2"])
             let gaugeWords = text(args["wire_awg"])
             if let k = number(args["k_factor_ohm_mm2_per_m"]) {
-                guard let area = number(args["area_mm2"]) else {
+                guard let area = mm2Area else {
                     return "A factor in Ω·mm²/m needs the conductor's area in mm² ('area_mm2'). It is never assumed."
                 }
                 conductor = .factor(k, .ohmSquareMillimetresPerMetre, area: area)
+            } else if let area = mm2Area, cmilFactor == nil {
+                // An area in mm² with its metal: the metal's Ω·mm²/m factor from the conductor file
+                // (Plan JJ decision 8). The area given wins over a wire size beside it.
+                switch materialFactor(.ohmSquareMillimetresPerMetre) {
+                case .failure(let problem): return problem.text
+                case .success(let (metal, factor, source)):
+                    conductor = .factor(factor.value, .ohmSquareMillimetresPerMetre, area: area)
+                    sizing = VoltageDrop.Sizing(gauge: nil, material: metal, temperatureC: factor.temperatureC, source: source)
+                }
             } else if cmilFactor != nil || cmilArea != nil || gaugeWords != nil {
-                // A wire size gives the area and the material the factor (Plan MQ P3); a factor or an
-                // area that was given wins over them.
+                // A wire size gives the area and the material the factor, from the conductor file
+                // (Plan MQ P3); a factor or an area that was given wins over them.
                 var gauge: VoltageDrop.WireGauge?
                 if cmilArea == nil, let gaugeWords {
-                    guard let size = VoltageDrop.WireGauge(words: gaugeWords) else {
-                        return "'wire_awg' must be an AWG size from 18 to 4/0 (18, 16, 14, 12, 10, 8, 6, 4, 3, 2, 1, "
-                            + "1/0, 2/0, 3/0 or 4/0); '\(gaugeWords)' is not one. For another size, give the "
-                            + "conductor's resistance per unit length or its area in circular mils ('area_cmil')."
+                    guard let conductors else { return conductorDataUnavailable }
+                    guard let size = VoltageDrop.WireGauge(words: gaugeWords, table: conductors) else {
+                        let names = conductors.awg.map(\.size)
+                        let list = names.dropLast().joined(separator: ", ") + (names.count > 1 ? " or " : "") + (names.last ?? "")
+                        return "'wire_awg' must be an AWG size from \(names.first ?? "") to \(names.last ?? "") (\(list)); "
+                            + "'\(gaugeWords)' is not one. For another size, give the conductor's resistance per unit "
+                            + "length or its area in circular mils ('area_cmil')."
                     }
                     gauge = size
                 }
@@ -278,25 +307,28 @@ final class DomainCalcTool: NativeTool {
                     return "A factor in Ω·cmil/ft needs the conductor's area in circular mils ('area_cmil') or its "
                         + "AWG size ('wire_awg'). It is never assumed."
                 }
-                var material: VoltageDrop.Material?
-                if cmilFactor == nil {
-                    guard let metal = text(args["material"]).flatMap(VoltageDrop.Material.init(words:)) else {
-                        return "Specify 'material': 'copper' or 'aluminum', the conductor's metal. It is never "
-                            + "assumed: ask the technician."
+                if let cmilFactor {
+                    conductor = .factor(cmilFactor, .ohmCircularMilsPerFoot, area: area)
+                    if let gauge, let conductors {
+                        sizing = VoltageDrop.Sizing(gauge: gauge, material: nil, temperatureC: nil, source: conductors.source)
                     }
-                    material = metal
+                } else {
+                    switch materialFactor(.ohmCircularMilsPerFoot) {
+                    case .failure(let problem): return problem.text
+                    case .success(let (metal, factor, source)):
+                        conductor = .factor(factor.value, .ohmCircularMilsPerFoot, area: area)
+                        sizing = VoltageDrop.Sizing(gauge: gauge, material: metal, temperatureC: factor.temperatureC, source: source)
+                    }
                 }
-                conductor = .factor(cmilFactor ?? material?.factor ?? 0, .ohmCircularMilsPerFoot, area: area)
-                if gauge != nil || material != nil { sizing = VoltageDrop.Sizing(gauge: gauge, material: material) }
             }
         }
         guard let conductor else {
             return "Specify the conductor's resistance per unit length ('resistance_ohm_per_km', 'resistance_ohm_per_m', "
                 + "'resistance_ohm_per_1000ft' or 'resistance_ohm_per_ft'), or a factor with the conductor's area "
                 + "('k_factor_ohm_mm2_per_m' with 'area_mm2', or 'k_factor_ohm_cmil_per_ft' with 'area_cmil'), as the "
-                + "technician gives it or a table in the organisation's own book prints it, or the wire's AWG size with "
-                + "its metal ('wire_awg' with 'material'). No resistance or factor is assumed: ask, or look it up with "
-                + "table_lookup."
+                + "technician gives it or a table in the organisation's own book prints it, or the wire's AWG size or "
+                + "its area in mm² with its metal ('wire_awg' or 'area_mm2', with 'material'). No resistance or factor "
+                + "is assumed: ask, or look it up with table_lookup."
         }
         let input = VoltageDrop.Input(phase: phase, current: current, length: length.0, lengthUnit: length.1,
                                       conductor: conductor, supply: number(args["supply_v"]), sizing: sizing)
@@ -305,6 +337,13 @@ final class DomainCalcTool: NativeTool {
         case .failure(.notPositive(let name)): return "The \(name) must be a number above zero."
         }
     }
+
+    /// The conductor file could not be read, so a wire size or a metal alone gives no figure.
+    nonisolated static let conductorDataUnavailable =
+        "The app's conductor data (wire sizes and metal factors) could not be loaded, so a wire size or a metal "
+        + "alone can't be worked. Give the conductor's resistance per unit length, or a factor with the conductor's "
+        + "area ('k_factor_ohm_mm2_per_m' with 'area_mm2', or 'k_factor_ohm_cmil_per_ft' with 'area_cmil'), from the "
+        + "technician or the organisation's own book. No figure is assumed."
 
     // MARK: - Operations
 

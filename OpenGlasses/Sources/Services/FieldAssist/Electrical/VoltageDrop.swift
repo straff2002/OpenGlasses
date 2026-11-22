@@ -19,13 +19,15 @@ import Foundation
 /// refused, never assumed. Resistance only: reactance and power factor are not modelled, which the
 /// answer says.
 ///
-/// **One exception, for a run said as a wire size** (Plan MQ P3): "50 feet of 14 gauge copper" is
-/// how a technician says it, and a small model cannot turn it into an area or a factor. A
-/// `WireGauge` gives the size's area in circular mils (the standard AWG sizes, 18 to 4/0), and a
-/// `Material` the usual factor for copper (12.9 Ω·cmil/ft) or aluminium (21.2), both at 75 °C. The
-/// material is never assumed, and a resistance, factor or area that is given wins over them. The
-/// answer says which values came from here, so a figure from the organisation's book can replace
-/// them. Every other number in this file is 2, √3 or a unit's definition.
+/// **One exception, for a run said as a wire size or a metal** (Plan MQ P3, Plan JJ decision 8):
+/// "50 feet of 14 gauge copper" is how a technician says it, and a small model cannot turn it into
+/// an area or a factor. The electrical trade's reference data (`ConductorTable`, the bundled
+/// `conductors.json`) gives a `WireGauge`'s area in circular mils (the standard AWG sizes, 18 to
+/// 4/0) and a `Material`'s factor for copper or aluminium, in Ω·cmil/ft or Ω·mm²/m, at the
+/// temperature the file states. The material is never assumed, and a resistance, factor or area
+/// that is given wins over them. The answer says which values came from the file and names its
+/// source, so a figure from the organisation's book can replace them. Every number in this file is
+/// 2, √3 or a unit's definition.
 ///
 /// Pure.
 enum VoltageDrop {
@@ -88,45 +90,34 @@ enum VoltageDrop {
         var perMetre: Double { self == .ohmSquareMillimetresPerMetre ? 1 : 1 / 0.3048 }
     }
 
-    /// A standard AWG size and its area. Only the sizes building wire comes in, 18 to 4/0; any
-    /// other is refused rather than worked out.
+    /// A standard AWG size and its area, from the conductor file. Only the sizes the file carries
+    /// (building wire, 18 to 4/0); any other is refused rather than worked out.
     struct WireGauge: Equatable {
         /// "14", "1/0".
         let name: String
         let circularMils: Double
 
-        static let sizes: [WireGauge] = {
-            let table: [(String, Double)] = [
-                ("18", 1_620), ("16", 2_580), ("14", 4_110), ("12", 6_530), ("10", 10_380), ("8", 16_510),
-                ("6", 26_240), ("4", 41_740), ("3", 52_620), ("2", 66_360), ("1", 83_690),
-                ("1/0", 105_600), ("2/0", 133_100), ("3/0", 167_800), ("4/0", 211_600),
-            ]
-            return table.map { WireGauge(name: $0.0, circularMils: $0.1) }
-        }()
+        /// "14", "14 AWG", "#12", "12 gauge", "1/0", "00" (2/0), "14.0", found in `table`.
+        init?(words: String, table: ConductorTable) {
+            guard let size = table.gauge(named: Self.key(words)) else { return nil }
+            self.name = size.size
+            self.circularMils = size.circularMils
+        }
 
-        /// "14", "14 AWG", "#12", "12 gauge", "1/0", "00" (2/0), "14.0".
-        init?(words: String) {
+        /// The size as the file names it: "#12 AWG" → "12", "00" → "2/0".
+        static func key(_ words: String) -> String {
             var key = words.lowercased()
                 .replacingOccurrences(of: #"awg|gauge|ga\b|#|no\.|wire|size"#, with: "", options: .regularExpression)
                 .filter { !$0.isWhitespace }
             if key.hasSuffix(".0") { key.removeLast(2) }
             if !key.isEmpty, key.allSatisfy({ $0 == "0" }), key.count <= 4 { key = "\(key.count)/0" }
-            guard let size = Self.sizes.first(where: { $0.name == key }) else { return nil }
-            self = size
-        }
-
-        private init(name: String, circularMils: Double) {
-            self.name = name
-            self.circularMils = circularMils
+            return key
         }
     }
 
-    /// A conductor's metal, with the factor a wire size is worked with.
+    /// A conductor's metal. Its factors are the conductor file's, not this type's.
     enum Material: String, Equatable {
         case copper, aluminum
-
-        /// Ω·cmil/ft at 75 °C: the usual figures, used only for a run given as a wire size.
-        var factor: Double { self == .copper ? 12.9 : 21.2 }
 
         /// "copper", "Cu", "aluminium", "aluminum", "Al".
         init?(words: String) {
@@ -137,11 +128,15 @@ enum VoltageDrop {
         }
     }
 
-    /// Which of a factor's values came from a wire size rather than from what was given: the area
-    /// from `gauge`, the factor from `material`. Said back in the answer.
+    /// Which of a factor's values came from the conductor file rather than from what was given: the
+    /// area from `gauge`, the factor from `material` (stated at `temperatureC`). Said back in the
+    /// answer with the file's `source`.
     struct Sizing: Equatable {
         var gauge: WireGauge?
         var material: Material?
+        /// The temperature the material's factor is stated at; nil when the factor was given.
+        var temperatureC: Double?
+        var source: String
     }
 
     /// Where the conductor's resistance per unit length comes from.
@@ -228,9 +223,11 @@ enum VoltageDrop {
         answer += "Resistance only: reactance and power factor are not included. "
         if let sizing = input.sizing, sizing.gauge != nil || sizing.material != nil {
             let area = sizing.gauge.map { "the area is the standard \($0.name) AWG size" } ?? "the area is the one given"
-            let factor = sizing.material.map { "the factor the usual figure for \($0.rawValue) at 75 °C" }
-                ?? "the factor the one given"
-            answer += "Of the conductor, \(area) and \(factor); a figure from the organisation's own book wins over these."
+            let factor = sizing.material.map { metal in
+                "the factor the usual figure for \(metal.rawValue)" + (sizing.temperatureC.map { " at \(given($0)) °C" } ?? "")
+            } ?? "the factor the one given"
+            answer += "Of the conductor, \(area) and \(factor); a figure from the organisation's own book wins over these. "
+                + "Conductor data: \(sizing.source)."
         } else {
             answer += "The resistance or factor is the one given, not a value from any code or table, so cite where it came from."
         }

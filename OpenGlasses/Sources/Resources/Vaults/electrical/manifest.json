@@ -2,7 +2,7 @@
   "id": "electrical_starter",
   "name": "Electrical Starter",
   "version": "1.0.0",
-  "files": ["safety.md", "error_codes.md", "parts.md", "chains.md"],
+  "files": ["safety.md", "error_codes.md", "parts.md", "chains.md", "conductors.md"],
   "documents_dir": "documents",
   "documents": [],
   "gating": { "iap": "enterprise" },

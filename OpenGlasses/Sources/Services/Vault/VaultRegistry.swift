@@ -70,8 +70,9 @@ final class VaultRegistry {
         ),
         // The electrical starter (Plan JJ P4): safety rules, empty fault-code and parts files, and
         // a `chains.md` holding the schema and the guide's invented example, so an electrician
-        // starts from a file that parses. No standard's text, no table and no rule ships in it
-        // (Plan JJ decision 1, Plan IN decision 6); its folder's `manifest.json` is the same vault
+        // starts from a file that parses, and a `conductors.md` saying conductor figures come from
+        // `domain_calc`. No standard's text, no table and no rule ships in it (Plan JJ decision 1,
+        // Plan IN decision 6); its folder's `manifest.json` is the same vault
         // as a template an organisation copies, adds its own code PDFs to and imports.
         VaultManifest(
             id: VaultRegistry.electricalStarterId,
@@ -81,7 +82,8 @@ final class VaultRegistry {
                 "safety.md",
                 "error_codes.md",
                 "parts.md",
-                "chains.md"
+                "chains.md",
+                "conductors.md"
             ],
             proceduresDir: nil,
             gating: .init(iap: "field_assist_electrical"),

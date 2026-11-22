@@ -151,12 +151,17 @@ reason Plan IN decision 6 ships no standard: the organisation loads its own lice
    the on-device set and is offered there; chains are not.
 8. **One exception to "ships no table": voltage drop by wire gauge (owner, 2026-11-23, Plan MQ
    P3).** A small on-device model can't turn "14 gauge copper" into an area or a resistance, so
-   `voltage_drop` takes `wire_awg` (18 to 4/0) and `material` (copper or aluminum). The app carries
-   the standard AWG areas in circular mils (a gauge's definition, not a code's table) and the
-   usual 75 °C factors, 12.9 Ω·cmil/ft for copper and 21.2 for aluminum. The metal is never
-   assumed. The answer says these are the standard figures and that a figure from the
+   `voltage_drop` takes `wire_awg` (18 to 4/0), or `area_mm2`, with `material` (copper or
+   aluminum). The figures ship as electrical trade reference data, like the refrigerant tables:
+   `Resources/Electrical/conductors.json` (`ConductorTable`) carries the standard AWG areas in
+   circular mils (a gauge's definition, not a code's table) and each metal's factor with its
+   temperature, 12.9 and 21.2 Ω·cmil/ft and 0.02097 and 0.03453 Ω·mm²/m (the IEC 60028 and IEC
+   60889 resistivities at 20 °C, corrected to 75 °C), credited in Attributions. A file that does
+   not load refuses the path and asks for the figures, never falls back to constants. The metal is
+   never assumed. The answer names the figures and their source and says a figure from the
    organisation's own book wins, and a resistance, factor or area the technician gives wins over
-   them. No other table, rule or code constant ships.
+   them. The vault's `conductors.md` points the model at `domain_calc`, never memory. No other
+   table, rule or code constant ships.
 
 ## Phases (one PR each)
 
@@ -703,8 +708,8 @@ reason Plan IN decision 6 ships no standard: the organisation loads its own lice
   The answer gives the drop in volts and, with the supply, as a percentage, echoes every input,
   and says it is resistance only. Nothing in it is a constant from a code: a missing phase,
   resistance, factor or area is asked for, and a value at or below zero refused. (Since 2026-11-23,
-  decision 8: an AWG size with its metal also gives the area and factor, from the standard figures,
-  and says so.) `domain_calc` no
+  decision 8: an AWG size, or an area in mm², with its metal also gives the area and factor, from
+  the bundled conductor file, and says so.) `domain_calc` no
   longer requires a refrigerant for every operation. The trade gate now splits a tool by
   operation (`FieldTradeGate.operationTrades`): `domain_calc` is offered while either trade is on,
   its saturation math is redirected on an electrical-only phone and its voltage drop on a
