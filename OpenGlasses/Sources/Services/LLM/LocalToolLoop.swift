@@ -26,6 +26,14 @@ import Foundation
 /// The "I'll check that" stall keeps its one corrective re-generation (`Configuration.correction`),
 /// exactly where `sendLocal` runs it: on the first output, only when it is prose. The correction
 /// exchange is the turn's own scaffolding and is not kept in the transcript.
+///
+/// ### Routed calls
+/// With `Configuration.routing` set, a turn `LocalTurnRouter` recognises (an error code, a model
+/// number to identify, a step of the running procedure) has its call run through `execute` before
+/// any generation, so the dispatcher's offer check, coercion and approval gates still decide. A
+/// lookup's result then goes to the model as round 1; a procedure step's result is said as the
+/// runner wrote it, with no generation, unless it is an error or needs the model's next call.
+/// Without routing the loop is as it was.
 enum LocalToolLoop {
 
     // MARK: - Messages
@@ -103,6 +111,9 @@ enum LocalToolLoop {
         let purpose: Purpose
         /// Tool rounds already run this turn.
         let round: Int
+        /// Of those, the calls the router ran before the first generation: a scripted model plays
+        /// its script from after them.
+        var routedCalls: Int = 0
     }
 
     struct ExecutionResult: Equatable {
@@ -126,6 +137,8 @@ enum LocalToolLoop {
         /// The assistant's own name, taken off the front of a reply that opens by addressing it
         /// (`withoutLeadingName`). Empty takes nothing off.
         var assistantName: String = Config.assistantName
+        /// What `LocalTurnRouter` reads to run a call before the model. Nil: no routing.
+        var routing: LocalTurnRouter.Context? = nil
     }
 
     static let defaultRoundCap = 3
@@ -145,6 +158,8 @@ enum LocalToolLoop {
         /// spoken (`spokenResult(of:)`) rather than the miss line: Gemma 4 E2B on the phone
         /// logged the reading and then ended its turn in 24 of 38 calls (Plan MQ P3).
         case toolResult
+        /// A routed procedure step's result was said as the runner wrote it; nothing was generated.
+        case routedResult
     }
 
     /// A call the loop ran, with what came back. Arguments are kept in memory for the caller's
@@ -152,6 +167,8 @@ enum LocalToolLoop {
     struct Executed {
         let call: Call
         let result: ExecutionResult
+        /// Run by `LocalTurnRouter` before the model, not asked for by it.
+        var routed = false
     }
 
     struct Outcome {
@@ -169,6 +186,8 @@ enum LocalToolLoop {
         let callsFromReasoning: Int
         /// Calls the model made that the loop did not run: a repeat, or a call after the cap.
         let callsNotRun: Int
+        /// Calls `LocalTurnRouter` ran before the model (0 or 1).
+        var routedCalls = 0
     }
 
     // MARK: - Parsing
@@ -271,12 +290,14 @@ enum LocalToolLoop {
         var usedCorrection = false
         var fromReasoning = 0
         var notRun = 0
+        var routed = 0
 
         func generation(_ purpose: Purpose, messages: [Message], toolsOffered: Bool) async throws -> Parsed {
             try Task.checkCancellation()
             generations += 1
             let raw = try await generate(GenerationRequest(messages: messages, toolsOffered: toolsOffered,
-                                                           purpose: purpose, round: executed.count))
+                                                           purpose: purpose, round: executed.count,
+                                                           routedCalls: routed))
             try Task.checkCancellation()
             return parse(raw)
         }
@@ -300,13 +321,40 @@ enum LocalToolLoop {
             transcript.append(.assistant(text))
             return Outcome(text: text, endReason: reason, transcript: transcript, executed: executed,
                            generations: generations, usedCorrection: usedCorrection,
-                           callsFromReasoning: fromReasoning, callsNotRun: notRun)
+                           callsFromReasoning: fromReasoning, callsNotRun: notRun, routedCalls: routed)
         }
 
-        var parsed = try await generation(.initial, messages: transcript, toolsOffered: cap > 0)
+        // A routed call runs first, through the same dispatcher a model's call goes through.
+        if cap > 0, let context = configuration.routing,
+           let route = LocalTurnRouter.route(turn: userMessage, history: history, context: context) {
+            let call = Call(id: "call_1", name: route.tool, arguments: route.arguments)
+            try Task.checkCancellation()
+            transcript.append(.assistant("", calling: call))
+            let result = try await execute(call)
+            try Task.checkCancellation()
+            transcript.append(.toolResult(result.text, for: call))
+            executed.append(Executed(call: call, result: result, routed: true))
+            seen.insert(call.signature)
+            routed = 1
+            if route.speech == .result, let spoken = LocalTurnRouter.spokenProcedureResult(result) {
+                transcript.append(.assistant(spoken))
+                return Outcome(text: spoken, endReason: .routedResult, transcript: transcript, executed: executed,
+                               generations: 0, usedCorrection: false, callsFromReasoning: 0, callsNotRun: 0,
+                               routedCalls: routed)
+            }
+        }
 
-        // Round 0's recovery: the stall `sendLocal` corrects today, corrected the same way.
-        if parsed.invocation == nil, parsed.classification.kind == .prose, cap > 0,
+        let atCapAlready = executed.count >= cap
+        var parsed = try await generation(routed > 0 ? (atCapAlready ? .final : .afterTools) : .initial,
+                                          messages: transcript, toolsOffered: cap > 0 && !atCapAlready)
+        if routed > 0, atCapAlready {
+            if parsed.invocation != nil { notRun += 1 }
+            return finish(parsed, .roundCap)
+        }
+
+        // Round 0's recovery: the stall `sendLocal` corrects today, corrected the same way. Not
+        // after a routed call: the call the stall promises has already run.
+        if routed == 0, parsed.invocation == nil, parsed.classification.kind == .prose, cap > 0,
            let correction = configuration.correction?(parsed.text) {
             usedCorrection = true
             let scaffold = transcript + [.assistant(parsed.text), .user(correction)]

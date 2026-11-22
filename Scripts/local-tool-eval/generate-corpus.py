@@ -411,19 +411,21 @@ def procedures():
             "reference": [call("procedure_runner", {"action": "start", "procedure_id": name}),
                           f"First: {procedure['steps'][0]['title'].lower()}."],
         })
+        # A step's next, repeat and answer are said while the procedure runs: the router reads
+        # `procedureActive` (Plan MQ P3). Starting one is not, and neither is a restraint case.
         for step in procedure["steps"]:
             history = [{"role": "user", "content": f"Start the {title.lower()} procedure"},
                        {"role": "assistant", "content": step["instruction"]}]
             add({
                 "id": f"proc-{name}-{step['id']}-next", "category": "multiTurn", "source": src,
-                "turn": "Done. Next step", "history": history, "offered": offered,
+                "turn": "Done. Next step", "history": history, "offered": offered, "procedureActive": True,
                 "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"], "values": {"action": "next"}}]},
                 "results": {"procedure_runner": "Next step."},
                 "reference": [call("procedure_runner", {"action": "next"}), "Next step is up."],
             })
             add({
                 "id": f"proc-{name}-{step['id']}-repeat", "category": "multiTurn", "source": src,
-                "turn": "Sorry, say that step again", "history": history, "offered": offered,
+                "turn": "Sorry, say that step again", "history": history, "offered": offered, "procedureActive": True,
                 "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"], "values": {"action": "repeat"}}]},
                 "results": {"procedure_runner": step["instruction"]},
                 "reference": [call("procedure_runner", {"action": "repeat"}), step["title"] + "."],
@@ -431,7 +433,7 @@ def procedures():
             for branch in step.get("branches", [])[:1]:
                 add({
                     "id": f"proc-{name}-{step['id']}-answer", "category": "multiTurn", "source": src,
-                    "turn": branch["condition"], "history": history, "offered": offered,
+                    "turn": branch["condition"], "history": history, "offered": offered, "procedureActive": True,
                     "expect": {"calls": [{"tool": "procedure_runner", "required": ["action"],
                                           "values": {"action": "answer"}}]},
                     "results": {"procedure_runner": "Recorded; moving on."},

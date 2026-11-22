@@ -6481,9 +6481,16 @@ class LLMService: ObservableObject {
         // runtime actually declared to the model (Plan MQ P3, `LocalToolFit`). A call to a tool the
         // fit dropped is answered as not offered.
         var offered = Set(toolNames)
+        // Plan MQ P3: an error code, a model number to identify and a step of the running procedure
+        // are called before the model (`LocalTurnRouter`), which answered them from memory.
+        var configuration = LocalToolLoop.Configuration()
+        configuration.routing = Self.localTurnRouting(offered: offered)
+        // The first pass streams to the preview: the initial one, or the answer after a routed call.
+        var firstPass = true
         let outcome: LocalToolLoop.Outcome
         do {
-            outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, generateTurn: { request in
+            outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, configuration: configuration,
+                                                  generateTurn: { request in
                 // Shared with the device qualification app (Plan MQ P3), so a phone run renders
                 // each pass exactly as this turn does.
                 let toolTurn = LocalToolTurn.forLoopPass(history: earlier, request: request,
@@ -6492,7 +6499,8 @@ class LLMService: ObservableObject {
                 // The same transcript flattened, for a runtime that renders no tool turn (the seam
                 // composes its messages from it); the MLX runtime renders `toolTurn` instead.
                 let flat = LocalToolTranscript.flattened(request.messages)
-                let isFirst = request.purpose == .initial
+                let isFirst = firstPass
+                firstPass = false
                 let generation = try await generateTurn(flat.last?.content ?? text, Array(flat.dropLast()),
                                                         isFirst ? preview : nil, toolTurn)
                 if isFirst { flushPreview() }
@@ -6514,10 +6522,15 @@ class LLMService: ObservableObject {
         }
         PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.executed.count,
                               total: outcome.generations, detail: PrivacyToken(outcome.endReason.rawValue))
+        if let routed = outcome.executed.first(where: \.routed) {
+            // A registered tool's name: the router names only tools it routes to, never the turn.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.routedCalls,
+                                  tool: PrivacyToken(routed.call.name), detail: PrivacyToken("routed"))
+        }
         var answer = outcome.text
         if outcome.endReason == .protocolOnly {
             lastLocalTurnMissed = true
-        } else if Self.announcesToolIntent(answer) {
+        } else if outcome.endReason != .routedResult, Self.announcesToolIntent(answer) {
             // Never speak a promise: the loop already had its rounds to keep it.
             answer = Self.localMissMessage
             lastLocalTurnMissed = true
@@ -6526,6 +6539,15 @@ class LLMService: ObservableObject {
         conversationHistory.append(["role": "assistant", "content": validated])
         trimHistory()
         return validated
+    }
+
+    /// What `LocalTurnRouter` reads on a native local turn: the offer, and the Field Assist procedure
+    /// running now, if any. A step waiting on a read-back or a corrective note is left to the model.
+    static func localTurnRouting(offered: Set<String>) -> LocalTurnRouter.Context {
+        let presentation = Config.fieldAssistActive ? FieldSessionService.shared.activeProcedurePresentation : nil
+        return LocalTurnRouter.Context(
+            offered: offered, procedureActive: presentation != nil,
+            procedureAwaitsConfirmation: presentation.map { $0.pendingReadBack != nil || $0.needsCorrectiveNote } ?? false)
     }
 
     /// One call from the native loop. A tool the turn did not offer, or arguments that cannot be

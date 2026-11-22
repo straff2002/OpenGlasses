@@ -132,6 +132,9 @@ enum LocalToolEval {
         /// For a long-prompt case: the job context the prompt carries, in estimated tokens.
         var contextTokens: Int?
         var cancel: CancelPoint?
+        /// A Field Assist procedure is running when the turn is said: a step of it ("next",
+        /// "say that again", the step's answer). The loop's router reads it (Plan MQ P3).
+        var procedureActive: Bool?
         /// What a passing model emits, raw, one entry per generation.
         var reference: [String]?
 
@@ -260,6 +263,8 @@ enum LocalToolEval {
         var expectedToolDropped = false
         /// The largest context window a generation of the run was budgeted with.
         var contextWindow: Int?
+        /// Calls `LocalTurnRouter` ran before the model (Plan MQ P3).
+        var routedCalls = 0
 
         mutating func add(_ stats: LocalGenerationStats?) {
             generations += 1
@@ -461,6 +466,9 @@ enum LocalToolEval {
         let referenceModelID: String
         /// The longest a cancelled turn may take to stop.
         var cancellationBound: TimeInterval = 1.0
+        /// Whether the loop routes the case's turn first (`LocalTurnRouter`), as the app does. Off
+        /// only for a test of how the graders judge the model's own call on a routed shape.
+        var routesTurns = true
         /// A model that runs its own tool loop (Apple's on-device model, whose framework calls the
         /// tools itself): given the case, its history and the same `execute` the shipped loop would
         /// call, it returns the turn's outcome. Nil: the shipped `LocalToolLoop` drives
@@ -555,8 +563,14 @@ enum LocalToolEval {
                     }
                     return .success(try await runTurn(testCase, history, execute))
                 }
+                // The app's router, on the case's offer and procedure state (`sendLocalNative`).
+                var configuration = LocalToolLoop.Configuration()
+                if environment.routesTurns {
+                    configuration.routing = LocalTurnRouter.Context(offered: Set(testCase.offered),
+                                                                    procedureActive: testCase.procedureActive ?? false)
+                }
                 let outcome = try await LocalToolLoop.run(
-                    history: history, userMessage: testCase.turn,
+                    history: history, userMessage: testCase.turn, configuration: configuration,
                     generateTurn: { request in
                         let index = counter.next()
                         if testCase.cancel == .decode, index == 0 {
@@ -583,6 +597,7 @@ enum LocalToolEval {
 
         switch result {
         case .success(let outcome):
+            measured.noteRouted(outcome.routedCalls)
             grades.merge(grade(testCase, outcome: outcome, schema: environment.schema,
                                measurements: measured.value)) { $1 }
             if testCase.cancel != nil { grades[.cancellation] = false }
@@ -629,6 +644,7 @@ enum LocalToolEval {
             lock.lock(); measurements.add(fit: fit, expected: expected, offered: offered); lock.unlock()
         }
         func noteUnparsedReading() { lock.lock(); measurements.readerUnparsed += 1; lock.unlock() }
+        func noteRouted(_ count: Int) { lock.lock(); measurements.routedCalls += count; lock.unlock() }
         func noteError(_ error: Error) { lock.lock(); measurements.errorKind = LocalToolEval.errorKind(error); lock.unlock() }
     }
 
@@ -658,11 +674,13 @@ enum LocalToolEval {
     }
 
     /// The scripted fake model CI plays: each case's `reference`, one entry per generation, then
-    /// empty output.
+    /// empty output. A call the router already ran stands in for the script's first entry, which
+    /// is that call.
     static func referenceModel(_ testCase: Case, _ request: LocalToolLoop.GenerationRequest,
                                _ index: Int) async throws -> String {
         let script = testCase.reference ?? []
-        return index < script.count ? script[index] : ""
+        let entry = index + request.routedCalls
+        return entry < script.count ? script[entry] : ""
     }
 
     /// The scripted reader CI plays: the case's own reading, in the reply format.
@@ -695,6 +713,8 @@ enum LocalToolEval {
             /// Runs where the fit dropped any tool, and runs that sent compact definitions.
             var fitDroppedRuns = 0
             var compactRuns = 0
+            /// Runs whose call the router made before the model (Plan MQ P3).
+            var routedRuns = 0
         }
 
         var groups: [Group: GroupTally] = [:]
@@ -721,6 +741,7 @@ enum LocalToolEval {
             if run.expectedToolDropped { group.expectedToolDroppedRuns += 1 }
             if run.measurements.fitDroppedGenerations > 0 { group.fitDroppedRuns += 1 }
             if run.measurements.compactGenerations > 0 { group.compactRuns += 1 }
+            if run.measurements.routedCalls > 0 { group.routedRuns += 1 }
             groups[run.group] = group
         }
 
@@ -750,6 +771,9 @@ enum LocalToolEval {
                 if group.fitDroppedRuns + group.compactRuns > 0 {
                     lines.append("    tools fitted: compact \(group.compactRuns), dropped \(group.fitDroppedRuns), "
                                  + "expected tool dropped \(group.expectedToolDroppedRuns)")
+                }
+                if group.routedRuns > 0 {
+                    lines.append("    called by the router before the model: \(group.routedRuns)")
                 }
             }
             return lines

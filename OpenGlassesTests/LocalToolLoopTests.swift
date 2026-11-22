@@ -378,4 +378,151 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(result, 1)
         XCTAssertEqual(model.requests.count, 1, "no generation after the barge-in")
     }
+
+    // MARK: - Routed calls (Plan MQ P3)
+
+    private func routing(_ offered: [String], procedureActive: Bool = false) -> LocalToolLoop.Configuration {
+        var configuration = LocalToolLoop.Configuration()
+        configuration.routing = LocalTurnRouter.Context(offered: Set(offered), procedureActive: procedureActive)
+        return configuration
+    }
+
+    private let stepHistory: [LocalToolLoop.Message] = [
+        .user("Start the no ignition procedure"), .assistant("Check the ignitor. What did you measure?"),
+    ]
+
+    func testARoutedLookupRunsBeforeAnyGenerationAndTheModelAnswersFromIt() async throws {
+        let model = ScriptedModel(["E110 is a low line voltage; check the supply."])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, configuration: routing(["equipment_lookup", "table_lookup"]),
+                                    message: "The control's showing E110. What do I check?")
+
+        XCTAssertEqual(tools.calls.map(\.name), ["equipment_lookup"])
+        XCTAssertEqual(tools.calls.first?.arguments["query"] as? String, "E110")
+        XCTAssertEqual(outcome.routedCalls, 1)
+        XCTAssertEqual(outcome.executed.map(\.routed), [true])
+        XCTAssertEqual(model.requests.count, 1)
+        let first = try XCTUnwrap(model.requests.first)
+        XCTAssertEqual(first.purpose, .afterTools, "the model's first pass already has the result")
+        XCTAssertEqual(first.round, 1)
+        XCTAssertEqual(first.routedCalls, 1)
+        XCTAssertTrue(first.toolsOffered, "it may still make a further call")
+        XCTAssertEqual(first.messages.map(\.role), [.user, .assistant, .tool])
+        XCTAssertEqual(first.messages[1].toolName, "equipment_lookup")
+        XCTAssertEqual(first.messages[2].content, "result of equipment_lookup")
+        XCTAssertEqual(outcome.text, "E110 is a low line voltage; check the supply.")
+        XCTAssertEqual(outcome.endReason, .answered)
+        XCTAssertFalse(outcome.usedCorrection)
+    }
+
+    func testTheModelDoesNotRepeatARoutedCall() async throws {
+        let model = ScriptedModel([call("equipment_lookup", #"{"query": "E110"}"#), "Low line voltage."])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, configuration: routing(["equipment_lookup"]),
+                                    message: "and if it's E110 instead?")
+        XCTAssertEqual(tools.calls.count, 1, "the routed call counts as made")
+        XCTAssertEqual(outcome.endReason, .repeatedCall)
+    }
+
+    func testARoutedStepIsSaidAsTheRunnerWroteItWithNoGeneration() async throws {
+        let model = ScriptedModel(["never generated"])
+        let tools = ToolLog()
+        tools.result = { _ in
+            .init(text: "⚠️ SAFETY: Power off at the disconnect.\nStep — Check the ignitor\n"
+                  + "Measure the ignitor resistance. What did you measure?\n(Call 'next' to continue.)\nSource: p. 12")
+        }
+        let outcome = try await run(model, tools, history: stepHistory,
+                                    configuration: routing(["procedure_runner", "reading"], procedureActive: true),
+                                    message: "Done. Next step")
+
+        XCTAssertEqual(tools.calls.map(\.name), ["procedure_runner"])
+        XCTAssertEqual(tools.calls.first?.arguments["action"] as? String, "next")
+        XCTAssertTrue(model.requests.isEmpty, "no generation")
+        XCTAssertEqual(outcome.generations, 0)
+        XCTAssertEqual(outcome.endReason, .routedResult)
+        XCTAssertEqual(outcome.text, "⚠️ SAFETY: Power off at the disconnect. Check the ignitor. "
+                       + "Measure the ignitor resistance. What did you measure?")
+        XCTAssertEqual(outcome.transcript.last, .assistant(outcome.text))
+    }
+
+    func testAnAnswerToTheStepIsRoutedWithTheWordsAsSaid() async throws {
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Recorded ignitor: open (out of spec). Call 'next' to continue.") }
+        let outcome = try await run(ScriptedModel([]), tools, history: stepHistory,
+                                    configuration: routing(["procedure_runner"], procedureActive: true),
+                                    message: "Open or out of specification")
+        XCTAssertEqual(tools.calls.first?.arguments["action"] as? String, "answer")
+        XCTAssertEqual(tools.calls.first?.arguments["value"] as? String, "Open or out of specification")
+        XCTAssertEqual(outcome.text, "Recorded ignitor: open (out of spec).")
+    }
+
+    func testARoutedStepTheRunnerRefusesFallsBackToTheModel() async throws {
+        let model = ScriptedModel(["Which way did it go: open, or within specification?"])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Could not advance: choose a route.") }
+        let outcome = try await run(model, tools, history: stepHistory,
+                                    configuration: routing(["procedure_runner"], procedureActive: true),
+                                    message: "next step")
+        XCTAssertEqual(model.requests.map(\.purpose), [.afterTools])
+        XCTAssertEqual(model.requests.first?.messages.last?.content, "Could not advance: choose a route.")
+        XCTAssertEqual(outcome.text, "Which way did it go: open, or within specification?")
+        XCTAssertEqual(outcome.routedCalls, 1)
+    }
+
+    func testARoutedStepWhoseResultIsAnErrorFallsBackToTheModel() async throws {
+        let model = ScriptedModel(["Let's try that again."])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Error: the tool 'procedure_runner' is not available on this turn.", isError: true) }
+        let outcome = try await run(model, tools, history: stepHistory,
+                                    configuration: routing(["procedure_runner"], procedureActive: true),
+                                    message: "say that again")
+        XCTAssertEqual(model.requests.count, 1)
+        XCTAssertEqual(outcome.text, "Let's try that again.")
+        XCTAssertNotEqual(outcome.endReason, .routedResult)
+    }
+
+    func testWithoutRoutingTheSameTurnGoesToTheModelFirst() async throws {
+        let model = ScriptedModel(["E110 is in the table."])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: "The control's showing E110. What do I check?")
+        XCTAssertTrue(tools.calls.isEmpty)
+        XCTAssertEqual(model.requests.map(\.purpose), [.initial])
+        XCTAssertEqual(model.requests.first?.routedCalls, 0)
+        XCTAssertEqual(outcome.routedCalls, 0)
+    }
+
+    func testARoutedCallFillingTheCapAnswersWithToolsWithheld() async throws {
+        let model = ScriptedModel(["Low line voltage."])
+        var configuration = routing(["equipment_lookup"])
+        configuration.roundCap = 1
+        let outcome = try await run(model, ToolLog(), configuration: configuration, message: "What does E110 mean?")
+        XCTAssertEqual(model.requests.map(\.purpose), [.final])
+        XCTAssertEqual(model.requests.first?.toolsOffered, false)
+        XCTAssertEqual(outcome.endReason, .roundCap)
+    }
+
+    func testABargeInDuringARoutedCallStopsBeforeAnyGeneration() async {
+        let model = ScriptedModel(["never generated"])
+        let configuration = routing(["equipment_lookup"])
+        let task = Task { () -> Int in
+            do {
+                _ = try await LocalToolLoop.run(
+                    history: [], userMessage: "What does E110 mean?",
+                    configuration: configuration,
+                    generate: { try model.generate($0) },
+                    execute: { _ in
+                        withUnsafeCurrentTask { $0?.cancel() }
+                        return .init(text: "done")
+                    })
+                return 0
+            } catch is CancellationError {
+                return 1
+            } catch {
+                return 2
+            }
+        }
+        let result = await task.value
+        XCTAssertEqual(result, 1)
+        XCTAssertTrue(model.requests.isEmpty)
+    }
 }

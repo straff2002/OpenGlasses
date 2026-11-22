@@ -222,6 +222,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var compactGenerations: Int
         var expectedToolDropped: Bool
         var contextWindow: Int?
+        /// Calls `LocalTurnRouter` made before the model (Plan MQ P3); nil in older records.
+        var routedCalls: Int?
         /// `QualificationRunGate.Thermal`'s raw value when the case started; nil in older records.
         var thermalAtStart: Int?
         var seconds: Double
@@ -249,6 +251,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         /// Runs where the fit dropped any tool, and runs that sent compact definitions.
         var fitDroppedRuns: Int
         var compactRuns: Int
+        /// Runs whose call the router made before the model (Plan MQ P3); nil in older records.
+        var routedRuns: Int?
     }
 
     struct FloorResult: Codable, Equatable {
@@ -306,7 +310,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             promptSeconds: m.promptSeconds, promptTokens: m.promptTokens, decodeTokensPerSecond: m.decodeTokensPerSecond,
             toolsOffered: m.toolsOffered, toolsKept: m.toolsKept, fitDroppedGenerations: m.fitDroppedGenerations,
             compactGenerations: m.compactGenerations, expectedToolDropped: m.expectedToolDropped,
-            contextWindow: m.contextWindow, thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
+            contextWindow: m.contextWindow, routedCalls: m.routedCalls, thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
         recompute()
@@ -335,6 +339,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.compactGenerations = entry.compactGenerations
             measurements.expectedToolDropped = entry.expectedToolDropped
             measurements.contextWindow = entry.contextWindow
+            measurements.routedCalls = entry.routedCalls ?? 0
             // The id is not kept; the hash stands in for it, which is all the report groups by.
             return LocalToolEval.Run(caseID: entry.caseHash, category: category, group: group, grades: grades,
                                      measurements: measurements)
@@ -375,7 +380,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
                                                   cutRuns: counted.cutRuns, templateFaultRuns: counted.templateFaultRuns,
                                                   readerUnparsedRuns: counted.readerUnparsedRuns,
                                                   expectedToolDroppedRuns: counted.expectedToolDroppedRuns,
-                                                  fitDroppedRuns: counted.fitDroppedRuns, compactRuns: counted.compactRuns)
+                                                  fitDroppedRuns: counted.fitDroppedRuns, compactRuns: counted.compactRuns,
+                                                  routedRuns: counted.routedRuns)
         }
         let shortfalls = Set(report.floorShortfalls().map(\.name))
         let floors = LocalToolEval.Floors.all.compactMap { floor -> FloorResult? in

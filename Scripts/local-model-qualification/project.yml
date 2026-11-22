@@ -47,6 +47,7 @@ targets:
       - ../../OpenGlasses/Sources/Services/AttemptToolLedger+CanonicalArguments.swift
       - ../../OpenGlasses/Sources/Services/PromptInjectionPolicy+ToolOutput.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalToolLoop.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalTurnRouter.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalToolFit.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalNativeToolPolicy.swift
       - ../../OpenGlasses/Sources/Services/LLM/FieldAssistLocalToolSet.swift

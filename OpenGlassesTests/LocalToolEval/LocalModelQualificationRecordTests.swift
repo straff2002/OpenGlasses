@@ -160,9 +160,12 @@ final class LocalModelQualificationRecordTests: XCTestCase {
     func testAnErrorCodeLookedUpByCodeIsAsRightAsReadFromTheTable() async throws {
         let testCase = try XCTUnwrap(try corpus().first { $0.id == "code-E105-lookup" })
         func run(_ call: String) async -> LocalToolEval.Run {
-            await LocalToolEval.run(testCase, environment: environment { _, _, index in
+            // The model's own call is what is graded here, so the router does not make it first.
+            var unrouted = environment { _, _, index in
                 index == 0 ? .init(text: call) : .init(text: "E105 is a device communication problem.")
-            })
+            }
+            unrouted.routesTurns = false
+            return await LocalToolEval.run(testCase, environment: unrouted)
         }
         let byCode = await run(#"<tool_call>{"name": "equipment_lookup", "arguments": {"query": "E105"}}</tool_call>"#)
         XCTAssertEqual(byCode.grades[.toolName], true)
