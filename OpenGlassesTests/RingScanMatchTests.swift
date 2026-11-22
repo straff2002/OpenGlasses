@@ -73,6 +73,7 @@ final class RingScanMatchTests: XCTestCase {
         XCTAssertTrue(source.hasPrefix("#if !AVENKIN_PHONE_ONLY"), "the ring's Bluetooth stays out of the store build")
         XCTAssertTrue(source.contains("CBCentralManager(delegate: self"))
         XCTAssertFalse(source.contains("EvenBLETransport."), "never shares the display's central")
-        XCTAssertFalse(source.contains("restoreIdentifier"), "no state restoration in v1 (decision 3)")
+        XCTAssertTrue(source.contains("RingRestoration.restoreIdentifier"),
+                      "the central restores with the pinned identifier (decision 3)")
     }
 }
