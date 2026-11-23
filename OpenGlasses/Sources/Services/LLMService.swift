@@ -373,10 +373,41 @@ class LLMService: ObservableObject {
     }
     #endif
 
+    /// What one request path writes as it runs: the history it reads and appends to, and the
+    /// per-request scratch beside it. A conversation turn works in the service's own
+    /// (`sharedWorkspace`); a `completeStateless` call works in a copy of its own, scoped to its
+    /// task (`StatelessScope`), so it never reads or writes the conversation. A stateless call used to
+    /// empty the shared history and put a snapshot back when it ended: a wearer's turn that started
+    /// meanwhile ran over no history, and lost its exchange to the snapshot put back over it.
+    @MainActor final class TurnWorkspace {
+        var history: [[String: Any]] = []
+        var turnHistoryStart = 0
+        var lastRequestOmittedMessages = 0
+        var pendingTimeline: TimelineRequestBlock.Request?
+        var pendingTimelineSkip: TimelineRequestBlock.Skip?
+        var lastLocalTurnMissed = false
+        var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)?
+    }
+
+    /// The workspace of the `completeStateless` call the calling task is in; nil in a
+    /// conversation turn. A task-local, so a turn running beside the call never sees it.
+    enum StatelessScope {
+        @TaskLocal static var workspace: TurnWorkspace?
+    }
+
+    private let sharedWorkspace = TurnWorkspace()
+    private var workspace: TurnWorkspace { StatelessScope.workspace ?? sharedWorkspace }
+    /// Whether the calling task is in a `completeStateless` call.
+    private var isStatelessCall: Bool { StatelessScope.workspace != nil }
+
     /// Conversation history for multi-turn context.
     /// No artificial turn limit — history persists for the full conversation session.
     /// Context window is managed by token-aware compaction, not a fixed turn count.
-    private var conversationHistory: [[String: Any]] = []
+    /// Inside a `completeStateless` call it is that call's own (`TurnWorkspace`).
+    private var conversationHistory: [[String: Any]] {
+        get { workspace.history }
+        set { workspace.history = newValue }
+    }
     /// Plan LE P2: a short, content-free note for the wearer's next turn — something the app said
     /// outside any turn that the wearer may now be answering. Nil when there is none.
     var turnNote: (@MainActor () -> String?)?
@@ -387,17 +418,19 @@ class LLMService: ObservableObject {
     /// Plan GB P5: where the current job's conversation starts in `conversationHistory`, and the
     /// index of the current turn's user message — the request-copy budget's two anchors.
     private var jobHistoryFloor = JobHistoryFloor()
-    private var turnHistoryStart = 0
+    private var turnHistoryStart: Int {
+        get { workspace.turnHistoryStart }
+        set { workspace.turnHistoryStart = newValue }
+    }
     /// Older messages the last request copy left out (`APIHistoryBudget`), for its note.
-    private var lastRequestOmittedMessages = 0
+    private var lastRequestOmittedMessages: Int {
+        get { workspace.lastRequestOmittedMessages }
+        set { workspace.lastRequestOmittedMessages = newValue }
+    }
     /// Plan KK P2: what the last cloud request of the current turn carried, for the timeline pass.
     /// Nil until a turn builds a request copy, and reset at each turn's start, so a turn answered
     /// on the phone never hands the pass an older turn's counts.
     private(set) var lastTimelineReading: TimelineRequestReading?
-
-    /// `completeStateless` calls in flight. Their requests run over an emptied history and say
-    /// nothing about the conversation, so they never set the reading.
-    private var statelessCallDepth = 0
 
     /// Record what a request kept, read from the copy actually sent. `omitted` is how many of the
     /// history's leading messages the copy left out (the copy is always a suffix of the history on
@@ -405,7 +438,8 @@ class LLMService: ObservableObject {
     @discardableResult
     private func noteTimelineReading(kept: [[String: Any]], omitted: Int = 0) -> TimelineRequestReading {
         let reading = timelineReading(kept: kept, omitted: omitted)
-        if statelessCallDepth == 0 { lastTimelineReading = reading }
+        // A `completeStateless` request says nothing about the conversation: never the reading.
+        if !isStatelessCall { lastTimelineReading = reading }
         return reading
     }
 
@@ -427,9 +461,15 @@ class LLMService: ObservableObject {
 
     /// The request copy `requestHistory` last built, for `requestSystemParts` to settle its block.
     /// Reset by every `requestHistory`, so a block never outlives the copy it was counted for.
-    private var pendingTimeline: TimelineRequestBlock.Request?
+    private var pendingTimeline: TimelineRequestBlock.Request? {
+        get { workspace.pendingTimeline }
+        set { workspace.pendingTimeline = newValue }
+    }
     /// Why the copy `requestHistory` last built may carry no block, before any counting.
-    private var pendingTimelineSkip: TimelineRequestBlock.Skip?
+    private var pendingTimelineSkip: TimelineRequestBlock.Skip? {
+        get { workspace.pendingTimelineSkip }
+        set { workspace.pendingTimelineSkip = newValue }
+    }
 
     /// Plan KK P3: what the last conversation request did with the timeline, for the on-device
     /// Prompt Inspector only. Holds the block's text; never logged, never in a support report.
@@ -439,8 +479,8 @@ class LLMService: ObservableObject {
     /// read only once the settings allow a block.
     private func timelineThread(for provider: LLMProvider) -> (thread: TimelineRequestBlock.Thread?,
                                                                  skip: TimelineRequestBlock.Skip?) {
-        // A summary or planner call runs over an emptied history: it never carries a block.
-        guard statelessCallDepth == 0 else { return (nil, .noThread) }
+        // A summary or planner call runs over an empty history of its own: it never carries a block.
+        guard !isStatelessCall else { return (nil, .noThread) }
         let enabled = Config.conversationTimelineEnabled
         let hipaa = Config.hipaaMode
         let thread = enabled && !hipaa ? timelineThreadSource?() : nil
@@ -462,7 +502,7 @@ class LLMService: ObservableObject {
     /// Settle a request's block and leave a record of it: the Prompt Inspector's copy, and a
     /// privacy-log line of counts and a reason (never the text) whenever something was left out.
     private func recordTimeline(_ decision: TimelineRequestBlock.Decision, omitted: Int) {
-        guard statelessCallDepth == 0 else { return }
+        guard !isStatelessCall else { return }
         // Every tool round settles one; publish only a change, so an open view is not redrawn
         // for each round of the same turn.
         if lastTimelineDecision != decision { lastTimelineDecision = decision }
@@ -1816,8 +1856,12 @@ class LLMService: ObservableObject {
     /// (broken tool markup, or a promise to look something up that it never kept). On a turn the
     /// offline handoff put on the phone, `AppState` holds the question for the cloud instead of
     /// asking the wearer to repeat it, since repeating it without signal gets the same miss. Reset
-    /// by `sendLocal` and by `AppState` when it routes a turn to the phone.
-    var lastLocalTurnMissed = false
+    /// by `sendLocal` and by `AppState` when it routes a turn to the phone. A `completeStateless`
+    /// call on the phone model keeps its own (`TurnWorkspace`).
+    var lastLocalTurnMissed: Bool {
+        get { workspace.lastLocalTurnMissed }
+        set { workspace.lastLocalTurnMissed = newValue }
+    }
 
     /// The outcome of every cloud model attempt (nil on success), for the offline handoff.
     var onCloudAttempt: ((Error?) -> Void)?
@@ -2004,8 +2048,12 @@ class LLMService: ObservableObject {
     /// Whether the last attempt's request carried tools, for the line said about it.
     private var lastAttemptCarriedTools = true
     /// The last Chat Completions request's body size and output cap, as sent: the app's estimate
-    /// of a refused request, which a refusal's own count calibrates.
-    private var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)?
+    /// of a refused request, which a refusal's own count calibrates. A `completeStateless`
+    /// request's is its own (`TurnWorkspace`): it says nothing about the conversation's size.
+    private var lastChatRequestShape: (bodyBytes: Int, outputCap: Int)? {
+        get { workspace.lastChatRequestShape }
+        set { workspace.lastChatRequestShape = newValue }
+    }
     /// What the last failed attempt of the turn said about the allowance, with the error it was
     /// read from — matched as `lastAttemptCredentialGap` is.
     private var lastAttemptPerMinute: (notice: PerMinuteNotice, error: String)?
@@ -2416,11 +2464,6 @@ class LLMService: ObservableObject {
         return result.summary
     }
 
-    /// A stateless, tools-off completion for the planner: it sees only the system prompt + the
-    /// request, never the live conversation history (planning must use trusted context only, and
-    /// must not pollute the chat). History is snapshotted and restored even on error.
-    /// Stateless, tool-free completion against the user's active provider (honors on-device
-    /// models). Used by lightweight features like recall summarization.
     /// The provider `completeStateless` would send to now: the active model through the medical
     /// routing rule, as a Direct turn resolves it. Nil with no model, or when the rule refuses every
     /// model. Live hints reads it before sending a job's manual passages (Plan MO §5a).
@@ -2429,35 +2472,36 @@ class LLMService: ObservableObject {
         return (try? medicalInferenceModel(requested: requested))?.llmProvider
     }
 
+    /// A stateless, tools-off completion against the user's active provider (honors on-device
+    /// models), for the planner, the complexity classifier and lightweight features like recall
+    /// summarization. It sees only the system prompt and the request, never the live conversation
+    /// (planning must use trusted context only, and must not pollute the chat).
+    ///
+    /// The provider's send path runs in a workspace of its own (`TurnWorkspace`, through
+    /// `StatelessScope`): it starts empty and is dropped when the call ends, so the call never
+    /// reads or writes the conversation. A wearer's turn, a scheduled run or a cleared history
+    /// running beside it is left alone, and the call does not have to stop one first.
     func completeStateless(_ text: String, system: String) async throws -> String {
-        // It empties and restores the history, so a scheduled run must not be going under it.
-        await yieldOffConversationRun()
         guard let requested = Config.activeModel else {
             throw LLMError.missingAPIKey(String(localized: "No model configured"))
         }
         let config = try medicalInferenceModel(requested: requested)
-        let snapshot = conversationHistory
-        conversationHistory = []
-        statelessCallDepth += 1
-        defer {
-            conversationHistory = snapshot
-            statelessCallDepth -= 1
-        }
-
-        switch config.llmProvider {
-        case .anthropic:
-            return try await sendAnthropic(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .chatgpt:
-            return try await sendChatGPT(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .gemini, .geminiVertex:
-            return try await sendGemini(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .local:
-            return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
-        case .appleOnDevice:
-            return try await sendAppleOnDevice(text, systemPrompt: system,
-                                               includeTools: false, carryHistory: false)
-        case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
-            return try await sendOpenAICompatible(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+        return try await StatelessScope.$workspace.withValue(TurnWorkspace()) {
+            switch config.llmProvider {
+            case .anthropic:
+                return try await sendAnthropic(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .chatgpt:
+                return try await sendChatGPT(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .gemini, .geminiVertex:
+                return try await sendGemini(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .local:
+                return try await sendLocal(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            case .appleOnDevice:
+                return try await sendAppleOnDevice(text, systemPrompt: system,
+                                                   includeTools: false, carryHistory: false)
+            case .openai, .groq, .deepseek, .mistral, .zai, .qwen, .minimax, .xai, .openrouter, .custom:
+                return try await sendOpenAICompatible(text, systemPrompt: system, config: config, includeTools: false, imageData: nil)
+            }
         }
     }
 
@@ -2728,9 +2772,8 @@ class LLMService: ObservableObject {
     /// a cheaper one, which would be a new destination for the wearer's words), and counted in
     /// Usage like every turn.
     ///
-    /// Unlike `completeStateless` it never touches `conversationHistory`: the pass runs after a
-    /// reply while the next turn may already be under way, and emptying and restoring the history
-    /// around the call would wipe whatever that turn added meanwhile. Each provider gets one
+    /// Like `completeStateless` it never touches `conversationHistory`: the pass runs after a
+    /// reply while the next turn may already be under way. Each provider gets one
     /// buffered request built here, and the reply is read with how it ended, because a note cut off
     /// at the allowance must not be kept.
     ///
