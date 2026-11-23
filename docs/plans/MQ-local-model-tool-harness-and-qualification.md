@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; a full-corpus run on the final build owed · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; P3 part 2 (2026-11-24): the full corpus on main 582/618 with every hard floor clear, and job commands, evidence choices and reading follow-ups routed too: tool cases 317/326 · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -488,11 +488,28 @@ final build is owed**, so the reading categories' numbers are from that earlier 
   where you are?" → `where_am_i`). The location correction now fires only on a turn that depends on
   where the wearer is.
 
-**Still failing on the last build:** a reading follow-up ("and the other one?", 0 of 6 — Gemma
-states the value instead of logging it; the loop's history is plain text with no record of the
-earlier call), the job commands (open, reference, resume, next unit, status), three evidence
-choices, one procedure answer, a show-source argument. These are P3 part 2, with a full-corpus run
-on the final build, before any badge.
+**P3 part 2 (2026-11-24).** The full corpus on `main` after part 1 (4d6c64dbd): **582 of 618, and
+every hard floor clears** — not-in-manual 62/63, clean output 324/324, restraint 43/43, manual
+answers 217/229, tool choice 131/143, multi-turn 112/119, two-step 8/12, cancellation 2/2; decode
+about 28 tokens a second hot, first token 1.4 s median, peak footprint well inside the kill limit.
+Then `LocalTurnRouter` took three more shapes the model kept answering instead of calling: job
+commands (`field_session` start, work order, pause, resume, end, next unit, status — imperative or a
+fixed status question only, never a deferred, conditional, negated or past-tense turn, and not
+start or next unit while a procedure runs), evidence choices (`evidence` keep / exclude / include
+all), and a reading's follow-up ("and the other one?" after a turn that stated two values and logged
+one: the other value, the same quantity and unit). `LocalArgumentCompletion` fills `show_source`'s
+`which` from the words. Over the corpus the router routes 8/8 job, 4/4 evidence and 6/6 follow-up
+cases, never a case that expects no call. The tool cases on the phone: **317 of 326** (was 303) —
+tool choice 138/143, multi-turn 118/119, two-step 11/12, restraint 43/43.
+
+An evidence choice is routed with no photo named, so the tool takes its default, the latest photo:
+"Exclude the blurry photo of the inducer" excludes the latest one. The model couldn't do better
+(photo ids aren't in its prompt), and a choice can be undone ("put it back").
+
+**Still failing:** an explicit "Log <quantity> … at <value> <unit>" turn answered with "which
+model?" or a promise (6 of the 9 tool failures; it passes most runs, so a route for it is next), one
+procedure answer to a step that asks nothing, one two-step, a show-source argument. The badge waits
+on P4's device pass.
 
 **Not checked on the phone:** what the router and the argument steps say in the real app (the
 qualification run scores scripted tool results, so a reply after a refused call can still quote
