@@ -132,9 +132,10 @@ final class EventKitDayStore {
         return reminders.map(Self.record(from:))
     }
 
-    func saveReminder(title: String, dueDate: Date?, hasTime: Bool) throws {
+    func saveReminder(title: String, dueDate: Date?, hasTime: Bool, notes: String? = nil) throws {
         let reminder = EKReminder(eventStore: eventStore)
         reminder.title = title
+        if let notes, !notes.isEmpty { reminder.notes = notes }
         reminder.calendar = eventStore.defaultCalendarForNewReminders()
         if let dueDate {
             var components = Calendar.autoupdatingCurrent.dateComponents([.year, .month, .day], from: dueDate)

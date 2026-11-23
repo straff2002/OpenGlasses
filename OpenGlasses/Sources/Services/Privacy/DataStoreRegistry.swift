@@ -75,6 +75,9 @@ enum SensitiveStore: String, CaseIterable {
     case capturedPhotos
     /// Kept caption sessions (Plan KP P5): only while Keep caption sessions is on.
     case captionSessions
+    /// Meeting notes the model still owes, with the transcript they need (Plan MX P6): only while
+    /// Keep caption sessions is on.
+    case owedMeetingNotes
     /// Instant Replay's rolling buffer: only while the setting is on and the glasses camera is
     /// already streaming.
     case instantReplayBuffer
@@ -613,6 +616,27 @@ enum SensitiveStore: String, CaseIterable {
                           ownerPaths: ["OpenGlasses/Sources/Services/CaptionSessions/CaptionSessionStore.swift"],
                           location: "Application Support/CaptionSessions/caption-session-{began}.json, "
                               + "plus caption-checkpoint.json while a kept session runs")
+
+        case .owedMeetingNotes:
+            // A saved meeting summary whose notes the model could not write yet (an on-device model
+            // with the app in the background, a write cut short by a kill, a write longer than a
+            // reply can wait): the meeting's caption lines, with times and speaker names, until the
+            // notes are written. Other people's speech, so third-party: walked by the subject erasure
+            // (a meeting mentioning the subject goes whole), first-unlock (a meeting can end with the
+            // phone locked), out of backup. Held only while Keep caption sessions is on, never in
+            // Medical Compliance mode, at most three meetings, each gone seven days after it began or
+            // after three failed attempts; read by nothing but the notes service.
+            return Record(store: self, dataClass: .conversationContent, subjectLinkage: .thirdPartySubject,
+                          protection: .completeUntilFirstUserAuthentication, backupExcluded: true,
+                          retention: .policy("\(MeetingNotesOwedPolicy.retentionDays) days from when the "
+                                             + "meeting began, or once the notes are written; held only "
+                                             + "while Keep caption sessions is on, never in Medical "
+                                             + "Compliance mode"),
+                          deleteAll: .api("MeetingNotesOwedStore.deleteAll()"),
+                          deleteSubject: .api("MeetingNotesOwedStore.deleteMatching(_:)"),
+                          owner: "MeetingNotesOwedStore",
+                          ownerPaths: ["OpenGlasses/Sources/Services/MeetingNotes/MeetingNotesOwedStore.swift"],
+                          location: "Application Support/MeetingNotes/owed-meeting-notes.json")
 
         case .instantReplayBuffer:
             // The last minute (by default) of what the glasses camera showed, as two-second

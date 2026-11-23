@@ -820,6 +820,9 @@ struct OpenGlassesApp: App {
                 // A recorded job waiting to have faces blurred is prepared now: the blur runs only
                 // while the app is in front.
                 appState.prepareWaitingRecordings()
+                // Plan MX P6: meeting notes the on-device model could not write while the app was
+                // away (or that a kill interrupted) are written now, once no turn is running.
+                Task { await MeetingNotesService.shared.writeOwed(trigger: "active") }
                 // A press of the "Ask Avenkin" control that brought the app forward.
                 appState.takePendingAskRequest(trigger: "active")
                 appState.takePendingLiveHintsCommand(trigger: "active")
@@ -2917,6 +2920,8 @@ class AppState: ObservableObject, AppStateProtocol {
         erasure.assistingHandovers = AssistingHandoverStore.shared
         // Plan KP P5: a kept caption session is other people's speech.
         erasure.captionSessions = CaptionSessionStore.shared
+        // Plan MX P6: owed meeting notes hold a meeting's transcript until the model writes them.
+        erasure.owedMeetingNotes = MeetingNotesOwedStore.shared
         // Instant Replay: the rolling buffer has bystanders in it, and is cleared whole.
         erasure.instantReplay = instantReplay
         return MemoryFactServices(
@@ -3401,6 +3406,8 @@ class AppState: ObservableObject, AppStateProtocol {
             // The same for a live expert stream, in all of the mode.
             self?.enforceExpertStreamRules()
             if Config.hipaaMode {
+                // Plan MX P6: owed meeting notes are never held in Medical Compliance mode.
+                MeetingNotesOwedStore.shared.prune()
                 // Entering compliance mode revokes every outstanding clinical export: a file
                 // created under the looser regime must not survive into the stricter one.
                 self?.medicalExportService.leases.revokeAll()
@@ -3487,6 +3494,9 @@ class AppState: ObservableObject, AppStateProtocol {
         scheduler.runIfDue()
         // Plan KP P5: kept caption sessions go seven days after they began, counted at launch too.
         CaptionSessionStore.shared.pruneExpired()
+        // Plan MX P6: owed meeting notes under the same rule; opening the store turns a write the
+        // last run did not finish into notes owed for the next foreground.
+        MeetingNotesOwedStore.shared.prune()
 
         // W03.5: replay completed erasures. Free when nothing has ever been erased, which is the
         // ordinary case — the guard is an empty-array check on a file that is usually absent.
@@ -3512,6 +3522,7 @@ class AppState: ObservableObject, AppStateProtocol {
             erasureStores.tableChecks = TableCheckStore()
             erasureStores.assistingHandovers = AssistingHandoverStore.shared
             erasureStores.captionSessions = CaptionSessionStore.shared
+            erasureStores.owedMeetingNotes = MeetingNotesOwedStore.shared
             erasureStores.instantReplay = instantReplay
             replaySources.subjects = SubjectErasureCoordinator(stores: erasureStores)
             replaySources.keyring = .shared
@@ -4105,6 +4116,28 @@ class AppState: ObservableObject, AppStateProtocol {
             isLocked: conversationStore.isLocked,
             legacyDirectory: conversationStore.storageDirectory
         )
+        // Plan MX P4: the meeting summary's notes are written by the model, through the same
+        // stateless completion the meeting assistant's rounds use (so HIPAA mode, Medical Local Only
+        // and the active model apply exactly as there), off the turn's own accounting. The call
+        // swaps the conversation's history, so it never runs while a turn is in flight: a summary
+        // asked for in a turn is written once the turn is over, and P6's owed notes when the app
+        // is in front again.
+        let notesLLM = llmService
+        MeetingNotesService.shared.configure(.init(
+            complete: { system, user in
+                try await TurnRecorder.offTurn { try await notesLLM.completeStateless(user, system: system) }
+            },
+            route: { [weak self] in
+                let model = notesLLM.statelessModel()
+                return MeetingNotesRoutePolicy.Inputs(
+                    provider: model?.llmProvider,
+                    contextTokens: model.flatMap(MeetingNotesService.contextTokens(for:)),
+                    isOnline: self?.reachability.isOnline ?? true,
+                    appActive: UIApplication.shared.applicationState == .active)
+            },
+            turnInFlight: { notesLLM.isTurnInFlight || notesLLM.isProcessing },
+            completeNote: { record, notes in MeetingSummaryTool.completeSavedNote(record, with: notes) }))
+
         RecallService.shared.configure(coordinator: conversationRecallCoordinator) { [weak self] question, hits in
             guard let self else { return RecallService.fallbackSummary(hits) }
             let prompt = RecallService.summarizationPrompt(question: question, hits: hits)

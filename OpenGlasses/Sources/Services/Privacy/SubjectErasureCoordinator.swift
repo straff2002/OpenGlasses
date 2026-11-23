@@ -139,6 +139,8 @@ final class SubjectErasureCoordinator {
         var assistingHandovers: AssistingHandoverStore?
         /// Kept caption sessions (Plan KP P5).
         var captionSessions: CaptionSessionStore?
+        /// Meeting notes the model still owes (Plan MX P6).
+        var owedMeetingNotes: MeetingNotesOwedStore?
         /// Instant Replay's rolling buffer, which a person erasure clears whole.
         var instantReplay: ReplayBufferService?
 
@@ -172,6 +174,7 @@ final class SubjectErasureCoordinator {
         .agentDocuments,
         .recordedSessions,
         .captionSessions,
+        .owedMeetingNotes,
         .learningCandidates,
         .learningEntries,
         .assistingHandovers,
@@ -263,6 +266,8 @@ final class SubjectErasureCoordinator {
                 receipt = eraseRecordedSessions(subject)
             case .captionSessions:
                 receipt = eraseCaptionSessions(subject)
+            case .owedMeetingNotes:
+                receipt = eraseOwedMeetingNotes(subject)
             case .learningCandidates:
                 receipt = eraseLearningCandidates(subject)
             case .learningEntries:
@@ -702,6 +707,14 @@ final class SubjectErasureCoordinator {
         }
         guard case .person = subject else { return .complete(.instantReplayBuffer) }
         return .complete(.instantReplayBuffer, removed: replay.deleteAll())
+    }
+
+    private func eraseOwedMeetingNotes(_ subject: ErasureSubject) -> ErasureReceipt {
+        guard let owed = stores.owedMeetingNotes else {
+            return .unsupported(.owedMeetingNotes, "no store of owed meeting notes was supplied")
+        }
+        guard case .person = subject else { return .complete(.owedMeetingNotes) }
+        return .complete(.owedMeetingNotes, removed: owed.deleteMatching(subject.searchToken))
     }
 
     private func eraseCaptionSessions(_ subject: ErasureSubject) -> ErasureReceipt {

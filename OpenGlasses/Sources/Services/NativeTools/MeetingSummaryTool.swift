@@ -22,9 +22,12 @@ struct MeetingSummaryTool: NativeTool {
     ]
 
     weak var captionService: AmbientCaptionService?
+    /// Where the notes are written (Plan MX P4); nil uses the app's.
+    private let notesServiceOverride: MeetingNotesService?
 
-    init(captionService: AmbientCaptionService) {
+    init(captionService: AmbientCaptionService, notesService: MeetingNotesService? = nil) {
         self.captionService = captionService
+        self.notesServiceOverride = notesService
     }
 
     func execute(args: [String: Any]) async throws -> String {
@@ -32,8 +35,14 @@ struct MeetingSummaryTool: NativeTool {
     }
 
     /// The summary as the tool says it, and — when there was a conversation to summarise — the
-    /// same extraction as a value (Plan KT P0), so a prepared card reads action items without
-    /// parsing the prose.
+    /// same notes as a value (Plan KT P0), so a prepared card reads action items without parsing
+    /// the prose.
+    ///
+    /// Plan MX P4: the model never runs inside this call. The turn answers with the phone's
+    /// keyword facts and the transcript excerpt, as it always has, and the model's notes are
+    /// written from the whole meeting once the turn is over (`MeetingNotesService.queue`), then
+    /// complete the saved note, its action items and the latest summary. P6: when the model cannot
+    /// run now they are owed, and written later.
     func summarize(args: [String: Any], now: Date = Date()) async -> MeetingSummaryOutput {
         guard let service = captionService else {
             return MeetingSummaryOutput(text: "Ambient caption service not available.", facts: nil)
@@ -41,13 +50,14 @@ struct MeetingSummaryTool: NativeTool {
 
         // The whole session's transcript, oldest first (not the screen's capped history), with each
         // diarized line named as the registry names it now, and the model's window for the budget.
-        let snapshot = await MainActor.run { () -> (transcript: MeetingTranscriptBuffer, labeled: [String], budget: Int) in
+        let override = notesServiceOverride
+        let snapshot = await MainActor.run { () -> (transcript: MeetingTranscriptBuffer, labeled: [String], budget: Int, notes: MeetingNotesService) in
             let transcript = service.meetingTranscript
             let registry = service.speakerRegistry
             let labeled = transcript.lines.map { line in
                 line.speaker.map { "\(registry.displayLabel(for: $0)): \(line.text)" } ?? line.text
             }
-            return (transcript, labeled, Self.excerptBudget())
+            return (transcript, labeled, Self.excerptBudget(), override ?? MeetingNotesService.shared)
         }
         let lines = snapshot.transcript.lines
 
@@ -60,63 +70,69 @@ struct MeetingSummaryTool: NativeTool {
         let mode = (args["mode"] as? String)?.lowercased() ?? "full"
         let shouldSave = args["save"] as? Bool ?? true
 
-        let duration = Self.duration(of: lines.map(\.timestamp))
-        let wordCount = lines.reduce(0) { $0 + $1.text.split(separator: " ").count }
+        // The phone's keyword facts, over the whole meeting: the fallback, and what pins the
+        // excerpt's lines.
+        guard let phoneFacts = Self.facts(from: lines.map { (text: $0.text, timestamp: $0.timestamp) },
+                                          savedAt: now) else {
+            return MeetingSummaryOutput(text: "No conversation transcript available.", facts: nil)
+        }
 
-        // Extract key information locally, over the whole meeting
-        let facts = Self.facts(from: lines.map { (text: $0.text, timestamp: $0.timestamp) },
-                               savedAt: now)
+        let meetingId = UUID()
+        let request = MeetingNotesRequest(
+            id: meetingId,
+            lines: zip(snapshot.labeled, lines).map { OwedMeetingNotes.Line(text: $0, at: $1.timestamp) },
+            startedAt: phoneFacts.startedAt, endedAt: phoneFacts.endedAt,
+            droppedLines: snapshot.transcript.dropped, saving: shouldSave)
         // Held in memory for the My Day cards' meeting follow-up (Plan KT P1); never written down.
-        if let facts { LatestMeetingSummary.shared.record(facts) }
-        let actionItems = facts?.actionItems ?? []
-        let decisions = facts?.decisions ?? []
-        let topics = facts?.topics ?? []
+        // Recorded before the write is queued, so the model's notes replace these when they come.
+        LatestMeetingSummary.shared.record(phoneFacts)
+        // Queued, never awaited: the stateless call swaps the conversation's history, so it runs
+        // only once this turn is over.
+        let outcome = snapshot.notes.queue(request)
 
-        var summary = ""
-
+        let pinned = MeetingTranscriptExcerpt.pinnedIndices(
+            texts: lines.map(\.text), actionItems: phoneFacts.actionItems, decisions: phoneFacts.decisions)
+        let content = MeetingSummaryContent(
+            notes: nil, phoneFacts: phoneFacts,
+            segments: lines.count,
+            duration: Self.duration(of: lines.map(\.timestamp)),
+            words: lines.reduce(0) { $0 + $1.text.split(separator: " ").count },
+            droppedLines: snapshot.transcript.dropped,
+            outcome: outcome, saved: shouldSave)
+        let summary: String
         switch mode {
         case "brief":
-            summary = buildBriefSummary(
-                entryCount: lines.count,
-                duration: duration,
-                wordCount: wordCount,
-                topics: topics
-            )
-
+            summary = content.brief()
         case "action_items":
-            if actionItems.isEmpty {
-                summary = "No clear action items detected in the conversation."
-            } else {
-                summary = "Action items from the conversation:\n" + actionItems.map { "• \($0)" }.joined(separator: "\n")
-            }
-
+            summary = content.actionItemsOnly()
         default: // "full"
-            let pinned = MeetingTranscriptExcerpt.pinnedIndices(
-                texts: lines.map(\.text), actionItems: actionItems, decisions: decisions)
             let excerpt = MeetingTranscriptExcerpt.make(
                 lines: zip(snapshot.labeled, lines).map { .init(text: $0, timestamp: $1.timestamp) },
                 pinned: pinned, budget: snapshot.budget)
-            summary = buildFullSummary(
-                excerpt: excerpt,
-                droppedLines: snapshot.transcript.dropped,
-                entryCount: lines.count,
-                duration: duration,
-                wordCount: wordCount,
-                topics: topics,
-                actionItems: actionItems,
-                decisions: decisions
-            )
+            summary = content.full(excerpt: excerpt)
         }
 
-        // Save as a note if requested
+        // Save as a note if requested, with the action items as a value so each can be added to
+        // Reminders once (P5), and the meeting's id so owed notes complete this note (P6).
         if shouldSave {
-            let dateStr = DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short)
-            saveNote(title: "Meeting Summary — \(dateStr)", content: summary)
+            let dateStr = DateFormatter.localizedString(from: now, dateStyle: .short, timeStyle: .short)
+            let items = phoneFacts.actionItems.map { MeetingActionItem(task: $0) }
+            var extra: [String: String] = [
+                MeetingActionItemsRecord.meetingIdKey: meetingId.uuidString,
+                MeetingActionItemsRecord.sourceKey: MeetingNotesSource.phone.rawValue,
+            ]
+            extra[MeetingActionItemsRecord.noteKey] = MeetingActionItemsRecord(items: items).encoded()
+            saveNote(title: "Meeting Summary — \(dateStr)", content: summary,
+                     date: ISO8601DateFormatter().string(from: now), extra: extra)
         }
+        // The note is saved: the model's notes, written once this turn is over, have it to complete.
+        if outcome == .queued { snapshot.notes.startQueuedWrites() }
 
-        return MeetingSummaryOutput(
-            text: summary + "\n\nThe LLM should present this summary conversationally to the user, highlighting the most important points.",
-            facts: facts)
+        var guidance = "The LLM should present this summary conversationally to the user, highlighting the most important points."
+        if content.showsCandidates, mode != "brief", mode != "action_items" {
+            guidance += " Take what was agreed and who will do what from the transcript, not from the POSSIBLE lines alone."
+        }
+        return MeetingSummaryOutput(text: summary + "\n\n" + guidance, facts: phoneFacts)
     }
 
     /// The extraction as a value, over caption entries in time order. Nil for no entries.
@@ -133,51 +149,40 @@ struct MeetingSummaryTool: NativeTool {
             transcript: texts.joined(separator: "\n"))
     }
 
-    // MARK: - Summary Building
+    // MARK: - Owed notes, written later (Plan MX P6)
 
-    private func buildBriefSummary(entryCount: Int, duration: String, wordCount: Int, topics: [String]) -> String {
-        var parts: [String] = []
-        parts.append("Conversation: \(entryCount) segments over \(duration) (~\(wordCount) words).")
-        if !topics.isEmpty {
-            parts.append("Topics discussed: \(topics.prefix(5).joined(separator: ", ")).")
+    /// Owed notes were written: the saved note they belong to gets them — its content rebuilt
+    /// from the owed transcript, its action items replaced (what was already added to Reminders
+    /// stays added) — and the latest summary too, if it is still this meeting's. A note the
+    /// wearer deleted meanwhile stays deleted.
+    @MainActor
+    static func completeSavedNote(_ record: OwedMeetingNotes, with notes: MeetingNotes, now: Date = Date()) {
+        let texts = record.lines.map(\.text)
+        guard let phoneFacts = facts(from: record.lines.map { (text: $0.text, timestamp: $0.at) }, savedAt: now) else {
+            return
         }
-        return parts.joined(separator: " ")
-    }
-
-    private func buildFullSummary(excerpt: MeetingTranscriptExcerpt, droppedLines: Int,
-                                   entryCount: Int, duration: String,
-                                   wordCount: Int, topics: [String], actionItems: [String],
-                                   decisions: [String]) -> String {
-        var parts: [String] = []
-
-        parts.append("MEETING SUMMARY")
-        parts.append("Duration: \(duration) | Segments: \(entryCount) | Words: ~\(wordCount)")
-        if droppedLines > 0 {
-            parts.append("(This session ran past what is held in memory: its first \(MeetingTranscriptExcerpt.grouped(droppedLines)) lines are no longer available, so everything here starts after them.)")
+        let content = MeetingSummaryContent(
+            notes: notes, phoneFacts: phoneFacts, segments: record.lines.count,
+            duration: duration(of: record.lines.map(\.at)),
+            words: texts.reduce(0) { $0 + $1.split(separator: " ").count },
+            droppedLines: record.droppedLines, outcome: .written(notes))
+        let excerpt = MeetingTranscriptExcerpt.make(
+            lines: record.lines.map { .init(text: $0.text, timestamp: $0.at) },
+            pinned: MeetingTranscriptExcerpt.pinnedIndices(texts: texts, actionItems: phoneFacts.actionItems,
+                                                           decisions: phoneFacts.decisions),
+            budget: excerptBudget())
+        let text = content.full(excerpt: excerpt)
+        SavedNotesStore.update(whereKey: MeetingActionItemsRecord.meetingIdKey, is: record.id.uuidString) { note in
+            note["content"] = text
+            let previous = MeetingActionItemsRecord.decode(note[MeetingActionItemsRecord.noteKey])
+                ?? MeetingActionItemsRecord(items: [])
+            note[MeetingActionItemsRecord.noteKey] = previous.replacingItems(with: notes.actionItems).encoded()
+            note[MeetingActionItemsRecord.sourceKey] = MeetingNotesSource.model.rawValue
         }
-        parts.append("")
-
-        if !topics.isEmpty {
-            parts.append("KEY TOPICS: \(topics.prefix(5).joined(separator: ", "))")
+        if let latest = LatestMeetingSummary.shared.latest, latest.startedAt == record.startedAt,
+           latest.endedAt == record.endedAt {
+            LatestMeetingSummary.shared.record(latest.with(notes: notes))
         }
-
-        if !decisions.isEmpty {
-            parts.append("")
-            parts.append("DECISIONS:")
-            for d in decisions.prefix(5) { parts.append("• \(d)") }
-        }
-
-        if !actionItems.isEmpty {
-            parts.append("")
-            parts.append("ACTION ITEMS:")
-            for a in actionItems.prefix(5) { parts.append("• \(a)") }
-        }
-
-        parts.append("")
-        parts.append(excerpt.header)
-        parts.append(excerpt.text)
-
-        return parts.joined(separator: "\n")
     }
 
     // MARK: - Local Extraction
@@ -295,12 +300,8 @@ struct MeetingSummaryTool: NativeTool {
         return "\(hours)h \(remainingMins)m"
     }
 
-    private func saveNote(title: String, content: String) {
-        SavedNotesStore.append(
-            title: title,
-            content: content,
-            date: ISO8601DateFormatter().string(from: Date())
-        )
+    private func saveNote(title: String, content: String, date: String, extra: [String: String]) {
+        SavedNotesStore.append(title: title, content: content, date: date, extra: extra)
 
         // Feed the knowledge graph: typed edges from the summary, plus mentioned_in
         // edges linking known people to this meeting.
@@ -320,6 +321,11 @@ struct MeetingSummaryOutput {
 /// `transcript` is caption text — other people's words. It is held only so a draft built from the
 /// action items can be checked for having copied anything else (`DraftValidator`); it is never
 /// stored, logged or put in a prompt by anything in Plan KT.
+///
+/// Plan MX P4: when the model wrote the notes, `actionItems` are its items in readable form
+/// (`MeetingActionItem.readable`: the task, with the owner and the due as said) and `decisions`
+/// its decisions; `notes` carries them structured, with the title and the overview, and
+/// `notesSource` says whose they are. Otherwise all three are the phone's keyword facts, as before.
 struct MeetingSummaryFacts: Equatable, Sendable {
     let actionItems: [String]
     let decisions: [String]
@@ -328,6 +334,132 @@ struct MeetingSummaryFacts: Equatable, Sendable {
     let endedAt: Date
     let savedAt: Date
     let transcript: String
+    /// The model's notes, when it wrote them.
+    var notes: MeetingNotes? = nil
+    var notesSource: MeetingNotesSource = .phone
+
+    /// These facts with the model's notes in place of the keyword ones; unchanged for nil.
+    func with(notes: MeetingNotes?) -> MeetingSummaryFacts {
+        guard let notes else { return self }
+        return MeetingSummaryFacts(actionItems: notes.actionItems.map(\.readable), decisions: notes.decisions,
+                                   topics: topics, startedAt: startedAt, endedAt: endedAt, savedAt: savedAt,
+                                   transcript: transcript, notes: notes, notesSource: .model)
+    }
+}
+
+/// What a meeting summary says, in each of the tool's modes (Plan MX P4): the model's notes when
+/// it wrote them, else the phone's keyword facts, with one neutral line saying which.
+struct MeetingSummaryContent: Sendable {
+    let notes: MeetingNotes?
+    let phoneFacts: MeetingSummaryFacts
+    let segments: Int
+    let duration: String
+    let words: Int
+    let droppedLines: Int
+    let outcome: MeetingNotesOutcome
+    /// Whether the summary is saved as a note (what fuller notes would be added to).
+    var saved: Bool = true
+
+    init(notes: MeetingNotes?, phoneFacts: MeetingSummaryFacts, segments: Int, duration: String, words: Int,
+         droppedLines: Int, outcome: MeetingNotesOutcome, saved: Bool = true) {
+        self.notes = notes
+        self.phoneFacts = phoneFacts
+        self.segments = segments
+        self.duration = duration
+        self.words = words
+        self.droppedLines = droppedLines
+        self.outcome = outcome
+        self.saved = saved
+    }
+
+    /// The phone's keyword lines are shown as candidates — what the phone picked out by key
+    /// phrase, which may include things no one committed to — while the model's notes are still to
+    /// come, so the turn's model reads the transcript rather than repeating them as action items.
+    var showsCandidates: Bool { notes == nil && outcome.isPending }
+
+    /// Which notes these are, said plainly.
+    var sourceLine: String {
+        if notes != nil { return "(These notes were written by the AI model from the meeting's transcript.)" }
+        guard outcome.isPending else { return "(These notes were picked out on the phone from key phrases.)" }
+        let when = outcome == .queued ? "after this reply" : "later"
+        let whereTo = saved ? " and added to the saved note" : ""
+        return "(These notes were picked out on the phone from key phrases. Fuller notes will be written \(when)\(whereTo).)"
+    }
+
+    /// Says what the POSSIBLE lines are, once, in the full summary.
+    static let candidatesLine = "(Lines marked POSSIBLE were picked out on the phone by key phrase and may include things no one committed to; the transcript below is what was said.)"
+
+    func brief() -> String {
+        var parts = ["Conversation: \(segments) segments over \(duration) (~\(words) words)."]
+        if let notes {
+            if !notes.title.isEmpty { parts.append("\(notes.title).") }
+            if !notes.overview.isEmpty { parts.append(notes.overview) }
+        } else if !phoneFacts.topics.isEmpty {
+            parts.append("Topics discussed: \(phoneFacts.topics.prefix(5).joined(separator: ", ")).")
+        }
+        return parts.joined(separator: " ") + "\n" + sourceLine
+    }
+
+    func actionItemsOnly() -> String {
+        let items = notes?.actionItems.map(\.readable) ?? phoneFacts.actionItems
+        let body: String
+        if items.isEmpty {
+            body = notes != nil ? "No one committed to an action item in the conversation."
+                : "No clear action items detected in the conversation."
+        } else {
+            let header = showsCandidates
+                ? "Possible action items, picked out on the phone by key phrase (some may be things no one committed to):"
+                : "Action items from the conversation:"
+            body = header + "\n" + items.map { "• \($0)" }.joined(separator: "\n")
+        }
+        return body + "\n" + sourceLine
+    }
+
+    func full(excerpt: MeetingTranscriptExcerpt) -> String {
+        var parts: [String] = []
+        parts.append(notes.map { $0.title.isEmpty ? "MEETING SUMMARY" : "MEETING SUMMARY: \($0.title)" } ?? "MEETING SUMMARY")
+        parts.append("Duration: \(duration) | Segments: \(segments) | Words: ~\(words)")
+        if droppedLines > 0 {
+            parts.append("(This session ran past what is held in memory: its first \(MeetingTranscriptExcerpt.grouped(droppedLines)) lines are no longer available, so everything here starts after them.)")
+        }
+        parts.append(sourceLine)
+        parts.append("")
+
+        if let notes {
+            if !notes.overview.isEmpty { parts.append("OVERVIEW: \(notes.overview)") }
+            parts.append("")
+            parts.append("DECISIONS:")
+            if notes.decisions.isEmpty { parts.append("None were agreed.") }
+            for d in notes.decisions.prefix(10) { parts.append("• \(d)") }
+            parts.append("")
+            parts.append("ACTION ITEMS:")
+            if notes.actionItems.isEmpty { parts.append("No one committed to one.") }
+            for a in notes.actionItems.prefix(10) { parts.append("• \(a.readable)") }
+        } else {
+            if !phoneFacts.topics.isEmpty {
+                parts.append("KEY TOPICS: \(phoneFacts.topics.prefix(5).joined(separator: ", "))")
+            }
+            let possible = showsCandidates ? "POSSIBLE " : ""
+            if !phoneFacts.decisions.isEmpty {
+                parts.append("")
+                parts.append("\(possible)DECISIONS:")
+                for d in phoneFacts.decisions.prefix(5) { parts.append("• \(d)") }
+            }
+            if !phoneFacts.actionItems.isEmpty {
+                parts.append("")
+                parts.append("\(possible)ACTION ITEMS:")
+                for a in phoneFacts.actionItems.prefix(5) { parts.append("• \(a)") }
+            }
+            if showsCandidates, !phoneFacts.decisions.isEmpty || !phoneFacts.actionItems.isEmpty {
+                parts.append(Self.candidatesLine)
+            }
+        }
+
+        parts.append("")
+        parts.append(excerpt.header)
+        parts.append(excerpt.text)
+        return parts.joined(separator: "\n")
+    }
 }
 
 /// The last meeting summary this run made, for the My Day cards' meeting follow-up (Plan KT P1).

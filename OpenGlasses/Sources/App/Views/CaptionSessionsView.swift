@@ -30,7 +30,11 @@ struct CaptionSessionsView: View {
 
     private var keep: Binding<Bool> {
         Binding(get: { keepStored && !hipaaMode },
-                set: { keepStored = Config.setKeepCaptionSessions($0) })
+                set: {
+                    keepStored = Config.setKeepCaptionSessions($0)
+                    // Owed meeting notes are held only under this switch (Plan MX P6).
+                    if !keepStored { MeetingNotesOwedStore.shared.prune() }
+                })
     }
 
     var body: some View {

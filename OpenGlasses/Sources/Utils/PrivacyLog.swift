@@ -2108,6 +2108,10 @@ enum PrivacyLog {
         /// Kept caption sessions (Plan KP P5): how many lines a kept session had, how many expired
         /// or were cleared, and failures. Never a word of what was said, a speaker or a time.
         case captionSessions
+        /// Meeting notes the model writes, and the owed ones waiting for it (Plan MX P4–P6): how
+        /// many action items, how many calls, how many lines or characters of transcript, a fixed
+        /// reason token, and failures. Never a word of what was said, a title or a name.
+        case meetingNotes
         /// The people tool's notes (Plan LN decision 4): opened, migrated off the preferences
         /// domain, saved, and failures. Never a name or a note.
         case socialContext
