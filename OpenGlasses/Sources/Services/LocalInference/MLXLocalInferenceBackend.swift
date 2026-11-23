@@ -265,6 +265,7 @@ final class MLXLocalInferenceBackend: LocalInferenceBackend, @unchecked Sendable
                     if let fit = output.toolFit { continuation.yield(.toolFit(fit)) }
                     continuation.yield(.text(output.text))
                     for call in output.toolCalls { continuation.yield(.toolCall(call)) }
+                    if let stats = output.stats { continuation.yield(.stats(stats)) }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)

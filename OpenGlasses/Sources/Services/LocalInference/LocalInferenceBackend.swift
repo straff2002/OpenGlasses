@@ -29,8 +29,9 @@ protocol LocalInferenceBackend: AnyObject, Sendable {
 
     /// The same generation, with the tool calls the runtime's own parser read out of the stream
     /// delivered as `.toolCall` events beside the text (Plan MQ P1). The text events concatenate to
-    /// exactly what `generate` yields. The default wraps `generate`: a runtime with no parser of
-    /// its own (GGUF until P2) yields text only, and its calls are read from that text as before.
+    /// exactly what `generate` yields. The default wraps `generate`, for a runtime with no parser
+    /// of its own: it yields text only, and its calls are read from that text. Both shipped
+    /// runtimes override it (GGUF since Plan MQ P2, through llama.cpp's `common/chat`).
     func generateEvents(_ request: LocalGenerationRequest) -> AsyncThrowingStream<LocalGenerationEvent, Error>
 
     /// Stop the in-flight generation, if any, and wait until the runtime has actually stopped —
