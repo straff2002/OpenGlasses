@@ -999,10 +999,7 @@ class LLMService: ObservableObject {
     /// envelope so injected instructions inside it are visibly framed as data, not commands.
     private func wrapToolResultForModel(toolName: String, content: String) -> String {
         let isKnownNative = nativeToolRouter?.registry.tool(named: toolName) != nil
-        guard PromptInjectionPolicy.isUntrustedOutput(toolName: toolName, isKnownNativeTool: isKnownNative) else {
-            return content
-        }
-        return PromptInjectionPolicy.wrap(toolName: toolName, content: content)
+        return PromptInjectionPolicy.resultForModel(toolName: toolName, content: content, isKnownNativeTool: isKnownNative)
     }
 
     // MARK: - On-demand tool schemas (Plan IU)
@@ -5910,15 +5907,6 @@ class LLMService: ObservableObject {
         trimHistory()
     }
 
-    /// "Tuesday, 15 July 2026, 6:41 pm (Pacific/Auckland)" — injected into every system
-    /// prompt. Pure and injectable for tests.
-    nonisolated static func currentDateTimeLine(now: Date = Date(), timeZone: TimeZone = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "EEEE, d MMMM yyyy, h:mm a"
-        return "\(formatter.string(from: now)) (\(timeZone.identifier))"
-    }
-
     /// Parse the local model's `<tool_call>` markup.
     ///
     /// FC P1: now a thin reading of `LocalOutputPolicy`, so there is exactly one parser. The
@@ -5929,8 +5917,6 @@ class LLMService: ObservableObject {
         return (invocation.name, invocation.arguments)
     }
 
-    /// True when the reply narrates an intention to fetch/check something without any
-    /// tool markup — the shape a small model produces instead of acting.
     /// The last `n` history entries as (role, content) tuples — the shape the local paths and
     /// UncertaintyReask consume. Optionally strips `<tool_call>` markup (local path keeps its
     /// context clean; the Apple path's transcript never contains markup).
@@ -5957,68 +5943,6 @@ class LLMService: ObservableObject {
             }
             return content.isEmpty ? nil : (role: role, content: content)
         }
-    }
-
-    nonisolated static func announcesToolIntent(_ response: String) -> Bool {
-        let lowered = response.lowercased()
-        guard !lowered.contains("<tool_call>") else { return false }
-        // A promise-instead-of-action reply is SHORT (a sentence or two). A long answer that
-        // merely contains "searching for"/"let me check" mid-prose is an answer, not a stall —
-        // without this gate the never-speak-a-promise net could discard valid replies.
-        guard lowered.count < 280 else { return false }
-        let intentPhrases = [
-            "looking up", "look that up", "look it up", "let me check", "i'll check",
-            "i will check", "checking the", "let me get", "i'll get", "i'm getting",
-            "fetching", "one moment", "just a moment", "i'm looking",
-            // Search-flavoured announcements (live-traced: "I will now search for popular
-            // tourist destinations in Samoa for you" — then silence). Anchored to first-person
-            // intent so an answer that merely mentions searching doesn't match.
-            "i will now search", "i will search", "i'll search", "let me search",
-            "i'm searching", "searching for", "i should have used a tool",
-            "i will use a tool", "using a tool to",
-        ]
-        return intentPhrases.contains { lowered.contains($0) }
-    }
-
-    /// True when the reply asks the user to supply their location — the model has
-    /// where_am_i available and must never ask (live-traced: "If you tell me your current
-    /// location, I can check the forecast for you").
-    nonisolated static func asksUserForLocation(_ response: String) -> Bool {
-        let lowered = response.lowercased()
-        guard !lowered.contains("<tool_call>") else { return false }
-        let askPhrases = [
-            "your location", "your current location", "where you are",
-            "what city", "which city", "your city", "tell me where",
-            "let me know where", "share your location",
-        ]
-        return askPhrases.contains { lowered.contains($0) }
-    }
-
-    /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.
-    nonisolated static let localLocationCorrection = "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
-    nonisolated static let localIntentCorrection = "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."
-
-    /// The reduced tool block appended to the lean on-device prompt. Extracted (and pure)
-    /// so the location nudge is testable: without it, a small model that has no USER
-    /// LOCATION line answers "I can't find your location" instead of calling `where_am_i`.
-    nonisolated static func localToolInstructions(toolNames: [String]) -> String {
-        guard !toolNames.isEmpty else { return "" }
-        var block = """
-
-        \nTOOLS (use sparingly, only when the user clearly needs one):
-        Output exactly: <tool_call>{"name": "tool_name", "arguments": {"key": "value"}}</tool_call>
-        Available: \(toolNames.joined(separator: ", "))
-        Only use a tool if the user explicitly asks for that action. Otherwise just answer directly.
-        """
-        if toolNames.contains("where_am_i") {
-            block += "\nIf you need the user's location and it isn't given above, call where_am_i — never say you lack location access and never ask the user where they are."
-        }
-        if toolNames.contains("calendar") {
-            // Live-traced: without the argument schema the model only ever got the default
-            // ("today"), asked the user for dates it couldn't use, then denied having access.
-            block += "\ncalendar arguments: {\"action\": \"today\" | \"tomorrow\" | \"next\" | \"upcoming\"} — pick the one matching the day asked about. You DO have the user's calendar through this tool; never claim you lack calendar access and never ask for a date when one of these actions fits."
-        }
-        return block
     }
 
     /// The installation record the coordinator needs for an MLX model, resolved from the bundled
@@ -6089,7 +6013,16 @@ class LLMService: ObservableObject {
                                                           flagOn: Config.localNativeToolCallsEnabled)
         var toolNames: [String] = []
         var toolSpecs: [[String: Any]] = []
+        var compactToolSpecs: [[String: Any]] = []
         var toolRoots: [String: OnDeviceToolSchema.Node] = [:]
+        // Plan MQ P3: a native tool turn may take a larger window on a phone with the room
+        // (`LocalModelBudget.toolTurnContextWindow`); everything else keeps the model's own. The model
+        // is resident here, so its pages are already in the footprint the readings hold.
+        let toolTurnWindow = nativeTools
+            ? LocalModelBudget.toolTurnContextWindow(modelId: selectedID.rawValue, nativeToolCalls: true,
+                                                     marketingRAMGB: LocalLLMService.marketingRAMGB,
+                                                     readings: LocalMemoryReadings.againstProcessLimit())
+            : nil
 
         // Build tool instructions — use minimal set for local models
         var fullPrompt = systemPrompt
@@ -6100,9 +6033,19 @@ class LLMService: ObservableObject {
                                                libraryHasManuals: PersonalManualLibrary.permitted && !PersonalManualLibrary.shared.manuals.isEmpty)
             // Plan MQ P1: the Field Assist tools for a qualified model, or one under qualification.
             let fieldTools = Self.localFieldToolsOffered(modelID: selectedID.rawValue, runtime: installation.runtime)
-            let definitionBudget = LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue)
+            let definitionBudget = toolTurnWindow.map {
+                LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue, contextWindow: $0.tokens)
+            } ?? LocalModelBudget.toolDefinitionBudget(for: selectedID.rawValue)
             func estimate(_ name: String) -> Int {
                 guard let tool = router.registry.tool(named: name) else { return Int.max / 4 }
+                if nativeTools {
+                    // Plan MQ P3: the native turn's definitions are what Gemma's template renders,
+                    // calibrated on a phone, at the compact detail the runtime can always fall back
+                    // to (`LocalToolFit`), so the selection rarely leaves the fit a tool to drop.
+                    return OnDeviceToolSchema.localEstimatedTokens(spec: OnDeviceToolSchema.localToolSpec(
+                        name: name, description: tool.description, parameters: tool.parametersSchema,
+                        limits: .compact))
+                }
                 let root = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
                 return OnDeviceToolSchema.estimatedTokens(name: name, description: OnDeviceToolSchema.toolDescription(tool.description), root: root)
             }
@@ -6116,10 +6059,14 @@ class LLMService: ObservableObject {
                 toolNames = LocalNativeToolPolicy.nativeToolNames(
                     field: fieldNames, everyday: everyday, utterance: text,
                     estimatedTokens: estimate, budgetTokens: definitionBudget)
+                // In priority order, which is the order `nativeToolNames` returns: the runtime's fit
+                // drops from the end when even the compact definitions don't fit.
                 for name in toolNames {
                     guard let tool = router.registry.tool(named: name) else { continue }
                     toolSpecs.append(OnDeviceToolSchema.localToolSpec(name: name, description: tool.description,
                                                                       parameters: tool.parametersSchema))
+                    compactToolSpecs.append(OnDeviceToolSchema.localToolSpec(
+                        name: name, description: tool.description, parameters: tool.parametersSchema, limits: .compact))
                     toolRoots[name] = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
                 }
                 fullPrompt += Self.localNativeToolGuide(toolNames: toolNames)
@@ -6183,6 +6130,11 @@ class LLMService: ObservableObject {
                            _ systemOverride: String?,
                            _ toolTurn: LocalToolTurn?) async throws -> LocalToolLoop.Generation
         if let inferenceCoordinator {
+            // Plan MQ H1: the model's own sampling from its catalog entry, over the global set. Read
+            // once for the turn. The MLX backend derives the same values itself
+            // (`LocalLLMService.generateParameters(for:toolTurn:)`); the GGUF backend takes these.
+            let sampling = LocalModelSampling.configuration(for: selectedID.rawValue, toolTurn: false)
+            let toolSampling = LocalModelSampling.configuration(for: selectedID.rawValue, toolTurn: true)
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
                 let request = LocalGenerationRequest(
                     messages: MLXPromptAdapter.compose(systemPrompt: systemOverride ?? prompt,
@@ -6190,25 +6142,29 @@ class LLMService: ObservableObject {
                                                        userMessage: message),
                     images: image.map { [LocalImageInput(data: $0)] } ?? [],
                     maxOutputTokens: maxOutputTokens,
+                    sampling: toolTurn == nil ? sampling : toolSampling,
                     previewSink: preview,
                     toolTurn: toolTurn)
                 let stream = try await inferenceCoordinator.generateEvents(request, expecting: selectedID)
                 var assembled = ""
                 var calls: [LocalToolCallEvent] = []
+                var fit: LocalToolFit.Report?
                 for try await event in stream {
                     switch event {
                     case .text(let chunk): assembled += chunk
                     case .toolCall(let call): calls.append(call)
+                    case .toolFit(let report): fit = report
                     }
                 }
-                return LocalToolLoop.Generation(text: assembled, toolCalls: calls)
+                return LocalToolLoop.Generation(text: assembled, toolCalls: calls, toolFit: fit)
             }
         } else {
             generateTurn = { message, turnHistory, image, preview, systemOverride, toolTurn in
                 let output = try await localService.generateTurn(MLXTurnInput(
                     userMessage: message, systemPrompt: systemOverride ?? prompt, history: turnHistory,
                     imageData: image, onToken: preview, toolTurn: toolTurn))
-                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls)
+                return LocalToolLoop.Generation(text: output.text, toolCalls: output.toolCalls, stats: output.stats,
+                                                toolFit: output.toolFit)
             }
         }
         let generate: (_ message: String,
@@ -6240,7 +6196,9 @@ class LLMService: ObservableObject {
         // rendered by the model's own template.
         if nativeTools, let router = nativeToolRouter {
             return try await sendLocalNative(
-                text, history: history, toolNames: toolNames, toolSpecs: toolSpecs, toolRoots: toolRoots,
+                text, history: history, toolNames: toolNames, toolSpecs: toolSpecs,
+                compactToolSpecs: compactToolSpecs, contextWindow: toolTurnWindow?.tokens, toolRoots: toolRoots,
+                grounding: Self.localGroundingText(systemPrompt: prompt),
                 router: router, selectedID: selectedID, preview: containedPreview,
                 flushPreview: { if let onToken { let tail = previewFilter.flush(); if !tail.isEmpty { onToken(tail) } } },
                 generateTurn: { message, turnHistory, preview, toolTurn in
@@ -6303,12 +6261,12 @@ class LLMService: ObservableObject {
         // Gated on `.prose`: an output that already contains protocol did not stall, it failed, and
         // the containment below is the right answer for it. (That gate is also what the old
         // `!lowered.contains("<tool_call>")` check inside `announcesToolIntent` amounted to.)
+        //
+        // The same test the loop uses (`LocalToolLoop.standardCorrection`): a reply asking where the
+        // wearer is counts only on a turn that depends on where they are.
         if classification.kind == .prose, includeTools, nativeToolRouter != nil,
-           Self.announcesToolIntent(classification.text) || Self.asksUserForLocation(classification.text) {
+           let correction = LocalToolLoop.standardCorrection(for: classification.text, turn: text) {
             PrivacyLog.localModel(.stalled)
-            let correction = Self.asksUserForLocation(classification.text)
-                ? Self.localLocationCorrection
-                : Self.localIntentCorrection
             var correctiveHistory = history
             correctiveHistory.append((role: "assistant", content: classification.text))
             correctiveHistory.append((role: "user", content: correction))
@@ -6507,7 +6465,10 @@ class LLMService: ObservableObject {
                                  history: [(role: String, content: String)],
                                  toolNames: [String],
                                  toolSpecs: [[String: Any]],
+                                 compactToolSpecs: [[String: Any]] = [],
+                                 contextWindow: Int? = nil,
                                  toolRoots: [String: OnDeviceToolSchema.Node],
+                                 grounding: [String] = [],
                                  router: NativeToolRouter,
                                  selectedID: LocalModelID,
                                  preview: ((String) -> Void)?,
@@ -6518,22 +6479,38 @@ class LLMService: ObservableObject {
                                                 _ toolTurn: LocalToolTurn) async throws -> LocalToolLoop.Generation) async throws -> String {
         let earlier = history.map { $0.role == "assistant" ? LocalToolLoop.Message.assistant($0.content) : .user($0.content) }
         let fallback = Self.localToolInstructions(toolNames: toolNames)
-        let offered = Set(toolNames)
+        // What the dispatcher may run: the turn's offer, narrowed after each generation to what the
+        // runtime actually declared to the model (Plan MQ P3, `LocalToolFit`). A call to a tool the
+        // fit dropped is answered as not offered.
+        var offered = Set(toolNames)
+        // Plan MQ P3: an error code, a model number to identify and a step of the running procedure
+        // are called before the model (`LocalTurnRouter`), which answered them from memory.
+        var configuration = LocalToolLoop.Configuration()
+        configuration.routing = Self.localTurnRouting(offered: offered)
+        // A call's numbers may also come from the open job the prompt shows (`LocalArgumentGrounding`).
+        configuration.groundingText = grounding
+        // The first pass streams to the preview: the initial one, or the answer after a routed call.
+        var firstPass = true
         let outcome: LocalToolLoop.Outcome
         do {
-            outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, generateTurn: { request in
-                let toolTurn = LocalToolTurn(history: earlier,
-                                             turn: Array(request.messages.dropFirst(earlier.count)),
-                                             tools: request.toolsOffered ? toolSpecs : [],
-                                             thinkingOff: true,
-                                             fallbackInstructions: fallback)
+            outcome = try await LocalToolLoop.run(history: earlier, userMessage: text, configuration: configuration,
+                                                  generateTurn: { request in
+                // Shared with the device qualification app (Plan MQ P3), so a phone run renders
+                // each pass exactly as this turn does.
+                let toolTurn = LocalToolTurn.forLoopPass(history: earlier, request: request,
+                                                         toolSpecs: toolSpecs, compactToolSpecs: compactToolSpecs,
+                                                         fallbackInstructions: fallback, contextWindow: contextWindow)
                 // The same transcript flattened, for a runtime that renders no tool turn (the seam
                 // composes its messages from it); the MLX runtime renders `toolTurn` instead.
                 let flat = LocalToolTranscript.flattened(request.messages)
-                let isFirst = request.purpose == .initial
+                let isFirst = firstPass
+                firstPass = false
                 let generation = try await generateTurn(flat.last?.content ?? text, Array(flat.dropLast()),
                                                         isFirst ? preview : nil, toolTurn)
                 if isFirst { flushPreview() }
+                if request.toolsOffered {
+                    offered = LocalToolFit.dispatchable(offered: toolNames, report: generation.toolFit)
+                }
                 return generation
             }, execute: { call in
                 await self.executeLocalToolCall(call, offered: offered, roots: toolRoots, router: router)
@@ -6549,10 +6526,30 @@ class LLMService: ObservableObject {
         }
         PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.executed.count,
                               total: outcome.generations, detail: PrivacyToken(outcome.endReason.rawValue))
+        if let routed = outcome.executed.first(where: \.routed) {
+            // A registered tool's name: the router names only tools it routes to, never the turn.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.routedCalls,
+                                  tool: PrivacyToken(routed.call.name), detail: PrivacyToken("routed"))
+        }
+        if outcome.argumentsDropped > 0 {
+            // A count only: the arguments' names and values are the model's text and are never logged.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsDropped,
+                                  detail: PrivacyToken("argumentsDropped"))
+        }
+        if outcome.argumentsCompleted > 0 {
+            // A count only: what was filled is the technician's words and is never logged.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsCompleted,
+                                  detail: PrivacyToken("argumentsCompleted"))
+        }
+        if outcome.multiCallGenerations > 0 {
+            // A count only: generations that asked for more than one call, all of which ran or were counted.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.multiCallGenerations,
+                                  detail: PrivacyToken("multiCall"))
+        }
         var answer = outcome.text
-        if outcome.endReason == .protocolOnly {
+        if [.protocolOnly, .unbackedClaim, .unbackedPromise].contains(outcome.endReason) {
             lastLocalTurnMissed = true
-        } else if Self.announcesToolIntent(answer) {
+        } else if outcome.endReason != .routedResult, Self.announcesToolIntent(answer) {
             // Never speak a promise: the loop already had its rounds to keep it.
             answer = Self.localMissMessage
             lastLocalTurnMissed = true
@@ -6563,6 +6560,23 @@ class LLMService: ObservableObject {
         return validated
     }
 
+    /// What `LocalTurnRouter` reads on a native local turn: the offer, the Field Assist procedure
+    /// running now, if any, and the procedures the session's vault lets `procedure_runner` start (its
+    /// library, as `availableProcedureDefinitions()` lists it). A step waiting on a read-back or a
+    /// corrective note is left to the model.
+    static func localTurnRouting(offered: Set<String>) -> LocalTurnRouter.Context {
+        let fieldAssist = Config.fieldAssistActive
+        let service = FieldSessionService.shared
+        let presentation = fieldAssist ? service.activeProcedurePresentation : nil
+        let procedures = fieldAssist && offered.contains("procedure_runner")
+            ? service.availableProcedureDefinitions().map { LocalTurnRouter.CatalogueEntry(id: $0.id, title: $0.title) }
+            : []
+        return LocalTurnRouter.Context(
+            offered: offered, procedureActive: presentation != nil,
+            procedureAwaitsConfirmation: presentation.map { $0.pendingReadBack != nil || $0.needsCorrectiveNote } ?? false,
+            procedures: procedures)
+    }
+
     /// One call from the native loop. A tool the turn did not offer, or arguments that cannot be
     /// read as the declared types, come back to the model as an error result and run nothing.
     private func executeLocalToolCall(_ call: LocalToolLoop.Call, offered: Set<String>,
@@ -6571,8 +6585,7 @@ class LLMService: ObservableObject {
         guard offered.contains(call.name) else {
             // The name is the model's text, not a registered tool, so it is not logged.
             PrivacyLog.localModel(.malformedOutput, detail: PrivacyToken("unofferedTool"))
-            return .init(text: "Error: the tool '\(call.name)' is not available on this turn. Use one of: "
-                         + offered.sorted().joined(separator: ", ") + ".", isError: true)
+            return .init(text: LocalToolLoop.unofferedToolMessage(name: call.name, offered: offered), isError: true)
         }
         var arguments = call.arguments
         if let root = roots[call.name] {
@@ -6604,27 +6617,6 @@ class LLMService: ObservableObject {
             return .init(text: "Error: \(reason)", isError: true)
         }
     }
-
-    /// The tool block for a native tool turn. The definitions themselves are rendered by the
-    /// model's chat template, so this says only how to use them.
-    nonisolated static func localNativeToolGuide(toolNames: [String]) -> String {
-        guard !toolNames.isEmpty else { return "" }
-        var block = "\n\nTOOLS: the tools you may call this turn are declared to you. Call one only when the user "
-            + "clearly needs it; otherwise answer directly. After a tool result, answer from it in one or two spoken "
-            + "sentences, and never repeat a call you have already made."
-        if toolNames.contains("where_am_i") {
-            block += " If you need the user's location and it isn't given above, call where_am_i — never ask the user where they are."
-        }
-        if toolNames.contains("reading") || toolNames.contains("field_session") {
-            block += " On the job: log a value the technician reports with reading, and run job steps with the job tools; never invent a value."
-        }
-        return block
-    }
-
-    /// The one honest-miss line the local path speaks when a turn produced no answer it may say —
-    /// a promise it never kept, or output that was nothing but broken tool protocol. It claims
-    /// nothing happened and invites a retry, which is the only truthful thing left to say.
-    nonisolated static let localMissMessage = "I couldn't get that information just now — please ask me again."
 
     // MARK: - Local Agent Model
 

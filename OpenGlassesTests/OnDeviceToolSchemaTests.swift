@@ -256,6 +256,75 @@ final class OnDeviceToolSchemaTests: XCTestCase {
         XCTAssertEqual(result.arguments["extra"] as? String, "kept")
     }
 
+    // MARK: Misnamed choices (Plan MQ P3)
+
+    private let choiceSchema = OnDeviceToolSchema.root(toolName: "t", parameters: [
+        "type": "object",
+        "properties": [
+            "operation": ["type": "string", "enum": ["pt_lookup", "voltage_drop"]],
+            "application": ["type": "string", "enum": ["cooling", "heating"]],
+            "note": ["type": "string"],
+            "count": ["type": "integer"],
+        ],
+        "required": ["operation"],
+    ])
+
+    func testAMissingRequiredChoiceUnderOneOtherKeyIsMovedToIt() {
+        // An undeclared key: moved, and the rest still pass through as they did.
+        let undeclared = OnDeviceArgumentCoercion.coerce(["mode": "voltage_drop", "count": "3", "extra": 1.0],
+                                                         to: choiceSchema)
+        XCTAssertTrue(undeclared.isDispatchable, "\(undeclared.problems)")
+        XCTAssertEqual(undeclared.arguments["operation"] as? String, "voltage_drop")
+        XCTAssertNil(undeclared.arguments["mode"])
+        XCTAssertEqual(undeclared.arguments["extra"] as? Double, 1.0)
+        XCTAssertEqual(undeclared.coercedCount, 2, "the move and the count")
+
+        // Gemma 4 E2B on the phone: a declared choice that could not take it, in another case.
+        let declared = OnDeviceArgumentCoercion.coerce(["application": "Voltage_Drop"], to: choiceSchema)
+        XCTAssertTrue(declared.isDispatchable, "\(declared.problems)")
+        XCTAssertEqual(declared.arguments["operation"] as? String, "voltage_drop")
+        XCTAssertNil(declared.arguments["application"])
+    }
+
+    func testAChoiceIsNeverGuessedOntoARequiredKey() {
+        func missing(_ arguments: [String: Any], _ why: String) {
+            let result = OnDeviceArgumentCoercion.coerce(arguments, to: choiceSchema)
+            XCTAssertEqual(result.problems, [.missingRequired(path: "operation")], why)
+            XCTAssertNil(result.arguments["operation"], why)
+        }
+        missing(["a": "voltage_drop", "b": "pt_lookup"], "two keys could be meant")
+        missing(["note": "voltage_drop"], "a free-text key keeps its own value")
+        missing(["mode": "voltage drop please"], "not one of the choices")
+        missing(["mode": 7], "not text")
+
+        // Never onto a key that is present.
+        let present = OnDeviceArgumentCoercion.coerce(["operation": "bogus", "mode": "voltage_drop"], to: choiceSchema)
+        XCTAssertEqual(present.problems, [.wrongType(path: "operation", expected: "one of the listed choices")])
+        XCTAssertEqual(present.arguments["mode"] as? String, "voltage_drop")
+
+        // Never for a required key without choices.
+        let freeText = OnDeviceToolSchema.root(toolName: "t", parameters: [
+            "type": "object", "properties": ["action": ["type": "string"]], "required": ["action"],
+        ])
+        XCTAssertEqual(OnDeviceArgumentCoercion.coerce(["verb": "start"], to: freeText).problems,
+                       [.missingRequired(path: "action")])
+        // Nor for an optional choice.
+        let optional = OnDeviceArgumentCoercion.coerce(["operation": "pt_lookup", "use": "cooling"], to: choiceSchema)
+        XCTAssertNil(optional.arguments["application"])
+        XCTAssertEqual(optional.arguments["use"] as? String, "cooling")
+    }
+
+    func testTheRealCalculatorTakesTheOperationGemmaSentAsApplication() throws {
+        let tool = try XCTUnwrap(registry().tool(named: "domain_calc"))
+        let root = OnDeviceToolSchema.root(toolName: "domain_calc", parameters: tool.parametersSchema)
+        let result = OnDeviceArgumentCoercion.coerce(
+            ["application": "voltage_drop", "current_a": 15, "length_ft": 50, "k_factor_ohm_per_ft": 1.0], to: root)
+        XCTAssertTrue(result.isDispatchable, "\(result.problems)")
+        XCTAssertEqual(result.arguments["operation"] as? String, "voltage_drop")
+        XCTAssertNil(result.arguments["application"])
+        XCTAssertEqual(result.arguments["k_factor_ohm_per_ft"] as? Double, 1.0, "an invented key still passes through")
+    }
+
     func testAProblemMessageNeverCarriesTheValue() {
         let result = OnDeviceArgumentCoercion.coerce(["action": "start", "pressure": "secret 4412"], to: schema)
         XCTAssertFalse(result.refusalMessage?.contains("4412") ?? true)

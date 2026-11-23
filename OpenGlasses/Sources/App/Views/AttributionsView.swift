@@ -55,6 +55,10 @@ struct AttributionsView: View {
             name: "CoolProp 8.0.0",
             role: String(localized: "Refrigerant saturation (pressure–temperature) tables, generated offline. Copyright (c) 2012-2018 Ian H. Bell and other CoolProp developers."),
             license: "MIT"),
+        Attribution(
+            name: String(localized: "Conductor reference data"),
+            role: String(localized: "Standard AWG conductor areas and conductor resistivity figures at 75 °C, for voltage drop: copper and aluminium factors in Ω·cmil/ft and Ω·mm²/m, the metric ones worked from the IEC 60028 and IEC 60889 resistivities."),
+            license: String(localized: "Standard engineering figures")),
     ]
 
     var body: some View {

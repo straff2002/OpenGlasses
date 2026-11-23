@@ -167,23 +167,39 @@ final class FieldAssistContextAuditTests: XCTestCase {
         print("  compact tier, unfitted (all states above): \(Self.blockTokens(unfitted))")
         let registry = NativeToolRegistry(locationService: LocationService())
         let registered = registry.toolNames
-        func estimate(_ name: String) -> Int {
+        // As `sendLocal` estimates: a native turn's definitions at Gemma's calibrated rate, at the
+        // compact detail the runtime can always fall back to (Plan MQ P3); the single shot's with
+        // the Apple path's figure, as before.
+        func estimate(_ name: String, native: Bool) -> Int {
             guard let tool = registry.tool(named: name) else { return Int.max / 4 }
+            if native {
+                return OnDeviceToolSchema.localEstimatedTokens(spec: OnDeviceToolSchema.localToolSpec(
+                    name: name, description: tool.description, parameters: tool.parametersSchema, limits: .compact))
+            }
             let root = OnDeviceToolSchema.root(toolName: name, parameters: tool.parametersSchema)
             return OnDeviceToolSchema.estimatedTokens(name: name, description: OnDeviceToolSchema.toolDescription(tool.description),
                                                       root: root)
         }
-        var gemmaLeft: Int?
+        func spec(_ name: String, _ limits: OnDeviceToolSchema.Limits) -> [String: Any]? {
+            registry.tool(named: name).map {
+                OnDeviceToolSchema.localToolSpec(name: name, description: $0.description, parameters: $0.parametersSchema,
+                                                 limits: limits)
+            }
+        }
+        var gemmaLeft: [Int: Int] = [:]
         for entry in LocalModelCatalog.entries {
             let id = entry.id.rawValue
             let runtime = entry.descriptor.runtime
-            let budget = LocalModelBudget.promptBudget(for: id)
-            let jobBudget = LocalModelBudget.jobContextBudget(for: id)
-            let definitionBudget = LocalModelBudget.toolDefinitionBudget(for: id)
             // As `sendLocal` decides it, with the flag on: an allowlisted model is under
             // qualification and takes the Field Assist tools natively; the rest keep the single
             // shot's everyday list.
             let native = LocalNativeToolPolicy.usesNativeToolCalls(modelID: id, runtime: runtime, flagOn: true)
+            // A native turn on Gemma 4 E2B runs on 4,096 on a 6 GB phone and 6,144 on a bigger one
+            // with the room (`LocalModelBudget.toolTurnContextWindow`); both are audited.
+            let ordinary = LocalModelBudget.contextWindow(for: id)
+            let windows = native ? Array(Set([ordinary, LocalModelBudget.raisedToolTurnWindows[id] ?? ordinary])).sorted()
+                : [ordinary]
+            let jobBudget = LocalModelBudget.jobContextBudget(for: id)
             let fieldTools = LocalNativeToolPolicy.offersFieldAssistTools(
                 modelID: id, runtime: runtime, flagOn: true,
                 qualified: LocalModelCatalog.qualifiesForFieldAssistTools(entry.id))
@@ -196,58 +212,121 @@ final class FieldAssistContextAuditTests: XCTestCase {
                 localModelID: id)
             XCTAssertFalse(lean.contains("<field_assist_context>"), "\(id): the base is measured without the job")
             let base = HandoffTranscriptBridge.estimatedTokens(lean)
-
             let everyday = LLMService.localToolNames(registered: registered, offlineHandoff: false)
-            let fieldNames = fieldTools
-                ? FieldAssistLocalToolSet.select(registered: registered, fieldAssistActive: true, modelQualified: true,
-                                                 utterance: turn, estimatedTokens: estimate, budgetTokens: definitionBudget)
-                : []
-            let toolNames: [String]
-            let tools: Int
-            if native {
-                toolNames = LocalNativeToolPolicy.nativeToolNames(field: fieldNames, everyday: everyday, utterance: turn,
-                                                                  estimatedTokens: estimate, budgetTokens: definitionBudget)
-                let specs = toolNames.compactMap { name in
-                    registry.tool(named: name).map {
-                        OnDeviceToolSchema.localToolSpec(name: name, description: $0.description,
-                                                         parameters: $0.parametersSchema)
+
+            for window in windows {
+                let budget = LocalModelBudget.promptBudget(for: id, contextWindow: window)
+                let definitionBudget = LocalModelBudget.toolDefinitionBudget(for: id, contextWindow: window)
+                let fieldNames = fieldTools
+                    ? FieldAssistLocalToolSet.select(registered: registered, fieldAssistActive: true, modelQualified: true,
+                                                     utterance: turn, estimatedTokens: { estimate($0, native: native) },
+                                                     budgetTokens: definitionBudget)
+                    : []
+                let toolNames: [String]
+                let tools: Int
+                var detail = "single shot"
+                if native {
+                    toolNames = LocalNativeToolPolicy.nativeToolNames(
+                        field: fieldNames, everyday: everyday, utterance: turn,
+                        estimatedTokens: { estimate($0, native: true) }, budgetTokens: definitionBudget)
+                    // The runtime's fit, with the calibrated estimate standing in for the tokenizer.
+                    let standard = toolNames.compactMap { spec($0, .standard) }
+                    let compact = toolNames.compactMap { spec($0, .compact) }
+                    let guide = HandoffTranscriptBridge.estimatedTokens(LLMService.localNativeToolGuide(toolNames: toolNames))
+                    let fixed = base + tierTokens + guide
+                    // A job turn has a conversation behind it, so full detail must leave the reserve.
+                    let choice = LocalToolFit.choose(offered: toolNames.count, budget: budget,
+                                                     reserve: LocalToolFit.historyReserve) { kept, level in
+                        fixed + (level == .compact ? compact : standard).prefix(kept)
+                            .reduce(0) { $0 + OnDeviceToolSchema.localEstimatedTokens(spec: $1) }
                     }
+                    tools = (choice.tokens ?? fixed) - base - tierTokens
+                    detail = "native \(choice.kept) of \(toolNames.count) \(choice.detail.rawValue)"
+                    XCTAssertEqual(choice.kept, toolNames.count, "\(id) at \(window): the selection leaves the fit nothing to drop")
+                } else {
+                    toolNames = everyday + fieldNames.filter { !everyday.contains($0) }
+                    tools = HandoffTranscriptBridge.estimatedTokens(LLMService.localToolInstructions(toolNames: toolNames))
                 }
-                let rendered = try JSONSerialization.data(withJSONObject: specs, options: [.sortedKeys])
-                tools = rendered.count / 4
-                    + HandoffTranscriptBridge.estimatedTokens(LLMService.localNativeToolGuide(toolNames: toolNames))
-            } else {
-                toolNames = everyday + fieldNames.filter { !everyday.contains($0) }
-                tools = HandoffTranscriptBridge.estimatedTokens(LLMService.localToolInstructions(toolNames: toolNames))
+                let left = budget - base - tierTokens - tools
+                print("  \(entry.descriptor.displayName) (window \(window)): budget \(budget); compact tier \(tierTokens) of \(jobBudget); "
+                      + "lean prompt without the job \(base); tools \(detail) = \(tools) (reserve \(definitionBudget)); "
+                      + "left for history and the turn \(left)")
+                XCTAssertLessThanOrEqual(tierTokens, jobBudget + Self.wrapperTokens, "\(id): the tier is fitted to its budget")
+                XCTAssertGreaterThanOrEqual(left, Self.historyAndTurnFloor,
+                                            "\(id): the lean prompt, the tier and the tools leave room for the conversation")
+                if native {
+                    XCTAssertLessThanOrEqual(toolNames.count, LocalNativeToolPolicy.perTurnLimit)
+                    XCTAssertFalse(fieldNames.isEmpty, "\(id): under qualification, the job's tools are offered")
+                    XCTAssertTrue(toolNames.contains("field_session"), "\(id): opening a job is always on offer")
+                }
+                if id == "mlx-community/gemma-4-e2b-it-4bit" { gemmaLeft[window] = left }
             }
-            let left = budget - base - tierTokens - tools
-            let leftAtReserve = budget - base - tierTokens - definitionBudget
-            print("  \(entry.descriptor.displayName): budget \(budget); compact tier \(tierTokens) of \(jobBudget); "
-                  + "lean prompt without the job \(base); tools \(native ? "native" : "single shot") \(toolNames.count) "
-                  + "= \(tools) (reserve \(definitionBudget)); left for history and the turn \(left) "
-                  + "(\(leftAtReserve) at the reserve)")
-            XCTAssertLessThanOrEqual(tierTokens, jobBudget + Self.wrapperTokens, "\(id): the tier is fitted to its budget")
             XCTAssertTrue(tier.contains("Never fabricate"), "\(id): the vault's rules stay")
             XCTAssertTrue(tier.contains("MANUALS:"), "\(id): the manuals line stays")
             XCTAssertFalse(tier.contains("=== service_values.md ==="), "\(id): no core file rides along")
             XCTAssertTrue(lean.contains(PromptInjectionPolicy.onDeviceSystemPromptPolicy), "\(id): the safety policy stays")
             XCTAssertTrue(lean.contains("Never address"), "\(id): the speaker line stays")
-            XCTAssertGreaterThanOrEqual(left, Self.historyAndTurnFloor,
-                                        "\(id): the lean prompt, the tier and the tools leave room for the conversation")
-            if native {
-                XCTAssertLessThanOrEqual(toolNames.count, LocalNativeToolPolicy.perTurnLimit)
-                XCTAssertFalse(fieldNames.isEmpty, "\(id): under qualification, the job's tools are offered")
-            }
-            if id == "mlx-community/gemma-4-e2b-it-4bit" { gemmaLeft = left }
         }
-        let gemma = try XCTUnwrap(gemmaLeft, "Gemma 4 E2B is in the catalog")
-        XCTAssertGreaterThanOrEqual(gemma, Self.gemmaNativeFloor,
+        let gemma4K = try XCTUnwrap(gemmaLeft[4_096], "Gemma 4 E2B is in the catalog")
+        XCTAssertGreaterThanOrEqual(gemma4K, Self.gemmaNativeFloor,
                                     "Gemma 4 E2B with the Field Assist tools declared natively keeps room for three exchanges")
+        let gemma6K = try XCTUnwrap(gemmaLeft[6_144], "the raised window is audited")
+        XCTAssertGreaterThan(gemma6K, gemma4K, "the raised window leaves more for the conversation")
 
         XCTAssertTrue(procedureStarted, "the Lennox no-ignition procedure should start")
         XCTAssertGreaterThan(measurements[0].tokens, 0)
         XCTAssertGreaterThan(measurements[2].tokens, measurements[1].tokens, "a manual question adds passages")
         // The estimate is the one the local path budgets with.
         XCTAssertEqual(HandoffTranscriptBridge.estimatedTokens(String(repeating: "x", count: 400)), 100)
+    }
+
+    // MARK: - The tool estimate, against the phone (Plan MQ P3)
+
+    /// The first phone run (2026-11-22: iPhone Air, 12 GB, `mlx-community/gemma-4-e2b-it-4bit`,
+    /// mlx-swift-lm `4c21c84`) threw `promptTooLong(tokens: 4,317–4,326, limit: 3,456)` on its tool
+    /// turns. The device app sent each case's offered tools as they were, so its first tool turns
+    /// (`sv-001-log-in` on: a 52–75 character turn, no history, the Field Assist job prompt and the
+    /// standard definitions of `reading`, `field_session`, `table_lookup` and `domain_calc`) are the
+    /// calibration point. The calibrated estimate the native selection now budgets with
+    /// (`OnDeviceToolSchema.localEstimatedTokens`, beside four characters a token for the prompt and
+    /// the turn) must never come in under what the phone measured, and not far over it; the Apple
+    /// path's `estimatedTokens`, which the selection used before, came in under.
+    static let phoneMeasuredTokens = 4_317...4_326
+    static let phoneTools = ["reading", "field_session", "table_lookup", "domain_calc"]
+
+    func testTheCalibratedToolEstimateAgainstThePhone() throws {
+        let repo = Self.lennoxDirectory.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let fixture = try XCTUnwrap(LocalModelQualificationFixture.decode(Data(contentsOf: repo.appendingPathComponent(
+            "Scripts/local-model-qualification/Fixture/\(LocalModelQualificationFixture.fileName)"))))
+        let corpus = try String(contentsOf: repo.appendingPathComponent("Scripts/local-tool-eval/corpus")
+            .appendingPathComponent(LocalToolEval.corpusFileName), encoding: .utf8)
+        let phoneCases = LocalToolEval.loadCorpus(corpus).cases
+            .filter { $0.category == .toolChoice && $0.offered == Self.phoneTools && ($0.history ?? []).isEmpty }
+            .prefix(8)
+        XCTAssertEqual(phoneCases.count, 8)
+        let gemma = "mlx-community/gemma-4-e2b-it-4bit"
+        let dateLine = "Sunday, 22 November 2026 at 10:15 AM (Pacific/Auckland)"
+        for testCase in phoneCases {
+            let system = try XCTUnwrap(fixture.systemPrompt(for: testCase, modelID: gemma, dateTimeLine: dateLine))
+            let specs = testCase.offered.compactMap { fixture.toolSpec($0) }
+            XCTAssertEqual(specs.count, 4)
+            let prompt = HandoffTranscriptBridge.estimatedTokens(system) + HandoffTranscriptBridge.estimatedTokens(testCase.turn)
+            let calibrated = prompt + specs.reduce(0) { $0 + OnDeviceToolSchema.localEstimatedTokens(spec: $1) }
+            let apple = prompt + testCase.offered.reduce(0) { total, name in
+                let tool = fixture.tools[name]!
+                return total + OnDeviceToolSchema.estimatedTokens(
+                    name: name, description: OnDeviceToolSchema.toolDescription(tool.description),
+                    root: OnDeviceToolSchema.root(toolName: name, parameters: tool.parameters))
+            }
+            let jsonBytes = specs.reduce(0) { $0 + ((try? JSONSerialization.data(withJSONObject: $1, options: [.sortedKeys]))?.count ?? 0) }
+            // Counts only.
+            print("phone calibration: prompt \(prompt) (system \(system.count) chars, turn \(testCase.turn.count)); "
+                  + "spec JSON \(jsonBytes) bytes; calibrated \(calibrated); apple-path estimate \(apple); "
+                  + "phone \(Self.phoneMeasuredTokens.lowerBound)–\(Self.phoneMeasuredTokens.upperBound)")
+            XCTAssertGreaterThanOrEqual(calibrated, Self.phoneMeasuredTokens.upperBound, "never under the phone")
+            XCTAssertLessThanOrEqual(Double(calibrated), Double(Self.phoneMeasuredTokens.lowerBound) * 1.15,
+                                     "and not far over it")
+            XCTAssertLessThan(apple, Self.phoneMeasuredTokens.lowerBound, "the figure the selection used was low")
+        }
     }
 }

@@ -30,9 +30,15 @@ final class LocalModelEvidenceTests: XCTestCase {
                                                    evidence: .fileMetadataOnly, pendingClaims: [.text, .toolFriendly])
         XCTAssertEqual(LocalModelCatalog.validationError(for: overClaiming), "claims toolFriendly without device evidence")
 
-        let verified = LocalModelCatalog.Entry(descriptor: badged, snapshot: honest.snapshot,
+        // Decision 8: device evidence names its dated record in reports/.
+        var verified = LocalModelCatalog.Entry(descriptor: badged, snapshot: honest.snapshot,
                                                notes: honest.notes, minimumRAMGB: honest.minimumRAMGB,
                                                evidence: .deviceVerified, pendingClaims: [.text, .toolFriendly])
+        XCTAssertEqual(LocalModelCatalog.validationError(for: verified), "device evidence names no qualification record")
+        verified.evidenceRecord = "docs/somewhere.json"
+        XCTAssertEqual(LocalModelCatalog.validationError(for: verified),
+                       "the qualification record must be a JSON file under reports/")
+        verified.evidenceRecord = "reports/local-model-qualification-2026-12-01-gemma-4-e2b.json"
         XCTAssertNil(LocalModelCatalog.validationError(for: verified))
     }
 

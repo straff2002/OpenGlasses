@@ -434,25 +434,33 @@ struct LocalImageInput: Hashable, Sendable {
     init(data: Data) { self.data = data }
 }
 
-/// App-owned sampling defaults. Per-model overrides belong in the catalog descriptor, never in a
-/// filename heuristic.
+/// App-owned sampling defaults. Per-model overrides belong in the catalog entry's `sampling`
+/// (`LocalModelSampling`, Plan MQ H1), never in a filename heuristic. A member left nil takes the
+/// runtime's own default (MLX: top-k and min-p off, no penalty; GGUF: `LlamaSamplerOptions`).
 struct LocalSamplingConfiguration: Codable, Hashable, Sendable {
     var temperature: Float
     var topP: Float
     var topK: Int?
+    var minP: Float?
     var repetitionPenalty: Float?
+    /// MLX only: the GGUF wrapper has no presence penalty, and a GGUF entry may not set one.
+    var presencePenalty: Float?
     /// Fixed seed for deterministic tests. `nil` in production.
     var seed: UInt64?
 
     init(temperature: Float = 0.7,
          topP: Float = 0.9,
          topK: Int? = nil,
+         minP: Float? = nil,
          repetitionPenalty: Float? = nil,
+         presencePenalty: Float? = nil,
          seed: UInt64? = nil) {
         self.temperature = temperature
         self.topP = topP
         self.topK = topK
+        self.minP = minP
         self.repetitionPenalty = repetitionPenalty
+        self.presencePenalty = presencePenalty
         self.seed = seed
     }
 
@@ -535,6 +543,9 @@ struct LocalToolCallEvent: Hashable, Sendable {
 enum LocalGenerationEvent: Sendable {
     case text(String)
     case toolCall(LocalToolCallEvent)
+    /// What the runtime sent of a native tool turn's tools (`LocalToolFit`), so the dispatcher
+    /// refuses a call to a tool the fit dropped. Only on a tool turn.
+    case toolFit(LocalToolFit.Report)
 }
 
 /// A native tool turn for the runtime to render (Plan MQ P1).
@@ -543,14 +554,121 @@ struct LocalToolTurn: @unchecked Sendable {
     let history: [LocalToolLoop.Message]
     /// This turn: the user's message, then each call and its result. Never trimmed.
     let turn: [LocalToolLoop.Message]
-    /// `OnDeviceToolSchema.localToolSpec` per tool; empty when tools are withheld for this pass.
+    /// `OnDeviceToolSchema.localToolSpec` per tool, **in priority order** (highest first: the
+    /// order `LocalNativeToolPolicy.nativeToolNames` returns); empty when tools are withheld for
+    /// this pass. When they don't fit the budget the runtime drops from the end (`LocalToolFit`).
     let tools: [[String: Any]]
+    /// The same tools with compact definitions (`OnDeviceToolSchema.Limits.compact`), same order
+    /// and count; the runtime's fallback when `tools` don't fit. Empty: no compact form (the fit
+    /// then uses `tools` for both).
+    var compactTools: [[String: Any]] = []
     /// Ask the template for no thinking (`enable_thinking: false`) where it reads the flag.
     let thinkingOff: Bool
     /// Today's Hermes instruction (`LLMService.localToolInstructions`), appended to the system
     /// prompt when the runtime inferred no tool-call format for the model, or its template could
     /// not render the tools: then the calls come back as `<tool_call>` text instead.
     let fallbackInstructions: String
+    /// The context window this turn is budgeted with (`LocalModelBudget.toolTurnContextWindow`),
+    /// or nil for the model's ordinary window. Set only on a native tool turn.
+    var contextWindow: Int? = nil
+
+    init(history: [LocalToolLoop.Message], turn: [LocalToolLoop.Message], tools: [[String: Any]],
+         compactTools: [[String: Any]] = [], thinkingOff: Bool, fallbackInstructions: String,
+         contextWindow: Int? = nil) {
+        self.history = history
+        self.turn = turn
+        self.tools = tools
+        self.compactTools = compactTools.count == tools.count ? compactTools : []
+        self.thinkingOff = thinkingOff
+        self.fallbackInstructions = fallbackInstructions
+        self.contextWindow = contextWindow
+    }
+
+    /// The offered tools' names, in priority order.
+    var toolNames: [String] { tools.compactMap(LocalToolFit.name(of:)) }
+
+    /// The first `kept` tools at `detail`.
+    func specs(kept: Int, detail: LocalToolFit.Detail) -> [[String: Any]] {
+        let source = detail == .compact && !compactTools.isEmpty ? compactTools : tools
+        return Array(source.prefix(max(0, kept)))
+    }
+
+    /// This turn with only the first `kept` tools at `detail`, and `history` in place of its own.
+    func fitted(kept: Int, detail: LocalToolFit.Detail, history: [LocalToolLoop.Message]) -> LocalToolTurn {
+        LocalToolTurn(history: history, turn: turn, tools: specs(kept: kept, detail: detail),
+                      thinkingOff: thinkingOff, fallbackInstructions: fallbackInstructions,
+                      contextWindow: contextWindow)
+    }
+}
+
+extension LocalToolTurn {
+    /// The tool turn for one pass of `LocalToolLoop` over `history`: the turn's own messages are
+    /// whatever the pass carries beyond the earlier history, the tools are withheld when the loop
+    /// withholds them, and thinking is off. `LLMService.sendLocalNative` and the device
+    /// qualification app (Plan MQ P3) both build a pass here, so a phone run renders what a turn
+    /// renders.
+    ///
+    /// `toolSpecs` and `compactToolSpecs` are in priority order (highest first), so the runtime's
+    /// fit drops the least important tool first; `contextWindow` is the turn's
+    /// `LocalModelBudget.toolTurnContextWindow`.
+    static func forLoopPass(history earlier: [LocalToolLoop.Message],
+                            request: LocalToolLoop.GenerationRequest,
+                            toolSpecs: [[String: Any]],
+                            compactToolSpecs: [[String: Any]] = [],
+                            fallbackInstructions: String,
+                            contextWindow: Int? = nil) -> LocalToolTurn {
+        LocalToolTurn(history: earlier,
+                      turn: Array(request.messages.dropFirst(earlier.count)),
+                      tools: request.toolsOffered ? toolSpecs : [],
+                      compactTools: request.toolsOffered ? compactToolSpecs : [],
+                      thinkingOff: true,
+                      fallbackInstructions: fallbackInstructions,
+                      contextWindow: contextWindow)
+    }
+}
+
+/// What the runtime reported about one generation (Plan MQ P3): its own token counts and timings,
+/// and the cap it ran under. Counts only. The device qualification app records time to first token
+/// and decode rate from it, and the graders read two faults from it: a reply of zero tokens (almost
+/// always a prompt-format fault, not a model answer) and a reply that stopped at the cap (cut).
+struct LocalGenerationStats: Equatable, Sendable {
+    /// Tokens in the prompt the runtime prefilled.
+    let promptTokens: Int
+    /// Tokens generated, reasoning included.
+    let generatedTokens: Int
+    /// Seconds spent reading the prompt: the time to the first generated token.
+    let promptSeconds: Double
+    /// Seconds spent generating.
+    let generateSeconds: Double
+    /// The most tokens this generation could produce (`GenerateParameters.maxTokens`).
+    let tokenCap: Int?
+    /// The runtime's own report that it stopped at the cap.
+    let stoppedAtCap: Bool
+
+    init(promptTokens: Int, generatedTokens: Int, promptSeconds: Double, generateSeconds: Double,
+         tokenCap: Int?, stoppedAtCap: Bool) {
+        self.promptTokens = promptTokens
+        self.generatedTokens = generatedTokens
+        self.promptSeconds = promptSeconds
+        self.generateSeconds = generateSeconds
+        self.tokenCap = tokenCap
+        self.stoppedAtCap = stoppedAtCap
+    }
+
+    /// No token at all: the template ended the turn before the model said anything.
+    var isZeroTokens: Bool { generatedTokens == 0 }
+
+    /// The reply stopped exactly at the token cap, so its end is missing.
+    var isCut: Bool {
+        if stoppedAtCap { return true }
+        guard let tokenCap, tokenCap > 0 else { return false }
+        return generatedTokens >= tokenCap
+    }
+
+    /// Generated tokens a second, or nil when no time was measured.
+    var decodeTokensPerSecond: Double? {
+        generateSeconds > 0 ? Double(generatedTokens) / generateSeconds : nil
+    }
 }
 
 /// How a model should be brought up. Every value is a *ceiling the caller already decided*; a

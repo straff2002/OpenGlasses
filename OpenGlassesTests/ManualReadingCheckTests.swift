@@ -46,6 +46,52 @@ final class ManualReadingCheckTests: XCTestCase {
         XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: "p9"), .declined(.unknownPassage))
     }
 
+    func testACitedIdInItsLabelsWrappingStillCitesThePassage() {
+        for cited in ["[p1]", " p1 ", "(p1)", "\"p1\"", "Passage p1", "passage: p1", "[Passage p1]"] {
+            XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: cited), .accepted, cited)
+        }
+        XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: "TABLE 39 SM p.67"),
+                       .declined(.unknownPassage), "only the wrapping goes, never a different name")
+        XCTAssertEqual(check("4.5 in. w.c.", quote: "Natural", passage: "[p9]"), .declined(.unknownPassage))
+    }
+
+    // MARK: - Table entries read cell by cell
+
+    /// Two body rows, so a quote that mixes rows can be told apart (service_values.md, TABLE 35).
+    private let clocking = [
+        "p1": """
+            Gas flow, meter clocking — TABLE 35 SM p.65
+            Run at least 5 minutes, time two revolutions and halve.
+            | Unit | Natural, 1 cu ft dial | Natural, 2 cu ft dial | LP, 1 cu ft dial | LP, 2 cu ft dial |
+            | --- | --- | --- | --- | --- |
+            | -070 | 55 s | 110 s | 136 s | 272 s |
+            | -090 | 41 s | 82 s | 102 s | 204 s |
+            """,
+    ]
+
+    private func clockingCheck(_ quote: String) -> ManualReadingCheck.Verdict {
+        ManualReadingCheck.check(ManualReading(found: true, answer: "It should take the time in the table.",
+                                               passage: "p1", quote: quote), passages: clocking)
+    }
+
+    func testATableEntryQuotedAsItsColumnAndValueIsAccepted() {
+        XCTAssertEqual(clockingCheck("LP, 2 cu ft dial | 272 s"), .accepted)
+        XCTAssertEqual(clockingCheck("Natural, 2 cu ft dial | -090 | 82 s"), .accepted)
+        XCTAssertEqual(clockingCheck("-070 | 272 s"), .accepted, "the row alone, cells skipped")
+        XCTAssertEqual(clockingCheck(" | LP, 2 cu ft dial | 204 s"), .accepted)
+        XCTAssertEqual(clockingCheck("Unit | LP, 2 cu ft dial | ... | -090 | 204 s"), .accepted)
+    }
+
+    func testATableEntryUnderTheWrongColumnOrAcrossRowsIsDeclined() {
+        XCTAssertEqual(clockingCheck("LP, 2 cu ft dial | 136 s"), .declined(.quoteNotInPassage),
+                       "136 s is the LP, 1 cu ft column's value")
+        XCTAssertEqual(clockingCheck("-070 | 204 s"), .declined(.quoteNotInPassage), "two rows")
+        XCTAssertEqual(clockingCheck("LP, 2 cu ft dial | 999 s"), .declined(.quoteNotInPassage))
+        XCTAssertEqual(clockingCheck("LP, 2 cu ft dial | Natural, 1 cu ft dial"), .declined(.quoteNotInPassage),
+                       "headers alone are no entry")
+        XCTAssertEqual(clockingCheck("LP, 2 cu ft | 272 s"), .declined(.quoteNotInPassage), "a part of a cell")
+    }
+
     func testQuotesMatchAcrossCaseWhitespaceAndDashes() {
         XCTAssertEqual(check("4.5 in. w.c.", quote: "NATURAL  |  4.5 - 10.5"), .accepted)
         XCTAssertEqual(check("4.5 in. w.c.", quote: "natural | 4.5 — 10.5"), .accepted)

@@ -14,7 +14,9 @@ import Foundation
 /// speak protocol" a property of the turn instead of a property of five regexes.
 ///
 /// ### What it deliberately does not do
-/// It never *repairs* a call. A frame whose JSON does not parse, or whose object lacks a `name` or
+/// It never *repairs* a call. (Gemma 4's own call syntax, `name{key:<|"|>value<|"|>}`, is a second
+/// grammar read in full or not at all — `gemmaCall` — not a repair; a Python-style
+/// `name(key=value)` standing on its own line is a third — `pythonCall`.) A frame whose JSON does not parse, or whose object lacks a `name` or
 /// an `arguments` object, is reported as malformed and dropped — guessing a tool or an argument out
 /// of broken text would be inventing an action the model did not successfully ask for. And it never
 /// judges a call by its name: unknown or disallowed tools keep going through the router's existing
@@ -49,7 +51,7 @@ enum LocalOutputPolicy {
         case prose
         /// Protocol fragments were removed; nothing callable, nothing truncated.
         case proseWithProtocol
-        /// Exactly one usable call (`name` + `arguments`). Prose around it survives in `text`.
+        /// At least one usable call (`name` + `arguments`). Prose around it survives in `text`.
         case toolCall
         /// Protocol was present but no usable call could be formed from it — unparseable JSON,
         /// missing keys, or a bare (untagged) call object, which is not the protocol this app
@@ -65,8 +67,12 @@ enum LocalOutputPolicy {
         /// speaker label stripped, whitespace tidied. May be empty — that is the caller's cue that
         /// there is no answer left to say.
         let text: String
-        /// Set only for `.toolCall`.
+        /// Set only for `.toolCall`: the call a single-call reader runs.
         let invocation: Invocation?
+        /// Every usable call, in the order the output gave them (Plan MQ P3): `LocalToolLoop` runs
+        /// them all, since Gemma 4 E2B asks for a two-step turn's both calls in one reply. Empty
+        /// unless `.toolCall`.
+        var invocations: [Invocation] = []
 
         /// True when any protocol fragment was found and removed. The reason a caller can tell
         /// "the model said nothing" (an empty completion, still an error) apart from "the model
@@ -79,6 +85,7 @@ enum LocalOutputPolicy {
     static func classify(_ raw: String) -> Classification {
         var removals: [Range<String.Index>] = []
         var invocation: Invocation?
+        var found: [(at: String.Index, call: Invocation)] = []
         var sawMalformed = false
         var sawIncomplete = false
         var sawEmptyFrame = false
@@ -86,20 +93,52 @@ enum LocalOutputPolicy {
         // Pass 1 — tagged frames, in order. A frame with no close tag runs to the end of the
         // output: the model was cut off mid-protocol and everything after the open tag is protocol,
         // not speech.
+        // Pass 0 — Gemma 4's own call syntax behind an opener that isn't ours (`<tool_call:name{…}>`,
+        // `<|tool_call>call:name{…}<tool_call|>`): taken only when its body reads completely
+        // (`gemmaCall`); otherwise the rest of its line is protocol, removed and never run.
+        for opener in gemmaOpeners {
+            var scan = raw.startIndex
+            while let open = raw.range(of: opener, range: scan..<raw.endIndex) {
+                if let (call, end) = gemmaCall(in: raw, from: open.upperBound) {
+                    removals.append(open.lowerBound..<end)
+                    if invocation == nil { invocation = call }
+                    found.append((open.lowerBound, call))
+                    scan = end
+                } else {
+                    let lineEnd = raw[open.upperBound...].firstIndex(where: \.isNewline) ?? raw.endIndex
+                    removals.append(open.lowerBound..<lineEnd)
+                    sawMalformed = true
+                    scan = lineEnd
+                }
+            }
+        }
+
         var cursor = raw.startIndex
         while let open = raw.range(of: openTag, range: cursor..<raw.endIndex) {
             guard let close = raw.range(of: closeTag, range: open.upperBound..<raw.endIndex) else {
                 removals.append(open.lowerBound..<raw.endIndex)
-                sawIncomplete = true
+                // Gemma 4 leaves its own frame unclosed (`<tool_call>name{…}`): a body that reads
+                // whole is still its call.
+                let tail = String(raw[open.upperBound...])
+                if invocation == nil,
+                   let call = gemmaCall(wholly: tail)
+                    ?? pythonCall(tail.trimmingCharacters(in: .whitespacesAndNewlines))?.call {
+                    invocation = call
+                    found.append((open.lowerBound, call))
+                } else {
+                    sawIncomplete = true
+                }
                 cursor = raw.endIndex
                 break
             }
             removals.append(open.lowerBound..<close.upperBound)
             let payload = raw[open.upperBound..<close.lowerBound]
-            if let call = parseCallObject(String(payload)) {
-                // First usable call wins. A second frame in the same output is still removed from
-                // the text but is never executed — one turn, one call, as the local protocol says.
+            if let call = parseCallObject(String(payload)) ?? gemmaCall(wholly: String(payload))
+                ?? pythonCall(String(payload).trimmingCharacters(in: .whitespacesAndNewlines))?.call {
+                // First usable call wins for a single-call reader. A second frame in the same output
+                // is still removed from the text; only `invocations` readers run it.
                 if invocation == nil { invocation = call }
+                found.append((open.lowerBound, call))
             } else if payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 sawEmptyFrame = true
             } else {
@@ -108,8 +147,19 @@ enum LocalOutputPolicy {
             cursor = close.upperBound
         }
 
-        // Pass 2 — what is left between the frames: bare call objects and orphan close tags.
+        // Pass 2 — what is left between the frames: Python-style call lines, bare call objects and
+        // orphan close tags.
         for gap in gaps(in: raw, excluding: removals) {
+            let lines = pythonCallLines(in: raw, gap: gap)
+            removals += lines.removals
+            for (at, call) in lines.reads {
+                if let call {
+                    if invocation == nil { invocation = call }
+                    found.append((at, call))
+                } else {
+                    sawMalformed = true
+                }
+            }
             for range in bareCallRanges(in: raw, gap: gap) {
                 removals.append(range)
                 // A bare object is protocol-shaped output, not the protocol: it is removed so it is
@@ -139,7 +189,8 @@ enum LocalOutputPolicy {
 
         return Classification(kind: kind,
                               text: tidied(raw, removing: removals),
-                              invocation: invocation)
+                              invocation: invocation,
+                              invocations: found.sorted { $0.at < $1.at }.map(\.call))
     }
 
     /// The speakable text of a completion, with no classification. Convenience for boundaries that
@@ -160,6 +211,240 @@ enum LocalOutputPolicy {
               !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let arguments = object["arguments"] as? [String: Any] else { return nil }
         return Invocation(name: name, arguments: arguments)
+    }
+
+    // MARK: - Gemma 4's call syntax
+
+    /// Openers Gemma 4 E2B was seen writing in text, on the phone, after the "I'll look that up"
+    /// correction: half its native frame (`<|tool_call>call:…<tool_call|>`), half ours
+    /// (`<tool_call>`). Our own `<tool_call>` is pass 1's; its payload may be Gemma's too.
+    static let gemmaOpeners = ["<tool_call:", "<|tool_call>"]
+
+    /// Gemma 4's string delimiter inside a call body.
+    static let gemmaQuote = "<|\"|>"
+
+    /// A call in Gemma 4's own syntax starting at `start`: an optional `call:`, a tool name, then
+    /// a `{key:value,…}` body (strings between `<|"|>` marks, numbers, true/false) or `()`. Taken
+    /// only when the body closes and every pair reads; the closing debris on the same line (`}`,
+    /// `>`, `<tool_call|>`, `</tool_call>`) is part of the range. Not a repair: a second, fully
+    /// specified grammar, and nothing that doesn't read under it becomes a call (Plan MQ P3).
+    static func gemmaCall(in raw: String, from start: String.Index) -> (Invocation, String.Index)? {
+        var index = raw[start...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+        if raw[index...].hasPrefix("call:") { index = raw.index(index, offsetBy: 5) }
+        let nameEnd = raw[index...].firstIndex { !($0.isLetter || $0.isNumber || $0 == "_") } ?? raw.endIndex
+        let name = String(raw[index..<nameEnd])
+        guard let first = name.first, first.isLetter || first == "_", nameEnd < raw.endIndex else { return nil }
+        var arguments: [String: Any] = [:]
+        var cursor = nameEnd
+        if raw[cursor...].hasPrefix("()") {
+            cursor = raw.index(cursor, offsetBy: 2)
+        } else {
+            guard raw[cursor] == "{" else { return nil }
+            cursor = raw.index(after: cursor)
+            while true {
+                cursor = raw[cursor...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+                guard cursor < raw.endIndex else { return nil }
+                if raw[cursor] == "}" { cursor = raw.index(after: cursor); break }
+                guard let colon = raw[cursor...].firstIndex(of: ":") else { return nil }
+                let key = raw[cursor..<colon].trimmingCharacters(in: .whitespaces)
+                guard !key.isEmpty, key.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return nil }
+                cursor = raw[raw.index(after: colon)...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+                if raw[cursor...].hasPrefix(gemmaQuote) {
+                    let valueStart = raw.index(cursor, offsetBy: gemmaQuote.count)
+                    guard let close = raw.range(of: gemmaQuote, range: valueStart..<raw.endIndex) else { return nil }
+                    arguments[key] = String(raw[valueStart..<close.lowerBound])
+                    cursor = close.upperBound
+                } else {
+                    let valueEnd = raw[cursor...].firstIndex { $0 == "," || $0 == "}" || $0.isNewline } ?? raw.endIndex
+                    let token = raw[cursor..<valueEnd].trimmingCharacters(in: .whitespaces)
+                    if token == "true" || token == "false" {
+                        arguments[key] = token == "true"
+                    } else if let number = Double(token), token.first.map({ $0.isNumber || $0 == "-" }) == true {
+                        arguments[key] = token.contains(".") ? number as Any : (Int(exactly: number).map { $0 as Any } ?? number)
+                    } else {
+                        return nil
+                    }
+                    cursor = valueEnd
+                }
+                cursor = raw[cursor...].firstIndex { !$0.isWhitespace } ?? raw.endIndex
+                guard cursor < raw.endIndex else { return nil }
+                if raw[cursor] == "," { cursor = raw.index(after: cursor); continue }
+                guard raw[cursor] == "}" else { return nil }
+                cursor = raw.index(after: cursor)
+                break
+            }
+        }
+        // The frame's closing debris, on the same line.
+        while cursor < raw.endIndex {
+            let rest = raw[cursor...]
+            if let tag = ["<tool_call|>", closeTag].first(where: { rest.hasPrefix($0) }) {
+                cursor = raw.index(cursor, offsetBy: tag.count)
+            } else if rest.first == "}" || rest.first == ">" || rest.first == " " || rest.first == "\t" {
+                cursor = raw.index(after: cursor)
+            } else {
+                break
+            }
+        }
+        return (Invocation(name: name, arguments: arguments), cursor)
+    }
+
+    /// A whole frame payload in Gemma 4's syntax, with nothing but closing debris and whitespace
+    /// after it.
+    static func gemmaCall(wholly payload: String) -> Invocation? {
+        guard let (call, end) = gemmaCall(in: payload, from: payload.startIndex),
+              payload[end...].allSatisfy({ $0.isWhitespace }) else { return nil }
+        return call
+    }
+
+    // MARK: - Python-style calls
+
+    /// How a call-shaped line read: a call, or a shape that is a call's but not one this grammar
+    /// reads (`nil` — removed and never run, like a frame whose body does not read).
+    struct PythonRead {
+        let call: Invocation?
+    }
+
+    /// Fence languages a call block may carry. Any other fence is code someone is being shown.
+    static let pythonFenceLanguages: Set<String> = ["", "python", "py", "tool_code"]
+
+    /// A Python-style call, `name(key=value, …)`, the whole of `text`: optionally after `call:` or
+    /// inside one code span. On the phone Gemma 4 E2B once answered with only
+    /// `reading(action="record_reading", quantity="flame signal", unit="µA", value="2.9")`, and
+    /// nothing was logged. Like `gemmaCall`, a third grammar read in full or not at all, not a
+    /// repair (Plan MQ P3): keyword arguments only, each a quoted string (`\"`/`\'` escapes), a
+    /// number (typed as Gemma's are), `True`/`False`, or `None` (the key dropped). Positional
+    /// arguments, nested calls, expressions, lists and dicts are a call's shape that does not
+    /// read: `PythonRead(call: nil)`, never run. Nil when `text` is not call-shaped at all — a
+    /// lowercase tool-like name right against `(`, closed by the last character — so a sentence
+    /// is never read. The policy is not told which tools were offered, so the name is held only
+    /// to that shape; its callers keep it to a whole line of the output or a frame's whole payload.
+    static func pythonCall(_ text: String) -> PythonRead? {
+        var text = Substring(text)
+        if text.count >= 2, text.hasPrefix("`"), text.hasSuffix("`"), !text.hasPrefix("``") {
+            text = text.dropFirst().dropLast()
+        }
+        if text.hasPrefix("call:") { text = text.dropFirst(5).drop { $0 == " " } }
+        let name = text.prefix { $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "_") }
+        guard let first = name.first, first.isLetter,
+              text.dropFirst(name.count).first == "(", text.last == ")", text.count > name.count + 1 else { return nil }
+        let body = Array(text.dropFirst(name.count + 1).dropLast())
+        return PythonRead(call: pythonArguments(body).map { Invocation(name: String(name), arguments: $0) })
+    }
+
+    /// The keyword arguments between a Python-style call's parentheses, or nil when any of it
+    /// does not read.
+    private static func pythonArguments(_ body: [Character]) -> [String: Any]? {
+        var arguments: [String: Any] = [:]
+        var keys = Set<String>()
+        var index = 0
+        func skipSpaces() { while index < body.count, body[index] == " " || body[index] == "\t" { index += 1 } }
+        skipSpaces()
+        while index < body.count {
+            let keyStart = index
+            while index < body.count, body[index].isASCII,
+                  body[index].isLetter || body[index].isNumber || body[index] == "_" { index += 1 }
+            let key = String(body[keyStart..<index])
+            guard let first = key.first, !first.isNumber, keys.insert(key).inserted else { return nil }
+            skipSpaces()
+            guard index < body.count, body[index] == "=" else { return nil }   // positional
+            index += 1
+            skipSpaces()
+            guard index < body.count else { return nil }
+            if body[index] == "\"" || body[index] == "'" {
+                let quote = body[index]
+                var value = ""
+                var closed = false
+                index += 1
+                while index < body.count {
+                    let character = body[index]
+                    if character == "\\" {
+                        guard index + 1 < body.count else { return nil }
+                        let escaped = body[index + 1]
+                        value.append(escaped == "n" ? "\n" : escaped == "t" ? "\t" : escaped)
+                        index += 2
+                    } else if character == quote {
+                        closed = true
+                        index += 1
+                        break
+                    } else {
+                        value.append(character)
+                        index += 1
+                    }
+                }
+                guard closed else { return nil }
+                arguments[key] = value
+            } else {
+                let tokenStart = index
+                while index < body.count, body[index] != ",", body[index] != " ", body[index] != "\t" { index += 1 }
+                let token = String(body[tokenStart..<index])
+                switch token {
+                case "True", "true": arguments[key] = true
+                case "False", "false": arguments[key] = false
+                case "None", "null": break
+                default:
+                    guard token.range(of: #"^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$"#, options: .regularExpression) != nil,
+                          let number = Double(token), number.isFinite else { return nil }
+                    arguments[key] = token.contains(".") ? number as Any : (Int(exactly: number).map { $0 as Any } ?? number)
+                }
+            }
+            skipSpaces()
+            guard index < body.count else { break }
+            guard body[index] == "," else { return nil }
+            index += 1
+            skipSpaces()
+        }
+        return arguments
+    }
+
+    /// The Python-style calls in a gap, each a whole line of the output: what to remove, and every
+    /// call-shaped line read, in order (nil where it did not read). A fence (```` ``` ````,
+    /// ```` ```python ````, ```` ```tool_code ````) is taken whole when every line in it is
+    /// call-shaped, and otherwise left alone, lines and all — it is code being shown. A call
+    /// inside a sentence never stands on its own line, so it is never read.
+    private static func pythonCallLines(in raw: String, gap: Range<String.Index>)
+        -> (removals: [Range<String.Index>], reads: [(at: String.Index, call: Invocation?)]) {
+        // Each whole line of the gap, trimmed: one that starts and ends a line of the output.
+        var lines: [(range: Range<String.Index>, text: String)] = []
+        var lineStart = gap.lowerBound
+        while lineStart < gap.upperBound {
+            let lineEnd = raw[lineStart..<gap.upperBound].firstIndex(where: \.isNewline) ?? gap.upperBound
+            if let first = raw[lineStart..<lineEnd].firstIndex(where: { !$0.isWhitespace }),
+               startsLine(raw, at: first),
+               lineEnd == raw.endIndex || raw[lineEnd].isNewline {
+                let last = raw[first..<lineEnd].lastIndex { !$0.isWhitespace } ?? first
+                lines.append((first..<raw.index(after: last), String(raw[first...last])))
+            }
+            lineStart = lineEnd < gap.upperBound ? raw.index(after: lineEnd) : gap.upperBound
+        }
+
+        var removals: [Range<String.Index>] = []
+        var reads: [(at: String.Index, call: Invocation?)] = []
+        var line = 0
+        while line < lines.count {
+            let text = lines[line].text
+            if text.hasPrefix("```") {
+                let language = text.dropFirst(3).trimmingCharacters(in: .whitespaces).lowercased()
+                if let close = lines[(line + 1)...].firstIndex(where: { $0.text == "```" }) {
+                    let inner = lines[(line + 1)..<close]
+                    let read = inner.compactMap { entry in pythonCall(entry.text).map { (entry.range.lowerBound, $0.call) } }
+                    if pythonFenceLanguages.contains(language), !inner.isEmpty, read.count == inner.count {
+                        removals.append(lines[line].range.lowerBound..<lines[close].range.upperBound)
+                        reads += read
+                    }
+                    line = close + 1
+                    continue
+                }
+            }
+            // A call line that a stray close tag ends is still the call; the orphan scan takes the tag.
+            let candidate = text.hasSuffix(closeTag)
+                ? String(text.dropLast(closeTag.count)).trimmingCharacters(in: .whitespaces) : text
+            if let read = pythonCall(candidate) {
+                removals.append(lines[line].range)
+                reads.append((lines[line].range.lowerBound, read.call))
+            }
+            line += 1
+        }
+        return (removals, reads)
     }
 
     // MARK: - Bare (untagged) call objects
@@ -541,10 +826,12 @@ extension LocalOutputPolicy {
     /// Plan MQ P1: one generation read with the calls the runtime's parser took out of the stream.
     /// A call in the text wins (the shipped protocol); otherwise the runtime's first call is the
     /// turn's call. Until P1 those calls were skipped, so a Hermes-format model's call vanished.
-    /// Whatever protocol the text carried is still removed from what is spoken.
+    /// Whatever protocol the text carried is still removed from what is spoken. `invocations`
+    /// holds every call the runtime parsed, in order.
     static func classify(_ raw: String, parsedCalls: [LocalToolCallEvent]) -> Classification {
         let classification = classify(raw)
         guard classification.invocation == nil, let first = parsedCalls.first else { return classification }
-        return Classification(kind: .toolCall, text: classification.text, invocation: first.invocation)
+        return Classification(kind: .toolCall, text: classification.text, invocation: first.invocation,
+                              invocations: parsedCalls.map(\.invocation))
     }
 }

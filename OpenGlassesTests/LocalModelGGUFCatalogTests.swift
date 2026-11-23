@@ -143,6 +143,11 @@ final class LocalModelGGUFCatalogTests: XCTestCase {
         var entry = validEntryJSON
         entry["capabilities"] = ["text", "toolFriendly"]
         entry["evidence"] = "deviceVerified"
+        // Decision 8: without its dated record the evidence is refused.
+        let unrecorded = try LocalModelCatalogDocument.loadStrict(
+            from: try JSONSerialization.data(withJSONObject: ["version": 1, "models": [entry]]))
+        XCTAssertTrue(unrecorded.document.entries.isEmpty)
+        entry["evidenceRecord"] = "reports/local-model-qualification-2026-12-01-test.json"
         let data = try JSONSerialization.data(withJSONObject: ["version": 1, "models": [entry]])
         let (document, rejected) = try LocalModelCatalogDocument.loadStrict(from: data)
         XCTAssertEqual(rejected, [])

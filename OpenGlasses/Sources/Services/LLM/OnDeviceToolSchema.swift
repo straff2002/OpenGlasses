@@ -52,8 +52,18 @@ enum OnDeviceToolSchema {
         /// An `enum` longer than this is rendered as free text with the choices named in the
         /// description instead — the constrained form costs a token per choice.
         var maxChoices: Int
+        /// The cut for an optional property's description; nil: the same as `propertyDescription`.
+        /// 0 drops it (the property keeps its name, its `type` and its choices).
+        var optionalPropertyDescription: Int? = nil
 
         static let standard = Limits(toolDescription: 360, propertyDescription: 150, maxChoices: 24)
+
+        /// The downloaded models' fallback when the standard definitions don't fit the prompt
+        /// (Plan MQ P3, `LocalToolFit`): a two-sentence tool description, a required property's
+        /// description cut hard, an optional property's dropped. Every node keeps its `type` and its
+        /// choices; nesting is unchanged. Never used on the Apple path.
+        static let compact = Limits(toolDescription: 160, propertyDescription: 100, maxChoices: 24,
+                                    optionalPropertyDescription: 0)
     }
 
     /// The converted root for one tool. The root is always an object named after the tool, even
@@ -83,9 +93,14 @@ enum OnDeviceToolSchema {
             // is not, and a changing definition would read as a changing tool to the model.
             let properties: [Property] = raw.keys.sorted().compactMap { key in
                 guard let fragment = raw[key] as? [String: Any] else { return nil }
-                var description = (fragment["description"] as? String)
-                    .map { condense($0, limit: limits.propertyDescription) }
-                    .flatMap { $0.isEmpty ? nil : $0 }
+                let limit = required.contains(key)
+                    ? limits.propertyDescription
+                    : (limits.optionalPropertyDescription ?? limits.propertyDescription)
+                var description = limit > 0
+                    ? (fragment["description"] as? String)
+                        .map { condense($0, limit: limit) }
+                        .flatMap { $0.isEmpty ? nil : $0 }
+                    : nil
                 if let suffix = choicesSuffix(for: fragment, limits: limits) {
                     description = [description, suffix].compactMap { $0 }.joined(separator: " ")
                 }
@@ -203,6 +218,34 @@ enum OnDeviceToolSchema {
 
 extension OnDeviceToolSchema {
 
+    // MARK: Size, calibrated on a phone (Plan MQ P3)
+
+    /// Bytes of a rendered spec's compact JSON per token of Gemma 4 E2B's real template render, with
+    /// a margin. Calibrated from the first phone run (2026-11-22, iPhone Air, mlx-swift-lm
+    /// `4c21c84`): the Field Assist job prompt with the native tool guide (6,234 characters, about
+    /// 1,560 tokens at four characters a token), a 52–75 character turn and four definitions
+    /// (`reading`, `field_session`, `table_lookup`, `domain_calc`: 10,034 bytes of spec JSON)
+    /// measured 4,317–4,326 tokens. That leaves about 2,750 tokens for the definitions: 3.65 bytes
+    /// a token. 3.4, with `localPerToolTokens` for each declaration's wrapper, puts the whole prompt
+    /// at 4,556–4,561, 5–6% above the phone, so a selection made with it rarely leaves the runtime
+    /// fit (`LocalToolFit`) anything to drop. `estimatedTokens` above, the Apple path's figure and
+    /// what the native selection used before, put the same prompt at 3,726–3,731 (its four tools
+    /// at 2,155, about 22% under the render): it counts no JSON keys, types or punctuation. The
+    /// split assumes the prompt reads at four characters a token; the record's per-generation
+    /// prompt counts settle it. `FieldAssistContextAuditTests` rechecks it against the phone.
+    static let localCharactersPerToken = 3.4
+
+    /// Tokens for each declaration's template wrapper (its open and close markers and separators).
+    static let localPerToolTokens = 8
+
+    /// Gemma 4 E2B's real tokens for one rendered spec (`localToolSpec`), estimated from its JSON.
+    /// What the downloaded models' tool selection budgets with; the Apple path keeps
+    /// `estimatedTokens`.
+    static func localEstimatedTokens(spec: [String: Any]) -> Int {
+        let bytes = (try? JSONSerialization.data(withJSONObject: spec, options: [.sortedKeys]))?.count ?? 0
+        return Int((Double(bytes) / localCharactersPerToken).rounded(.up)) + localPerToolTokens
+    }
+
     /// How deep a rendered schema may nest. The root object is level 1; an object or array inside it
     /// is level 2. Anything deeper is rendered as a string that holds JSON, which
     /// `OnDeviceArgumentCoercion` parses back. Gemma 4's chat template walks a schema with a
@@ -307,6 +350,13 @@ extension OnDeviceToolSchema.Node {
 /// Explicit `null`s are dropped, as `AppleToolArguments` drops them, so an optional the model
 /// spelled out as null reads as absent. Arguments the schema doesn't declare pass through untouched;
 /// the router's authorization, not this, decides what they mean.
+///
+/// One misnamed argument has one reading too (Plan MQ P3): a required choice that is missing, when
+/// exactly one other key holds one of its choices and could not keep it — undeclared, or declared
+/// with choices that don't include it. Gemma 4 E2B on the phone sent `application: "voltage_drop"`
+/// for `operation` in 7 of 8 two-step calls; the value is moved to the required key. Nothing else
+/// is renamed: not onto a key that is present, not for a target without choices, not when two keys
+/// could be meant.
 enum OnDeviceArgumentCoercion {
 
     enum Problem: Equatable {
@@ -367,6 +417,7 @@ enum OnDeviceArgumentCoercion {
                                      path: String, state: inout State) -> [String: Any]? {
         guard case .object(_, _, let properties) = node else { return object }
         var result = object.filter { !($0.value is NSNull) }
+        repairMisnamedChoices(&result, properties: properties, state: &state)
         for property in properties {
             let propertyPath = join(path, property.name)
             guard let raw = result[property.name] else {
@@ -378,6 +429,39 @@ enum OnDeviceArgumentCoercion {
             }
         }
         return result
+    }
+
+    /// Moves a missing required choice back from the one key that holds it under another name.
+    /// Counted as a coercion; the key's name and value are never recorded.
+    private static func repairMisnamedChoices(_ object: inout [String: Any],
+                                              properties: [OnDeviceToolSchema.Property], state: inout State) {
+        let declared = Dictionary(properties.map { ($0.name, $0.node) }, uniquingKeysWith: { first, _ in first })
+        for property in properties where !property.isOptional && object[property.name] == nil {
+            guard case .string(let choices?) = property.node else { continue }
+            let folded = Set(choices.map { $0.lowercased() })
+            let holders = object.compactMap { key, value -> String? in
+                guard let text = value as? String,
+                      folded.contains(text.trimmingCharacters(in: .whitespaces).lowercased()) else { return nil }
+                // A declared key keeps a value it can take; only one it would refuse can be misnamed.
+                if let own = declared[key], accepts(own, text) { return nil }
+                return key
+            }
+            guard holders.count == 1, let key = holders.first, let value = object.removeValue(forKey: key) else { continue }
+            object[property.name] = value
+            state.coerced += 1
+        }
+    }
+
+    /// Whether `node` reads `text` as a value of its own, as `coerceValue` would.
+    private static func accepts(_ node: OnDeviceToolSchema.Node, _ text: String) -> Bool {
+        let folded = text.trimmingCharacters(in: .whitespaces).lowercased()
+        switch node {
+        case .string(let choices): return choices.map { $0.contains { $0.lowercased() == folded } } ?? true
+        case .integer, .number: return plainNumber(text) != nil
+        case .boolean: return folded == "true" || folded == "false"
+        case .array(let item): return accepts(item, text)
+        case .object: return false
+        }
     }
 
     /// The value at its declared type, or nil (with a problem recorded) when it has no single reading.

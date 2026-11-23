@@ -1868,6 +1868,10 @@ enum PrivacyLog {
         /// how a native tool loop ended (`detail` the end reason, `count` the calls run, `total` the
         /// generations). Names and counts; never a call's arguments or a result.
         case toolFormat, toolLoop
+        /// Plan MQ P3: a native tool turn's definitions were fitted to the prompt budget
+        /// (`LocalToolFit`): `count` kept of `total` offered, `tokens` the prompt with no history,
+        /// `detail` `standard`, `compact` or `none`. Counts only.
+        case toolsFitted
         /// Installed-model records (Plan DZ P0). These carry **counts only** — a compatibility
         /// descriptor's id is whatever the user typed into the model field, which makes it
         /// user-authored text rather than a public catalog token.

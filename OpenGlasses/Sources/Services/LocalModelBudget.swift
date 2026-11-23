@@ -83,6 +83,12 @@ enum LocalModelBudget {
         max(minimumBudget, contextWindow - generationReserve - safetyMargin)
     }
 
+    /// A model's budget on an explicit window (a native tool turn's, `toolTurnContextWindow`): the
+    /// window minus the model's own generation reserve and the margin.
+    static func promptBudget(for modelId: String?, contextWindow: Int) -> Int {
+        max(minimumBudget, contextWindow - generationReserve(for: modelId) - safetyMargin)
+    }
+
     /// Floor so a tiny/misconfigured window still admits the minimal system + turn prompt.
     static let minimumBudget = 512
 
@@ -94,6 +100,11 @@ enum LocalModelBudget {
     /// Tokens the turn's tool definitions may use together on this model.
     static func toolDefinitionBudget(for modelId: String?) -> Int {
         promptBudget(for: modelId) / toolDefinitionShare
+    }
+
+    /// The same on an explicit window (a native tool turn's).
+    static func toolDefinitionBudget(for modelId: String?, contextWindow: Int) -> Int {
+        promptBudget(for: modelId, contextWindow: contextWindow) / toolDefinitionShare
     }
 
     /// The share of the prompt budget the open job's context may take on a downloaded model
@@ -375,5 +386,122 @@ enum LocalModelBudget {
             }
             kept = Array(kept.dropFirst())   // drop the oldest exchange and re-measure
         }
+    }
+}
+
+// MARK: - A larger window for native tool turns (Plan MQ P3)
+
+extension LocalModelBudget {
+
+    /// The window a native tool turn may use instead of the model's ordinary one, by model. Gemma 4
+    /// E2B only: the first phone run (2026-11-22, iPhone Air, 12 GB) failed every tool turn on its
+    /// 4,096 window while its reading turns peaked at 3.16 GB against a 6.44 GB kill limit, so a
+    /// bigger phone has the room; 6,144 adds 2,048 tokens, about a fifth of a Field Assist turn's
+    /// definitions and history again. Everything else keeps its ordinary window.
+    static let raisedToolTurnWindows: [String: Int] = [
+        "mlx-community/gemma-4-e2b-it-4bit": 6_144,
+    ]
+
+    /// Nominal RAM a phone needs for the raised window; a 6 GB phone stays on the ordinary one.
+    static let raisedToolTurnMinimumRAMGB: Double = 8
+
+    /// The attention layout that sizes a model's KV cache, read from its config.
+    struct KVCacheShape: Equatable, Sendable {
+        /// Layers that cache every token (full attention), and their K and V width.
+        let fullAttentionLayers: Int
+        let fullKVHeads: Int
+        let fullHeadDim: Int
+        /// Layers that cache a sliding window only, and their width and window.
+        let slidingLayers: Int
+        let slidingKVHeads: Int
+        let slidingHeadDim: Int
+        let slidingWindow: Int
+        /// Bytes per cached element (bf16 / fp16: 2).
+        let bytesPerElement: Int
+
+        /// The sliding layers may hold a prefill chunk beyond their window while it is read.
+        static let prefillChunk = 512
+
+        /// The cache's bytes with `tokens` in it, from the layout.
+        func bytes(tokens: Int) -> Int64 {
+            let t = Int64(max(0, tokens))
+            let full = Int64(fullAttentionLayers * 2 * fullKVHeads * fullHeadDim * bytesPerElement) * t
+            let held = min(t, Int64(slidingWindow + Self.prefillChunk))
+            let sliding = Int64(slidingLayers * 2 * slidingKVHeads * slidingHeadDim * bytesPerElement) * held
+            return full + sliding
+        }
+
+        /// A bound that assumes no sliding window and every cache-holding layer at the
+        /// full-attention width: what the memory gate charges, so a config read wrong cannot make
+        /// the raise look cheaper than it is.
+        func conservativeBytes(tokens: Int) -> Int64 {
+            let layers = fullAttentionLayers + slidingLayers
+            let width = max(fullKVHeads * fullHeadDim, slidingKVHeads * slidingHeadDim)
+            return Int64(layers * 2 * width * bytesPerElement) * Int64(max(0, tokens))
+        }
+    }
+
+    /// KV layouts for the models whose window can be raised.
+    ///
+    /// Gemma 4 E2B (`gemma4_text`, read from mlx-swift-lm `4c21c84`'s `Gemma4TextConfiguration`,
+    /// whose defaults are E2B's and whose comment names E2B's first KV-shared layer as 15): 35
+    /// layers, of which the last 20 reuse an earlier layer's K and V and own no cache
+    /// (`num_kv_shared_layers`), so 15 layers cache; `sliding_window_pattern` 5 makes every fifth
+    /// layer full attention, so 3 full (one KV head, `global_head_dim` 512) and 12 sliding (one KV
+    /// head, `head_dim` 256, window 512); `newCache` builds exactly those 15. That is 6 KB a token
+    /// plus 12 MB fixed: 48 MB at 6,144 tokens. The gate charges `conservativeBytes` instead
+    /// (all 15 layers at 512 wide, no window): 189 MB.
+    static let kvCacheShapes: [String: KVCacheShape] = [
+        "mlx-community/gemma-4-e2b-it-4bit": KVCacheShape(
+            fullAttentionLayers: 3, fullKVHeads: 1, fullHeadDim: 512,
+            slidingLayers: 12, slidingKVHeads: 1, slidingHeadDim: 256, slidingWindow: 512,
+            bytesPerElement: 2),
+    ]
+
+    /// Why a native tool turn got the window it did.
+    enum ToolTurnWindowReason: String, Equatable, Sendable, Codable {
+        /// Not a native tool turn, or a model with no raised window: the ordinary window.
+        case ordinary
+        /// A phone under `raisedToolTurnMinimumRAMGB`.
+        case smallPhone
+        /// The kill-limit budget would not keep the reserve with the larger cache.
+        case memory
+        /// The raised window.
+        case raised
+    }
+
+    struct ToolTurnWindow: Equatable, Sendable {
+        let tokens: Int
+        let reason: ToolTurnWindowReason
+    }
+
+    /// The window a turn is budgeted with. Pure.
+    ///
+    /// Raised only when every one of these holds: the turn runs native tool calls
+    /// (`LocalNativeToolPolicy.usesNativeToolCalls`: the flag on, an allowlisted MLX model; the
+    /// caller passes it), the model has a raised window and a known KV layout, the phone has at
+    /// least `raisedToolTurnMinimumRAMGB`, and `LocalMemoryBudget.fit` against the kill limit keeps
+    /// the plan's reserve after the model, its working set and the conservative cache for the
+    /// larger window. `residentWeightsBytes` is 0 when the model is already loaded (its pages are
+    /// in the footprint the readings hold). Readings with no per-process limit (simulator, Mac)
+    /// are not judged, as `LocalMemoryBudget` never judges them.
+    static func toolTurnContextWindow(modelId: String?, nativeToolCalls: Bool, marketingRAMGB: Double,
+                                      readings: LocalMemoryBudget.Readings,
+                                      residentWeightsBytes: Int64 = 0) -> ToolTurnWindow {
+        let ordinary = contextWindow(for: modelId)
+        guard nativeToolCalls, let modelId, LocalNativeToolPolicy.isAllowlisted(modelId),
+              let raised = raisedToolTurnWindows[modelId.lowercased()], raised > ordinary,
+              let shape = kvCacheShapes[modelId.lowercased()] else {
+            return ToolTurnWindow(tokens: ordinary, reason: .ordinary)
+        }
+        guard marketingRAMGB >= raisedToolTurnMinimumRAMGB else {
+            return ToolTurnWindow(tokens: ordinary, reason: .smallPhone)
+        }
+        let fit = LocalMemoryBudget.fit(weightsBytes: residentWeightsBytes,
+                                        workingBytes: MemoryHeadroom.workingOverheadBytes
+                                            + shape.conservativeBytes(tokens: raised),
+                                        backing: .copied, readings: readings)
+        guard fit.fits else { return ToolTurnWindow(tokens: ordinary, reason: .memory) }
+        return ToolTurnWindow(tokens: raised, reason: .raised)
     }
 }

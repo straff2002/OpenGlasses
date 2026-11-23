@@ -1,0 +1,33 @@
+{
+  "awg": [
+    {"size": "18", "circularMils": 1620},
+    {"size": "16", "circularMils": 2580},
+    {"size": "14", "circularMils": 4110},
+    {"size": "12", "circularMils": 6530},
+    {"size": "10", "circularMils": 10380},
+    {"size": "8", "circularMils": 16510},
+    {"size": "6", "circularMils": 26240},
+    {"size": "4", "circularMils": 41740},
+    {"size": "3", "circularMils": 52620},
+    {"size": "2", "circularMils": 66360},
+    {"size": "1", "circularMils": 83690},
+    {"size": "1/0", "circularMils": 105600},
+    {"size": "2/0", "circularMils": 133100},
+    {"size": "3/0", "circularMils": 167800},
+    {"size": "4/0", "circularMils": 211600}
+  ],
+  "materials": [
+    {
+      "material": "copper",
+      "ohmCircularMilsPerFoot": {"value": 12.9, "temperatureC": 75},
+      "ohmSquareMillimetresPerMetre": {"value": 0.02097, "temperatureC": 75}
+    },
+    {
+      "material": "aluminum",
+      "ohmCircularMilsPerFoot": {"value": 21.2, "temperatureC": 75},
+      "ohmSquareMillimetresPerMetre": {"value": 0.03453, "temperatureC": 75}
+    }
+  ],
+  "source": "standard AWG conductor areas and conductor resistivity figures at 75 °C",
+  "basis": "AWG areas: the standard circular-mil area of each American Wire Gauge size, 18 to 4/0 (the gauge's definition, rounded as commonly published). Ω·cmil/ft: the usual 75 °C conductor factors, 12.9 for uncoated copper and 21.2 for aluminum. Ω·mm²/m: the standard 20 °C resistivities, annealed copper 0.017241 (IEC 60028, temperature coefficient 0.00393 per K) and hard-drawn aluminium 0.028264 (IEC 60889, 0.00403 per K), corrected to 75 °C as rho20 × (1 + alpha20 × 55). Standard engineering figures; an organisation's own book wins."
+}

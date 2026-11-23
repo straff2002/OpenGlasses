@@ -38,6 +38,12 @@ struct MLXTurnInput: @unchecked Sendable {
 struct MLXTurnOutput: Equatable, Sendable {
     let text: String
     let toolCalls: [LocalToolCallEvent]
+    /// The runtime's report on this generation (Plan MQ P3); nil when it sent none (a test double,
+    /// a refusal that generated nothing).
+    var stats: LocalGenerationStats? = nil
+    /// On a native tool turn, what the runtime sent of the offered tools (Plan MQ P3,
+    /// `LocalToolFit`): offered against kept, and whether the definitions were compact.
+    var toolFit: LocalToolFit.Report? = nil
 }
 
 extension MLXLocalRuntime {
@@ -256,6 +262,7 @@ final class MLXLocalInferenceBackend: LocalInferenceBackend, @unchecked Sendable
                         imageData: request.images.first?.data,
                         onToken: request.previewSink,
                         toolTurn: request.toolTurn))
+                    if let fit = output.toolFit { continuation.yield(.toolFit(fit)) }
                     continuation.yield(.text(output.text))
                     for call in output.toolCalls { continuation.yield(.toolCall(call)) }
                     continuation.finish()

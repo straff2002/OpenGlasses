@@ -101,6 +101,70 @@ final class LocalLocationFixTests: XCTestCase {
         XCTAssertFalse(LLMService.asksUserForLocation(#"<tool_call>{"name": "where_am_i", "arguments": {}}</tool_call>"#))
     }
 
+    func testTellMeWhereAsksForALocationOnlyWhenItIsTheWearers() {
+        // Plan MQ P3, a restraint case on the phone: a question about a code is not a location ask.
+        XCTAssertFalse(LLMService.asksUserForLocation("Could you tell me where you saw this E223 code?"))
+        XCTAssertFalse(LLMService.asksUserForLocation("Let me know where the filter is mounted and I'll walk you through it."))
+        XCTAssertTrue(LLMService.asksUserForLocation("Can you tell me where you are?"))
+        XCTAssertTrue(LLMService.asksUserForLocation("Please tell me where you\u{2019}re located and I'll check the forecast."))
+        XCTAssertTrue(LLMService.asksUserForLocation("Let me know where you're right now."))
+        XCTAssertTrue(LLMService.asksUserForLocation(
+            "Could you tell me where you saw it? Also tell me where you're at, for the weather."), "a later ask still counts")
+    }
+
+    // MARK: The location correction only on a turn about where the wearer is (Plan MQ P3)
+
+    func testATurnDependsOnLocationOnlyWhenItsAnswerDoes() {
+        for turn in ["what's the weather like?", "Is it going to rain?", "directions to the supply house",
+                     "Where's the nearest hardware store?", "anything near me?", "where am I", "How far is Whangarei?",
+                     "how's the traffic", "when's sunset?", "what's the local time"] {
+            XCTAssertTrue(LLMService.turnDependsOnLocation(turn), turn)
+        }
+        for turn in ["It's filthy in this cupboard", "Log 120 volts", "Check the condensate drain",
+                     "What does E223 mean?", "The filter is under the stairs"] {
+            XCTAssertFalse(LLMService.turnDependsOnLocation(turn), turn)
+        }
+    }
+
+    func testAnAskForTheLocationOnATurnNotAboutItGetsNoCorrection() {
+        // The phone's restraint failure: the correction made Gemma call where_am_i.
+        XCTAssertNil(LocalToolLoop.standardCorrection(
+            for: "That sounds unpleasant. Can you describe what you see or tell me where you are?",
+            turn: "It's filthy in this cupboard"))
+        XCTAssertEqual(LocalToolLoop.standardCorrection(for: "Which city are you in?", turn: "what's the weather like?"),
+                       LLMService.localLocationCorrection)
+    }
+
+    private final class Script {
+        var outputs: [String]
+        private(set) var asked: [String] = []
+        private(set) var calls = 0
+        init(_ outputs: [String]) { self.outputs = outputs }
+        func generate(_ request: LocalToolLoop.GenerationRequest) -> String {
+            asked.append(request.messages.last?.content ?? "")
+            return outputs.isEmpty ? "" : outputs.removeFirst()
+        }
+        func execute(_ call: LocalToolLoop.Call) -> LocalToolLoop.ExecutionResult {
+            calls += 1
+            return .init(text: "Hikurangi, 15 degrees")
+        }
+    }
+
+    func testTheLoopLeavesALocationAskOnAnUnrelatedTurnStanding() async throws {
+        let cupboard = Script(["That sounds unpleasant. Can you describe what you see or tell me where you are?",
+                               #"<tool_call>{"name": "where_am_i", "arguments": {}}</tool_call>"#])
+        let outcome = try await LocalToolLoop.run(history: [], userMessage: "It's filthy in this cupboard",
+                                                  generate: { cupboard.generate($0) }, execute: { cupboard.execute($0) })
+        XCTAssertEqual(cupboard.asked.count, 1)
+        XCTAssertEqual(cupboard.calls, 0, "no where_am_i call on a restraint turn")
+        XCTAssertFalse(outcome.usedCorrection)
+
+        let weather = Script(["Which city are you in?", "It's 15 degrees."])
+        _ = try await LocalToolLoop.run(history: [], userMessage: "what's the weather like?",
+                                        generate: { weather.generate($0) }, execute: { weather.execute($0) })
+        XCTAssertEqual(weather.asked.last, LLMService.localLocationCorrection)
+    }
+
     func testParseLocalToolCall() {
         let reply = #"Sure. <tool_call>{"name": "get_weather", "arguments": {"latitude": -35.6}}</tool_call>"#
         let parsed = LLMService.parseLocalToolCall(reply)

@@ -14,6 +14,159 @@ final class LocalOutputPolicyTests: XCTestCase {
 
     // MARK: - Valid calls
 
+    // MARK: - Gemma 4's own call syntax (Plan MQ P3)
+
+    /// The shapes Gemma 4 E2B wrote on the phone after the "I'll look that up" correction.
+    func testGemmasCallsBehindAStrayOpenerAreRead() {
+        let shapes = [
+            #"<tool_call:equipment_lookup{query:<|"|>E105<|"|>}}"#,
+            #"<tool_call:equipment_lookup{query:<|"|>E117<|"|>}>"#,
+            "<tool_call>equipment_lookup{query:<|\"|>E226<|\"|>}\n</tool_call>",
+            #"<tool_call>equipment_lookup{query:<|"|>E311<|"|>}"#,
+            #"<|tool_call>call:equipment_lookup{query:<|"|>E105<|"|>}<tool_call|>"#,
+        ]
+        for raw in shapes {
+            let result = LocalOutputPolicy.classify(raw)
+            XCTAssertEqual(result.kind, .toolCall, raw)
+            XCTAssertEqual(result.invocation?.name, "equipment_lookup", raw)
+            XCTAssertNotNil(result.invocation?.arguments["query"] as? String, raw)
+            XCTAssertEqual(result.text, "", "nothing of the frame is spoken: \(raw)")
+        }
+        let none = LocalOutputPolicy.classify("<tool_call>where_am_i()</tool_call>")
+        XCTAssertEqual(none.invocation?.name, "where_am_i")
+        XCTAssertEqual(none.invocation?.arguments.count, 0)
+    }
+
+    func testGemmasArgumentsKeepTheirTypes() {
+        let raw = #"<tool_call:procedure_runner{action:<|"|>next<|"|>,count:2,ratio:0.5,confirmed:true}>"#
+        let arguments = LocalOutputPolicy.classify(raw).invocation?.arguments ?? [:]
+        XCTAssertEqual(arguments["action"] as? String, "next")
+        XCTAssertEqual(arguments["count"] as? Int, 2)
+        XCTAssertEqual(arguments["ratio"] as? Double, 0.5)
+        XCTAssertEqual(arguments["confirmed"] as? Bool, true)
+    }
+
+    func testAGemmaBodyThatDoesNotReadIsNeverACallAndNeverSpoken() {
+        for raw in [#"<tool_call:equipment_lookup{query:<|"|>E105}"#,          // unterminated string
+                    #"<tool_call:equipment_lookup{query:E105}>"#,               // bare word value
+                    #"<tool_call:equipment_lookup query E105>"#,                // no body
+                    #"<tool_call:{query:<|"|>E105<|"|>}>"#] {                   // no name
+            let result = LocalOutputPolicy.classify("Checking. " + raw)
+            XCTAssertNil(result.invocation, raw)
+            XCTAssertEqual(result.kind, .malformedCall, raw)
+            XCTAssertEqual(result.text, "Checking.", raw)
+        }
+    }
+
+    func testProseThatMentionsGemmasMarksIsLeftAlone() {
+        let prose = "The code is E105, call: check the wiring {first}."
+        XCTAssertEqual(LocalOutputPolicy.classify(prose).kind, .prose)
+        XCTAssertEqual(LocalOutputPolicy.classify(prose).text, prose)
+    }
+
+    // MARK: - Python-style calls (Plan MQ P3)
+
+    /// Gemma 4 E2B's whole reply on the phone, which logged nothing.
+    func testThePhonesPythonStyleCallIsRead() {
+        let raw = #"reading(action="record_reading", quantity="flame signal", unit="µA", value="2.9")"#
+        let result = LocalOutputPolicy.classify(raw)
+        XCTAssertEqual(result.kind, .toolCall)
+        XCTAssertEqual(result.invocations.map(\.name), ["reading"])
+        let arguments = result.invocation?.arguments ?? [:]
+        XCTAssertEqual(arguments.count, 4)
+        XCTAssertEqual(arguments["action"] as? String, "record_reading")
+        XCTAssertEqual(arguments["quantity"] as? String, "flame signal")
+        XCTAssertEqual(arguments["unit"] as? String, "µA")
+        XCTAssertEqual(arguments["value"] as? String, "2.9", "a quoted number stays the text it was")
+        XCTAssertEqual(result.text, "")
+    }
+
+    func testPythonStyleArgumentsKeepTheirTypes() {
+        let raw = "domain_calc(count=2, ratio=0.5, big=-3, confirmed=True, dry_run=false, unit=None, note=null)"
+        let arguments = LocalOutputPolicy.classify(raw).invocation?.arguments ?? [:]
+        XCTAssertEqual(arguments["count"] as? Int, 2)
+        XCTAssertEqual(arguments["ratio"] as? Double, 0.5)
+        XCTAssertEqual(arguments["big"] as? Int, -3)
+        XCTAssertEqual(arguments["confirmed"] as? Bool, true)
+        XCTAssertEqual(arguments["dry_run"] as? Bool, false)
+        XCTAssertNil(arguments["unit"], "None drops the key")
+        XCTAssertNil(arguments["note"])
+        XCTAssertEqual(arguments.count, 5)
+    }
+
+    func testPythonStyleStringsTakeEitherQuoteAndTheirEscapes() {
+        let raw = #"note_add(text='it\'s "fine", a) b', title="say \"hi\"")"#
+        let arguments = LocalOutputPolicy.classify(raw).invocation?.arguments ?? [:]
+        XCTAssertEqual(arguments["text"] as? String, #"it's "fine", a) b"#)
+        XCTAssertEqual(arguments["title"] as? String, #"say "hi""#)
+    }
+
+    func testPythonStyleCallsInAFenceASpanOrAfterCallAreRead() {
+        let shapes = [
+            "```python\nreading(action=\"record_reading\", value=\"120\")\n```",
+            "```tool_code\nreading(action=\"record_reading\", value=\"120\")\n```",
+            "```\nreading(action=\"record_reading\", value=\"120\")\n```",
+            "`reading(action=\"record_reading\", value=\"120\")`",
+            "call:reading(action=\"record_reading\", value=\"120\")",
+            "<tool_call>reading(action=\"record_reading\", value=\"120\")</tool_call>",
+            "<tool_call>reading(action=\"record_reading\", value=\"120\")",
+        ]
+        for raw in shapes {
+            let result = LocalOutputPolicy.classify(raw)
+            XCTAssertEqual(result.kind, .toolCall, raw)
+            XCTAssertEqual(result.invocation?.name, "reading", raw)
+            XCTAssertEqual(result.invocation?.arguments["value"] as? String, "120", raw)
+            XCTAssertEqual(result.text, "", raw)
+        }
+    }
+
+    func testEachPythonStyleCallLineIsACallInOrder() {
+        let raw = "Logging both.\nreading(action=\"record_reading\", value=\"120\")\ndomain_calc(operation=\"voltage_drop\")\n"
+        let result = LocalOutputPolicy.classify(raw)
+        XCTAssertEqual(result.invocations.map(\.name), ["reading", "domain_calc"])
+        XCTAssertEqual(result.invocation?.name, "reading")
+        XCTAssertEqual(result.text, "Logging both.")
+        let fenced = LocalOutputPolicy.classify("```python\nreading(value=\"1\")\n\nwhere_am_i()\n```")
+        XCTAssertEqual(fenced.invocations.map(\.name), ["reading", "where_am_i"])
+    }
+
+    func testAPythonStyleCallWithNoArgumentsIsACall() {
+        let result = LocalOutputPolicy.classify("where_am_i()")
+        XCTAssertEqual(result.kind, .toolCall)
+        XCTAssertEqual(result.invocation?.name, "where_am_i")
+        XCTAssertEqual(result.invocation?.arguments.count, 0)
+    }
+
+    func testAPythonStyleCallThatDoesNotReadIsNeverACallAndNeverSpoken() {
+        for line in [#"reading("flame signal", value="2.9")"#,           // positional
+                     #"reading(value=float("2.9"))"#,                    // nested call
+                     "domain_calc(volts=120*2)",                          // expression
+                     "reading(values=[1, 2])",                            // list
+                     #"reading(extra={"a": 1})"#,                         // dict
+                     #"reading(value="2.9)"#,                             // unterminated string
+                     #"reading(value=2.9, value=3)"#,                     // repeated key
+                     "reading(value=flame)"] {                            // bare word
+            let result = LocalOutputPolicy.classify("Checking.\n" + line)
+            XCTAssertNil(result.invocation, line)
+            XCTAssertEqual(result.kind, .malformedCall, line)
+            XCTAssertEqual(result.text, "Checking.", line)
+        }
+    }
+
+    func testCallLikeTextInProseIsLeftAlone() {
+        for prose in ["You can run print(x) to see it.",
+                      "The function f(x=1) returns two.",
+                      #"Logging it: reading(action="record_reading", value="2.9")"#,
+                      "See the manual (page 4) for the wiring.",
+                      "Check fuse(s) first.",
+                      "```python\nx = 1\nprint(x=x)\n```",
+                      "```bash\nreading(value=1)\n```"] {
+            let result = LocalOutputPolicy.classify(prose)
+            XCTAssertEqual(result.kind, .prose, prose)
+            XCTAssertEqual(result.text, prose, prose)
+        }
+    }
+
     func testCompleteFrameIsAUsableCall() {
         let result = LocalOutputPolicy.classify(validFrame)
         XCTAssertEqual(result.kind, .toolCall)
@@ -39,6 +192,22 @@ final class LocalOutputPolicyTests: XCTestCase {
         let result = LocalOutputPolicy.classify(validFrame + " and " + second)
         XCTAssertEqual(result.invocation?.name, "get_weather", "first usable call wins")
         XCTAssertEqual(result.text, "and")
+        XCTAssertEqual(result.invocations.map(\.name), ["get_weather", "set_timer"],
+                       "every usable call, in order, for a reader that runs them all (Plan MQ P3)")
+    }
+
+    func testEveryUsableCallIsListedInOrderAcrossBothGrammars() {
+        let raw = #"<tool_call>{"name": "reading", "arguments": {"value": "120"}}</tool_call>"#
+            + #" <tool_call:domain_calc{operation:<|"|>voltage_drop<|"|>}>"#
+            + #" <tool_call>{"name": "broken", "arguments": </tool_call>"#
+        let result = LocalOutputPolicy.classify(raw)
+        XCTAssertEqual(result.kind, .toolCall)
+        XCTAssertEqual(result.invocations.map(\.name), ["reading", "domain_calc"], "a broken frame is never a call")
+        XCTAssertTrue(LocalOutputPolicy.classify("Just prose.").invocations.isEmpty)
+        let parsed = LocalOutputPolicy.classify("", parsedCalls: [.init(name: "reading", arguments: [:]),
+                                                                  .init(name: "domain_calc", arguments: [:])])
+        XCTAssertEqual(parsed.invocation?.name, "reading")
+        XCTAssertEqual(parsed.invocations.map(\.name), ["reading", "domain_calc"])
     }
 
     // MARK: - Broken protocol

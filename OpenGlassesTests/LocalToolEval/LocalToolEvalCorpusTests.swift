@@ -140,13 +140,15 @@ final class LocalToolEvalCorpusTests: XCTestCase {
                 XCTAssertTrue(OfflineToolPolicy.isOfferedOffline(name), "\(testCase.id): \(name) needs the network")
             }
             for call in testCase.expect.calls {
-                XCTAssertTrue(testCase.offered.contains(call.tool), "\(testCase.id) expects \(call.tool) but doesn't offer it")
-                guard case .object(_, _, let properties)? = schema(call.tool) else {
-                    XCTFail("\(testCase.id): \(call.tool) has no schema"); continue
-                }
-                let declared = Set(properties.map(\.name))
-                for name in call.required + Array(call.values.keys) {
-                    XCTAssertTrue(declared.contains(name), "\(testCase.id): \(call.tool) declares no '\(name)'")
+                for tool in call.tools {
+                    XCTAssertTrue(testCase.offered.contains(tool), "\(testCase.id) expects \(tool) but doesn't offer it")
+                    guard case .object(_, _, let properties)? = schema(tool), let variant = call.variant(for: tool) else {
+                        XCTFail("\(testCase.id): \(tool) has no schema"); continue
+                    }
+                    let declared = Set(properties.map(\.name))
+                    for name in variant.required + Array(variant.values.keys) {
+                        XCTAssertTrue(declared.contains(name), "\(testCase.id): \(tool) declares no '\(name)'")
+                    }
                 }
             }
             if testCase.category == .notInManual {
@@ -186,9 +188,10 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         }
         XCTAssertEqual(report.overall.runs, cases.count * repeats)
         XCTAssertEqual(report.floorShortfalls(), [], "the reference model clears decision 5's floors")
-        // Corpus v2 has no Field Assist restraint case (its seven are everyday chatter), so the
-        // restraint floor cannot be judged on the group decision 5 names until some are generated.
-        XCTAssertEqual(report.unjudgedFloors().map(\.name), ["restraint"])
+        // Every hard floor has Field Assist cases to judge it, restraint included (36 job turns
+        // that need no tool, added 2026-11-22), so the reference model clears all three.
+        XCTAssertEqual(report.unjudgedFloors().map(\.name), [])
+        XCTAssertTrue(report.clearsFloors)
         // Counts only.
         for line in report.lines() { print(line) }
         let printed = report.lines().joined(separator: "\n")
@@ -318,13 +321,39 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         XCTAssertTrue(LocalToolEval.isClean("The web_search tool takes a query."))
     }
 
+    /// Plan MQ P3: the eval runs the loop's completion as the app does; Gemma's call without the
+    /// size still passes and the fill is counted.
+    func testACallMissingTheSaidGaugeIsCompletedAndCounted() async throws {
+        let run = try await runCase("twostep-090XV36C-120", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "120"}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": "120", "current_a": "15", "length_ft": "50", "material": "copper", "phase": "single"}}</tool_call>"#,
+            "Logged 120 volts; the drop is about 3 volts.",
+        ])
+        XCTAssertEqual(run.measurements.argumentsCompleted, 1)
+        XCTAssertEqual(run.grades[.argumentValues], true)
+        XCTAssertEqual(run.grades[.argumentTypes], true)
+    }
+
     func testABrokenCarryFailsCarry() async throws {
+        // The reading logged the wrong number; the calculation's supply is the one the technician said.
+        let run = try await runCase("twostep-070XV36B-115", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "50"}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": 50, "current_a": 15, "length_ft": 50}}</tool_call>"#,
+            "Done.",
+        ])
+        XCTAssertEqual(run.grades[.carry], false)
+    }
+
+    /// Plan MQ P3: a supply the model got wrong is replaced by the one the technician said, so the
+    /// carry reaches the calculation.
+    func testAWrongSupplyIsReplacedByTheSaidOne() async throws {
         let run = try await runCase("twostep-070XV36B-115", script: [
             #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "115"}}</tool_call>"#,
             #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": 151, "current_a": 15, "length_ft": 50}}</tool_call>"#,
             "Done.",
         ])
-        XCTAssertEqual(run.grades[.carry], false)
+        XCTAssertEqual(run.grades[.carry], true)
+        XCTAssertGreaterThan(run.measurements.argumentsCompleted, 0)
     }
 
     func testAMadeUpManualValueIsDeclined() throws {
