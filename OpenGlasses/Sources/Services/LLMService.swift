@@ -374,9 +374,9 @@ class LLMService: ObservableObject {
     #endif
 
     /// What one request path writes as it runs: the history it reads and appends to, and the
-    /// per-request scratch beside it. A conversation turn works in the service's own (`shared`);
-    /// a `completeStateless` call works in a copy of its own, scoped to its task
-    /// (`StatelessScope`), so it never reads or writes the conversation. A stateless call used to
+    /// per-request scratch beside it. A conversation turn works in the service's own
+    /// (`sharedWorkspace`); a `completeStateless` call works in a copy of its own, scoped to its
+    /// task (`StatelessScope`), so it never reads or writes the conversation. A stateless call used to
     /// empty the shared history and put a snapshot back when it ended: a wearer's turn that started
     /// meanwhile ran over no history, and lost its exchange to the snapshot put back over it.
     @MainActor final class TurnWorkspace {

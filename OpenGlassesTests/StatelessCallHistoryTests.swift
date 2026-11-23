@@ -183,7 +183,7 @@ final class StatelessCallHistoryTests: XCTestCase {
         XCTAssertEqual(history(service), [], "the call ending never brings the cleared history back")
     }
 
-    func testAStatelessCallNoLongerStopsAScheduledRun() async throws {
+    func testAStatelessCallLeavesAScheduledRunRunning() async throws {
         StatelessHoldingProtocol.holdMarkers = ["SCHEDULED PROMPT"]
         StatelessHoldingProtocol.queue = [(200, answer("A note."))]
         let service = service()
