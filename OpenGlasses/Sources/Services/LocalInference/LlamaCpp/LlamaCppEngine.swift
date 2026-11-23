@@ -179,11 +179,12 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
     }
 
     /// Special tokens are rendered only when the caller is *inspecting* the vocabulary (the BOS
-    /// probe). Streamed output never renders them: a control token printed into an assistant reply
-    /// is text the wearer did not write and the model did not mean.
-    private func tokenBytes(_ model: LlamaModelHandle,
-                            token: LlamaToken,
-                            renderSpecial: Bool) -> [UInt8] {
+    /// probe) or reading a tool turn's call markers for the family's parser (Plan MQ P2), never
+    /// into ordinary streamed output: a control token printed into an assistant reply is text the
+    /// wearer did not write and the model did not mean.
+    func tokenBytes(_ model: LlamaModelHandle,
+                    token: LlamaToken,
+                    renderSpecial: Bool) -> [UInt8] {
         let handle = self.model(model)
         var buffer = [CChar](repeating: 0, count: 64)
         var written = buffer.withUnsafeMutableBufferPointer { pointer in
@@ -295,6 +296,88 @@ final class LlamaCppEngine: LlamaEngine, @unchecked Sendable {
         let status = og_llama_sampler_sample(self.sampler(sampler), self.context(context), -1, &token)
         guard status == OGLlamaStatusOK else { throw LlamaEngineError(status: Int32(truncatingIfNeeded: status.rawValue)) }
         return token
+    }
+
+    // MARK: - Prefix reuse (Plan MQ H3)
+
+    func keepPrefix(_ context: LlamaContextHandle, tokens: Int) -> Int {
+        Int(og_llama_context_keep_prefix(self.context(context), Int32(clamping: tokens)))
+    }
+
+    // MARK: - Chat templates and tool calls (Plan MQ P2)
+
+    /// Whether this image's `catch (const std::exception &)` catches libc++'s exceptions, which
+    /// llama.cpp's chat code relies on internally (`og_llama_runtime_catches_standard_exceptions`).
+    /// False in the app as built 2026-11-24: a template that needs `common/chat`'s automatic parser
+    /// then fails to render, and the backend falls back to the Hermes instruction.
+    static var catchesStandardExceptions: Bool { og_llama_runtime_catches_standard_exceptions() }
+
+    func chatTemplates(_ model: LlamaModelHandle) throws -> LlamaChatTemplatesHandle {
+        var handle: OpaquePointer?
+        let status = og_llama_chat_templates_from_model(self.model(model), &handle)
+        guard status == OGLlamaStatusOK, let handle else { throw Self.error(status) }
+        return LlamaChatTemplatesHandle(bits: UInt(bitPattern: handle))
+    }
+
+    func chatTemplates(source: String, bosToken: String, eosToken: String) throws -> LlamaChatTemplatesHandle {
+        var handle: OpaquePointer?
+        let status = og_llama_chat_templates_from_source(source, bosToken, eosToken, &handle)
+        guard status == OGLlamaStatusOK, let handle else { throw Self.error(status) }
+        return LlamaChatTemplatesHandle(bits: UInt(bitPattern: handle))
+    }
+
+    func freeChatTemplates(_ templates: LlamaChatTemplatesHandle) {
+        og_llama_chat_templates_free(OpaquePointer(bitPattern: templates.bits))
+    }
+
+    func renderChat(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> String {
+        try Self.takeString { out in
+            og_llama_chat_render(OpaquePointer(bitPattern: templates.bits), requestJSON, out)
+        }
+    }
+
+    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
+        var handle: OpaquePointer?
+        let status = og_llama_chat_parser_create(renderJSON, &handle)
+        guard status == OGLlamaStatusOK, let handle else { throw Self.error(status) }
+        return LlamaChatParserHandle(bits: UInt(bitPattern: handle))
+    }
+
+    func freeChatParser(_ parser: LlamaChatParserHandle) {
+        og_llama_chat_parser_free(OpaquePointer(bitPattern: parser.bits))
+    }
+
+    func parseChat(_ parser: LlamaChatParserHandle, text: String, partial: Bool) throws -> String {
+        let length = Int32(clamping: text.utf8.count)
+        return try Self.takeString { out in
+            text.withCString { cText in
+                og_llama_chat_parse(OpaquePointer(bitPattern: parser.bits), cText, length, partial, out)
+            }
+        }
+    }
+
+    func setChatGrammar(_ sampler: LlamaSamplerHandle, model: LlamaModelHandle, renderJSON: String) throws {
+        let status = og_llama_sampler_set_chat_grammar(self.sampler(sampler), self.model(model), renderJSON)
+        guard status == OGLlamaStatusOK else { throw Self.error(status) }
+    }
+
+    func clearGrammar(_ sampler: LlamaSamplerHandle) {
+        og_llama_sampler_clear_grammar(self.sampler(sampler))
+    }
+
+    private static func error(_ status: OGLlamaStatus) -> LlamaEngineError {
+        LlamaEngineError(status: Int32(truncatingIfNeeded: status.rawValue))
+    }
+
+    /// Runs a call that hands back a heap string, and releases it after copying.
+    private static func takeString(
+        _ call: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) -> OGLlamaStatus
+    ) throws -> String {
+        var out: UnsafeMutablePointer<CChar>?
+        let status = call(&out)
+        defer { og_llama_string_free(out) }
+        guard status == OGLlamaStatusOK, let out else { throw error(status) }
+        return String(cString: out)
     }
 
     // MARK: - Buffer convention

@@ -33,6 +33,18 @@ struct LlamaSamplerHandle: Hashable, Sendable {
     init(bits: UInt) { self.bits = bits }
 }
 
+/// A model's chat templates as llama.cpp's `common/chat` holds them (Plan MQ P2).
+struct LlamaChatTemplatesHandle: Hashable, Sendable {
+    let bits: UInt
+    init(bits: UInt) { self.bits = bits }
+}
+
+/// A parser for the completions of one tool-turn render (Plan MQ P2).
+struct LlamaChatParserHandle: Hashable, Sendable {
+    let bits: UInt
+    init(bits: UInt) { self.bits = bits }
+}
+
 // MARK: - Options
 
 struct LlamaModelOptions: Hashable, Sendable {
@@ -150,6 +162,10 @@ enum LlamaEngineError: Error, Equatable {
     case templateFailed
     case cancelled
     case allocationFailed
+    /// A completion that does not match the model family's tool-call format (Plan MQ P2).
+    case parseFailed
+    /// The family's call grammar or its triggers could not be built (Plan MQ P2).
+    case grammarFailed
     case unknown(Int32)
 
     /// Maps a raw status. `0` is success and must never reach here.
@@ -166,6 +182,8 @@ enum LlamaEngineError: Error, Equatable {
         case 9: self = .templateFailed
         case 10: self = .cancelled
         case 11: self = .allocationFailed
+        case 12: self = .parseFailed
+        case 13: self = .grammarFailed
         default: self = .unknown(status)
         }
     }
@@ -222,4 +240,71 @@ protocol LlamaEngine: Sendable {
     func freeSampler(_ sampler: LlamaSamplerHandle)
     func resetSampler(_ sampler: LlamaSamplerHandle)
     func sample(_ sampler: LlamaSamplerHandle, context: LlamaContextHandle) throws -> LlamaToken
+
+    // Prefix reuse (Plan MQ H3)
+
+    /// Keep the first `tokens` positions of the KV cache and drop the rest; returns the positions
+    /// kept — `tokens`, or 0 when the cache cannot be cut back there and was cleared instead.
+    func keepPrefix(_ context: LlamaContextHandle, tokens: Int) -> Int
+
+    // Chat templates and tool calls (Plan MQ P2) — llama.cpp's `common/chat`, as JSON text
+
+    /// One token's bytes with control tokens rendered when `renderSpecial`: a tool turn needs the
+    /// family's call markers (`<|tool_call>`, `<tool_call>`) in the text its parser reads.
+    func tokenBytes(_ model: LlamaModelHandle, token: LlamaToken, renderSpecial: Bool) -> [UInt8]
+    /// The model's own templates, or `noChatTemplate` when it embeds none.
+    func chatTemplates(_ model: LlamaModelHandle) throws -> LlamaChatTemplatesHandle
+    /// Templates from Jinja source with no model, for the pure tests.
+    func chatTemplates(source: String, bosToken: String, eosToken: String) throws -> LlamaChatTemplatesHandle
+    func freeChatTemplates(_ templates: LlamaChatTemplatesHandle)
+    /// `LlamaChatRequest` JSON in, `LlamaChatRender` JSON out.
+    func renderChat(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> String
+    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle
+    func freeChatParser(_ parser: LlamaChatParserHandle)
+    /// A completion as `LlamaChatParsed` JSON; throws `parseFailed` when it is not the family's format.
+    func parseChat(_ parser: LlamaChatParserHandle, text: String, partial: Bool) throws -> String
+    /// The render's lazy call grammar on the sampler (cleared when the render has none).
+    func setChatGrammar(_ sampler: LlamaSamplerHandle, model: LlamaModelHandle, renderJSON: String) throws
+    func clearGrammar(_ sampler: LlamaSamplerHandle)
+}
+
+/// What an engine without the chat code or prefix reuse does: the plain path Plan DZ shipped. The
+/// test doubles that predate Plan MQ P2 rely on these; the real engine implements every one.
+extension LlamaEngine {
+    func keepPrefix(_ context: LlamaContextHandle, tokens: Int) -> Int {
+        clearMemory(context)
+        return 0
+    }
+
+    func tokenBytes(_ model: LlamaModelHandle, token: LlamaToken, renderSpecial: Bool) -> [UInt8] {
+        tokenBytes(model, token: token)
+    }
+
+    func chatTemplates(_ model: LlamaModelHandle) throws -> LlamaChatTemplatesHandle {
+        throw LlamaEngineError.noChatTemplate
+    }
+
+    func chatTemplates(source: String, bosToken: String, eosToken: String) throws -> LlamaChatTemplatesHandle {
+        throw LlamaEngineError.noChatTemplate
+    }
+
+    func freeChatTemplates(_ templates: LlamaChatTemplatesHandle) {}
+
+    func renderChat(_ templates: LlamaChatTemplatesHandle, requestJSON: String) throws -> String {
+        throw LlamaEngineError.templateFailed
+    }
+
+    func createChatParser(renderJSON: String) throws -> LlamaChatParserHandle {
+        throw LlamaEngineError.templateFailed
+    }
+
+    func freeChatParser(_ parser: LlamaChatParserHandle) {}
+
+    func parseChat(_ parser: LlamaChatParserHandle, text: String, partial: Bool) throws -> String {
+        throw LlamaEngineError.parseFailed
+    }
+
+    func setChatGrammar(_ sampler: LlamaSamplerHandle, model: LlamaModelHandle, renderJSON: String) throws {}
+
+    func clearGrammar(_ sampler: LlamaSamplerHandle) {}
 }

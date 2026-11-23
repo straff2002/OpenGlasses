@@ -11,8 +11,10 @@
 #import "LlamaCppWrapper.h"
 
 #include "llama.h"
+#include "LlamaCppHandles.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <mutex>
@@ -34,18 +36,7 @@
 
 #pragma mark - Handles
 
-struct OGLlamaModel {
-    llama_model *model = nullptr;
-};
-
-struct OGLlamaContext {
-    llama_context *context = nullptr;
-    std::atomic<bool> cancelled{false};
-};
-
-struct OGLlamaSampler {
-    llama_sampler *chain = nullptr;
-};
+// The boxes themselves live in LlamaCppHandles.h, shared with the chat bridge (Plan MQ P2).
 
 #pragma mark - Runtime
 
@@ -536,6 +527,29 @@ void og_llama_context_clear_memory(OGLlamaContext *context) {
     llama_memory_clear(llama_get_memory(context->context), /*data=*/true);
 }
 
+int32_t og_llama_context_keep_prefix(OGLlamaContext *context, int32_t keep_tokens) {
+    if (context == nullptr || context->context == nullptr) {
+        return 0;
+    }
+    llama_memory_t memory = llama_get_memory(context->context);
+    if (keep_tokens <= 0) {
+        llama_memory_clear(memory, /*data=*/true);
+        return 0;
+    }
+    // The positions the prefix needs must all still be in the cache. A sliding-window cache that
+    // has dropped its oldest cells (pos_min > 0) cannot promise that, and a recurrent or hybrid
+    // model's state cannot be cut back at all (seq_rm refuses). Either way the honest answer is a
+    // cleared cache and a full prefill — the same fall-back llama.cpp's server takes.
+    const llama_pos lowest = llama_memory_seq_pos_min(memory, 0);
+    const llama_pos highest = llama_memory_seq_pos_max(memory, 0);
+    if (lowest != 0 || highest < keep_tokens - 1 ||
+        !llama_memory_seq_rm(memory, 0, keep_tokens, -1)) {
+        llama_memory_clear(memory, /*data=*/true);
+        return 0;
+    }
+    return keep_tokens;
+}
+
 void og_llama_context_set_cancelled(OGLlamaContext *context, bool cancelled) {
     if (context == nullptr) {
         return;
@@ -685,6 +699,10 @@ void og_llama_sampler_free(OGLlamaSampler *sampler) {
         llama_sampler_free(sampler->chain);
         sampler->chain = nullptr;
     }
+    if (sampler->grammar != nullptr) {
+        llama_sampler_free(sampler->grammar);
+        sampler->grammar = nullptr;
+    }
     delete sampler;
 }
 
@@ -693,6 +711,9 @@ void og_llama_sampler_reset(OGLlamaSampler *sampler) {
         return;
     }
     llama_sampler_reset(sampler->chain);
+    if (sampler->grammar != nullptr) {
+        llama_sampler_reset(sampler->grammar);
+    }
 }
 
 OGLlamaStatus og_llama_sampler_sample(OGLlamaSampler *sampler, OGLlamaContext *context,
@@ -704,15 +725,67 @@ OGLlamaStatus og_llama_sampler_sample(OGLlamaSampler *sampler, OGLlamaContext *c
     if (context->cancelled.load(std::memory_order_relaxed)) {
         return OGLlamaStatusCancelled;
     }
-    // llama_sampler_sample accepts the token into the chain's history itself; accepting again
-    // here would double-count it in the repetition penalty.
-    *out_token = llama_sampler_sample(sampler->chain, context->context, logit_index);
+    if (sampler->grammar == nullptr) {
+        // llama_sampler_sample accepts the token into the chain's history itself; accepting
+        // again here would double-count it in the repetition penalty.
+        *out_token = llama_sampler_sample(sampler->chain, context->context, logit_index);
+        return OGLlamaStatusOK;
+    }
+
+    // Plan MQ P2: a tool turn's lazy grammar, applied as llama.cpp's common sampler applies it.
+    // The chain picks a token; only if the grammar rejects that token is the draw repeated with
+    // the grammar applied first. Until the family's call opener appears the lazy grammar rejects
+    // nothing, so ordinary prose costs one extra single-token check.
+    const float *logits = llama_get_logits_ith(context->context, logit_index);
+    const llama_model *model = llama_get_model(context->context);
+    if (logits == nullptr || model == nullptr) {
+        return OGLlamaStatusInvalidArgument;
+    }
+    const int32_t vocabulary = llama_vocab_n_tokens(llama_model_get_vocab(model));
+    std::vector<llama_token_data> candidates;
+    try {
+        candidates.resize(static_cast<size_t>(vocabulary));
+    } catch (const std::bad_alloc &) {
+        return OGLlamaStatusAllocationFailed;
+    }
+    auto fill = [&] {
+        for (int32_t id = 0; id < vocabulary; ++id) {
+            candidates[static_cast<size_t>(id)] = llama_token_data{id, logits[id], 0.0f};
+        }
+        return llama_token_data_array{candidates.data(), candidates.size(), -1, false};
+    };
+
+    llama_token_data_array array = fill();
+    llama_sampler_apply(sampler->chain, &array);
+    if (array.selected < 0 || static_cast<size_t>(array.selected) >= array.size) {
+        return OGLlamaStatusDecodeFailed;
+    }
+    llama_token token = array.data[array.selected].id;
+
+    llama_token_data single{token, 1.0f, 0.0f};
+    llama_token_data_array check{&single, 1, -1, false};
+    llama_sampler_apply(sampler->grammar, &check);
+    if (std::isinf(check.data[0].logit) && check.data[0].logit < 0) {
+        array = fill();
+        llama_sampler_apply(sampler->grammar, &array);
+        llama_sampler_apply(sampler->chain, &array);
+        if (array.selected < 0 || static_cast<size_t>(array.selected) >= array.size) {
+            return OGLlamaStatusDecodeFailed;
+        }
+        token = array.data[array.selected].id;
+    }
+    llama_sampler_accept(sampler->grammar, token);
+    llama_sampler_accept(sampler->chain, token);
+    *out_token = token;
     return OGLlamaStatusOK;
 }
 
 void og_llama_sampler_accept(OGLlamaSampler *sampler, OGLlamaToken token) {
     if (sampler == nullptr || sampler->chain == nullptr) {
         return;
+    }
+    if (sampler->grammar != nullptr) {
+        llama_sampler_accept(sampler->grammar, token);
     }
     llama_sampler_accept(sampler->chain, token);
 }

@@ -38,7 +38,10 @@ let package = Package(
                 .linkedFramework("Foundation"),
             ]
         ),
-    ]
+    ],
+    // The chat bridge (Plan MQ P2) compiles against llama.cpp's common/ headers, which the engine
+    // archive was built from as C++17.
+    cxxLanguageStandard: .cxx17
 )
 
 /// The pin, read from `REVISION` so the binary reports the revision the repository actually

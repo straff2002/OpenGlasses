@@ -444,7 +444,7 @@ final class LlamaCppRuntimeTests: XCTestCase {
             1: .invalidArgument, 2: .modelLoadFailed, 3: .contextCreateFailed,
             4: .samplerCreateFailed, 5: .tokenizeFailed, 6: .contextExhausted,
             7: .decodeFailed, 8: .noChatTemplate, 9: .templateFailed,
-            10: .cancelled, 11: .allocationFailed,
+            10: .cancelled, 11: .allocationFailed, 12: .parseFailed, 13: .grammarFailed,
         ]
         for (status, error) in expected {
             XCTAssertEqual(LlamaEngineError(status: status), error)

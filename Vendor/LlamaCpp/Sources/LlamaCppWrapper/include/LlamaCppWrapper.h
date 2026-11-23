@@ -52,6 +52,11 @@ typedef enum OGLlamaStatus {
     /// Work stopped because the context was cancelled, not because it failed.
     OGLlamaStatusCancelled           = 10,
     OGLlamaStatusAllocationFailed    = 11,
+    /// A completion that does not match the model family's tool-call format (Plan MQ P2). The
+    /// text is still the text; it is just not a call.
+    OGLlamaStatusParseFailed         = 12,
+    /// The family's grammar or its triggers could not be built for this vocabulary.
+    OGLlamaStatusGrammarFailed       = 13,
 } OGLlamaStatus;
 
 #pragma mark - Handles
@@ -222,9 +227,15 @@ void og_llama_context_free(OGLlamaContext *context);
 uint32_t og_llama_context_length(const OGLlamaContext *context);
 uint32_t og_llama_context_batch_size(const OGLlamaContext *context);
 
-/// Drops the whole KV cache. Plan DZ's cache policy is full-history-per-request, so this runs
-/// before every generation; prefix reuse is not on the table until a prefix diff can prove it.
+/// Drops the whole KV cache.
 void og_llama_context_clear_memory(OGLlamaContext *context);
+
+/// Keeps the first `keep_tokens` positions of the KV cache and drops the rest, so a prompt that
+/// starts the way the last one did is prefilled only from where they differ (Plan MQ H3). Returns
+/// the positions actually kept: `keep_tokens`, or 0 when the cache cannot be cut back there (a
+/// sliding-window cache that has dropped early cells, a recurrent model's state) — the cache is
+/// then cleared, and the caller prefills from the start. `keep_tokens <= 0` clears it.
+int32_t og_llama_context_keep_prefix(OGLlamaContext *context, int32_t keep_tokens);
 
 #pragma mark - Cancellation
 
@@ -290,6 +301,76 @@ OGLlamaStatus og_llama_sampler_sample(OGLlamaSampler *sampler, OGLlamaContext *c
 
 /// Accepts a token the caller chose (a forced prefix, a replayed turn) into the penalty history.
 void og_llama_sampler_accept(OGLlamaSampler *sampler, OGLlamaToken token);
+
+#pragma mark - Chat templates, tool calls and their grammar (Plan MQ P2)
+
+// llama.cpp's `common/chat`, behind JSON text. It recognises the model family from its chat
+// template, renders a conversation with its tools in that family's own format, builds the lazy
+// grammar that constrains a call once the family's call opener appears, and parses a completion
+// back into content and calls. Implemented in LlamaCppChat.mm. Strings these calls hand back are
+// heap copies the caller releases with `og_llama_string_free`; on failure nothing is handed back,
+// and no status carries a message, so no prompt or reply text can leak through an error.
+
+typedef struct OGLlamaChatTemplates OGLlamaChatTemplates;
+typedef struct OGLlamaChatParser    OGLlamaChatParser;
+
+void og_llama_string_free(char *string);
+
+/// Whether `catch (const std::exception &)` catches a libc++ `std::runtime_error` in this image.
+/// llama.cpp's chat code relies on it internally (its template capability probe and its automatic
+/// parser catch what a probe render throws). Found false in the app 2026-11-24: another vendored
+/// static library defines its own `std::exception` typeinfo, which the image's catch clauses bind
+/// to. The families with their own handlers (Gemma 4, Qwen 3.5) render either way; a template that
+/// needs the automatic parser then fails to render, and the GGUF backend falls back.
+bool og_llama_runtime_catches_standard_exceptions(void);
+
+/// The model's own chat templates (its default and, when the file carries one, its `tool_use`
+/// variant). `OGLlamaStatusNoChatTemplate` when the model embeds none.
+OGLlamaStatus og_llama_chat_templates_from_model(const OGLlamaModel *model,
+                                                 OGLlamaChatTemplates **out_templates);
+
+/// Templates from Jinja source, with no model — what the tests render through. `bos_token` and
+/// `eos_token` are the texts the template's `bos_token`/`eos_token` variables expand to.
+OGLlamaStatus og_llama_chat_templates_from_source(const char *source,
+                                                  const char *bos_token,
+                                                  const char *eos_token,
+                                                  OGLlamaChatTemplates **out_templates);
+
+void og_llama_chat_templates_free(OGLlamaChatTemplates *templates);
+
+/// Renders a request:
+///   {"messages": [OpenAI-style messages, tool calls and `tool` results included],
+///    "tools": [OpenAI-style function specs], "tool_choice": "auto" | "required" | "none",
+///    "parallel_tool_calls": bool, "enable_thinking": bool, "add_generation_prompt": bool,
+///    "reasoning_format": "auto" | "none", "now": seconds since 1970 (optional)}
+/// into:
+///   {"prompt", "format", "format_name", "grammar", "grammar_lazy", "grammar_triggers": [{"type",
+///    "value"}], "preserved_tokens", "additional_stops", "generation_prompt", "parser",
+///    "reasoning_format", "supports_thinking", "tools_rendered"}.
+OGLlamaStatus og_llama_chat_render(const OGLlamaChatTemplates *templates,
+                                   const char *request_json,
+                                   char **out_json);
+
+/// A parser for completions of one render, from that render's JSON.
+OGLlamaStatus og_llama_chat_parser_create(const char *render_json, OGLlamaChatParser **out_parser);
+void og_llama_chat_parser_free(OGLlamaChatParser *parser);
+
+/// Parses `length` bytes of completion into {"content", "reasoning_content", "tool_calls":
+/// [{"name", "arguments" (JSON text), "id"}]}. `partial` reads an unfinished completion, for a
+/// streamed preview. `OGLlamaStatusParseFailed` when the text does not match the family's format:
+/// it is never a call.
+OGLlamaStatus og_llama_chat_parse(const OGLlamaChatParser *parser,
+                                  const char *text, int32_t length,
+                                  bool partial,
+                                  char **out_json);
+
+/// Puts a render's lazy grammar on the sampler: from then on a token that would break a call the
+/// model has started is redrawn under the grammar. A render with no grammar, or a grammar over the
+/// whole reply rather than a lazy one, clears it. `og_llama_sampler_reset` rewinds it with the chain.
+OGLlamaStatus og_llama_sampler_set_chat_grammar(OGLlamaSampler *sampler,
+                                                const OGLlamaModel *model,
+                                                const char *render_json);
+void og_llama_sampler_clear_grammar(OGLlamaSampler *sampler);
 
 #ifdef __cplusplus
 }
