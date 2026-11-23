@@ -1137,6 +1137,64 @@ final class LocalToolLoopTests: XCTestCase {
                        + "Confirm the lockout. Read the code on the control. What does it show?")
     }
 
+    func testARoutedFollowUpRecordsTheOtherValueAndTheModelPhrasesIt() async throws {
+        let history: [LocalToolLoop.Message] = [
+            .user("Manifold, natural gas reads 0.68 on Low, all models except 090XV60C, and 1.22 on the other burner. Log the first."),
+            .assistant("Logged 0.68 in. w.c.."),
+        ]
+        let model = ScriptedModel(["Logged the other at 1.22."])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Recorded Manifold, natural gas 1.22 in. w.c., as the technician reported it.") }
+        let outcome = try await run(model, tools, history: history, configuration: routing(["reading", "field_session"]),
+                                    message: "and the other one?")
+        XCTAssertEqual(tools.calls.map(\.name), ["reading"])
+        XCTAssertEqual(tools.calls.first?.arguments["action"] as? String, "record_reading")
+        XCTAssertEqual(tools.calls.first?.arguments["value"] as? String, "1.22")
+        XCTAssertEqual(tools.calls.first?.arguments["quantity"] as? String, "Manifold, natural gas")
+        XCTAssertEqual(outcome.executed.map(\.routed), [true])
+        XCTAssertEqual(model.requests.map(\.purpose), [.afterTools])
+        XCTAssertEqual(outcome.text, "Logged the other at 1.22.")
+        XCTAssertEqual(outcome.endReason, .answered)
+    }
+
+    func testARoutedEvidenceChoicesResultReachesTheModel() async throws {
+        let model = ScriptedModel(["Done, that one stays off the report."])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "That photo is left out of the report.") }
+        let outcome = try await run(model, tools, configuration: routing(["evidence", "field_session", "reading"]),
+                                    message: "Exclude the blurry photo of the inducer")
+        XCTAssertEqual(tools.calls.map(\.name), ["evidence"])
+        XCTAssertEqual(tools.calls.first?.arguments.count, 1)
+        XCTAssertEqual(tools.calls.first?.arguments["action"] as? String, "exclude")
+        let request = try XCTUnwrap(model.requests.first)
+        XCTAssertEqual(request.purpose, .afterTools)
+        XCTAssertEqual(request.messages.last?.role, .tool)
+        XCTAssertEqual(request.messages.last?.content, "That photo is left out of the report.")
+        XCTAssertEqual(outcome.text, "Done, that one stays off the report.")
+
+        // A model that says nothing after it: the tool's own short line is said.
+        let quiet = ToolLog()
+        quiet.result = { _ in .init(text: "The photos and clips go as they are.") }
+        let silent = try await run(ScriptedModel([""]), quiet, configuration: routing(["evidence"]),
+                                   message: "Keep the photo of the gas valve label")
+        XCTAssertEqual(quiet.calls.first?.arguments["action"] as? String, "keep")
+        XCTAssertEqual(silent.endReason, .toolResult)
+        XCTAssertEqual(silent.text, "The photos and clips go as they are.")
+    }
+
+    func testARoutedJobCommandsResultGoesToTheModel() async throws {
+        let model = ScriptedModel(["Work order 2231 is on the job."])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Job reference 2231 is recorded for this active session and will be included in its submitted record.") }
+        let outcome = try await run(model, tools, configuration: routing(["field_session", "reading", "evidence"]),
+                                    message: "The work order number is 2231")
+        XCTAssertEqual(tools.calls.first?.name, "field_session")
+        XCTAssertEqual(tools.calls.first?.arguments["action"] as? String, "set_job_reference")
+        XCTAssertEqual(tools.calls.first?.arguments["job_reference"] as? String, "2231")
+        XCTAssertEqual(model.requests.map(\.purpose), [.afterTools])
+        XCTAssertEqual(outcome.text, "Work order 2231 is on the job.")
+    }
+
     func testABargeInDuringARoutedCallStopsBeforeAnyGeneration() async {
         let model = ScriptedModel(["never generated"])
         let configuration = routing(["equipment_lookup"])
