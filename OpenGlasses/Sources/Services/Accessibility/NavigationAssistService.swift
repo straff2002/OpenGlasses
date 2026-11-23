@@ -35,6 +35,10 @@ final class NavigationAssistService: ObservableObject {
     /// Callouts dropped this session because their frame had gone stale (`NavigationAdviceFreshness`).
     private(set) var staleAdviceDrops = 0
 
+    /// Plan NA: the reply check's correction has been said in this loop session (once per session,
+    /// decision 3). Reset on start.
+    private(set) var replyCheckCorrected = false
+
     /// Internal rather than private so tests can use a fresh instance; the app uses `shared`.
     init() {}
 
@@ -77,6 +81,7 @@ final class NavigationAssistService: ObservableObject {
         isActive = true
         lastAdvice = nil
         staleAdviceDrops = 0
+        replyCheckCorrected = false
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.tick() }
         }
@@ -118,11 +123,26 @@ final class NavigationAssistService: ObservableObject {
         if let last = lastAdvice, Self.isSimilar(advice.advice, last.advice) { return }
 
         lastAdvice = advice
+        // Plan NA: checked before the HUD and the voice. A low-urgency callout that says the way
+        // is clear is dropped — this loop's silence already means nothing was observed.
+        guard let spoken = screenedForSpeech(advice) else { return }
         // Mirror to the HUD with an urgency-appropriate icon; suppress the plain TTS
         // mirror so this richer rendering is what stays on screen.
         let hudIcon: GlassesDisplayService.HUDIcon = advice.urgency == .high ? .hazard : .navigation
-        glassesDisplay?.showNavigation(advice.advice, icon: hudIcon)
-        await tts.speak(advice.advice, source: .navigation, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
+        glassesDisplay?.showNavigation(spoken, icon: hudIcon)
+        await tts.speak(spoken, source: .navigation, urgency: advice.urgency.speechUrgency, mirrorToHUD: false)
+    }
+
+    /// Plan NA §4: what of this callout is shown and said once the reply check has read it — nil
+    /// when nothing is. Recorded in the tally. Internal so tests drive it without a camera, a
+    /// model or a voice.
+    func screenedForSpeech(_ advice: AssistiveAdvice) -> String? {
+        let whole = BlindReplyScreen.screenAmbient(
+            advice.advice, surface: .navigation, urgency: advice.urgency,
+            enabled: Config.blindReplyCheckEnabled, alreadyCorrected: &replyCheckCorrected,
+            appLanguageIsEnglish: BlindReplyScreen.appLanguageIsEnglish)
+        BlindReplyCheckRecorder.record(whole.screened, surface: .navigation)
+        return whole.text.isEmpty ? nil : whole.text
     }
 
     /// Ask the model about a frame captured at `capturedAt` and return its advice only if that frame

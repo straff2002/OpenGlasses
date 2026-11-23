@@ -54,6 +54,12 @@ final class DirectReplySpeechStream {
     private let turnCalls: @MainActor () -> [QuietTurnCall]
     /// How many of `turnCalls` an earlier reset already accounted for.
     private var accountedCalls = 0
+    /// Plan NA §4: each released sentence goes through the reply check before it is queued. The
+    /// screen each iteration starts from, the iteration's own, and the turn's reading evidence
+    /// (read at each sentence: a reading tool may publish it mid-turn). Nil — nothing checked.
+    private var screenTemplate: BlindReplyScreen?
+    private var replyScreen: BlindReplyScreen?
+    private var readingEvidence: @MainActor () -> ReadingEvidence? = { nil }
 
     init(speaker: any StreamedReplySpeaking, rules: StreamSpeechGate.Rules = .default,
          isCurrent: @escaping @MainActor () -> Bool = { true },
@@ -62,6 +68,16 @@ final class DirectReplySpeechStream {
         self.gate = StreamSpeechGate(rules: rules)
         self.isCurrent = isCurrent
         self.turnCalls = turnCalls
+    }
+
+    /// Plan NA §4: check every sentence this reply streams with `screen` before it is queued. The
+    /// final reply is screened by the same function (`BlindReplyScreen.screenWhole`), so
+    /// `finish(reply:)` reconciles what was said against it exactly.
+    func checkReplies(with screen: BlindReplyScreen,
+                      evidence: @escaping @MainActor () -> ReadingEvidence?) {
+        screenTemplate = screen
+        replyScreen = screen
+        readingEvidence = evidence
     }
 
     /// Plan LA §4: the final iteration is being held whole for the quiet-ending verdict.
@@ -95,6 +111,10 @@ final class DirectReplySpeechStream {
         accountedCalls = calls.count
         let tail = (held.isEmpty ? [] : gate.ingest(held)) + gate.endIteration(roundCalls: round)
         if !Task.isCancelled, !wasStopped, isCurrent() { enqueue(tail) }
+        // Plan NA: a preamble never reaches the final reply, so its check is recorded here; the
+        // next iteration is screened afresh, as the final reply will be.
+        if let replyScreen { BlindReplyCheckRecorder.record(replyScreen.screened, surface: .direct) }
+        replyScreen = screenTemplate
         let said = spokenThisIteration
         if !said.isEmpty {
             let line = said.joined(separator: " ")
@@ -161,7 +181,18 @@ final class DirectReplySpeechStream {
         return queue.isCancelled ? queue.heardSentences(from: iterationStart) : iterationSentences
     }
 
-    private func enqueue(_ sentences: [String]) {
+    /// Plan NA: what each released sentence becomes once checked — itself, the line in its place,
+    /// itself and the line, or nothing.
+    private func screened(_ sentences: [String]) -> [String] {
+        guard var screen = replyScreen, !sentences.isEmpty else { return sentences }
+        let evidence = readingEvidence()
+        let out = sentences.flatMap { screen.screen($0, evidence: evidence).output }
+        replyScreen = screen
+        return out
+    }
+
+    private func enqueue(_ released: [String]) {
+        let sentences = screened(released)
         guard !sentences.isEmpty, let speaker else { return }
         if queue == nil {
             let opened = speaker.beginStreamedReply(isCurrent: isCurrent)

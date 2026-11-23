@@ -7870,6 +7870,16 @@ class AppState: ObservableObject, AppStateProtocol {
                self.handOffLostLiveSession(self.openAIRealtimeSession.sessionMode) { return true }
             return lifecycle.handle(signal)
         }
+        // Plan NA §5: the reply check's correction, in the app's own voice — never the provider's
+        // supplied speech and never a model turn asked to say it (decision 6).
+        let replyCheckLine: (String) -> Void = { [weak self] line in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.speechService.speak(line, source: .replyCheck)
+            }
+        }
+        geminiLiveSession.onReplyCheckLine = replyCheckLine
+        openAIRealtimeSession.onReplyCheckLine = replyCheckLine
         // A goodbye is the wearer stopping the session, so it latches as a stop does.
         geminiLiveSession.onSaidGoodbye = { [weak self] in
             self?.stopLiveSession(.geminiLive, source: .voice)
@@ -8535,7 +8545,8 @@ class AppState: ObservableObject, AppStateProtocol {
                             if GlassesSupportPolicy.isSupported, self.cameraService.lastCaptureSource == .phone {
                                 response = "From the phone camera — the glasses weren't available. " + response
                             }
-                            return response
+                            // Plan NA §4: a photo answer is a Direct reply too.
+                            return self.screenDirectReply(response, question: query)
                         },
                         accept: { response in
                             guard self.conversationReset.isCurrent(turnGeneration) else {
@@ -9642,6 +9653,9 @@ class AppState: ObservableObject, AppStateProtocol {
         // Nil — today's path, unchanged — when it is off.
         let replyStream = makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId,
                                                 spokenTurn: true)
+        // Plan NA: the reply check — this turn's reading evidence starts empty, and a streamed
+        // reply checks each sentence before it is queued.
+        beginDirectReplyCheck(question: query, stream: replyStream)
         // Plan KP P1: this reply's sentences collect into one answer card on the glasses, with what
         // the app heard over its first page (Plan KV §7).
         hudAnswerCard.beginTurn(question: turnUtterance)
@@ -9784,7 +9798,9 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 postProcess: { [self] rawResponse in
                     // Parse and execute memory commands from the response
-                    guard Config.userMemoryEnabled else { return rawResponse }
+                    guard Config.userMemoryEnabled else {
+                        return screenDirectReply(rawResponse, question: query)   // Plan NA §4
+                    }
                     // Plan LN §3: only this turn's ledger says what it read — a brain that keeps
                     // none left an earlier turn's.
                     let readUntrusted = llmService.turnToolLedger.generation != ledgerGenerationAtStart
@@ -9796,7 +9812,9 @@ class AppState: ObservableObject, AppStateProtocol {
                     if userMemory.incrementTurnAndCheckNudge() {
                         llmService.injectSystemMessage(SemanticMemoryStore.nudgePrompt)
                     }
-                    return response
+                    // Plan NA §4: screened by the function the stream used, so `accept`, the card,
+                    // the whole-reply speech and the history all get what is heard.
+                    return screenDirectReply(response, question: query)
                 },
                 accept: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else {
@@ -9899,6 +9917,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
+                    endDirectReplyCheck()
                     hudAnswerCard.endTurn()
                     llmService.offlineHandoffTurn = false
                     // Restore original model if we switched for this request
@@ -10079,6 +10098,8 @@ class AppState: ObservableObject, AppStateProtocol {
         // Plan HZ P1: spoken a sentence at a time when the switch is on and the reply is spoken here.
         let replyStream = speakResponse
             ? makeReplySpeechStream(turnGeneration: turnGeneration, threadId: turnThreadId) : nil
+        // Plan NA: as on the voice path. A reply Siri reads back is checked too.
+        beginDirectReplyCheck(question: query, stream: replyStream)
         // Plan KP P1: a spoken reply collects into one answer card, as on the voice path.
         if speakResponse { hudAnswerCard.beginTurn(question: turnUtterance) }
 
@@ -10131,7 +10152,8 @@ class AppState: ObservableObject, AppStateProtocol {
                     return settlePhoneModelReply(reply, query: query, answeredOnPhone: answeredOnPhone)
                 },
                 postProcess: { [self] rawResponse in
-                    Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
+                    let response = Config.userMemoryEnabled ? userMemory.parseAndExecuteCommands(in: rawResponse, userUtterance: query, threadID: conversationStore.activeThreadId, readUntrustedOutput: llmService.turnToolLedger.readUntrustedOutput) : rawResponse
+                    return screenDirectReply(response, question: query)   // Plan NA §4
                 },
                 accept: { [self] response in
                     guard conversationReset.isCurrent(turnGeneration) else {
@@ -10222,6 +10244,7 @@ class AppState: ObservableObject, AppStateProtocol {
                 },
                 finish: { [self] in
                     if let replyStream { endReplyStream(replyStream) }
+                    endDirectReplyCheck()
                     if speakResponse { hudAnswerCard.endTurn() }
                     if answeredOnPhone {
                         llmService.offlineHandoffTurn = false

@@ -38,6 +38,8 @@ final class AssistiveModeService: ObservableObject {
 
     private var timer: Timer?
     private var analyzing = false
+    /// Plan NA: the reply check's correction has been said in this loop session. Reset on start.
+    private var replyCheckCorrected = false
     /// Latest user transcription, used once to bias routing (scene vs social), then consumed.
     private var pendingTranscription: String?
 
@@ -57,6 +59,7 @@ final class AssistiveModeService: ObservableObject {
         self.llm = llm
         self.tts = tts
         isActive = true
+        replyCheckCorrected = false
         socialRefusal = socialPolicy().refusal
         throttle.reset()   // first analysis runs immediately
         PrivacyLog.vision(.assistiveMode, .started, seconds: interval)
@@ -119,9 +122,24 @@ final class AssistiveModeService: ObservableObject {
         guard isActive else { return } // may have been stopped during the await
 
         latestAdvice = advice
-        var spoken = advice.advice
-        if let followup = advice.followup, !followup.isEmpty { spoken += " " + followup }
+        // Plan NA: checked before it is said, under this loop session's one-line latch.
+        guard let spoken = Self.screenedForSpeech(advice, alreadyCorrected: &replyCheckCorrected) else { return }
         await tts.speak(spoken, source: .navigation, urgency: advice.urgency.speechUrgency)
+    }
+
+    /// Plan NA §4: the advice and its follow-up as spoken once the reply check has read them, or
+    /// nil when nothing is. Recorded in the tally. Static so tests drive it without the shared
+    /// service.
+    static func screenedForSpeech(_ advice: AssistiveAdvice, alreadyCorrected: inout Bool,
+                                  enabled: Bool = Config.blindReplyCheckEnabled) -> String? {
+        var text = advice.advice
+        if let followup = advice.followup, !followup.isEmpty { text += " " + followup }
+        let whole = BlindReplyScreen.screenAmbient(
+            text, surface: .assistive, urgency: advice.urgency, enabled: enabled,
+            alreadyCorrected: &alreadyCorrected,
+            appLanguageIsEnglish: BlindReplyScreen.appLanguageIsEnglish)
+        BlindReplyCheckRecorder.record(whole.screened, surface: .assistive)
+        return whole.text.isEmpty ? nil : whole.text
     }
 
     /// Ask the model about one frame and decide what, if anything, is spoken (Plan HR P1 item 3).

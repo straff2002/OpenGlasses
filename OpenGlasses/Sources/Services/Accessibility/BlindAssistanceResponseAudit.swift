@@ -175,29 +175,19 @@ enum BlindAssistanceResponseAudit {
     /// How far either side of a match the auditor looks for a qualifier. Wide enough to catch the
     /// clause a hedge normally lives in, narrow enough that a hedge about a *different* detail
     /// somewhere else in the answer does not launder this one.
-    static let qualifierWindow = 80
+    static let qualifierWindow = ReplyPhraseMechanics.qualifierWindow
 
     // MARK: - Mechanics
 
     /// Lowercased, curly quotes and dashes normalised, whitespace collapsed — so the phrase tables
-    /// match speech-shaped text however it was punctuated.
+    /// match speech-shaped text however it was punctuated. Shared with the runtime reply check
+    /// (`ReplyPhraseMechanics`), so the two read text the same way.
     static func normalised(_ text: String) -> String {
-        let folded = text.lowercased()
-            .replacingOccurrences(of: "’", with: "'")
-            .replacingOccurrences(of: "‘", with: "'")
-            .replacingOccurrences(of: "—", with: " ")
-            .replacingOccurrences(of: "–", with: " ")
-        return folded.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        ReplyPhraseMechanics.normalised(text)
     }
 
     private static func ranges(of needle: String, in text: String) -> [Range<String.Index>] {
-        var found: [Range<String.Index>] = []
-        var searchStart = text.startIndex
-        while let range = text.range(of: needle, range: searchStart..<text.endIndex) {
-            found.append(range)
-            searchStart = range.upperBound
-        }
-        return found
+        ReplyPhraseMechanics.ranges(of: needle, in: text)
     }
 
     /// Whether any phrase appears without a negation in the clause leading up to it.
@@ -227,17 +217,11 @@ enum BlindAssistanceResponseAudit {
 
     /// Padded with a space at each end so a space-delimited marker can match at either edge.
     private static func window(_ text: String, before range: Range<String.Index>) -> String {
-        let start = text.index(range.lowerBound, offsetBy: -qualifierWindow,
-                               limitedBy: text.startIndex) ?? text.startIndex
-        return " " + text[start..<range.lowerBound] + " "
+        ReplyPhraseMechanics.window(text, before: range, width: qualifierWindow)
     }
 
     private static func window(_ text: String, around range: Range<String.Index>) -> String {
-        let start = text.index(range.lowerBound, offsetBy: -qualifierWindow,
-                               limitedBy: text.startIndex) ?? text.startIndex
-        let end = text.index(range.upperBound, offsetBy: qualifierWindow,
-                             limitedBy: text.endIndex) ?? text.endIndex
-        return String(text[start..<end])
+        ReplyPhraseMechanics.window(text, around: range, width: qualifierWindow)
     }
 
     /// Where the answer states a distance or a clock position.

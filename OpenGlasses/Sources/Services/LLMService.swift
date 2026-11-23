@@ -1752,6 +1752,52 @@ class LLMService: ObservableObject {
         return history
     }
 
+    /// Plan NA §4: the reply check withheld or corrected sentences of the reply; the history entry
+    /// that recorded it is rewritten to match, so the model's next turn sees the line the wearer
+    /// heard, not the assurance it wrote.
+    func applyReplyCheckReplacements(_ replacements: [(original: String, replacement: String)]) {
+        guard !replacements.isEmpty else { return }
+        conversationHistory = Self.replacingSentencesInLastAssistant(conversationHistory,
+                                                                     replacements: replacements)
+    }
+
+    /// The history with each `original` sentence of its last assistant message replaced, first
+    /// occurrence after the previous one, in plain text or the text parts of Gemini's `parts` and
+    /// Anthropic's content blocks — the shapes `removingFollowUpTailFromLastAssistant` handles. A
+    /// sentence not found is left alone. Pure.
+    nonisolated static func replacingSentencesInLastAssistant(_ history: [[String: Any]],
+                                                              replacements: [(original: String, replacement: String)]) -> [[String: Any]] {
+        guard !replacements.isEmpty,
+              let index = history.lastIndex(where: { $0["role"] as? String == "assistant" }) else {
+            return history
+        }
+        func rewrite(_ text: String) -> String {
+            var done = ""
+            var rest = Substring(text)
+            for (original, replacement) in replacements where !original.isEmpty {
+                guard let range = rest.range(of: original) else { continue }
+                done += rest[rest.startIndex..<range.lowerBound] + replacement
+                rest = rest[range.upperBound...]
+            }
+            return done + rest
+        }
+        var history = history
+        var message = history[index]
+        if let content = message["content"] as? String {
+            message["content"] = rewrite(content)
+        } else {
+            for key in ["content", "parts"] {
+                guard var blocks = message[key] as? [[String: Any]] else { continue }
+                for block in blocks.indices {
+                    if let text = blocks[block]["text"] as? String { blocks[block]["text"] = rewrite(text) }
+                }
+                message[key] = blocks
+            }
+        }
+        history[index] = message
+        return history
+    }
+
     /// The final reply joins the job's log beside the turn that asked for it (Plan GB P0), so a
     /// job's transcript has both sides. Direct mode only; no-op with no job open.
     private func recordFieldAssistantReply(_ reply: String) {

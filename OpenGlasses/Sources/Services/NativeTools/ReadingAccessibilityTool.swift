@@ -81,6 +81,10 @@ final class ReadingAccessibilityTool: NativeTool {
             return "I couldn't read any text. Ask the user to move a little closer, adjust the angle, or improve the lighting, then try again."
         }
 
+        // Plan NA §2: what the phone actually read, for the reply check's number check. Memory
+        // only, for this turn.
+        ReadingEvidenceBoard.shared.publish(text, source: .readingTool)
+
         if mode == .ask {
             let question = (args["question"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let questionBlock = question.isEmpty ? "" : "\n\nQUESTION:\n\(question)"
