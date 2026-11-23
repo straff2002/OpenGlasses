@@ -16,6 +16,9 @@ packages:
   swift-transformers:
     url: https://github.com/huggingface/swift-transformers.git
     from: "1.0.0"
+  # Plan MQ P2: the app's vendored llama.cpp engine, for a GGUF run (--gguf).
+  LlamaCpp:
+    path: ../../Vendor/LlamaCpp
 targets:
   LocalModelQualification:
     type: application
@@ -72,6 +75,12 @@ targets:
       - ../../OpenGlasses/Sources/Services/LocalInference/MLXLocalInferenceBackend.swift
       - ../../OpenGlasses/Sources/Services/LocalInference/LocalInferenceBackend.swift
       - ../../OpenGlasses/Sources/Services/LocalInference/LocalModelPreparationPhase.swift
+      # Plan MQ P2: the GGUF runtime and the bundled GGUF catalog it loads from.
+      - ../../OpenGlasses/Sources/Services/LocalInference/LlamaCpp
+      - ../../OpenGlasses/Sources/Services/LocalInference/LlamaRuntimeAvailability.swift
+      - ../../OpenGlasses/Sources/Services/LocalInference/LocalRuntimeDiagnostics.swift
+      - path: ../../OpenGlasses/Sources/Resources/LocalModelCatalog.json
+        buildPhase: resources
       - ../../OpenGlasses/Sources/Services/FieldAssist/ManualReadingCheck.swift
       - ../../OpenGlasses/Sources/Services/AppleIntelligence/AppleToolBridge.swift
       - ../../OpenGlasses/Sources/Services/AppleIntelligence/AppleToolSchema.swift
@@ -89,6 +98,8 @@ targets:
         product: HuggingFace
       - package: swift-transformers
         product: Tokenizers
+      - package: LlamaCpp
+        product: LlamaCppWrapper
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openglasses.localmodelqualification

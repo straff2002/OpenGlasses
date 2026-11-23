@@ -8,6 +8,8 @@ import UIKit
 ///
 ///     --model <id>         an MLX catalog model id (default Gemma 4 E2B)
 ///     --apple              Apple's on-device model instead, as the baseline
+///     --gguf <id>          a GGUF catalog model instead, on the GGUF runtime (Plan MQ P2), its
+///                          weights file already in Documents/gguf/ (see README.md)
 ///     --repeats <n>        runs per case (default 3)
 ///     --groups <a,b>       case groups (default fieldAssist, with the restraint and
 ///                          not-in-the-manual categories beside it); `all` for every case
@@ -26,6 +28,8 @@ final class QualificationRunner: ObservableObject {
     struct Options: Equatable {
         var modelID = "mlx-community/gemma-4-e2b-it-4bit"
         var apple = false
+        /// Plan MQ P2: a GGUF catalog id, run on `LlamaCppLocalInferenceBackend`.
+        var ggufModelID: String?
         var repeats = 3
         var selection = LocalToolEval.Selection.qualification
         var policy = QualificationRunGate.Policy.unattended
@@ -53,6 +57,7 @@ final class QualificationRunner: ObservableObject {
                 switch arguments[index] {
                 case "--model": if let v = value() { options.modelID = v }
                 case "--apple": options.apple = true
+                case "--gguf": if let v = value() { options.ggufModelID = v }
                 case "--repeats": if let v = value().flatMap(Int.init), v > 0 { options.repeats = v }
                 case "--limit": if let v = value().flatMap(Int.init), v >= 0 { options.selection.limit = v }
                 case "--settle": if let v = value().flatMap(Double.init), v >= 0 { options.policy.settleSeconds = v }
@@ -93,6 +98,12 @@ final class QualificationRunner: ObservableObject {
 
     let options: Options
     private let service = LocalLLMService()
+    /// The GGUF runtime (Plan MQ P2), with its weights read from `ggufDirectory` and GGUF switched
+    /// on: this app stands in for the flag-on build.
+    private lazy var gguf = LlamaCppLocalInferenceBackend(
+        directoryForInstallation: { _ in QualificationRunner.ggufDirectory },
+        isRuntimeEnabled: { true },
+        recordDiagnostics: { _ in })
     private var runTask: Task<Void, Never>?
     private var record: LocalModelQualificationRecord?
     private let started = Date()
@@ -108,6 +119,18 @@ final class QualificationRunner: ObservableObject {
         self.options = options
         // The kill limit is fixed per process: measure it now, before any model is resident.
         _ = LocalMemoryReadings.processKillLimit
+    }
+
+    /// Where a GGUF run's weights file goes: the catalog entry's file name, in Documents/gguf/.
+    nonisolated static var ggufDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("gguf", isDirectory: true)
+    }
+
+    /// The catalog entry `--gguf` names.
+    private var ggufEntry: LocalModelCatalog.GGUFEntry? {
+        guard let id = options.ggufModelID else { return nil }
+        return LocalModelCatalog.bundledGGUFEntries().first { $0.id.rawValue.lowercased() == id.lowercased() }
     }
 
     static var resultsURL: URL {
@@ -171,7 +194,9 @@ final class QualificationRunner: ObservableObject {
         }
         Config.assistantName = fixture.assistantName
 
-        let promptModelID = options.apple ? "mlx-community/gemma-4-e2b-it-4bit" : options.modelID
+        // Apple's model and a GGUF model read Gemma 4 E2B's fixture prompt: the same 4,096 window
+        // and the same compact job tier (a GGUF run is the same model on the other runtime).
+        let promptModelID = options.apple || options.ggufModelID != nil ? "mlx-community/gemma-4-e2b-it-4bit" : options.modelID
         guard fixture.prompts[promptModelID] != nil else {
             status = "No fixture prompts for this model. Add it to the tool candidates and regenerate the fixture."
             return
@@ -205,6 +230,17 @@ final class QualificationRunner: ObservableObject {
             #else
             return stop("appleModelUnavailable")
             #endif
+        } else if options.ggufModelID != nil {
+            guard let entry = ggufEntry else { return stop("modelNotInCatalog") }
+            do {
+                try await prepareGGUF(entry)
+            } catch {
+                return stop("loadFailed-\(String(describing: type(of: error)))")
+            }
+            environment = LiveEnvironments.backend(gguf, fixture: fixture, modelID: entry.id.rawValue,
+                                                   promptModelID: promptModelID,
+                                                   cancellationBound: record?.timing.cancelBoundSeconds ?? 1.0,
+                                                   transcript: transcript)
         } else {
             guard LocalModelCatalog.entry(for: LocalModelID(options.modelID)) != nil else { return stop("modelNotInCatalog") }
             do {
@@ -242,7 +278,7 @@ final class QualificationRunner: ObservableObject {
             }
         }
 
-        if !options.apple, options.cancelProbes > 0, let system = fixture.prompts[promptModelID]?.everyday {
+        if !options.apple, options.ggufModelID == nil, options.cancelProbes > 0, let system = fixture.prompts[promptModelID]?.everyday {
             status = "Timing cancellation"
             var latencies: [Double] = []
             var over = 0
@@ -345,37 +381,73 @@ final class QualificationRunner: ObservableObject {
         write()
     }
 
+    /// The GGUF model (Plan MQ P2): its file is placed by hand (README.md), checked by size as the
+    /// runtime checks every load, and loaded on the GGUF backend with the entry's context policy.
+    private func prepareGGUF(_ entry: LocalModelCatalog.GGUFEntry) async throws {
+        guard !modelLoaded else { return }
+        let installation = InstalledLocalModel(descriptor: entry.descriptor,
+                                               storage: .managed(directoryName: entry.id.storageComponent),
+                                               installedAt: Date(), validatedFiles: entry.descriptor.files)
+        let readings = LocalMemoryReadings.againstProcessLimit()
+        let fit = LocalMemoryBudget.fit(weightsBytes: entry.descriptor.estimatedWeightsBytes,
+                                        workingBytes: entry.descriptor.estimatedWorkingBytes,
+                                        backing: .mapped, readings: readings)
+        record?.memory.footprintBeforeLoadBytes = readings.footprintBytes
+        record?.memory.fitJudgedAgainst = fit.judgedAgainst.rawValue
+        record?.memory.fitNeededBytes = fit.neededBytes
+        record?.memory.fitLimitBytes = fit.limitBytes
+        record?.memory.fits = fit.fits
+        status = "Loading the model"
+        let loadStarted = Date()
+        _ = try await gguf.load(installation, configuration: LocalLoadConfiguration(
+            contextLength: entry.descriptor.contextLength))
+        record?.timing.loadSeconds = Date().timeIntervalSince(loadStarted)
+        record?.memory.footprintAfterLoadBytes = MemoryHeadroom.appFootprintBytes()
+        modelLoaded = true
+        write()
+    }
+
     // MARK: - The record
 
     private func makeRecord(cases: Int, skipped: Int, bodyHash: String) -> LocalModelQualificationRecord {
         let now = ISO8601DateFormatter().string(from: Date())
         let entry = LocalModelCatalog.entry(for: LocalModelID(options.modelID))
-        let model: LocalModelQualificationRecord.Model = options.apple
-            ? .init(id: "apple-on-device", revision: nil, quantization: nil, backing: "system")
-            : .init(id: options.modelID, revision: entry?.snapshot.revision, quantization: entry?.descriptor.quantization,
-                    backing: LocalMemoryBudget.Backing.copied.rawValue)
-        let runtime: LocalModelQualificationRecord.Runtime = options.apple
-            ? .init(name: "FoundationModels", revision: DeviceFacts.osBuild)
-            : .init(name: "mlx-swift-lm", revision: DeviceFacts.mlxSwiftLMRevision)
+        let gguf = ggufEntry
+        let model: LocalModelQualificationRecord.Model
+        let runtime: LocalModelQualificationRecord.Runtime
+        if options.apple {
+            model = .init(id: "apple-on-device", revision: nil, quantization: nil, backing: "system")
+            runtime = .init(name: "FoundationModels", revision: DeviceFacts.osBuild)
+        } else if let gguf {
+            model = .init(id: gguf.id.rawValue, revision: gguf.descriptor.revision,
+                          quantization: gguf.descriptor.quantization, backing: LocalMemoryBudget.Backing.mapped.rawValue)
+            runtime = .init(name: "llama.cpp", revision: LlamaRuntimeAvailability.engineRevision ?? "unknown")
+        } else {
+            model = .init(id: options.modelID, revision: entry?.snapshot.revision, quantization: entry?.descriptor.quantization,
+                          backing: LocalMemoryBudget.Backing.copied.rawValue)
+            runtime = .init(name: "mlx-swift-lm", revision: DeviceFacts.mlxSwiftLMRevision)
+        }
+        let samplingID = gguf?.id.rawValue ?? options.modelID
         if let temperature = options.toolTemperature {
             LocalModelSampling.qualificationToolTurnOverride = .init(temperature: temperature)
         }
         LLMService.qualificationUsesOriginalToolGuide = options.originalToolGuide
         let sampling: LocalModelQualificationRecord.Sampling? = options.apple ? nil : .init(
-            source: [entry?.sampling?.source,
+            source: [gguf?.sampling?.source ?? entry?.sampling?.source,
                      options.toolTemperature.map { "run override: tool-turn temperature \($0)" },
                      options.originalToolGuide ? "run override: P1's original tool guide" : nil]
                 .compactMap { $0 }.joined(separator: "; "),
-            general: LocalModelSampling.configuration(for: options.modelID, toolTurn: false),
-            toolTurn: LocalModelSampling.configuration(for: options.modelID, toolTurn: true))
+            general: LocalModelSampling.configuration(for: samplingID, toolTurn: false),
+            toolTurn: LocalModelSampling.configuration(for: samplingID, toolTurn: true))
         let readings = LocalMemoryReadings.againstProcessLimit()
         let selection = options.selection
         // The window this run's tool turns are budgeted with, chosen as `sendLocal` chooses it with the
         // flag on (this app stands in for the flag-on build), at launch, with the model not yet
         // resident: its weights are charged as not yet in the footprint. `LiveEnvironments.mlx` keeps
         // the same choice for every case.
-        let window = Self.toolTurnWindow(modelID: options.modelID, apple: options.apple, readings: readings,
-                                         weightsBytes: entry?.snapshot.weightsBytes ?? 0)
+        let window = gguf.map { LocalModelBudget.ToolTurnWindow(tokens: $0.descriptor.contextLength, reason: .ordinary) }
+            ?? Self.toolTurnWindow(modelID: options.modelID, apple: options.apple, readings: readings,
+                                   weightsBytes: entry?.snapshot.weightsBytes ?? 0)
         return LocalModelQualificationRecord(
             startedAt: now, updatedAt: now, device: DeviceFacts.device, app: DeviceFacts.app, runtime: runtime,
             model: model, sampling: sampling,

@@ -58,9 +58,31 @@ xcrun devicectl device process launch --device <device-id> --terminate-existing 
   com.openglasses.localmodelqualification --apple
 ```
 
-Arguments: `--model <id>`, `--apple`, `--repeats <n>` (3), `--groups fieldAssist,everyday` or
+Arguments: `--model <id>`, `--apple`, `--gguf <id>`, `--repeats <n>` (3), `--groups fieldAssist,everyday` or
 `all`, `--limit <n>`, `--settle <s>` (120), `--cap <s>` (1200), `--allow-battery`,
 `--cancel-probes <n>` (6), `--fresh`.
+
+### A GGUF model (Plan MQ P2)
+
+`--gguf <catalog id>` runs a model from the bundled GGUF catalog (`LocalModelCatalog.json`) on the
+production GGUF runtime, `LlamaCppLocalInferenceBackend`: its tool turns rendered and parsed by
+llama.cpp's `common/chat`, through the same loop and graders. It reads Gemma 4 E2B's fixture prompt
+(the same 4,096-token window and job tier), so a GGUF Gemma 4 E2B run and the MLX run measure the
+same model on both runtimes. This app has no GGUF downloader: copy the entry's weights file, with
+the catalog's file name, into the app's `Documents/gguf/` first. The runtime checks its size on
+load, as the app does; the digest is the catalog's, so check it with `shasum -a 256` before copying.
+
+```sh
+xcrun devicectl device copy to --device <device-id> --domain-type appDataContainer \
+  --domain-identifier com.openglasses.localmodelqualification \
+  --source gemma-4-E2B-it-Q4_0.gguf --destination Documents/gguf/gemma-4-E2B-it-Q4_0.gguf
+xcrun devicectl device process launch --device <device-id> --terminate-existing \
+  com.openglasses.localmodelqualification --gguf "ggml-org/gemma-4-E2B-it-GGUF#gemma-4-E2B-it-Q4_0.gguf"
+```
+
+Not yet for GGUF: the cancel-latency probes (they drive the MLX service), and a run with the phone
+locked, which is the reason GGUF matters (CPU, no Metal in the background) and needs the app's
+background ladder rather than this foreground runner.
 
 The app downloads the model itself on first use, through the production downloader (it cannot see
 the main app's copy), so the first launch needs a network. Keep the app in the foreground: the
