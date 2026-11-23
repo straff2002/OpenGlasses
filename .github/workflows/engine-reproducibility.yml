@@ -20,6 +20,7 @@ on:
       - 'Vendor/LlamaCpp/REVISION'
       - 'Vendor/LlamaCpp/SHA256SUMS'
       - 'Vendor/LlamaCpp/BUILD-INFO'
+      - 'Vendor/LlamaCpp/chat/CMakeLists.txt'
       - 'Scripts/build-llamacpp-framework.sh'
       - 'Scripts/fetch-llamacpp-framework.sh'
       - '.github/workflows/engine-reproducibility.yml'
@@ -42,6 +43,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The bytes depend on the toolchain, and BUILD-INFO names the one that produced them. Use it
+      # when the runner has it; when it does not, say so — the --strict rebuild below still fails
+      # on the difference, which is the decision this workflow exists to force.
+      - name: Use the Xcode the record names
+        run: |
+          want="$(sed -n 's/^xcodebuild=Xcode \([0-9.]*\) .*/\1/p' Vendor/LlamaCpp/BUILD-INFO)"
+          app="/Applications/Xcode_${want}.app"
+          if [ -n "$want" ] && [ -d "$app" ]; then
+            sudo xcode-select -s "$app"
+          else
+            echo "::warning::Xcode ${want:-?} (named in BUILD-INFO) is not on this runner"
+            ls -d /Applications/Xcode*.app || true
+          fi
 
       - name: Show toolchain
         run: |

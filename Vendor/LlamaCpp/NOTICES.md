@@ -30,7 +30,8 @@ The full text is at `LICENSE` in the upstream repository at the pinned revision.
 
 ### Code vendored *inside* llama.cpp that this build links
 
-The build links `vendor/hash`, so its four upstream sources ship in the binary:
+The build links `vendor/hash`, and the chat library (below) compiles `vendor/nlohmann`, so their
+upstream sources ship in the binary:
 
 | Component | Licence | Attribution |
 |---|---|---|
@@ -38,9 +39,26 @@ The build links `vendor/hash`, so its four upstream sources ship in the binary:
 | SHA-256 | Public domain | 2010-06-11, Igor Pavlov |
 | SHA-1 | Public domain | Steve Reid |
 | rotate-bits | MIT | Copyright (c) 2021 William Casarin |
+| JSON for Modern C++ (nlohmann/json) 3.12.0 | MIT | Copyright (c) 2013-2025 Niels Lohmann |
 
-Nothing else under llama.cpp's `vendor/` is compiled: cpp-httplib, miniaudio, nlohmann/json,
-sheredom and stb belong to the server, tools and multimodal targets, all of which are off.
+Nothing else under llama.cpp's `vendor/` is compiled: cpp-httplib, miniaudio, sheredom and stb
+belong to the server, the downloader, tools and multimodal targets, all of which are off.
+
+### The chat library (Plan MQ P2)
+
+The GGUF tool path links llama.cpp's own `common/chat`: each model family's chat template, tool
+grammar and tool-call parser, with llama.cpp's own Jinja engine (`common/jinja`, MIT, part of
+llama.cpp) and the PEG parser it uses. It is built by [`chat/CMakeLists.txt`](chat/CMakeLists.txt)
+from the same pinned checkout, as the smallest set of `common/` sources that links — **not**
+upstream's `llama-common` target, which also carries the model downloader, the Hugging Face cache,
+the argument parser and cpp-httplib. Left out by name: `arg`, `console`, `debug`, `download`,
+`hf-cache`, `http`, `imatrix-loader`, `llguidance`, `preset`, `subproc`. Its headers ship under
+`Headers/llama-common/` for the wrapper's chat bridge (`Sources/LlamaCppWrapper/LlamaCppChat.mm`);
+Swift sees only the bridge's C functions. Its logger, which writes template text and model output
+to stderr from its own thread, is switched off by the bridge (`common_log_set_verbosity_thold(-1)`).
+
+Size, device slice (`ios-arm64/libllama.a`): 10,322,800 bytes at v0.3.0 without it (Xcode 26.6),
+15,838,696 bytes with it (Xcode 27.2); the chat library alone is a 5,291,528-byte archive.
 
 ## Telemetry posture
 
@@ -51,14 +69,14 @@ reviewed for what it sends home before it ships.
 llama.cpp's inference core has no analytics, crash-reporting or update-check path; the networking
 that exists upstream lives in the server, the model downloader and the CLI tools, none of which
 are built here (`LLAMA_BUILD_SERVER`, `LLAMA_BUILD_TOOLS`, `LLAMA_BUILD_COMMON`, `LLAMA_OPENSSL`
-are all `OFF`). The evidence, not just the claim: the built device slice has **no undefined
-network symbols at all** — no BSD sockets (`socket`, `connect`, `getaddrinfo`, …), no
+are all `OFF`; the chat library above is a list that excludes the downloader by name). The
+evidence, not just the claim: the built device slice has **no undefined network symbols at all** — no BSD sockets (`socket`, `connect`, `getaddrinfo`, …), no
 `NSURLSession`, no `CFNetwork`, no `nw_connection`, no OpenSSL. Its only Foundation class
 reference is `NSURL`, which the Metal backend uses to name a local file.
 
 So there is nothing to disclose in `PrivacyInfo.xcprivacy` for this dependency, and the
-manifest's "no analytics, crash-reporting, or advertising SDK" claim stays true. Re-run the check
-when the pin moves:
+manifest's "no analytics, crash-reporting, or advertising SDK" claim stays true. The build script
+now runs this check on every build and fails on a hit (`assert_no_network`); by hand:
 
 ```sh
 nm -u -arch arm64 Vendor/LlamaCpp/Frameworks/llama.xcframework/ios-arm64/libllama.a \
@@ -85,7 +103,7 @@ option or a stale cache fails the build instead of silently shipping a different
 | `GGML_ACCELERATE` | `ON` | Accelerate vDSP/vecLib paths in the CPU backend. |
 | `GGML_OPENMP` | `OFF` | No OpenMP runtime on iOS. |
 | `GGML_NATIVE` | `OFF` | Never tune for the build machine when cross-compiling. |
-| `LLAMA_BUILD_COMMON`, `_EXAMPLES`, `_TOOLS`, `_TESTS`, `_SERVER`, `_APP`, `_UI`, `_MTMD` | `OFF` | Inference library only. `MTMD` (the multimodal projector) turns on with the later vision phase, not before. |
+| `LLAMA_BUILD_COMMON`, `_EXAMPLES`, `_TOOLS`, `_TESTS`, `_SERVER`, `_APP`, `_UI`, `_MTMD` | `OFF` | Inference library only. `MTMD` (the multimodal projector) turns on with the later vision phase, not before. The chat part of `common/` is built separately, without the rest (above). |
 | `LLAMA_USE_PREBUILT_UI` | `OFF` | Would fetch a web bundle over the network at build time. |
 | `LLAMA_OPENSSL` | `OFF` | No TLS stack in an offline inference engine. |
 | `CMAKE_OSX_DEPLOYMENT_TARGET` | from `project.base.yml` | Read from the spec, never a second copy. |

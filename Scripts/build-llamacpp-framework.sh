@@ -110,7 +110,9 @@ fi
 # --- build options ------------------------------------------------------------------------------
 # Everything that is not the inference library is off: no CLI tools, examples, tests, server, web
 # UI, common utils, OpenSSL, or multimodal projector (mtmd). Text-only is the shipping phase; the
-# vision phase flips LLAMA_BUILD_MTMD and re-pins.
+# vision phase flips LLAMA_BUILD_MTMD and re-pins. LLAMA_BUILD_COMMON stays off: the chat part of
+# common/ that the GGUF tool path needs (Plan MQ P2) is built by its own configure below, without
+# the downloader and HTTP code that upstream's common target carries.
 #
 # GGML_METAL_EMBED_LIBRARY embeds the kernel *source* into a __ggml_metallib data section, so
 # there is no default.metallib resource to ship or fail to find at runtime.
@@ -182,6 +184,43 @@ HEADERS=(
   "ggml/include/ggml-opt.h"
   "ggml/include/gguf.h"
 )
+
+# Plan MQ P2: the headers of llama.cpp's chat code, for the wrapper's chat bridge
+# (Sources/LlamaCppWrapper/LlamaCppChat.mm) and nothing else — they are C++, and Swift sees only
+# the bridge's C functions. They go under llama-common/ with their own directory layout: their
+# quoted includes ("common.h", "jinja/parser.h") resolve beside them, and generic names such as
+# common.h or log.h cannot collide with another vendored framework's headers in Xcode's shared
+# include directory. llama-cpp.h, excluded above, is here because common.h includes it.
+COMMON_HEADERS=(
+  "common/chat.h"
+  "common/common.h"
+  "common/json.h"
+  "common/log.h"
+  "common/peg-parser.h"
+  "common/jinja/caps.h"
+  "common/jinja/lexer.h"
+  "common/jinja/parser.h"
+  "common/jinja/runtime.h"
+  "common/jinja/string.h"
+  "common/jinja/utils.h"
+  "common/jinja/value.h"
+  "include/llama-cpp.h"
+)
+
+# The chat library's own configure (Vendor/LlamaCpp/chat/CMakeLists.txt): the same toolchain, the
+# same flags, and the pinned checkout as its source. Only what a C++ compile needs is passed; the
+# engine options above belong to the engine's configure.
+CHAT_CMAKE_ARGS=(
+  -DCMAKE_SYSTEM_NAME=iOS
+  -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_MIN_OS_VERSION}"
+  -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO
+  -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+  -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
+  -DBUILD_SHARED_LIBS=OFF
+  -DCMAKE_CXX_FLAGS="$warning_flags $path_flags"
+)
+chat_project_dir="$vendor_dir/chat"
+[ -f "$chat_project_dir/CMakeLists.txt" ] || die "missing $chat_project_dir/CMakeLists.txt"
 
 # --- fast path ----------------------------------------------------------------------------------
 # --update-sums is a request to record what this configuration produces, so it has to reach the
@@ -260,6 +299,31 @@ build_slice() { # name sysroot archs
     -DCMAKE_XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS="$sysroot" >/dev/null
   assert_cache "$build_dir" "$sysroot" "$archs"
   echo "--- building $name ---"
+  cmake --build "$build_dir" --config Release -j "$jobs" -- -quiet
+}
+
+build_chat_slice() { # name sysroot archs
+  local name="$1" sysroot="$2" archs="$3"
+  local build_dir="$work_dir/build-chat-$name"
+  [ "$clean" -eq 1 ] && rm -rf "$build_dir"
+  echo "--- configuring chat $name ($archs, $sysroot) ---"
+  cmake -B "$build_dir" -S "$chat_project_dir" -G Xcode \
+    "${CHAT_CMAKE_ARGS[@]}" \
+    -DLLAMA_SOURCE_DIR="$src_dir" \
+    -DOG_LLAMA_COMMIT="$LLAMA_COMMIT" \
+    -DCMAKE_OSX_SYSROOT="$sysroot" \
+    -DCMAKE_OSX_ARCHITECTURES="$archs" \
+    -DCMAKE_XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS="$sysroot" >/dev/null
+  local got
+  got="$(cache_value "$build_dir" LLAMA_SOURCE_DIR)"
+  [ "$got" = "$src_dir" ] || die "chat cmake cache builds '${got}', expected the pinned checkout ${src_dir}"
+  got="$(cache_value "$build_dir" CMAKE_OSX_DEPLOYMENT_TARGET)"
+  [ "$got" = "$IOS_MIN_OS_VERSION" ] || die "chat cmake cache targets iOS '${got}', expected ${IOS_MIN_OS_VERSION}"
+  got="$(cache_value "$build_dir" CMAKE_OSX_SYSROOT)"
+  [ "$got" = "$sysroot" ] || die "chat cmake cache sysroot is '${got}', expected ${sysroot}"
+  got="$(cache_value "$build_dir" CMAKE_OSX_ARCHITECTURES)"
+  [ "$got" = "$archs" ] || die "chat cmake cache architectures are '${got}', expected ${archs}"
+  echo "--- building chat $name ---"
   cmake --build "$build_dir" --config Release -j "$jobs" -- -quiet
 }
 
@@ -346,11 +410,12 @@ merge_slice() { # name archs -> writes $work_dir/merged/<name>/libllama.a
 
   # Collect every static archive the build produced rather than naming them: upstream moves and
   # adds libraries (vendor/hash arrived this way), and a hard-coded list silently drops symbols.
+  # The chat library (Plan MQ P2) is its own configure, so its build tree is searched too.
   local archives=()
-  while IFS= read -r a; do archives+=("$a"); done < <(find "$build_dir" -name '*.a' -type f | sort)
+  while IFS= read -r a; do archives+=("$a"); done < <(find "$build_dir" "$work_dir/build-chat-$name" -name '*.a' -type f | sort)
   [ "${#archives[@]}" -gt 0 ] || die "$name produced no static archives"
   local names; names="$(printf '%s\n' "${archives[@]}" | xargs -n 1 basename | sort)"
-  for required in libllama.a libggml.a libggml-base.a libggml-cpu.a libggml-metal.a libggml-blas.a; do
+  for required in libllama.a libggml.a libggml-base.a libggml-cpu.a libggml-metal.a libggml-blas.a libllama-chat.a; do
     printf '%s\n' "$names" | grep -qx "$required" \
       || die "$name is missing $required — check the build options"
   done
@@ -373,10 +438,25 @@ merge_slice() { # name archs -> writes $work_dir/merged/<name>/libllama.a
   echo "$name: $(printf '%s' "$got") — $(du -h "$out_dir/libllama.a" | cut -f1)"
 }
 
+# The engine's no-network posture (NOTICES.md), checked on every build rather than once by hand:
+# the device archive may reference no socket, resolver, URL-loading or TLS symbol. Linking chat
+# (Plan MQ P2) is what made this worth automating — upstream's common library carries a
+# downloader, and the subset that keeps it out is a list someone could one day extend.
+assert_no_network() { # archive
+  local hits
+  hits="$(xcrun nm -u -arch arm64 "$1" 2>/dev/null | sort -u \
+          | grep -E '^_(socket|connect|getaddrinfo|gethostbyname|curl_|SSL_|CF(URL|HTTP|Stream|Socket|Network)|nw_|OBJC_CLASS_\$_NSURL(Session|Connection|Request))' || true)"
+  [ -z "$hits" ] || die "the engine archive references network symbols:
+$hits"
+}
+
 build_slice ios-device iphoneos "arm64"
 build_slice ios-sim iphonesimulator "$sim_archs"
+build_chat_slice ios-device iphoneos "arm64"
+build_chat_slice ios-sim iphonesimulator "$sim_archs"
 merge_slice ios-device "arm64"
 merge_slice ios-sim "$sim_archs"
+assert_no_network "$work_dir/merged/ios-device/libllama.a"
 
 # --- headers ------------------------------------------------------------------------------------
 headers_dir="$work_dir/Headers"
@@ -384,6 +464,12 @@ rm -rf "$headers_dir"; mkdir -p "$headers_dir"
 for h in "${HEADERS[@]}"; do
   [ -f "$src_dir/$h" ] || die "expected header $h is missing at this revision"
   cp "$src_dir/$h" "$headers_dir/"
+done
+for h in "${COMMON_HEADERS[@]}"; do
+  [ -f "$src_dir/$h" ] || die "expected header $h is missing at this revision"
+  relative="${h#common/}"; relative="${relative#include/}"
+  mkdir -p "$headers_dir/llama-common/$(dirname "$relative")"
+  cp "$src_dir/$h" "$headers_dir/llama-common/$relative"
 done
 # Deliberately no module.modulemap. Xcode copies a static xcframework's headers into
 # $BUILT_PRODUCTS_DIR/include, so two vendored xcframeworks that each ship one collide there —
@@ -428,7 +514,10 @@ new_sums="$work_dir/SHA256SUMS.new"
 # -ffile-prefix-map flag names this directory, so hashing the flags verbatim made the fingerprint
 # move between checkouts and every build claim its bytes were "explained by the build options" —
 # the one explanation that would hide a genuinely changed flag.
+# The chat library's arguments and its source list (its CMakeLists.txt) are build options too.
 options_digest="$(printf '%s\n' "${COMMON_CMAKE_ARGS[@]}" "sim_archs=$sim_archs" \
+                    "${CHAT_CMAKE_ARGS[@]}" "${COMMON_HEADERS[@]}" \
+                    "chat_project=$(shasum -a 256 < "$chat_project_dir/CMakeLists.txt" | cut -d' ' -f1)" \
                   | sed "s|$repo_root|/OpenGlasses|g" | shasum -a 256 | cut -d' ' -f1)"
 new_info="$work_dir/BUILD-INFO.new"
 {
