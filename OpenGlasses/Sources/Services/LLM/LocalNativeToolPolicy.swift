@@ -6,8 +6,10 @@ import Foundation
 /// **Native tool calls** — the turn's tools passed as `ToolSpec`s for the model's own chat template
 /// to render, its calls read from mlx-swift-lm's parsers, and the bounded `LocalToolLoop` in place
 /// of the single shot — run only when `Config.localNativeToolCallsEnabled` is on **and** the model
-/// is on `allowlist` (decision 1: one model at a time, starting with Gemma 4 E2B) **and** it runs on
-/// MLX. GGUF has no tool parsing yet (P2).
+/// is on its runtime's allowlist (decision 1: one model at a time, starting with Gemma 4 E2B on
+/// MLX). GGUF models take their tools natively since P2, rendered and parsed by llama.cpp's
+/// `common/chat`, and only with GGUF switched on at all (`Config.ggufModelsEnabled`, which the
+/// GGUF runtime enforces by refusing to load anything while it is off).
 ///
 /// **Field Assist tools** go to a model that has earned them on a phone
 /// (`LocalModelCatalog.qualifiesForFieldAssistTools`, evidence only) or, with the flag on, to an
@@ -21,13 +23,30 @@ enum LocalNativeToolPolicy {
         "mlx-community/gemma-4-e2b-it-4bit",
     ]
 
+    /// Plan MQ P2: the GGUF targets the owner named — Gemma 4 E2B (the same model as the MLX
+    /// entry, so the two runtimes can be compared), Gemma 4 E4B and Qwen 3.5 4B — by their catalog
+    /// ids (`repository#file`), lowercased. Under qualification like the MLX entry: no badge.
+    static let ggufAllowlist: Set<String> = [
+        "ggml-org/gemma-4-e2b-it-gguf#gemma-4-e2b-it-q4_0.gguf",
+        "ggml-org/gemma-4-e4b-it-gguf#gemma-4-e4b-it-q4_0.gguf",
+        "ggml-org/qwen3.5-4b-gguf#qwen3.5-4b-q4_k_m.gguf",
+    ]
+
     static func isAllowlisted(_ modelID: String) -> Bool {
         allowlist.contains(modelID.lowercased())
     }
 
+    /// Allowlisted for `runtime`: an MLX id never qualifies a GGUF model, or the other way round.
+    static func isAllowlisted(_ modelID: String, runtime: LocalModelRuntime) -> Bool {
+        switch runtime {
+        case .mlx: return allowlist.contains(modelID.lowercased())
+        case .llamaCpp: return ggufAllowlist.contains(modelID.lowercased())
+        }
+    }
+
     /// The turn runs native tool calls and the loop.
     static func usesNativeToolCalls(modelID: String, runtime: LocalModelRuntime, flagOn: Bool) -> Bool {
-        flagOn && runtime == .mlx && isAllowlisted(modelID)
+        flagOn && isAllowlisted(modelID, runtime: runtime)
     }
 
     /// The model is offered the Field Assist tools while Field Assist is on: qualified by evidence,

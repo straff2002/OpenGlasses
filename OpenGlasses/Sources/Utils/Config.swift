@@ -2400,7 +2400,8 @@ struct Config {
     @UserDefaultsBacked("localRuntimeCoordinatorEnabled", default: false)
     static var localRuntimeCoordinatorEnabled: Bool
 
-    /// Plan MQ P1: native tool calls on a downloaded model on `LocalNativeToolPolicy.allowlist` —
+    /// Plan MQ P1: native tool calls on a downloaded model on `LocalNativeToolPolicy`'s allowlists
+    /// (MLX, and GGUF since P2 with `ggufModelsEnabled` on too) —
     /// tools rendered by the model's own chat template, calls read from the runtime's parsers, the
     /// bounded `LocalToolLoop` in place of the single shot, and the Field Assist tools while a model
     /// is under qualification. Off by default (Developer panel); off is today's path.

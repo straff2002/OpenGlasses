@@ -137,7 +137,14 @@ final class LocalModelSamplingTests: XCTestCase {
             .appendingPathComponent("OpenGlasses/Sources/Resources/LocalModelCatalog.json")
         let (document, rejected) = try LocalModelCatalogDocument.loadStrict(from: Data(contentsOf: url))
         XCTAssertEqual(rejected, [])
-        XCTAssertEqual(document.entries.count, 3)
-        XCTAssertTrue(document.entries.allSatisfy { $0.sampling == nil }, "no GGUF publisher recommendation is cited yet")
+        XCTAssertEqual(document.entries.count, 6)
+        // Plan MQ P2: the Gemma 4 GGUF entries cite their model card, as the MLX entries do; Qwen 3.5's
+        // card asks for a presence penalty the GGUF sampler does not take, so it carries none.
+        let sampled = document.entries.filter { $0.sampling != nil }.map(\.id.rawValue).sorted()
+        XCTAssertEqual(sampled, ["ggml-org/gemma-4-E2B-it-GGUF#gemma-4-E2B-it-Q4_0.gguf",
+                                 "ggml-org/gemma-4-E4B-it-GGUF#gemma-4-E4B-it-Q4_0.gguf"])
+        for entry in document.entries where entry.sampling != nil {
+            XCTAssertEqual(entry.sampling?.general, LocalModelCatalog.gemma4Sampling.general)
+        }
     }
 }
