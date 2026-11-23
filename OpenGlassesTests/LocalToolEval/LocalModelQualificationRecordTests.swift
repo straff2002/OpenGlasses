@@ -243,23 +243,27 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         var record = record()
         for testCase in cases {
             let run = await LocalToolEval.run(testCase, environment: environment)
-            record.add(run, repeat: 0, flagged: false, seconds: 1)
+            record.add(run, repeat: 0, flagged: false, seconds: 1, recomputing: false)
         }
         record.finished = true
         record.recompute()
         let text = String(decoding: try record.encoded(), as: UTF8.self)
         XCTAssertEqual(record.runs.count, cases.count)
+        // A literal search: thousands of `String.contains` scans over the whole record, each
+        // comparing grapheme by grapheme, took minutes and outran CI's per-test allowance.
+        let haystack = text as NSString
+        func holds(_ needle: String) -> Bool { haystack.range(of: needle, options: .literal).location != NSNotFound }
         for testCase in cases {
-            XCTAssertFalse(text.contains("\"\(testCase.id)\""), "no case id")
-            XCTAssertFalse(text.contains(testCase.turn), "no turn")
-            for passage in (testCase.passages ?? [:]).values { XCTAssertFalse(text.contains(passage), "no passage") }
-            for result in (testCase.results ?? [:]).values { XCTAssertFalse(text.contains(result), "no result") }
+            XCTAssertFalse(holds("\"\(testCase.id)\""), "no case id")
+            XCTAssertFalse(holds(testCase.turn), "no turn")
+            for passage in (testCase.passages ?? [:]).values { XCTAssertFalse(holds(passage), "no passage") }
+            for result in (testCase.results ?? [:]).values { XCTAssertFalse(holds(result), "no result") }
             for call in testCase.expect.calls {
                 for value in call.values.values where value.count > 3 {
-                    XCTAssertFalse(text.contains("\"\(value)\""), "no argument value")
+                    XCTAssertFalse(holds("\"\(value)\""), "no argument value")
                 }
             }
-            if let reading = testCase.reading, !reading.answer.isEmpty { XCTAssertFalse(text.contains(reading.answer)) }
+            if let reading = testCase.reading, !reading.answer.isEmpty { XCTAssertFalse(holds(reading.answer)) }
         }
         // The summary is the eval's own report and floors.
         var report = LocalToolEval.Report()

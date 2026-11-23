@@ -10,7 +10,7 @@
 <meta name="description" content="How to build a Field Assist vault from your own manuals, import it on the iPhone, test it and share it.">
 <!-- Converted from docs/field-assist-vault-guide.md by Scripts/build-vault-guide-page.py. That file
      is the source: change the guide there and run the script again, rather than editing this page.
-     source-sha256: 66c7281fa1b7c575ca90cbe68b38888c7fdbb377c52d4b7da0e16d68d5c17c58 -->
+     source-sha256: a389558204290c7daa76937c969c2314174eb94f0b992ace25ba325fb0eaf482 -->
 <link rel="stylesheet" href="/assets/site.css">
 <link rel="icon" href="/assets/mark.svg" type="image/svg+xml">
 </head>
@@ -668,7 +668,7 @@ calc volts (V) = 2 * current * length * resistance / 1000
 </code></pre>
 <p>The same calculation without a chain is the assistant's voltage-drop calculator: <em>"what's the drop on a 30 m single-phase run at 20 A?"</em> It needs the phase, the current, the one-way length in metres or feet, and the conductor's resistance (per km, m, 1000 ft or ft) or a factor with the conductor's area, and it asks for whichever is missing rather than assuming one. It answers with the drop in volts and, given the supply voltage, as a percentage of it, says every input back, and says that it counts resistance only, not reactance or power factor. It is the same arithmetic as the <code>calc</code> lines above, so a chain and the calculator give the same number for the same inputs.</p>
 <h3 id="the-electrical-starter">The electrical starter</h3>
-<p>The app ships an <strong>Electrical Service</strong> vault, offered beside the refrigeration and IT vaults in Settings › Field Assist. It holds a <code>safety.md</code> (isolate, lock off, prove dead, never guess a rating), an <code>error_codes.md</code> and a <code>parts.md</code> with nothing in them yet, and a <code>chains.md</code> holding the step vocabulary and the worked example above, renamed "Example: …" and commented, so the first chain file an electrician opens already parses. It declares the <code>electrical</code> trade. It ships no standard's text, no table and no rule, and it lists its example chains as needing Tables 90, 98, 99 and 97 until a book that prints tables with those labels is loaded.</p>
+<p>The app ships an <strong>Electrical Service</strong> vault, offered beside the refrigeration and IT vaults in Settings › Field Assist. It holds a <code>safety.md</code> (isolate, lock off, prove dead, never guess a rating), an <code>error_codes.md</code> and a <code>parts.md</code> with nothing in them yet, and a <code>chains.md</code> holding the step vocabulary and the worked example above, renamed "Example: …" and commented, so the first chain file an electrician opens already parses, and a <code>conductors.md</code> saying that conductor areas and factors come from <code>domain_calc</code>, never from memory, and that the organisation's own book wins. It declares the <code>electrical</code> trade. It ships no standard's text, no table and no rule, and it lists its example chains as needing Tables 90, 98, 99 and 97 until a book that prints tables with those labels is loaded.</p>
 <p>To make it your organisation's vault with your own code books, start from its folder in the app's public repository, which also holds a <code>manifest.json</code> and a <code>documents/</code> folder with a note:</p>
 <pre><code>git clone --depth 1 https://github.com/straff2002/OpenGlasses.git
 cp -R OpenGlasses/OpenGlasses/Sources/Resources/Vaults/electrical my-electrical-vault

@@ -307,8 +307,10 @@ struct LocalModelQualificationRecord: Codable, Equatable {
 
     // MARK: - Adding runs
 
+    /// `recomputing: false` leaves the summary stale for a caller adding many runs at once, which
+    /// then calls `recompute()` itself: a summary per run makes a whole corpus quadratic.
     mutating func add(_ run: LocalToolEval.Run, repeat index: Int, flagged: Bool, seconds: Double,
-                      thermalAtStart: QualificationRunGate.Thermal? = nil) {
+                      thermalAtStart: QualificationRunGate.Thermal? = nil, recomputing: Bool = true) {
         let m = run.measurements
         let entry = RunEntry(
             key: Self.key(caseID: run.caseID, repeat: index), caseHash: Self.caseHash(run.caseID), repeatIndex: index,
@@ -325,7 +327,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
-        recompute()
+        if recomputing { recompute() }
     }
 
     /// The runs back as the eval's own type, for its report and floors.
