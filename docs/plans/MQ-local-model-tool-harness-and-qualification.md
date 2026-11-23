@@ -542,12 +542,16 @@ for GGUF at all). Nothing changes with either flag off.
   (none does). `common/`'s own logger, which would write template text and model output to stderr,
   is switched off by the bridge.
 - **Size.** The device slice went from 10,322,800 bytes (v0.3.0 without chat, Xcode 26.6) to
-  15,838,696 (with it, Xcode 27.2); the chat library alone is a 5.3 MB archive. Linked and
+  15,621,800 (with it, Xcode 26.6); the chat library alone is a 5.3 MB archive. Linked and
   dead-stripped into a minimal arm64 executable, chat adds 1,522,744 bytes (stripped: 5.53 → 7.05 MB).
-- **Reproducibility.** The bytes were re-recorded (`--update-sums`) because both the options and
-  the toolchain changed (Xcode 26.6 → 27.2). The Engine Reproducibility workflow now also runs when
-  `chat/CMakeLists.txt` changes, and selects the Xcode BUILD-INFO names when the runner has it; its
-  `--strict` rebuild fails, as it should, on a runner without Xcode 27.2.
+- **Reproducibility.** The bytes were re-recorded because the options changed. A first record on
+  the Mac (Xcode 27.2) could not be reproduced: no GitHub macOS runner has 27.2, so the strict
+  rebuild failed on the toolchain. The committed engine is instead the CI runner's own build
+  (Xcode 26.6, the toolchain `main`'s engine was recorded with), made by a hand-started run of the
+  Engine Reproducibility workflow with its new `record` input, which builds with `--update-sums` and
+  uploads the engine, SHA256SUMS and BUILD-INFO for a person to commit; the ordinary strict run then
+  checks those bytes against the same toolchain. The workflow now also runs when
+  `chat/CMakeLists.txt` changes, and selects the Xcode BUILD-INFO names when the runner has it.
 - **The bridge.** `LlamaCppChat.mm` in the wrapper, behind C functions in `LlamaCppWrapper.h`, JSON
   text in and out: templates from the model (or from Jinja source, for the tests), a render
   (OpenAI-style messages, tools, `tool_choice`, thinking, a fixed clock → prompt, format, lazy grammar

@@ -58,7 +58,8 @@ Swift sees only the bridge's C functions. Its logger, which writes template text
 to stderr from its own thread, is switched off by the bridge (`common_log_set_verbosity_thold(-1)`).
 
 Size, device slice (`ios-arm64/libllama.a`): 10,322,800 bytes at v0.3.0 without it (Xcode 26.6),
-15,838,696 bytes with it (Xcode 27.2); the chat library alone is a 5,291,528-byte archive.
+15,621,800 bytes with it (Xcode 26.6, recorded on the CI runner); the chat library alone is about
+a 5.3 MB archive.
 
 ## Telemetry posture
 
