@@ -13,7 +13,7 @@ import UIKit
 ///   answer replaces as it would a card — and the lens shows the page only after the press;
 /// - the answer card's **Page** action (`openStaged`) opens the turn's page;
 /// - with the phone locked the view opens anyway: nothing here waits for the app to be in front.
-/// Where the lens can't show a picture (the Even G2, the web mirror alone, a page with no PDF
+/// Where the lens can't show a picture (the Even G2, a page with no PDF
 /// behind it, the HUD off) the old one-line cue (`ManualFigureCue.show`) is all the lens gets.
 /// While another app has the Display (KP §8) nothing opens and nothing is taken back.
 ///
@@ -108,8 +108,7 @@ final class LensPageSession: ObservableObject {
     /// (`LensPageFrame.readingGeometry`), the Even panel's own on Even.
     var readingGeometry: () -> TeleprompterPaginator.Geometry = { LensPageSession.activeReadingGeometry() }
 
-    /// Reading mode's geometry for the backend that shows the HUD (the web mirror is the Display's
-    /// shape, as for the answer card).
+    /// Reading mode's geometry for the backend that shows the HUD, as for the answer card.
     static func activeReadingGeometry() -> TeleprompterPaginator.Geometry {
         #if !AVENKIN_PHONE_ONLY
         return LensPageFrame.readingGeometry(for: Config.displayBackend == .evenG2 ? .evenG2 : .metaDisplay)

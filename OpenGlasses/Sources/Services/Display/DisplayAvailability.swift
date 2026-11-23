@@ -20,8 +20,7 @@ import Foundation
 /// state say, which on today's glasses is "not worn".
 ///
 /// **Backends.** Only the Meta Display has a session another app can take. The Even G2 backend
-/// and the web mirror always read `.ours` (`GlassesDisplayService` never consults the session
-/// for them), and the mirror is never what makes the reading `.inUse`.
+/// always reads `.ours` (`GlassesDisplayService` never consults the session for it).
 enum DisplayAvailability: String, Equatable, CaseIterable {
     case ours
     case inUse

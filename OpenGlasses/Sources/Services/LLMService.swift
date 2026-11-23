@@ -975,8 +975,8 @@ class LLMService: ObservableObject {
             prompt += "\n\n\(skillContext)"
         }
         closeBlock("installed skills")
-        // Plan KP P2: the follow-up tail, asked for only while answers are shown on a display (or
-        // the mirror) and its setting is on. In the volatile tail: the display comes and goes, and
+        // Plan KP P2: the follow-up tail, asked for only while answers are shown on a display and
+        // its setting is on. In the volatile tail: the display comes and goes, and
         // the cacheable head must not move with it. Cloud prompts only (`offersFollowUps`).
         if offersFollowUps, let clause = FollowUpPrompt.clauseForPrompt() {
             prompt += "\n\n" + clause

@@ -653,7 +653,6 @@ final class PrivacyLogTests: XCTestCase {
         "OpenGlasses/Sources/Utils/Config.swift",
         "OpenGlasses/Sources/Services/ModelFetcher.swift",
         "OpenGlasses/Sources/Services/WebRTCStreamingService.swift",
-        "OpenGlasses/Sources/Services/Display/WebHUD/WebHUDMirrorServer.swift",
         "OpenGlasses/Sources/Services/FieldAssist/WebRTCPeerTransport.swift",
         "OpenGlasses/Sources/Services/FieldAssist/ExpertStreamTransport.swift",
         "OpenGlasses/Sources/Services/FieldAssist/ExpertBridge.swift",

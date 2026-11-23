@@ -4,14 +4,13 @@ import Foundation
 /// glasses-free use is the baseline, every other surface is an extra that is named only while it
 /// is present, and an unavailable state says why.
 ///
-/// Today a turn reaches the wearer two ways: spoken (Voice Cues) and in-lens (a glasses display,
-/// native or the web mirror). The phone screen shows nothing during a walk, so with neither the
+/// Today a turn reaches the wearer two ways: spoken (Voice Cues) and in-lens (a glasses display). The phone screen shows nothing during a walk, so with neither the
 /// guidance is silent and the copy says so instead of promising a lens. The watch's live route
 /// (Plan GM P1b) joins this list when it ships; until then the wrist is not named.
 struct WalkingTurnSurfaces: Equatable, Sendable {
     /// Turns are spoken (`Config.navigationVoiceCues`).
     var voiceCues: Bool
-    /// A glasses display is enabled and connected (or its web mirror is on), so
+    /// A glasses display is enabled and connected, so
     /// `GlassesDisplayService.showNavigation` reaches a lens.
     var inLens: Bool
 

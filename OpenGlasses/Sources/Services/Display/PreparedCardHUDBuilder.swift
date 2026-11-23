@@ -42,8 +42,6 @@ struct PreparedCardLensPress: Equatable {
 /// | a pushed glance (§6.2) | the headline | one fact | **Open** · **Close** |
 ///
 /// **Sensitivity (§6.6).** A health chip shows on the lens as "Short night", never its numbers.
-/// The web mirror gets the strictest column: a health card is hidden there, and a draft's text is
-/// hidden on every draft screen (`HUDScreen.mirror`).
 ///
 /// **Medical Compliance (Plan KT P4).** With `withholding`, every screen shows the card as the Today
 /// glance would (`PreparedCardMedicalWithholding.shown`): no event title, and a draft that names the
@@ -91,14 +89,6 @@ enum PreparedCardHUDBuilder {
     static var openOnPhoneLine: String {
         String(localized: "On your phone when you unlock it", comment: "Glasses: a card's action will open on the phone once it is unlocked.")
     }
-    /// The web mirror's line in place of a card with health content.
-    static var mirrorHiddenLine: String {
-        String(localized: "Shown on the glasses only", comment: "Web display mirror: a card it may not show.")
-    }
-    /// The web mirror's line in place of a draft's text.
-    static var mirrorDraftHiddenLine: String {
-        String(localized: "Message hidden here", comment: "Web display mirror: stands in for a drafted message's text.")
-    }
     static var nextLabel: String { String(localized: "Next ›", comment: "Glasses: next card, or the draft's next page.") }
     static var closeLabel: String { String(localized: "Close", comment: "Glasses: closes the cards.") }
     static var sendLabel: String {
@@ -143,9 +133,7 @@ enum PreparedCardHUDBuilder {
             items.append(HUDItem(id: ItemID.close, label: closeLabel, style: .outline, action: press(.close)))
         }
 
-        var screen = HUDScreen(title: card.headline, lines: lines, items: items, focusItemID: ItemID.primary)
-        if card.sensitivity == .health { screen.mirror = .hidden(placeholder: mirrorHiddenLine) }
-        return screen
+        return HUDScreen(title: card.headline, lines: lines, items: items, focusItemID: ItemID.primary)
     }
 
     /// The second slot: the draft action when the primary is not already it, else the first
@@ -241,12 +229,7 @@ enum PreparedCardHUDBuilder {
         items.append(HUDItem(id: ItemID.read, label: readLabel, style: .secondary, action: press(.readIt)))
         items.append(HUDItem(id: ItemID.back, label: backLabel, style: .outline, action: press(.back)))
 
-        var screen = HUDScreen(title: draftTitle(draft), lines: lines, items: items)
-        // §6.6: a draft's text is personal, so the mirror never shows it; a health card not at all.
-        screen.mirror = card.sensitivity == .health
-            ? .hidden(placeholder: mirrorHiddenLine)
-            : .lines([HUDLine(mirrorDraftHiddenLine, icon: .message, emphasis: .meta)])
-        return screen
+        return HUDScreen(title: draftTitle(draft), lines: lines, items: items)
     }
 
     // MARK: - A pushed glance (§6.2)
@@ -265,9 +248,7 @@ enum PreparedCardHUDBuilder {
                 onPress(PreparedCardLensPress(action: .close, cardID: card.id))
             },
         ]
-        var screen = HUDScreen(title: card.headline, lines: lines, items: items, focusItemID: ItemID.open)
-        if card.sensitivity == .health { screen.mirror = .hidden(placeholder: mirrorHiddenLine) }
-        return screen
+        return HUDScreen(title: card.headline, lines: lines, items: items, focusItemID: ItemID.open)
     }
 
     // MARK: - Actions

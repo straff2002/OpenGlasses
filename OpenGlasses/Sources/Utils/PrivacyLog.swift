@@ -50,7 +50,7 @@ enum PrivacyLog {
         case gateway
         /// Model Context Protocol — both the client we run and the local server we expose.
         case mcp
-        /// Outbound media links: viewer broadcast, expert bridge, HUD mirror, their signalling.
+        /// Outbound media links: viewer broadcast, expert bridge, their signalling.
         case stream
         /// Wake word, recognition, transcription, captions, translation, speech synthesis.
         case speech
@@ -1291,7 +1291,7 @@ enum PrivacyLog {
     /// parameter here — not the URL, not the key, not a prefix of the key, and not the stall
     /// policy's advice sentence, which is composed *around* the destination URL.
     enum StreamChannel: String {
-        case viewerBroadcast, expertBridge, hudMirror, signaling, broadcastChat, rtmpBroadcast
+        case viewerBroadcast, expertBridge, signaling, broadcastChat, rtmpBroadcast
     }
 
     enum StreamEvent: String {

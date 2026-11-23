@@ -39,17 +39,17 @@ echo
 # Literals that must be ABSENT. Each one is only compiled into a build that can actually open the
 # transport it names, so its presence in a Release artefact means the containment did not hold.
 #
-#  - mcp-glasses-legacy-cleartext-listener-debug-only / web-hud-mirror-...: carried on the
-#    LocalListenerHandle the production factory returns, which only exists inside the `#if DEBUG`
-#    branch of LocalListenerProvider.production. Present only if the socket-opening branch was
-#    compiled in. One literal per service, so the check says which transport leaked.
+#  - mcp-glasses-legacy-cleartext-listener-debug-only: carried on the LocalListenerHandle the
+#    production factory returns, which only exists inside the `#if DEBUG` branch of
+#    LocalListenerProvider.production. Present only if the socket-opening branch was compiled in.
+#    One literal per service, so the check says which transport leaked. (The web mirror of the
+#    lens had its own until it was retired on 2026-11-23.)
 #  - internalSkillPack: the Debug-only private-HTTP BoundedHTTPClient profile (the marker the
 #    earlier W02.4 checkpoint already relies on). It is unrelated to the listeners, which is the
 #    point: it independently confirms this really is a Release-configuration artefact, so an absent
 #    listener marker is containment rather than a Debug build that happens to lack it.
 forbidden=(
     "mcp-glasses-legacy-cleartext-listener-debug-only"
-    "web-hud-mirror-legacy-cleartext-listener-debug-only"
     "internalSkillPack"
 )
 

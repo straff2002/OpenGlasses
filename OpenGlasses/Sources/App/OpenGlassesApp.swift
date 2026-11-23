@@ -243,9 +243,9 @@ struct OpenGlassesApp: App {
         // without the launch argument — first, because everything below reads what it seeds.
         UITestSupport.applyLaunchState()
         #endif
-        // A Debug install may have persisted opt-ins for the legacy cleartext MCP/Web HUD
-        // listeners. Production refuses those listeners independently at their start boundary;
-        // clearing the preferences here also prevents the UI from representing them as enabled.
+        // A Debug install may have persisted an opt-in for the legacy cleartext MCP listener.
+        // Production refuses that listener independently at its start boundary; clearing the
+        // preference here also prevents the UI from representing it as enabled.
         LocalServiceExposurePolicy.current.clearPersistedOptIns()
         // Start the persistent diagnostic ring before anything else can log, so a launch-time fault
         // is in the buffer a wearer would export. It records the *encoded* events — the same lines
@@ -288,6 +288,9 @@ struct OpenGlassesApp: App {
         // left behind — the scoped key first, then the file. Until it completes once, and again if
         // the database file ever comes back.
         RetiredFaceDataCleanup.run()
+        // The web mirror of the lens was retired (2026-11-23): delete its access token and its
+        // preferences. Until it completes once.
+        RetiredWebMirrorCleanup.run()
         // Read the App Store storefront once for this launch (Plan HS P1 item 1), so the regional
         // defaults that depend on it answer synchronously from here on. Until it lands the
         // storefront is unknown, and unknown is never read as a particular market.
@@ -1605,8 +1608,6 @@ class AppState: ObservableObject, AppStateProtocol {
     let parkingStore = ParkingStore.shared
     lazy var parkingCapture = ParkingCaptureService(store: parkingStore)
     let parkingPhotoFlow = ParkingPhotoFlow()
-    /// Web HUD mirror server (Plan BP) — entitlement-free Ray-Ban Display web-view path.
-    let webHUDMirror = WebHUDMirrorServer()
     /// Acting tool calls the supervisor held while the user was disengaged (Plan W), surfaced on
     /// re-engagement.
     let heldRecommendations = HeldRecommendationStore()
@@ -3385,9 +3386,7 @@ class AppState: ObservableObject, AppStateProtocol {
             self?.enforceBroadcastRules()
             // The same for a live expert stream, in all of the mode.
             self?.enforceExpertStreamRules()
-            // Plan BP: HIPAA hard-disables the web mirror — kill a live listener at once.
             if Config.hipaaMode {
-                self?.webHUDMirror.stop()
                 // Entering compliance mode revokes every outstanding clinical export: a file
                 // created under the looser regime must not survive into the stricter one.
                 self?.medicalExportService.leases.revokeAll()
@@ -4151,14 +4150,6 @@ class AppState: ObservableObject, AppStateProtocol {
         MCPGlassesServer.shared.configure(camera: cameraService, tts: speechService,
                                           glassesDisplay: glassesDisplay)
         MCPGlassesServer.shared.startIfEnabled()
-
-        // Web HUD mirror (Plan BP, dev-only): serves the current HUD frame to the glasses'
-        // built-in web view — the entitlement-free Ray-Ban Display path. Read-only.
-        webHUDMirror.payloadProvider = { [weak self] in
-            guard let screen = self?.glassesDisplay.mirrorScreen else { return .empty }
-            return WebHUDPayload.from(screen: screen)
-        }
-        webHUDMirror.startIfEnabled()
 
         // Pre-fetch Home Assistant entity cache for fuzzy matching
         Task { await HomeAssistantEntityCache.shared.refreshIfNeeded() }
@@ -6988,10 +6979,9 @@ class AppState: ObservableObject, AppStateProtocol {
         enforceBroadcastRules()
         if !Config.agentModeEnabled {
             agentScheduler.stop()
-            // Both are gated on agent mode at start; one already running would otherwise outlive
-            // a policy that has just switched agent mode off.
+            // Gated on agent mode at start; one already running would otherwise outlive a policy
+            // that has just switched agent mode off.
             if !hermesBridge.isEnabled { hermesBridge.disconnect() }
-            webHUDMirror.stop()
         }
         if !(Config.agentModeEnabled && Config.mcpServerEnabled) {
             MCPGlassesServer.shared.stop()

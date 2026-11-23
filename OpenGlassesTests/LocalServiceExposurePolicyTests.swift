@@ -25,13 +25,11 @@ final class LocalServiceExposurePolicyTests: XCTestCase {
         let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { suite.removePersistentDomain(forName: suiteName) }
         suite.set(true, forKey: "mcpServerEnabled")
-        suite.set(true, forKey: "hudMirrorEnabled")
         suite.set(true, forKey: "unrelatedPreference")
 
         LocalServiceExposurePolicy(buildFlavor: .release).clearPersistedOptIns(defaults: suite)
 
         XCTAssertNil(suite.object(forKey: "mcpServerEnabled"))
-        XCTAssertNil(suite.object(forKey: "hudMirrorEnabled"))
         XCTAssertEqual(suite.bool(forKey: "unrelatedPreference"), true)
     }
 
@@ -40,26 +38,30 @@ final class LocalServiceExposurePolicyTests: XCTestCase {
         let suite = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { suite.removePersistentDomain(forName: suiteName) }
         suite.set(true, forKey: "mcpServerEnabled")
-        suite.set(true, forKey: "hudMirrorEnabled")
 
         LocalServiceExposurePolicy(buildFlavor: .debug).clearPersistedOptIns(defaults: suite)
 
         XCTAssertEqual(suite.bool(forKey: "mcpServerEnabled"), true)
-        XCTAssertEqual(suite.bool(forKey: "hudMirrorEnabled"), true)
     }
 
-    func testBothListenerImplementationsEnforceTheCurrentBuildPolicy() throws {
+    /// The web mirror of the lens, the other legacy listener, was retired on 2026-11-23.
+    func testTheMCPGlassesServerIsTheOnlyLegacyListener() {
+        XCTAssertEqual(LocalServiceExposurePolicy.Service.allCases, [.mcpGlasses])
+        XCTAssertEqual(LocalServiceExposurePolicy(buildFlavor: .release).persistedOptInKeysToClear,
+                       ["mcpServerEnabled"])
+    }
+
+    func testTheListenerImplementationEnforcesTheCurrentBuildPolicy() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let expectations = [
-            ("OpenGlasses/Sources/Services/MCPServer/MCPGlassesServer.swift", ".mcpGlasses", false),
-            ("OpenGlasses/Sources/Services/Display/WebHUD/WebHUDMirrorServer.swift", ".webHUDMirror", true),
+            ("OpenGlasses/Sources/Services/MCPServer/MCPGlassesServer.swift", ".mcpGlasses"),
         ]
 
-        for (relativePath, service, protectsRegistrationURL) in expectations {
+        for (relativePath, service) in expectations {
             let source = try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
-            // The servers now hold an injected policy so composition can be tested; the default
+            // The server now holds an injected policy so composition can be tested; the default
             // is still the compile-time one, which is what ships.
             XCTAssertTrue(source.contains("policy: LocalServiceExposurePolicy = .current"),
                           "\(relativePath) must default to the compile-time build policy")
@@ -78,13 +80,6 @@ final class LocalServiceExposurePolicyTests: XCTestCase {
                 startPrefix.contains(policyCall),
                 "\(relativePath) must refuse through the current-build policy before constructing its listener"
             )
-            if protectsRegistrationURL {
-                let registration = try XCTUnwrap(source.range(of: "var registrationURL:"))
-                XCTAssertTrue(
-                    source[registration.lowerBound..<start.lowerBound].contains(policyCall),
-                    "\(relativePath) must refuse before constructing its token-bearing registration URL"
-                )
-            }
         }
     }
 }
