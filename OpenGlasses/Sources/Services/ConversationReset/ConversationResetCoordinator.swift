@@ -61,6 +61,10 @@ final class ConversationResetCoordinator: ObservableObject {
     /// makes "it coalesced" observable rather than inferred.
     private(set) var coalescedRequests: Int = 0
 
+    /// How many live backstop requests were absorbed because the wearer's turn had already been
+    /// reset (see `requestLiveBackstopReset(turnGeneration:)`).
+    private(set) var absorbedBackstopRequests: Int = 0
+
     private var dependencies: Dependencies
     private var inFlight: Task<ConversationResetReport, Never>?
 
@@ -99,6 +103,33 @@ final class ConversationResetCoordinator: ObservableObject {
         inFlight = nil
         phase = .idle
         return report
+    }
+
+    /// The live-mode backstop's request for a bare "new topic" the model may not have acted on.
+    ///
+    /// The model can call `new_topic` for the very words the backstop read, so two requests can
+    /// arrive for one turn. The turn carries the generation it began under, and that settles it:
+    ///
+    /// - a reset still running joins it (as any request does), so no second confirmation;
+    /// - a reset that ran since the turn began — the model's own call, which reaches the
+    ///   coordinator mid-turn, before the turn's words are final — already answered this turn,
+    ///   so the request is absorbed and the brand-new conversation is left alone;
+    /// - otherwise it is a reset like any other, from `.voiceCommand`, as Tier 0's is.
+    ///
+    /// - Returns: the report of the run it started or joined, or nil when it was absorbed.
+    @discardableResult
+    func requestLiveBackstopReset(turnGeneration: UInt64) async -> ConversationResetReport? {
+        if inFlight == nil, Self.backstopIsAbsorbed(turnGeneration: turnGeneration, current: generation) {
+            absorbedBackstopRequests += 1
+            return nil
+        }
+        return await requestReset(source: .voiceCommand)
+    }
+
+    /// The dedupe rule on its own: a turn that began before the current generation has been reset
+    /// since it began.
+    nonisolated static func backstopIsAbsorbed(turnGeneration: UInt64, current: UInt64) -> Bool {
+        turnGeneration != current
     }
 
     // MARK: - The run

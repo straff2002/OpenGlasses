@@ -2080,6 +2080,20 @@ class AppState: ObservableObject, AppStateProtocol {
     private lazy var bridgeResetAdapter = BridgeSessionResetAdapter(bridge: hermesBridge)
     private lazy var hermesAPIResetAdapter = ResponseChainResetAdapter(chain: hermesAgent)
 
+    /// The live new-topic backstop on a finished wearer turn. The model's own `new_topic` call for
+    /// the same words is absorbed by the coordinator (`requestLiveBackstopReset(turnGeneration:)`).
+    private func applyLiveNewTopicBackstop(_ turn: LiveWearerTurn, interpreting: Bool) {
+        guard LiveNewTopicBackstop.applies(turn, jobActive: FieldSessionService.shared.activeSession != nil,
+                                           interpreting: interpreting) else { return }
+        let generation = turn.resetGeneration ?? conversationReset.currentGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let report = await self.conversationReset.requestLiveBackstopReset(turnGeneration: generation)
+            PrivacyLog.app(.liveNewTopicBackstop,
+                           state: PrivacyToken(report == nil ? "absorbed" : "requested"))
+        }
+    }
+
     /// The backends that own this conversation's context *right now*, in reset order. Only live
     /// owners are listed: a gateway or bridge that is not currently part of the conversation has
     /// no context to retire, and listing it would let something the wearer isn't using veto their
@@ -7877,6 +7891,15 @@ class AppState: ObservableObject, AppStateProtocol {
         openAIRealtimeSession.onSaidGoodbye = { [weak self] in
             guard let self else { return }
             self.stopLiveSession(self.openAIRealtimeSession.sessionMode, source: .voice)
+        }
+        // A bare "new topic" in a live session resets the conversation even when the model forgets
+        // its `new_topic` tool, by Direct's own Tier-0 test (`LiveNewTopicBackstop`).
+        for session in [geminiLiveSession as RealtimeSessionManager, openAIRealtimeSession] {
+            session.resetGeneration = { [weak self] in self?.conversationReset.currentGeneration ?? 0 }
+            session.onWearerTurnFinished = { [weak self, weak session] turn in
+                guard let self, let session else { return }
+                self.applyLiveNewTopicBackstop(turn, interpreting: session.interpreterPair != nil)
+            }
         }
         geminiLiveSession.onInterpreterEnded = { [weak self] in
             Task { @MainActor in

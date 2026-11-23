@@ -365,6 +365,10 @@ enum PrivacyLog {
         case saidGoodbye
         /// A spoken interpreter session started, or was refused; `detail` on the refusal is why.
         case interpreterStarted, interpreterRefused
+        /// The wearer's words kept arriving after the provider said the turn was complete, and were
+        /// filed with that turn (`LateInputAttribution`). `count` is the fragments, `characters`
+        /// their length; the words themselves are never logged.
+        case lateInputAttributed
     }
 
     enum UtteranceDirection: String { case input, output }
@@ -2528,6 +2532,10 @@ enum PrivacyLog {
         case conversationCleared, conversationEnded
         /// A `new_topic` tool call whose turn was not a reset request. Nothing was cleared.
         case conversationResetRefused
+        /// A live session's finished wearer turn was a bare "new topic" the model had not acted on,
+        /// and the backstop asked for the reset. `state` is `requested` or `absorbed` (the turn had
+        /// already been reset, by the model's own call).
+        case liveNewTopicBackstop
         case turnCancelled, responseCancelled, playbackStopped, alreadyProcessing
         case utteranceHeld, utteranceRejected, utteranceStaleDropped
         case bargeIn, consentAnsweredByVoice

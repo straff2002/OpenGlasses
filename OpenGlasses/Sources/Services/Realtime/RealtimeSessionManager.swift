@@ -121,6 +121,22 @@ class RealtimeSessionManager: ObservableObject {
     /// Plan NA: says the check's correction in the app's own voice (AppState: the speech service,
     /// `SpeechSource.replyCheck`). Nil falls back to the local cue voice.
     var onReplyCheckLine: ((String) -> Void)?
+    /// A streaming provider (Gemini Live) can send the last of the wearer's words after it has
+    /// said the turn is complete. The finished turn is held for a short grace so those words are
+    /// filed with it, then finalised (``LateInputAttribution``). Never for the interpreter.
+    private var lateInput = LateInputAttribution()
+    /// Pairs a complete transcript with its turn's end, for a provider that sends one transcript
+    /// per turn, so a finished turn can be reported with whether the model replied to it.
+    private var completeTranscripts = CompleteTranscriptPairing()
+    /// The conversation-reset generation the wearer's turn under way began under, stamped at the
+    /// turn's first sign. Lets the new-topic backstop tell that the model already reset this turn.
+    private var turnResetGeneration: UInt64?
+    /// Reads the conversation-reset generation. AppState: `conversationReset.currentGeneration`.
+    var resetGeneration: (() -> UInt64)?
+    /// A wearer turn is final: its words are complete and the turn has ended. AppState runs the
+    /// live new-topic backstop on it (`LiveNewTopicBackstop`). Never sent for the interpreter, and
+    /// never once the session is stopping.
+    var onWearerTurnFinished: ((LiveWearerTurn) -> Void)?
 
     /// Set before a start to make that session the spoken interpreter. Consumed by the start.
     var interpreterRequest: InterpreterPair?
@@ -286,6 +302,9 @@ class RealtimeSessionManager: ObservableObject {
         errorMessage = nil
         // FF P1/PR5: a session's record belongs to that session and to nothing else.
         conversationRecorder.reset()
+        lateInput = LateInputAttribution()
+        completeTranscripts = CompleteTranscriptPairing()
+        turnResetGeneration = nil
         sessionStartedAt = Date()
         // Plan HY P1: the quiet spell starts with the session. Started this early so a start that
         // hangs (a cue that never finishes, a connect that never answers) is still bounded.
@@ -391,11 +410,26 @@ class RealtimeSessionManager: ObservableObject {
             // would be read as the wearer's words at the end of the next turn, which is the
             // difference between a question answered and a session ended on an old "bye".
             if !self.providerSession.inputTranscriptionIsDelta { self.userTranscript = "" }
+            // A new turn: a held turn is final now. Through the main actor's queue, behind any
+            // late words of the held turn already on it.
+            Task { @MainActor [weak self] in
+                guard let self, self.isActive, self.sessionIdentity == identity else { return }
+                self.noteNewTurnBegan(identity: identity)
+                guard self.interpreterRouter == nil else { return }
+                if self.providerSession.inputTranscriptionIsDelta {
+                    if self.turnResetGeneration == nil { self.turnResetGeneration = self.resetGeneration?() }
+                } else {
+                    self.completeTranscripts.speechStarted()
+                    self.turnResetGeneration = self.resetGeneration?()
+                }
+            }
         }
         // Wire provider audio → playback
         providerSession.onAudioReceived = { [weak self] data in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             self.noteModelReply()
+            // Model audio after a turn boundary is a new response, so a held turn is final.
+            if self.lateInput.isHolding { self.queueNewTurnBegan(identity: identity) }
             if self.interpreterRouter != nil {
                 self.applyInterpreter(self.interpreterRouter?.audio(data, now: Date()))
             } else if self.replyWatch?.isMuted != true {   // Plan NA: a stopped answer stays stopped
@@ -406,6 +440,7 @@ class RealtimeSessionManager: ObservableObject {
         // Wire interruption → stop playback
         providerSession.onInterrupted = { [weak self] in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
+            if self.lateInput.isHolding { self.queueNewTurnBegan(identity: identity) }
             self.audioManager.stopPlayback()
             self.applyReplyWatch(self.replyWatch?.interrupted())
             self.applyInterpreter(self.interpreterRouter?.interrupted())
@@ -424,6 +459,9 @@ class RealtimeSessionManager: ObservableObject {
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
+                // A second boundary is a new turn's: a turn still held from the last one is final
+                // before this one touches the record or the goodbye check.
+                self.noteNewTurnBegan(identity: identity)
                 self.audioManager.resetPlaybackProgress()
                 let interpreting = self.interpreterRouter != nil
                 // Plan NA: the answer's last sentence is checked, then the turn's owed line and note.
@@ -433,14 +471,29 @@ class RealtimeSessionManager: ObservableObject {
                 // Plan LC §5: the idle warning is the session talking, not an answer.
                 if !interpreting { self.onAnswerEvent?(.turnComplete(publishes: !self.idleWarningInTurn)) }
                 self.applyInterpreter(self.interpreterRouter?.turnComplete(now: Date()))
-                // Delta-based transcripts finish at the turn boundary. JSON adapters already
-                // recorded their complete input transcript when that event arrived.
                 let wearer = self.userTranscript
                 self.userTranscript = ""
-                self.finishTurnForVoiceEnd(wearer: wearer)
+                // Delta-based transcripts finish at the turn boundary, but the provider can still
+                // send the last of them after it: the wearer's half of the turn is held for
+                // `LateInputAttribution.grace` and finalised then (`finaliseHeldTurn`), or at
+                // once when a new turn begins. What does not read the wearer's words — playback,
+                // the record's commit, the lens, the reply flag — happens here as before.
+                if !interpreting, self.providerSession.inputTranscriptionIsDelta {
+                    let replied = self.closeTurnForVoiceEnd()
+                    let hold = self.lateInput.turnCompleted(
+                        wearer: wearer, modelReplied: replied,
+                        resetGeneration: self.turnResetGeneration, now: Date())
+                    self.turnResetGeneration = nil
+                    if let earlier = hold.finaliseFirst { self.finaliseHeldTurn(earlier, identity: identity) }
+                    self.scheduleLateInputGrace(token: hold.token, identity: identity)
+                    return
+                }
+                // JSON adapters already recorded their complete input transcript when that event
+                // arrived.
+                let replied = self.finishTurnForVoiceEnd(wearer: wearer)
                 guard !interpreting else { return }
-                if self.providerSession.inputTranscriptionIsDelta {
-                    await self.jobBridge.handleTranscript(wearer, sourceID: "realtime-\(identity)-\(UUID().uuidString)")
+                if let turn = self.completeTranscripts.turnEnded(modelReplied: replied) {
+                    self.onWearerTurnFinished?(turn)
                 }
                 await self.jobBridge.turnCompleted()
             }
@@ -456,15 +509,34 @@ class RealtimeSessionManager: ObservableObject {
                 guard self.isActive, self.sessionIdentity == identity else { return }
                 // Plan HY P1: not activity yet. It counts once the model answers it.
                 self.idleClock.noteSpeechHeard()
-                // Plan NA: the wearer is asking again; the last reading belongs to the last request.
-                ReadingEvidenceBoard.shared.clear()
-                self.userTranscript = self.providerSession.inputTranscriptionIsDelta
-                    ? ScriptAwareJoiner.join(self.userTranscript, text) : text
                 // The interpreter's words stop at the screen. They are the other person's as often
                 // as the wearer's, so neither a job nor a handover gets them.
                 let interpreting = self.interpreterRouter != nil
-                if !interpreting, !self.providerSession.inputTranscriptionIsDelta {
-                    await self.jobBridge.handleTranscript(text, sourceID: "realtime-\(identity)-\(UUID().uuidString)")
+                let isDelta = self.providerSession.inputTranscriptionIsDelta
+                if isDelta, !interpreting {
+                    // Late words of the turn that just ended are that turn's, and nothing else
+                    // hears them: they are not the start of the next turn.
+                    switch self.lateInput.fragment(text, now: Date()) {
+                    case .finishedTurn:
+                        return
+                    case .currentTurn(let finaliseFirst):
+                        if let finaliseFirst { self.finaliseHeldTurn(finaliseFirst, identity: identity) }
+                    }
+                    if self.turnResetGeneration == nil { self.turnResetGeneration = self.resetGeneration?() }
+                }
+                // Plan NA: the wearer is asking again; the last reading belongs to the last request.
+                // Late words of a turn that has ended returned above, so they never clear it.
+                ReadingEvidenceBoard.shared.clear()
+                self.userTranscript = isDelta ? ScriptAwareJoiner.join(self.userTranscript, text) : text
+                if !interpreting, !isDelta {
+                    let generation = self.turnResetGeneration ?? self.resetGeneration?()
+                    self.turnResetGeneration = nil
+                    let consumed = await self.jobBridge.handleTranscript(text, sourceID: "realtime-\(identity)-\(UUID().uuidString)")
+                    if self.isActive, self.sessionIdentity == identity,
+                       let turn = self.completeTranscripts.transcriptArrived(
+                        text, resetGeneration: generation, consumedByJob: consumed) {
+                        self.onWearerTurnFinished?(turn)
+                    }
                 }
                 self.aiTranscript = ""
                 // FF P1/PR5: the phone's own record. Passed the whole accumulated string so it
@@ -486,6 +558,9 @@ class RealtimeSessionManager: ObservableObject {
                 guard self.isActive, self.sessionIdentity == identity else { return }
                 // Plan NA: the rest of a stopped answer is neither shown nor recorded.
                 if self.replyWatch?.isMuted == true { return }
+                // Not a new-turn signal for a held turn (`LateInputAttribution`): the model's
+                // transcript lags its audio the way the wearer's does, and its last words can land
+                // after the boundary too. A new response announces itself by its audio first.
                 self.noteModelReply()
                 self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
                 self.applyReplyWatch(self.replyWatch?.outputTranscript(
@@ -589,6 +664,8 @@ class RealtimeSessionManager: ObservableObject {
                 guard let self, self.isActive, self.sessionIdentity == identity else { return }
                 Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
+                    // A tool call after a turn boundary belongs to a new turn.
+                    self.noteNewTurnBegan(identity: identity)
                     // Plan HY P1: a tool call is the session doing the wearer's work, and so is its
                     // result coming back below.
                     self.idleClock.noteActivity()
@@ -792,6 +869,16 @@ class RealtimeSessionManager: ObservableObject {
     /// - Parameter reason: why. Kept as ``endReason`` after the stop, for the status card; every
     ///   ordinary stop is `.stopped`, and the idle end (Plan HY P1) is the one that says more.
     func stopSession(reason: LiveSessionEndReason = .stopped) {
+        // A wearer turn still held for late words ended before this stop. It is flushed now, while
+        // the session's state is still up: its goodbye check (so the end reason is right) and its
+        // job transcript (a job's record outlives the session) run as they would have at the end of
+        // the grace. What needs the session afterwards — the job's next question, the new-topic
+        // backstop — is dropped: there is nothing left to ask into or to reset.
+        if let held = lateInput.sessionEnded() {
+            finaliseHeldTurn(held, identity: sessionIdentity, sessionEnding: true)
+        }
+        completeTranscripts = CompleteTranscriptPairing()
+        turnResetGeneration = nil
         idleClock.stop()
         replyWatch = nil
         ReadingEvidenceBoard.shared.clear()
@@ -914,11 +1001,27 @@ class RealtimeSessionManager: ObservableObject {
 
     /// Turn boundary: either the turn a goodbye was waiting on, or a goodbye the model did not act
     /// on. The backstop reads a turn that has already ended, so nothing is left to wait for.
-    private func finishTurnForVoiceEnd(wearer: String) {
+    ///
+    /// - Returns: whether the model replied in the turn.
+    @discardableResult
+    private func finishTurnForVoiceEnd(wearer: String) -> Bool {
+        let replied = closeTurnForVoiceEnd()
+        applyVoiceEndBackstop(wearer: wearer, modelReplied: replied)
+        return replied
+    }
+
+    /// The half of the turn boundary that does not read the wearer's words: the reply flag is
+    /// taken and cleared for the next turn, and a goodbye already asked for learns its turn ended.
+    private func closeTurnForVoiceEnd() -> Bool {
         let replied = turnHadReply
         turnHadReply = false
         idleWarningInTurn = false
         voiceEnd.noteTurnComplete()
+        return replied
+    }
+
+    /// The goodbye backstop on a finished turn's words.
+    private func applyVoiceEndBackstop(wearer: String, modelReplied replied: Bool) {
         guard !voiceEnd.isPending else { return }
         let parser = VoiceCommandParser.default.named(Config.assistantName)
         if LiveVoiceEndPolicy.backstopApplies(
@@ -926,6 +1029,59 @@ class RealtimeSessionManager: ObservableObject {
             jobActive: FieldSessionService.shared.activeSession != nil,
             interpreting: interpreterRouter != nil, parser: parser) {
             voiceEnd.request(now: Date(), turnAlreadyEnded: true)
+        }
+    }
+
+    // MARK: - Late input (streaming providers)
+
+    /// Something showed a new turn has begun: a turn held for late words is final now.
+    private func noteNewTurnBegan(identity: Int) {
+        if let held = lateInput.newTurnBegan() { finaliseHeldTurn(held, identity: identity) }
+    }
+
+    /// The same, from a callback the provider delivers synchronously: queued behind the
+    /// transcript callbacks (which hop to the main actor), so a late word already on its way is
+    /// filed with the held turn before the turn is finalised.
+    private func queueNewTurnBegan(identity: Int) {
+        Task { @MainActor [weak self] in
+            guard let self, self.isActive, self.sessionIdentity == identity else { return }
+            self.noteNewTurnBegan(identity: identity)
+        }
+    }
+
+    private func scheduleLateInputGrace(token: Int, identity: Int) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(LateInputAttribution.grace * 1_000_000_000))
+            guard let self, self.isActive, self.sessionIdentity == identity,
+                  let held = self.lateInput.graceElapsed(token: token) else { return }
+            self.finaliseHeldTurn(held, identity: identity)
+        }
+    }
+
+    /// A held wearer turn is final: what reads the wearer's whole turn runs now, in the order the
+    /// turn boundary used to run it — the handover record, the goodbye check, the job transcript
+    /// and the job's turn end, then the new-topic backstop.
+    ///
+    /// - Parameter sessionEnding: the session is stopping (``stopSession(reason:)``). The job
+    ///   transcript is still recorded; the job's turn end and the backstop are not.
+    private func finaliseHeldTurn(_ turn: LateInputAttribution.FinishedTurn, identity: Int,
+                                  sessionEnding: Bool = false) {
+        if turn.lateFragments > 0 {
+            // Length only: whether this happens on real hardware is what a support trace needs.
+            PrivacyLog.realtimeSession(logProvider, .lateInputAttributed,
+                                       count: turn.lateFragments, characters: turn.lateCharacters)
+            conversationRecorder.reviseCompletedWearerTurn(turn.wearer)
+        }
+        applyVoiceEndBackstop(wearer: turn.wearer, modelReplied: turn.modelReplied)
+        let bridge = jobBridge
+        let sourceID = "realtime-\(identity)-\(UUID().uuidString)"
+        Task { @MainActor [weak self] in
+            let consumed = await bridge.handleTranscript(turn.wearer, sourceID: sourceID)
+            guard !sessionEnding, let self, self.isActive, self.sessionIdentity == identity else { return }
+            self.onWearerTurnFinished?(LiveWearerTurn(
+                text: turn.wearer, modelReplied: turn.modelReplied,
+                resetGeneration: turn.resetGeneration, consumedByJob: consumed))
+            await bridge.turnCompleted()
         }
     }
 

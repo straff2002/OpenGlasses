@@ -39,6 +39,12 @@ final class LiveConversationRecorder {
     private var wearerInFlight = ""
     private var assistantInFlight = ""
 
+    /// Where the turn under way began in ``turns``, and where the last completed turn began. Kept
+    /// so words that arrive after a turn's boundary can still be filed with that turn
+    /// (``reviseCompletedWearerTurn(_:)``). Shifted down when the oldest records are dropped.
+    private var currentTurnStart = 0
+    private var completedTurnStart: Int?
+
     var hasRecordedTurns: Bool { !turns.isEmpty }
 
     /// Whether an answer is being produced right now — the case where a connection loss interrupts
@@ -68,6 +74,31 @@ final class LiveConversationRecorder {
     func completeTurn() {
         commitWearerInFlight(interrupted: false)
         commitAssistantInFlight(interrupted: false)
+        completedTurnStart = currentTurnStart
+        currentTurnStart = turns.count
+    }
+
+    /// The wearer's whole utterance for the turn that just completed, once words that arrived
+    /// after its boundary have been joined to it (a streaming provider can send them late; see
+    /// `LateInputAttribution`).
+    ///
+    /// Replaces that turn's latest wearer record (the session passes the whole accumulated turn,
+    /// so the latest is the fullest), or files one ahead of the turn's answer when the
+    /// wearer's words had not arrived at all by the boundary. Does nothing once anything has been
+    /// recorded since the boundary: the session finalises a held turn before it records the next
+    /// turn's first word, so by then the record has moved on and this is no longer that turn.
+    func reviseCompletedWearerTurn(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let start = completedTurnStart, currentTurnStart == turns.count,
+              wearerInFlight.isEmpty, assistantInFlight.isEmpty, start <= turns.count else { return }
+        let revised = LiveTurnRecord(speaker: .wearer, text: trimmed, wasInterrupted: false)
+        if let index = turns[start...].lastIndex(where: { $0.speaker == .wearer }) {
+            turns[index] = revised
+        } else {
+            turns.insert(revised, at: start)
+            currentTurnStart += 1
+            trimToCapacity()
+        }
     }
 
     /// Something cut the turn short — the socket dropped, or the model was interrupted.
@@ -84,6 +115,8 @@ final class LiveConversationRecorder {
         turns.removeAll()
         wearerInFlight = ""
         assistantInFlight = ""
+        currentTurnStart = 0
+        completedTurnStart = nil
     }
 
     // MARK: - Reading
@@ -120,8 +153,14 @@ final class LiveConversationRecorder {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         turns.append(LiveTurnRecord(speaker: speaker, text: trimmed, wasInterrupted: interrupted))
-        if turns.count > Self.capacity {
-            turns.removeFirst(turns.count - Self.capacity)
-        }
+        trimToCapacity()
+    }
+
+    private func trimToCapacity() {
+        guard turns.count > Self.capacity else { return }
+        let dropped = turns.count - Self.capacity
+        turns.removeFirst(dropped)
+        currentTurnStart = max(0, currentTurnStart - dropped)
+        completedTurnStart = completedTurnStart.map { max(0, $0 - dropped) }
     }
 }
