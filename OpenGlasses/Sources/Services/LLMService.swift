@@ -6464,15 +6464,15 @@ class LLMService: ObservableObject {
         return validated
     }
 
+    /// Messages of history a GGUF native tool turn hands its runtime to trim (Plan MQ H3): twelve
+    /// exchanges, well past what a 4,096-token prompt holds, so the runtime's batch trim decides.
+    static let ggufNativeHistoryMessages = 24
+
     /// Plan MQ P1: one native tool turn on a downloaded model — `LocalToolLoop` over the turn's
     /// runtime, every call checked against the turn's offer, coerced to its declared types
     /// (`OnDeviceArgumentCoercion`) and dispatched through the router, whose approval and safety
     /// gates decide as they do for every model. Same honest-miss and empty-answer rules as the
     /// single shot; the final answer is what `LocalOutputPolicy` left speakable.
-    /// Messages of history a GGUF native tool turn hands its runtime to trim (Plan MQ H3): twelve
-    /// exchanges, well past what a 4,096-token prompt holds, so the runtime's batch trim decides.
-    static let ggufNativeHistoryMessages = 24
-
     private func sendLocalNative(_ text: String,
                                  history: [(role: String, content: String)],
                                  toolNames: [String],
