@@ -40,6 +40,10 @@ import Foundation
 /// incoming feed, or "line voltage … is N". A message stating two supplies gives none and stops the
 /// search, and a voltage said as a drop or a limit ("a drop of 3 V", "no more than 5 V") is never one.
 /// A different `supply_v` from the model is replaced: the technician's reading wins, as the metal does.
+///
+/// ### The source rule (`show_source`)
+/// A `show_source` call with no `which` gets the one ordinal the turn put on the source ("the last
+/// source you used" → `last`), never a guess; a `which` the model gave is left alone.
 enum LocalArgumentCompletion {
 
     /// What a rule reads beside the call.
@@ -92,8 +96,14 @@ enum LocalArgumentCompletion {
     typealias Rule = @Sendable (_ name: String, _ arguments: [String: Any], _ context: Context) -> Completed?
 
     /// Every rule, in order, each on what the one before it left: the operation first, so the
-    /// voltage-drop rules see a call that named none.
-    static let rules: [Rule] = [voltageDropOperation, voltageDropConductor, voltageDropSupply]
+    /// voltage-drop rules see a call that named none. Closures rather than the functions named:
+    /// a static method reference is not a `@Sendable` value in Swift 5 mode, so each one warned.
+    static let rules: [Rule] = [
+        { voltageDropOperation($0, $1, $2) },
+        { voltageDropConductor($0, $1, $2) },
+        { voltageDropSupply($0, $1, $2) },
+        { showSourceWhich($0, $1, $2) },
+    ]
 
     /// `arguments` with what the technician said filled in. Pure.
     static func complete(name: String, arguments: [String: Any], context: Context) -> Completed {
@@ -340,6 +350,29 @@ enum LocalArgumentCompletion {
         }
         return found
     }
+
+    // MARK: - The source rule (`show_source`)
+
+    /// `which` on a `show_source` call that names none, from the one ordinal the turn puts on
+    /// what it wants shown ("the last source you used", "the second one"). Gemma 4 E2B called it
+    /// with no arguments for "Show me the last source you used", and the tool's default is the
+    /// first. An ordinal on something else ("the page for the second burner") is not read, and
+    /// two ordinals give none.
+    static func showSourceWhich(_ name: String, _ arguments: [String: Any], _ context: Context) -> Completed? {
+        guard name == "show_source", let turn = context.userMessages.first else { return nil }
+        if let given = arguments["which"] {
+            guard let text = given as? String, text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        }
+        let said = Set(captures(sourceOrdinalPattern, turn).map { $0.lowercased() == "latest" ? "last" : $0.lowercased() })
+        guard said.count == 1, let which = said.first else { return nil }
+        var completed = arguments
+        completed["which"] = which
+        return Completed(arguments: completed, filled: [("which", which)], removed: [], governs: { $0 == "which" })
+    }
+
+    /// "first source", "last one", "second page", "latest reference".
+    private static let sourceOrdinalPattern = regex(#"\b(first|second|third|last|latest)\s+"#
+        + #"(?:one|ones|source|sources|page|pages|reference|references|citation|citations|passage|passages)\b"#)
 
     // MARK: - Reading what was said
 

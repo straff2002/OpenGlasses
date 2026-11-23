@@ -360,6 +360,34 @@ final class LocalArgumentCompletionTests: XCTestCase {
         XCTAssertNil(LocalArgumentCompletion.modelNote(filled: [], notUsed: []))
     }
 
+    // MARK: - The source rule
+
+    func testShowSourceGetsTheOrdinalTheTurnPutOnTheSource() {
+        for (turn, which) in [("Show me the last source you used", "last"), ("Show me the first source you used", "first"),
+                              ("Open the second page", "second"), ("Show me the latest one", "last")] {
+            let completed = complete([:], name: "show_source", turn)
+            XCTAssertEqual(completed.arguments["which"] as? String, which, turn)
+            XCTAssertEqual(completed.filled.map { $0.name }, ["which"], turn)
+            XCTAssertEqual(complete(["which": "  "], name: "show_source", turn).arguments["which"] as? String, which,
+                           "a blank which is none: \(turn)")
+        }
+    }
+
+    func testShowSourceIsNeverGuessed() {
+        for turn in ["Show me the page for the second burner", "Show me where it says that",
+                     "Show me the first source and the last one", "Show me that"] {
+            let completed = complete([:], name: "show_source", turn)
+            XCTAssertNil(completed.arguments["which"], turn)
+            XCTAssertEqual(completed.changes, 0, turn)
+        }
+        let given = complete(["which": "table"], name: "show_source", "Show me the last source you used")
+        XCTAssertEqual(given.arguments["which"] as? String, "table", "the model's which stands")
+        XCTAssertEqual(given.changes, 0)
+        XCTAssertEqual(complete([:], name: "table_lookup", "Show me the last source you used").changes, 0)
+        XCTAssertEqual(LocalArgumentCompletion.modelNote(filled: [("which", "last")], notUsed: []),
+                       "Filled from what the technician said: which last.")
+    }
+
     // MARK: - The corpus guard
 
     private static var corpusURL: URL {

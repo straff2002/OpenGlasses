@@ -47,9 +47,11 @@ import Foundation
 ///
 /// ### Routed calls
 /// With `Configuration.routing` set, a turn `LocalTurnRouter` recognises (an error code, a model
-/// number to identify, a procedure to start, a step of the running procedure) has its call run
-/// through `execute` before any generation, so the dispatcher's offer check, coercion and approval
-/// gates still decide. A lookup's result then goes to the model as round 1; a procedure's result is
+/// number to identify, a procedure to start, a step of the running procedure, a job command, an
+/// evidence choice, a reading's "and the other one?") has its call run through `execute` before
+/// any generation, so the dispatcher's offer check, coercion and approval gates still decide. A
+/// lookup's, job command's, evidence choice's or reading's result then goes to the model as round
+/// 1; a procedure's result is
 /// said as the runner wrote it, with no generation, unless it is an error or needs the model's next
 /// call.
 /// Without routing the loop is as it was.

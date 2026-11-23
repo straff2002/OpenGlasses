@@ -175,8 +175,10 @@ final class LocalTurnRouterTests: XCTestCase {
     }
 
     func testAStartThatNamesNoneOrMoreThanOneIsLeftToTheModel() {
+        for turn in ["Open a new job for the SLP99 furnace at 14 Hill Street", "Start job 1005"] {
+            XCTAssertEqual(start(turn)?.kind, .jobCommand, "a job, not a procedure: \(turn)")
+        }
         for turn in ["Start the furnace tune-up procedure", "Start the no ignition troubleshooting procedure",
-                     "Open a new job for the SLP99 furnace at 14 Hill Street", "Start job 1005",
                      "Start the SLP99 procedure", "Run the lockout procedure", "Start the code procedure",
                      "Start the procedure", "Open the pressure switch",
                      "Start the no ignition procedure, the igniter isn't glowing",
@@ -214,6 +216,177 @@ final class LocalTurnRouterTests: XCTestCase {
         XCTAssertEqual(R.spokenProcedureResult(result),
                        "Started procedure 'SLP99 No Ignition, Soft Lockout E270'. Confirm the lockout. Read the code on the control.")
         XCTAssertNil(R.spokenProcedureResult(.init(text: "Could not start procedure: unknown procedure.")))
+    }
+
+    // MARK: - Job commands (part 2)
+
+    private let jobTools: Set<String> = ["field_session", "reading", "evidence", "equipment_lookup", "procedure_runner"]
+
+    private func job(_ turn: String, offered: Set<String>? = nil, procedure: Bool = false) -> R.Route? {
+        route(turn, offered: offered ?? jobTools, procedure: procedure)
+    }
+
+    func testThePhonesJobCommandsRouteToTheirAction() {
+        let cases: [(String, [String: String])] = [
+            ("Open a new job for the SLP99 furnace at 14 Hill Street", ["action": "start"]),
+            ("Start job 1005", ["action": "start", "job_reference": "1005"]),
+            ("The work order number is 2231", ["action": "set_job_reference", "job_reference": "2231"]),
+            ("Right, back on the furnace job", ["action": "resume"]),
+            ("Moving on to the second furnace in the plant room", ["action": "next_unit"]),
+            ("How long have I been on this job?", ["action": "status"]),
+            ("Pause the job, I'm going for lunch", ["action": "pause"]),
+            ("That's it, close the job", ["action": "end"]),
+        ]
+        for (turn, arguments) in cases {
+            let routed = job(turn)
+            XCTAssertEqual(routed?.kind, .jobCommand, turn)
+            XCTAssertEqual(routed?.tool, "field_session", turn)
+            XCTAssertEqual(routed?.arguments, arguments, turn)
+            XCTAssertEqual(routed?.speech, .model, "field_session writes for the model: \(turn)")
+        }
+    }
+
+    func testOtherPlainShapesOfTheSameCommands() {
+        let cases: [(String, [String: String])] = [
+            ("OK, start a new job", ["action": "start"]),
+            ("New job, work order WO-2231", ["action": "start", "job_reference": "WO-2231"]),
+            ("Can you open a job for me please?", ["action": "start"]),
+            ("Job number 1005", ["action": "set_job_reference", "job_reference": "1005"]),
+            ("Set the work order to 2231", ["action": "set_job_reference", "job_reference": "2231"]),
+            ("It's work order 2231", ["action": "set_job_reference", "job_reference": "2231"]),
+            ("Resume the job", ["action": "resume"]),
+            ("I'm back on the job", ["action": "resume"]),
+            ("Put the job on hold", ["action": "pause"]),
+            ("Next unit", ["action": "next_unit"]),
+            ("Now the other boiler, it's a 090XV36C", ["action": "next_unit", "unit": "090XV36C"]),
+            ("On to the next furnace", ["action": "next_unit"]),
+            ("What's the job status?", ["action": "status"]),
+            ("Wrap up the job", ["action": "end"]),
+            ("Close the job, it's all working", ["action": "end"]),
+        ]
+        for (turn, arguments) in cases {
+            XCTAssertEqual(job(turn)?.arguments, arguments, turn)
+        }
+    }
+
+    func testJobTalkThatIsNotACommandIsLeftToTheModel() {
+        for turn in ["I'll start the job properly once I've had a look", "I opened the job yesterday",
+                     "We started the job this morning", "Don't close the job yet", "Close the job later",
+                     "Should I close the job?", "Did you start the job?", "Start the job properly",
+                     "The work order number was 2231", "I'll give you the work order number in a bit",
+                     "Okay, I'm back", "Back on the other job", "The second furnace is in the plant room",
+                     "The next furnace has the same fault", "Moving on to the second furnace after lunch",
+                     "How do I get to the next job from here?", "Thanks, that's all for this one",
+                     "Close the job and send the report", "Close the job, then email the customer",
+                     "Pause the job, no wait, hang on", "Start the job if the customer's in",
+                     "Moving on to the second furnace?", "Job 1005"] {
+            XCTAssertNil(job(turn), turn)
+        }
+    }
+
+    func testAJobCommandNeedsFieldSessionAndAStartOrNextUnitNoProcedure() {
+        XCTAssertNil(job("Start job 1005", offered: ["reading", "evidence"]))
+        XCTAssertNil(job("Open a new job for the next furnace", procedure: true), "a job is open while a procedure runs")
+        XCTAssertNil(job("Moving on to the second furnace", procedure: true))
+        XCTAssertEqual(job("Pause the job", procedure: true)?.arguments, ["action": "pause"])
+    }
+
+    func testJobReferencesAreTakenAsWritten() {
+        XCTAssertEqual(R.jobReferences(in: "Start job 1005"), ["1005"])
+        XCTAssertEqual(R.jobReferences(in: "Open a new job for the SLP99 furnace at 14 Hill Street"), [])
+        XCTAssertEqual(Set(R.jobReferences(in: "Job 1005, no, work order 2231")), ["1005", "2231"])
+        XCTAssertNil(job("Start job 1005, work order 2231"), "two numbers: which is the job's is the model's question")
+    }
+
+    // MARK: - Evidence (part 2)
+
+    private let evidenceTools: Set<String> = ["evidence", "field_session", "reading"]
+
+    func testThePhonesEvidenceChoicesRouteToTheirAction() {
+        for (turn, action) in [("Keep the photo of the gas valve label", "keep"),
+                               ("Keep the photo of the E223 on the display", "keep"),
+                               ("Exclude the blurry photo of the inducer", "exclude"),
+                               ("Include all the all of today's photos", "include_all"),
+                               ("Leave that photo out", "exclude"), ("Leave out the last picture", "exclude"),
+                               ("Don't include the photo of the flue", "exclude"),
+                               ("Put the last picture back", "include"), ("Include that photo", "include"),
+                               ("Exclude all the photos", "exclude_all"), ("Keep all the photos as they are", "keep"),
+                               ("OK, include every photo", "include_all")] {
+            let routed = route(turn, offered: evidenceTools)
+            XCTAssertEqual(routed?.kind, .evidence, turn)
+            XCTAssertEqual(routed?.arguments, ["action": action], "no item: a photo is described, never given by id: \(turn)")
+            XCTAssertEqual(routed?.speech, .model, turn)
+        }
+    }
+
+    func testPhotoTalkThatIsNotAChoiceIsLeftToTheModel() {
+        for turn in ["I'll take photos once I've got the cover off", "Take a photo of the gas valve",
+                     "Keep taking photos of the flue", "Keep a photo of this for me", "Keep the photo out",
+                     "Leave the photo in", "Should I keep the photo?", "Don't keep anything yet",
+                     "Keep the photo of the label and log 3.5 inches", "The photo of the inducer is blurry",
+                     "Exclude the blurry photo later", "Keep going"] {
+            XCTAssertNil(route(turn, offered: evidenceTools), turn)
+        }
+        XCTAssertNil(route("Keep the photo of the gas valve label", offered: ["field_session", "reading"]),
+                     "not without evidence offered")
+    }
+
+    // MARK: - A reading's follow-up (part 2)
+
+    private let twoValues: [LocalToolLoop.Message] = [
+        .user("Manifold, natural gas reads 0.68 on Low, all models except 090XV60C, and 1.22 on the other burner. Log the first."),
+        .assistant("Logged 0.68 in. w.c.."),
+    ]
+
+    func testTheOtherOfTwoValuesIsRecordedAfterTheFirstWasLogged() {
+        for turn in ["and the other one?", "The other one", "Log the other one too", "And the second one, please"] {
+            let routed = route(turn, offered: ["reading", "field_session"], history: twoValues)
+            XCTAssertEqual(routed?.kind, .readingFollowUp, turn)
+            XCTAssertEqual(routed?.tool, "reading", turn)
+            XCTAssertEqual(routed?.arguments, ["action": "record_reading", "quantity": "Manifold, natural gas",
+                                               "value": "1.22", "unit": "in. w.c."], turn)
+            XCTAssertEqual(routed?.speech, .model, turn)
+        }
+    }
+
+    func testTheFollowUpTakesTheFirstsQuantityAndUnitFromTheEarlierCall() {
+        let call = LocalToolLoop.Call(id: "call_1", name: "reading",
+                                      arguments: ["action": "record_reading", "quantity": "manifold pressure",
+                                                  "value": "0.68", "unit": "inWC"])
+        let history: [LocalToolLoop.Message] = [
+            twoValues[0], .assistant("", calling: call),
+            .toolResult("Recorded manifold pressure 0.68 inWC, as the technician reported it.", for: call),
+            .assistant("Done."),
+        ]
+        XCTAssertEqual(route("and the other one?", offered: ["reading"], history: history)?.arguments,
+                       ["action": "record_reading", "quantity": "manifold pressure", "value": "1.22", "unit": "inWC"])
+        XCTAssertEqual(route("and the other?", offered: ["reading"], history: [
+            .user("Supply pressure is 7.5 in. w.c. and 7.2 in. w.c. at the outlet. Log the first one."),
+            .assistant("Recorded supply pressure 7.5 in. w.c."),
+        ])?.arguments, ["action": "record_reading", "quantity": "Supply pressure", "value": "7.2", "unit": "in. w.c."])
+    }
+
+    func testAFollowUpThatIsNotCertainIsLeftToTheModel() {
+        let ambiguous: [(String, [LocalToolLoop.Message])] = [
+            ("three values", [.user("Manifold reads 0.68, 1.22 and 1.4. Log the first."), .assistant("Logged 0.68.")]),
+            ("nothing logged", [twoValues[0], .assistant("Which one did you want first?")]),
+            ("not logged", [twoValues[0], .assistant("I couldn't log 0.68, there's no job open.")]),
+            ("both logged", [twoValues[0], .assistant("Logged 0.68 and 1.22.")]),
+            ("different quantities", [.user("Supply air reads 140 and return air 72. Log the first."),
+                                      .assistant("Logged 140.")]),
+            ("different units", [.user("Line reads 120 volts and 4.5 amps. Log the first."), .assistant("Logged 120 volts.")]),
+            ("no reply yet", [twoValues[0]]),
+            ("no quantity", [.user("0.68 and 1.22. Log the first."), .assistant("Logged 0.68.")]),
+            ("the same value twice", [.user("Manifold reads 0.68 and 0.68. Log the first."), .assistant("Logged 0.68.")]),
+        ]
+        for (why, history) in ambiguous {
+            XCTAssertNil(route("and the other one?", offered: ["reading"], history: history), why)
+        }
+        for turn in ["and the other one is 1.3", "what about the other furnace?", "the other one's fine", "and the next step?"] {
+            XCTAssertNil(route(turn, offered: ["reading"], history: twoValues), turn)
+        }
+        XCTAssertNil(route("and the other one?", offered: ["field_session", "evidence"], history: twoValues),
+                     "not without reading offered")
     }
 
     // MARK: - Speaking a step's result
@@ -305,9 +478,13 @@ final class LocalTurnRouterTests: XCTestCase {
     /// The turn shapes the router exists for, by case id.
     private enum Target: String, CaseIterable {
         case errorCode, modelNumber, procedureStart, procedureNextRepeat, procedureAnswer
+        case jobCommand, evidence, readingFollowUp
 
         init?(id: String) {
             if id.hasPrefix("code-"), id.hasSuffix("-lookup") || id.hasSuffix("-followup") { self = .errorCode }
+            else if id.hasPrefix("job-") { self = .jobCommand }
+            else if id.hasPrefix("evidence-") { self = .evidence }
+            else if id.hasPrefix("sv-"), id.hasSuffix("-followup") { self = .readingFollowUp }
             else if id.hasPrefix("model-"), id.hasSuffix("-lookup") { self = .modelNumber }
             else if id.hasPrefix("proc-"), id.hasSuffix("-start") { self = .procedureStart }
             else if id.hasPrefix("proc-"), id.hasSuffix("-next") || id.hasSuffix("-repeat") { self = .procedureNextRepeat }
@@ -318,7 +495,7 @@ final class LocalTurnRouterTests: XCTestCase {
         var floor: Double {
             switch self {
             case .errorCode, .modelNumber, .procedureAnswer: return 0.9
-            case .procedureStart, .procedureNextRepeat: return 1.0
+            case .procedureStart, .procedureNextRepeat, .jobCommand, .evidence, .readingFollowUp: return 1.0
             }
         }
     }

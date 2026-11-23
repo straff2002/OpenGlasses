@@ -25,6 +25,20 @@ import Foundation
 /// (`Context.procedures`): every word said about it is in that title and in no other's. Anything
 /// more, or anything said after it, goes to the model.
 ///
+/// ### Job commands, evidence and a reading's follow-up (part 2)
+/// On the same runs Gemma asked back instead of calling `field_session` for a job opened, a work
+/// order number given, a job resumed, the next unit or the job's time, and wrote `evidence` and a
+/// second reading ("and the other one?") as prose or a broken call. These are routed on the same
+/// rule: an imperative at the front of the turn (after "right", "OK", "that's it"…) or a fixed
+/// question, with nothing after it but an aside. A turn that defers, denies or conditions it ("I'll
+/// start the job later", "don't log anything yet", "once I've had a look") never routes, and nor
+/// does one that asks for something else in the same breath. Each passes only what the turn said:
+/// a work order number as said, the next unit's model only when it is the one model named, and no
+/// photo id (none is ever said). A follow-up records the other of exactly two values the last
+/// message gave for one quantity, once the reply logged the first; anything less certain is the
+/// model's. All three hand their result to the model: `field_session` writes for a model, and the
+/// others' short results are spoken by the loop if the model says nothing.
+///
 /// ### What is not routed
 /// Error codes through `table_lookup`: it needs a real table id, which only the passages give.
 enum LocalTurnRouter {
@@ -59,6 +73,7 @@ enum LocalTurnRouter {
 
     enum Kind: String, CaseIterable, Sendable {
         case errorCode, modelNumber, procedureStart, procedureNext, procedureRepeat, procedureAnswer
+        case jobCommand, evidence, readingFollowUp
     }
 
     /// How a routed call's result reaches the wearer.
@@ -80,7 +95,7 @@ enum LocalTurnRouter {
 
         var speech: Speech {
             switch kind {
-            case .errorCode, .modelNumber: return .model
+            case .errorCode, .modelNumber, .jobCommand, .evidence, .readingFollowUp: return .model
             case .procedureStart, .procedureNext, .procedureRepeat, .procedureAnswer: return .result
             }
         }
@@ -102,6 +117,16 @@ enum LocalTurnRouter {
            let id = startedProcedure(text, catalogue: context.procedures) {
             return Route(kind: .procedureStart, tool: "procedure_runner",
                          arguments: ["action": "start", "procedure_id": id])
+        }
+        if context.offered.contains("field_session"),
+           let arguments = jobCommand(text, procedureActive: context.procedureActive) {
+            return Route(kind: .jobCommand, tool: "field_session", arguments: arguments)
+        }
+        if context.offered.contains("evidence"), let action = evidenceChoice(text) {
+            return Route(kind: .evidence, tool: "evidence", arguments: ["action": action])
+        }
+        if context.offered.contains("reading"), let arguments = readingFollowUp(text, history: history) {
+            return Route(kind: .readingFollowUp, tool: "reading", arguments: arguments)
         }
         let lookup = context.offered.contains("equipment_lookup") && !asksAnotherTool(text)
         if lookup, let code = askedErrorCode(text) {
@@ -317,6 +342,528 @@ enum LocalTurnRouter {
     }
 
     static let replyRequests = ["tell me", "report", "let me know", "give me", "read me", "read out", "say what"]
+
+    // MARK: - Commands
+
+    /// A turn read as a command: its first clause that is not only "right", "OK", "that's it"…,
+    /// with those openers off the front, and the clauses after it.
+    struct Command: Equatable {
+        /// The command clause's words, openers taken off.
+        let words: [String]
+        /// The later clauses' words.
+        let trailing: [[String]]
+        /// The turn holds a question mark.
+        let question: Bool
+        /// It opens "can you", "could you", "would you", "will you": a request, though asked.
+        let polite: Bool
+
+        /// Every word of the turn after the openers.
+        var allWords: [String] { words + trailing.flatMap { $0 } }
+
+        /// A question that is not a polite request is not a command.
+        var isImperative: Bool { !question || polite }
+    }
+
+    /// `text` as a command, or nil when nothing is left once the openers are off. "now" stays at
+    /// the front when `keepingNow` ("now the second furnace" is the move, not an opener).
+    static func readCommand(_ text: String, keepingNow: Bool = false) -> Command? {
+        let clauses = clauseWords(text)
+        guard let index = clauses.firstIndex(where: { !$0.allSatisfy(clauseOpeners.contains) }) else { return nil }
+        var words = ArraySlice(clauses[index])
+        var polite = false
+        while let first = words.first, commandOpeners.contains(first) || (!keepingNow && first == "now") {
+            if ["can", "could", "would", "will"].contains(first) { polite = true }
+            words = words.dropFirst()
+        }
+        guard !words.isEmpty else { return nil }
+        return Command(words: Array(words), trailing: Array(clauses[(index + 1)...]), question: text.contains("?"),
+                       polite: polite)
+    }
+
+    /// `text` split at commas, semicolons, question and exclamation marks and full stops (not a
+    /// decimal point), each clause `normalised(_:)` into words; empty clauses dropped.
+    static func clauseWords(_ text: String) -> [[String]] {
+        let marked = clauseBreak.stringByReplacingMatches(
+            in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "\u{1F}")
+        return marked.split(separator: "\u{1F}").map { normalised(String($0)).split(separator: " ").map(String.init) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static let clauseBreak = try! NSRegularExpression(pattern: #"[,;!?]|\.(?!\d)"#)
+
+    /// Words that open a command and say nothing of it.
+    static let commandOpeners: Set<String> = [
+        "ok", "okay", "right", "alright", "so", "and", "then", "yeah", "yes", "yep", "cool", "great", "please",
+        "just", "actually", "oh", "um", "uh", "can", "could", "would", "will", "you", "let's", "lets", "let", "us",
+        "go", "ahead",
+    ]
+
+    /// A clause of these alone ("That's it,", "Right,", "All done.") comes before the command.
+    static let clauseOpeners: Set<String> = commandOpeners.union([
+        "that's", "thats", "that", "is", "it", "all", "done", "good", "sorted", "lovely", "perfect", "brilliant",
+        "now", "finished",
+    ])
+
+    /// Words that defer, deny or condition what the turn says ("I'll start the job later", "don't
+    /// close it yet", "once I've had a look"): a turn holding one is the model's.
+    static let deferredOrDenied: Set<String> = [
+        "later", "tomorrow", "yesterday", "tonight", "once", "after", "afterwards", "before", "soon", "yet",
+        "minute", "minutes", "when", "if", "until", "unless", "not", "don't", "dont", "didn't", "didnt", "won't",
+        "wont", "never", "wait", "hang", "already", "earlier", "maybe", "might", "should", "shouldn't",
+    ]
+
+    /// The same, said as a phrase.
+    static let deferredPhrases = ["hold on", "in a bit", "in a sec", "in a second", "in a moment"]
+
+    /// Words that ask for something else, so a clause holding one is not an aside: a reading, a
+    /// photo, a calculation, the report.
+    static let otherRequests: Set<String> = [
+        "log", "record", "photo", "photos", "picture", "pictures", "snap", "take", "calculate", "send", "email",
+        "report", "summary", "deliver", "share", "forward", "call", "text", "show", "look", "find", "procedure",
+        "order", "remind", "check",
+    ]
+
+    /// Whether `words` (or the turn's text) defer, deny or condition, leaving `allowing` aside.
+    static func defers(_ words: [String], text: String, allowing: Set<String> = []) -> Bool {
+        if words.contains(where: { deferredOrDenied.contains($0) && !allowing.contains($0) }) { return true }
+        let spoken = " " + normalised(text) + " "
+        return deferredPhrases.contains { spoken.contains(" \($0) ") }
+    }
+
+    /// A clause after the command that only remarks ("I'm going for lunch", "it's all working"):
+    /// nothing deferred and nothing else asked for.
+    static func isAside(_ clause: [String], allowing: Set<String> = []) -> Bool {
+        !clause.contains { (deferredOrDenied.contains($0) || otherRequests.contains($0)) && !allowing.contains($0) }
+    }
+
+    // MARK: - Job commands
+
+    /// The `field_session` call a turn gives about the job, or nil. A status question; or an
+    /// imperative to open, number, pause, resume, close the job, or move to the next unit, at the
+    /// front of the turn with nothing after it but an aside. A start and the next unit are not
+    /// routed while a procedure runs: a job is then open and on a unit, and the model has the step.
+    static func jobCommand(_ text: String, procedureActive: Bool) -> [String: String]? {
+        if jobStatusAsked(text) { return ["action": "status"] }
+        guard let command = readCommand(text), command.isImperative,
+              !defers(command.allWords, text: text) else { return nil }
+        if !procedureActive, let started = jobStart(command, text: text) { return started }
+        if let reference = statedJobReference(command, text: text) {
+            return ["action": "set_job_reference", "job_reference": reference]
+        }
+        if isJobPause(command) { return ["action": "pause"] }
+        if isJobResume(command) { return ["action": "resume"] }
+        if isJobEnd(command) { return ["action": "end"] }
+        if !procedureActive, let moved = readCommand(text, keepingNow: true), let next = nextUnit(moved, text: text) {
+            return next
+        }
+        return nil
+    }
+
+    /// The words after the job noun, filler only.
+    static let commandFiller: Set<String> = ["please", "now", "thanks", "mate", "then", "for", "me", "us"]
+
+    private static let jobDeterminers: Set<String> = ["the", "this", "my", "our"]
+
+    /// "Open a new job for the SLP99 furnace at 14 Hill Street", "Start job 1005", "New job, work
+    /// order 2231". What follows "job" is a number, filler, or a "for/on/at/with" phrase; a later
+    /// clause is an aside or says the number. The number is the one the turn gives, as said.
+    static func jobStart(_ command: Command, text: String) -> [String: String]? {
+        var words = ArraySlice(command.words)
+        if words.first == "new", words.dropFirst().first == "job" {
+            words = words.dropFirst(2)
+        } else {
+            guard let verb = words.first, ["start", "open", "begin", "create"].contains(verb) else { return nil }
+            words = words.dropFirst()
+            while let first = words.first, ["a", "an", "the", "new", "another", "fresh"].contains(first) {
+                words = words.dropFirst()
+            }
+            guard words.first == "job" else { return nil }
+            words = words.dropFirst()
+        }
+        let references = jobReferences(in: text)
+        guard references.count <= 1 else { return nil }
+        let reference = references.first
+        for word in words {
+            if ["for", "on", "at", "with"].contains(word) { break }
+            guard commandFiller.contains(word) || ["number", "no", "ref", "reference"].contains(word)
+                    || word == reference?.lowercased() else { return nil }
+        }
+        for clause in command.trailing where !isAside(clause) {
+            guard let reference, isReferenceClause(clause, reference: reference) else { return nil }
+        }
+        var arguments = ["action": "start"]
+        if let reference { arguments["job_reference"] = reference }
+        return arguments
+    }
+
+    /// "The work order number is 2231", "Job number 1005", "Set the work order to 2231", "It's work
+    /// order 2231": the whole clause, the number as said. "was" is not among the links: a number
+    /// said in the past tense is about another job.
+    static func statedJobReference(_ command: Command, text: String) -> String? {
+        let clause = command.words.joined(separator: " ")
+        let range = NSRange(clause.startIndex..., in: clause)
+        guard let match = referenceClausePattern.firstMatch(in: clause, range: range),
+              let said = Range(match.range(at: 1), in: clause).map({ String(clause[$0]) }),
+              command.trailing.allSatisfy({ isAside($0) }) else { return nil }
+        let references = jobReferences(in: text)
+        guard references.count == 1, let reference = references.first, reference.lowercased() == said else { return nil }
+        return reference
+    }
+
+    private static let referenceNoun = #"(?:work order(?: (?:number|no|ref|reference))?|job (?:number|no|ref|reference)|"#
+        + #"reference number|wo(?: number)?)(?:'s)?"#
+
+    private static let referenceClausePattern = try! NSRegularExpression(pattern:
+        #"^(?:(?:set|change|update|correct|record|make|put) )?(?:(?:it's|its|the|my|our|this) )?"# + referenceNoun
+        + #"(?: (?:is|to|as|should be|it's|its))?(?: number)? ([a-z]{0,4}-?\d[a-z0-9-]*)(?: (?:please|thanks|now|actually|mate))*$"#)
+
+    /// Whether a later clause only gives the job's number ("work order 2231").
+    static func isReferenceClause(_ clause: [String], reference: String) -> Bool {
+        let joined = clause.joined(separator: " ")
+        guard let match = referenceClausePattern.firstMatch(in: joined, range: NSRange(joined.startIndex..., in: joined)),
+              let said = Range(match.range(at: 1), in: joined) else { return false }
+        return String(joined[said]) == reference.lowercased()
+    }
+
+    /// Every job or work-order number `text` gives after "job", "job number", "work order"…, as
+    /// written. A number holds a digit; letters before it are kept ("WO-2231").
+    static func jobReferences(in text: String) -> [String] {
+        let range = NSRange(text.startIndex..., in: text)
+        return Array(Set(jobReferencePattern.matches(in: text, range: range).compactMap { match in
+            Range(match.range(at: 1), in: text).map { String(text[$0]) }
+        }))
+    }
+
+    private static let jobReferencePattern = try! NSRegularExpression(pattern:
+        #"(?i)(?<![\w-])(?:job|work\s+order|wo)(?:\s+(?:number|no\.?|ref(?:erence)?))?(?:'s)?(?:\s*(?:is|to|as|=|:|#))?"#
+        + #"\s*#?\s*([A-Za-z]{0,4}-?\d[\w-]*)(?![\w-])"#)
+
+    /// "Pause the job", "Pause the job, I'm going for lunch", "Put the job on hold".
+    static func isJobPause(_ command: Command) -> Bool {
+        var words = ArraySlice(command.words)
+        if words.first == "pause" {
+            words = words.dropFirst()
+            if let first = words.first, jobDeterminers.contains(first) { words = words.dropFirst() }
+            guard words.first == "job" else { return false }
+            words = words.dropFirst()
+            // "for lunch": the reason, said.
+            if words.first != "for", !words.allSatisfy(commandFiller.contains) { return false }
+        } else {
+            guard Array(words.prefix(4)) == ["put", "the", "job", "on"] || Array(words.prefix(4)) == ["put", "this", "job", "on"],
+                  words.dropFirst(4).first == "hold", words.dropFirst(5).allSatisfy(commandFiller.contains) else { return false }
+        }
+        return command.trailing.allSatisfy { isAside($0) }
+    }
+
+    /// Words that may stand between "the" and "job" in a resume ("back on the furnace job"): what
+    /// it is on, never which job ("the other job", "the Smith job" may be another).
+    static let resumedJobWords: Set<String> = [
+        "furnace", "boiler", "unit", "heater", "heating", "cooling", "condenser", "ac", "aircon", "hvac", "system",
+        "appliance", "same", "current",
+    ]
+
+    /// "Resume the job", "Right, back on the furnace job", "I'm back on the job", "Carry on with the job".
+    static func isJobResume(_ command: Command) -> Bool {
+        var words = ArraySlice(command.words)
+        if let first = words.first, ["i'm", "im", "we're"].contains(first) { words = words.dropFirst() }
+        if let first = words.first, ["resume", "unpause", "continue"].contains(first) {
+            words = words.dropFirst()
+            if first == "continue", words.first == "with" { words = words.dropFirst() }
+        } else if words.first == "back", let to = words.dropFirst().first, ["on", "to", "at", "onto"].contains(to) {
+            words = words.dropFirst(2)
+        } else if Array(words.prefix(3)) == ["carry", "on", "with"] {
+            words = words.dropFirst(3)
+        } else {
+            return false
+        }
+        if let first = words.first, jobDeterminers.contains(first) { words = words.dropFirst() }
+        var named = 0
+        while let first = words.first, resumedJobWords.contains(first) { words = words.dropFirst(); named += 1 }
+        guard named <= 2, words.first == "job", words.dropFirst().allSatisfy(commandFiller.contains) else { return false }
+        return command.trailing.allSatisfy { isAside($0) }
+    }
+
+    /// "Close the job", "That's it, close the job", "End this job", "Wrap up the job". A later
+    /// clause asking for the report too is the model's: the close's result offers it.
+    static func isJobEnd(_ command: Command) -> Bool {
+        var words = ArraySlice(command.words)
+        if let first = words.first, ["close", "end"].contains(first) {
+            words = words.dropFirst()
+            if let next = words.first, ["out", "off"].contains(next) { words = words.dropFirst() }
+        } else if Array(words.prefix(2)) == ["wrap", "up"] {
+            words = words.dropFirst(2)
+        } else if words.first == "wrap", words.count >= 4, words[words.startIndex + 3] == "up" {
+            words = words.dropFirst()
+            words = ArraySlice(Array(words.prefix(2)) + Array(words.dropFirst(3)))
+        } else {
+            return false
+        }
+        if let first = words.first, jobDeterminers.contains(first) { words = words.dropFirst() }
+        guard words.first == "job" else { return false }
+        words = words.dropFirst()
+        if let next = words.first, ["up", "off", "out", "down"].contains(next) { words = words.dropFirst() }
+        guard words.allSatisfy(commandFiller.contains) else { return false }
+        return command.trailing.allSatisfy { isAside($0) }
+    }
+
+    private static let unitNouns: Set<String> = [
+        "unit", "furnace", "boiler", "machine", "condenser", "system", "appliance", "heater", "ahu", "rtu",
+    ]
+    private static let unitOrdinals: Set<String> = ["next", "second", "third", "fourth", "fifth", "other", "another"]
+    /// The moves to another unit: "moving on to", "on to", "now"…
+    private static let unitMoves: [[String]] = [
+        ["moving", "on", "to"], ["move", "on", "to"], ["moving", "onto"], ["move", "onto"], ["moving", "to"],
+        ["move", "to"], ["now", "on", "to"], ["now", "onto"], ["on", "to"], ["onto"], ["over", "to"],
+        ["starting", "on"], ["start", "on"], ["now"],
+    ]
+    /// Words that make what follows the unit a statement about it ("the next furnace is in the loft").
+    private static let unitStatementWords: Set<String> = [
+        "is", "was", "has", "had", "have", "needs", "need", "looks", "seems", "isn't", "wasn't", "doesn't", "will",
+        "can't", "can", "could", "did", "does", "do", "also", "too", "same", "like", "as",
+    ]
+
+    /// "Moving on to the second furnace in the plant room", "Next unit", "Now the other boiler,
+    /// it's a 090XV36C". Without a move in front, only "next" names one ("the second furnace" alone
+    /// is a statement about it). `unit` is passed only when the turn names exactly one model.
+    static func nextUnit(_ command: Command, text: String) -> [String: String]? {
+        var words = ArraySlice(command.words)
+        if let first = words.first, ["i'm", "im", "we're"].contains(first) { words = words.dropFirst() }
+        let move = unitMoves.first { words.starts(with: $0) }
+        if let move { words = words.dropFirst(move.count) }
+        if words.first == "the" { words = words.dropFirst() }
+        guard let ordinal = words.first, unitOrdinals.contains(ordinal), move != nil || ordinal == "next",
+              let noun = words.dropFirst().first, unitNouns.contains(noun) else { return nil }
+        let rest = Array(words.dropFirst(2)) + command.trailing.flatMap { $0 }
+        guard !command.question, !rest.contains(where: unitStatementWords.contains),
+              command.trailing.allSatisfy({ isAside($0) }) else { return nil }
+        var arguments = ["action": "next_unit"]
+        let models = Set(modelNumbers(in: text))
+        if models.count == 1, let model = models.first { arguments["unit"] = model }
+        return arguments
+    }
+
+    /// "How long have I been on this job?", "What's the job status?", "How much time is on this
+    /// job?": the whole turn, openers aside.
+    static func jobStatusAsked(_ text: String) -> Bool {
+        var words = ArraySlice(normalised(text).split(separator: " ").map(String.init))
+        while let first = words.first, commandOpeners.contains(first) || clauseOpeners.contains(first) {
+            words = words.dropFirst()
+        }
+        let phrase = words.joined(separator: " ")
+        return jobStatusPattern.firstMatch(in: phrase, range: NSRange(phrase.startIndex..., in: phrase)) != nil
+    }
+
+    private static let jobStatusPattern = try! NSRegularExpression(pattern:
+        #"^(?:how long (?:have|'ve) (?:i|we) been (?:on|at|doing|working on) (?:this|the) job"#
+        + #"|how long (?:has|is) (?:this|the) job been (?:going|running|open|on)(?: for)?"#
+        + #"|how long (?:has|have) (?:i|we) (?:spent|had) on (?:this|the) job"#
+        + #"|(?:what's|whats|what is) the (?:job status|status of (?:this|the) job)"#
+        + #"|(?:give me|tell me) the (?:job status|status of (?:this|the) job)"#
+        + #"|job status|status of (?:this|the) job"#
+        + #"|how much time (?:is|has gone|have i (?:spent|done|put in)|have we (?:spent|done|put in)) on (?:this|the) job"#
+        + #"|(?:what's|whats|what is) the time on (?:this|the) job)"#
+        + #"(?: so far| now| then| please| today)*$"#)
+
+    // MARK: - Evidence
+
+    private static let mediaNouns: Set<String> = [
+        "photo", "photos", "picture", "pictures", "pic", "pics", "image", "images", "clip", "clips", "video", "videos",
+        "shot", "shots",
+    ]
+    /// Words between the verb and the photo that make it a new one, not one of the job's ("keep
+    /// taking photos", "keep a photo of this").
+    private static let newMediaWords: Set<String> = [
+        "a", "an", "taking", "take", "snap", "snapping", "getting", "get", "shooting", "shoot", "more", "another",
+    ]
+
+    /// The `evidence` action an imperative about the job's photos gives, or nil: "Keep the photo of
+    /// the gas valve label" (keep), "Exclude the blurry photo of the inducer", "Leave that photo
+    /// out", "Don't include the photo" (exclude), "Include that photo", "Put the last picture back"
+    /// (include), with "all" or "every" before the photo the action on all of them. The tool's own
+    /// default item (the latest) is left to it: a photo is described, never given by id.
+    static func evidenceChoice(_ text: String) -> String? {
+        guard let command = readCommand(text), command.isImperative else { return nil }
+        let words = command.words
+        var action: String
+        var start = 1
+        switch words.first ?? "" {
+        case "keep": action = "keep"
+        case "exclude", "drop", "remove", "omit": action = "exclude"
+        case "leave": action = "exclude"
+        case "include": action = "include"
+        case "put", "add": action = "include"
+        case "don't", "dont":
+            guard words.count > 1, ["include", "send", "use", "attach"].contains(words[1]) else { return nil }
+            action = "exclude"
+            start = 2
+        default: return nil
+        }
+        // The negation that is the exclusion ("don't include") is not a denial; any other is.
+        guard !defers(Array(command.allWords.dropFirst(start == 2 ? 1 : 0)), text: text) else { return nil }
+        if words.first == "leave", !words.contains("out") { return nil }
+        if ["put", "add"].contains(words.first ?? ""), !words.contains("back") { return nil }
+        if ["keep", "include"].contains(words.first ?? ""), words.contains("out") { return nil }
+        if words.first == "leave", words.dropFirst().first == "out" { start = 2 }
+        guard let noun = words.indices.first(where: { $0 >= start && mediaNouns.contains(words[$0]) }) else { return nil }
+        let between = words[start..<noun]
+        guard between.count <= 5, !between.contains(where: newMediaWords.contains) else { return nil }
+        let rest = Array(words[(noun + 1)...])
+        let allowed: Set<String> = mediaNouns.union(["back", "out"])
+        guard isAside(rest, allowing: allowed), command.trailing.allSatisfy({ isAside($0, allowing: mediaNouns) }) else {
+            return nil
+        }
+        if action != "keep", between.contains(where: ["all", "every", "any"].contains) { action += "_all" }
+        return action
+    }
+
+    // MARK: - A reading's follow-up
+
+    /// The `reading` call for "and the other one?" after "X reads A …, and B …. Log the first."
+    /// and a reply that logged A, or nil. Only when the turn is the follow-up alone, the last
+    /// user message gave exactly two different values with the second introduced as another of
+    /// the same ("and B", ", B": "and return air 72" is another quantity), what was said after it
+    /// logged exactly one of them, and the quantity can be stated. The quantity and unit are the
+    /// first's: from the earlier `reading` call when the history carries it, else the words before
+    /// the first value and the unit said with a value, or the one the reply logged it in.
+    static func readingFollowUp(_ text: String, history: [LocalToolLoop.Message]) -> [String: String]? {
+        guard isOtherOneFollowUp(text),
+              let userIndex = history.lastIndex(where: { $0.role == .user }), userIndex < history.count - 1 else { return nil }
+        let stated = history[userIndex].content
+        let values = statedValues(in: stated)
+        guard values.count == 2, let firstNumber = Double(values[0].text), let secondNumber = Double(values[1].text),
+              firstNumber != secondNumber else { return nil }
+        let beforeSecond = stated[..<values[1].range.lowerBound].trimmingCharacters(in: .whitespaces).lowercased()
+        guard beforeSecond.hasSuffix(",") || [" and", " then", "&"].contains(where: beforeSecond.hasSuffix) else { return nil }
+
+        var logged: Set<Int> = []
+        var earlierCall: [String: Any]?
+        for message in history[(userIndex + 1)...] {
+            switch message.role {
+            case .tool:
+                guard message.toolName == "reading", message.content.hasPrefix("Recorded") else { continue }
+                logged.formUnion(indices(of: values, in: message.content))
+            case .assistant:
+                if message.toolName == "reading", let canonical = message.toolArguments,
+                   let data = canonical.data(using: .utf8),
+                   let arguments = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    earlierCall = arguments
+                } else if saysLogged(message.content) {
+                    logged.formUnion(indices(of: values, in: message.content))
+                }
+            case .user:
+                return nil
+            }
+        }
+        guard logged.count == 1, let first = logged.first else { return nil }
+        let other = 1 - first
+        if let earlierCall {
+            let callValue = (earlierCall["value"] as? String) ?? (earlierCall["value"] as? NSNumber)?.stringValue
+            guard let callValue, Double(callValue) == Double(values[first].text) else { return nil }
+        }
+
+        let units = values.map { unit(after: $0.range.upperBound, in: stated) }
+        if let a = units[0], let b = units[1], a.lowercased() != b.lowercased() { return nil }
+        let calledQuantity = (earlierCall?["quantity"] as? String)?.trimmingCharacters(in: .whitespaces)
+        guard let quantity = calledQuantity.flatMap({ $0.isEmpty ? nil : $0 })
+                ?? quantitySaid(before: values[0].range.lowerBound, in: stated) else { return nil }
+        let calledUnit = (earlierCall?["unit"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        var arguments = ["action": "record_reading", "quantity": quantity, "value": values[other].text]
+        if let unit = calledUnit ?? units[other] ?? units[first] ?? loggedUnit(of: values[first].text, history[(userIndex + 1)...]) {
+            arguments["unit"] = unit
+        }
+        return arguments
+    }
+
+    /// "and the other one?", "the second one", "log the other", "the rest" — the whole turn, with
+    /// no number in it.
+    static func isOtherOneFollowUp(_ text: String) -> Bool {
+        guard !text.contains(where: \.isNumber) else { return false }
+        var words = ArraySlice(normalised(text).split(separator: " ").map(String.init))
+        while let first = words.first, ["and", "now", "ok", "okay", "right", "so", "then", "yeah", "cool", "great", "also"]
+            .contains(first) { words = words.dropFirst() }
+        if Array(words.suffix(2)) == ["as", "well"] { words = words.dropLast(2) }
+        while let last = words.last, ["please", "too", "then", "now", "thanks", "mate", "also"].contains(last) {
+            words = words.dropLast()
+        }
+        if let first = words.first, ["log", "record"].contains(first) { words = words.dropFirst() }
+        return otherOnePhrases.contains(words.joined(separator: " "))
+    }
+
+    static let otherOnePhrases: Set<String> = [
+        "the other one", "the other", "other one", "the other reading", "the other value", "the other number",
+        "the second one", "the second", "the second reading", "the second value", "the rest",
+    ]
+
+    /// Plain numbers in `text`, in order, as written: not a code's or a model's digits ("E223",
+    /// "090XV60C"), a fraction or a date.
+    static func statedValues(in text: String) -> [(text: String, range: Range<String.Index>)] {
+        valuePattern.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in
+            Range(match.range(at: 1), in: text).map { (text: String(text[$0]), range: $0) }
+        }
+    }
+
+    private static let valuePattern = try! NSRegularExpression(pattern: #"(?<![\w./-])(\d+(?:\.\d+)?|\.\d+)(?![\w/]|\.\d)"#)
+
+    /// Which of `values` `text` names, by number.
+    private static func indices(of values: [(text: String, range: Range<String.Index>)], in text: String) -> Set<Int> {
+        let named = Set(statedValues(in: text).compactMap { Double($0.text) })
+        return Set(values.indices.filter { Double(values[$0].text).map(named.contains) ?? false })
+    }
+
+    /// A reply that says a reading went on the record.
+    static func saysLogged(_ reply: String) -> Bool {
+        let words = Set(normalised(reply).split(separator: " ").map(String.init))
+        return !words.isDisjoint(with: ["logged", "recorded"])
+            && words.isDisjoint(with: ["not", "couldn't", "didn't", "can't", "cannot", "won't", "unable"])
+    }
+
+    /// The unit said straight after a value, as written, or nil.
+    static func unit(after index: String.Index, in text: String) -> String? {
+        let rest = String(text[index...])
+        guard let match = unitPattern.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)),
+              let range = Range(match.range(at: 1), in: rest) else { return nil }
+        return String(rest[range])
+    }
+
+    private static let unitPattern = try! NSRegularExpression(pattern:
+        #"(?i)^\s*(in\.?\s?w\.?\s?c\.?|inches of water(?: column)?|inwc|iwc|psig|psi|kpa|mbar|°\s?[fc]|degrees(?: [fc])?"#
+        + #"|volts?|vac|v|millivolts?|mv|amps?|milliamps?|microamps?|µa|ohms?|Ω|hz|%|percent|cfm|rpm)(?![\w°])"#)
+
+    /// The unit a reply or a `reading` result logged `value` in.
+    private static func loggedUnit(of value: String, _ messages: ArraySlice<LocalToolLoop.Message>) -> String? {
+        for message in messages.reversed() where message.role != .user {
+            for said in statedValues(in: message.content) where Double(said.text) == Double(value) {
+                if let unit = unit(after: said.range.upperBound, in: message.content) { return unit }
+            }
+        }
+        return nil
+    }
+
+    /// What was measured: the words of the first value's sentence before it, without "reads",
+    /// "is", "at" and the like at the end or "log" at the front ("Manifold, natural gas reads 0.68"
+    /// → "Manifold, natural gas"). Nil when that leaves nothing, or more than eight words.
+    static func quantitySaid(before index: String.Index, in text: String) -> String? {
+        var sentence = String(text[..<index])
+        if let cut = sentence.range(of: #"[.!?]\s"#, options: [.regularExpression, .backwards]) {
+            sentence = String(sentence[cut.upperBound...])
+        }
+        var words = sentence.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        let trim = CharacterSet(charactersIn: ",:;=-")
+        func bare(_ word: String) -> String { word.lowercased().trimmingCharacters(in: trim) }
+        while let last = words.last, quantityLinks.contains(bare(last)) || bare(last).isEmpty { words.removeLast() }
+        while let first = words.first, ["log", "record", "ok", "okay", "right", "so", "and", "then", "um"].contains(bare(first)) {
+            words.removeFirst()
+        }
+        if let last = words.last, last.lowercased().hasSuffix("'s") { words[words.count - 1] = String(last.dropLast(2)) }
+        let quantity = words.joined(separator: " ").trimmingCharacters(in: trim.union(.whitespaces))
+        guard !quantity.isEmpty, words.count <= 8, quantity.contains(where: \.isLetter) else { return nil }
+        return quantity
+    }
+
+    private static let quantityLinks: Set<String> = [
+        "reads", "read", "reading", "is", "was", "at", "of", "measures", "measured", "shows", "showing", "came", "comes",
+        "in", "to", "on", "were", "are",
+    ]
 
     /// First words that make a turn a question or a request rather than an answer.
     static let requestOpeners: Set<String> = [
