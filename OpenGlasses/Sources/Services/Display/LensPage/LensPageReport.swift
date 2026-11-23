@@ -115,6 +115,8 @@ struct LensPageStats: Equatable {
         var bandSwipes = 0
         var bandHalves = 0
         var bandPages = 0
+        /// Plan NB §1: swipes that moved a zoomed view half a crop left or right (also moves).
+        var bandPans = 0
         /// Left or right with nothing to do in the view, or at an edge.
         var bandNothingToDo = 0
         /// Left or right dropped as part of a burst (a send still in flight, or too soon).
@@ -127,6 +129,24 @@ struct LensPageStats: Equatable {
 
         var bandUsed: Bool {
             bandSwipes + bandNothingToDo + bandDropped + bandOther + bandListening + bandFailures > 0
+        }
+
+        /// Plan NB (flagged builds only): twist rungs acted on (also zooms), with nothing to do in
+        /// the view or at the cap, or dropped in a burst; arm-pan steps the same (also moves); the
+        /// presses dropped because they ended a gesture; the band's motion opened or failed.
+        var twistRungs = 0
+        var twistNothingToDo = 0
+        var twistDropped = 0
+        var armPanSteps = 0
+        var armPanNothingToDo = 0
+        var armPanDropped = 0
+        var twistPressesSwallowed = 0
+        var wristListening = 0
+        var wristFailures = 0
+
+        var wristUsed: Bool {
+            twistRungs + twistNothingToDo + twistDropped + armPanSteps + armPanNothingToDo + armPanDropped
+                + twistPressesSwallowed + wristListening + wristFailures > 0
         }
     }
 
@@ -178,9 +198,17 @@ enum LensPageReport {
             if entry.bandUsed {
                 // Plan MU §7: only a flagged (TestFlight-only) build hears the band.
                 lines.append("    Band: swipes acted on \(entry.bandSwipes) (halves \(entry.bandHalves),"
-                             + " pages \(entry.bandPages)), nothing to do \(entry.bandNothingToDo),"
+                             + " pages \(entry.bandPages), pans \(entry.bandPans)), nothing to do \(entry.bandNothingToDo),"
                              + " dropped in a burst \(entry.bandDropped), other inputs \(entry.bandOther);"
                              + " listening \(entry.bandListening), failed \(entry.bandFailures)")
+            }
+            if entry.wristUsed {
+                // Plan NB: only a flagged (TestFlight-only) build hears the band's motion.
+                lines.append("    Wrist: twist rungs \(entry.twistRungs) (nothing to do \(entry.twistNothingToDo),"
+                             + " dropped \(entry.twistDropped)), arm pans \(entry.armPanSteps)"
+                             + " (nothing to do \(entry.armPanNothingToDo), dropped \(entry.armPanDropped)),"
+                             + " presses swallowed \(entry.twistPressesSwallowed);"
+                             + " listening \(entry.wristListening), failed \(entry.wristFailures)")
             }
         }
         return lines

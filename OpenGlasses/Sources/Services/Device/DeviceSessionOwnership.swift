@@ -15,6 +15,10 @@ struct DeviceSessionOwnership: Equatable {
         /// The glasses' touch inputs (Plan JV P2: the flagged build's Inputs probe only). The SDK
         /// call that adds them lives in `Glasses/Experimental/`.
         case inputs
+        /// The glasses' and the Neural Band's motion (Plan NB §5: the flagged build's Motion probe
+        /// and the page view's wrist gestures only). The SDK call that adds it lives in
+        /// `Glasses/Experimental/`.
+        case motion
     }
 
     private(set) var holders: Set<Capability> = []

@@ -158,7 +158,15 @@ final class LensPageSession: ObservableObject {
     /// What the lens holds for this session: the view, the cue, or nothing.
     @Published private(set) var held: GlassesDisplayService.HeldPage?
     /// The view's state as last drawn on the lens.
-    private(set) var shownState: HUDPageViewState?
+    private(set) var shownState: HUDPageViewState? {
+        didSet {
+            let view = shownState?.view
+            if view != shownView { shownView = view }
+        }
+    }
+    /// Plan NB §6: which view the frame last drawn shows (nil with none), for the flagged build's
+    /// wrist gestures, which listen only while a view they can change is up.
+    @Published private(set) var shownView: HUDPageViewState.View?
     /// The screen last handed to the lens: what a band press acts on.
     private(set) var shownScreen: HUDScreen?
     private var route: Route = .requested
@@ -188,6 +196,8 @@ final class LensPageSession: ObservableObject {
     /// Plan MU §7: one band send in flight at a time, and the frame it is waiting on.
     private var bandGate = LensBandNavGate()
     private var bandPendingKey: String?
+    /// Plan NB §3: the press that ends a twist or an arm move is not Back.
+    private var pressGuard = ClutchPressGuard()
 
     init(display: GlassesDisplayService, router: HUDRouter, cache: LensPageRenderCache? = nil) {
         self.display = display
@@ -361,14 +371,7 @@ final class LensPageSession: ObservableObject {
 
     /// A band press acts on the buttons of the frame last drawn.
     private var selectionHandler: (String) -> Void {
-        { [weak self] id in
-            guard let shown = self?.shownScreen else { return }
-            if let item = shown.items.first(where: { $0.id == id }) {
-                item.action()
-            } else {
-                shown.block(id: id)?.action?()   // Plan MU §6: the whole page's picture, a row
-            }
-        }
+        { [weak self] id in self?.press(itemID: id) }
     }
 
     private var onAction: (HUDPageAction) -> Void {
@@ -381,9 +384,16 @@ final class LensPageSession: ObservableObject {
     /// A press on the phone preview's copy of the frame (Plan KV P3, `HUDRouter.pressFromPreview`):
     /// the button `id` of the frame last drawn, run exactly as a band press on it is. False when
     /// nothing is held or the frame has no such button.
+    ///
+    /// Plan NB §3: a press that ends a pinch-and-twist (or pinch-and-move) is dropped and counted
+    /// (`ClutchPressGuard`): Meta presses the focused button with the pinch's `select`.
     @discardableResult
     func press(itemID id: String) -> Bool {
         guard held != nil, let shown = shownScreen else { return false }
+        if held == .view, pressGuard.swallows(at: clock()) {
+            stats.update(backend()) { $0.twistPressesSwallowed += 1 }
+            return false
+        }
         if let item = shown.items.first(where: { $0.id == id }) {
             item.action()
             return true
@@ -624,8 +634,126 @@ final class LensPageSession: ObservableObject {
             stats.update(backend()) { $0.bandSwipes += 1; $0.bandPages += 1 }
             goToPage(pageIndex + (action == .nextPage ? 1 : -1), atFitWidth: true,
                      issuedAgainst: revision, band: true)
+        case .panLeft, .panRight:
+            // Plan NB §1: the zoomed view, half a crop that way; the map has already checked the edge.
+            var next = shown
+            next.viewport.move(action == .panLeft ? .left : .right)
+            next.isFirstFrame = false
+            next = next.framed()
+            guard next != shown else {
+                bandGate.finished()
+                stats.update(backend()) { $0.bandNothingToDo += 1 }
+                return .nothingToDo
+            }
+            stats.update(backend()) { $0.bandSwipes += 1; $0.bandPans += 1 }
+            draw(next, event: .moved, issuedAgainst: revision, band: true)
         }
         return .sent(action)
+    }
+
+    /// Plan NB §4: one rung of a pinch-and-twist, heard only in a flagged (TestFlight-only) build,
+    /// whose Motion wiring calls this. Through the same gate as the swipes (one send in flight, the
+    /// rest of a burst dropped, never queued). Drawn as a zoom, counted apart.
+    ///
+    /// | View | Rung in | Rung out |
+    /// |---|---|---|
+    /// | whole page | one rung in, around the highlight's centre, else the page's | – |
+    /// | close-up | as "zoom in" by voice | as "zoom out" |
+    /// | zoomed | one rung in; nothing at the cap | one rung out; at the whole page, the whole view |
+    /// | rows, reading | – | – |
+    @discardableResult
+    func handleTwist(_ rung: TwistRung) -> LensTwistOutcome {
+        guard isViewOnLens, let shown = shownState else { return .notOnLens }
+        pressGuard.sent()
+        guard let next = Self.twisted(shown, rung) else {
+            stats.update(backend()) { $0.twistNothingToDo += 1 }
+            return .nothingToDo
+        }
+        guard bandGate.admit(at: clock()) else {
+            stats.update(backend()) { $0.twistDropped += 1 }
+            return .dropped
+        }
+        stats.update(backend()) { $0.twistRungs += 1 }
+        draw(next, event: .zoomed, issuedAgainst: display.heldScreenRevision, band: true)
+        return .sent
+    }
+
+    /// Plan NB §2 (its own switch, owner 2026-11-23): one step of a pinch-and-move. In the zoomed
+    /// view (and from a close-up, carried on at its zoom as a spoken move is) the crop moves half
+    /// a crop that way, nothing at an edge; nothing on the whole page, the rows or reading. Through
+    /// the same gate as the swipes and the twist. Drawn as a move, counted apart.
+    @discardableResult
+    func handleArmPan(_ step: LensPageViewport.Step) -> LensTwistOutcome {
+        guard isViewOnLens, let shown = shownState else { return .notOnLens }
+        pressGuard.sent()
+        guard let next = Self.panned(shown, step) else {
+            stats.update(backend()) { $0.armPanNothingToDo += 1 }
+            return .nothingToDo
+        }
+        guard bandGate.admit(at: clock()) else {
+            stats.update(backend()) { $0.armPanDropped += 1 }
+            return .dropped
+        }
+        stats.update(backend()) { $0.armPanSteps += 1 }
+        draw(next, event: .moved, issuedAgainst: display.heldScreenRevision, band: true)
+        return .sent
+    }
+
+    /// Plan NB §3: the band's clutch opened (a pinch began) or closed, for the press guard.
+    func wristClutchOpened() { pressGuard.clutchOpened(at: clock()) }
+    func wristClutchClosed() { pressGuard.clutchClosed(at: clock()) }
+
+    /// Plan NB §6: the band's motion became active for the open view, or failed (for the report).
+    func noteWristListening() { stats.update(backend()) { $0.wristListening += 1 } }
+    func noteWristFailed() { stats.update(backend()) { $0.wristFailures += 1 } }
+
+    /// The view a twist rung goes to from `shown`, framed; nil when it does nothing there.
+    static func twisted(_ shown: HUDPageViewState, _ rung: TwistRung) -> HUDPageViewState? {
+        var next: HUDPageViewState
+        switch (shown.view, rung) {
+        case (.reading, _), (.rows, _), (.whole, .zoomOut):
+            return nil
+        case (.whole, .zoomIn):
+            next = shown
+            guard next.viewport.canZoomIn else { return nil }
+            next.viewport.zoom(rungs: 1, around: twistCentre(shown))
+        case (.closeUp, _), (.zoomed, _):
+            next = leavingCloseUp(shown)
+            switch rung {
+            case .zoomIn:
+                guard next.viewport.canZoomIn else { return nil }
+                next.viewport.zoomIn()
+            case .zoomOut:
+                guard next.viewport.canZoomOut else { return nil }
+                next.viewport.zoomOut()
+                if next.viewport.isWholePage { next = wholeState(next) }
+            }
+        }
+        next.isFirstFrame = false
+        next = next.framed()
+        return next == shown ? nil : next
+    }
+
+    /// Where a rung in from the whole page zooms around: the highlight's centre, else the page's.
+    static func twistCentre(_ shown: HUDPageViewState) -> CGPoint {
+        let size = shown.viewport.pageSize
+        if let part = shown.highlight.part { return CGPoint(x: part.midX, y: part.midY) }
+        if let first = shown.highlight.rects.first {
+            let union = shown.highlight.rects.dropFirst().reduce(first) { $0.union($1) }
+            return CGPoint(x: union.midX, y: union.midY)
+        }
+        return CGPoint(x: size.width / 2, y: size.height / 2)
+    }
+
+    /// The view an arm-pan step goes to from `shown`, framed; nil when it does nothing there.
+    static func panned(_ shown: HUDPageViewState, _ step: LensPageViewport.Step) -> HUDPageViewState? {
+        guard shown.view == .zoomed || shown.view == .closeUp else { return nil }
+        var next = leavingCloseUp(shown)
+        guard next.viewport.canMove(step) else { return nil }
+        next.viewport.move(step)
+        next.isFirstFrame = false
+        next = next.framed()
+        return next == shown ? nil : next
     }
 
     /// Plan MU §7: the band's channel became active for the open view, or failed (for the report).

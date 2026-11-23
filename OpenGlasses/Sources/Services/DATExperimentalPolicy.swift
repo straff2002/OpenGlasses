@@ -24,16 +24,22 @@ enum DATExperimentalPolicy {
         case voiceInvocation
         /// Plan MU §7: Neural Band swipes left and right on the manual page view (Inputs).
         case lensPageSwipes
+        /// Plan NB §6: pinch and turn the wrist to zoom the manual page view (Motion and Inputs).
+        case lensTwistZoom
+        /// Plan NB (owner, 2026-11-23): pinch and move the arm to pan the manual page view.
+        case lensArmPan
 
         /// Where the wearer's switch is kept.
         var defaultsKey: String { "datExperimental.\(rawValue)" }
 
         /// Whether the switch starts on. Voice invocations do: they fire only when the wearer says
         /// the phrase. Page swipes do: the band is listened to only while a page view is on the lens,
-        /// and only left and right are acted on.
+        /// and only left and right are acted on. The wrist gestures do not (Plan NB decisions 2
+        /// and 7): which way is clockwise, and whether a held pinch lasts, wait for the device pass.
         var defaultOn: Bool {
             switch self {
             case .voiceInvocation, .lensPageSwipes: return true
+            case .lensTwistZoom, .lensArmPan: return false
             }
         }
     }
@@ -80,6 +86,17 @@ enum DATExperimentalPolicy {
 
     static func setSwitch(_ feature: Feature, on: Bool, defaults: UserDefaults = .standard) {
         defaults.set(on, forKey: feature.defaultsKey)
+    }
+
+    /// Plan NB decision 9: "Reverse the twist", under the twist's switch. Off: clockwise zooms in.
+    static let twistReversedKey = "datExperimental.lensTwistReversed"
+
+    static func isTwistReversed(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: twistReversedKey)
+    }
+
+    static func setTwistReversed(_ reversed: Bool, defaults: UserDefaults = .standard) {
+        defaults.set(reversed, forKey: twistReversedKey)
     }
 
     // MARK: - This copy

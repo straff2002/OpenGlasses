@@ -21,7 +21,7 @@ import Foundation
 final class LensBandNavService {
     private let source: InputsSource
     private let isEnabled: () -> Bool
-    private let onInput: (GlassesInputKind) -> Void
+    private let onInput: (GlassesInput) -> Void
     private let onListening: () -> Void
     private let onFailed: () -> Void
 
@@ -42,7 +42,7 @@ final class LensBandNavService {
 
     init(source: InputsSource,
          isEnabled: @escaping () -> Bool,
-         onInput: @escaping (GlassesInputKind) -> Void,
+         onInput: @escaping (GlassesInput) -> Void,
          onListening: @escaping () -> Void = {},
          onFailed: @escaping () -> Void = {}) {
         self.source = source
@@ -80,6 +80,13 @@ final class LensBandNavService {
         let pending = openTask
         stop()
         await pending?.value
+    }
+
+    /// Plan NB §6: a wrist gesture's switch changed, so the channel is asked for again with or
+    /// without the drag stream. A channel held off for this view stays held off.
+    func reopen() {
+        stop()
+        refresh()
     }
 
     /// Opens or closes the channel to match what is true now. Also the wearer's switch changing.
@@ -149,7 +156,7 @@ final class LensBandNavService {
         InputsChannelHandlers(
             onInput: { [weak self] input in
                 guard let self, self.run == thisRun else { return }
-                self.onInput(input.kind)
+                self.onInput(input)
             },
             onState: { [weak self] state in
                 guard let self, self.run == thisRun, state == .active else { return }

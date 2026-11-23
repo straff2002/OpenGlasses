@@ -283,6 +283,11 @@ extension AppState {
         // how it ended and the battery at each end. Empty in a build without the probe. Case
         // names and numbers; no coordinates, and no device is named.
         phone += InputsProbeLedger.shared.reportLines
+        // Plan NB §5: each Motion probe run, per prompt — the band's samples by source, rate and
+        // readings carried, the twist's net and peak in degrees, the pinch's drag bursts and selects
+        // with their times, and whether the phone's volume moved. Empty in a build without the
+        // probe. Aggregates only; never a sample, and no device is named.
+        phone += MotionProbeLedger.shared.reportLines
         #endif
         // Plan JY P1: each document's detected language and the model it is searched with, and
         // where each script's search model stands. Counts and labels only — no names or text.

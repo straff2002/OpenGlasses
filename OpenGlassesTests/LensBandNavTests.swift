@@ -63,11 +63,53 @@ final class LensBandNavTests: XCTestCase {
         for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: alone), nav.rawValue) }
     }
 
-    func testTheWholePageRowsReadingAndASpokenZoomMapNothing() {
-        for view in [HUDPageViewState.View.whole, .rows, .reading, .zoomed] {
-            let context = Context(view: view, pageIndex: 1, pageCount: 3)
+    func testTheWholePageRowsAndReadingMapNothing() {
+        for view in [HUDPageViewState.View.whole, .rows, .reading] {
+            let context = Context(view: view, pageIndex: 1, pageCount: 3, canPanLeft: true, canPanRight: true)
             for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: context), "\(view) \(nav)") }
         }
+    }
+
+    /// Plan NB §1: a spoken zoom pans half a crop left or right, nothing at the edge.
+    func testASpokenZoomPansLeftAndRightToTheEdge() {
+        let middle = Context(view: .zoomed, pageIndex: 1, pageCount: 3, canPanLeft: true, canPanRight: true)
+        XCTAssertEqual(Map.action(for: .left, in: middle), .panLeft)
+        XCTAssertEqual(Map.action(for: .right, in: middle), .panRight)
+        let atLeft = Context(view: .zoomed, canPanLeft: false, canPanRight: true)
+        XCTAssertNil(Map.action(for: .left, in: atLeft), "the left edge: nothing, no wrap")
+        XCTAssertEqual(Map.action(for: .right, in: atLeft), .panRight)
+        let atRight = Context(view: .zoomed, canPanLeft: true, canPanRight: false)
+        XCTAssertEqual(Map.action(for: .left, in: atRight), .panLeft)
+        XCTAssertNil(Map.action(for: .right, in: atRight), "the right edge")
+        let narrow = Context(view: .zoomed, pageIndex: 0, pageCount: 3)
+        for nav in LensBandNav.allCases { XCTAssertNil(Map.action(for: nav, in: narrow), "a crop as wide as the page") }
+    }
+
+    /// The pan reaches no other view: a close-up and fit width keep their rows exactly.
+    func testThePanRowLeavesTheOtherViewsAsTheyWere() {
+        var halves = self.halves
+        halves.canPanLeft = true
+        halves.canPanRight = true
+        XCTAssertEqual(Map.action(for: .right, in: halves), .rightHalf)
+        XCTAssertNil(Map.action(for: .left, in: halves))
+        let fit = Context(view: .closeUp, closeUpKind: .fitWidth, pageIndex: 1, pageCount: 3,
+                          canPanLeft: true, canPanRight: true)
+        XCTAssertEqual(Map.action(for: .left, in: fit), .previousPage)
+        XCTAssertEqual(Map.action(for: .right, in: fit), .nextPage)
+    }
+
+    /// The context reads the edges from the zoomed view's own viewport, and only there.
+    func testTheContextReadsTheEdgesOnlyInTheZoomedView() {
+        let page = CGSize(width: 612, height: 792)
+        var state = HUDPageViewState(viewport: LensPageViewport(wholePage: page), legibility: LensLegibility())
+        var context = Context(state, pageIndex: 0, pageCount: 1)
+        XCTAssertEqual(context.view, .whole)
+        XCTAssertFalse(context.canPanLeft || context.canPanRight, "the whole page does not pan")
+        state.viewport.zoom(rungs: 3, around: CGPoint(x: 0, y: 400))
+        context = Context(state, pageIndex: 0, pageCount: 1)
+        XCTAssertEqual(context.view, .zoomed)
+        XCTAssertFalse(context.canPanLeft, "pushed against the left edge")
+        XCTAssertTrue(context.canPanRight)
     }
 
     // MARK: - One send at a time
@@ -115,7 +157,7 @@ final class LensBandNavTests: XCTestCase {
             entry.bandNothingToDo = 1; entry.bandDropped = 4; entry.bandOther = 6; entry.bandListening = 1
         }
         XCTAssertTrue(LensPageReport.lines(for: stats).contains(
-            "    Band: swipes acted on 3 (halves 2, pages 1), nothing to do 1, dropped in a burst 4,"
+            "    Band: swipes acted on 3 (halves 2, pages 1, pans 0), nothing to do 1, dropped in a burst 4,"
                 + " other inputs 6; listening 1, failed 0"))
     }
 
@@ -289,6 +331,45 @@ final class LensBandNavTests: XCTestCase {
         XCTAssertEqual(onWhole, .nothingToDo, "the whole page keeps Next page › for that")
         XCTAssertEqual(rig.session.pageIndex, 0)
         XCTAssertEqual(rig.session.stats["metaRayBan"].bandPages, 2)
+    }
+
+    /// Plan NB §1: in a spoken zoom left and right move half a crop, one send each, counted as
+    /// moves and as band pans; up and down stay the lens's own scroll.
+    func testInASpokenZoomLeftAndRightPanToTheEdge() async throws {
+        let rig = makeRig(marked: false)
+        rig.session.stage([LensPageFixtures.staged(page: 3, figure: nil)])
+        await drain(rig)
+        XCTAssertTrue(rig.session.handle(.zoomIn))
+        await drain(rig)
+        XCTAssertTrue(rig.session.handle(.zoomIn))
+        await drain(rig)
+        XCTAssertEqual(rig.session.shownState?.view, .zoomed)
+        rig.clock.advance()
+        let start = try XCTUnwrap(rig.session.shownState?.viewport.center)
+
+        let left = await swipe(rig, .nav(.left))
+        XCTAssertEqual(left, .sent(.panLeft))
+        let afterLeft = try XCTUnwrap(rig.session.shownState?.viewport.center)
+        XCTAssertLessThan(afterLeft.x, start.x)
+        XCTAssertEqual(afterLeft.y, start.y, accuracy: 0.001)
+        XCTAssertEqual(rig.session.shownState?.view, .zoomed)
+        var outcome = LensBandOutcome.sent(.panLeft)
+        var guardSteps = 0
+        while outcome == .sent(.panLeft), guardSteps < 20 {
+            outcome = await swipe(rig, .nav(.left))
+            guardSteps += 1
+        }
+        XCTAssertEqual(outcome, .nothingToDo, "the left edge: nothing, no wrap")
+        let right = await swipe(rig, .nav(.right))
+        XCTAssertEqual(right, .sent(.panRight))
+        let down = await swipe(rig, .nav(.down))
+        XCTAssertEqual(down, .notMapped, "up and down stay the lens's own scroll of the strip")
+
+        let stats = rig.session.stats["metaRayBan"]
+        XCTAssertEqual(stats.bandPans, stats.bandSwipes)
+        XCTAssertGreaterThanOrEqual(stats.bandPans, 2)
+        XCTAssertEqual(stats.moves, stats.bandPans, "each pan is drawn as a move")
+        XCTAssertEqual(stats.presses, 2, "only the two zoom words were presses")
     }
 
     func testNothingHappensWhenThePageViewIsNotOnTheLens() async {

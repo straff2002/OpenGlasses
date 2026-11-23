@@ -2322,6 +2322,16 @@ enum PrivacyLog {
         /// never named.
         case inputsProbeStarted, inputsProbeRefused, inputsProbeInput, inputsProbeState, inputsProbeError
         case inputsProbeStopped
+        /// Plan NB, the band's motion (flagged TestFlight builds only). `motionProbeStarted` and
+        /// `motionProbeRefused` (`reason`: its case) a Start; `motionProbePrompt` a prompt's window
+        /// opening (`state`: the prompt) or closing (`state`: the prompt, `count`: band samples in
+        /// it, `success`: the phone's volume changed); `motionProbeError` a failure (`reason`: its
+        /// case); `motionProbeStopped` the end (`reason`: why, `count`: seconds). `lensWristChannel`
+        /// the page view's Motion opening or closing (`state`: `active`, `failed`, `stopped`;
+        /// `reason`: the failure's case; `count`: samples heard). Case names and counts only; never
+        /// a sample, an angle stream or a device's name.
+        case motionProbeStarted, motionProbeRefused, motionProbePrompt, motionProbeError, motionProbeStopped
+        case lensWristChannel
         /// Plan MZ, the smart ring. `ringPaired` (`success` false when the ring was found through
         /// another app's connection), `ringForgotten`, `ringSynced`, `ringStepSkipped` (`state`: the
         /// sync step's name), `ringStoredHistory` (`count`: chunks, `success`: the end marker came),

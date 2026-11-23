@@ -11,6 +11,8 @@
 # What it changes, and nothing else:
 # - links the Inputs product (P2's module; also the archive check's marker that the binary is
 #   flagged — `Frameworks/MWDATInputs.framework`);
+# - links the Motion product (Plan NB: the Neural Band's wrist, for the Motion probe and the page
+#   view's twist to zoom and pinch to pan; called only from the lane's folder, like Inputs);
 # - defines `DAT_EXPERIMENTAL`, which compiles `OpenGlasses/Sources/Glasses/Experimental/` and the
 #   call sites `DATExperimentalGuardTests` lists;
 # - stamps the build: `AVENKIN_DAT_EXPERIMENTAL` reaches the Info.plist as `AvenkinDATExperimental`,
@@ -32,6 +34,8 @@ targets:
     dependencies:
       - package: meta-wearables-dat-ios
         product: MWDATInputs
+      - package: meta-wearables-dat-ios
+        product: MWDATMotion
     settings:
       base:
         AVENKIN_DAT_EXPERIMENTAL: "YES"

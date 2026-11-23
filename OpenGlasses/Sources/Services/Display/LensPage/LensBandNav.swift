@@ -33,6 +33,10 @@ enum LensBandPageAction: Equatable {
     /// Fit width: the page before or after, at fit width from its top.
     case previousPage
     case nextPage
+    /// Plan NB §1: a spoken zoom (the zoomed view): the crop half a crop to the left or right
+    /// (`LensPageViewport.move`), nothing at the edge.
+    case panLeft
+    case panRight
 }
 
 /// Which page action a swipe asks for, from what the lens shows (Plan MU §7, decision 8). Pure.
@@ -44,12 +48,15 @@ enum LensBandPageAction: Equatable {
 /// | close-up, the left half ("left half" by voice) | – (the edge) | the right half |
 /// | close-up of a part in one column | – | – |
 /// | fit width | the page before (none on the first) | the page after (none on the last) |
-/// | whole page, rows, reading, a spoken zoom | – | – |
+/// | a spoken zoom (Plan NB §1) | half a crop to the left (none at the edge) | half a crop to the right (none at the edge) |
+/// | whole page, rows, reading | – | – |
 ///
 /// Nothing wraps. The whole page, the rows and reading mode map nothing: the plan gives the band's
-/// left and right only to the close-up's halves and to fit width, the whole page's and the
-/// close-up's own button rows may need left and right for Meta's focus, and those views already
-/// have one press for what a swipe would do (Next page ›, Next ›).
+/// left and right only to the close-up's halves, to fit width and to the zoomed view, the whole
+/// page's and the close-up's own button rows may need left and right for Meta's focus, and those
+/// views already have one press for what a swipe would do (Next page ›, Next ›). The zoomed view
+/// has one button (Back), so Meta's focus does not need left and right there; up and down stay
+/// the lens's own scroll of its strip.
 enum LensBandNavMap {
 
     /// What the map reads of the view.
@@ -64,24 +71,40 @@ enum LensBandNavMap {
         /// The open page among the staged ones.
         var pageIndex = 0
         var pageCount = 1
+        /// Plan NB §1: in the zoomed view, whether the crop can move half a crop that way (false
+        /// against the page's edge).
+        var canPanLeft = false
+        var canPanRight = false
 
         init(view: HUDPageViewState.View, closeUpKind: LensPageCloseUp.Kind? = nil, hasHalves: Bool = false,
-             only: LensPageCloseUp.Half? = nil, pageIndex: Int = 0, pageCount: Int = 1) {
+             only: LensPageCloseUp.Half? = nil, pageIndex: Int = 0, pageCount: Int = 1,
+             canPanLeft: Bool = false, canPanRight: Bool = false) {
             self.view = view
             self.closeUpKind = closeUpKind
             self.hasHalves = hasHalves
             self.only = only
             self.pageIndex = pageIndex
             self.pageCount = pageCount
+            self.canPanLeft = canPanLeft
+            self.canPanRight = canPanRight
         }
 
         init(_ state: HUDPageViewState, pageIndex: Int, pageCount: Int) {
+            let zoomed = state.view == .zoomed
             self.init(view: state.view, closeUpKind: state.closeUp?.kind, hasHalves: state.closeUp?.hasHalves ?? false,
-                      only: state.closeUp?.only, pageIndex: pageIndex, pageCount: pageCount)
+                      only: state.closeUp?.only, pageIndex: pageIndex, pageCount: pageCount,
+                      canPanLeft: zoomed && state.viewport.canMove(.left),
+                      canPanRight: zoomed && state.viewport.canMove(.right))
         }
     }
 
     static func action(for nav: LensBandNav, in context: Context) -> LensBandPageAction? {
+        if context.view == .zoomed {
+            switch nav {
+            case .left: return context.canPanLeft ? .panLeft : nil
+            case .right: return context.canPanRight ? .panRight : nil
+            }
+        }
         guard context.view == .closeUp, let kind = context.closeUpKind else { return nil }
         switch kind {
         case .part:
@@ -158,10 +181,15 @@ enum LensBandOutcome: Equatable {
 }
 
 /// What the page view asks the glasses for while it listens to the band (Plan MU §7): the Neural
-/// Band's discrete inputs only, its swipes (`nav`) and presses. Never the touchpad, the band's
-/// drag stream, the capture button or the action button, and Back is left to Meta. The SDK-side
-/// configuration is built from the same answers, and `DATExperimentalGuardTests` pins both.
+/// Band's discrete inputs only, its swipes (`nav`) and presses. Never the touchpad, the capture
+/// button or the action button, and Back is left to Meta. The SDK-side configuration is built from
+/// the same answers, and `DATExperimentalGuardTests` pins both.
+///
+/// Plan NB §6: while a wrist gesture is switched on (twist to zoom, or pinch and move to pan), the
+/// band's drag stream is asked for too (`originsWithDrag`): its burst at the start of a pinch is
+/// what opens the clutch (`TwistClutch`). Only then.
 enum LensBandNavPolicy {
     static let origins: Set<GlassesInputOrigin> = [.neuralBand]
+    static let originsWithDrag: Set<GlassesInputOrigin> = [.neuralBand, .neuralBandDrag]
     static let consumesBack = false
 }

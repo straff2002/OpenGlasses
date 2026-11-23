@@ -76,9 +76,15 @@ pages"), whose caption says so.
   `hysteresis` (5°) back-off before the direction can reverse. The sign is `TwistDirection`
   (`.clockwiseZoomsIn` by default, the probe's reading decides; §5). At most `maxRungsPerClutch` (6)
   per clutch. Pure: samples in, rungs out.
-- **`ArmPan`** (built, not wired; decision 7) — while clutched, the forearm's pointing direction
-  (the forearm axis rotated into the world) against the reference; past 12° of yaw or pitch it emits a
-  move step that way and re-anchors. For if the probe shows a held pinch lasts.
+- **`ArmPan`** (its own switch, off by default; decision 7) — while clutched, the forearm's pointing
+  direction (the forearm axis rotated into the world) against the reference; past 12° of yaw or pitch
+  it emits a move step that way and re-anchors. The steps go to `LensPageSession.handleArmPan(_:)`
+  through the same one-send gate as the swipes and the twist: in the zoomed view (and a close-up,
+  carried on at its zoom as a spoken move is) `viewport.move(step)`, nothing at an edge; nothing on the
+  whole page, the rows or reading. Drawn as a move, counted apart (`armPanSteps`, `armPanDropped`).
+- **Twist and pan never fight** (`LensWristGestures`): with both switched on, one clutch can do
+  either, and whichever first passes its threshold owns that clutch; the other is ignored until it
+  closes.
 
 ### §3 The clutch: when a twist counts
 
@@ -89,7 +95,7 @@ Without a burst nothing opens. If the probe shows a held pinch gives no burst, o
 the moment it starts, the twist stays off and decision 4 is taken again with the probe's numbers.
 
 A held pinch ends in a `select`, and Meta presses the focused button with it (in the zoomed view, Back).
-**`TwistPressGuard`** (pure): a press within 800 ms of a clutch that sent at least one rung is
+**`ClutchPressGuard`** (pure): a press within 800 ms of a clutch that sent at least one rung or pan step is
 dropped by `LensPageSession.press(itemID:)` and counted, so twisting to zoom never closes the view.
 
 ### §4 What a rung does to the page view
@@ -127,12 +133,15 @@ Drawn as `.zoomed`, counted apart (`twistRungs`, `twistDropped`, `twistPressesSw
 
 ### §6 Wiring (flagged)
 
-`LensTwistZoomService` (as `LensBandNavService`): opens Motion only while the page view is on the
-lens in a view a rung can change, a pair is connected, no probe runs and the switch is on; closes it
-otherwise; a failed channel is not asked for again for that view. The band channel's configuration
-gains the drag stream while the twist is on (`LensBandNavConfiguration.withDrag`, pinned by
-`DATExperimentalGuardTests` like the other two). New switch in the flagged settings section, **"Twist
-to zoom manual pages"**, off by default, with "Reverse the twist" under it.
+`LensWristGestureService` (as `LensBandNavService`; one service for both gestures): opens Motion only
+while the page view is on the lens in a view a switched-on gesture can change (the whole page, a
+close-up or a zoom for the twist; a close-up or a zoom for the pan), a pair is connected, no probe
+runs and either switch is on; closes it otherwise; a failed channel is not asked for again while the
+page view stays up. The band channel's configuration gains the drag stream while either gesture is on
+(`LensBandNavConfiguration.withDrag`, pinned by `DATExperimentalGuardTests` like the other two), and is
+asked for again when a switch changes. New switches in the flagged settings section, **"Twist to zoom
+manual pages"**, off by default, with "Reverse the twist" under it, and **"Pinch and move your arm to
+pan"**, off by default, its own switch (owner, 2026-11-23).
 
 ## Phases
 
@@ -155,7 +164,9 @@ to zoom manual pages"**, off by default, with "Reverse the twist" under it.
    with the probe.
 5. **Swallow the press that ends a twist.** Recommended: yes, 800 ms.
 6. **Orientation first, the gyroscope as fallback.** Recommended: yes.
-7. **Arm-move pan built but not wired.** Recommended: yes, until the probe shows a held pinch lasts.
+7. **Arm-move pan is its own switch, off by default (owner, 2026-11-23).** It shares the twist's
+   clutch, Motion channel and press guard; within one clutch the first gesture past its threshold
+   owns it.
 8. **30 Hz, only while a zoomable view is up.** Recommended: yes; 60 Hz buys nothing at one send at
    a time.
 9. **The twist's sign is a constant plus a "Reverse" switch.** Recommended: yes; P3 sets the constant.
