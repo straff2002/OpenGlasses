@@ -99,6 +99,31 @@ final class OrgProfileApplierTests: XCTestCase {
         XCTAssertEqual(on.drops, [.init(key: "faceRecognitionEnabled", reason: .retired)])
     }
 
+    /// The web mirror of the lens was retired on 2026-11-23. Its switch, `hudMirrorEnabled`, was a
+    /// developer preference and never a profile setting, so it is not in `retiredKeys`: a profile
+    /// that carries it anyway still verifies and applies the rest, and the key is dropped by name
+    /// and has no effect.
+    func testAProfileCarryingTheWebMirrorSwitchStillVerifiesAndApplies() throws {
+        let signingKey = Curve25519.Signing.PrivateKey()
+        let profile = layer([
+            "hudMirrorEnabled": RawSetting(.bool(true), .default),
+            "agentModeEnabled": RawSetting(.bool(false), .ceiling),
+        ])
+        let document = try ProfileVerification.makeDocument(
+            profile, privateKeyBase64: signingKey.rawRepresentation.base64EncodedString())
+        let verified = try ProfileVerification.verify(
+            document, keys: ["test-key": signingKey.publicKey.rawRepresentation.base64EncodedString()])
+        guard case .profile(let decoded) = verified else { return XCTFail("not a profile") }
+        XCTAssertEqual(decoded.settings["hudMirrorEnabled"]?.value, .bool(true))
+
+        let result = ProfileApplier.apply(profile: decoded, resolvableVaultIds: vaults)
+        XCTAssertNil(SettingKey(rawValue: "hudMirrorEnabled"))
+        XCTAssertFalse(ProfileApplier.retiredKeys.contains("hudMirrorEnabled"))
+        XCTAssertEqual(result.drops, [.init(key: "hudMirrorEnabled", reason: .unknownKey)])
+        XCTAssertEqual(result.ceilings[.agentModeEnabled], .bool(false), "the rest of the profile applies")
+        XCTAssertTrue(result.startingValues.isEmpty && result.owned.isEmpty)
+    }
+
     /// A key no build has ever known is still `.unknownKey`, not `.retired`.
     func testAnUnknownKeyIsNotMistakenForARetiredOne() {
         let result = apply(["somethingFromANewerBuild": RawSetting(.bool(false), .ceiling)])

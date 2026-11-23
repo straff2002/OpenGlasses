@@ -290,17 +290,13 @@ final class HUDReadingCardTests: XCTestCase {
         XCTAssertTrue(tree.children.last is FlexBox, "the earlier answers come after the button row")
     }
 
-    func testEvenAndTheWebMirrorDrawTheRowsAsLines() throws {
+    func testEvenDrawsTheRowsAsLines() throws {
         let rig = makeRig()
         answer(rig, "One.", question: "first")
         answer(rig)
         let screen = try XCTUnwrap(rig.card.screenOnLens)
         guard case .lines(let even) = EvenScreenRenderer.render(screen: screen) else { return XCTFail() }
         XCTAssertTrue(even.contains("Isolate the unit at the"), "\(even)")
-        let web = WebHUDPayload.from(screen: screen, highlight: .standard)
-        let texts = web.lines.map(\.text)
-        XCTAssertTrue(texts.contains("Then measure TP2."))
-        XCTAssertTrue(texts.contains(HUDReadingViewBuilder.earlierHeading))
     }
 
     func testTheSupportReportHasCountsNotText() {

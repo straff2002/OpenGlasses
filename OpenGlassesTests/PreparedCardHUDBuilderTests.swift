@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenGlasses
 
 /// Plan KT P3 — the cards on the Display, the pure parts: the screens of §6.3 on both geometries,
-/// the button budget, §6.6's sensitivity on the lens and the web mirror, the push policy of §6.2,
+/// the button budget, §6.6's sensitivity on the lens, the push policy of §6.2,
 /// the staging notification of §6.4, the words and the temple tap. No display, no clock.
 @MainActor
 final class PreparedCardHUDBuilderTests: XCTestCase {
@@ -160,49 +160,6 @@ final class PreparedCardHUDBuilderTests: XCTestCase {
     func testPersonalAndOrdinaryChipsShowAsTheyAre() {
         XCTAssertEqual(PreparedCardHUDBuilder.lensChips(LensCardFixtures.meetingFollowUp), ["3 things agreed", "09:00"])
         XCTAssertEqual(PreparedCardHUDBuilder.lensChips(LensCardFixtures.jobReportOwed), ["Job 1003", "Report not sent"])
-    }
-
-    // MARK: - The web mirror (§6.6)
-
-    func testTheMirrorShowsAnOrdinaryCardAsTheLensDoes() {
-        let screen = stack([LensCardFixtures.leaveBy], 0, ray)
-        let payload = WebHUDPayload.from(screen: screen)
-        XCTAssertEqual(payload.title, "Leave by 18:15")
-        XCTAssertEqual(payload.lines.map(\.text), screen.lines.map(\.text))
-        XCTAssertEqual(payload.renderKey, screen.renderKey)
-    }
-
-    func testTheMirrorHidesADraftsTextForOrdinaryAndPersonalCards() {
-        for card in [LensCardFixtures.leaveBy, LensCardFixtures.meetingFollowUp, LensCardFixtures.jobOnMyWay] {
-            let screen = draft(card, ray)
-            let payload = WebHUDPayload.from(screen: screen)
-            let shown = payload.lines.map(\.text).joined(separator: " ")
-            XCTAssertEqual(payload.lines.map(\.text), [PreparedCardHUDBuilder.mirrorDraftHiddenLine], "\(card.kind)")
-            XCTAssertFalse(shown.contains("way"), "\(card.kind)")
-            XCTAssertNil(payload.pages)
-            XCTAssertEqual(payload.items.map(\.label), screen.items.map(\.label), "the buttons still show")
-            XCTAssertEqual(payload.title, screen.title)
-        }
-        // A personal card's stack screen is as the lens shows it: only its draft's text is hidden.
-        let personal = stack([LensCardFixtures.meetingFollowUp], 0, ray)
-        XCTAssertNil(personal.mirror)
-        XCTAssertEqual(WebHUDPayload.from(screen: personal).lines.map(\.text), personal.lines.map(\.text))
-    }
-
-    func testTheMirrorHidesAHealthCardEverywhere() {
-        let card = LensCardFixtures.shortNight
-        let screens = [stack([card], 0, ray), draft(card, ray),
-                       PreparedCardHUDBuilder.glance(card, geometry: ray) { _ in }]
-        for screen in screens {
-            let payload = WebHUDPayload.from(screen: screen)
-            XCTAssertNil(payload.title)
-            XCTAssertEqual(payload.lines.map(\.text), [PreparedCardHUDBuilder.mirrorHiddenLine])
-            XCTAssertTrue(payload.items.isEmpty)
-            let json = String(decoding: payload.jsonData(), as: UTF8.self)
-            XCTAssertFalse(json.contains("Example review"))
-            XCTAssertFalse(json.contains("Short night"))
-            XCTAssertFalse(json.contains("Slept"))
-        }
     }
 
     // MARK: - The glance (§6.2)

@@ -566,7 +566,7 @@ final class LensLiveAndVisionDisplayTests: XCTestCase {
         }
     }
 
-    /// The answer card takes the lens's budget on the Meta Display (and the web mirror), Even keeps
+    /// The answer card takes the lens's budget on the Meta Display, Even keeps
     /// its own; the teleprompter-shaped screens (prepared cards, the Thinking card) stay on 4 × 32.
     func testTheActiveGeometriesByBackend() {
         let display = GlassesDisplayService()

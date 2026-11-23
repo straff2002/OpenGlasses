@@ -11,8 +11,7 @@ struct NavigationSettingsView: View {
         #if AVENKIN_PHONE_ONLY
         let inLens = false
         #else
-        let inLens = Config.glassesDisplayEnabled
-            && (glassesDisplay.hasDisplayCapability || Config.hudMirrorEnabled)
+        let inLens = Config.glassesDisplayEnabled && glassesDisplay.hasDisplayCapability
         #endif
         return WalkingTurnSurfaces(voiceCues: voiceCues, inLens: inLens)
     }

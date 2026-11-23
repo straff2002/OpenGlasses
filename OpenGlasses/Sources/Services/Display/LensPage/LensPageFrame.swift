@@ -143,8 +143,7 @@ enum LensPageFrame {
 
     // MARK: - The answer card
 
-    /// The answer card's pager geometry on the Display and the web mirror (which is this lens's
-    /// shape), from this frame's budget rather than the teleprompter's 4 × 32 (which, less the
+    /// The answer card's pager geometry on the Display, from this frame's budget rather than the teleprompter's 4 × 32 (which, less the
     /// footer and the question, left a paged first page two lines of text). The card's frame is
     /// reading mode's: the question over the first page (a meta line), the answer's body lines,
     /// the "1/3" footer and the button row. So 10 lines: a paged page holds 9 lines of text and

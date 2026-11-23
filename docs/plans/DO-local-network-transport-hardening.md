@@ -1,6 +1,6 @@
 # Plan DO — Local-Network Service Transport Hardening
 
-**Status:** 🚧 P0 production listener containment implemented (2026-09-05); Release/device verification and the remaining P0/P1–P3 controls are open
+**Status:** 🚧 P0 production listener containment implemented (2026-09-05); Release/device verification and the remaining P0/P1–P3 controls are open. The browser HUD half (the Web HUD Mirror) was retired on 2026-11-23 with Plan [BP](BP-web-hud-mirror.md): the MCP server is the one LAN listener left
 **Origin:** 2026-08-26 adversarial review finding 6 (High).
 **Priority:** Release blocker if LAN MCP/HUD modes are present in a production build.
 

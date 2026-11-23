@@ -799,7 +799,7 @@ final class LensPageSessionTests: XCTestCase {
         let rig = makeRig()
         rig.session.stage([LensPageFixtures.staged(origin: .requested)])
         await drain(rig)
-        let mirrored = try XCTUnwrap(rig.display.mirrorScreen)
+        let mirrored = try XCTUnwrap(rig.display.testLastScreen)
         XCTAssertEqual(mirrored.renderKey, rig.frames.lastScreenKey)
         XCTAssertEqual(mirrored.block(id: ID.wholePicture)?.picture?.contentKey, wholePicture(rig)?.contentKey)
         let preview = GlassesDisplayService.previewFlexBox(for: mirrored)

@@ -62,9 +62,8 @@ struct HUDCanvas: Equatable, Sendable {
     /// The estimated size of `token` on this lens.
     ///
     /// **All estimates — P6 calibrates them from a photo of a real lens.**
-    /// - Meta Display: heading 34 px, body 28 px, meta 22 px, lines at 1.35 × the size. These are the
-    ///   sizes the web mirror's 600 × 600 page uses (`WebHUDRenderer`), inside §6's "body about 24–32
-    ///   px", so the two previews of the same lens agree. DAT publishes no point sizes.
+    /// - Meta Display: heading 34 px, body 28 px, meta 22 px, lines at 1.35 × the size, inside §6's
+    ///   "body about 24–32 px". DAT publishes no point sizes.
     /// - Even G2: one size for every token, since the panel draws plain text lines. The renderer's
     ///   budget assumes a ~12 px character advance (44 of ~48 cells across 576 px) and eight lines
     ///   down 288 px, so a 36 px line pitch; a monospaced face with a 12 px advance is about 20 px.

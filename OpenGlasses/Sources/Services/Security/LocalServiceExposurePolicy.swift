@@ -1,11 +1,12 @@
 import Foundation
 
-/// Build boundary for the two legacy cleartext HTTP listeners.
+/// Build boundary for the legacy cleartext HTTP listener.
 ///
-/// The current MCP Glasses and Web HUD transports have bearer authentication but no transport
-/// confidentiality. They may remain available in a Debug build for the existing phone-to-Mac
-/// development loop, but a production build must refuse to create either listener. This is only
-/// containment: it does not provide TLS, pairing, replay protection, or scoped authorization.
+/// The current MCP Glasses transport has bearer authentication but no transport confidentiality.
+/// It may remain available in a Debug build for the existing phone-to-Mac development loop, but a
+/// production build must refuse to create the listener. This is only containment: it does not
+/// provide TLS, pairing, replay protection, or scoped authorization. (The web mirror of the lens
+/// was the other such listener until it was retired on 2026-11-23.)
 struct LocalServiceExposurePolicy: Equatable {
     enum BuildFlavor: Equatable {
         case debug
@@ -22,7 +23,6 @@ struct LocalServiceExposurePolicy: Equatable {
 
     enum Service: CaseIterable, Equatable {
         case mcpGlasses
-        case webHUDMirror
     }
 
     enum Decision: Equatable {
@@ -41,7 +41,7 @@ struct LocalServiceExposurePolicy: Equatable {
     static let current = LocalServiceExposurePolicy(buildFlavor: .current)
 
     func decision(for service: Service) -> Decision {
-        _ = service // Both legacy listeners share the same build boundary.
+        _ = service // Every legacy listener shares the same build boundary.
         switch buildFlavor {
         case .debug:
             return .allowLegacyCleartextDevelopmentLAN
@@ -62,7 +62,7 @@ struct LocalServiceExposurePolicy: Equatable {
         case .debug:
             return []
         case .release:
-            return ["mcpServerEnabled", "hudMirrorEnabled"]
+            return ["mcpServerEnabled"]
         }
     }
 

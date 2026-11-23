@@ -49,7 +49,7 @@ final class EndpointPolicyTests: XCTestCase {
 
     func testLocalRoutesMayReachPrivateSpace() {
         for route: NetworkRoute in [.mcpHTTPTransport, .hermesBridgeSession, .hermesAgentAPI, .homeAssistantCommand,
-                                    .webHUDMirrorListener, .loopbackOAuthCallback,
+                                    .mcpGlassesListener, .loopbackOAuthCallback,
                                     .openClawGatewaySocket] {
             XCTAssertNil(EndpointPolicy.validate("http://192.168.1.20:8123/api", for: route, build: .release).rejection,
                          route.rawValue)

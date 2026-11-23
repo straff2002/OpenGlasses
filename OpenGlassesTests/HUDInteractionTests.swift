@@ -352,7 +352,7 @@ final class HUDInteractionTests: XCTestCase {
             XCTAssertEqual(card.pageIndex, 0)
             guard case .screen? = frames().last else { return XCTFail("expected the card's screen") }
             // The card replaced today's 120-character cut: page 1 carries its footer.
-            XCTAssertEqual(display.mirrorScreen?.lines.last?.text, "1/\(card.pages.count)")
+            XCTAssertEqual(display.testLastScreen?.lines.last?.text, "1/\(card.pages.count)")
             XCTAssertFalse(frames().contains {
                 if case .content = $0 { return true }
                 return false
@@ -366,8 +366,8 @@ final class HUDInteractionTests: XCTestCase {
             card.absorb("The filter is behind the front grille.", streamed: false)
             await settle()
             XCTAssertTrue(display.showsAnswerCard)
-            XCTAssertEqual(display.mirrorScreen?.lines.map(\.text), ["The filter is behind the front grille."])
-            XCTAssertEqual(display.mirrorScreen?.items.map(\.id), [HUDAnswerCardBuilder.ItemID.actions])
+            XCTAssertEqual(display.testLastScreen?.lines.map(\.text), ["The filter is behind the front grille."])
+            XCTAssertEqual(display.testLastScreen?.items.map(\.id), [HUDAnswerCardBuilder.ItemID.actions])
         }
     }
 
@@ -383,7 +383,7 @@ final class HUDInteractionTests: XCTestCase {
             XCTAssertEqual(card.pageIndex, 1)
             let second = lastScreenKey(frames())
             XCTAssertNotEqual(first, second)
-            XCTAssertEqual(display.mirrorScreen?.lines.last?.text, "2/\(card.pages.count)")
+            XCTAssertEqual(display.testLastScreen?.lines.last?.text, "2/\(card.pages.count)")
 
             card.press(.back)
             await settle()
@@ -403,7 +403,7 @@ final class HUDInteractionTests: XCTestCase {
             let (display, card, _) = makeCard()
             card.absorb(longAnswer, streamed: false)
             await settle()
-            guard let screen = display.mirrorScreen else { return XCTFail("no card") }
+            guard let screen = display.testLastScreen else { return XCTFail("no card") }
             // The first button is Next ›; firing it is exactly what the band's press does.
             display.testInteractiveButtonActions(for: screen).first?()
             await settle()
@@ -582,7 +582,7 @@ final class HUDInteractionTests: XCTestCase {
             card.press(.actions)
             await settle()
             XCTAssertTrue(card.isOnActions)
-            XCTAssertEqual(display.mirrorScreen?.items.map(\.id).contains(HUDAnswerCardBuilder.ItemID.more), true)
+            XCTAssertEqual(display.testLastScreen?.items.map(\.id).contains(HUDAnswerCardBuilder.ItemID.more), true)
 
             card.press(.more)
             XCTAssertEqual(turns, [HUDAnswerCard.moreRequest])
@@ -715,7 +715,7 @@ final class HUDInteractionTests: XCTestCase {
             let (display, card, frames) = makeCard()
             card.absorb(longAnswer, streamed: false)
             await settle()
-            guard let screen = display.mirrorScreen else { return XCTFail("no card") }
+            guard let screen = display.testLastScreen else { return XCTFail("no card") }
             let next = display.testInteractiveButtonActions(for: screen).first
 
             // A notification is drawn over the card; a band press on the card's old buttons
@@ -742,7 +742,7 @@ final class HUDInteractionTests: XCTestCase {
             await settle()
             XCTAssertTrue(display.showsAnswerCard)
             XCTAssertEqual(card.pageIndex, 0)
-            XCTAssertEqual(display.mirrorScreen?.lines.first?.text, "It takes about ten minutes.")
+            XCTAssertEqual(display.testLastScreen?.lines.first?.text, "It takes about ten minutes.")
         }
     }
 

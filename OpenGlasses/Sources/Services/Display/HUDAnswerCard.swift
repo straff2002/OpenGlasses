@@ -35,7 +35,7 @@ import Foundation
 /// the pager gives that page one line fewer (`firstPageReservedLines`). A card for an answer outside
 /// such a turn (a proactive alert, a watcher, a photo answer) has none.
 ///
-/// **Page size (Plan MG §1).** On the Meta Display and the web mirror the pages take the lens's
+/// **Page size (Plan MG §1).** On the Meta Display the pages take the lens's
 /// measured budget (`LensPageFrame.answerGeometry`, 10 × 32): 9 lines of text and the footer, 8
 /// under the question. Even keeps its own 3 × 40.
 ///
@@ -176,7 +176,7 @@ final class HUDAnswerCard {
     /// The screen last handed to the display, for routing a band press back by id.
     private var shownScreen: HUDScreen?
     private var idleGeneration = 0
-    /// Counts cards shown, so the web mirror can tell a new answer from more of the same one.
+    /// Counts cards shown, so a new answer can be told from more of the same one (`HUDPageSet.card`).
     private var cardSerial = 0
     /// When the card's answer last changed: the start of the lifetime a card held while another
     /// app had the Display is judged by (§8 rule 4).
@@ -228,8 +228,7 @@ final class HUDAnswerCard {
     }
 
     /// The answer card's pager geometry for the backend that shows the HUD: the lens's measured
-    /// budget on the Meta Display (`LensPageFrame.answerGeometry`, 10 × 32), Even's own 3 × 40. The
-    /// web mirror is the Meta Display's 600 × 600 shape, so mirror-only uses the Meta geometry.
+    /// budget on the Meta Display (`LensPageFrame.answerGeometry`, 10 × 32), Even's own 3 × 40.
     static func activeGeometry() -> TeleprompterPaginator.Geometry {
         #if !AVENKIN_PHONE_ONLY
         return Config.displayBackend == .evenG2 ? .evenG2 : LensPageFrame.answerGeometry
@@ -239,7 +238,7 @@ final class HUDAnswerCard {
     }
 
     /// Plan MG §2: the reading view on the Meta Display, unless Display & HUD › Answers on the lens
-    /// is **Pages**. Even and the phone-only build (the web mirror) keep pages.
+    /// is **Pages**. Even and the phone-only build keep pages.
     static func activeUsesReadingView() -> Bool {
         #if !AVENKIN_PHONE_ONLY
         return Config.displayBackend == .metaRayBan && Config.lensAnswerStyle == .scroll
@@ -248,8 +247,7 @@ final class HUDAnswerCard {
         #endif
     }
 
-    /// Plan MU §3: rows are fitted to the lens's width everywhere but Even (the web mirror is the
-    /// Meta Display's shape).
+    /// Plan MU §3: rows are fitted to the lens's width everywhere but Even.
     static func activeFitsLensRow() -> Bool {
         #if !AVENKIN_PHONE_ONLY
         return Config.displayBackend != .evenG2
@@ -258,8 +256,8 @@ final class HUDAnswerCard {
         #endif
     }
 
-    /// The teleprompter's geometry for the backend that shows the HUD: 4 × 32 on the Meta Display
-    /// (and the web mirror), Even's 3 × 40. What the screens that are not the answer card lay out
+    /// The teleprompter's geometry for the backend that shows the HUD: 4 × 32 on the Meta Display,
+    /// Even's 3 × 40. What the screens that are not the answer card lay out
     /// on — the prepared-card stack and glance, and the Thinking card's question line — until their
     /// own budgets are checked against `LensPageFrame`.
     static func activeTeleprompterGeometry() -> TeleprompterPaginator.Geometry {

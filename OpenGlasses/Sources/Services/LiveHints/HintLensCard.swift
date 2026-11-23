@@ -11,7 +11,7 @@ import Foundation
 ///
 /// A hint with nothing more to say than its line (a key point, a passage card whose full text is the
 /// line) is one page, with Close only. Every page carries the card's pages in `HUDScreen.pageSet`, as
-/// an answer card's do, so the web mirror can show them.
+/// an answer card's do.
 ///
 /// Pure: actions are reported through `onAction`.
 enum HintLensCardBuilder {

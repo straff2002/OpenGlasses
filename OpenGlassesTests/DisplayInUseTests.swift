@@ -133,7 +133,6 @@ final class DisplayInUseTests: XCTestCase {
         let (display, recorder) = makeDisplay()
         display.showText("Caption before")
         await fulfillment(of: [recorder.expect(1)], timeout: 5)
-        let mirrored = display.mirrorScreen?.renderKey
 
         takeDisplay(display)
         let revision = display.frameRevision
@@ -146,7 +145,6 @@ final class DisplayInUseTests: XCTestCase {
 
         XCTAssertEqual(display.frameRevision, revision, "nothing was handed to the queue")
         XCTAssertEqual(recorder.frames.count, 1, "nothing reached the lens")
-        XCTAssertEqual(display.mirrorScreen?.renderKey, mirrored)
     }
 
     func testOnReturnTheLensGetsOneFrameNotTheBacklog() async {
@@ -195,7 +193,7 @@ final class DisplayInUseTests: XCTestCase {
         await fulfillment(of: [recorder.expect(1)], timeout: 5)
         guard case .screen? = recorder.frames.last else { return XCTFail("the held card should show") }
         XCTAssertTrue(card.isShowing)
-        XCTAssertEqual(display.mirrorScreen?.lines.last?.text, "1/\(card.pages.count)")
+        XCTAssertEqual(display.testLastScreen?.lines.last?.text, "1/\(card.pages.count)")
     }
 
     func testAHeldCardPastItsLifetimeIsDropped() async {
@@ -254,7 +252,7 @@ final class DisplayInUseTests: XCTestCase {
         giveDisplayBack(display)
         await fulfillment(of: [recorder.expect(1)], timeout: 5)
         XCTAssertEqual(recorder.frames.count, 1)
-        XCTAssertEqual(display.mirrorScreen?.lines.map(\.text), ["It takes about ten minutes."])
+        XCTAssertEqual(display.testLastScreen?.lines.map(\.text), ["It takes about ten minutes."])
     }
 
     func testPagingWordsGoToTheModelWhileInUse() async {
