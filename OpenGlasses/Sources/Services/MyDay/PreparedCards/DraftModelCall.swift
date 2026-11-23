@@ -2,8 +2,8 @@ import Foundation
 
 // Plan KT §4.2 — the one route a card's draft is written through. Unlike
 // `LLMService.completeStateless`, which runs the active provider's conversation path over an
-// emptied-and-restored history (so a turn running beside it reads an empty history, and the
-// request still goes through the conversation's prompt, recorder and usage paths), this route is
+// empty history of its own (the request still goes through the conversation's prompt, recorder
+// and usage paths), this route is
 // the same for every provider and carries nothing but two strings: the instructions and the
 // prompt `DraftPrompt` built. There is no field for tools, history, memory, persona, Brain or
 // timeline text, so none can be added by accident; nothing is persisted, and neither the prompt
