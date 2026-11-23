@@ -5453,11 +5453,15 @@ class LLMService: ObservableObject {
                         tools = ProviderSearchPolicy.withholdingOurTool(tools) + [spec.toolFragment]
                     }
                     body["tools"] = tools
-                    if withholding.active, !tools.isEmpty {
-                        body["toolConfig"] = ["functionCallingConfig": ["mode": "NONE"]]
-                    } else if attachedSearch != nil {
-                        body["toolConfig"] = ["functionCallingConfig": ["mode": "VALIDATED"]]
-                    }
+                    // Google Search beside our declarations also needs
+                    // `includeServerSideToolInvocations`, or Gemini 3 refuses the request (400).
+                    body["toolConfig"] = GeminiFunctionCalling.toolConfig(
+                        tools: tools, withholdingCalls: withholding.active)
+                }
+                // Search's own `toolCall`/`toolResponse` parts go back only in a request that asks
+                // for them; any other request leaves them out of the history it sends.
+                if !GeminiFunctionCalling.includesServerSideInvocations(body["toolConfig"] as? [String: Any]) {
+                    body["contents"] = GeminiFunctionCalling.withoutServerSideToolParts(contents)
                 }
                 // Plan KK P3: Gemini REST's history is budgeted by `APIHistoryBudget` like the other
                 // API routes, but its single system string never carried the omission note. It now

@@ -28,7 +28,9 @@ enum ProviderSearchRefusal {
         let text = (message ?? "").lowercased()
         let namesSearch = ["web search", "web_search", "websearch", "browser_search", "google_search",
                            "openrouter:web_search", "search engine", "server tool", "server_tool",
-                           "user_location", "hosted tool"]
+                           "user_location", "hosted tool",
+                           // Gemini: built-in tools beside function calling (build 737's 400).
+                           "built-in tool", "server_side_tool"]
             .contains(where: text.contains)
         guard namesSearch else { return nil }
         if status == 403 {

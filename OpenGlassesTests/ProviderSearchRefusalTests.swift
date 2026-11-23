@@ -36,6 +36,11 @@ final class ProviderSearchRefusalTests: XCTestCase {
                        .toolUnsupported)
         XCTAssertEqual(ProviderSearchRefusal.classify(status: 400, message: "tools.0.user_location.country: invalid"),
                        .toolUnsupported)
+        // Gemini 3, Google Search beside function calling without the flag (support report, build 737).
+        XCTAssertEqual(ProviderSearchRefusal.classify(
+            status: 400,
+            message: "Please enable tool_config.include_server_side_tool_invocations to use Built-in tools with Function calling."),
+                       .toolUnsupported)
     }
 
     func testRefusalsThatDoNotNameSearchAreLeftAlone() {
