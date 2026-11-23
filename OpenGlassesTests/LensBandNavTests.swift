@@ -339,13 +339,19 @@ final class LensBandNavTests: XCTestCase {
         let rig = makeRig(marked: false)
         rig.session.stage([LensPageFixtures.staged(page: 3, figure: nil)])
         await drain(rig)
-        XCTAssertTrue(rig.session.handle(.zoomIn))
-        await drain(rig)
-        XCTAssertTrue(rig.session.handle(.zoomIn))
-        await drain(rig)
+        // Zoom in by voice until the crop is narrower than the page: on a letter page the first
+        // rungs still show its whole width, and there left and right have nowhere to go.
+        var zooms = 0
+        repeat {
+            XCTAssertTrue(rig.session.handle(.zoomIn))
+            await drain(rig)
+            zooms += 1
+        } while rig.session.shownState?.viewport.canMove(.left) != true
+            && rig.session.shownState?.viewport.canMove(.right) != true && zooms < 10
         XCTAssertEqual(rig.session.shownState?.view, .zoomed)
         rig.clock.advance()
         let start = try XCTUnwrap(rig.session.shownState?.viewport.center)
+        XCTAssertTrue(rig.session.shownState?.viewport.canMove(.left) == true, "zoomed in past the page's width")
 
         let left = await swipe(rig, .nav(.left))
         XCTAssertEqual(left, .sent(.panLeft))
@@ -369,7 +375,7 @@ final class LensBandNavTests: XCTestCase {
         XCTAssertEqual(stats.bandPans, stats.bandSwipes)
         XCTAssertGreaterThanOrEqual(stats.bandPans, 2)
         XCTAssertEqual(stats.moves, stats.bandPans, "each pan is drawn as a move")
-        XCTAssertEqual(stats.presses, 2, "only the two zoom words were presses")
+        XCTAssertEqual(stats.presses, zooms, "only the zoom words were presses")
     }
 
     func testNothingHappensWhenThePageViewIsNotOnTheLens() async {

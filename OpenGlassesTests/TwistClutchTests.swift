@@ -151,7 +151,8 @@ final class TwistClutchTests: XCTestCase {
         var gestures = LensWristGestures()
         let on = LensWristGestures.Switches(twist: true, pan: false)
         _ = gestures.input(burst, at: at(0), switches: on)
-        XCTAssertEqual(feed(&gestures, [twist(0, 0), twist(200, 0), twist(240, 130)]).count, 6, "the cap")
+        // Two steps under the tracker's 120° settling flip (a single jump that size reads as a flip).
+        XCTAssertEqual(feed(&gestures, [twist(0, 0), twist(200, 0), twist(240, 65), twist(280, 130)]).count, 6, "the cap")
         XCTAssertEqual(gestures.input(burst, at: at(1000), switches: on), [.clutchClosed(.newPinch), .clutchOpened])
         XCTAssertEqual(feed(&gestures, [twist(1000, 130), twist(1200, 130), twist(1240, 150)]), [.rung(.zoomIn)],
                        "a new reference and a new cap")

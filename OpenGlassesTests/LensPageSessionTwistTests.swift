@@ -245,13 +245,27 @@ final class LensPageSessionTwistTests: XCTestCase {
         XCTAssertEqual(rig.session.handleTwist(.zoomIn), .dropped, "delivered, but too soon after the last")
         rig.clock.advance()
         XCTAssertEqual(rig.session.handleTwist(.zoomIn), .sent)
-        XCTAssertEqual(rig.session.handleArmPan(.left), .dropped, "one gate for the band's swipes, the twist and the pan")
-        XCTAssertEqual(rig.session.handleBand(.nav(.left)), .dropped)
+        await drain(rig)
+
+        // One gate for the band's swipes, the twist and the pan. The pan needs a crop narrower than
+        // the page (the first rungs on a letter page still show its whole width), so zoom further
+        // by voice first, then send a pan and try the other two while it is in flight.
+        var zooms = 0
+        while rig.session.shownState?.viewport.canMove(.left) != true, zooms < 10 {
+            rig.clock.advance()
+            XCTAssertTrue(rig.session.handle(.zoomIn))
+            await drain(rig)
+            zooms += 1
+        }
+        rig.clock.advance()
+        XCTAssertEqual(rig.session.handleArmPan(.left), .sent)
+        XCTAssertEqual(rig.session.handleTwist(.zoomOut), .dropped, "a pan is in flight")
+        XCTAssertEqual(rig.session.handleBand(.nav(.right)), .dropped)
         await drain(rig)
         let stats = rig.session.stats["metaRayBan"]
         XCTAssertEqual(stats.twistRungs, 2)
-        XCTAssertEqual(stats.twistDropped, 3)
-        XCTAssertEqual(stats.armPanDropped, 1)
+        XCTAssertEqual(stats.twistDropped, 4)
+        XCTAssertEqual(stats.armPanSteps, 1)
         XCTAssertEqual(stats.bandDropped, 1)
     }
 
