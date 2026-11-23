@@ -44,6 +44,12 @@ import Foundation
 /// said as the runner wrote it, with no generation, unless it is an error or needs the model's next
 /// call.
 /// Without routing the loop is as it was.
+///
+/// ### Numbers nobody said
+/// A model-made call loses every plain-number argument the conversation does not hold
+/// (`LocalArgumentGrounding`): Gemma 4 E2B made up conductor figures for a voltage drop the tool
+/// would have worked out from (Plan MQ P3). The call runs without them; the model reads which were
+/// not used after the result, and the outcome counts them (`argumentsDropped`).
 enum LocalToolLoop {
 
     // MARK: - Messages
@@ -139,10 +145,10 @@ enum LocalToolLoop {
     struct Configuration {
         /// The most tool rounds one turn may run (decision 2: 3).
         var roundCap: Int = defaultRoundCap
-        /// Round 0's recovery: given the first output's prose, the correction to send, or nil when
-        /// none is needed. Nil disables the recovery, and the later claim correction with it; a
-        /// claim nothing backs is still never spoken.
-        var correction: ((String) -> String?)? = LocalToolLoop.standardCorrection(for:)
+        /// Round 0's recovery: given the first output's prose and the turn, the correction to send,
+        /// or nil when none is needed. Nil disables the recovery, and the later claim correction
+        /// with it; a claim nothing backs is still never spoken.
+        var correction: ((_ prose: String, _ turn: String) -> String?)? = { LocalToolLoop.standardCorrection(for: $0, turn: $1) }
         /// What the wearer hears when the model said nothing but protocol.
         var missText: String = LLMService.localMissMessage
         /// The assistant's own name, taken off the front of a reply that opens by addressing it
@@ -150,6 +156,10 @@ enum LocalToolLoop {
         var assistantName: String = Config.assistantName
         /// What `LocalTurnRouter` reads to run a call before the model. Nil: no routing.
         var routing: LocalTurnRouter.Context? = nil
+        /// Text beside the conversation whose numbers a call may use (`LocalArgumentGrounding`):
+        /// the job context the model reads in its prompt. The turn, the history and this turn's
+        /// tool results are always grounding.
+        var groundingText: [String] = []
     }
 
     static let defaultRoundCap = 3
@@ -204,6 +214,9 @@ enum LocalToolLoop {
         var multiCallGenerations = 0
         /// Calls `LocalTurnRouter` ran before the model (0 or 1).
         var routedCalls = 0
+        /// Arguments taken off model-made calls because nobody said their number
+        /// (`LocalArgumentGrounding`). A count only.
+        var argumentsDropped = 0
     }
 
     // MARK: - Parsing
@@ -314,6 +327,11 @@ enum LocalToolLoop {
         var notRun = 0
         var routed = 0
         var multiCall = 0
+        var dropped = 0
+        // What a model-made call's numbers may come from; this turn's tool results join it as they
+        // arrive. Not this turn's own replies: a figure the model wrote itself is not grounding.
+        var grounding = LocalArgumentGrounding.Grounding(configuration.groundingText + history.map(\.content)
+                                                         + [userMessage])
 
         func generation(_ purpose: Purpose, messages: [Message], toolsOffered: Bool) async throws -> Parsed {
             try Task.checkCancellation()
@@ -353,6 +371,7 @@ enum LocalToolLoop {
                                   generations: generations, usedCorrection: usedCorrection,
                                   callsFromReasoning: fromReasoning, callsNotRun: notRun, routedCalls: routed)
             outcome.multiCallGenerations = multiCall
+            outcome.argumentsDropped = dropped
             return outcome
         }
 
@@ -365,6 +384,7 @@ enum LocalToolLoop {
             let result = try await execute(call)
             try Task.checkCancellation()
             transcript.append(.toolResult(result.text, for: call))
+            grounding.add(result.text)
             executed.append(Executed(call: call, result: result, routed: true))
             seen.insert(call.signature)
             routed = 1
@@ -399,7 +419,7 @@ enum LocalToolLoop {
         // the call the stall promises has already run.
         if routed == 0, parsed.invocations.isEmpty, parsed.classification.kind == .prose, cap > 0,
            let correctionFor = configuration.correction,
-           let correction = correctionFor(parsed.text) ?? offerCorrection(parsed.text) {
+           let correction = correctionFor(parsed.text, userMessage) ?? offerCorrection(parsed.text) {
             usedCorrection = true
             let scaffold = transcript + [.assistant(parsed.text), .user(correction)]
             parsed = try await generation(.correction, messages: scaffold, toolsOffered: true)
@@ -426,19 +446,27 @@ enum LocalToolLoop {
             // beside them rides on the first that runs.
             var ran = 0
             for invocation in invocations {
+                // What runs is the call less any number nobody said; the repeat check compares that.
+                let filtered = LocalArgumentGrounding.filter(invocation.arguments, grounding: grounding)
                 let call = Call(id: "call_\(executed.count + 1)", name: invocation.name,
-                                arguments: invocation.arguments, fromReasoning: parsed.fromReasoning)
+                                arguments: filtered.arguments, fromReasoning: parsed.fromReasoning)
                 // Past the cap: only reachable when the cap is 0, a model calls after tools were
                 // withheld, or one generation asked for more calls than the cap has left.
                 guard executed.count < cap else { notRun += 1; continue }
                 guard seen.insert(call.signature).inserted else { notRun += 1; continue }
 
                 if call.fromReasoning { fromReasoning += 1 }
+                dropped += filtered.dropped.count
                 try Task.checkCancellation()
                 transcript.append(.assistant(ran == 0 ? parsed.text : "", calling: call))
                 let result = try await execute(call)
                 try Task.checkCancellation()
-                transcript.append(.toolResult(result.text, for: call))
+                // The note is the model's alone: `Executed` keeps the tool's own result, which is
+                // what `spokenResult(of:)` may say.
+                let forModel = filtered.dropped.isEmpty ? result.text
+                    : result.text + "\n\n" + LocalArgumentGrounding.modelNote(dropped: filtered.dropped)
+                transcript.append(.toolResult(forModel, for: call))
+                grounding.add(result.text)
                 executed.append(Executed(call: call, result: result))
                 ran += 1
             }
@@ -618,12 +646,15 @@ enum LocalToolLoop {
 
     /// The correction `sendLocal` sends after an "I'll check" stall, or nil when the prose did not
     /// stall: the same two tests (`announcesToolIntent`, `asksUserForLocation`) and the same words.
-    static func standardCorrection(for prose: String) -> String? {
-        standardCorrection(for: prose, assistantName: Config.assistantName)
-    }
-
-    static func standardCorrection(for prose: String, assistantName: String) -> String? {
-        if LLMService.asksUserForLocation(prose) { return LLMService.localLocationCorrection }
+    /// A reply asking where the wearer is gets the location correction only on a turn whose answer
+    /// depends on where they are (`LLMService.turnDependsOnLocation`): on the phone, "It's filthy in
+    /// this cupboard" drew "…or tell me where you are?", and the correction made Gemma call
+    /// `where_am_i` (Plan MQ P3).
+    static func standardCorrection(for prose: String, turn: String,
+                                   assistantName: String = Config.assistantName) -> String? {
+        if LLMService.asksUserForLocation(prose), LLMService.turnDependsOnLocation(turn) {
+            return LLMService.localLocationCorrection
+        }
         if LLMService.announcesToolIntent(prose, assistantName: assistantName) { return LLMService.localIntentCorrection }
         return nil
     }

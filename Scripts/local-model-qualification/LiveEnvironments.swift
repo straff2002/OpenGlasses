@@ -27,7 +27,7 @@ enum LiveEnvironments {
     static func mlx(service: LocalLLMService, fixture: LocalModelQualificationFixture,
                     modelID: String, contextWindow: Int?, cancellationBound: TimeInterval,
                     transcript: DebugTranscript? = nil) -> LocalToolEval.Environment {
-        LocalToolEval.Environment(
+        var environment = LocalToolEval.Environment(
             generateTurn: { testCase, request, _ in
                 let offered = appOrder(offered: testCase.offered, utterance: testCase.turn)
                 let specs = offered.compactMap { fixture.toolSpec($0) }
@@ -67,6 +67,12 @@ enum LiveEnvironments {
             schema: { fixture.schemaRoot($0) },
             referenceModelID: modelID,
             cancellationBound: cancellationBound)
+        // The job context the case's prompt shows, as `sendLocal` hands it to the loop.
+        environment.groundingText = { testCase in
+            fixture.systemPrompt(for: testCase, modelID: modelID, dateTimeLine: "")
+                .map(LLMService.localGroundingText(systemPrompt:)) ?? []
+        }
+        return environment
     }
 
     /// A case's offered tools in the order `LLMService.sendLocal` offers them: the Field Assist ones

@@ -333,6 +333,30 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertFalse(finished.resumable(with: record()), "a finished record is not carried on")
     }
 
+    /// Plan MQ P3: the arguments the loop dropped for a number nobody said, as a count; a record
+    /// written before the count existed still decodes.
+    func testDroppedArgumentsAreCountedAndAnOlderRecordStillDecodes() throws {
+        var record = record()
+        var m = LocalToolEval.Measurements()
+        m.argumentsDropped = 3
+        record.add(LocalToolEval.Run(caseID: "ts-001", category: .twoStep, group: .fieldAssist,
+                                     grades: [.toolName: true], measurements: m), repeat: 0, flagged: false, seconds: 1)
+        XCTAssertEqual(record.runs.first?.argumentsDropped, 3)
+        XCTAssertEqual(record.summary.groups["fieldAssist"]?.argumentsDroppedRuns, 1)
+        XCTAssertEqual(record.evalRuns.first?.measurements.argumentsDropped, 3)
+
+        let data = try record.encoded()
+        let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertFalse(text.contains("ts-001"), "the case id is kept as a hash")
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var runs = try XCTUnwrap(object["runs"] as? [[String: Any]])
+        runs[0].removeValue(forKey: "argumentsDropped")
+        object["runs"] = runs
+        let older = try XCTUnwrap(LocalModelQualificationRecord.decode(JSONSerialization.data(withJSONObject: object)))
+        XCTAssertNil(older.runs.first?.argumentsDropped)
+        XCTAssertEqual(older.evalRuns.first?.measurements.argumentsDropped, 0)
+    }
+
     // MARK: - The runtime's tool fit (Plan MQ P3)
 
     /// A run tells "the fit dropped the expected tool" from "the model missed it": the dispatcher

@@ -104,6 +104,43 @@ extension LLMService {
         return false
     }
 
+    /// Whether the wearer's turn asks something whose answer depends on where they are: the weather,
+    /// a route, what is near, where they are, how far, the traffic, sunrise or sunset, the local time.
+    /// Only then is a reply asking for their location a stall worth correcting (Plan MQ P3: on the
+    /// phone, "It's filthy in this cupboard" drew "…or tell me where you are?", and the correction
+    /// made Gemma call `where_am_i`). Phrases match as written; single words as whole words. Pure.
+    nonisolated static func turnDependsOnLocation(_ turn: String) -> Bool {
+        let lowered = turn.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+        if locationTurnPhrases.contains(where: { lowered.contains($0) }) { return true }
+        let words = Set(lowered.split { !$0.isLetter }.map(String.init))
+        return !words.isDisjoint(with: locationTurnWords)
+    }
+
+    nonisolated static let locationTurnPhrases = [
+        "near me", "near here", "around here", "where am i", "where i am", "where are we", "how far",
+        "directions to", "route to", "take me to", "local time", "time is it here",
+    ]
+
+    nonisolated static let locationTurnWords: Set<String> = [
+        "weather", "forecast", "rain", "raining", "umbrella", "snow", "windy", "directions", "route", "navigate",
+        "nearby", "nearest", "closest", "traffic", "sunrise", "sunset",
+    ]
+
+    /// The text in a downloaded model's system prompt whose numbers a tool call may use
+    /// (`LocalToolLoop.Configuration.groundingText`): the open job's `<field_assist_context>`
+    /// block — its equipment, the readings logged, the running procedure. The rest of the prompt
+    /// is instructions, the date and the like, whose numbers no call should take. Pure.
+    nonisolated static func localGroundingText(systemPrompt: String) -> [String] {
+        var blocks: [String] = []
+        var searchRange = systemPrompt.startIndex..<systemPrompt.endIndex
+        while let open = systemPrompt.range(of: "<field_assist_context>", range: searchRange),
+              let close = systemPrompt.range(of: "</field_assist_context>", range: open.upperBound..<systemPrompt.endIndex) {
+            blocks.append(String(systemPrompt[open.upperBound..<close.lowerBound]))
+            searchRange = close.upperBound..<systemPrompt.endIndex
+        }
+        return blocks
+    }
+
     /// Round 0's corrections after a stall, shared with `LocalToolLoop` so both say the same thing.
     nonisolated static let localLocationCorrection = "The user's location is already available to you — never ask for it. Call the where_am_i or get_weather tool now via <tool_call> in the exact format, then answer."
     nonisolated static let localIntentCorrection = "You said you would look that up, but you did not call a tool. Either output the <tool_call> now in the exact format, or answer directly. Never say you will check — act."

@@ -288,6 +288,9 @@ enum LocalToolEval {
         var contextWindow: Int?
         /// Calls `LocalTurnRouter` ran before the model (Plan MQ P3).
         var routedCalls = 0
+        /// Arguments the loop took off the model's calls because nobody said their number
+        /// (`LocalArgumentGrounding`, Plan MQ P3). A count only.
+        var argumentsDropped = 0
 
         mutating func add(_ stats: LocalGenerationStats?) {
             generations += 1
@@ -499,6 +502,10 @@ enum LocalToolEval {
         var runTurn: ((Case, [LocalToolLoop.Message],
                        @escaping (LocalToolLoop.Call) async throws -> LocalToolLoop.ExecutionResult)
                       async throws -> LocalToolLoop.Outcome)?
+        /// What the loop may take a call's numbers from beside the conversation, per case: the job
+        /// context in the prompt the runner renders (`LLMService.localGroundingText`), as the app
+        /// passes it. Nil: none, as CI's scripted runs, which render no prompt.
+        var groundingText: ((Case) -> [String])?
 
         init(generateTurn: @escaping (Case, LocalToolLoop.GenerationRequest, Int) async throws -> LocalToolLoop.Generation,
              read: @escaping (Case, Reader.Request) async throws -> LocalToolLoop.Generation = LocalToolEval.referenceReading,
@@ -588,6 +595,7 @@ enum LocalToolEval {
                 }
                 // The app's router, on the case's offer and procedure state (`sendLocalNative`).
                 var configuration = LocalToolLoop.Configuration()
+                configuration.groundingText = environment.groundingText?(testCase) ?? []
                 if environment.routesTurns {
                     configuration.routing = LocalTurnRouter.Context(offered: Set(testCase.offered),
                                                                     procedureActive: testCase.procedureActive ?? false,
@@ -622,6 +630,7 @@ enum LocalToolEval {
         switch result {
         case .success(let outcome):
             measured.noteRouted(outcome.routedCalls)
+            measured.noteDropped(outcome.argumentsDropped)
             grades.merge(grade(testCase, outcome: outcome, schema: environment.schema,
                                measurements: measured.value)) { $1 }
             if testCase.cancel != nil { grades[.cancellation] = false }
@@ -669,6 +678,7 @@ enum LocalToolEval {
         }
         func noteUnparsedReading() { lock.lock(); measurements.readerUnparsed += 1; lock.unlock() }
         func noteRouted(_ count: Int) { lock.lock(); measurements.routedCalls += count; lock.unlock() }
+        func noteDropped(_ count: Int) { lock.lock(); measurements.argumentsDropped += count; lock.unlock() }
         func noteError(_ error: Error) { lock.lock(); measurements.errorKind = LocalToolEval.errorKind(error); lock.unlock() }
     }
 
@@ -739,6 +749,8 @@ enum LocalToolEval {
             var compactRuns = 0
             /// Runs whose call the router made before the model (Plan MQ P3).
             var routedRuns = 0
+            /// Runs where the loop dropped a number nobody said from a call (Plan MQ P3).
+            var argumentsDroppedRuns = 0
         }
 
         var groups: [Group: GroupTally] = [:]
@@ -766,6 +778,7 @@ enum LocalToolEval {
             if run.measurements.fitDroppedGenerations > 0 { group.fitDroppedRuns += 1 }
             if run.measurements.compactGenerations > 0 { group.compactRuns += 1 }
             if run.measurements.routedCalls > 0 { group.routedRuns += 1 }
+            if run.measurements.argumentsDropped > 0 { group.argumentsDroppedRuns += 1 }
             groups[run.group] = group
         }
 
@@ -798,6 +811,9 @@ enum LocalToolEval {
                 }
                 if group.routedRuns > 0 {
                     lines.append("    called by the router before the model: \(group.routedRuns)")
+                }
+                if group.argumentsDroppedRuns > 0 {
+                    lines.append("    calls with a number nobody said, dropped: \(group.argumentsDroppedRuns)")
                 }
             }
             return lines

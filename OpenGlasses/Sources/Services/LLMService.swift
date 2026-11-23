@@ -6198,6 +6198,7 @@ class LLMService: ObservableObject {
             return try await sendLocalNative(
                 text, history: history, toolNames: toolNames, toolSpecs: toolSpecs,
                 compactToolSpecs: compactToolSpecs, contextWindow: toolTurnWindow?.tokens, toolRoots: toolRoots,
+                grounding: Self.localGroundingText(systemPrompt: prompt),
                 router: router, selectedID: selectedID, preview: containedPreview,
                 flushPreview: { if let onToken { let tail = previewFilter.flush(); if !tail.isEmpty { onToken(tail) } } },
                 generateTurn: { message, turnHistory, preview, toolTurn in
@@ -6260,12 +6261,12 @@ class LLMService: ObservableObject {
         // Gated on `.prose`: an output that already contains protocol did not stall, it failed, and
         // the containment below is the right answer for it. (That gate is also what the old
         // `!lowered.contains("<tool_call>")` check inside `announcesToolIntent` amounted to.)
+        //
+        // The same test the loop uses (`LocalToolLoop.standardCorrection`): a reply asking where the
+        // wearer is counts only on a turn that depends on where they are.
         if classification.kind == .prose, includeTools, nativeToolRouter != nil,
-           Self.announcesToolIntent(classification.text) || Self.asksUserForLocation(classification.text) {
+           let correction = LocalToolLoop.standardCorrection(for: classification.text, turn: text) {
             PrivacyLog.localModel(.stalled)
-            let correction = Self.asksUserForLocation(classification.text)
-                ? Self.localLocationCorrection
-                : Self.localIntentCorrection
             var correctiveHistory = history
             correctiveHistory.append((role: "assistant", content: classification.text))
             correctiveHistory.append((role: "user", content: correction))
@@ -6467,6 +6468,7 @@ class LLMService: ObservableObject {
                                  compactToolSpecs: [[String: Any]] = [],
                                  contextWindow: Int? = nil,
                                  toolRoots: [String: OnDeviceToolSchema.Node],
+                                 grounding: [String] = [],
                                  router: NativeToolRouter,
                                  selectedID: LocalModelID,
                                  preview: ((String) -> Void)?,
@@ -6485,6 +6487,8 @@ class LLMService: ObservableObject {
         // are called before the model (`LocalTurnRouter`), which answered them from memory.
         var configuration = LocalToolLoop.Configuration()
         configuration.routing = Self.localTurnRouting(offered: offered)
+        // A call's numbers may also come from the open job the prompt shows (`LocalArgumentGrounding`).
+        configuration.groundingText = grounding
         // The first pass streams to the preview: the initial one, or the answer after a routed call.
         var firstPass = true
         let outcome: LocalToolLoop.Outcome
@@ -6526,6 +6530,11 @@ class LLMService: ObservableObject {
             // A registered tool's name: the router names only tools it routes to, never the turn.
             PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.routedCalls,
                                   tool: PrivacyToken(routed.call.name), detail: PrivacyToken("routed"))
+        }
+        if outcome.argumentsDropped > 0 {
+            // A count only: the arguments' names and values are the model's text and are never logged.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsDropped,
+                                  detail: PrivacyToken("argumentsDropped"))
         }
         if outcome.multiCallGenerations > 0 {
             // A count only: generations that asked for more than one call, all of which ran or were counted.
