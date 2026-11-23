@@ -1,6 +1,6 @@
 # Plan MQ — Local Model Tool Harness and Device Qualification
 
-**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); a second phone run owed · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
+**Status:** 🚧 P0 built 2026-11-21 (headless core) · P1 built 2026-11-22 behind `Config.localNativeToolCallsEnabled`, off by default, Gemma 4 E2B only (see [P1 as built](#p1-as-built-2026-11-22)) · P3 part 1 built 2026-11-22: per-model sampling, the kill-limit memory budget, the run gate, the grader additions and the device qualification app (see [P3 part 1 as built](#p3-part-1-as-built-2026-11-22)); first phone run 2026-11-22 found every tool turn overflowing (`promptTooLong`, 4,317–4,326 of 3,456): the runtime now fits the definitions (compact, then drop, then none) before trimming history, the native selection's estimate is calibrated on the phone, and a native turn on Gemma 4 E2B gets 6,144 tokens on phones with 8 GB and the memory (see [Found on the phone](#found-on-the-phone-2026-11-22)); phone runs 2026-11-22 to 23 (see [Phone runs](#phone-runs-2026-11-22-to-2026-11-23)): the tool cases went from 6 of 94 to 303 of 326 through the fixes below and `LocalTurnRouter`, which runs error-code, model-number and procedure-step calls before the model; two-step 7–9 of 12, restraint and clean output 100%; a full-corpus run on the final build owed · P2 and the rest of P3 not built · P4 device pass owed · all 8 decisions taken 2026-11-21; owner 2026-11-22: phone results first, the Mac screener is a compile check · mlx-swift-lm moved to `4c21c84` (mlx-swift 0.33.0) in P1
 
 Offline Field Assist depends on the downloaded models (MLX and GGUF) when Apple Intelligence is
 missing or can't hold the turn. The research of 2026-11-20
@@ -420,6 +420,84 @@ What was built:
   prompt tokens. Reading turns prefilled in 0.1–0.6 s warm; the extra prompt will add to that on a
   long job, and the next phone run measures it (the record's per-generation prompt seconds and
   tokens). Not measured here.
+
+### Phone runs (2026-11-22 to 2026-11-23)
+
+Gemma 4 E2B (MLX, `mlx-community/gemma-4-e2b-it-4bit`) on the iPhone Air, one repeat a case, the
+device app's counts-and-hashes record. Fifteen runs: a 94-case slice, the full corpus once, then the
+326 tool cases (every tool category plus restraint) after each change. Run to run, the same build
+moves about four cases either way.
+
+| Run | Cases | Passed | Notes |
+|---|---|---|---|
+| 94-case slice, P1's guide | 94 | 6 | |
+| 94-case slice, after the fixes below up to table rows | 94 | 83 | |
+| Full corpus (before the router) | 618 | 375 | not-in-manual 63/63, restraint 43/43, manual answers 218/229, clean output 311/317; tool choice 44/143, multi-turn 1/119, two-step 0/12 |
+| Tool cases, Gemma's own call syntax read | 326 | 113 | |
+| Tool cases, with the router | 326 | 294 | every routed turn passed |
+| Tool cases, the last two builds | 326 | 302, 303 | tool choice 132–133/143, multi-turn 112/119, two-step 7–9/12, restraint 43/43, clean output 324/324 |
+
+Decode ran at about 19 tokens a second with the phone hot (its usual state in a long run), 26–28
+warm; peak footprint 3.5 GB. **The full corpus was last run before the router; a full run on the
+final build is owed**, so the reading categories' numbers are from that earlier build.
+
+**What the runs found, and what was built for each:**
+
+- **Results lost when the phone locked.** The runner resumes in the same process when the app
+  returns to the foreground.
+- **An empty reply after a successful call.** Gemma often ended its turn right after `reading`;
+  the loop now speaks the tool's own result when it is a short single line of prose
+  (`LocalToolLoop` end reason `.toolResult`), and a miss otherwise.
+- **Readings declined on a formality.** `ManualReadingCheck` reads a passage id written `[p1]` or
+  `passage p1`, and accepts a quote made of one table row's cells with that table's headers.
+- **Gemma's own call syntax.** `LocalOutputPolicy` reads `call:name{key:<|"|>value<|"|>}` and its
+  `<tool_call:…>` hybrids, and a Python-style `name(key="value")` call standing on its own line, as
+  further grammars (never as repairs: a body that doesn't parse is never a call, and is not spoken).
+- **The assistant's name at the front of a reply** ("Avenkin here…") is taken off; "Avenkin will
+  log…" is kept.
+- **Lookups and procedure steps answered from memory.** Gemma rarely called `equipment_lookup` for
+  an error code or a model number, or `procedure_runner` for "next", "say that again" or a step's
+  answer, and sometimes made up advice. Guide lines asking it to did not help, and nor did fewer
+  tools. `LocalTurnRouter` (pure) now recognises those turns and runs the call before the model:
+  an error code, a model number given to identify the unit, a running procedure's next / repeat /
+  answer, and a procedure start matched to exactly one title in the vault's catalogue. A lookup's
+  result goes to the model to phrase; a step's result is spoken as the runner wrote it, minus the
+  lines meant for the model. Over the corpus it routes every code, model and next/repeat case and
+  11 of 12 answers, never a case that expects no call, never a wrong one. Its score is the router's
+  as much as the model's: the record counts routed calls per run.
+- **Two calls in one generation.** Every call a generation makes now runs, in order, each through
+  the dispatcher and counted against the round cap.
+- **Claims and promises nothing kept.** A reply that says a reading was logged or a drop worked out
+  when no such call ran gets the turn's one correction, then the miss text (`unbackedClaim`); a
+  final promise to act ("I will calculate it now") with nothing behind it ends the same way
+  (`unbackedPromise`). The intent check also hears the assistant's own name as "I".
+- **Numbers nobody said.** Gemma filled voltage-drop calls with invented conductor figures (a
+  resistance of 16 Ω/ft for 14 AWG copper). `LocalArgumentGrounding` drops a numeric argument that
+  appears nowhere in the turn, the history, this turn's tool results or the job block of the
+  prompt, and tells the model which; over the corpus's reference calls it drops none.
+- **The wire, the supply and the operation from the technician's words.** `LocalArgumentCompletion`
+  fills a voltage drop's `wire_awg` or `area_mm2`, `material` and `supply_v` from what the
+  technician said (the technician's stated wire wins over a figure the model supplied), and sets
+  `operation` on a call shaped like a voltage drop that named none. Coercion moves a missing
+  required choice from a key that holds one of its values (Gemma's `application: voltage_drop`).
+- **Voltage drop by wire size.** `domain_calc` takes `wire_awg` (18 to 4/0) or `area_mm2`, with the
+  metal; the figures ship as electrical trade reference data (`Resources/Electrical/conductors.json`,
+  credited in Attributions), the one exception to Plan JJ's "no shipped tables"
+  ([JJ decision 8](JJ-table-lookup-and-rule-chains.md)). The metal is never assumed.
+- **A location ask on a turn about something else** ("It's filthy in this cupboard" → "tell me
+  where you are?" → `where_am_i`). The location correction now fires only on a turn that depends on
+  where the wearer is.
+
+**Still failing on the last build:** a reading follow-up ("and the other one?", 0 of 6 — Gemma
+states the value instead of logging it; the loop's history is plain text with no record of the
+earlier call), the job commands (open, reference, resume, next unit, status), three evidence
+choices, one procedure answer, a show-source argument. These are P3 part 2, with a full-corpus run
+on the final build, before any badge.
+
+**Not checked on the phone:** what the router and the argument steps say in the real app (the
+qualification run scores scripted tool results, so a reply after a refused call can still quote
+the script); the preview stream can show a Gemma or Python-style call line briefly before it is
+classified (the spoken and stored text never carries it).
 
 ## What the local path does today (read from the code, 2026-11-20)
 
