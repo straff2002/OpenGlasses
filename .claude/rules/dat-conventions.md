@@ -300,6 +300,14 @@ around them.
   phone.
 - **The Display dims after 20 s without input and sleeps at 25 s.** No API observes or controls
   it, and whether a new `send` wakes it is unconfirmed. When the wearer must look, cue them by sound.
+- **Unconfirmed, from field experience with the Display (added 2026-11-23, Plan NC §7).** Not yet
+  seen on our glasses or in Meta's docs; NC P11 checks each one.
+  - Leave at least 2 s between one DAT session stopping and the next starting. NC P0 builds the gap
+    in `DeviceSessionCoordinator` because it is cheap, before the check.
+  - Keep the glasses' HFP link up rather than opening and closing it repeatedly; cycling it may end
+    sessions, beyond the HFP report above.
+  - After the Back gesture, the Display may report `started` while the lens shows Meta's home, so a
+    send then may land nowhere.
 - **iPhone 17 on iOS 26: HFP may carry no audio either way** (Meta known issue, fixed in iOS 27).
 - **Ray-Ban Meta Audio (no camera) is not supported by DAT** in any release (ios #345): it never
   lists or connects. It is a plain Bluetooth headset.
