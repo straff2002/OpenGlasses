@@ -269,8 +269,8 @@ once.
   phase's `.active` hook) and after the turn that queued a write. It writes this process's queue
   first, then the store's, one meeting at a time, oldest first, only while the route says write now,
   and never while a turn is in flight (it waits up to ten minutes, then leaves the rest for the next
-  foreground), because the stateless call empties and restores the conversation's history around
-  itself; before each model step it checks again (§6). The saved note is rebuilt in full from the
+  foreground), so the write never competes with the wearer's turn for the model; before each model
+  step it checks again (§6). The saved note is rebuilt in full from the
   owed transcript (the excerpt again), its action items replaced with the added ones kept, and
   `LatestMeetingSummary` updated if it is still that meeting. A note the wearer deleted stays
   deleted. A record whose reason this build does not know reads as `interrupted`.
@@ -425,9 +425,9 @@ under the switch that already writes the same words as a kept session.
    and the ceiling keeps each step short, so a turn that starts during a write waits less for the
    step running.
 10. **The notes are written after the turn, never inside it** (replaces "45 s inside a turn",
-    2026-11-23). *Why:* the stateless call swaps the shared conversation history — it empties it
-    and puts its snapshot back when it ends — so it must never overlap a turn or outlive one. A
-    call inside the `meeting_summary` tool did both: the turn waited on it, and past a deadline the
+    2026-11-23). *Why:* when this was built, the stateless call swapped the shared conversation
+    history — it emptied it and put its snapshot back when it ended — so it could not overlap a turn
+    or outlive one. A call inside the `meeting_summary` tool did both: the turn waited on it, and past a deadline the
     turn went on with an empty history while the abandoned call, ending later, put a stale history
     back over the turn's newer messages. Now the turn answers from the phone's candidates and the
     excerpt, the write waits for the turn to end and checks again before every step, and a running
@@ -463,13 +463,11 @@ under the switch that already writes the same words as a kept session.
   limit (`maximumReservedLocales`), after which the analyzer start fails and the session falls
   back. To be watched in the device pass.
 
-- **A wearer turn started while any stateless call is running.** The notes write never starts a
-  step while a turn is in flight and stops before the next one, but a turn the wearer starts while a
-  step is already running overlaps that call, which empties the conversation's history and puts its
-  snapshot back when it ends — over whatever the turn has written by then. The lecture assistant's
-  rounds and the talk note have the same exposure. It is a property of `completeStateless` itself,
-  for a separate fix (a history-free route, or the turn waiting for the call); the bounded step
-  size (decision 9) keeps the window short meanwhile.
+- **A wearer turn started while any stateless call is running** — resolved 2026-11-24 by the
+  stateless-call fix (PR 1208): `completeStateless` now runs in a history of its own and never
+  reads or writes the conversation, so a turn started during a notes step, a lecture round or a talk
+  note keeps its history. Decision 10's timing stays for the reply's speed and the model's memory,
+  not for safety.
 
 ## Not in scope
 

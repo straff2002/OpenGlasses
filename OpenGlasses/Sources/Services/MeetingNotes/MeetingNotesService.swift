@@ -43,10 +43,11 @@ enum MeetingNotesOutcome: Equatable, Sendable {
 /// exactly as they do there. Until it is configured — and in tests that do not configure it —
 /// every request takes the phone's notes.
 ///
-/// **Never inside a turn.** The stateless call empties the conversation's history and puts it
-/// back when it ends, so it must neither overlap a turn nor outlive one. A summary is asked for by
-/// a tool call while its turn waits, so `queue` decides and queues, and never calls the model: the
-/// turn answers with the phone's notes and the transcript excerpt. The write runs once no turn is
+/// **Never inside a turn.** A summary is asked for by a tool call while its turn waits, and a
+/// model pass over a whole meeting can take minutes, so `queue` decides and queues, and never
+/// calls the model: the turn answers at once with the phone's notes and the transcript excerpt.
+/// (The stateless call runs in a history of its own, so a turn beside it is safe; holding the
+/// write back keeps the model, and an on-device model's memory, free for the wearer's turn.) The write runs once no turn is
 /// in flight (`writeOwed`), one meeting and one model step at a time; before every step it checks
 /// again, and a turn that has started meanwhile stops the write after the step already running
 /// (which is always awaited to its end, never abandoned), leaving the meeting queued or owed to

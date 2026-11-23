@@ -4118,10 +4118,10 @@ class AppState: ObservableObject, AppStateProtocol {
         )
         // Plan MX P4: the meeting summary's notes are written by the model, through the same
         // stateless completion the meeting assistant's rounds use (so HIPAA mode, Medical Local Only
-        // and the active model apply exactly as there), off the turn's own accounting. The call
-        // swaps the conversation's history, so it never runs while a turn is in flight: a summary
-        // asked for in a turn is written once the turn is over, and P6's owed notes when the app
-        // is in front again.
+        // and the active model apply exactly as there), off the turn's own accounting. It never
+        // runs inside a turn: the turn that asked waits on nothing, the notes are written once it
+        // is over, and P6's owed notes when the app is in front again. (The call works in a
+        // history of its own, so a turn beside it is safe; the timing keeps the reply quick.)
         let notesLLM = llmService
         MeetingNotesService.shared.configure(.init(
             complete: { system, user in
