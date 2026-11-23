@@ -227,6 +227,9 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         /// Arguments the loop dropped from the model's calls because nobody said their number
         /// (Plan MQ P3; a count only); nil in older records.
         var argumentsDropped: Int?
+        /// Arguments the loop set, replaced or took off the model's calls from what the technician
+        /// said (Plan MQ P3; a count only); nil in older records.
+        var argumentsCompleted: Int?
         /// `QualificationRunGate.Thermal`'s raw value when the case started; nil in older records.
         var thermalAtStart: Int?
         var seconds: Double
@@ -258,6 +261,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
         var routedRuns: Int?
         /// Runs where the loop dropped a number nobody said from a call (Plan MQ P3); nil in older records.
         var argumentsDroppedRuns: Int?
+        /// Runs where the loop filled a call from what the technician said (Plan MQ P3); nil in older records.
+        var argumentsCompletedRuns: Int?
     }
 
     struct FloorResult: Codable, Equatable {
@@ -316,6 +321,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             toolsOffered: m.toolsOffered, toolsKept: m.toolsKept, fitDroppedGenerations: m.fitDroppedGenerations,
             compactGenerations: m.compactGenerations, expectedToolDropped: m.expectedToolDropped,
             contextWindow: m.contextWindow, routedCalls: m.routedCalls, argumentsDropped: m.argumentsDropped,
+            argumentsCompleted: m.argumentsCompleted,
             thermalAtStart: thermalAtStart?.rawValue, seconds: seconds)
         runs.removeAll { $0.key == entry.key }
         runs.append(entry)
@@ -347,6 +353,7 @@ struct LocalModelQualificationRecord: Codable, Equatable {
             measurements.contextWindow = entry.contextWindow
             measurements.routedCalls = entry.routedCalls ?? 0
             measurements.argumentsDropped = entry.argumentsDropped ?? 0
+            measurements.argumentsCompleted = entry.argumentsCompleted ?? 0
             // The id is not kept; the hash stands in for it, which is all the report groups by.
             return LocalToolEval.Run(caseID: entry.caseHash, category: category, group: group, grades: grades,
                                      measurements: measurements)
@@ -389,7 +396,8 @@ struct LocalModelQualificationRecord: Codable, Equatable {
                                                   expectedToolDroppedRuns: counted.expectedToolDroppedRuns,
                                                   fitDroppedRuns: counted.fitDroppedRuns, compactRuns: counted.compactRuns,
                                                   routedRuns: counted.routedRuns,
-                                                  argumentsDroppedRuns: counted.argumentsDroppedRuns)
+                                                  argumentsDroppedRuns: counted.argumentsDroppedRuns,
+                                                  argumentsCompletedRuns: counted.argumentsCompletedRuns)
         }
         let shortfalls = Set(report.floorShortfalls().map(\.name))
         let floors = LocalToolEval.Floors.all.compactMap { floor -> FloorResult? in

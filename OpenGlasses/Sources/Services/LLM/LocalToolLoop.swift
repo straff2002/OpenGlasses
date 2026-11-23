@@ -50,6 +50,13 @@ import Foundation
 /// (`LocalArgumentGrounding`): Gemma 4 E2B made up conductor figures for a voltage drop the tool
 /// would have worked out from (Plan MQ P3). The call runs without them; the model reads which were
 /// not used after the result, and the outcome counts them (`argumentsDropped`).
+///
+/// ### What the technician said, filled in
+/// After that filter, a model-made call gets what the conversation said and the call left off
+/// (`LocalArgumentCompletion`): Gemma 4 E2B never sends a voltage drop's `wire_awg`, so "14 gauge
+/// copper" became a refusal and a question about resistance. Here rather than in the dispatcher's
+/// coercion because the loop is the one step the app and the eval both run. The model reads what
+/// was filled after the result; the outcome counts it (`argumentsCompleted`).
 enum LocalToolLoop {
 
     // MARK: - Messages
@@ -160,6 +167,9 @@ enum LocalToolLoop {
         /// the job context the model reads in its prompt. The turn, the history and this turn's
         /// tool results are always grounding.
         var groundingText: [String] = []
+        /// The conductor file `LocalArgumentCompletion` sizes a wire against, read only when a call
+        /// needs it.
+        var conductors: () -> ConductorTable? = { ConductorTableCatalog.table() }
     }
 
     static let defaultRoundCap = 3
@@ -217,6 +227,9 @@ enum LocalToolLoop {
         /// Arguments taken off model-made calls because nobody said their number
         /// (`LocalArgumentGrounding`). A count only.
         var argumentsDropped = 0
+        /// Arguments set, replaced or taken off model-made calls from what the technician said
+        /// (`LocalArgumentCompletion`). A count only.
+        var argumentsCompleted = 0
     }
 
     // MARK: - Parsing
@@ -328,6 +341,11 @@ enum LocalToolLoop {
         var routed = 0
         var multiCall = 0
         var dropped = 0
+        var completedArguments = 0
+        // The turn first, then the earlier user messages, newest first.
+        let completion = LocalArgumentCompletion.Context(
+            userMessages: [userMessage] + history.filter { $0.role == .user }.reversed().map(\.content),
+            conductors: configuration.conductors)
         // What a model-made call's numbers may come from; this turn's tool results join it as they
         // arrive. Not this turn's own replies: a figure the model wrote itself is not grounding.
         var grounding = LocalArgumentGrounding.Grounding(configuration.groundingText + history.map(\.content)
@@ -372,6 +390,7 @@ enum LocalToolLoop {
                                   callsFromReasoning: fromReasoning, callsNotRun: notRun, routedCalls: routed)
             outcome.multiCallGenerations = multiCall
             outcome.argumentsDropped = dropped
+            outcome.argumentsCompleted = completedArguments
             return outcome
         }
 
@@ -446,10 +465,13 @@ enum LocalToolLoop {
             // beside them rides on the first that runs.
             var ran = 0
             for invocation in invocations {
-                // What runs is the call less any number nobody said; the repeat check compares that.
+                // What runs is the call less any number nobody said, with what the technician said
+                // filled in; the repeat check compares that.
                 let filtered = LocalArgumentGrounding.filter(invocation.arguments, grounding: grounding)
+                let completed = LocalArgumentCompletion.complete(name: invocation.name, arguments: filtered.arguments,
+                                                                 context: completion)
                 let call = Call(id: "call_\(executed.count + 1)", name: invocation.name,
-                                arguments: filtered.arguments, fromReasoning: parsed.fromReasoning)
+                                arguments: completed.arguments, fromReasoning: parsed.fromReasoning)
                 // Past the cap: only reachable when the cap is 0, a model calls after tools were
                 // withheld, or one generation asked for more calls than the cap has left.
                 guard executed.count < cap else { notRun += 1; continue }
@@ -457,14 +479,21 @@ enum LocalToolLoop {
 
                 if call.fromReasoning { fromReasoning += 1 }
                 dropped += filtered.dropped.count
+                completedArguments += completed.changes
                 try Task.checkCancellation()
                 transcript.append(.assistant(ran == 0 ? parsed.text : "", calling: call))
                 let result = try await execute(call)
                 try Task.checkCancellation()
-                // The note is the model's alone: `Executed` keeps the tool's own result, which is
-                // what `spokenResult(of:)` may say.
-                let forModel = filtered.dropped.isEmpty ? result.text
-                    : result.text + "\n\n" + LocalArgumentGrounding.modelNote(dropped: filtered.dropped)
+                // The notes are the model's alone: `Executed` keeps the tool's own result, which is
+                // what `spokenResult(of:)` may say. A number dropped where what was said governs is
+                // told as replaced, not as one to ask for.
+                let unsaid = filtered.dropped.filter { !completed.governs($0) }
+                let filledNames = Set(completed.filled.map { $0.name })
+                let notUsed = (completed.removed + filtered.dropped.filter { completed.governs($0) && !filledNames.contains($0) })
+                    .sorted()
+                let notes = [unsaid.isEmpty ? nil : LocalArgumentGrounding.modelNote(dropped: unsaid),
+                             LocalArgumentCompletion.modelNote(filled: completed.filled, notUsed: notUsed)].compactMap { $0 }
+                let forModel = ([result.text] + notes).joined(separator: "\n\n")
                 transcript.append(.toolResult(forModel, for: call))
                 grounding.add(result.text)
                 executed.append(Executed(call: call, result: result))

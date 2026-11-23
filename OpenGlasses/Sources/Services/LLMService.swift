@@ -6536,6 +6536,11 @@ class LLMService: ObservableObject {
             PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsDropped,
                                   detail: PrivacyToken("argumentsDropped"))
         }
+        if outcome.argumentsCompleted > 0 {
+            // A count only: what was filled is the technician's words and is never logged.
+            PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.argumentsCompleted,
+                                  detail: PrivacyToken("argumentsCompleted"))
+        }
         if outcome.multiCallGenerations > 0 {
             // A count only: generations that asked for more than one call, all of which ran or were counted.
             PrivacyLog.localModel(.toolLoop, model: PrivacyToken(selectedID.rawValue), count: outcome.multiCallGenerations,

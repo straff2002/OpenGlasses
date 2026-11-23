@@ -357,6 +357,35 @@ final class LocalModelQualificationRecordTests: XCTestCase {
         XCTAssertEqual(older.evalRuns.first?.measurements.argumentsDropped, 0)
     }
 
+    /// Plan MQ P3: the arguments the loop filled from what the technician said, as a count; a
+    /// record written before the count existed still decodes.
+    func testCompletedArgumentsAreCountedAndAnOlderRecordStillDecodes() throws {
+        var record = record()
+        var m = LocalToolEval.Measurements()
+        m.argumentsCompleted = 2
+        record.add(LocalToolEval.Run(caseID: "ts-001", category: .twoStep, group: .fieldAssist,
+                                     grades: [.toolName: true], measurements: m), repeat: 0, flagged: false, seconds: 1)
+        XCTAssertEqual(record.runs.first?.argumentsCompleted, 2)
+        XCTAssertEqual(record.summary.groups["fieldAssist"]?.argumentsCompletedRuns, 1)
+        XCTAssertEqual(record.evalRuns.first?.measurements.argumentsCompleted, 2)
+
+        let data = try record.encoded()
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var runs = try XCTUnwrap(object["runs"] as? [[String: Any]])
+        runs[0].removeValue(forKey: "argumentsCompleted")
+        object["runs"] = runs
+        var summary = try XCTUnwrap(object["summary"] as? [String: Any])
+        var groups = try XCTUnwrap(summary["groups"] as? [String: Any])
+        var group = try XCTUnwrap(groups["fieldAssist"] as? [String: Any])
+        group.removeValue(forKey: "argumentsCompletedRuns")
+        groups["fieldAssist"] = group
+        summary["groups"] = groups
+        object["summary"] = summary
+        let older = try XCTUnwrap(LocalModelQualificationRecord.decode(JSONSerialization.data(withJSONObject: object)))
+        XCTAssertNil(older.runs.first?.argumentsCompleted)
+        XCTAssertEqual(older.evalRuns.first?.measurements.argumentsCompleted, 0)
+    }
+
     // MARK: - The runtime's tool fit (Plan MQ P3)
 
     /// A run tells "the fit dropped the expected tool" from "the model missed it": the dispatcher

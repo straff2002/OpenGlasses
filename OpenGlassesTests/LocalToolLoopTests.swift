@@ -464,7 +464,9 @@ final class LocalToolLoopTests: XCTestCase {
         let outcome = try await runNative(model, tools, message: twoStepTurn)
 
         let afterBoth = try XCTUnwrap(model.requests.dropFirst().first)
-        XCTAssertEqual(afterBoth.messages.last?.content, "Argument 'operation' is required.")
+        XCTAssertEqual(afterBoth.messages.last?.content, "Argument 'operation' is required.\n\n"
+                       + "Filled from what the technician said: wire_awg 14, material copper.",
+                       "the misnamed call was still completed; the dispatcher's coercion comes after")
         XCTAssertTrue(afterBoth.toolsOffered, "two of three rounds used: it may call again")
         XCTAssertEqual(tools.calls.map(\.name), ["reading", "domain_calc", "domain_calc"])
         XCTAssertEqual(outcome.executed.map(\.result.isError), [false, true, false])
@@ -693,8 +695,10 @@ final class LocalToolLoopTests: XCTestCase {
 
         let result = try XCTUnwrap(model.requests[1].messages.last)
         XCTAssertEqual(result.role, .tool)
+        // The technician named the wire, so the figures are told as replaced, not as ones to ask for.
         XCTAssertEqual(result.content, "result of domain_calc\n\n"
-                       + LocalArgumentGrounding.modelNote(dropped: ["area_cmil", "resistance_ohm_per_ft"]))
+                       + "Not used, because the technician named the wire: area_cmil, resistance_ohm_per_ft.")
+        XCTAssertEqual(outcome.argumentsCompleted, 0, "the call already carried the size and the metal")
         XCTAssertEqual(outcome.executed.first?.result.text, "result of domain_calc",
                        "the note is the model's alone, never a result that may be spoken")
         XCTAssertEqual(outcome.text, "The drop is about 3 volts.")
@@ -702,13 +706,14 @@ final class LocalToolLoopTests: XCTestCase {
 
     func testACallWhoseNumbersWereAllSaidRunsWholeWithNoNote() async throws {
         let model = ScriptedModel([
-            call("domain_calc", #"{"operation": "voltage_drop", "current_a": 15, "length_ft": 50, "wire_awg": "14"}"#),
+            call("domain_calc", #"{"operation": "voltage_drop", "current_a": 15, "length_ft": 50, "wire_awg": "14", "material": "copper"}"#),
             "About 3 volts.",
         ])
         let tools = ToolLog()
         let outcome = try await run(model, tools, message: twoStepTurn)
-        XCTAssertEqual(tools.calls.first?.arguments.count, 4)
+        XCTAssertEqual(tools.calls.first?.arguments.count, 5)
         XCTAssertEqual(outcome.argumentsDropped, 0)
+        XCTAssertEqual(outcome.argumentsCompleted, 0)
         XCTAssertEqual(model.requests[1].messages.last?.content, "result of domain_calc")
     }
 
@@ -771,6 +776,81 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(tools.calls.first?.arguments["query"] as? String, "E110")
         XCTAssertEqual(tools.calls.last?.arguments["value"] as? String, "102")
         XCTAssertEqual(outcome.argumentsDropped, 0)
+    }
+
+    // MARK: - What the technician said, filled in (Plan MQ P3)
+
+    func testGemmasPhoneCallGetsTheTurnsGaugeAndMetal() async throws {
+        // Gemma 4 E2B's call on the phone: the metal, no size, and a resistance nobody said.
+        let model = NativeModel([
+            .init(text: "", toolCalls: [
+                .init(name: "reading", arguments: ["action": "record_reading", "value": "120"]),
+                .init(name: "domain_calc", arguments: ["current_a": "15", "length_ft": "50", "material": "copper",
+                                                       "phase": "single", "operation": "voltage_drop",
+                                                       "resistance_ohm_per_ft": "1.18"]),
+            ]),
+            .init(text: "Logged 120 volts; the drop is about 3 volts."),
+        ])
+        let tools = ToolLog()
+        tools.result = { call in .init(text: call.name == "domain_calc" ? "Voltage drop 3.0 V." : "Recorded 120 VAC.") }
+        let outcome = try await runNative(model, tools, message: twoStepTurn)
+
+        let ran = try XCTUnwrap(tools.calls.last)
+        XCTAssertEqual(ran.name, "domain_calc")
+        XCTAssertEqual(ran.arguments["wire_awg"] as? String, "14")
+        XCTAssertEqual(ran.arguments["material"] as? String, "copper")
+        XCTAssertNil(ran.arguments["resistance_ohm_per_ft"])
+        XCTAssertEqual(ran.arguments["phase"] as? String, "single")
+        XCTAssertEqual(Set(ran.arguments.keys), ["current_a", "length_ft", "material", "phase", "operation", "wire_awg"])
+        XCTAssertEqual(outcome.argumentsDropped, 1)
+        XCTAssertEqual(outcome.argumentsCompleted, 1)
+
+        let result = try XCTUnwrap(model.requests[1].messages.last)
+        XCTAssertEqual(result.content, "Voltage drop 3.0 V.\n\nFilled from what the technician said: wire_awg 14. "
+                       + "Not used, because the technician named the wire: resistance_ohm_per_ft.")
+        XCTAssertEqual(outcome.executed.last?.result.text, "Voltage drop 3.0 V.")
+    }
+
+    func testTheCompletionNoteIsNeverSpoken() async throws {
+        let model = ScriptedModel([
+            call("domain_calc", #"{"operation": "voltage_drop", "phase": "single", "current_a": 15, "length_ft": 50}"#),
+            "",
+        ])
+        let tools = ToolLog()
+        tools.result = { _ in .init(text: "Voltage drop 3.0 V.") }
+        let outcome = try await run(model, tools, message: twoStepTurn)
+        XCTAssertEqual(outcome.endReason, .toolResult)
+        XCTAssertEqual(outcome.text, "Voltage drop 3.0 V.", "the tool's own result, never the model's note")
+        XCTAssertFalse(outcome.transcript.filter { $0.role == .assistant }.contains { $0.content.contains("Filled") })
+        XCTAssertEqual(outcome.argumentsCompleted, 2)
+    }
+
+    func testTheRepeatCheckComparesTheCompletedCall() async throws {
+        // The same call twice, once with the size and once without: after completion they are one call.
+        let model = ScriptedModel([
+            call("domain_calc", #"{"operation": "voltage_drop", "phase": "single", "current_a": 15, "length_ft": 50, "material": "copper"}"#),
+            call("domain_calc", #"{"operation": "voltage_drop", "phase": "single", "current_a": 15, "length_ft": 50, "material": "copper", "wire_awg": "14"}"#),
+            "About 3 volts.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: twoStepTurn)
+        XCTAssertEqual(tools.calls.count, 1)
+        XCTAssertEqual(outcome.callsNotRun, 1)
+    }
+
+    func testARoutedCallIsNotCompleted() async throws {
+        let message = "The control's showing E110. What do I check?"
+        let history: [LocalToolLoop.Message] = [.user("The run is 15 amps over 50 feet of 14 gauge copper."), .assistant("Okay.")]
+        let configuration = routing(["equipment_lookup", "domain_calc"])
+        let route = try XCTUnwrap(LocalTurnRouter.route(turn: message, history: history,
+                                                        context: try XCTUnwrap(configuration.routing)))
+        let model = ScriptedModel(["Check the supply."])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, history: history, configuration: configuration, message: message)
+        let routed = try XCTUnwrap(tools.calls.first)
+        XCTAssertEqual(LocalToolLoop.Call(id: "x", name: routed.name, arguments: routed.arguments).signature,
+                       LocalToolLoop.Call(id: "x", name: route.tool, arguments: route.arguments).signature)
+        XCTAssertEqual(outcome.argumentsCompleted, 0)
     }
 
     // MARK: - Routed calls (Plan MQ P3)

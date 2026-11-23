@@ -48,6 +48,12 @@ targets:
       - ../../OpenGlasses/Sources/Services/PromptInjectionPolicy+ToolOutput.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalToolLoop.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalArgumentGrounding.swift
+      - ../../OpenGlasses/Sources/Services/LLM/LocalArgumentCompletion.swift
+      # The conductor file the completion sizes a wire against, loaded as the app loads it.
+      - ../../OpenGlasses/Sources/Services/FieldAssist/Electrical/ConductorTable.swift
+      - ../../OpenGlasses/Sources/Services/FieldAssist/Electrical/VoltageDrop.swift
+      - path: ../../OpenGlasses/Sources/Resources/Electrical/conductors.json
+        buildPhase: resources
       - ../../OpenGlasses/Sources/Services/LLM/LocalTurnRouter.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalToolFit.swift
       - ../../OpenGlasses/Sources/Services/LLM/LocalNativeToolPolicy.swift

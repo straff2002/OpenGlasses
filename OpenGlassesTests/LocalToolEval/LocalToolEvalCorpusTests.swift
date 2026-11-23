@@ -321,6 +321,19 @@ final class LocalToolEvalCorpusTests: XCTestCase {
         XCTAssertTrue(LocalToolEval.isClean("The web_search tool takes a query."))
     }
 
+    /// Plan MQ P3: the eval runs the loop's completion as the app does; Gemma's call without the
+    /// size still passes and the fill is counted.
+    func testACallMissingTheSaidGaugeIsCompletedAndCounted() async throws {
+        let run = try await runCase("twostep-090XV36C-120", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "120"}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": "120", "current_a": "15", "length_ft": "50", "material": "copper", "phase": "single"}}</tool_call>"#,
+            "Logged 120 volts; the drop is about 3 volts.",
+        ])
+        XCTAssertEqual(run.measurements.argumentsCompleted, 1)
+        XCTAssertEqual(run.grades[.argumentValues], true)
+        XCTAssertEqual(run.grades[.argumentTypes], true)
+    }
+
     func testABrokenCarryFailsCarry() async throws {
         let run = try await runCase("twostep-070XV36B-115", script: [
             #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "115"}}</tool_call>"#,

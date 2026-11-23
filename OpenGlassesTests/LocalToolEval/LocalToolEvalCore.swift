@@ -291,6 +291,9 @@ enum LocalToolEval {
         /// Arguments the loop took off the model's calls because nobody said their number
         /// (`LocalArgumentGrounding`, Plan MQ P3). A count only.
         var argumentsDropped = 0
+        /// Arguments the loop set, replaced or took off the model's calls from what the technician
+        /// said (`LocalArgumentCompletion`, Plan MQ P3). A count only.
+        var argumentsCompleted = 0
 
         mutating func add(_ stats: LocalGenerationStats?) {
             generations += 1
@@ -631,6 +634,7 @@ enum LocalToolEval {
         case .success(let outcome):
             measured.noteRouted(outcome.routedCalls)
             measured.noteDropped(outcome.argumentsDropped)
+            measured.noteCompleted(outcome.argumentsCompleted)
             grades.merge(grade(testCase, outcome: outcome, schema: environment.schema,
                                measurements: measured.value)) { $1 }
             if testCase.cancel != nil { grades[.cancellation] = false }
@@ -679,6 +683,7 @@ enum LocalToolEval {
         func noteUnparsedReading() { lock.lock(); measurements.readerUnparsed += 1; lock.unlock() }
         func noteRouted(_ count: Int) { lock.lock(); measurements.routedCalls += count; lock.unlock() }
         func noteDropped(_ count: Int) { lock.lock(); measurements.argumentsDropped += count; lock.unlock() }
+        func noteCompleted(_ count: Int) { lock.lock(); measurements.argumentsCompleted += count; lock.unlock() }
         func noteError(_ error: Error) { lock.lock(); measurements.errorKind = LocalToolEval.errorKind(error); lock.unlock() }
     }
 
@@ -751,6 +756,8 @@ enum LocalToolEval {
             var routedRuns = 0
             /// Runs where the loop dropped a number nobody said from a call (Plan MQ P3).
             var argumentsDroppedRuns = 0
+            /// Runs where the loop filled a call from what the technician said (Plan MQ P3).
+            var argumentsCompletedRuns = 0
         }
 
         var groups: [Group: GroupTally] = [:]
@@ -779,6 +786,7 @@ enum LocalToolEval {
             if run.measurements.compactGenerations > 0 { group.compactRuns += 1 }
             if run.measurements.routedCalls > 0 { group.routedRuns += 1 }
             if run.measurements.argumentsDropped > 0 { group.argumentsDroppedRuns += 1 }
+            if run.measurements.argumentsCompleted > 0 { group.argumentsCompletedRuns += 1 }
             groups[run.group] = group
         }
 
@@ -814,6 +822,9 @@ enum LocalToolEval {
                 }
                 if group.argumentsDroppedRuns > 0 {
                     lines.append("    calls with a number nobody said, dropped: \(group.argumentsDroppedRuns)")
+                }
+                if group.argumentsCompletedRuns > 0 {
+                    lines.append("    calls filled from what the technician said: \(group.argumentsCompletedRuns)")
                 }
             }
             return lines
