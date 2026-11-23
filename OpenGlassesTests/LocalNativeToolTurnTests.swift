@@ -316,6 +316,20 @@ final class LocalNativeToolTurnTests: XCTestCase {
         XCTAssertTrue(harness.service.lastLocalTurnMissed)
     }
 
+    /// A last reply that still promises a calculation nothing ran is the miss line, and the turn is
+    /// marked missed as an unbacked claim is (Plan MQ P3). Not a promise `announcesToolIntent` sees,
+    /// so the end reason alone marks it.
+    func testAFinalPromiseNothingKeptIsAMissAndMarkedSo() async throws {
+        Config.localNativeToolCallsEnabled = true
+        let promise = "I will now call the calculate tool to work it out."
+        XCTAssertFalse(LLMService.announcesToolIntent(promise))
+        let harness = makeHarness(passes: [Pass(calls: [clockCall]), Pass(text: promise), Pass(text: promise)])
+        let answer = try await ask(harness, "what time is it, and work out two plus two")
+        XCTAssertEqual(answer, LLMService.localMissMessage)
+        XCTAssertTrue(harness.service.lastLocalTurnMissed)
+        XCTAssertTrue(harness.calculator.invocations.isEmpty)
+    }
+
     func testABargeInDuringTheLoopCancelsUnwrapped() async throws {
         Config.localNativeToolCallsEnabled = true
         let harness = makeHarness(passes: [Pass(calls: [clockCall]), Pass(text: "nine")])

@@ -335,12 +335,25 @@ final class LocalToolEvalCorpusTests: XCTestCase {
     }
 
     func testABrokenCarryFailsCarry() async throws {
+        // The reading logged the wrong number; the calculation's supply is the one the technician said.
+        let run = try await runCase("twostep-070XV36B-115", script: [
+            #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "50"}}</tool_call>"#,
+            #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": 50, "current_a": 15, "length_ft": 50}}</tool_call>"#,
+            "Done.",
+        ])
+        XCTAssertEqual(run.grades[.carry], false)
+    }
+
+    /// Plan MQ P3: a supply the model got wrong is replaced by the one the technician said, so the
+    /// carry reaches the calculation.
+    func testAWrongSupplyIsReplacedByTheSaidOne() async throws {
         let run = try await runCase("twostep-070XV36B-115", script: [
             #"<tool_call>{"name": "reading", "arguments": {"action": "record_reading", "value": "115"}}</tool_call>"#,
             #"<tool_call>{"name": "domain_calc", "arguments": {"operation": "voltage_drop", "supply_v": 151, "current_a": 15, "length_ft": 50}}</tool_call>"#,
             "Done.",
         ])
-        XCTAssertEqual(run.grades[.carry], false)
+        XCTAssertEqual(run.grades[.carry], true)
+        XCTAssertGreaterThan(run.measurements.argumentsCompleted, 0)
     }
 
     func testAMadeUpManualValueIsDeclined() throws {

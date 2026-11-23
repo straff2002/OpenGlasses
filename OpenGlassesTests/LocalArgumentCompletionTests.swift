@@ -71,14 +71,18 @@ final class LocalArgumentCompletionTests: XCTestCase {
 
     // MARK: - Filling
 
-    func testTheTurnsGaugeAndMetalAreFilled() {
+    func testTheTurnsGaugeMetalAndSupplyAreFilled() {
         let completed = complete(voltageDrop, phoneTurn)
         XCTAssertEqual(completed.arguments["wire_awg"] as? String, "14")
         XCTAssertEqual(completed.arguments["material"] as? String, "copper")
+        XCTAssertEqual(completed.arguments["supply_v"] as? String, "120", "the line voltage the turn opens with")
         XCTAssertEqual(completed.arguments["phase"] as? String, "single", "the phase stays the model's")
-        XCTAssertNil(completed.arguments["supply_v"], "never the supply")
-        XCTAssertEqual(completed.changes, 2)
+        XCTAssertEqual(completed.filled.map { $0.name }, ["wire_awg", "material", "supply_v"])
+        XCTAssertEqual(completed.changes, 3)
         XCTAssertEqual(completed.removed, [])
+        XCTAssertEqual(LocalArgumentCompletion.modelNote(filled: completed.filled, inferred: completed.inferred,
+                                                         notUsed: completed.removed),
+                       "Filled from what the technician said: wire_awg 14, material copper, supply_v 120.")
     }
 
     func testAnAughtSizeIsFilledAsTheTableNamesIt() {
@@ -134,7 +138,7 @@ final class LocalArgumentCompletionTests: XCTestCase {
         XCTAssertEqual(completed.removed, ["area_cmil", "area_mm2", "k_factor_ohm_per_ft", "resistance_ohm_per_ft"])
         for key in completed.removed { XCTAssertNil(completed.arguments[key], key) }
         XCTAssertEqual(completed.arguments["wire_awg"] as? String, "14")
-        XCTAssertEqual(completed.arguments["supply_v"] as? String, "115", "the supply is left alone")
+        XCTAssertEqual(completed.arguments["supply_v"] as? String, "115", "the supply the technician said stays")
         XCTAssertEqual(completed.changes, 6)
     }
 
@@ -159,7 +163,7 @@ final class LocalArgumentCompletionTests: XCTestCase {
     }
 
     func testAContradictingMaterialIsReplaced() {
-        let completed = complete(voltageDrop.merging(["material": "aluminum", "wire_awg": "14"]) { $1 }, phoneTurn)
+        let completed = complete(voltageDrop.merging(["material": "aluminum", "wire_awg": "14", "supply_v": "120"]) { $1 }, phoneTurn)
         XCTAssertEqual(completed.arguments["material"] as? String, "copper")
         XCTAssertEqual(completed.filled.map { $0.name }, ["material"])
         XCTAssertEqual(completed.changes, 1)
@@ -182,9 +186,141 @@ final class LocalArgumentCompletionTests: XCTestCase {
     }
 
     func testTheModelsOwnMatchingValuesAreLeftAsSent() {
-        let completed = complete(voltageDrop.merging(["wire_awg": "14 AWG", "material": "Copper"]) { $1 }, phoneTurn)
+        let completed = complete(voltageDrop.merging(["wire_awg": "14 AWG", "material": "Copper", "supply_v": "120"]) { $1 }, phoneTurn)
         XCTAssertEqual(completed.changes, 0)
         XCTAssertEqual(completed.arguments["wire_awg"] as? String, "14 AWG")
+    }
+
+    // MARK: - The supply
+
+    func testEverySupplyWording() {
+        let wordings: [(String, Double)] = [
+            (phoneTurn, 120), ("Line voltage at the 070XV36B control is 115.", 115), ("the supply is 230 V", 230),
+            ("supply is 230V", 230), ("it's a 230 volt supply", 230), ("230-volt supply", 230), ("240 VAC mains", 240),
+            ("120 V at the panel", 120), ("118 volts at the control", 118), ("240 V from the disconnect", 240),
+            ("measured 118 volts line to neutral", 118), ("208 V L-L", 208), ("120 V phase to ground", 120),
+            ("line voltage 120", 120), ("line voltage reads 119.5", 119.5), ("mains of 240 volts", 240),
+            ("incoming is 277 V", 277), ("supply voltage: 230", 230), ("line voltage under load is 114 volts", 114),
+            ("line voltage was 120, supply is 120 V", 120), ("what's the drop on a 120 volt supply", 120),
+            ("keep the drop under 3 percent on the 230 V supply", 230),
+        ]
+        for (text, volts) in wordings {
+            XCTAssertEqual(LocalArgumentCompletion.supplyVoltage(in: [text]), volts, text)
+        }
+    }
+
+    func testADropALimitOrAnotherQuantityIsNotTheSupply() {
+        for text in ["the drop is 3 V", "a drop of 3 V at the panel", "no more than 5 V at the panel", "3 V drop on the supply",
+                     "line voltage drop of 3 volts", "supply loss of 4 volts", "keep the line voltage drop under 3 percent",
+                     "line voltage drop at 15 amps over 50 feet", "line pressure is 7.5", "liquid line temperature is 95",
+                     "24 VAC at the thermostat", "measured 118 volts", "the 090XV36C control", "line voltage is fine",
+                     "Log line pressure, in. w.c., Natural at 7.5 in. w.c.", "supply voltage for a 3 phase run",
+                     "transformer kit, 75 VA, 24 V accessories", "supply is within 5 V"] {
+            XCTAssertNil(LocalArgumentCompletion.supplyVoltage(in: [text]), text)
+        }
+    }
+
+    func testTwoSuppliesGiveNoneAndHideNoOlderOne() {
+        XCTAssertNil(LocalArgumentCompletion.supplyVoltage(in: ["supply is 230 V, or 240 V at the panel"]))
+        let completed = complete(voltageDrop, "it's 230 volt supply or maybe 240 V mains, 14 gauge copper", "supply is 120 V")
+        XCTAssertNil(completed.arguments["supply_v"], "two supplies: neither, and no older one")
+        XCTAssertEqual(completed.arguments["wire_awg"] as? String, "14")
+    }
+
+    func testAnEarlierMessageGivesTheSupplyTheTurnDoesNot() {
+        let completed = complete(voltageDrop, "work out the drop at 15 amps over 50 feet of 14 gauge copper",
+                                 "the supply is 230 V", "line voltage is 120")
+        XCTAssertEqual(completed.arguments["supply_v"] as? String, "230", "the newest message that states one")
+    }
+
+    func testTheModelsDifferentSupplyIsReplacedAndItsOwnMatchingOneKept() {
+        let different = complete(voltageDrop.merging(["supply_v": "240"]) { $1 }, phoneTurn)
+        XCTAssertEqual(different.arguments["supply_v"] as? String, "120", "the technician's reading wins")
+        XCTAssertTrue(different.filled.contains { $0.name == "supply_v" && $0.value == "120" })
+        XCTAssertTrue(different.governs("supply_v"))
+
+        let matching = complete(voltageDrop.merging(["supply_v": 120, "wire_awg": "14", "material": "copper"]) { $1 }, phoneTurn)
+        XCTAssertEqual(matching.changes, 0)
+        XCTAssertEqual(matching.arguments["supply_v"] as? Int, 120, "left as sent")
+    }
+
+    func testNoSupplySaidFillsNone() {
+        let completed = complete(voltageDrop, "15 amps over 50 feet of 14 gauge copper")
+        XCTAssertNil(completed.arguments["supply_v"], "never invented")
+        XCTAssertFalse(completed.governs("supply_v"))
+        // The supply is read only from what the technician said: the context carries their messages alone.
+        XCTAssertNil(complete(["operation": "superheat", "refrigerant": "R-410A"], phoneTurn).arguments["supply_v"])
+        XCTAssertNil(complete(["action": "record_reading", "value": "120"], name: "reading", phoneTurn).arguments["supply_v"])
+    }
+
+    // MARK: - A voltage drop with no operation
+
+    func testGemmasCallWithNoOperationIsAVoltageDrop() {
+        // Gemma 4 E2B on the phone, after grounding took the made-up factor off.
+        let gemma: [String: Any] = ["current_a": "15", "length_ft": "50", "material": "copper"]
+        XCTAssertTrue(LocalArgumentCompletion.isVoltageDrop(name: "domain_calc", arguments: gemma))
+        let completed = complete(gemma, phoneTurn)
+        XCTAssertEqual(completed.arguments["operation"] as? String, "voltage_drop")
+        XCTAssertEqual(completed.arguments["wire_awg"] as? String, "14")
+        XCTAssertEqual(completed.arguments["supply_v"] as? String, "120")
+        XCTAssertEqual(completed.inferred.map { $0.name }, ["operation"])
+        XCTAssertEqual(completed.changes, 3, "the operation, the size and the supply")
+        XCTAssertEqual(LocalArgumentCompletion.modelNote(filled: completed.filled, inferred: completed.inferred,
+                                                         notUsed: completed.removed),
+                       "Set from the call's own arguments: operation voltage_drop. "
+                       + "Filled from what the technician said: wire_awg 14, supply_v 120.")
+
+        // With the made-up factor still on it, the said gauge takes it off.
+        let unfiltered = complete(gemma.merging(["k_factor_ohm_per_ft": "2.617"]) { $1 }, phoneTurn)
+        XCTAssertEqual(unfiltered.arguments["operation"] as? String, "voltage_drop")
+        XCTAssertEqual(unfiltered.removed, ["k_factor_ohm_per_ft"])
+
+        XCTAssertEqual(complete(["operation": " ", "current_a": 15, "length_m": 20], "supply is 230 V")
+            .arguments["operation"] as? String, "voltage_drop", "a blank operation names none")
+    }
+
+    func testACallShapedForAnotherOperationIsNotAVoltageDrop() {
+        let shapes: [[String: Any]] = [
+            ["refrigerant": "R-410A", "suction_pressure_psig": 118, "suction_line_temp_f": 52],
+            ["current_a": 15, "length_ft": 50, "refrigerant": "R-410A"],
+            ["current_a": 15, "length_ft": 50, "pressure_psig": 118],
+            ["current_a": 15, "length_ft": 50, "note": "superheat"],
+            ["current_a": 15],
+            ["length_ft": 50, "material": "copper"],
+        ]
+        for arguments in shapes {
+            XCTAssertFalse(LocalArgumentCompletion.isVoltageDrop(name: "domain_calc", arguments: arguments), "\(arguments)")
+            let completed = complete(arguments, phoneTurn)
+            XCTAssertEqual(completed.changes, 0, "\(arguments)")
+            XCTAssertNil(completed.arguments["operation"])
+        }
+        XCTAssertNil(complete(["current_a": 15, "length_ft": 50], name: "table_lookup", phoneTurn).arguments["operation"])
+        XCTAssertNil(complete(["operation": "superheat", "current_a": 15, "length_ft": 50], phoneTurn).arguments["supply_v"],
+                     "an operation that names another one decides")
+    }
+
+    /// The shape keys are `DomainCalcTool`'s own: the current and the lengths are declared for
+    /// `voltage_drop` alone, and every property another operation declares starts with a prefix the
+    /// shape refuses, while none of the voltage drop's do.
+    @MainActor
+    func testTheVoltageDropShapeIsTheSchemas() throws {
+        let schema = DomainCalcTool().parametersSchema
+        let properties = try XCTUnwrap(schema["properties"] as? [String: [String: Any]])
+        let shape = LocalArgumentCompletion.voltageDropShape
+        func description(_ key: String) -> String { properties[key]?["description"] as? String ?? "" }
+        for key in [shape.current] + shape.lengths {
+            XCTAssertTrue(description(key).hasPrefix("For 'voltage_drop'"), key)
+        }
+        func refused(_ key: String) -> Bool { shape.otherOperationPrefixes.contains { key.hasPrefix($0) } }
+        for (key, _) in properties where key != "operation" {
+            let forOthers = ["'pt_lookup'", "'superheat'", "'subcool'", "Refrigerant", "refrigerant", "gauge pressure",
+                             "altitude"].contains { description(key).contains($0) }
+            if description(key).hasPrefix("For 'voltage_drop'") {
+                XCTAssertFalse(refused(key), "a voltage drop's own key is refused: \(key)")
+            } else if forOthers {
+                XCTAssertTrue(refused(key), "another operation's key is not refused: \(key)")
+            }
+        }
     }
 
     // MARK: - Which calls

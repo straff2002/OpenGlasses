@@ -6547,7 +6547,7 @@ class LLMService: ObservableObject {
                                   detail: PrivacyToken("multiCall"))
         }
         var answer = outcome.text
-        if outcome.endReason == .protocolOnly || outcome.endReason == .unbackedClaim {
+        if [.protocolOnly, .unbackedClaim, .unbackedPromise].contains(outcome.endReason) {
             lastLocalTurnMissed = true
         } else if outcome.endReason != .routedResult, Self.announcesToolIntent(answer) {
             // Never speak a promise: the loop already had its rounds to keep it.

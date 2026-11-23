@@ -36,6 +36,15 @@ import Foundation
 /// turn's one correction while tools are still offered; a final reply that still claims it is
 /// never spoken: the miss line is, and the turn ends `.unbackedClaim`.
 ///
+/// ### Promises of work not done
+/// After the correction Gemma 4 E2B still ended three of twelve two-step turns on the phone with a
+/// promise ("I will calculate the voltage drop now.", "I will now call the domain_calc tool…") and
+/// no call (Plan MQ P3). A reply that promises to act (`unbackedPromise(in:executed:)`) with no
+/// successful call this turn of a tool that does what it promises gets the turn's one correction
+/// while tools are still offered; a final reply that is still such a promise is never spoken: the
+/// miss line is, and the turn ends `.unbackedPromise`, as `sendLocal` speaks it for an announced
+/// intent. A promise a call that ran backs stays.
+///
 /// ### Routed calls
 /// With `Configuration.routing` set, a turn `LocalTurnRouter` recognises (an error code, a model
 /// number to identify, a procedure to start, a step of the running procedure) has its call run
@@ -194,6 +203,9 @@ enum LocalToolLoop {
         /// The last reply said an action was done that no call this turn did (`unbackedClaim`), so
         /// the miss line was spoken instead of it.
         case unbackedClaim
+        /// The last reply promised an action no call this turn did (`unbackedPromise`), so the miss
+        /// line was spoken instead of it.
+        case unbackedPromise
     }
 
     /// A call the loop ran, with what came back. Arguments are kept in memory for the caller's
@@ -383,6 +395,11 @@ enum LocalToolLoop {
                 // Never say it was done when nothing did it.
                 text = configuration.missText
                 reason = .unbackedClaim
+            } else if LocalToolLoop.unbackedPromise(in: text, executed: executed,
+                                                     assistantName: configuration.assistantName) {
+                // Nor that it is about to be, when the turn is over and nothing did it.
+                text = configuration.missText
+                reason = .unbackedPromise
             }
             transcript.append(.assistant(text))
             var outcome = Outcome(text: text, endReason: reason, transcript: transcript, executed: executed,
@@ -447,16 +464,21 @@ enum LocalToolLoop {
         while true {
             let invocations = parsed.invocations
             guard !invocations.isEmpty else {
-                // A reply that says it did what no call did gets the turn's one correction, while
-                // tools are still offered (`finish` never speaks it).
+                // A reply that says it did, or is about to do, what no call did gets the turn's one
+                // correction, while tools are still offered (`finish` never speaks it).
                 if !usedCorrection, configuration.correction != nil, executed.count < cap,
-                   parsed.classification.kind == .prose,
-                   LocalToolLoop.unbackedClaim(in: parsed.text, executed: executed,
-                                               assistantName: configuration.assistantName) != nil {
-                    usedCorrection = true
-                    let scaffold = transcript + [.assistant(parsed.text), .user(LLMService.localClaimCorrection)]
-                    parsed = try await generation(.correction, messages: scaffold, toolsOffered: true)
-                    continue
+                   parsed.classification.kind == .prose {
+                    let name = configuration.assistantName
+                    let correction = LocalToolLoop.unbackedClaim(in: parsed.text, executed: executed, assistantName: name) != nil
+                        ? LLMService.localClaimCorrection
+                        : LocalToolLoop.unbackedPromise(in: parsed.text, executed: executed, assistantName: name)
+                            ? LLMService.localIntentCorrection : nil
+                    if let correction {
+                        usedCorrection = true
+                        let scaffold = transcript + [.assistant(parsed.text), .user(correction)]
+                        parsed = try await generation(.correction, messages: scaffold, toolsOffered: true)
+                        continue
+                    }
                 }
                 break
             }
@@ -492,7 +514,8 @@ enum LocalToolLoop {
                 let notUsed = (completed.removed + filtered.dropped.filter { completed.governs($0) && !filledNames.contains($0) })
                     .sorted()
                 let notes = [unsaid.isEmpty ? nil : LocalArgumentGrounding.modelNote(dropped: unsaid),
-                             LocalArgumentCompletion.modelNote(filled: completed.filled, notUsed: notUsed)].compactMap { $0 }
+                             LocalArgumentCompletion.modelNote(filled: completed.filled, inferred: completed.inferred,
+                                                               notUsed: notUsed)].compactMap { $0 }
                 let forModel = ([result.text] + notes).joined(separator: "\n\n")
                 transcript.append(.toolResult(forModel, for: call))
                 grounding.add(result.text)
@@ -603,13 +626,13 @@ enum LocalToolLoop {
         let escaped = NSRegularExpression.escapedPattern(for: name)
         let named = name.isEmpty ? "" : "|\(escaped)|\(escaped) has"
         return [
-            (["reading", "procedure_runner", "evidence", "field_session"], claimPatterns([
+            (loggingTools, claimPatterns([
                 #"\b(i|i've|i have|we've|we have"# + named + #")\s+(just\s+|now\s+|already\s+)?(logged|recorded|saved|noted)\b"#,
                 #"\b(i'm|i am|is|are)\s+(now\s+)?(logging|recording)\b"#,
                 #"\b(?<!not )(?<!n't )been\s+(logged|recorded|saved)\b"#,
                 #"(^|[.!?,;:\u2014]\s*)(ok(ay)?[,.]?\s+)?(logged|recorded)\b"#,
             ])),
-            (["domain_calc"], claimPatterns([
+            (calculatingTools, claimPatterns([
                 #"\b(i|i've|i have|we've|we have"# + named + #")\s+(just\s+|now\s+|already\s+)?(calculated|computed|worked out|figured out)\b"#,
                 #"\b(i'm|i am|is)\s+(now\s+)?(calculating|computing)\b"#,
                 #"\b(the|your|that)\s+(voltage\s+)?drop\s+(is|would be|will be|comes to|comes out( at)?|works out( at| to)?)\s+(about\s+|around\s+|roughly\s+|approximately\s+|only\s+|just\s+)?\d"#,
@@ -618,8 +641,18 @@ enum LocalToolLoop {
         ]
     }
 
+    /// The tools whose successful call backs a log, and a calculation.
+    static let loggingTools: Set<String> = ["reading", "procedure_runner", "evidence", "field_session"]
+    static let calculatingTools: Set<String> = ["domain_calc"]
+
     private static func claimPatterns(_ patterns: [String]) -> [NSRegularExpression] {
         patterns.map { try! NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }
+
+    /// The tools that ran this turn and succeeded: not an error, not the dispatcher's not-offered answer.
+    private static func succeeded(_ executed: [Executed]) -> Set<String> {
+        Set(executed.filter { !$0.result.isError && !isUnofferedToolResult($0.result.text, name: $0.call.name) }
+            .map(\.call.name))
     }
 
     /// The tools one of whose claims `text` makes with no successful call of any of them in
@@ -627,14 +660,68 @@ enum LocalToolLoop {
     /// ran) passes. Pure.
     static func unbackedClaim(in text: String, executed: [Executed],
                               assistantName: String = Config.assistantName) -> Set<String>? {
-        let done = Set(executed.filter { !$0.result.isError && !isUnofferedToolResult($0.result.text, name: $0.call.name) }
-            .map(\.call.name))
+        let done = succeeded(executed)
         let spoken = text.replacingOccurrences(of: "\u{2019}", with: "'")
         let range = NSRange(spoken.startIndex..., in: spoken)
         for claim in actionClaims(assistantName: assistantName) where claim.tools.isDisjoint(with: done) {
             if claim.patterns.contains(where: { $0.firstMatch(in: spoken, range: range) != nil }) { return claim.tools }
         }
         return nil
+    }
+
+    // MARK: - Promises of work not done
+
+    /// Whether `text` promises to act now: `LLMService.announcesToolIntent`, or a promise to call a
+    /// tool ("I will now call the domain_calc tool to find the voltage drop.", traced on the phone),
+    /// under the same gates: short, asking nothing, not waiting on the wearer. Pure.
+    static func promisesToAct(_ text: String, assistantName: String = Config.assistantName) -> Bool {
+        if LLMService.announcesToolIntent(text, assistantName: assistantName) { return true }
+        let lowered = text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+        guard !lowered.contains("<tool_call>"), lowered.count < 280, !lowered.contains("?"),
+              !LLMService.waitingOnWearer.contains(where: { lowered.contains($0) }) else { return false }
+        let name = NSRegularExpression.escapedPattern(for: assistantName.trimmingCharacters(in: .whitespaces).lowercased())
+        let named = name.isEmpty ? "" : #"|\b"# + name + #"(?:\s+will|'ll|\s+is going to|\s+is about to)"#
+        let pattern = #"(?:\b(?:i will|i'll|let me|i'm going to|i am going to|i'm about to|i shall)"# + named
+            + #")\s+(?:now\s+|first\s+|just\s+|then\s+)?(?:call|use|run|invoke|try)\s+(?:the\s+|a\s+)?"#
+            + #"(?:[a-z]+(?:_[a-z0-9]+)+\b|[a-z_]+\s+tool\b|tool\b)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        return regex.firstMatch(in: lowered, range: NSRange(lowered.startIndex..., in: lowered)) != nil
+    }
+
+    /// The kinds of work a promise names, each as the tools whose call would back it: a log, a
+    /// calculation, a tool named outright.
+    private static let promisedWork: [(pattern: NSRegularExpression, tools: Set<String>?)] = [
+        (try! NSRegularExpression(pattern: #"\b(?:log|logging|record|recording)\b|\bsave the reading|\bnote the reading"#,
+                                  options: [.caseInsensitive]), loggingTools),
+        (try! NSRegularExpression(pattern: #"\b(?:calculat\w*|comput\w*|work(?:ing)?\s+(?:it\s+|that\s+|this\s+)?out|"#
+                                      + #"figur(?:e|ing)\s+(?:it\s+|that\s+)?out)\b"#, options: [.caseInsensitive]),
+         calculatingTools),
+        // A tool named as the one to call ("call the domain_calc tool", "use domain_calc"): the set is
+        // the name itself, captured as group 1 or 2.
+        (try! NSRegularExpression(pattern: #"\b(?:call|use|run|invoke|try)\s+(?:the\s+|a\s+)?([a-z]+(?:_[a-z0-9]+)+)\b|"#
+                                      + #"\b([a-z]+(?:_[a-z0-9]+)+)\s+tool\b"#, options: [.caseInsensitive]), nil),
+    ]
+
+    /// Whether `text` promises to act (`promisesToAct`) with nothing this turn backing it: some kind
+    /// of work it names (a log, a calculation, a tool by name) has no successful call of a tool that
+    /// does it, or, naming none, no call succeeded at all. "I will calculate the voltage drop now."
+    /// after only the reading ran is unbacked; "Let me check that." after a lookup ran is not. Pure.
+    static func unbackedPromise(in text: String, executed: [Executed],
+                                assistantName: String = Config.assistantName) -> Bool {
+        guard promisesToAct(text, assistantName: assistantName) else { return false }
+        let done = succeeded(executed)
+        let range = NSRange(text.startIndex..., in: text)
+        var promised: [Set<String>] = []
+        for work in promisedWork {
+            for match in work.pattern.matches(in: text, range: range) {
+                if let tools = work.tools { promised.append(tools); break }
+                for group in 1...2 {
+                    if let token = Range(match.range(at: group), in: text) { promised.append([text[token].lowercased()]) }
+                }
+            }
+        }
+        if promised.isEmpty { return done.isEmpty }
+        return promised.contains { $0.isDisjoint(with: done) }
     }
 
     /// Whether a reply offers to do the action the turn asked for instead of doing it ("I can

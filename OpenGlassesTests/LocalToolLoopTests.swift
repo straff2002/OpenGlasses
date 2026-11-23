@@ -247,7 +247,9 @@ final class LocalToolLoopTests: XCTestCase {
         let model = ScriptedModel(["Let me check that.", "Let me check that."])
         let outcome = try await run(model, ToolLog())
         XCTAssertEqual(model.requests.count, 2)
-        XCTAssertEqual(outcome.text, "Let me check that.")
+        // A promise nothing kept is never spoken (Plan MQ P3).
+        XCTAssertEqual(outcome.text, LLMService.localMissMessage)
+        XCTAssertEqual(outcome.endReason, .unbackedPromise)
     }
 
     func testBrokenProtocolIsNotCorrectedOrRun() async throws {
@@ -465,7 +467,7 @@ final class LocalToolLoopTests: XCTestCase {
 
         let afterBoth = try XCTUnwrap(model.requests.dropFirst().first)
         XCTAssertEqual(afterBoth.messages.last?.content, "Argument 'operation' is required.\n\n"
-                       + "Filled from what the technician said: wire_awg 14, material copper.",
+                       + "Filled from what the technician said: wire_awg 14, material copper, supply_v 120.",
                        "the misnamed call was still completed; the dispatcher's coercion comes after")
         XCTAssertTrue(afterBoth.toolsOffered, "two of three rounds used: it may call again")
         XCTAssertEqual(tools.calls.map(\.name), ["reading", "domain_calc", "domain_calc"])
@@ -552,6 +554,93 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(model.requests.map(\.purpose), [.initial, .afterTools, .correction])
         XCTAssertEqual(outcome.endReason, .unbackedClaim)
         XCTAssertEqual(outcome.text, LLMService.localMissMessage)
+    }
+
+    // MARK: - Promises of work not done (Plan MQ P3)
+
+    func testAPromiseAfterTheLogIsCorrectedOnceThenReplacedByTheMissLine() async throws {
+        let model = ScriptedModel([
+            call("reading", #"{"action": "record_reading", "value": "120"}"#),
+            "I will calculate the voltage drop now.",
+            "I apologize, I should have used the tool to perform the calculation for you. I will calculate the voltage drop now.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: twoStepTurn)
+        XCTAssertEqual(tools.calls.map(\.name), ["reading"])
+        XCTAssertEqual(model.requests.map(\.purpose), [.initial, .afterTools, .correction])
+        XCTAssertEqual(model.requests[2].messages.last?.content, LLMService.localIntentCorrection)
+        XCTAssertEqual(outcome.endReason, .unbackedPromise)
+        XCTAssertEqual(outcome.text, LLMService.localMissMessage, "never speak a promise nothing kept")
+        XCTAssertEqual(outcome.transcript.last?.content, LLMService.localMissMessage)
+    }
+
+    func testAPromiseToCallAToolAfterTheCorrectionIsReplacedByTheMissLine() async throws {
+        // The phone's shape: a promise, the correction, and a promise again.
+        let model = ScriptedModel([
+            "I will log the line voltage first, and then calculate the drop.",
+            "I will now call the domain_calc tool to find the voltage drop calculation.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: twoStepTurn)
+        XCTAssertTrue(tools.calls.isEmpty)
+        XCTAssertEqual(model.requests.map(\.purpose), [.initial, .correction])
+        XCTAssertEqual(outcome.endReason, .unbackedPromise)
+        XCTAssertEqual(outcome.text, LLMService.localMissMessage)
+    }
+
+    func testWithCorrectionsOffAFinalPromiseIsStillNeverSpoken() async throws {
+        var configuration = LocalToolLoop.Configuration()
+        configuration.correction = nil
+        let outcome = try await run(ScriptedModel(["Let me work out the voltage drop."]), ToolLog(),
+                                    configuration: configuration, message: twoStepTurn)
+        XCTAssertEqual(outcome.endReason, .unbackedPromise)
+        XCTAssertEqual(outcome.text, LLMService.localMissMessage)
+    }
+
+    func testAPromiseACallThatRanBacksIsKept() async throws {
+        let model = ScriptedModel([
+            call("reading", #"{"action": "record_reading", "value": "120"}"#)
+                + call("domain_calc", #"{"operation": "voltage_drop", "supply_v": 120, "current_a": 15, "length_ft": 50}"#),
+            "Logged 120 volts. Let me work out the drop: about 3 volts.",
+        ])
+        let tools = ToolLog()
+        let outcome = try await run(model, tools, message: twoStepTurn)
+        XCTAssertEqual(tools.calls.map(\.name), ["reading", "domain_calc"])
+        XCTAssertEqual(outcome.endReason, .answered)
+        XCTAssertEqual(outcome.text, "Logged 120 volts. Let me work out the drop: about 3 volts.")
+        XCTAssertEqual(model.requests.count, 2, "no correction for a promise the calls back")
+    }
+
+    func testWhichPromisesAreUnbacked() {
+        let reading = LocalToolLoop.Executed(call: .init(id: "call_1", name: "reading", arguments: [:]),
+                                             result: .init(text: "Recorded."))
+        let calc = LocalToolLoop.Executed(call: .init(id: "call_2", name: "domain_calc", arguments: [:]),
+                                          result: .init(text: "Voltage drop 3.0 V."))
+        let failedCalc = LocalToolLoop.Executed(call: .init(id: "call_2", name: "domain_calc", arguments: [:]),
+                                                result: .init(text: "Specify a conductor.", isError: true))
+        let lookup = LocalToolLoop.Executed(call: .init(id: "call_1", name: "equipment_lookup", arguments: [:]),
+                                            result: .init(text: "090XV36C: 120 V."))
+        let calculate = "I will calculate the voltage drop now."
+        XCTAssertTrue(LocalToolLoop.unbackedPromise(in: calculate, executed: []))
+        XCTAssertTrue(LocalToolLoop.unbackedPromise(in: calculate, executed: [reading]), "the log does not back a calculation")
+        XCTAssertTrue(LocalToolLoop.unbackedPromise(in: calculate, executed: [reading, failedCalc]))
+        XCTAssertFalse(LocalToolLoop.unbackedPromise(in: calculate, executed: [reading, calc]))
+        XCTAssertTrue(LocalToolLoop.unbackedPromise(in: "Avenkin will log the line voltage reading and calculate the voltage drop.",
+                                                    executed: [calc], assistantName: "Avenkin"))
+        let callTool = "I will now call the domain_calc tool to find the voltage drop calculation."
+        XCTAssertTrue(LocalToolLoop.promisesToAct(callTool))
+        XCTAssertTrue(LocalToolLoop.unbackedPromise(in: callTool, executed: [reading]))
+        XCTAssertFalse(LocalToolLoop.unbackedPromise(in: callTool, executed: [calc]))
+        XCTAssertTrue(LocalToolLoop.promisesToAct("Let me use the reading tool.", assistantName: "Avenkin"))
+        XCTAssertTrue(LocalToolLoop.promisesToAct("Avenkin will now use domain_calc.", assistantName: "Avenkin"))
+        // A promise naming no kind of work is backed by any call that ran.
+        XCTAssertTrue(LocalToolLoop.unbackedPromise(in: "Let me check that for you.", executed: []))
+        XCTAssertFalse(LocalToolLoop.unbackedPromise(in: "Let me check that for you.", executed: [lookup]))
+        // Not a promise: an answer, a question, a wait on the wearer, a plan to run something else.
+        for text in ["The drop is about 3 volts.", "Shall I calculate the drop?", "I'll calculate it once you tell me the gauge.",
+                     "I'll run the numbers when you give me the length.", "I'll call you back.", "Logged 120 volts."] {
+            XCTAssertFalse(LocalToolLoop.unbackedPromise(in: text, executed: []), text)
+        }
     }
 
     func testAClaimAFailedCallMadeIsNotBacked() {
@@ -706,12 +795,12 @@ final class LocalToolLoopTests: XCTestCase {
 
     func testACallWhoseNumbersWereAllSaidRunsWholeWithNoNote() async throws {
         let model = ScriptedModel([
-            call("domain_calc", #"{"operation": "voltage_drop", "current_a": 15, "length_ft": 50, "wire_awg": "14", "material": "copper"}"#),
+            call("domain_calc", #"{"operation": "voltage_drop", "current_a": 15, "length_ft": 50, "wire_awg": "14", "material": "copper", "supply_v": 120}"#),
             "About 3 volts.",
         ])
         let tools = ToolLog()
         let outcome = try await run(model, tools, message: twoStepTurn)
-        XCTAssertEqual(tools.calls.first?.arguments.count, 5)
+        XCTAssertEqual(tools.calls.first?.arguments.count, 6)
         XCTAssertEqual(outcome.argumentsDropped, 0)
         XCTAssertEqual(outcome.argumentsCompleted, 0)
         XCTAssertEqual(model.requests[1].messages.last?.content, "result of domain_calc")
@@ -801,13 +890,15 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(ran.arguments["material"] as? String, "copper")
         XCTAssertNil(ran.arguments["resistance_ohm_per_ft"])
         XCTAssertEqual(ran.arguments["phase"] as? String, "single")
-        XCTAssertEqual(Set(ran.arguments.keys), ["current_a", "length_ft", "material", "phase", "operation", "wire_awg"])
+        XCTAssertEqual(ran.arguments["supply_v"] as? String, "120", "the line voltage the turn opens with")
+        XCTAssertEqual(Set(ran.arguments.keys), ["current_a", "length_ft", "material", "phase", "operation", "wire_awg",
+                                                 "supply_v"])
         XCTAssertEqual(outcome.argumentsDropped, 1)
-        XCTAssertEqual(outcome.argumentsCompleted, 1)
+        XCTAssertEqual(outcome.argumentsCompleted, 2)
 
         let result = try XCTUnwrap(model.requests[1].messages.last)
-        XCTAssertEqual(result.content, "Voltage drop 3.0 V.\n\nFilled from what the technician said: wire_awg 14. "
-                       + "Not used, because the technician named the wire: resistance_ohm_per_ft.")
+        XCTAssertEqual(result.content, "Voltage drop 3.0 V.\n\nFilled from what the technician said: wire_awg 14, "
+                       + "supply_v 120. Not used, because the technician named the wire: resistance_ohm_per_ft.")
         XCTAssertEqual(outcome.executed.last?.result.text, "Voltage drop 3.0 V.")
     }
 
@@ -822,7 +913,7 @@ final class LocalToolLoopTests: XCTestCase {
         XCTAssertEqual(outcome.endReason, .toolResult)
         XCTAssertEqual(outcome.text, "Voltage drop 3.0 V.", "the tool's own result, never the model's note")
         XCTAssertFalse(outcome.transcript.filter { $0.role == .assistant }.contains { $0.content.contains("Filled") })
-        XCTAssertEqual(outcome.argumentsCompleted, 2)
+        XCTAssertEqual(outcome.argumentsCompleted, 3, "the size, the metal and the supply")
     }
 
     func testTheRepeatCheckComparesTheCompletedCall() async throws {
@@ -836,6 +927,58 @@ final class LocalToolLoopTests: XCTestCase {
         let outcome = try await run(model, tools, message: twoStepTurn)
         XCTAssertEqual(tools.calls.count, 1)
         XCTAssertEqual(outcome.callsNotRun, 1)
+    }
+
+    func testGemmasCallWithNoOperationRunsAsAVoltageDropWithTheSaidConductorAndSupply() async throws {
+        // Gemma 4 E2B's call on the phone: no operation, no size, no supply, and a factor nobody said.
+        let model = NativeModel([
+            .init(text: "", toolCalls: [
+                .init(name: "reading", arguments: ["action": "record_reading", "quantity": "line voltage", "value": "120"]),
+                .init(name: "domain_calc", arguments: ["current_a": "15", "length_ft": "50",
+                                                       "k_factor_ohm_per_ft": "2.617", "material": "copper"]),
+            ]),
+            .init(text: "Logged 120 volts; the drop is about 3 volts."),
+        ])
+        let tools = ToolLog()
+        tools.result = { call in .init(text: call.name == "domain_calc" ? "Voltage drop 3.0 V." : "Recorded 120 VAC.") }
+        let outcome = try await runNative(model, tools, message: twoStepTurn)
+
+        let ran = try XCTUnwrap(tools.calls.last)
+        XCTAssertEqual(ran.name, "domain_calc")
+        XCTAssertEqual(ran.arguments["operation"] as? String, "voltage_drop")
+        XCTAssertEqual(ran.arguments["wire_awg"] as? String, "14")
+        XCTAssertEqual(ran.arguments["material"] as? String, "copper")
+        XCTAssertEqual(ran.arguments["supply_v"] as? String, "120")
+        XCTAssertEqual(ran.arguments["current_a"] as? String, "15")
+        XCTAssertEqual(ran.arguments["length_ft"] as? String, "50")
+        XCTAssertNil(ran.arguments["k_factor_ohm_per_ft"])
+        XCTAssertEqual(Set(ran.arguments.keys), ["operation", "current_a", "length_ft", "material", "wire_awg", "supply_v"])
+        XCTAssertEqual(outcome.argumentsDropped, 1)
+        XCTAssertEqual(outcome.argumentsCompleted, 3, "the operation, the size and the supply")
+
+        let result = try XCTUnwrap(model.requests[1].messages.last)
+        XCTAssertEqual(result.content, "Voltage drop 3.0 V.\n\nSet from the call's own arguments: operation voltage_drop. "
+                       + "Filled from what the technician said: wire_awg 14, supply_v 120. "
+                       + "Not used, because the technician named the wire: k_factor_ohm_per_ft.")
+        XCTAssertEqual(outcome.endReason, .answered)
+    }
+
+    func testTheSupplyComesFromTheTechnicianNeverTheAssistant() async throws {
+        let model = ScriptedModel([
+            call("domain_calc", #"{"operation": "voltage_drop", "current_a": 15, "length_ft": 50, "wire_awg": "14", "material": "copper"}"#),
+            "About 3 volts.",
+        ])
+        let tools = ToolLog()
+        _ = try await run(model, tools, history: [.user("it's 14 gauge copper"), .assistant("The supply is 240 V there.")],
+                          message: "work out the drop at 15 amps over 50 feet")
+        XCTAssertNil(tools.calls.first?.arguments["supply_v"], "never from the assistant's own words")
+
+        let fromEarlier = ToolLog()
+        _ = try await run(ScriptedModel([call("domain_calc", #"{"operation": "voltage_drop", "current_a": 15, "length_ft": 50}"#),
+                                         "About 3 volts."]), fromEarlier,
+                          history: [.user("supply is 230 V"), .assistant("Okay.")],
+                          message: "work out the drop at 15 amps over 50 feet of 14 gauge copper")
+        XCTAssertEqual(fromEarlier.calls.first?.arguments["supply_v"] as? String, "230", "an earlier user message")
     }
 
     func testARoutedCallIsNotCompleted() async throws {
