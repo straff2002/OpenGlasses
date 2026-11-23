@@ -582,6 +582,14 @@ struct Config {
     @UserDefaultsBacked("directSentenceStreamingEnabled", default: true)
     static var directSentenceStreamingEnabled: Bool
 
+    /// Plan NA: the reply check — a Blind Assistant answer that tells the wearer a way is safe or
+    /// clear, or states a number a reading did not show, is withheld before it is said or stopped
+    /// while it is (`BlindReplyCheck`, `BlindReplyGuard`). On by default; no wearer switch
+    /// (decision 10). This is the kill switch, in Settings › Advanced & Support › Advanced ›
+    /// Developer, so a bad table can be switched off without a build.
+    @UserDefaultsBacked("blindReplyCheckEnabled", default: true)
+    static var blindReplyCheckEnabled: Bool
+
     /// Plan LA: when something the wearer asked for has fully happened, a short done tone instead
     /// of a spoken reply (`QuietTurnJudge`). Off by default (decision 1); hidden and read as off in
     /// Simple Mode. Settings › Voice.

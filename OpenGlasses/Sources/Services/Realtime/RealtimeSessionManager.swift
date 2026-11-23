@@ -115,6 +115,13 @@ class RealtimeSessionManager: ObservableObject {
     /// The idle warning is being spoken by the model, so its audio answers nobody.
     private var idleWarningInTurn = false
 
+    /// Plan NA §5: the reply check over this session's answers (`LiveReplyWatch`). Built at each
+    /// start; nil for the spoken interpreter and with the check off.
+    private var replyWatch: LiveReplyWatch?
+    /// Plan NA: says the check's correction in the app's own voice (AppState: the speech service,
+    /// `SpeechSource.replyCheck`). Nil falls back to the local cue voice.
+    var onReplyCheckLine: ((String) -> Void)?
+
     /// Set before a start to make that session the spoken interpreter. Consumed by the start.
     var interpreterRequest: InterpreterPair?
     /// The languages this session is interpreting between, or `nil` for any other session. It takes
@@ -270,6 +277,7 @@ class RealtimeSessionManager: ObservableObject {
         audioManager.route = interpreter == nil ? .standard : .interpreter
         interpreterPair = interpreter
         interpreterRouter = interpreter.map(InterpreterTurnRouter.init)
+        replyWatch = makeReplyWatch(interpreting: interpreter != nil, model: model)
 
         isActive = true
         micMuted = false
@@ -377,6 +385,8 @@ class RealtimeSessionManager: ObservableObject {
             self.idleClock.noteSpeechHeard()
             // Plan LC §5: through the main actor's queue, behind the transcript already on it.
             if self.interpreterRouter == nil { self.sendAnswerEvent(.wearerSpeechStarted, identity: identity) }
+            // Plan NA: a new request; the last one's reading evidence is not its.
+            ReadingEvidenceBoard.shared.clear()
             // A JSON provider's whole transcript can land after its turn ended. Left in place, it
             // would be read as the wearer's words at the end of the next turn, which is the
             // difference between a question answered and a session ended on an old "bye".
@@ -388,7 +398,7 @@ class RealtimeSessionManager: ObservableObject {
             self.noteModelReply()
             if self.interpreterRouter != nil {
                 self.applyInterpreter(self.interpreterRouter?.audio(data, now: Date()))
-            } else {
+            } else if self.replyWatch?.isMuted != true {   // Plan NA: a stopped answer stays stopped
                 self.audioManager.playAudio(data: data)
             }
         }
@@ -397,6 +407,7 @@ class RealtimeSessionManager: ObservableObject {
         providerSession.onInterrupted = { [weak self] in
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             self.audioManager.stopPlayback()
+            self.applyReplyWatch(self.replyWatch?.interrupted())
             self.applyInterpreter(self.interpreterRouter?.interrupted())
             // FF P1/PR5: an answer the wearer spoke over is committed marked. What they heard of it
             // is unknown, and a handover must never present it as delivered.
@@ -415,6 +426,9 @@ class RealtimeSessionManager: ObservableObject {
                 guard self.isActive, self.sessionIdentity == identity else { return }
                 self.audioManager.resetPlaybackProgress()
                 let interpreting = self.interpreterRouter != nil
+                // Plan NA: the answer's last sentence is checked, then the turn's owed line and note.
+                self.applyReplyWatch(self.replyWatch?.turnComplete(
+                    question: self.userTranscript, evidence: ReadingEvidenceBoard.shared.current))
                 if !interpreting { self.conversationRecorder.completeTurn() }
                 // Plan LC §5: the idle warning is the session talking, not an answer.
                 if !interpreting { self.onAnswerEvent?(.turnComplete(publishes: !self.idleWarningInTurn)) }
@@ -442,6 +456,8 @@ class RealtimeSessionManager: ObservableObject {
                 guard self.isActive, self.sessionIdentity == identity else { return }
                 // Plan HY P1: not activity yet. It counts once the model answers it.
                 self.idleClock.noteSpeechHeard()
+                // Plan NA: the wearer is asking again; the last reading belongs to the last request.
+                ReadingEvidenceBoard.shared.clear()
                 self.userTranscript = self.providerSession.inputTranscriptionIsDelta
                     ? ScriptAwareJoiner.join(self.userTranscript, text) : text
                 // The interpreter's words stop at the screen. They are the other person's as often
@@ -468,8 +484,14 @@ class RealtimeSessionManager: ObservableObject {
             guard let self, self.isActive, self.sessionIdentity == identity else { return }
             Task { @MainActor in
                 guard self.isActive, self.sessionIdentity == identity else { return }
+                // Plan NA: the rest of a stopped answer is neither shown nor recorded.
+                if self.replyWatch?.isMuted == true { return }
                 self.noteModelReply()
                 self.aiTranscript = ScriptAwareJoiner.join(self.aiTranscript, text)
+                self.applyReplyWatch(self.replyWatch?.outputTranscript(
+                    self.aiTranscript, question: self.userTranscript,
+                    evidence: ReadingEvidenceBoard.shared.current))
+                if self.replyWatch?.isMuted == true { return }
                 if self.interpreterRouter != nil {
                     self.applyInterpreter(self.interpreterRouter?.transcript(text, now: Date()))
                     self.advanceInterpreter()
@@ -771,6 +793,8 @@ class RealtimeSessionManager: ObservableObject {
     ///   ordinary stop is `.stopped`, and the idle end (Plan HY P1) is the one that says more.
     func stopSession(reason: LiveSessionEndReason = .stopped) {
         idleClock.stop()
+        replyWatch = nil
+        ReadingEvidenceBoard.shared.clear()
         PrivacyLog.realtimeSession(logProvider, .sessionStopped, count: submittedFrameCount)
         PrivacyLog.realtimeSession(logProvider, .frameDropped, detail: PrivacyToken("notActive"),
                                    count: droppedNotActive)
@@ -1282,6 +1306,49 @@ extension RealtimeSessionManager: LiveSessionInjecting {
         guard supportsTextInjection else { errorMessage = String(localized: "This realtime model does not support text injection."); return }
         providerSession?.sendText(text, completeTurn: true, toolsAllowed: false)
     }
+    // MARK: - Reply check (Plan NA §5)
+
+    private func makeReplyWatch(interpreting: Bool, model: RealtimeModelConfig) -> LiveReplyWatch? {
+        guard !interpreting else { return nil }
+        let scope = BlindReplyScreen.Scope.forTurn(activeModeId: Config.activeLiveAIModeId,
+                                                   enabled: Config.blindReplyCheckEnabled)
+        guard !scope.isOff else { return nil }
+        return LiveReplyWatch(provider: model.profile == .geminiLiveV1 ? .gemini : .json, scope: scope,
+                              appLanguageIsEnglish: BlindReplyScreen.appLanguageIsEnglish)
+    }
+
+    /// Carry out what the watch decided. Every decision is the watch's; this only acts on them.
+    private func applyReplyWatch(_ effects: [LiveReplyWatch.Effect]?) {
+        guard let effects, !effects.isEmpty else { return }
+        let provider = PrivacyToken(logProvider.rawValue)
+        for effect in effects {
+            switch effect {
+            case .stopPlayback:
+                let pending = audioManager.pendingPlaybackMilliseconds
+                audioManager.stopPlayback()
+                let line = effects.lazy.compactMap { effect -> BlindReplyLine? in
+                    if case .speakLine(let line) = effect { return line } else { return nil }
+                }.first ?? .safety
+                BlindReplyCheckRecorder.recordLiveStop(provider: provider, pendingMilliseconds: pending, line: line)
+            case .cancelResponse:
+                providerSession.cancelResponse()
+            case .muteUntilTurnEnd:
+                break   // the watch's own latch (`isMuted`) gates the audio and the transcript
+            case .markInterrupted:
+                conversationRecorder.noteInterruption()
+                sendAnswerEvent(.interrupted, identity: sessionIdentity)
+            case .speakLine(let line):
+                let text = line.text(live: true)
+                if let onReplyCheckLine { onReplyCheckLine(text) } else { speakLocalCue(text) }
+            case .noteForModel(let line):
+                updateAppContext(line.modelNote, key: "replyCheck")
+                BlindReplyCheckRecorder.recordModelNoted(provider: provider, line: line)
+            case .record(let items):
+                BlindReplyCheckRecorder.record(items, surface: .live, provider: provider)
+            }
+        }
+    }
+
     func updateAppContext(_ text: String, key: String) {
         guard canInject, supportsContextUpdates else { return }
         providerSession?.updateContext(text, key: key)

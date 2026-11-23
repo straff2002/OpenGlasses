@@ -1,6 +1,14 @@
 # Plan NA — Blind Reply Safety Check (the app checks what a Blind Assistant answer actually says, withholds a sentence that tells the wearer a way is safe or clear before it is spoken, stops one that is already playing in a live session, and says so truthfully)
 
-**Status:** 📝 Drafted 2026-11-23 · nothing built · 10 decisions with recommendations.
+**Status:** 🚧 P0–P2 built 2026-11-23, headless (all 10 decisions taken as recommended; see
+"Decisions taken in the build"). P3 device pass and P4 catalog sync owed. New localized keys for
+P4 (`String(localized:)`, not extracted headlessly): the four lines in `BlindReplyLine.text(live:)`
+— "I can't tell from the camera whether it's safe. Check with your cane or guide dog, or ask
+someone nearby.", the same prefixed "Correction: ", "I couldn't read one of the numbers clearly,
+so I've left it out. Ask me to read it again with it held steady.", and "Correction: I couldn't
+confirm one of those numbers from the text I could read. Ask me to read it again with it held
+steady." — plus the Developer panel's "Reply Check" header, its footer and the "Check Blind
+Assistant answers" row.
 **Track:** Accessibility (blind and low-vision wearers).
 **Builds on:** Plan [FF](FF-blind-assistant-readiness.md) P0/PR1 (`BlindAssistanceContract`,
 `BlindAssistanceResponseAudit`), PR2 (the app's own voice for lifecycle lines), PR4 (the reading
@@ -357,6 +365,54 @@ has ended; there it is best effort.
 10. **No wearer switch yet; a Developer kill switch.** *Why:* a safety check the wearer can turn off
     needs evidence that it is worth keeping on; P3 gives that, and a bad table can be switched off
     without a build.
+
+## Decisions taken in the build
+
+What the plan left open, or got slightly wrong, decided while building P0–P2:
+
+1. **"You can go ahead" stays in the runtime table, ending a clause only.** FF's
+   no-visible-obstacle fixture ("…you can go ahead.") is flagged `assertedSafety` by the audit, and
+   the plan's agreement test needs the runtime check to flag it too. Ending a clause (or followed by
+   "now"), it is an assurance; "you can go ahead and ask" is not matched.
+2. **Quotation markers are reading verbs only.** "Says", "reads", "labelled", "is written",
+   "printed", "states", "the sign:", "the label:". "Say", "said" and "read" were dropped ("I'd say
+   it's safe", "as I said"), and "so", "which means", "meaning", "therefore" and "then" after the
+   marker end the reading, so "the sign says pedestrians, so it's safe to cross" trips.
+3. **The question detector is movement-scoped too.** "Is this safe to eat", "safe for children" and
+   "can I go to the shop" are not safety questions; "is it safe", "safe to cross", "okay to walk",
+   "can I cross", "is the path clear" are. An obstacle question is read before a safety one.
+4. **Live, a hazard sentence is not stopped.** Its audio is already playing and the hazard is the
+   part the wearer needs (decision 4 over decision 5): the guard returns `speakThenCorrect`, and the
+   watch says the line and sends the note at the turn's end. A later non-hazard trip in the same
+   answer is still stopped, without a second line.
+5. **Ambient medium/high urgency is `speakThenCorrect` whether or not a hazard is named**, as the
+   plan says; narration has no urgency and is read as low.
+6. **"One line per reply" is per tool-loop iteration in Direct mode.** The final reply is screened
+   afresh in `postProcess` and must match what the stream screened for reconciliation to be exact,
+   so a preamble and the final answer each start clean. A preamble's checks are recorded at the
+   stream reset; the final reply's once, in `postProcess`, so no sentence is counted twice.
+7. **Live reading evidence is cleared when the wearer speaks, not at turn complete.** A JSON
+   provider ends a response at a function call, so the answer that reads the tool's text is the
+   next turn; the evidence belongs to the wearer's request. Direct turns clear it at their start
+   and finish; a live session at each speech start, input transcript and stop.
+8. **Evidence numbers are read leniently.** The reply's parser, `ManualReadingCheck.numbers(in:)`
+   and every bare run of digits ("EXP03/2026" offers 3 and 2026), comma decimals both sides; dates
+   are split into their parts and times into hour and minutes. Too lenient lets a sentence through;
+   too strict withholds a dose the box really shows.
+9. **A few non-English units.** Spanish (miligramos, mililitros, gramos, unidades, por ciento) and
+   Japanese (ミリグラム, ミリリットル, グラム, 錠; 年月日 dates, 時分 times) beside the symbols, so
+   the digit check has a quantity to find in those languages. Month names are English only.
+10. **The model note is English**, as the session's instructions are; it is never spoken.
+11. **Typed and photo Direct turns are screened too** — a typed reply Siri reads back reaches a
+    blind wearer as surely as a spoken one.
+12. **The report line sits outside the glasses-only block** of `supportEnvironment()`, so the
+    phone-only build reports it too.
+13. **Pending audio is measured by a new `RealtimeAudioEngine.pendingPlaybackMilliseconds`** (the
+    pending-playback mirror's outstanding frames), read just before the stop.
+14. **While a live answer is muted its transcript is dropped** from `aiTranscript`, the handover
+    record and the answer card, not only its audio; the card and the record get `.interrupted`.
+15. **Tests:** `DirectReplySpeechStreamTests` is a new class (none existed to extend);
+    navigation's are in `NavigationAssistTests`, assistive's in `AssistiveModePolicyTests`.
 
 ## Open questions
 

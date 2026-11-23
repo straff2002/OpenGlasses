@@ -182,4 +182,33 @@ final class NavigationAssistTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(reading, before)
         XCTAssertLessThanOrEqual(reading, after)
     }
+
+    // MARK: - Plan NA: the reply check
+
+    /// A low-urgency callout that says the way is clear reaches neither the HUD nor the voice.
+    func testALowUrgencyClearPathCalloutIsDropped() {
+        let service = NavigationAssistService()
+        XCTAssertNil(service.screenedForSpeech(AssistiveAdvice(advice: "The path is clear.", urgency: .low, followup: nil)))
+        XCTAssertFalse(service.replyCheckCorrected)
+    }
+
+    /// A hazard is never withheld: said, then corrected — once per loop session.
+    func testAHazardCalloutIsSaidThenCorrectedOncePerSession() {
+        let service = NavigationAssistService()
+        let line = BlindReplyLine.safety.text(live: false)
+        let first = service.screenedForSpeech(
+            AssistiveAdvice(advice: "Kerb at two o'clock, then the way is clear.", urgency: .medium, followup: nil))
+        XCTAssertEqual(first, "Kerb at two o'clock, then the way is clear. \(line)")
+        XCTAssertTrue(service.replyCheckCorrected)
+        let second = service.screenedForSpeech(
+            AssistiveAdvice(advice: "Step down at twelve o'clock, then all clear.", urgency: .high, followup: nil))
+        XCTAssertEqual(second, "Step down at twelve o'clock, then all clear.", "the line is said once per session")
+        XCTAssertNil(service.screenedForSpeech(AssistiveAdvice(advice: "The way ahead is clear.", urgency: .high, followup: nil)))
+    }
+
+    func testAnOrdinaryCalloutIsUntouched() {
+        let service = NavigationAssistService()
+        let advice = "Door at two o'clock, about one meter."
+        XCTAssertEqual(service.screenedForSpeech(AssistiveAdvice(advice: advice, urgency: .medium, followup: nil)), advice)
+    }
 }

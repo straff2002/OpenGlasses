@@ -951,4 +951,26 @@ final class SceneNarrationServiceTests: XCTestCase {
         XCTAssertFalse(rig.service.isStartingCamera)
         XCTAssertEqual(rig.notices, [])
     }
+
+    // MARK: - Plan NA: the reply check
+
+    /// A description that only says the way is clear is neither said nor kept as grounding.
+    func testADroppedDescriptionIsNeitherSpokenNorGrounding() async {
+        let rig = makeRig(descriptions: ["The way ahead is clear."])
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertTrue(rig.spoken.isEmpty, "\(rig.spoken)")
+        XCTAssertNil(rig.service.groundingFragment())
+        XCTAssertEqual(rig.service.describedCount, 0)
+    }
+
+    /// The rest of a description is kept, without the assurance.
+    func testTheRestOfADescriptionIsKept() async {
+        let rig = makeRig(descriptions: ["A kitchen with a table and two chairs. The path is clear to the window."])
+        rig.service.startNarrating()
+        await tick(rig, to: 0)
+        await tick(rig, to: 2)
+        XCTAssertEqual(rig.spoken, ["A kitchen with a table and two chairs."])
+    }
 }

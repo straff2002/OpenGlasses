@@ -284,6 +284,10 @@ extension AppState {
         // names and numbers; no coordinates, and no device is named.
         phone += InputsProbeLedger.shared.reportLines
         #endif
+        // Plan NA §6: the reply check since the app started — sentences checked, each flag by what
+        // was done, exemptions, trips by surface, replies not checked for language. Counts only;
+        // never a sentence, a question or a reading.
+        phone += BlindReplyCheckRecorder.reportLines
         // Plan JY P1: each document's detected language and the model it is searched with, and
         // where each script's search model stands. Counts and labels only — no names or text.
         phone += ManualLanguageReport.current(store: documentStore)

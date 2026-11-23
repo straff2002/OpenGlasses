@@ -678,6 +678,15 @@ final class RealtimeAudioEngine {
         syncOnAudioLifecycleQueue { playbackDrain.isPending }
     }
 
+    /// Plan NA §6: milliseconds of audio scheduled and not yet heard, read just before the reply
+    /// check stops an answer — the measure of whether its words were caught before they played.
+    var pendingPlaybackMilliseconds: Int {
+        syncOnAudioLifecycleQueue {
+            PendingPlaybackMirror.milliseconds(frames: pendingPlayback.outstandingFrames,
+                                               sampleRate: config.outputSampleRate)
+        }
+    }
+
     /// Confirmed-played milliseconds of the current response's audio (CJ item 6) — from buffer
     /// completion callbacks, never wall-clock. Read this *before* `stopPlayback()` on barge-in.
     var confirmedPlayedMilliseconds: Int {
